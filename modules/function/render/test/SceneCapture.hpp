@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Sample.hpp"
-
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/RasterSurface.hpp>
 
@@ -37,6 +35,13 @@ namespace ipc = lux::platform::ipc;
 namespace rdesc = lux::rdesc;
 using Clock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
+
+struct RenderProbeCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<>;
+    using PerFrameData = std::tuple<>;
+};
 
 // Test configurations compose existing typed Feature inputs; preserve their real cold memory accounting.
 namespace lux::render

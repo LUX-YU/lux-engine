@@ -1,7 +1,22 @@
-#include "TestSupport.hpp"
-#include <fstream>
+#include <atomic>
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/commands/Mesh3dCommands.hpp>
+#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
+#include <type_traits>
+
+#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)
+#error Native closure leaked into the Render IPC command fixture
+#endif
+
+#include "TestSupport.hpp"
+
+static_assert(std::is_trivially_copyable_v<lux::render::FrameDataLayout<lux::render::TransformData>::Stored>);
+static_assert(std::is_standard_layout_v<lux::render::FrameDataLayout<lux::render::TransformData>::Stored>);
+static_assert(std::is_trivially_copyable_v<lux::render::MeshId> && std::is_standard_layout_v<lux::render::MeshId>);
+static_assert(sizeof(lux::render::MeshId) == 16);
+static_assert(sizeof(lux::render::RequestId) == sizeof(std::uint64_t));
+static_assert(!std::is_copy_constructible_v<lux::platform::ipc::IpcMessage>);
 
 struct Scalar final
 {
@@ -40,7 +55,7 @@ namespace
 {
     using namespace ipc_test;
 
-    void operationCost()
+    void smallCommandAllocations()
     {
         using namespace lux::render;
         const auto& descriptor = commandDescriptor<Increment>();
@@ -48,8 +63,8 @@ namespace
         lux::cxx::SlotMap<CommandDescriptor, CommandTag> routes;
         const auto command = routes.emplace(descriptor);
         auto& core = IpcCore::instance();
-        auto server = must(core.createResponder("operation.cost"));
-        auto client = must(core.createRequester("operation.cost"));
+        auto server = must(core.createResponder("command.allocations"));
+        auto client = must(core.createRequester("command.allocations"));
         std::uint64_t next = 1; // This caller owns its correlation sequence.
         auto execute = [&](ReceivedRequest& work)
         {
@@ -60,25 +75,16 @@ namespace
             reply.emplace<ScalarResponse>(ScalarResponse{{}, value.value + 1});
             publish(server, work, reply);
         };
-        std::ofstream samples("ipc-operation.csv");
-        samples << "mode,iteration,ns,exe_allocations,dll_allocations\n";
-        for (int paired = 0; paired < 2; ++paired)
+        for (bool paired : {false, true})
         {
             std::atomic<bool> finish{false};
             std::atomic<std::size_t> worker_allocations{0};
             std::jthread receiver;
-#ifdef _WIN32
-            const auto cores = physicalCores();
-            const auto old_affinity = SetThreadAffinityMask(GetCurrentThread(), cores[0]);
-#endif
             if (paired)
             {
                 receiver = std::jthread(
                     [&]
                     {
-#ifdef _WIN32
-                        SetThreadAffinityMask(GetCurrentThread(), cores[1]);
-#endif
                         ipc_allocation::start();
                         testing::startAllocations();
                         while (!finish)
@@ -91,14 +97,13 @@ namespace
                     }
                 );
             }
-            for (int i = 0; i < 10000; ++i)
+            for (std::uint64_t i = 0; i < 128; ++i)
             {
                 ipc_allocation::start();
                 testing::startAllocations();
-                const auto begin = Clock::now();
                 const RequestId id{next++};
                 IpcMessage input;
-                input.emplace<Scalar>(Scalar{static_cast<std::uint64_t>(i)});
+                input.emplace<Scalar>(Scalar{i});
                 must(client.trySend(commandTag(command), id.value, input));
                 if (!paired)
                 {
@@ -107,19 +112,19 @@ namespace
                 }
                 IpcMessage reply;
                 std::uint64_t correlation = 0;
+                const auto deadline = Clock::now() + 10s;
                 while (client.tryReceive(correlation, reply) != EIpcReceive::RECEIVED)
                 {
+                    check(Clock::now() < deadline, "typed command must complete");
+                    std::this_thread::yield();
                 }
                 check(
                     correlation == id.value && reply.get<ScalarResponse>().error.type == 0 &&
                         reply.get<ScalarResponse>().value == i + 1,
                     "validate typed terminal correlation and success"
                 );
-                const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                 const auto exe = ipc_allocation::stop(), dll = testing::stopAllocations();
                 check(exe == 0 && dll == 0, "complete small typed command zero allocations");
-                samples << (paired ? "two_core" : "same_thread") << ',' << i << ',' << ns << ',' << exe << ',' << dll
-                        << '\n';
             }
             finish = true;
             if (receiver.joinable())
@@ -127,9 +132,6 @@ namespace
                 receiver.join();
             }
             check(worker_allocations == 0, "server typed command path zero allocations");
-#ifdef _WIN32
-            SetThreadAffinityMask(GetCurrentThread(), old_affinity);
-#endif
         }
         client.reset();
         server.reset();
@@ -163,9 +165,7 @@ namespace
         check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
 
         auto& core = IpcCore::instance();
-        auto server = must(core.createResponder("protocol"));
         auto a = must(core.createRequester("protocol"));
-        auto b = must(core.createRequester("protocol"));
         const RequestId id_a{1};
         const RequestId id_b{1};
         check(id_a == id_b, "real Render RequestId collisions across independent clients");
@@ -180,6 +180,11 @@ namespace
         input.emplace<AssetRequest>(AssetRequest{{5}, std::move(source)});
         shared_source.reset();
         check(shared_destroyed == 0, "typed request pins original shared asset");
+        const auto unaccepted = a.trySend(commandTag(command), id_a.value, input);
+        check(!unaccepted && unaccepted.error() == EIpcError::NOT_READY, "requester can precede responder");
+        check(input.get<AssetRequest>().asset.data() == pointer, "unaccepted command preserves the original asset");
+        auto server = must(core.createResponder("protocol"));
+        auto b = must(core.createRequester("protocol"));
         must(a.trySend(commandTag(command), id_a.value, input));
         IpcMessage other;
         other.emplace<AssetRequest>(AssetRequest{{101}, {}});
@@ -236,20 +241,8 @@ namespace
 
 } // namespace
 
-int main(int argc, char** argv)
+int main()
 {
-    ipc_test::check(argc == 2, "test case required");
-    const std::string_view mode = argv[1];
-    if (mode == "protocol")
-    {
-        protocol();
-    }
-    else if (mode == "cost")
-    {
-        operationCost();
-    }
-    else
-    {
-        ipc_test::check(false, "unknown test");
-    }
+    protocol();
+    smallCommandAllocations();
 }

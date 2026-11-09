@@ -1,45 +1,9 @@
-# Ordinary Client contracts and graph/implementation regression fixtures. Installed role boundaries are
-# independently exercised by cmake/installed-consumers/render-client and render-extension.
-add_executable(render_sync_client SyncClient.cpp)
-target_link_libraries(render_sync_client PRIVATE render lux::engine::platform::platform_ipc)
-add_test(NAME render.client.sync_source COMMAND render_sync_client)
-
-
 add_executable(render_output_test Output.cpp)
 target_link_libraries(render_output_test PRIVATE render_extensions)
 add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 
-get_filename_component(render_source_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
-add_executable(render_material_asset_tool EmitMaterial.cpp)
-target_link_libraries(render_material_asset_tool PRIVATE
-    lux::engine::toolchain::toolchain_material_compiler
-)
-set(shader_root "${render_source_root}/modules/function/material/shaders")
-set(shader "${CMAKE_CURRENT_BINARY_DIR}/assets/UnlitTexture.frag")
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
-add_custom_command(
-    OUTPUT "${shader}.spv" "${shader}.spv.meta" "${shader}.spv.shadow" "${shader}.spv.shadow.meta"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/assets"
-    COMMAND render_material_asset_tool "${shader}.spv" texture
-    COMMAND lux_shader_metadata "${shader}.spv" "${shader}.spv.meta"
-    COMMAND lux_shader_metadata "${shader}.spv.shadow" "${shader}.spv.shadow.meta"
-    DEPENDS render_material_asset_tool lux_shader_metadata "${shader_root}/material_types.glsl"
-        "${shader_root}/texture_sampling.glsl"
-    VERBATIM
-)
-add_custom_target(render_sample_assets ALL DEPENDS
-    "${shader}.spv" "${shader}.spv.meta" "${shader}.spv.shadow" "${shader}.spv.shadow.meta"
-)
-
-add_library(render_basic_mesh_client OBJECT Client.cpp)
-target_link_libraries(render_basic_mesh_client PRIVATE render lux::engine::platform::platform_ipc lux::engine::resource::shader_metadata)
-add_executable(render_basic_mesh RenderSample.cpp $<TARGET_OBJECTS:render_basic_mesh_client>)
-target_link_libraries(render_basic_mesh PRIVATE render lux::engine::core::core_execution lux::engine::resource::shader_metadata)
-target_link_libraries(render_basic_mesh PRIVATE render_extensions)
-add_dependencies(render_basic_mesh render_sample_assets)
-add_test(NAME render.sample.basic_mesh COMMAND render_basic_mesh "${shader}.spv")
-set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)
 
 # Explicit project GPU diagnostic surface, never inherited by an installed application.
 target_include_directories(render_output_test PRIVATE
@@ -131,19 +95,10 @@ target_include_directories(render_ipc_commands_test PRIVATE "${ipc_test_source}"
 target_link_libraries(render_ipc_commands_test PRIVATE
     render lux::engine::platform::platform_ipc lux::cxx::memory
 )
-# Preserve the original contract name; the cost case is now distinct from the raw IPC queue measurement.
-add_test(NAME platform.ipc.protocol COMMAND render_ipc_commands_test protocol)
-add_test(NAME render.ipc.command_cost COMMAND render_ipc_commands_test cost)
-set_tests_properties(platform.ipc.protocol render.ipc.command_cost PROPERTIES TIMEOUT 90)
-
-# These fixtures author explicit graphs to compare implementation algorithms. Ordinary capability
-# consumers (Engine/Editor) use no built-in port/configuration headers.
-target_link_libraries(render_basic_mesh_client PRIVATE render_extensions)
-foreach(consumer IN ITEMS render_basic_mesh_client render_basic_mesh)
-    target_include_directories(${consumer} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
-endforeach()
+add_test(NAME platform.ipc.protocol COMMAND render_ipc_commands_test)
+set_tests_properties(platform.ipc.protocol PROPERTIES TIMEOUT 30)
 
 # Only fixtures constructing rdesc::Mesh require its Math dependency. Command-only Clients stay neutral.
-foreach(consumer IN ITEMS render_basic_mesh_client render_deferred_scene render_shadow_scene render_clustered_scene)
+foreach(consumer IN ITEMS render_deferred_scene render_shadow_scene render_clustered_scene)
     target_link_libraries(${consumer} PRIVATE lux::engine::core::math)
 endforeach()

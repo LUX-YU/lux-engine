@@ -44,16 +44,6 @@ namespace lux::execution::detail
         }
     }
 
-    void TaskRuntime::moveTo(ExecutionRuntime& execution) noexcept
-    {
-        std::lock_guard lock{mutex};
-        if (!records.empty() || (execution_state.execution_admission.load(std::memory_order_acquire) >> 1) != 0)
-        {
-            std::terminate();
-        }
-        this->execution = &execution;
-    }
-
     TaskRecord* TaskRuntime::find(TaskId id) const noexcept
     {
         if (id.runtime != identity)
@@ -86,13 +76,22 @@ namespace lux::execution::detail
     ) noexcept
     {
         std::lock_guard lock{runtime.mutex};
-        if (!runtime.accepting || (group && !group->accepting))
+        if (!runtime.accepting || (group && !group->accepting.load(std::memory_order_acquire)))
         {
             return lux::cxx::unexpected(EExecutionError::STOPPING);
         }
         if (runtime.records.size() == runtime.capacity)
         {
             return lux::cxx::unexpected(EExecutionError::CAPACITY_EXCEEDED);
+        }
+        TaskGroupAssociation association;
+        if (group)
+        {
+            association = group->scope.get_token().try_associate();
+            if (!association)
+            {
+                return cxx::unexpected(EExecutionError::STOPPING);
+            }
         }
         auto record = std::make_unique<TaskRecord>();
         record->runtime = &runtime;
@@ -104,11 +103,19 @@ namespace lux::execution::detail
         record->info.started = record->info.submitted;
         record->code_lifetime = std::move(options.code_lifetime);
         record->group = group;
+        record->group_association = std::move(association);
         auto* result = record.get();
         result->info.id = {runtime.identity, runtime.records.emplace(std::move(record))};
         if (group)
         {
-            ++group->outstanding;
+            result->group_next = std::exchange(group->first_task, result);
+            result->group_previous = &group->first_task;
+            if (result->group_next)
+            {
+                result->group_next->group_previous = &result->group_next;
+            }
+            ++group->task_count;
+            group->active_operations.fetch_add(1, std::memory_order_acq_rel);
         }
         runtime.changed(*result);
         return result;
@@ -131,28 +138,20 @@ namespace lux::execution::detail
         }
         auto& runtime = *record.runtime;
         std::shared_ptr<const void> pin;
-        TaskGroupWaiter* waiters{};
+        std::shared_ptr<TaskGroup> group;
+        TaskGroupAssociation association;
         TaskCapacityWaiter* capacity_waiters{};
         {
             std::lock_guard lock{runtime.mutex};
-            if (record.group)
-            {
-                --record.group->outstanding;
-                if (record.group->outstanding == 0 && !record.group->accepting)
-                {
-                    waiters = std::exchange(record.group->waiters, nullptr);
-                }
-            }
+            group = record.group;
+            association = std::move(record.group_association);
             pin = std::move(record.code_lifetime);
             runtime.retire(record);
             capacity_waiters = runtime.takeCapacityWaiters();
         }
-        while (waiters)
+        if (group)
         {
-            auto* next = waiters->next;
-            auto code_lifetime = std::move(waiters->code_lifetime);
-            waiters->complete(waiters);
-            waiters = next;
+            group->active_operations.fetch_sub(1, std::memory_order_acq_rel);
         }
         completeCapacityWaiters(capacity_waiters, false);
         // Publish after the receivers: waking before delivery can let Main observe an unfinished result
@@ -163,25 +162,27 @@ namespace lux::execution::detail
 
     TaskCapacityWaiter* TaskRuntime::takeCapacityWaiters(const TaskGroup* group) noexcept
     {
-        // Caller holds mutex. Only stopped-group removal scans; ordinary capacity release detaches in O(1).
-        if (!group)
-        {
-            return std::exchange(capacity_waiters, nullptr);
-        }
+        // Caller holds mutex. Unlink both indexes before any receiver can reenter admission.
         TaskCapacityWaiter* selected{};
-        auto** link = &capacity_waiters;
-        while (*link)
+        auto* waiter = group ? group->capacity_waiters : capacity_waiters;
+        while (waiter)
         {
-            auto* waiter = *link;
-            if (waiter->group.get() == group)
+            auto* next = group ? waiter->group_next : waiter->next;
+            *waiter->previous = waiter->next;
+            if (waiter->next)
             {
-                *link = waiter->next;
-                waiter->next = std::exchange(selected, waiter);
+                waiter->next->previous = waiter->previous;
             }
-            else
+            *waiter->group_previous = waiter->group_next;
+            if (waiter->group_next)
             {
-                link = &waiter->next;
+                waiter->group_next->group_previous = waiter->group_previous;
             }
+            waiter->previous = nullptr;
+            waiter->group_previous = nullptr;
+            waiter->group_next = nullptr;
+            waiter->next = std::exchange(selected, waiter);
+            waiter = next;
         }
         return selected;
     }
@@ -222,6 +223,15 @@ namespace lux::execution::detail
 
     void TaskRuntime::retire(TaskRecord& record) noexcept
     {
+        if (record.group)
+        {
+            *record.group_previous = record.group_next;
+            if (record.group_next)
+            {
+                record.group_next->group_previous = record.group_previous;
+            }
+            --record.group->task_count;
+        }
         changed(record); // With history disabled this is also the removal notification.
         const auto slot = record.info.id.slot;
         if (history_capacity)

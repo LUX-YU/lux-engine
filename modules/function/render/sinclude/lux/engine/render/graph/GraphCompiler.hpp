@@ -11,16 +11,12 @@ namespace lux::render::detail
         [[nodiscard]] static RenderResult<RenderPlan> compile(
             nri::Device& device,
             const nri::CoreInterface& nri_core,
-            const EnabledDeviceFeatures& enabled,
-            std::span<const nri::FormatSupportBits> formats,
-            std::array<std::uint32_t, 2> vertex_limits,
             std::array<const QueueProperties*, 3> queues,
-            std::uint32_t sampled_image_capacity,
-            std::uint32_t sampler_capacity,
             const RenderGraph& graph,
             const RenderGraphAnalysis& analysis,
-            const TargetDesc* target = nullptr,
-            ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY
+            const EffectOutputDesc* target = nullptr,
+            ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
+            std::span<const std::uint32_t> parameter_groups = {}
         ) noexcept;
     };
 } // namespace lux::render::detail

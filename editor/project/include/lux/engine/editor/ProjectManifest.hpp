@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
+#include <lux/engine/scene/SceneContentSelection.hpp>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -37,6 +38,8 @@ namespace lux::editor
         std::vector<PluginRecord> plugins;
         std::vector<SceneRecord> scenes;
         std::optional<asset::AssetId> startup_scene;
+        std::optional<scene::SceneContentAllowance> content;
+        std::optional<std::string> editor_layout;
         friend bool operator==(const ProjectManifest&, const ProjectManifest&) = default;
     };
 
@@ -57,7 +60,8 @@ namespace lux::editor
         IO,
         DESTINATION_EXISTS,
         PUBLICATION_UNKNOWN,
-        STALE_REVISION
+        STALE_REVISION,
+        INVALID_LAYOUT
     };
 
     struct ProjectFailure final
@@ -73,10 +77,15 @@ namespace lux::editor
     [[nodiscard]] ProjectResult<void> validateProjectManifest(const ProjectManifest&) noexcept;
     [[nodiscard]] ProjectResult<ProjectManifest> decodeProjectManifest(std::string_view) noexcept;
     [[nodiscard]] ProjectResult<std::string> encodeProjectManifest(const ProjectManifest&) noexcept;
-    [[nodiscard]] ProjectResult<ProjectManifest> readProjectManifest(
-        const std::filesystem::path&,
-        std::stop_token = {}
-    ) noexcept;
+    [[nodiscard]] ProjectResult<ProjectManifest>
+    readProjectManifest(const std::filesystem::path&, std::stop_token = {}) noexcept;
+
+    enum class EManifestPublication : std::uint8_t
+    {
+        UNCHANGED,
+        PUBLISHED,
+        UNKNOWN
+    };
 
     enum class EProjectWrite : std::uint8_t
     {

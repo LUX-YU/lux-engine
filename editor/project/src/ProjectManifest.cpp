@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/platform/FileIo.hpp>
-#include <lux/engine/project/PluginIdentity.hpp>
+#include <lux/engine/plugins/PluginIdentity.hpp>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -47,6 +47,7 @@ namespace lux::editor
             return !text.empty() && text.size() <= 1024 &&
                    std::none_of(text.begin(), text.end(), [](unsigned char c) { return c < 32; });
         }
+
         bool validPath(std::string_view path) noexcept
         {
             const bool has_invalid_character = path.find_first_of("\\:<>\"|?*") != path.npos;
@@ -84,10 +85,12 @@ namespace lux::editor
             }
             return false;
         }
+
         bool unsigned32(const nlohmann::json& value) noexcept
         {
             return value.is_number_unsigned() && value.get<std::uint64_t>() <= UINT32_MAX;
         }
+
         std::optional<uuids::uuid> readId(const nlohmann::json& value) noexcept
         {
             if (!value.is_string())
@@ -97,6 +100,7 @@ namespace lux::editor
             return uuids::uuid::from_string(value.get_ref<const std::string&>());
         }
     } // namespace
+
     bool isCanonicalSceneName(std::string_view value) noexcept
     {
         if (value.empty() || value.size() > 256)
@@ -125,9 +129,10 @@ namespace lux::editor
         }
         return !first;
     }
+
     ProjectResult<void> validateProjectManifest(const ProjectManifest& value) noexcept
     {
-        if (value.format_version != 1)
+        if (value.format_version != 1 && value.format_version != 2)
         {
             return cxx::unexpected(ProjectFailure{EProjectError::UNSUPPORTED_VERSION});
         }
@@ -143,11 +148,33 @@ namespace lux::editor
         {
             return cxx::unexpected(ProjectFailure{EProjectError::LIMIT});
         }
+        if (value.content)
+        {
+            if (value.format_version != 2)
+            {
+                return cxx::unexpected(ProjectFailure{EProjectError::UNSUPPORTED_VERSION});
+            }
+            for (const auto* range : {&value.content->geometries, &value.content->partitions})
+            {
+                if (range->size() > MaxRecords)
+                {
+                    return cxx::unexpected(ProjectFailure{EProjectError::LIMIT});
+                }
+                std::unordered_set<std::string_view> names;
+                for (const auto& item : *range)
+                {
+                    if (!plugins::isMetadataName(item.name) || item.version == 0 || !names.insert(item.name).second)
+                    {
+                        return cxx::unexpected(ProjectFailure{EProjectError::INVALID_PLUGIN});
+                    }
+                }
+            }
+        }
         std::unordered_set<std::string_view> plugins;
         for (std::size_t i = 0; i < value.plugins.size(); ++i)
         {
             const auto& plugin = value.plugins[i];
-            if (!project::isMetadataName(plugin.id) || plugin.version == 0)
+            if (!plugins::isMetadataName(plugin.id) || plugin.version == 0)
             {
                 return cxx::unexpected(ProjectFailure{EProjectError::INVALID_PLUGIN, i});
             }
@@ -195,12 +222,17 @@ namespace lux::editor
                 return cxx::unexpected(ProjectFailure{EProjectError::DUPLICATE_PATH, i});
             }
         }
+        if (value.editor_layout && !validPath(*value.editor_layout))
+        {
+            return cxx::unexpected(ProjectFailure{EProjectError::INVALID_PATH});
+        }
         if (value.startup_scene && !scenes.contains(*value.startup_scene))
         {
             return cxx::unexpected(ProjectFailure{EProjectError::INVALID_STARTUP_SCENE});
         }
         return {};
     }
+
     ProjectResult<ProjectManifest> decodeProjectManifest(std::string_view text) noexcept
     {
         if (text.size() > MaxManifestBytes)
@@ -240,11 +272,22 @@ namespace lux::editor
         }
         ProjectManifest result;
         result.format_version = input["format_version"].get<std::uint32_t>();
-        if (result.format_version != 1)
+        if (result.format_version != 1 && result.format_version != 2)
         {
             return cxx::unexpected(ProjectFailure{EProjectError::UNSUPPORTED_VERSION});
         }
-        if (!knownFields(input, {"format", "format_version", "id", "name", "plugins", "scenes", "startup_scene"}))
+        if (!knownFields(
+                input,
+                {"format",
+                 "format_version",
+                 "id",
+                 "name",
+                 "plugins",
+                 "scenes",
+                 "startup_scene",
+                 "content",
+                 "editor_layout"}
+            ))
         {
             return invalid();
         }
@@ -263,6 +306,35 @@ namespace lux::editor
         }
         result.id = *id;
         result.name = input["name"].get<std::string>();
+        if (input.contains("content"))
+        {
+            const auto& content = input["content"];
+            if (result.format_version != 2 || !knownFields(content, {"geometries", "partitions"}) ||
+                !content.contains("geometries") || !content.contains("partitions"))
+            {
+                return invalid();
+            }
+            result.content.emplace();
+            for (const auto& [key, output] :
+                 {std::pair{"geometries", &result.content->geometries},
+                  std::pair{"partitions", &result.content->partitions}})
+            {
+                if (!content[key].is_array())
+                {
+                    return invalid();
+                }
+                for (const auto& item : content[key])
+                {
+                    const bool valid_row =
+                        knownFields(item, {"name", "version"}) && item.contains("name") && item.contains("version");
+                    if (!valid_row || !item["name"].is_string() || !unsigned32(item["version"]))
+                    {
+                        return invalid();
+                    }
+                    output->push_back({item["name"].get<std::string>(), item["version"].get<std::uint32_t>()});
+                }
+            }
+        }
         for (const auto& item : input["plugins"])
         {
             const bool has_plugin_fields =
@@ -289,6 +361,14 @@ namespace lux::editor
                 return invalid();
             }
             result.scenes.push_back({asset::AssetId{*scene_id}, item["name"], item["path"], item["profile"]});
+        }
+        if (input.contains("editor_layout"))
+        {
+            if (!input["editor_layout"].is_string())
+            {
+                return invalid();
+            }
+            result.editor_layout = input["editor_layout"].get<std::string>();
         }
         if (input.contains("startup_scene") && !input["startup_scene"].is_null())
         {
@@ -321,6 +401,19 @@ namespace lux::editor
             {"scenes", nlohmann::json::array()},
             {"startup_scene", nullptr}
         };
+        if (value.content)
+        {
+            result["content"] = {{"geometries", nlohmann::json::array()}, {"partitions", nlohmann::json::array()}};
+            for (const auto& [key, range] :
+                 {std::pair{"geometries", &value.content->geometries},
+                  std::pair{"partitions", &value.content->partitions}})
+            {
+                for (const auto& item : *range)
+                {
+                    result["content"][key].push_back({{"name", item.name}, {"version", item.version}});
+                }
+            }
+        }
         for (const auto& plugin : value.plugins)
         {
             result["plugins"].push_back({{"id", plugin.id}, {"version", plugin.version}});
@@ -333,6 +426,10 @@ namespace lux::editor
                  {"path", scene.path},
                  {"profile", scene.profile}}
             );
+        }
+        if (value.editor_layout)
+        {
+            result["editor_layout"] = *value.editor_layout;
         }
         if (value.startup_scene)
         {
@@ -354,6 +451,7 @@ namespace lux::editor
     {
         return cxx::unexpected(ProjectFailure{EProjectError::INVALID_FORMAT});
     }
+
     ProjectResult<ProjectManifest> readProjectManifest(const std::filesystem::path& path, std::stop_token stop) noexcept
     {
         auto bytes = platform::readFileBounded(path, MaxManifestBytes, stop);
@@ -363,6 +461,7 @@ namespace lux::editor
         }
         return decodeProjectManifest({reinterpret_cast<const char*>(bytes->data()), bytes->size()});
     }
+
     ProjectResult<void> writeProjectManifestAtomic(
         const std::filesystem::path& path,
         const ProjectManifest& value,

@@ -403,7 +403,7 @@ namespace
         old.on_measure = old.on_draw = old.on_event = rejected;
         assert(pane.addElement(old));
         assert((*root)->requestFocus(old) && (*root)->capturePointer(old));
-        ui::DrawData draw;
+        ui::DrawView draw;
         assert((*root)->update({{640, 480}, 0.016F}, draw));
         assert((*root)->update({{640, 480}, 0.016F}, draw));
         ui::VInputEvent event = ui::PointerCancel{};
@@ -428,7 +428,7 @@ namespace
         Item candidate("field", counts);
         assert(layout.replaceElement(*old, candidate));
         assert(layout.status() == ui::ELayoutStatus::VALID && counts.destroyed == 0 && !old->parent());
-        ui::DrawData draw;
+        ui::DrawView draw;
         assert((*root)->update({{640, 480}, 0.016F}, draw));
         old.reset();
         assert(counts.destroyed == 1);

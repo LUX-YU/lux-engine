@@ -31,7 +31,7 @@ namespace lux::render::detail
         nri_core.DestroyTexture(std::exchange(image.image_, nullptr));
         if (!image.descriptor_.isNull())
         {
-            array.release(std::exchange(image.descriptor_, {}));
+            array.release(nri::DescriptorType::TEXTURE, std::exchange(image.descriptor_, {}));
         }
     }
 
@@ -233,7 +233,7 @@ namespace lux::render::detail
 
     RenderResult<void> SampledTexture2DStorage::initialize() noexcept
     {
-        if (!session_.descriptors().descriptors())
+        if (!session_.descriptors().descriptors(nri::DescriptorType::TEXTURE))
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
@@ -264,7 +264,7 @@ namespace lux::render::detail
         SampledImage candidate;
         candidate.image_ = image;
         cxx::scope_exit rollback([&]() noexcept { releaseImage(session_.nriCore(), *descriptors_, candidate); });
-        auto descriptor = descriptors_->allocate();
+        auto descriptor = descriptors_->allocate(nri::DescriptorType::TEXTURE);
         if (!descriptor)
         {
             return cxx::unexpected(descriptor.error());
@@ -289,7 +289,7 @@ namespace lux::render::detail
             return cxx::unexpected(sampler_index.error());
         }
         candidate.reference_ = {descriptor->index, *sampler_index, color_space, 0};
-        descriptors_->write(candidate.descriptor_, candidate.view_);
+        descriptors_->write(nri::DescriptorType::TEXTURE, candidate.descriptor_, candidate.view_);
         rollback.release();
         return candidate;
     }
@@ -304,7 +304,7 @@ namespace lux::render::detail
                               ) mutable noexcept { releaseImage(*nri_core, *descriptors, value); });
     }
 
-    SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureWrite input) noexcept
+    SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureData input) noexcept
     {
         auto prepared = prepareImage(input.info, input.source);
         if (!prepared)
@@ -330,7 +330,7 @@ namespace lux::render::detail
         co_return extension_detail::ResourceIdentity::make<TextureId>(id_, textures_.emplace(std::move(*candidate)));
     }
 
-    SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureRegionWrite input) noexcept
+    SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TexturePatchData input) noexcept
     {
         const auto* original = find(input.texture);
         if (!original)
@@ -460,7 +460,7 @@ namespace lux::render
 {
     StorageTraits<detail::SampledTexture2DStorage>::Result StorageTraits<detail::SampledTexture2DStorage>::upload(
         detail::SampledTexture2DStorage& storage,
-        TextureWrite input
+        TextureData input
     ) noexcept
     {
         return storage.upload(std::move(input));
@@ -468,7 +468,7 @@ namespace lux::render
 
     StorageTraits<detail::SampledTexture2DStorage>::Result StorageTraits<detail::SampledTexture2DStorage>::upload(
         detail::SampledTexture2DStorage& storage,
-        TextureRegionWrite input
+        TexturePatchData input
     ) noexcept
     {
         return storage.upload(std::move(input));

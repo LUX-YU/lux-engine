@@ -343,6 +343,14 @@ namespace lux::render::detail
                      capability == SpvCapabilitySampledImageArrayNonUniformIndexing ||
                      capability == SpvCapabilitySampledImageArrayDynamicIndexing ||
                      capability == SpvCapabilityImageQuery);
+                const bool storage_array = std::ranges::any_of(
+                    interface.bindings,
+                    [](const auto& value) noexcept
+                    { return value.kind == EDescriptorKind::STORAGE_BUFFER && value.count == 0; }
+                ) && (capability == SpvCapabilityRuntimeDescriptorArray ||
+                      capability == SpvCapabilityShaderNonUniform ||
+                      capability == SpvCapabilityStorageBufferArrayNonUniformIndexing ||
+                      capability == SpvCapabilityStorageBufferArrayDynamicIndexing);
                 const bool physical_addresses =
                     device_address && capability == SpvCapabilityPhysicalStorageBufferAddresses;
                 const bool image_query =
@@ -355,7 +363,9 @@ namespace lux::render::detail
                                                                   value.kind == EDescriptorKind::STORAGE_IMAGE);
                         }
                     );
-                if (capability != SpvCapabilityShader && !sampled && !physical_addresses && !image_query)
+                const bool is_unsupported_capability = capability != SpvCapabilityShader && !sampled &&
+                    !storage_array && !physical_addresses && !image_query;
+                if (is_unsupported_capability)
                 {
                     return false;
                 }
@@ -666,9 +676,7 @@ namespace lux::render::detail
     }
 
     std::vector<nri::DescriptorRangeDesc> descriptorRanges(
-        std::span<const ShaderBinding> contract,
-        std::uint32_t image_count,
-        std::uint32_t sampler_count
+        std::span<const ShaderBinding> contract
     ) noexcept
     {
         std::vector<nri::DescriptorRangeDesc> ranges;
@@ -682,18 +690,28 @@ namespace lux::render::detail
                               : binding.kind == EDescriptorKind::TYPED_STORAGE_BUFFER
                                   ? nri::DescriptorType::STORAGE_BUFFER
                                   : nri::DescriptorType::STORAGE_STRUCTURED_BUFFER;
-            const bool runtime = binding.count == 0;
-            const auto runtime_count = type == nri::DescriptorType::SAMPLER ? sampler_count : image_count;
-            const auto flags = runtime ? nri::DescriptorRangeBits::ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND |
-                                             nri::DescriptorRangeBits::ALLOW_UPDATE_AFTER_SET
-                               : binding.count > 1 ? nri::DescriptorRangeBits::ARRAY
-                                                   : nri::DescriptorRangeBits::NONE;
+            const auto flags = binding.count > 1 ? nri::DescriptorRangeBits::ARRAY : nri::DescriptorRangeBits::NONE;
             ranges.push_back(
-                {binding.binding, runtime ? runtime_count : binding.count, type, shaderStages(binding.stages), flags}
+                {binding.binding, binding.count, type, shaderStages(binding.stages), flags}
             );
         }
         return ranges;
     }
+
+    namespace
+    {
+        bool supportsDescriptorArrays(const ShaderInterface& shader, const EnabledDeviceFeatures& enabled) noexcept
+        {
+            for (const auto& binding : shader.bindings)
+            {
+                if (binding.count != 0) continue;
+                const bool buffer = binding.kind == EDescriptorKind::STORAGE_BUFFER;
+                const bool supported = buffer ? enabled.buffer_descriptors : enabled.texture_descriptors;
+                if (!supported) return false;
+            }
+            return true;
+        }
+    } // namespace
 
     RenderResult<nri::Pipeline*> compileCompute(
         nri::Device& device,
@@ -713,6 +731,10 @@ namespace lux::render::detail
         if (!projected)
         {
             return cxx::unexpected(projected.error());
+        }
+        if (!supportsDescriptorArrays(*projected, enabled))
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         if (!validateStage(
                 code,
@@ -744,18 +766,13 @@ namespace lux::render::detail
         return pipeline;
     }
 
-    RenderResult<nri::Pipeline*> compileGraphics(
-        nri::Device& device,
-        const nri::CoreInterface& nri_core,
-        const EnabledDeviceFeatures& enabled,
-        std::span<const nri::FormatSupportBits> formats,
-        std::array<std::uint32_t, 2> vertex_limits,
-        nri::PipelineLayout& layout,
+    RenderResult<std::array<const rdesc::SpirvStage*, 2>> rasterShaderStages(
         const rdesc::SpirvArtifact& shader,
         const GraphicsState& graphics,
-        std::span<const nri::Format> colors,
-        nri::Format depth,
-        std::uint32_t samples
+        const nri::DeviceDesc& limits,
+        const EnabledDeviceFeatures& enabled,
+        std::size_t color_count,
+        nri::Format depth
     ) noexcept
     {
         auto projected = shaderInterface(shader.interface);
@@ -763,16 +780,12 @@ namespace lux::render::detail
         {
             return cxx::unexpected(projected.error());
         }
-        const bool needs_arrays = std::ranges::any_of(
-            projected->bindings,
-            [](const auto& value) { return value.kind != EDescriptorKind::STORAGE_BUFFER && value.count == 0; }
-        );
-        if (needs_arrays && !enabled.texture_descriptors)
+        if (!supportsDescriptorArrays(*projected, enabled))
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         const bool wrong_count =
-            shader.stages.empty() || shader.stages.size() > 2 || (!colors.empty() && shader.stages.size() != 2);
+            shader.stages.empty() || shader.stages.size() > 2 || (color_count != 0 && shader.stages.size() != 2);
         const bool invalid_depth = graphics.depth_compare > EDepthCompare::ALWAYS ||
                                    ((graphics.depth_test || graphics.depth_write) && depth == nri::Format::UNKNOWN);
         const bool invalid_cull = graphics.cull_mode > ECullMode::BACK;
@@ -799,11 +812,10 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
         }
-        if (!vertex_stage || (!colors.empty() && !fragment_stage))
+        if (!vertex_stage || (color_count != 0 && !fragment_stage))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const auto& limits = nri_core.GetDeviceDesc(device);
         StageIo vertex_io, fragment_io;
         const bool valid_vertex = validateStage(
             *vertex_stage,
@@ -822,7 +834,7 @@ namespace lux::render::detail
                                                            limits,
                                                            &graphics,
                                                            &fragment_io,
-                                                           static_cast<std::uint32_t>(colors.size())
+                                                           static_cast<std::uint32_t>(color_count)
                                                        );
         if (!valid_vertex || !valid_fragment)
         {
@@ -835,151 +847,6 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
         }
-        const bool too_many_inputs = graphics.vertex_bindings.size() > limits.shaderStage.vertex.streamMaxNum ||
-                                     graphics.vertex_attributes.size() > limits.shaderStage.vertex.attributeMaxNum ||
-                                     graphics.vertex_bindings.size() > UINT8_MAX ||
-                                     graphics.vertex_attributes.size() > UINT8_MAX;
-        if (too_many_inputs)
-        {
-            return cxx::unexpected(RenderError{kDeviceUnsupported});
-        }
-        std::vector<nri::VertexStreamDesc> streams;
-        std::vector<nri::VertexAttributeDesc> attributes;
-        for (const auto& binding : graphics.vertex_bindings)
-        {
-            const bool invalid =
-                !binding.stride || binding.stride > vertex_limits[0] || binding.stride > UINT16_MAX ||
-                binding.binding >= limits.shaderStage.vertex.streamMaxNum || binding.binding > UINT16_MAX ||
-                binding.rate > EVertexRate::INSTANCE ||
-                std::ranges::any_of(streams, [&](const auto& other) { return other.bindingSlot == binding.binding; });
-            if (invalid)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            streams.push_back(
-                {static_cast<std::uint16_t>(binding.binding),
-                 binding.rate == EVertexRate::VERTEX ? nri::VertexStreamStepRate::PER_VERTEX
-                                                     : nri::VertexStreamStepRate::PER_INSTANCE,
-                 static_cast<std::uint16_t>(binding.stride)}
-            );
-        }
-        for (const auto& field : graphics.vertex_attributes)
-        {
-            const auto format = vertexFormat(field.format);
-            const auto binding = std::ranges::find(streams, field.binding, &nri::VertexStreamDesc::bindingSlot);
-            const bool invalid =
-                !format.components || field.location >= limits.shaderStage.vertex.attributeMaxNum ||
-                field.offset > vertex_limits[1] || binding == streams.end() ||
-                std::ranges::any_of(attributes, [&](const auto& other) { return other.vk.location == field.location; });
-            if (invalid)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            if (std::uint64_t(field.offset) + format.bytes() > binding->stride)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            if ((formats[static_cast<std::size_t>(format.native)] & nri::FormatSupportBits::VERTEX_BUFFER) == 0)
-            {
-                return cxx::unexpected(RenderError{kDeviceUnsupported});
-            }
-            attributes.push_back(
-                {{},
-                 {field.location},
-                 field.offset,
-                 format.native,
-                 static_cast<std::uint16_t>(binding - streams.begin())}
-            );
-        }
-        const std::array code{vertex_stage, fragment_stage};
-        std::array<nri::ShaderDesc, 2> stages{};
-        const auto stage_count = fragment_stage ? 2u : 1u;
-        for (std::size_t i = 0; i < stage_count; ++i)
-        {
-            stages[i] = {
-                i == 0 ? nri::StageBits::VERTEX_SHADER : nri::StageBits::FRAGMENT_SHADER,
-                code[i]->words.data(),
-                code[i]->words.size() * sizeof(std::uint32_t),
-                code[i]->entry.c_str()
-            };
-        }
-        const nri::VertexInputDesc input{
-            attributes.data(),
-            static_cast<std::uint8_t>(attributes.size()),
-            streams.data(),
-            static_cast<std::uint8_t>(streams.size())
-        };
-        constexpr std::array blend_factors{
-            nri::BlendFactor::ZERO,
-            nri::BlendFactor::ONE,
-            nri::BlendFactor::SRC_ALPHA,
-            nri::BlendFactor::ONE_MINUS_SRC_ALPHA
-        };
-        const auto& blend = graphics.blend;
-        const bool invalid_blend = blend.source_color > EBlendFactor::ONE_MINUS_SOURCE_ALPHA ||
-                                   blend.destination_color > EBlendFactor::ONE_MINUS_SOURCE_ALPHA ||
-                                   blend.source_alpha > EBlendFactor::ONE_MINUS_SOURCE_ALPHA ||
-                                   blend.destination_alpha > EBlendFactor::ONE_MINUS_SOURCE_ALPHA;
-        if (invalid_blend)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        std::vector<nri::ColorAttachmentDesc> attachments;
-        for (auto color : colors)
-        {
-            nri::ColorAttachmentDesc attachment{};
-            attachment.format = color;
-            attachment.colorWriteMask = nri::ColorWriteBits::RGBA;
-            attachment.blendEnabled = blend.enabled;
-            attachment.colorBlend = {
-                blend_factors[static_cast<unsigned>(blend.source_color)],
-                blend_factors[static_cast<unsigned>(blend.destination_color)],
-                nri::BlendOp::ADD
-            };
-            attachment.alphaBlend = {
-                blend_factors[static_cast<unsigned>(blend.source_alpha)],
-                blend_factors[static_cast<unsigned>(blend.destination_alpha)],
-                nri::BlendOp::ADD
-            };
-            attachments.push_back(attachment);
-        }
-        constexpr std::array comparisons{
-            nri::CompareOp::NEVER,
-            nri::CompareOp::LESS,
-            nri::CompareOp::EQUAL,
-            nri::CompareOp::LESS_EQUAL,
-            nri::CompareOp::GREATER,
-            nri::CompareOp::NOT_EQUAL,
-            nri::CompareOp::GREATER_EQUAL,
-            nri::CompareOp::ALWAYS
-        };
-        nri::GraphicsPipelineDesc description{};
-        description.pipelineLayout = &layout;
-        description.vertexInput = streams.empty() ? nullptr : &input;
-        description.inputAssembly.topology = nri::Topology::TRIANGLE_LIST;
-        constexpr std::array cull_modes{nri::CullMode::NONE, nri::CullMode::FRONT, nri::CullMode::BACK};
-        description.rasterization.frontCounterClockwise = graphics.front_counter_clockwise;
-        description.rasterization.cullMode = cull_modes[static_cast<std::size_t>(graphics.cull_mode)];
-        description.rasterization.depthBias = {graphics.depth_bias_constant, 0, graphics.depth_bias_slope};
-        const nri::MultisampleDesc multisample{UINT32_MAX, static_cast<nri::Sample_t>(samples)};
-        description.multisample = samples > 1 ? &multisample : nullptr;
-        description.outputMerger.colors = attachments.data();
-        description.outputMerger.colorNum = static_cast<std::uint32_t>(attachments.size());
-        description.outputMerger.depthStencilFormat = depth;
-        description.outputMerger.depth.compareOp = graphics.depth_test
-                                                       ? comparisons[static_cast<unsigned>(graphics.depth_compare)]
-                                                   : graphics.depth_write ? nri::CompareOp::ALWAYS
-                                                                          : nri::CompareOp::NONE;
-        description.outputMerger.depth.write = graphics.depth_write;
-        description.shaders = stages.data();
-        description.shaderNum = stage_count;
-        nri::Pipeline* pipeline = nullptr;
-        const auto result = nri_core.CreateGraphicsPipeline(device, description, pipeline);
-        if (result != nri::Result::SUCCESS)
-        {
-            nri_core.DestroyPipeline(pipeline);
-            return cxx::unexpected(nativeError(result));
-        }
-        return pipeline;
+        return std::array{vertex_stage, fragment_stage};
     }
 } // namespace lux::render::detail

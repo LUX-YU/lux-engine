@@ -85,7 +85,7 @@ namespace lux::flowforge
     FlowNodeType::FlowNodeType(FlowNodeRegistration registration) noexcept
         : payload_type_name_(registration.payload_type.name()), registration_(std::move(registration))
     {
-        registration_.payload_type = cxx::TypeToken{registration_.payload_type.hash(), payload_type_name_};
+        registration_.payload_type = cxx::type_info{registration_.payload_type.hash(), payload_type_name_};
     }
 
     FlowNodeType::~FlowNodeType() = default;

@@ -1,3 +1,4 @@
+#include <lux/engine/resource/asset/AssetCodec.hpp>
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
@@ -684,7 +685,17 @@ namespace lux::asset
     lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<lux::script::ScriptArtifactAsset>::
         encode(const lux::script::ScriptArtifactAsset& asset, const AssetEncodeLimits& limits) noexcept
     {
-        auto payload = lux::script::detail::encodeScriptArtifact(asset.data(), limits.max_encoded_bytes);
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<lux::script::ScriptArtifactAsset>::encode(
+        const AssetInfo& info,
+        const lux::script::ScriptArtifact& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        auto payload = lux::script::detail::encodeScriptArtifact(data, limits.max_encoded_bytes);
         if (!payload)
         {
             return lux::cxx::unexpected(AssetEncodeFailure{EAssetEncodeError::INVALID_PAYLOAD, 0U});
@@ -693,12 +704,58 @@ namespace lux::asset
             detail::CookedAssetWriteRequest{
                 lux::script::ScriptArtifactAsset::primary_magic,
                 lux::script::ScriptArtifactAsset::legacy_type_tag,
-                asset.info(),
+                info,
                 {},
                 *payload,
-                asset.auxiliaryPayloads()
+                auxiliary
             },
             limits
         );
     }
 } // namespace lux::asset
+
+namespace lux::script
+{
+    namespace
+    {
+        class ScriptArtifactCodec final : public asset::AssetCodec
+        {
+        public:
+            asset::AssetTypeId type() const noexcept override { return ScriptArtifactAsset::asset_type; }
+            std::uint32_t magic() const noexcept override { return ScriptArtifactAsset::primary_magic; }
+            cxx::type_info dataType() const noexcept override { return cxx::make_basic_type_info<ScriptArtifact>(); }
+
+            cxx::expected<std::shared_ptr<const asset::Asset>, asset::AssetDecodeFailure> decode(
+                asset::AssetId id, cxx::SharedBytes<> bytes, const asset::AssetDecodeLimits& limits
+            ) const noexcept override
+            {
+                auto result = asset::TAssetSerDeser<ScriptArtifactAsset>::decode(id, std::move(bytes), limits);
+                if (!result)
+                {
+                    return cxx::unexpected(result.error());
+                }
+                return std::move(*result);
+            }
+
+            cxx::expected<std::vector<std::byte>, asset::AssetEncodeFailure> encode(
+                const asset::AssetInfo& info, const void* data,
+                std::span<const asset::AssetAuxiliaryPayload> auxiliary, const asset::AssetEncodeLimits& limits
+            ) const noexcept override
+            {
+                return asset::TAssetSerDeser<ScriptArtifactAsset>::encode(
+                    info, *static_cast<const ScriptArtifact*>(data), auxiliary, limits
+                );
+            }
+
+            const void* data(const asset::Asset& value) const noexcept override
+            {
+                return &static_cast<const ScriptArtifactAsset&>(value).data();
+            }
+        };
+    }
+
+    std::unique_ptr<asset::AssetCodec> createScriptArtifactCodec()
+    {
+        return std::make_unique<ScriptArtifactCodec>();
+    }
+}

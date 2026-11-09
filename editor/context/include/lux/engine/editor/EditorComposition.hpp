@@ -1,10 +1,11 @@
 #pragma once
-#include <lux/engine/ContextExtensions.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
+#include <lux/engine/editor/EditorFacilities.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/editor/ValueEditors.hpp>
+#include <lux/engine/object/LuxObject.hpp>
 
 namespace lux::editor
 {
@@ -42,11 +43,53 @@ namespace lux::editor
                 }
                 return Owner{created->release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
             };
-            return registerErased(cxx::typeToken<T>(), std::move(erased));
+            EditorServices::Entry entry{cxx::make_basic_type_info<T>(), std::move(erased)};
+            if constexpr (requires(T& value) {
+                              { value.initializeProject() } noexcept -> std::same_as<exec::task<FrameworkResult<void>>>;
+                          })
+            {
+                entry.initialize = +[](void* value) noexcept { return static_cast<T*>(value)->initializeProject(); };
+            }
+            if constexpr (requires(T& value, asset::AssetId scene) {
+                              {
+                                  value.initializeStartupScene(scene)
+                              } noexcept -> std::same_as<exec::task<FrameworkResult<void>>>;
+                          })
+            {
+                entry.initialize_startup_scene = +[](void* value, asset::AssetId scene) noexcept
+                { return static_cast<T*>(value)->initializeStartupScene(scene); };
+            }
+            if constexpr (requires(T& value) {
+                              { value.closeAsync() } noexcept -> std::same_as<exec::task<FrameworkResult<void>>>;
+                          })
+            {
+                entry.close = +[](void* value) noexcept { return static_cast<T*>(value)->closeAsync(); };
+                if constexpr (requires(T& value) {
+                                  { value.requestClose() } noexcept -> std::same_as<void>;
+                              })
+                {
+                    entry.request_close = +[](void* value) noexcept { static_cast<T*>(value)->requestClose(); };
+                }
+                if constexpr (requires(T& value) {
+                                  { value.recoverClose() } noexcept -> std::same_as<exec::task<FrameworkResult<void>>>;
+                              })
+                {
+                    entry.recover = +[](void* value) noexcept { return static_cast<T*>(value)->recoverClose(); };
+                }
+                else
+                {
+                    return cxx::unexpected(error::Error{Errors::EditorIncompleteServiceLifecycle});
+                }
+            }
+            if constexpr (std::derived_from<T, object::LuxObject>)
+            {
+                entry.event = +[](void* value, object::EventView& event) noexcept
+                { return object::sendEvent(*static_cast<T*>(value), event); };
+            }
+            return registerErased(std::move(entry));
         }
 
-        template <class T>
-        [[nodiscard]] cxx::expected<void, engine::EContextExtensionError> bindExtension(T& surface) noexcept
+        template <class T> [[nodiscard]] cxx::expected<void, EEditorFacilityError> bindExtension(T& surface) noexcept
         {
             return extensions_.bind(surface);
         }
@@ -58,8 +101,8 @@ namespace lux::editor
 
     private:
         friend class EditorContext;
-        [[nodiscard]] FrameworkResult<void> registerErased(cxx::TypeToken, EditorServices::Factory) noexcept;
-        engine::ContextExtensions::Composition extensions_;
+        [[nodiscard]] FrameworkResult<void> registerErased(EditorServices::Entry) noexcept;
+        EditorFacilities::Composition extensions_;
         std::vector<EditorServices::Entry> services_;
         std::vector<EditorUiRegistry::Factory> ui_;
         std::vector<SceneProfileRegistration> scene_profiles_;

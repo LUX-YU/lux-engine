@@ -312,7 +312,8 @@ namespace lux::asset
 
         template <class Asset>
         [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encodeTyped(
-            const Asset& asset,
+            const AssetInfo& asset_info,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
             const AssetEncodeLimits& limits,
             std::vector<std::byte> information
         ) noexcept
@@ -321,10 +322,10 @@ namespace lux::asset
                 detail::CookedAssetWriteRequest{
                     Asset::primary_magic,
                     Asset::legacy_type_tag,
-                    asset.info(),
+                    asset_info,
                     information,
                     {},
-                    asset.auxiliaryPayloads()
+                    auxiliary
                 },
                 limits
             );
@@ -395,10 +396,20 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validAtlas(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<TextureAtlasAsset>::encode(
+        const AssetInfo& asset_info,
+        const TextureAtlasAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validAtlas(data))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         {
-            return encodeTyped(asset, limits, encodeAtlas(asset.data()));
+            return encodeTyped<TextureAtlasAsset>(asset_info, auxiliary, limits, encodeAtlas(data));
         }
     }
 
@@ -418,10 +429,20 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validClip(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<FlipbookClipAsset>::encode(
+        const AssetInfo& asset_info,
+        const FlipbookClipAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validClip(data))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         {
-            return encodeTyped(asset, limits, encodeClip(asset.data()));
+            return encodeTyped<FlipbookClipAsset>(asset_info, auxiliary, limits, encodeClip(data));
         }
     }
 } // namespace lux::asset

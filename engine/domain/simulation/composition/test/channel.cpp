@@ -113,7 +113,7 @@ namespace
         SimulationSystemRegistry types;
         assert(types.add(
             {.type = system::systemTypeId(Probe::Description.type.canonical_name),
-             .cpp_type = cxx::typeToken<Probe>(),
+             .cpp_type = cxx::make_basic_type_info<Probe>(),
              .description = &Probe::Description,
              .access = Probe::Access.spec(),
              .install = [](SimulationSystemInstaller& installer, SimulationSystemView description
@@ -196,7 +196,7 @@ namespace
         assert(simulation && simulation->seal());
         auto execution = execution::ExecutionRuntime::create({2, 32, {32}});
         assert(execution);
-        task::TaskExecutor executor{execution->cpu(), 32};
+        task::TaskExecutor executor{execution->cpuScheduler()};
         using namespace std::chrono_literals;
         for (std::uint64_t i = 1; i <= 3; ++i)
         {

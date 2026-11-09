@@ -3,13 +3,12 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/editor/EditorApplication.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -91,8 +90,8 @@ int main(int argc, char** argv)
     Counts global, a, b;
     EditorConfig config{"Project ownership regression", 480, 320};
     config.project_file = a_file;
-    config.layout = {{"probe", "project", "Project"}};
-    auto host = LuxEngine::create(
+    config.layout = defaultProjectLayout({{"probe", "project", "Project"}});
+    auto host = fixture::createLoadedEditor(
         std::move(config),
         [&](EditorComposition& context) noexcept -> FrameworkResult<void>
         {
@@ -117,7 +116,7 @@ int main(int argc, char** argv)
         while (!predicate())
         {
             assert(std::chrono::steady_clock::now() < deadline);
-            auto frame = lux::editor::detail::LuxEngineTestAccess::pumpOnce(engine);
+            auto frame = fixture::stepEditor(engine);
             assert(frame && *frame == true);
             std::this_thread::sleep_for(1ms);
         }
@@ -134,7 +133,7 @@ int main(int argc, char** argv)
     std::atomic_bool started{}, release{};
     bool delivered{};
     auto* old = &engine.project();
-    auto scheduler = engine.engine().execution().blocking();
+    auto scheduler = engine.engine().execution().blockingIoScheduler();
     assert(scheduler);
     assert(old->tasks().submit(
         {"Held project task", "test"},
@@ -157,14 +156,14 @@ int main(int argc, char** argv)
              );
          },
          consume_result =
-             [&](execution::TTaskResult<void, error::Error>&& result) noexcept
+             [&](execution::ExecutionResult<void, error::Error>&& result) noexcept
          {
              assert(result && a.destroyed == 1);
              delivered = true;
          }](lux::execution::TaskReporter reporter) mutable noexcept
         {
             auto ready = stdexec::continues_on(
-                lux::execution::taskResult(make_work(reporter)),
+                lux::execution::asResult(make_work(reporter)),
                 engine.engine().execution().mainScheduler()
             );
             return stdexec::then(
@@ -185,7 +184,7 @@ int main(int argc, char** argv)
     const auto global_before = global.pane;
     for (int i{}; i < 5; ++i)
     {
-        assert(lux::editor::detail::LuxEngineTestAccess::pumpOnce(engine));
+        assert(fixture::stepEditor(engine));
     }
     if (mode == "maintenance")
     {

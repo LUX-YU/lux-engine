@@ -23,7 +23,7 @@ namespace lux::editor
 
     FrameworkResult<void> EditorComposition::registerSceneConfigurationEditor(SceneConfigurationEditor entry) noexcept
     {
-        const bool invalid = !entry.type.isValid() || !entry.create || !entry.serialize;
+        const bool invalid = !entry.type.isValid() || !entry.create;
         if (invalid)
         {
             return cxx::unexpected(error::Error{Errors::ValueEditorInvalid});
@@ -37,16 +37,13 @@ namespace lux::editor
         return {};
     }
 
-    FrameworkResult<void> EditorComposition::registerErased(
-        cxx::TypeToken type,
-        EditorServices::Factory factory
-    ) noexcept
+    FrameworkResult<void> EditorComposition::registerErased(EditorServices::Entry entry) noexcept
     {
-        if (std::ranges::find(services_, type, &EditorServices::Entry::type) != services_.end())
+        if (std::ranges::find(services_, entry.type, &EditorServices::Entry::type) != services_.end())
         {
             return cxx::unexpected(error::Error{Errors::EditorDuplicateServiceType, {}});
         }
-        services_.push_back(EditorServices::Entry{type, std::move(factory)});
+        services_.push_back(std::move(entry));
         return {};
     }
 

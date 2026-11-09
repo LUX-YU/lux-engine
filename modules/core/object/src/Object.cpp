@@ -135,6 +135,14 @@ namespace lux::object::detail
         }
     }
 
+    void scheduleSignalMaintenance(SignalStorage& storage) noexcept
+    {
+        if (!storage.queued.exchange(true, std::memory_order_acq_rel))
+        {
+            intrusive_ptr_add_ref(&storage);
+            stdexec::start(storage.delivery);
+        }
+    }
     void SignalStorage::cancel(ConnectionControl& control) noexcept
     {
         if (!control.connected.exchange(false, std::memory_order_acq_rel))
@@ -214,8 +222,14 @@ namespace lux::object::detail
         while (!records.empty())
         {
             auto control = *records.begin();
-            control->connected.store(false, std::memory_order_release);
+            const bool was_connected = control->connected.exchange(false, std::memory_order_acq_rel);
+            auto notify = std::exchange(control->source_closed, nullptr);
+            auto* context = std::exchange(control->close_context, nullptr);
             remove(*control);
+            if (was_connected && notify)
+            {
+                notify(context);
+            }
         }
         maintain();
     }
@@ -321,19 +335,14 @@ namespace lux::object::detail
                 ++result.direct;
                 continue;
             }
-            auto message = queue_factory(control, payload);
-            switch (post(std::move(message)))
+            if (queue_delivery(control, payload))
             {
-            case EPostStatus::POSTED:
                 ++result.queued;
-                break;
-            case EPostStatus::FULL:
-                ++result.full;
-                break;
-            case EPostStatus::CLOSED:
+            }
+            else
+            {
                 ++result.closed;
                 cancel(*control);
-                break;
             }
         }
         if (--depth == 0)
@@ -768,7 +777,7 @@ namespace lux::object
     LuxObject::ConnectResult LuxObject::connectSignal(
         lux::cxx::intrusive_ptr<detail::SignalStorage>& storage,
         LuxObject* receiver,
-        detail::QueuedMessageFactory factory,
+        detail::QueuedSignalDelivery enqueue,
         EDelivery delivery,
         detail::SignalCallback callback
     ) noexcept
@@ -787,7 +796,7 @@ namespace lux::object
         {
             delivery = EDelivery::DIRECT;
         }
-        if (delivery == EDelivery::QUEUED && !factory)
+        if (delivery == EDelivery::QUEUED && !enqueue)
         {
             return lux::cxx::unexpected(EConnectError::PAYLOAD_NOT_QUEUEABLE);
         }
@@ -803,7 +812,7 @@ namespace lux::object
         {
             if (!storage)
             {
-                storage = lux::cxx::make_intrusive<detail::SignalStorage>(factory);
+                storage = lux::cxx::make_intrusive<detail::SignalStorage>(enqueue);
             }
             if (storage->closed.load(std::memory_order_acquire))
             {

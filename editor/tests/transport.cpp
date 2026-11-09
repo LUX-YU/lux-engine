@@ -4,12 +4,19 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
-#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/process/assets/AssetRepository.hpp>
+#include <lux/engine/render/capabilities/UiScene.hpp>
+#include <lux/engine/render/commands/ImageCommands.hpp>
+#include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/frame/RenderFrame.hpp>
 #include <lux/engine/render/inputs/SampledTextureInputs.hpp>
-#include <lux/engine/context/render/RenderDiagnostics.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
-#include <lux/engine/context/render/WindowSurface.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/systems/render/RenderAssets.hpp>
+#include <lux/engine/systems/render/RenderDiagnostics.hpp>
+#include <lux/engine/systems/render/RenderExecution.hpp>
+#include <lux/engine/systems/render/WindowSurface.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -66,10 +73,8 @@ namespace
             return nri::Result::OUT_OF_MEMORY;
         }
 
-        static RenderResult<std::unique_ptr<ViewAllocationFailure>> create(
-            StorageCreateContext& context,
-            StorageId
-        ) noexcept
+        static RenderResult<std::unique_ptr<ViewAllocationFailure>>
+        create(StorageCreateContext& context, StorageId) noexcept
         {
             return std::make_unique<ViewAllocationFailure>(context.device);
         }
@@ -89,49 +94,44 @@ namespace
             return new CleanupRejection;
         }
 
-        void remove(const ReleaseTexture::Request&, ReleaseTexture::Response& response) noexcept
+        void remove(const ImageCommands::Release::Request&, ImageCommands::Release::Response& response) noexcept
         {
             response.error = RenderError{kRuntimeUnsupported}; // Definite refusal; no native side effect.
         }
+    };
 
-        using Bindings = std::tuple<CommandMethod<ReleaseTexture, &CleanupRejection::remove>>;
+    struct FailureCommands final
+    {
+        using PrerequisiteCapabilities = std::tuple<>;
+        using Commands = std::tuple<ImageCommands::Release>;
+        using PerFrameData = std::tuple<>;
     };
 
     struct ViewFailureCapability final
     {
+        using Capability = FailureCommands;
+        using Features = std::tuple<>;
+        using FrameBindings = std::tuple<>;
         using Config = void;
         using Storages = std::tuple<ViewAllocationFailure>;
-        using Commands = CleanupRejection::Bindings;
+        using Bindings = std::tuple<CommandMethod<ImageCommands::Release, &CleanupRejection::remove>>;
         static constexpr FeatureName name{"test.ui.failure"};
 
-        static const FeatureGraphOps& graph(bool) noexcept
+        static CapabilityImplementation implementation() noexcept
         {
-            static const std::array inputs{CapabilityStorageInput{
-                "test.arm-view-failure",
-                1,
-                ECapabilityInputScope::GLOBAL,
-                ViewAllocationFailure::Descriptor::name,
-                "fault"
-            }};
-            static const FeatureGraphOps result{.storage_inputs = inputs};
-            return result;
-        }
+            static const std::array inputs{
+                CapabilityStorageDependency{EStorageScope::GLOBAL, ViewAllocationFailure::Descriptor::name, "fault"}
+            };
 
-        static const CapabilitySupport& capabilities() noexcept
-        {
-            static const CapabilitySupport result = []
+            static const CapabilityImplementation result = []
             {
-                CapabilitySupport value;
+                CapabilityImplementation value;
                 value.implementation = name.name();
-                RenderCapability capability{"test.arm-view-failure"};
-                RenderPayloadContract input;
-                input.schema = "test.arm-view-failure";
-                input.setCppType(cxx::typeToken<EmptyRequest>());
-                capability.inputs.push_back(std::move(input));
-                value.capabilities.push_back(std::move(capability));
                 return value;
             }();
-            return result;
+            auto definition = result;
+            definition.storage_dependencies = inputs;
+            return definition;
         }
     };
 
@@ -172,7 +172,7 @@ int main()
     configuration.device.texture_descriptors = true;
     configuration.register_features = [](void* value, RenderServer& server) noexcept -> RenderResult<void>
     {
-        auto installed = server.registerFeature<ViewFailureCapability>();
+        auto installed = server.registerCapabilityImplementation<ViewFailureCapability>();
         if (!installed)
         {
             return cxx::unexpected(installed.error());
@@ -180,11 +180,19 @@ int main()
         return {};
     };
     auto rendering = take(RenderExecution::create(std::move(configuration), execution));
+    auto runtime = take(scene::SceneRuntime::create(execution, 64));
+    asset::AssetVfs vfs;
+    auto source = take(process::assets::AssetRepository::create(vfs.view(), {256U << 20U, 512U << 20U, 32}
+    ));
+
+    auto assets = take(RenderAssets::create(*rendering, *source));
     SurfaceDescription surface;
     assert(makeWindowSurface(window->nativeWindow(), true, surface));
     auto& root = window->uiRoot();
     auto ui_scene = take(EditorUiScene::create(
         *rendering,
+        *runtime,
+        *assets,
         *window,
         {640, 480, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE},
         surface,
@@ -195,50 +203,71 @@ int main()
     auto& client = rendering->mainClient();
     std::size_t completed = 0, captured_vertices = 0, injected_frame_failures = 0;
     bool expect_allocation_failure = false, expect_cleanup_failure = false;
+
+    struct FrameObservation final
+    {
+        std::size_t& completed;
+        std::size_t& injected_failures;
+        bool& expect_allocation_failure;
+        bool& expect_cleanup_failure;
+
+        static void complete(void* value, const FrameCompletion& response) noexcept
+        {
+            auto& state = *static_cast<FrameObservation*>(value);
+            if (response.outcome == EFrameOutcome::NOT_SUBMITTED)
+            {
+                assert(response.error.type == kCommandCancelled);
+                return;
+            }
+            if (response.error.type)
+            {
+                reportRenderFailure(response.error, "UI frame");
+            }
+            if (response.error.type != 0 && state.expect_cleanup_failure)
+            {
+                assert(response.error.type == kRuntimeUnsupported);
+            }
+            else if (response.error.type != 0)
+            {
+                assert(state.expect_allocation_failure && ViewAllocationFailure::failures == 1);
+                assert(response.error.type == kDeviceFailure && state.injected_failures++ == 0);
+            }
+            ++state.completed;
+        }
+    } observation{completed, injected_frame_failures, expect_allocation_failure, expect_cleanup_failure};
     auto drive = [&](bool capture)
     {
         window::LuxWindow::pollEvents();
         static_cast<void>(rendering->consumeResponses());
         assert(execution.dispatchMainCompletions() && execution.dispatchTaskEvents());
-        const bool draw = capture && take(ui_scene->outputReady());
-        if ((!draw && !client.hasQueuedFrameCommands()) || !client.hasFrameCapacity())
+        const auto prepare = [&](std::span<const scene::SceneInstanceId> candidates) noexcept -> RenderResult<void>
         {
-            return;
-        }
-        auto* frame = take(client.beginFrame());
-        if (draw)
-        {
-            assert(window->sampleInput());
-            assert(ui_scene->appendFrame(*frame));
-            captured_vertices += root.statistics().draw_vertices;
-        }
-        assert(execution.submit(
-            {},
-            [&](execution::TaskReporter) noexcept
+            auto started = rendering->beginSceneBatch(candidates);
+            if (!started)
             {
-                return stdexec::then(
-                    client.submitFrame(*frame),
-                    [&, frame](FrameCompletion response) noexcept
-                    {
-                        if (response.error.type)
-                        {
-                            reportRenderFailure(response.error, "UI frame");
-                        }
-                        if (response.error.type != 0 && expect_cleanup_failure)
-                        {
-                            assert(response.error.type == kRuntimeUnsupported);
-                        }
-                        else if (response.error.type != 0)
-                        {
-                            assert(expect_allocation_failure && ViewAllocationFailure::failures == 1);
-                            assert(response.error.type == kDeviceFailure && injected_frame_failures++ == 0);
-                        }
-                        assert(client.releaseFrame(*frame));
-                        ++completed;
-                    }
-                );
+                return cxx::unexpected(started.error());
             }
-        ));
+            if (*started)
+            {
+                FrameWriter writer{*client.buildingFrame()};
+                writer.onCompletion(&observation, &FrameObservation::complete);
+            }
+            if (capture)
+            {
+                assert(window->sampleInput());
+                auto prepared = ui_scene->prepareFrame();
+                if (!prepared)
+                {
+                    return prepared;
+                }
+                captured_vertices += root.statistics().draw_vertices;
+            }
+            return {};
+        };
+        auto published =
+            runtime->driveFrame(capture ? scene::ESceneDriveMode::ADVANCE : scene::ESceneDriveMode::SUSPENDED, prepare);
+        assert(published && published->empty());
+        assert(rendering->submitSceneBatch(*published));
     };
     auto until = [&](auto condition, bool draw)
     {
@@ -252,7 +281,7 @@ int main()
     };
     until([&] { return completed >= 12 && rendering->stats().presentations >= 6; }, true);
     assert(captured_vertices > 0);
-    auto call = [&]<RenderCommand Command>(typename Command::Request request)
+    auto call = [&]<RenderCommand Command>(typename Command::Request request, bool draw = true)
     {
         typename Command::Response response;
         bool done = false;
@@ -264,13 +293,40 @@ int main()
                 done = true;
             }
         )));
-        until([&] { return done; }, true);
+        until([&] { return done; }, draw);
+        if (response.error.type != 0)
+        {
+            reportRenderFailure(response.error, Command::name);
+        }
         assert(response.error.type == 0);
         return response;
     };
-    const auto choices = call.operator()<ListCapabilities>({"test.arm-view-failure", 1, "test.ui.failure"});
+    const auto close_ui = [&](EditorUiScene& value)
+    {
+        bool closed = false;
+        assert(execution.spawn(stdexec::then(
+            execution::asResult(stdexec::starts_on(execution.mainScheduler(), value.closeAsync())),
+            [&](auto result) noexcept
+            {
+                assert(result);
+                closed = true;
+            }
+        )));
+        until([&] { return closed; }, false);
+    };
+    const auto choices = call.operator(
+    )<ListCapabilities>({std::string(cxx::make_basic_type_info<FailureCommands>().name()), "test.ui.failure"});
     assert(choices.implementations.size() == 1);
-    call.operator()<InstallCapabilities>({choices.implementations.front().selection, GlobalRenderScope{}, {}});
+    CreateEffectRequest installation{{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}};
+    installation.composition.contributions.push_back(
+        {"failure", choices.implementations.front().implementation_id, ConfigValue{}}
+    );
+    const auto ui_choices = call.operator()<ListCapabilities>({std::string(kUiSceneCapability)});
+    installation.composition.contributions.push_back(
+        {"ui", ui_choices.implementations.front().implementation_id, take(ConfigValue::make(UiConfiguration{}))}
+    );
+    installation.composition.outputs.push_back({"ui", "color"});
+    const auto failure_effect = call.operator()<CreateEffect>(std::move(installation)).effect;
     auto placement = take(window->state()).placement;
     const auto original_placement = placement;
     placement.normal.width = 800;
@@ -315,6 +371,8 @@ int main()
     // A malformed real output fails asynchronously; it is not reported as a ready UI scene.
     auto invalid = take(EditorUiScene::create(
         *rendering,
+        *runtime,
+        *assets,
         *window,
         {0, 480, rdesc::ETextureFormat::RGBA8_UNORM},
         {},
@@ -322,8 +380,8 @@ int main()
     ));
     until([&] { return !invalid->outputReady(); }, true);
     assert(!invalid->outputReady());
-    invalid->stopFrames();
-    until([&] { return invalid->settled(); }, true);
+    close_ui(*invalid);
+    assert(invalid->settled());
     invalid.reset();
     until([&] { return client.pendingRequests() == 0; }, false);
     assert(root.clearPanes());
@@ -333,12 +391,14 @@ int main()
     until([&] { return !take(ui_scene->outputReady()) && client.pendingRequests() == 0; }, false);
     ui_scene->setExtent(640, 480, true);
     until([&] { return take(ui_scene->outputReady()) && completed >= before + 10; }, true);
-    ui_scene->stopFrames();
-    until([&] { return ui_scene->settled() && client.pendingRequests() == 0; }, false);
+    close_ui(*ui_scene);
+    assert(ui_scene->settled());
     ui_scene.reset();
     // A second real UI scene keeps its font texture identity after a definite cleanup refusal.
     ui_scene = take(EditorUiScene::create(
         *rendering,
+        *runtime,
+        *assets,
         *window,
         {640, 480, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE},
         surface,
@@ -346,16 +406,30 @@ int main()
     ));
     until([&] { return take(ui_scene->outputReady()); }, true);
     const auto commands = call.operator()<ListCommands>({});
-    const auto command = std::ranges::find(commands.commands, ReleaseTexture::name, &CommandInfo::name);
+    const auto command = std::ranges::find(commands.commands, ImageCommands::Release::name, &CommandInfo::name);
     assert(command != commands.commands.end());
     const auto bindings = call.operator()<ListCommandBindings>(command->id);
     const auto rejection = std::ranges::find(bindings.handlers, CleanupRejection::name, &HandlerInfo::name);
     assert(rejection != bindings.handlers.end());
-    call.operator()<SelectCommandBinding>({command->id, rejection->id});
-    expect_cleanup_failure = true;
-    ui_scene->stopFrames();
-    until([&] { return ui_scene->cleanupFailure().type != 0; }, false);
-    assert(ui_scene->cleanupFailure().type == kRuntimeUnsupported && !ui_scene->settled());
+    // Binding selection is a directory mutation at a Server frame boundary. Stop
+    // generating frames and consume already accepted frames before changing it.
+    until([&] { return client.pendingRequests() == 0 && !client.needsFrameInput(); }, false);
+    call.operator()<SelectCommandBinding>({command->id, rejection->id}, false);
+    // Selecting an unrelated global Handler must not redirect this UI capability's exact binding.
+    const auto refusal = take(client.commandBinding<ImageCommands::Release>({failure_effect, 0, GlobalRenderScope{}}));
+    ImageCommands::Release::Request refused{refusal.destination, {}};
+    bool refused_done = false;
+    assert(execution.spawn(stdexec::then(
+        client.request(take(client.bind(refusal)), refused),
+        [&](auto response) noexcept
+        {
+            assert(response.error.type == kRuntimeUnsupported);
+            refused_done = true;
+        }
+    )));
+    until([&] { return refused_done; }, false);
+    close_ui(*ui_scene);
+    assert(ui_scene->settled() && ui_scene->cleanupFailure().type == 0);
     bool joined = false;
     assert(execution.spawn(stdexec::then(
         rendering->whenStopped(),
@@ -365,12 +439,25 @@ int main()
             joined = true;
         }
     )));
-    rendering->beginClose();
-    until([&] { return rendering->advanceClose() && joined; }, false);
-    assert(ui_scene->finishCloseAfterServerStop() && ui_scene->settled());
+    bool assets_closed = false;
+    assert(execution.spawn(stdexec::then(
+        execution::asResult(stdexec::starts_on(execution.mainScheduler(), assets->closeAsync())),
+        [&](auto result) noexcept
+        {
+            assert(result);
+            assets_closed = true;
+        }
+    )));
+    until([&] { return assets_closed; }, false);
+    assert(execution.spawn(stdexec::then(rendering->closeAsync(), []() noexcept {})));
+    until([&] { static_cast<void>(rendering->consumeResponses()); return joined; }, false);
+    assert(ui_scene->settled());
     assert(rendering->shutdown());
     assert(rendering->stats().validation_errors == 0);
     ui_scene.reset();
+    assets.reset();
+    source.reset();
+    runtime.reset();
     rendering.reset();
     execution.requestStop();
     assert(execution.waitUntil([&]() noexcept { return execution.settled(); }));

@@ -71,8 +71,8 @@ namespace lux::render::detail
         using ImagePreparation = std::pair<nri::Texture*, std::vector<ImageTransferRegion>>;
         SampledTexture2DStorage(StorageCreateContext&, StorageId) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
-        [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
-        [[nodiscard]] UploadResult upload(TextureRegionWrite) noexcept;
+        [[nodiscard]] UploadResult upload(TextureData) noexcept;
+        [[nodiscard]] UploadResult upload(TexturePatchData) noexcept;
         [[nodiscard]] RenderResult<ImagePreparation>
         prepareImage(const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<ImagePreparation>
@@ -97,7 +97,7 @@ namespace lux::render
     template <> struct StorageTraits<detail::SampledTexture2DStorage> final
     {
         using Result = exec::task<RenderResult<TextureId>>;
-        [[nodiscard]] static Result upload(detail::SampledTexture2DStorage&, TextureWrite) noexcept;
-        [[nodiscard]] static Result upload(detail::SampledTexture2DStorage&, TextureRegionWrite) noexcept;
+        [[nodiscard]] static Result upload(detail::SampledTexture2DStorage&, TextureData) noexcept;
+        [[nodiscard]] static Result upload(detail::SampledTexture2DStorage&, TexturePatchData) noexcept;
     };
 } // namespace lux::render

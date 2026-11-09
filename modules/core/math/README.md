@@ -78,4 +78,4 @@ Mesh BVH 可按不可变几何版本构建一次并复用。实体移动不重�
 - 大坐标下的相对位置精度。
 - 不依赖图形后端的几何检测。
 
-相关说明：[运行时空间查询](../../../engine/domain/spatial/README.md)、[相机与 ECS](../../../engine/domain/simulation/ecs/README.md)。
+相关说明：[运行时空间查询](../../../engine/domain/spatial/README.md)、[相机与 ECS](../../../engine/domain/ecs/README.md)。

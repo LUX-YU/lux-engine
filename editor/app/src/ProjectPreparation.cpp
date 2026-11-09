@@ -1,6 +1,6 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/ProjectPreparation.hpp>
-#include <lux/engine/project/SceneRegistrations.hpp>
+#include <lux/engine/plugins/SceneRegistrations.hpp>
 
 namespace lux::editor::detail
 {
@@ -10,15 +10,12 @@ namespace lux::editor::detail
         {
             return {
                 Errors::ProjectManifest,
-                {
-                    static_cast<std::uint64_t>(value.code),
-                    value.ordinal,
-                    static_cast<std::uint64_t>(value.system.value())
+                {static_cast<std::uint64_t>(value.code), value.ordinal, static_cast<std::uint64_t>(value.system.value())
                 }
             };
         }
 
-        error::Error failure(const project::PluginFailure& value) noexcept
+        error::Error failure(const plugins::PluginFailure& value) noexcept
         {
             return {Errors::ProjectPlugins, {static_cast<std::uint64_t>(value.code)}};
         }
@@ -32,8 +29,8 @@ namespace lux::editor::detail
     ) noexcept
     {
         const auto stop = reporter.stopToken();
-        bool published = false;
-        const auto failed = [&](error::Error error) { return ProjectPreparation{cxx::unexpected(error), published}; };
+        auto publication = EManifestPublication::UNCHANGED;
+        const auto failed = [&](error::Error error) { return ProjectPreparation{cxx::unexpected(error), publication}; };
         if (stop.stop_requested())
         {
             return failed({Errors::ProjectCancelled});
@@ -55,9 +52,13 @@ namespace lux::editor::detail
             auto written = writeProjectManifestAtomic(file, *create, EProjectWrite::CREATE, stop);
             if (!written)
             {
+                if (written.error().code == EProjectError::PUBLICATION_UNKNOWN)
+                {
+                    publication = EManifestPublication::UNKNOWN;
+                }
                 return failed(failure(written.error()));
             }
-            published = true;
+            publication = EManifestPublication::PUBLISHED;
         }
         std::error_code ec;
         auto manifest_file = std::filesystem::canonical(file, ec);
@@ -71,14 +72,14 @@ namespace lux::editor::detail
             return failed(failure(manifest.error()));
         }
         reporter.setPhase("Verify project plugins");
-        project::PluginCatalog catalog;
+        plugins::PluginCatalog catalog;
         for (const auto& location : locations)
         {
             if (stop.stop_requested())
             {
                 return failed({Errors::ProjectCancelled});
             }
-            project::PluginCatalog addition;
+            plugins::PluginCatalog addition;
             auto read = addition.read(location.catalog, location.root);
             if (!read)
             {
@@ -90,7 +91,7 @@ namespace lux::editor::detail
                 return failed(failure(appended.error()));
             }
         }
-        std::vector<project::MetadataIdentity> selected;
+        std::vector<plugins::MetadataIdentity> selected;
         selected.reserve(manifest->plugins.size());
         for (const auto& plugin : manifest->plugins)
         {
@@ -100,13 +101,17 @@ namespace lux::editor::detail
         {
             return failed({Errors::ProjectCancelled});
         }
-        auto plugins = project::PluginManager::create(std::move(catalog), selected);
+        auto plugins = plugins::PluginManager::create(std::move(catalog), selected);
         if (!plugins)
         {
             return failed(failure(plugins.error()));
         }
         reporter.setPhase("Prepare immutable scene registrations");
-        auto registrations = project::readSceneRegistrations({}, plugins->libraries());
+        auto registrations = plugins::readSceneRegistrations(
+            {},
+            plugins->libraries(),
+            manifest->content ? &*manifest->content : nullptr
+        );
         if (!registrations)
         {
             return failed(failure(registrations.error()));
@@ -118,10 +123,26 @@ namespace lux::editor::detail
         PreparedProject result{
             {manifest->name, manifest_file.parent_path(), std::move(manifest_file)},
             std::move(*manifest),
-            std::make_unique<project::PluginManager>(std::move(*plugins)),
-            std::make_shared<const project::SceneRegistrations>(std::move(*registrations))
+            std::make_unique<plugins::PluginManager>(std::move(*plugins)),
+            std::make_shared<const plugins::SceneRegistrations>(std::move(*registrations))
         };
+        if (result.manifest.editor_layout)
+        {
+            const auto path = std::filesystem::canonical(result.description.root / *result.manifest.editor_layout, ec);
+            const auto relative = path.lexically_relative(result.description.root);
+            const bool outside_project = relative.empty() || *relative.begin() == ".." || relative.is_absolute();
+            if (ec || outside_project)
+            {
+                return failed(failure({EProjectError::INVALID_PATH, 0, ec}));
+            }
+            auto layout = readProjectLayout(path, stop);
+            if (!layout)
+            {
+                return failed(failure(layout.error()));
+            }
+            result.layout = std::move(*layout);
+        }
         reporter.setProgress(1, 1);
-        return {std::move(result), published};
+        return {std::move(result), publication};
     }
 } // namespace lux::editor::detail

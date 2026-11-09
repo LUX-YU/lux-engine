@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
+
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/features/ClusteredLightInputs.hpp>
 

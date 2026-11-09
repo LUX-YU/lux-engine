@@ -72,7 +72,7 @@ namespace
         auto& pane = *owner;
         std::unique_ptr<ui::Pane> candidate = std::move(owner);
         assert(root.addPane(std::move(candidate)));
-        ui::DrawData data;
+        ui::DrawView data;
         for (unsigned n{}; n < 3; ++n)
         {
             assert(root.update({{640, 480}, 0.016F}, data));
@@ -133,7 +133,7 @@ namespace
             std::unique_ptr<ui::Pane> pane = std::make_unique<Tree>(elements);
             assert(root.addPane(std::move(pane)));
         }
-        ui::DrawData data;
+        ui::DrawView data;
         std::vector<double> maintenance, draw, capture;
         for (unsigned n{}; n < 35; ++n)
         {

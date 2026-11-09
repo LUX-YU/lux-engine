@@ -4,6 +4,8 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdio>
+#include <cstring>
+#include <new>
 #include <limits>
 #include <utility>
 
@@ -50,8 +52,8 @@ namespace lux::platform
 #if defined(_WIN32)
             const auto handle = CreateFileW(
                 writer.temporary_.c_str(),
-                GENERIC_WRITE,
-                0,
+                GENERIC_WRITE | DELETE,
+                FILE_SHARE_READ | FILE_SHARE_DELETE,
                 nullptr,
                 CREATE_NEW,
                 FILE_ATTRIBUTE_NORMAL,
@@ -207,14 +209,29 @@ namespace lux::platform
             return cxx::unexpected(ioFailure(errno));
         }
 #endif
-        close();
         if (stop.stop_requested())
         {
             return cxx::unexpected(FileFailure{EFileIoError::CANCELLED});
         }
 #if defined(_WIN32)
-        const DWORD flags = MOVEFILE_WRITE_THROUGH | (mode_ == EFileWriteMode::REPLACE ? MOVEFILE_REPLACE_EXISTING : 0);
-        if (!MoveFileExW(temporary_.c_str(), destination_.c_str(), flags))
+        const auto& name = destination_.native();
+        const bool oversized = name.size() > (MAXDWORD - sizeof(FILE_RENAME_INFO)) / sizeof(wchar_t);
+        if (oversized)
+        {
+            return cxx::unexpected(FileFailure{EFileIoError::LIMIT});
+        }
+        const auto name_bytes = static_cast<DWORD>(name.size() * sizeof(wchar_t));
+        std::vector<std::byte> storage(sizeof(FILE_RENAME_INFO) + name_bytes);
+        auto* rename = ::new (storage.data()) FILE_RENAME_INFO{};
+        rename->Flags = mode_ == EFileWriteMode::REPLACE
+            ? FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS : 0;
+        rename->FileNameLength = name_bytes;
+        std::memcpy(rename->FileName, name.c_str(), name_bytes + sizeof(wchar_t));
+        // Existing destination handles continue to read the old file. New opens resolve this candidate.
+        // Unsupported filesystems fail here; there is no delete-then-move or reader-closing fallback.
+        if (!SetFileInformationByHandle(
+            reinterpret_cast<HANDLE>(handle_), FileRenameInfoEx, rename, static_cast<DWORD>(storage.size())
+        ))
         {
             const auto error = GetLastError();
             if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
@@ -224,7 +241,17 @@ namespace lux::platform
             return cxx::unexpected(ioFailure(error));
         }
         owns_temporary_ = false;
+        if (!FlushFileBuffers(reinterpret_cast<HANDLE>(handle_)))
+        {
+            const auto error = GetLastError();
+            close();
+            return cxx::unexpected(FileFailure{
+                EFileIoError::PUBLICATION_UNKNOWN, {int(error), std::system_category()}
+            });
+        }
+        close();
 #else
+        close();
         const auto result = mode_ == EFileWriteMode::REPLACE ? ::rename(temporary_.c_str(), destination_.c_str())
                                                              : ::link(temporary_.c_str(), destination_.c_str());
         if (result != 0)

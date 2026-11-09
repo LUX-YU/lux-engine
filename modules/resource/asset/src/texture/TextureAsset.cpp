@@ -266,8 +266,18 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        const auto& texture = asset.data();
-        if (asset.id().isNull() || asset.type() != TextureAsset::asset_type ||
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<TextureAsset>::encode(
+        const AssetInfo& asset_info,
+        const TextureAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        const auto& texture = data;
+        if (asset_info.id.isNull() || asset_info.type != TextureAsset::asset_type ||
             !validateTexture(texture.info(), texture.size()))
         {
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
@@ -278,10 +288,10 @@ namespace lux::asset
             detail::CookedAssetWriteRequest{
                 TextureAsset::primary_magic,
                 TextureAsset::legacy_type_tag,
-                asset.info(),
+                asset_info,
                 information,
                 texture.pixels().view(),
-                asset.auxiliaryPayloads()
+                auxiliary
             },
             limits
         );

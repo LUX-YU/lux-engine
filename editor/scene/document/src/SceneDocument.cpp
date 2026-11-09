@@ -1,20 +1,166 @@
 #include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/editor/SceneEditing.hpp>
-#include <lux/engine/simulation/ecs/Parent.hpp>
+#include <lux/engine/ecs/Parent.hpp>
 #include <set>
+#include <unordered_map>
 
 namespace lux::editor
 {
-    namespace ecs = simulation::ecs;
+    namespace ecs = ecs;
+
+    SceneEditResult<std::unique_ptr<SceneDocument>> SceneDocument::create(
+        scene::SceneRuntime& runtime,
+        scene::SceneInstanceId instance,
+        ecs::ComponentSchemaSet schemas,
+        scene::ScenePackage package,
+        std::span<const scene::GeometryDeclaration> geometries
+    )
+    {
+        auto content =
+            scene::resolveGeometryDomains(package.scene->data().geometries(), package.world->data(), geometries);
+        if (!content)
+        {
+            return cxx::unexpected(VSceneEditFailure{content.error()});
+        }
+        auto qualified =
+            scene::validateWorldObjectDomains(*content, package.world->data(), geometries, package.partitions);
+        if (!qualified)
+        {
+            return cxx::unexpected(VSceneEditFailure{qualified.error()});
+        }
+        return std::unique_ptr<SceneDocument>(new SceneDocument(
+            runtime,
+            instance,
+            std::move(schemas),
+            std::move(package),
+            {geometries.begin(), geometries.end()},
+            std::move(*content)
+        ));
+    }
 
     SceneDocument::SceneDocument(
         scene::SceneRuntime& runtime,
         scene::SceneInstanceId instance,
         ecs::ComponentSchemaSet schemas,
-        scene::ScenePackage package
+        scene::ScenePackage package,
+        std::vector<scene::GeometryDeclaration> geometries,
+        scene::SceneContentResolution content
     )
-        : runtime_(runtime), instance_(instance), schemas_(std::move(schemas)), baseline_(std::move(package))
+        : runtime_(runtime), instance_(instance), schemas_(std::move(schemas)), baseline_(std::move(package)),
+          geometries_(std::move(geometries)), content_(std::move(content))
     {
+    }
+
+    SceneEditResult<partition::PartitionOrdinal> SceneDocument::destination(
+        std::span<const ecs::ComponentSchemaId> components,
+        std::string_view primary_domain,
+        partition::PartitionOrdinal partition
+    ) const noexcept
+    {
+        const auto& world = baseline_.world->data();
+        const auto* explicit_partition = partition.value == UINT32_MAX ? nullptr : world.domainAt(partition);
+        if (partition.value != UINT32_MAX && !explicit_partition)
+        {
+            return cxx::unexpected(VSceneEditFailure{
+                scene::SceneContentFailure{scene::ESceneContentError::MISSING_DOMAIN, std::string(primary_domain)}
+            });
+        }
+        if (explicit_partition)
+        {
+            if (!primary_domain.empty() && primary_domain != explicit_partition->key)
+            {
+                return cxx::unexpected(VSceneEditFailure{
+                    scene::SceneContentFailure{scene::ESceneContentError::DOMAIN_MISMATCH, std::string(primary_domain)}
+                });
+            }
+            primary_domain = explicit_partition->key;
+        }
+        auto resolved = scene::resolveObjectDomain(content_, world, geometries_, components, primary_domain);
+        if (!resolved)
+        {
+            return cxx::unexpected(VSceneEditFailure{resolved.error()});
+        }
+        const auto& domain = world.domains()[*resolved];
+        if (explicit_partition)
+        {
+            return partition;
+        }
+        if (domain.count != 1)
+        {
+            return cxx::unexpected(
+                VSceneEditFailure{scene::SceneContentFailure{scene::ESceneContentError::AMBIGUOUS_DOMAIN, domain.key}}
+            );
+        }
+        return domain.first;
+    }
+
+    SceneEditResult<std::vector<partition::PartitionOrdinal>> SceneDocument::validateDomains(
+        const ecs::Registry& registry,
+        const scene::WorldResidency& residency,
+        const VSceneEdit& edit
+    ) const noexcept
+    {
+        std::vector<partition::PartitionOrdinal> destinations;
+        if (const auto* create = std::get_if<SceneCreateObjects>(&edit))
+        {
+            std::vector<ecs::ComponentSchemaId> components;
+            for (const auto& object : create->objects)
+            {
+                components.clear();
+                for (const auto& component : object.components)
+                {
+                    components.push_back(component.schema);
+                }
+                auto resolved = destination(components, object.primary_domain, object.partition);
+                if (!resolved)
+                {
+                    return cxx::unexpected(resolved.error());
+                }
+                destinations.push_back(*resolved);
+            }
+        }
+        else if (const auto* write = std::get_if<SceneWriteComponents>(&edit))
+        {
+            std::unordered_map<world::WorldObjectId, std::vector<ecs::ComponentSchemaId>, world::WorldObjectIdHash>
+                changed;
+            for (const auto& component : write->components)
+            {
+                auto [item, added] = changed.try_emplace(component.object);
+                const auto entity = residency.identities().entity(component.object);
+                if (!registry.valid(entity))
+                {
+                    return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_OBJECT});
+                }
+                if (added)
+                {
+                    for (const auto& schema : schemas_.all())
+                    {
+                        if (schema.operations.has(registry, entity))
+                        {
+                            item->second.push_back(schema.id);
+                        }
+                    }
+                }
+                std::erase(item->second, component.schema);
+                if (component.value)
+                {
+                    item->second.push_back(component.schema);
+                }
+            }
+            for (const auto& [object, components] : changed)
+            {
+                partition::PartitionOrdinal partition;
+                if (!residency.partitionOf(residency.identities().entity(object), partition))
+                {
+                    return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_OBJECT});
+                }
+                if (auto resolved = destination(components, {}, partition); !resolved)
+                {
+                    return cxx::unexpected(resolved.error());
+                }
+            }
+        }
+        return destinations;
     }
 
     asset::AssetId SceneDocument::id() const noexcept
@@ -92,6 +238,12 @@ namespace lux::editor
             {
                 return;
             }
+            auto destinations = validateDomains(registry, *residency, operation);
+            if (!destinations)
+            {
+                result = cxx::unexpected(destinations.error());
+                return;
+            }
             std::set<std::uint32_t> affected;
             std::visit(
                 [&](const auto& change) noexcept
@@ -99,9 +251,9 @@ namespace lux::editor
                     using Change = std::remove_cvref_t<decltype(change)>;
                     if constexpr (std::is_same_v<Change, SceneCreateObjects>)
                     {
-                        for (const auto& object : change.objects)
+                        for (const auto partition : *destinations)
                         {
-                            affected.insert(object.partition.value);
+                            affected.insert(partition.value);
                         }
                     }
                     else
@@ -132,7 +284,7 @@ namespace lux::editor
                 },
                 operation
             );
-            result = detail::applySceneEdit(registry, *residency, schemas_, operation);
+            result = detail::applySceneEdit(registry, *residency, schemas_, operation, *destinations);
             if (!result)
             {
                 return;
@@ -302,7 +454,7 @@ namespace lux::editor
         return {};
     }
 
-    SceneEditResult<SceneObjectData> SceneDocument::object(world::WorldObjectId id) const noexcept
+    SceneEditResult<scene::SceneObjectData> SceneDocument::object(world::WorldObjectId id) const noexcept
     {
         auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
         if (!borrowed)
@@ -380,7 +532,7 @@ namespace lux::editor
             return cxx::unexpected(captured.error());
         }
         const auto* schema = schemas_.find(type);
-        const auto value = std::ranges::find(captured->components, type, &SceneComponentData::schema);
+        const auto value = std::ranges::find(captured->components, type, &scene::SceneComponentData::schema);
         const bool unavailable = !schema || !schema->decode_value || value == captured->components.end();
         if (unavailable)
         {
@@ -418,7 +570,7 @@ namespace lux::editor
     SceneEditResult<SceneEdit> SceneDocument::prepareComponentEdit(
         world::WorldObjectId id,
         std::uint64_t based_on,
-        const simulation::ecs::DecodedComponent& value
+        const ecs::DecodedComponent& value
     ) const noexcept
     {
         return encodeComponentEdit(id, based_on, value.type(), value.data());
@@ -427,7 +579,7 @@ namespace lux::editor
     SceneEditResult<SceneEdit> SceneDocument::encodeComponentEdit(
         world::WorldObjectId id,
         std::uint64_t based_on,
-        cxx::TypeToken type,
+        cxx::type_info type,
         const void* value
     ) const noexcept
     {
@@ -453,7 +605,8 @@ namespace lux::editor
             return cxx::unexpected(VSceneEditFailure{bytes.error()});
         }
         SceneWriteComponents write;
-        write.components.push_back({id, schema->id, SceneComponentData{schema->id, schema->version, std::move(*bytes)}}
+        write.components.push_back(
+            {id, schema->id, scene::SceneComponentData{schema->id, schema->version, std::move(*bytes)}}
         );
         return SceneEdit{based_on, std::move(write)};
     }
@@ -482,7 +635,7 @@ namespace lux::editor
         std::uint64_t based_on
     ) const noexcept
     {
-        const auto* schema = schemas_.find(cxx::typeToken<ecs::Parent>());
+        const auto* schema = schemas_.find(cxx::make_basic_type_info<ecs::Parent>());
         if (!schema)
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
@@ -544,6 +697,12 @@ namespace lux::editor
             {
                 *found = std::move(*captured);
             }
+        }
+        std::ranges::sort(partitions, {}, [](const auto& value) { return value->partition().value; });
+        auto qualified = scene::validateWorldObjectDomains(content_, baseline_.world->data(), geometries_, partitions);
+        if (!qualified)
+        {
+            return cxx::unexpected(VSceneEditFailure{qualified.error()});
         }
         auto package = scene::assembleScenePackage(baseline_, partitions);
         if (!package)

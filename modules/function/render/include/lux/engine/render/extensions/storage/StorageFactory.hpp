@@ -3,7 +3,7 @@
 #include <lux/engine/render/visibility.h>
 
 #include <concepts>
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
 #include <lux/engine/render/extensions/storage/StorageDescriptor.hpp>
 #include <memory>
@@ -13,7 +13,7 @@ namespace lux::render
     // One owned native instance. The factory's matching Ops are separate immutable metadata.
     using StorageInstance = std::unique_ptr<void, void (*)(void*) noexcept>;
 
-    template <class Declaration> [[nodiscard]] constexpr cxx::TypeToken storageOpsType() noexcept
+    template <class Declaration> [[nodiscard]] constexpr cxx::type_info storageOpsType() noexcept
     {
         if constexpr (std::is_void_v<typename Declaration::Ops>)
         {
@@ -21,7 +21,7 @@ namespace lux::render
         }
         else
         {
-            return cxx::typeToken<typename Declaration::Ops>();
+            return cxx::make_basic_type_info<typename Declaration::Ops>();
         }
     }
 
@@ -36,9 +36,9 @@ namespace lux::render
         RenderResult<StorageInstance> (*const create)(void* dependencies, StorageId id, const void* config) noexcept;
         bool (*const compatible_config)(const void* instance, const void* config) noexcept;
         const void* const binding_ops; // API-specific immutable preparation functions; never a second owner
-        const cxx::TypeToken config_type;
-        const cxx::TypeToken ops_type;
-        const cxx::TypeToken implementation_type;
+        const cxx::type_info config_type;
+        const cxx::type_info ops_type;
+        const cxx::type_info implementation_type;
 
     private:
         template <class Declaration, class Implementation, class CreationContext, auto Create, auto Compatible>
@@ -50,9 +50,9 @@ namespace lux::render
             RenderResult<StorageInstance> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible_config)(const void*, const void*) noexcept,
             const void* binding_ops,
-            cxx::TypeToken config_type,
-            cxx::TypeToken ops_type,
-            cxx::TypeToken implementation_type
+            cxx::type_info config_type,
+            cxx::type_info ops_type,
+            cxx::type_info implementation_type
         ) noexcept
             : descriptor(descriptor), ops(ops), create(create), compatible_config(compatible_config),
               binding_ops(binding_ops), config_type(config_type), ops_type(ops_type),
@@ -70,15 +70,15 @@ namespace lux::render
     {
         using Config = typename Declaration::Config;
         constexpr bool has_config = !std::is_void_v<Config>;
-        constexpr cxx::TypeToken config_type = []() noexcept
+        constexpr cxx::type_info config_type = []() noexcept
         {
             if constexpr (has_config)
             {
-                return cxx::typeToken<Config>();
+                return cxx::make_basic_type_info<Config>();
             }
             else
             {
-                return cxx::TypeToken{};
+                return cxx::type_info{};
             }
         }();
         constexpr auto compatible = []() noexcept -> bool (*)(const void*, const void*) noexcept
@@ -148,7 +148,7 @@ namespace lux::render
             binding_ops,
             config_type,
             storageOpsType<Declaration>(),
-            cxx::typeToken<Implementation>()
+            cxx::make_basic_type_info<Implementation>()
         };
     }
 

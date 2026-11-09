@@ -22,12 +22,13 @@ namespace lux::world
             pages_.begin(),
             pages_.end(),
             partition.value,
-            [](std::uint32_t value, const WorldPartitionTablePageDescription& page) noexcept {
-                return value < page.first.value;
-            }
+            [](std::uint32_t value, const WorldPartitionTablePageDescription& page) noexcept
+            { return value < page.first.value; }
         );
         if (iterator == pages_.begin())
+        {
             return nullptr;
+        }
 
         const auto& page = *std::prev(iterator);
         const std::uint64_t end = static_cast<std::uint64_t>(page.first.value) + page.count;
@@ -36,7 +37,8 @@ namespace lux::world
 
     WorldPartitionView::WorldPartitionView(const WorldPartitionLayout& layout, std::size_t partition_index) noexcept
         : layout_(&layout), partition_index_(partition_index)
-    {}
+    {
+    }
 
     PartitionOrdinal WorldPartitionView::ordinal() const noexcept
     {
@@ -72,17 +74,20 @@ namespace lux::world
     WorldPartitionView WorldPartitionLayout::findPartition(WorldPartitionId id) const noexcept
     {
         if (!id.valid())
+        {
             return {};
+        }
         const auto iterator = std::lower_bound(
             partitions_.begin(),
             partitions_.end(),
             id,
-            [](const PartitionRecord& record, const WorldPartitionId& value) {
-                return WorldPartitionIdLess{}(record.id, value);
-            }
+            [](const PartitionRecord& record, const WorldPartitionId& value)
+            { return WorldPartitionIdLess{}(record.id, value); }
         );
         if (iterator == partitions_.end() || iterator->id != id)
+        {
             return {};
+        }
         return WorldPartitionView(*this, static_cast<std::size_t>(std::distance(partitions_.begin(), iterator)));
     }
 
@@ -116,7 +121,9 @@ namespace lux::world
             ~TMutationRollback()
             {
                 if (active_)
+                {
                     rollback_();
+                }
             }
 
             void commit() noexcept
@@ -147,7 +154,7 @@ namespace lux::world
         std::sort(impl_->objects.begin(), impl_->objects.end(), WorldObjectIdLess{});
         for (std::size_t index{}; index < impl_->objects.size(); ++index)
         {
-            if (!impl_->objects[index].valid())
+            if (!isValid(impl_->objects[index]))
             {
                 impl_->invalid_universe = true;
                 impl_->universe_error = EWorldPartitionError::INVALID_OBJECT_ID;
@@ -180,13 +187,21 @@ namespace lux::world
             return lux::cxx::unexpected(partitionFailure(impl_->universe_error, impl_->universe_error_object));
         }
         if (!id.valid())
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::INVALID_PARTITION_ID, {}, id));
-        if (objects.empty())
+        }
+        if (objects.empty() && !impl_->objects.empty())
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::EMPTY_PARTITION, {}, id));
+        }
         if (impl_->partition_ids.contains(id))
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::DUPLICATE_PARTITION_ID, {}, id));
+        }
         if (detail::consumeWorldPartitionFailureForTest(detail::EWorldPartitionFailurePoint::MUTATION_ALLOCATION))
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::ALLOCATION_FAILURE, {}, id));
+        }
 
         {
             std::vector<WorldObjectId> copied(objects.begin(), objects.end());
@@ -215,7 +230,9 @@ namespace lux::world
             const bool is_size_overflow =
                 is_partition_count_overflow || is_partition_id_count_overflow || is_assignment_count_overflow;
             if (is_size_overflow)
+            {
                 return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::SIZE_OVERFLOW, {}, id));
+            }
 
             impl_->partitions.reserve(impl_->partitions.size() + 1U);
             impl_->partition_ids.reserve(impl_->partition_ids.size() + 1U);
@@ -223,18 +240,27 @@ namespace lux::world
 
             bool partition_inserted = false;
             std::size_t assigned_inserted{};
-            TMutationRollback rollback([&]() noexcept {
-                for (std::size_t rollback_index{}; rollback_index < assigned_inserted; ++rollback_index)
-                    impl_->assigned_objects.erase(copied[rollback_index]);
-                if (partition_inserted)
-                    impl_->partition_ids.erase(id);
-            });
+            TMutationRollback rollback(
+                [&]() noexcept
+                {
+                    for (std::size_t rollback_index{}; rollback_index < assigned_inserted; ++rollback_index)
+                    {
+                        impl_->assigned_objects.erase(copied[rollback_index]);
+                    }
+                    if (partition_inserted)
+                    {
+                        impl_->partition_ids.erase(id);
+                    }
+                }
+            );
 
             partition_inserted = impl_->partition_ids.insert(id).second;
             for (; assigned_inserted < copied.size(); ++assigned_inserted)
             {
                 if (!impl_->assigned_objects.insert(copied[assigned_inserted]).second)
+                {
                     break;
+                }
             }
             if (!partition_inserted || assigned_inserted != copied.size())
             {
@@ -271,7 +297,9 @@ namespace lux::world
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::MISSING_OBJECT_ASSIGNMENT));
         }
         if (detail::consumeWorldPartitionFailureForTest(detail::EWorldPartitionFailurePoint::BUILD_ALLOCATION))
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::ALLOCATION_FAILURE));
+        }
         if (detail::consumeWorldPartitionFailureForTest(detail::EWorldPartitionFailurePoint::BUILD_SIZE_OVERFLOW) ||
             impl_->partitions.size() > std::numeric_limits<std::uint32_t>::max())
         {
@@ -283,9 +311,8 @@ namespace lux::world
             std::sort(
                 impl_->partitions.begin(),
                 impl_->partitions.end(),
-                [](const Impl::PendingPartition& left, const Impl::PendingPartition& right) noexcept {
-                    return WorldPartitionIdLess{}(left.id, right.id);
-                }
+                [](const Impl::PendingPartition& left, const Impl::PendingPartition& right) noexcept
+                { return WorldPartitionIdLess{}(left.id, right.id); }
             );
 
             result.partitions_.reserve(impl_->partitions.size());
@@ -310,15 +337,20 @@ namespace lux::world
     ) noexcept
     {
         if (!partitioner.id.valid())
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::INVALID_PARTITIONER_ID));
+        }
         if (partitioner.version == 0U)
+        {
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::INVALID_PARTITIONER_VERSION));
+        }
 
         {
             std::sort(
                 indexes.begin(),
                 indexes.end(),
-                [](const WorldPartitionIndexArtifact& left, const WorldPartitionIndexArtifact& right) noexcept {
+                [](const WorldPartitionIndexArtifact& left, const WorldPartitionIndexArtifact& right) noexcept
+                {
                     return left.type.hash < right.type.hash ||
                            (left.type.hash == right.type.hash && left.type.name < right.type.name);
                 }
@@ -362,7 +394,8 @@ namespace lux::world
         std::vector<WorldPartitionIndexArtifact> indexes
     ) noexcept
         : partitioner_(std::move(partitioner)), layout_(std::move(layout)), indexes_(std::move(indexes))
-    {}
+    {
+    }
 
     const WorldPartitionerDescriptor& WorldPartitionBuildProduct::partitioner() const noexcept
     {
@@ -383,12 +416,15 @@ namespace lux::world
     ) const noexcept
     {
         if (!type.valid())
+        {
             return nullptr;
+        }
         const auto iterator = std::lower_bound(
             indexes_.begin(),
             indexes_.end(),
             type,
-            [](const WorldPartitionIndexArtifact& artifact, const PartitionIndexTypeId& value) noexcept {
+            [](const WorldPartitionIndexArtifact& artifact, const PartitionIndexTypeId& value) noexcept
+            {
                 return artifact.type.hash < value.hash ||
                        (artifact.type.hash == value.hash && artifact.type.name < value.name);
             }

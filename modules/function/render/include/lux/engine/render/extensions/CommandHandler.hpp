@@ -10,14 +10,13 @@ namespace lux::render
     // and produce exactly Response. Completion publication is the Server's responsibility.
     template <class C, class H, auto Method>
     concept AsyncCommandHandlerFor =
-        RenderCommand<C> && std::is_nothrow_invocable_v<decltype(Method), H&, typename C::Request&&> &&
-        std::same_as<
-            decltype(Method),
-            std::invoke_result_t<decltype(Method), H&, typename C::Request&&> (H::*)(typename C::Request&&) noexcept> &&
-        stdexec::sender<std::invoke_result_t<decltype(Method), H&, typename C::Request&&>> &&
+        RenderCommand<C> && requires { typename extension_detail::CommandInvocation<C, Method>::Handler; } &&
+        std::same_as<H, typename extension_detail::CommandInvocation<C, Method>::Handler> &&
+        (!extension_detail::CommandInvocation<C, Method>::synchronous) &&
+        stdexec::sender<typename extension_detail::CommandInvocation<C, Method>::Result> &&
         std::same_as<
             stdexec::value_types_of_t<
-                std::invoke_result_t<decltype(Method), H&, typename C::Request&&>,
+                typename extension_detail::CommandInvocation<C, Method>::Result,
                 stdexec::env<stdexec::prop<stdexec::get_scheduler_t, execution::RunLoop::Scheduler>>,
                 std::tuple,
                 std::variant>,

@@ -102,5 +102,18 @@ namespace lux::editor
         };
         inline constexpr error::ErrorId ProjectNeedsPreparedPlugins =
             error::errorId(ProjectNeedsPreparedPluginsDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectLoadBusyDescriptor{
+            "lux.editor.project_load_busy",
+            "A project transaction is already active",
+            error::ERecovery::RETRYABLE
+        };
+        inline constexpr error::ErrorId ProjectLoadBusy = error::errorId(ProjectLoadBusyDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectAlreadyPublishedDescriptor{
+            "lux.editor.project_already_published",
+            "The project is already published; cleanup cannot be cancelled",
+            error::ERecovery::PERMANENT
+        };
+        inline constexpr error::ErrorId ProjectAlreadyPublished =
+            error::errorId(ProjectAlreadyPublishedDescriptor.name);
     } // namespace Errors
 } // namespace lux::editor

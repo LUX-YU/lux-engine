@@ -149,6 +149,11 @@ namespace lux::render::detail
                 reason = EResourceReuse::EXTERNAL;
                 continue;
             }
+            if (const auto* image = std::get_if<GraphImageDesc>(&resource.description); image && image->runtime_layers)
+            {
+                result.reasons[i] = EResourceReuse::DYNAMIC_EXTENT;
+                continue;
+            }
             if (target[i])
             {
                 reason = EResourceReuse::EXPORTED;

@@ -118,6 +118,80 @@ namespace lux::asset
         return static_cast<bool>(state_);
     }
 
+    cxx::expected<ProviderEntry, EAssetStorageError> AssetVfsView::describe(AssetId id) const
+    {
+        const auto table = snapshot(state_);
+        if (!table || id.isNull())
+        {
+            return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+        }
+        for (const auto& mount : table->mounts)
+        {
+            auto entry = mount.provider->describe(id);
+            if (!entry)
+            {
+                if (entry.error() != EAssetStorageError::NOT_FOUND)
+                {
+                    return cxx::unexpected(entry.error());
+                }
+                continue;
+            }
+            if (entry->tombstone)
+            {
+                return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+            }
+            entry->vpath = mount.root + "/" + entry->vpath;
+            return entry;
+        }
+        return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+    }
+
+    cxx::expected<void, EAssetStorageError>
+    AssetVfsView::replace(AssetId id, std::span<const std::byte> bytes) const
+    {
+        const auto table = snapshot(state_);
+        if (!table || id.isNull())
+        {
+            return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+        }
+        for (const auto& mount : table->mounts)
+        {
+            if (mount.provider->contains(id))
+            {
+                return mount.provider->replace(id, bytes);
+            }
+        }
+        return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+    }
+
+    cxx::expected<std::vector<AssetId>, EAssetStorageError>
+    AssetVfsView::refresh(std::span<const std::filesystem::path> paths) const
+    {
+        std::vector<AssetId> changed;
+        const auto table = snapshot(state_);
+        if (!table)
+        {
+            return changed;
+        }
+        std::unordered_set<IAssetProvider*> visited;
+        for (const auto& mount : table->mounts)
+        {
+            if (!visited.insert(mount.provider.get()).second)
+            {
+                continue;
+            }
+            auto result = mount.provider->refresh(paths);
+            if (!result)
+            {
+                return cxx::unexpected(result.error());
+            }
+            changed.insert(changed.end(), result->begin(), result->end());
+        }
+        std::sort(changed.begin(), changed.end());
+        changed.erase(std::unique(changed.begin(), changed.end()), changed.end());
+        return changed;
+    }
+
     namespace
     {
         AssetId resolve(const std::shared_ptr<detail::AssetVfsState>& state, std::string_view vpath)
@@ -223,6 +297,76 @@ namespace lux::asset
         }
 
     } // namespace
+
+    cxx::expected<AssetReadSource, EAssetStorageError> AssetVfsView::openSource(AssetId id) const noexcept
+    {
+        const auto table = snapshot(state_);
+        if (!table || id.isNull())
+        {
+            return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+        }
+        for (const auto& mount : table->mounts)
+        {
+            if (mount.provider->contains(id))
+            {
+                auto source = mount.provider->openSource(id);
+                if (source)
+                {
+                    source->attachProvider(mount.provider);
+                }
+                return source;
+            }
+        }
+        return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+    }
+
+    cxx::expected<AssetContentWriter, EAssetStorageError>
+    AssetVfsView::beginContentWrite(
+        AssetId id, const AssetReadSource* base, EAssetContentWrite mode, std::string_view new_path
+    ) const noexcept
+    {
+        const auto table = snapshot(state_);
+        if (!table || id.isNull())
+        {
+            return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+        }
+        if (mode == EAssetContentWrite::CREATE)
+        {
+            const auto parsed = VirtualPath::parse(new_path);
+            if (!parsed || base)
+            {
+                return cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
+            }
+            for (const auto& mount : table->mounts)
+            {
+                if (std::string_view(mount.root).substr(1) == parsed->root())
+                {
+                    auto writer = mount.provider->beginContentWrite(id, nullptr, mode, parsed->relPath());
+                    if (writer)
+                    {
+                        writer->attachProvider(mount.provider);
+                    }
+                    return writer; // Never retry a different mount after a backend failure.
+                }
+            }
+        }
+        else
+        {
+            for (const auto& mount : table->mounts)
+            {
+                if (mount.provider->contains(id))
+                {
+                    auto writer = mount.provider->beginContentWrite(id, base, mode, new_path);
+                    if (writer)
+                    {
+                        writer->attachProvider(mount.provider);
+                    }
+                    return writer;
+                }
+            }
+        }
+        return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+    }
 
     AssetId AssetVfsView::resolve(std::string_view path) const
     {

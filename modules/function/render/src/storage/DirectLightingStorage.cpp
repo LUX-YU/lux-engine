@@ -20,6 +20,39 @@ namespace lux::render::detail
             return std::visit([](const auto& record) { return std::as_bytes(std::span(&record, 1)); }, value);
         }
 
+        bool validShadow(const LightShadowSettings& shadow, std::size_t kind) noexcept
+        {
+            if (!shadow.enabled)
+            {
+                return true;
+            }
+            const bool invalid_bias = !std::isfinite(shadow.bias) || shadow.bias < 0 ||
+                                      !std::isfinite(shadow.normal_bias) || shadow.normal_bias < 0 ||
+                                      !std::isfinite(shadow.depth_bias_constant) ||
+                                      !std::isfinite(shadow.depth_bias_slope);
+            if (invalid_bias)
+            {
+                return false;
+            }
+            if (kind == 0)
+            {
+                if (shadow.cascade_count == 0 || shadow.cascade_count > shadow.cascade_splits.size())
+                {
+                    return false;
+                }
+                float previous = 0;
+                for (auto split : std::span(shadow.cascade_splits).first(shadow.cascade_count))
+                {
+                    if (!std::isfinite(split) || split <= previous || split > 1)
+                    {
+                        return false;
+                    }
+                    previous = split;
+                }
+            }
+            return true;
+        }
+
         bool validLight(const VDirectLight& value) noexcept
         {
             return std::visit(
@@ -104,8 +137,7 @@ namespace lux::render::detail
         }
     }
 
-    exec::task<RenderResult<std::vector<LightId>>> DirectLightingStorage::create(CreateDirectLights::Request input
-    ) noexcept
+    exec::task<RenderResult<std::vector<LightId>>> DirectLightingStorage::create(LightData input) noexcept
     {
         if (updating_)
         {
@@ -114,6 +146,17 @@ namespace lux::render::detail
         updating_ = true;
         ++preparation_revision_;
         cxx::scope_exit finish([&]() noexcept { updating_ = false; });
+        if (!input.shadows.empty() && input.shadows.size() != input.values.size())
+        {
+            co_return cxx::unexpected(RenderError{kStorageContract});
+        }
+        for (std::size_t i = 0; i < input.shadows.size(); ++i)
+        {
+            if (!validShadow(input.shadows[i], input.values[i].index()))
+            {
+                co_return cxx::unexpected(RenderError{kStorageContract});
+            }
+        }
         if (input.values.size() > UINT32_MAX - entries_.size())
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
@@ -147,54 +190,92 @@ namespace lux::render::detail
         result.reserve(writes.size());
         for (const auto& value : writes)
         {
-            auto key = entries_.emplace(Entry{value.kind, value.position});
+            const auto index = result.size();
+            auto key = entries_.emplace(
+                Entry{value.kind, value.position, input.shadows.empty() ? LightShadowSettings{} : input.shadows[index]}
+            );
             arrays_[value.kind].identities.push_back(key);
             result.push_back(extension_detail::ResourceIdentity::make<LightId>(id_, key));
         }
-        ++revision_;
+        ++shadow_revision_;
         co_return result;
     }
 
-    exec::task<RenderResult<std::uint32_t>> DirectLightingStorage::update(UpdateDirectLights::Request input) noexcept
+    RenderResult<std::uint32_t> DirectLightingStorage::update(LightUpdates input) noexcept
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kDeviceBusy});
+            return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        updating_ = true;
-        ++preparation_revision_;
-        cxx::scope_exit finish([&]() noexcept { updating_ = false; });
-        std::array<std::uint32_t, 3> counts;
-        for (std::size_t k = 0; k < counts.size(); ++k)
+        if (input.values.size() > UINT32_MAX)
         {
-            counts[k] = static_cast<std::uint32_t>(arrays_[k].identities.size());
+            return cxx::unexpected(RenderError{kStorageContract});
         }
-        std::vector<Write> writes;
-        writes.reserve(input.values.size());
         for (const auto& value : input.values)
         {
             const auto* entry = extension_detail::ResourceIdentity::storage(value.light) == id_
-                                    ? entries_.find(extension_detail::ResourceIdentity::local(value.light))
-                                    : nullptr;
+                ? entries_.find(extension_detail::ResourceIdentity::local(value.light)) : nullptr;
             if (!entry)
             {
-                co_return cxx::unexpected(RenderError{kStorageIdentity});
+                return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            if (entry->kind != value.value.index() || !validLight(value.value))
+            const bool invalid_light = entry->kind != value.value.index() || !validLight(value.value);
+            const bool invalid_shadow = !validShadow(value.shadows, entry->kind);
+            if (invalid_light || invalid_shadow)
             {
-                co_return cxx::unexpected(RenderError{kStorageContract});
+                return cxx::unexpected(RenderError{kStorageContract});
             }
-            writes.push_back({entry->kind, entry->position, bytes(value.value)});
         }
-        if (auto accepted = co_await write(writes, counts); !accepted)
+        bool shadow_changed = false;
+        bool changed = false;
+        for (const auto& value : input.values)
         {
-            co_return cxx::unexpected(accepted.error());
+            auto* entry = entries_.find(extension_detail::ResourceIdentity::local(value.light));
+            const bool active_shadow = entry->shadows.enabled || value.shadows.enabled;
+            if (active_shadow)
+            {
+                shadow_changed |= entry->shadows != value.shadows;
+                const auto* previous = arrays_[entry->kind].records.data() + entry->position * strides[entry->kind];
+                shadow_changed |= std::visit([&](const auto& light) noexcept
+                {
+                    using Light = std::decay_t<decltype(light)>;
+                    Light before;
+                    std::memcpy(&before, previous, sizeof(before));
+                    if constexpr (std::same_as<Light, DirectionalLightGpu>)
+                    {
+                        return before.direction != light.direction;
+                    }
+                    else if constexpr (std::same_as<Light, PointLightGpu>)
+                    {
+                        return before.position_range != light.position_range;
+                    }
+                    else
+                    {
+                        return before.position_range != light.position_range ||
+                            before.direction_outer != light.direction_outer;
+                    }
+                }, value.value);
+            }
+            auto& array = arrays_[entry->kind];
+            auto* destination = array.records.data() + std::size_t(entry->position) * strides[entry->kind];
+            const auto source = bytes(value.value);
+            if (std::memcmp(destination, source.data(), source.size()) != 0)
+            {
+                std::memcpy(destination, source.data(), source.size());
+                for (std::uint32_t frame = 0; frame < frames_.frameCount(); ++frame)
+                {
+                    array.frames[frame].dirty.mark(entry->position);
+                }
+                changed = true;
+            }
+            entry->shadows = value.shadows;
         }
-        ++revision_;
-        co_return static_cast<std::uint32_t>(writes.size());
+        preparation_revision_ += changed;
+        shadow_revision_ += shadow_changed;
+        return static_cast<std::uint32_t>(input.values.size());
     }
 
-    exec::task<RenderResult<Ack>> DirectLightingStorage::remove(LightId light) noexcept
+    exec::task<RenderResult<void>> DirectLightingStorage::remove(LightId light) noexcept
     {
         auto* entry = extension_detail::ResourceIdentity::storage(light) == id_
                           ? entries_.find(extension_detail::ResourceIdentity::local(light))
@@ -231,8 +312,8 @@ namespace lux::render::detail
         }
         array.identities.pop_back();
         entries_.erase(extension_detail::ResourceIdentity::local(light));
-        ++revision_;
-        co_return Ack{};
+        ++shadow_revision_;
+        co_return RenderResult<void>{};
     }
 
     std::array<std::uint32_t, 3> DirectLightingStorage::counts() const noexcept
@@ -276,10 +357,8 @@ namespace lux::render::detail
         return true;
     }
 
-    exec::task<RenderResult<void>> DirectLightingStorage::write(
-        std::span<const Write> changes,
-        const std::array<std::uint32_t, 3>& counts
-    ) noexcept
+    exec::task<RenderResult<void>>
+    DirectLightingStorage::write(std::span<const Write> changes, const std::array<std::uint32_t, 3>& counts) noexcept
     {
         const std::array<std::uint32_t, 4> header{counts[0], counts[1], counts[2], 0};
         const bool count_changed = std::memcmp(header.data(), arrays_[3].records.data(), sizeof(header)) != 0;

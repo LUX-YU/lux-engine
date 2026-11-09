@@ -1,6 +1,6 @@
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
 #include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
 #include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
@@ -17,42 +17,20 @@ namespace lux::render
         RenderResult<void> describeGBuffer(const void* value, std::string_view, FeaturePorts& result) noexcept
         {
             const auto& config = *static_cast<const GBufferFeatureConfig*>(value);
-            if (auto valid = config.target.validate(); !valid)
+            if (auto valid = validateEffectOutput(config.output); !valid)
             {
                 return valid;
             }
-            if (config.target.samples != 1)
+            if (config.output.samples != 1)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
-            for (std::size_t i = 0; i < config.groups.size(); ++i)
-            {
-                const auto& group = config.groups[i];
-                const auto* use = group.program.find(rdesc::EMaterialPurpose::GBUFFER);
-                const bool supported_model =
-                    group.program.shading_model == rdesc::ELightingTechnique::UNLIT ||
-                    group.program.shading_model == rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
-                if (!supported_model || !use || use->output_semantic != rdesc::GBufferLayout::semantic)
-                {
-                    return cxx::unexpected(RenderError{kFeatureContract});
-                }
-                if (auto valid = detail::describeMeshGroup(
-                        group,
-                        "group" + std::to_string(i) + ".",
-                        rdesc::EMaterialPurpose::GBUFFER,
-                        result,
-                        config.visible_capacity
-                    );
-                    !valid)
-                {
-                    return valid;
-                }
-            }
+            detail::describeMeshDrawInputs(result);
             for (std::size_t i = 0; i < ports.size(); ++i)
             {
                 const auto format =
                     i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
-                GraphImageDesc image{config.target.width, config.target.height, 1, 1, format};
+                GraphImageDesc image{0, 0, 1, 1, format};
                 image.extent.source = EImageExtentSource::TARGET;
                 FeaturePort port{std::string(ports[i]), EFeaturePort::OUTPUT, image};
                 port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(ports[i]);
@@ -62,7 +40,13 @@ namespace lux::render
         }
 
         template <bool Paged>
-        RenderResult<void> buildGBuffer(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildGBuffer(
+            const void* value,
+            std::string_view key,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const GBufferFeatureConfig*>(value);
             std::array<ResourceVersion, 4> versions;
@@ -70,63 +54,32 @@ namespace lux::render
             {
                 versions[i] = context.resource(ports[i]);
             }
-            if (config.groups.empty())
+            auto draw = detail::meshRasterStage(config.input_layout, context);
+            for (std::size_t color = 0; color < 3; ++color)
             {
-                TransferWork work;
-                for (auto version : versions)
-                {
-                    work.operations.push_back(ClearImage{{version}});
-                }
-                auto pass = context.graph.addTransferPass(
-                    featureKey(detail::GBufferFeature::name, key, "clear"),
-                    std::move(work)
+                draw.colors.push_back({{versions[color]}});
+            }
+            draw.depth = RasterAttachment{{versions[3]}};
+            auto pass =
+                context.graph.addRasterPass(featureKey(detail::GBufferFeature::name, key, "draw"), std::move(draw));
+            if (!pass)
+            {
+                return cxx::unexpected(pass.error());
+            }
+            if (auto bound = detail::bindMeshDraws(
+                    context,
+                    pass->pass,
+                    rdesc::EMaterialPurpose::GBUFFER,
+                    Paged,
+                    {},
+                    {},
+                    config.front_counter_clockwise
                 );
-                if (!pass)
-                {
-                    return cxx::unexpected(pass.error());
-                }
-                std::ranges::copy(pass->written, versions.begin());
-            }
-            for (std::size_t i = 0; i < config.groups.size(); ++i)
+                !bound)
             {
-                const auto prefix = "group" + std::to_string(i) + ".";
-                for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
-                {
-                    auto draw = detail::buildMeshGroup(
-                        config.groups[i],
-                        prefix,
-                        rdesc::EMaterialPurpose::GBUFFER,
-                        Paged,
-                        context,
-                        config.visible_capacity == 0,
-                        winding != 0
-                    );
-                    if (!draw)
-                    {
-                        return cxx::unexpected(draw.error());
-                    }
-                    if (config.visible_capacity)
-                    {
-                        detail::bindVisibleMeshDraw(*draw, context, prefix, config.visible_capacity, 0, winding);
-                    }
-                    draw->interface.parameters.instance_layout = config.input_layout;
-                    const auto load = i == 0 && winding == 0 ? EAttachmentLoad::CLEAR : EAttachmentLoad::LOAD;
-                    for (std::size_t color = 0; color < 3; ++color)
-                    {
-                        draw->colors.push_back({{versions[color]}, load});
-                    }
-                    draw->depth = RasterAttachment{{versions[3]}, load};
-                    auto pass = context.graph.addRasterPass(
-                        featureKey(detail::GBufferFeature::name, key, prefix + "winding" + std::to_string(winding)),
-                        std::move(*draw)
-                    );
-                    if (!pass)
-                    {
-                        return cxx::unexpected(pass.error());
-                    }
-                    std::ranges::copy(pass->written, versions.begin());
-                }
+                return bound;
             }
+            std::ranges::copy(pass->written, versions.begin());
             for (std::size_t i = 0; i < ports.size(); ++i)
             {
                 if (auto published = context.publish(ports[i], versions[i]); !published)
@@ -138,21 +91,10 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<GBufferFeatureConfig>::retainedBytes(const GBufferFeatureConfig& value
-    ) noexcept
+    RenderResult<std::size_t>
+    ConfigValueTraits<GBufferFeatureConfig>::retainedBytes(const GBufferFeatureConfig& value) noexcept
     {
-        auto bytes = sizeof(value) + value.groups.capacity() * sizeof(RasterMeshGroup) +
-                     detail::parameterLayoutBytes(value.input_layout);
-        for (const auto& group : value.groups)
-        {
-            auto retained = ConfigValueTraits<RasterMeshGroup>::retainedBytes(group);
-            if (!retained)
-            {
-                return cxx::unexpected(retained.error());
-            }
-            bytes += *retained - sizeof(group);
-        }
-        return bytes;
+        return sizeof(value) + detail::parameterLayoutBytes(value.input_layout);
     }
 
     const FeatureGraphOps& detail::GBufferFeature::graph(bool paged_instances) noexcept

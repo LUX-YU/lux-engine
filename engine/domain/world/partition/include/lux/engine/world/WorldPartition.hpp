@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/world/WorldObjectId.hpp>
 #include <lux/engine/partition/PartitionIndexTypeId.hpp>
 #include <lux/engine/partition/PartitionOrdinal.hpp>
+#include <lux/engine/world/WorldObjectId.hpp>
 #include <lux/engine/world/partition/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -108,6 +108,7 @@ namespace lux::world
         DUPLICATE_INDEX_TYPE,
         INVALID_PARTITIONER_ID,
         INVALID_PARTITIONER_VERSION,
+        INVALID_CONFIGURATION,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
         IMPLEMENTATION_FAILURE,

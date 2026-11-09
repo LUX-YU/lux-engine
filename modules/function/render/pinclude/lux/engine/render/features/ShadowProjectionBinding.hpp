@@ -17,11 +17,25 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] static RenderResult<FeatureBinding>
-        create(DeviceSession&, FrameExecution&, ResourceRegistry&, std::span<const StorageId>, const void*) noexcept;
+        create(
+            DeviceSession&,
+            FrameExecution&,
+            ResourceRegistry&,
+            RenderGraphInstance&,
+            CompiledPrograms&,
+            std::span<const StorageId>,
+            const void*
+        ) noexcept;
         ~ShadowProjectionBinding() noexcept;
 
     private:
-        ShadowProjectionBinding(DeviceSession&, FrameExecution&, ResourceRegistry&, StorageId, const Description&) noexcept;
+        ShadowProjectionBinding(
+            DeviceSession&,
+            FrameExecution&,
+            ResourceRegistry&,
+            StorageId,
+            const Description&
+        ) noexcept;
         [[nodiscard]] RenderResult<FeatureBinding::Preparation>
         prepareFrame(const FeatureFrameInput&, ResourceUploader&) noexcept;
 
@@ -40,12 +54,12 @@ namespace lux::render::detail
         StorageId lights_;
         const Description& description_;
         ShadowCamera camera_{};
-        std::uint64_t light_revision_ = 0, revision_ = 0;
+        std::uint64_t applied_shadow_revision_ = 0, revision_ = 0;
+        std::vector<ShadowLightSelection> casters_;
         std::vector<ShadowLightInput> selected_lights_;
         std::vector<MeshVisibilityView> views_;
         std::vector<ShadowSliceGpu> slices_;
         std::vector<RasterState> raster_states_;
-        rdesc::ShaderBlock view_layout_;
         std::vector<std::byte> mappings_;
         std::array<ResourceUpdate, 4> updates_;
         std::array<Slice, 3> gpu_;

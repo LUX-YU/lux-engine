@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
+#include <lux/engine/render/capabilities/CapabilityComposition.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/commands/Frame.hpp>
@@ -9,7 +9,6 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/inputs/DrawInputs.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -73,7 +72,7 @@ namespace lux::render
         // the old writer; this also supports moving a view to another output without a detach gap.
         AttachmentId replaces;
         std::vector<TargetImageInput> target_images;
-        cxx::TypeToken parameter_type; // Public semantic input type, projected by the selected capability.
+        cxx::type_info parameter_type; // Public semantic input type, projected by the selected capability.
     };
 
     struct AttachmentInputs final
@@ -82,32 +81,13 @@ namespace lux::render
         std::vector<std::byte> parameters;
         RasterViewport viewport;
         std::vector<std::uint8_t> conditions;
-        cxx::TypeToken parameter_type;
+        cxx::type_info parameter_type;
     };
 
     struct AttachmentCreated final
     {
         RenderError error{};
         AttachmentId attachment;
-        std::vector<CapabilitiesInstalled::Input> inputs; // Actual late-scope capability destinations.
-        // Cold pass names/IDs for streaming geometry. IDs belong to this attachment's compiled graph.
-        std::vector<std::pair<std::string, GraphPassId>> draw_lists;
-    };
-
-    struct DrawListUpdate final
-    {
-        AttachmentId attachment;
-        GraphPassId pass;
-        // Frozen through Response. Vertex format, index width and parameter layout come from the pass.
-        DrawListData data;
-    };
-
-    struct UpdateDrawList final
-    {
-        static constexpr std::string_view name{"render.attachment.draw_list"};
-        static constexpr bool frame_scoped = true;
-        using Request = DrawListUpdate;
-        using Response = AckResponse;
     };
 
     struct SceneCreated final
@@ -147,17 +127,15 @@ namespace lux::render
 
     struct CreateEffectRequest final
     {
-        TargetDesc description;
-        CapabilitySelection implementation;
-        VCapabilityConfiguration configuration;
-        ConfigValue inputs;
+        EffectOutputDesc output;
+        CapabilityComposition composition;
     };
 
     struct ListCapabilities final
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "render.capabilities.list";
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = CapabilityQuery;
         using Response = CapabilityList;
     };
@@ -166,24 +144,16 @@ namespace lux::render
     struct ValidateCapabilityConfiguration final
     {
         static constexpr std::string_view name = "render.capabilities.validate_configuration";
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         static constexpr bool failure_safe = true;
 
         struct Request final
         {
-            CapabilitySelection selection;
+            CapabilityImplementationId implementation_id;
             VCapabilityConfiguration configuration;
         };
 
         using Response = AckResponse;
-    };
-
-    struct InstallCapabilities final
-    {
-        static constexpr std::string_view name = "render.capabilities.install";
-        static constexpr bool frame_scoped = false;
-        using Request = CapabilityInstallation;
-        using Response = CapabilitiesInstalled;
     };
 
     struct CommandInfo final
@@ -191,15 +161,25 @@ namespace lux::render
         // Names are owned; type names borrow the defining module, which must outlive clients and the Server.
         std::string name;
         CommandId id;
-        cxx::TypeToken request;
-        cxx::TypeToken response;
+        cxx::type_info request;
+        cxx::type_info response;
         bool bound = false;
-        bool frame_scoped = false;
+        bool requires_frame_boundary = false;
         bool failure_safe = false;
+        cxx::type_info data;
+        bool capability_command = false;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept
         {
-            return {CommandName{name}, request, response, frame_scoped, failure_safe};
+            return {
+                CommandName{name},
+                request,
+                response,
+                requires_frame_boundary,
+                failure_safe,
+                data,
+                capability_command
+            };
         }
     };
 
@@ -229,11 +209,28 @@ namespace lux::render
         HandlerId handler;
     };
 
+    struct QueryCommandIds final
+    {
+        // The sole bootstrap slot, installed first and retained for this Server lifetime.
+        static constexpr CommandId id{0, 1};
+        static constexpr std::string_view name = "render.commands.query_ids";
+        static constexpr bool requires_frame_boundary = false;
+        static constexpr bool failure_safe = true;
+        using Request = std::span<const CommandName>;
+
+        struct Response final
+        {
+            RenderError error{};
+            // Same order as Request; a failure clears the whole result and identifies its input index.
+            std::vector<CommandId> ids;
+        };
+    };
+
     struct ListCommands final
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.commands.list"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = EmptyRequest;
         using Response = CommandList;
     };
@@ -242,7 +239,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.commands.bindings"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = CommandId;
         using Response = CommandBindings;
     };
@@ -250,7 +247,7 @@ namespace lux::render
     struct SelectCommandBinding final
     {
         static constexpr std::string_view name{"render.commands.select"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = CommandSelection;
         using Response = AckResponse;
     };
@@ -258,7 +255,7 @@ namespace lux::render
     struct CreateScene final
     {
         static constexpr std::string_view name{"render.scene.create"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = EmptyRequest;
         using Response = SceneCreated;
     };
@@ -267,7 +264,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.scene.remove"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = SceneRequest;
         using Response = AckResponse;
     };
@@ -275,7 +272,7 @@ namespace lux::render
     struct CreateView final
     {
         static constexpr std::string_view name{"render.view.create"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = CreateViewRequest;
         using Response = ViewCreated;
     };
@@ -283,7 +280,7 @@ namespace lux::render
     struct UpdateAttachmentInputs final
     {
         static constexpr std::string_view name{"render.attachment.inputs"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = AttachmentInputs;
         using Response = AckResponse;
     };
@@ -292,7 +289,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.view.remove"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = ViewRequest;
         using Response = AckResponse;
     };
@@ -300,7 +297,7 @@ namespace lux::render
     struct InvalidateHistory final
     {
         static constexpr std::string_view name{"render.attachment.invalidate_history"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
 
         struct Request final
         {
@@ -314,7 +311,7 @@ namespace lux::render
     struct CreateTarget final
     {
         static constexpr std::string_view name{"render.target.create"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = CreateTargetRequest;
         using Response = TargetCreated;
     };
@@ -324,7 +321,7 @@ namespace lux::render
     struct ResizeTarget final
     {
         static constexpr std::string_view name{"render.target.resize"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = ResizeTargetRequest;
         using Response = TargetCreated;
     };
@@ -333,7 +330,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "render.target.remove";
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = TargetId;
         using Response = AckResponse;
     };
@@ -341,7 +338,7 @@ namespace lux::render
     struct SetTargetActive final
     {
         static constexpr std::string_view name = "render.target.set_active";
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
 
         struct Request final
         {
@@ -356,7 +353,7 @@ namespace lux::render
     struct CreateEffect final
     {
         static constexpr std::string_view name{"render.effect.create"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = CreateEffectRequest;
         using Response = EffectCreated;
     };
@@ -365,7 +362,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.effect.remove"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = EffectRequest;
         using Response = AckResponse;
     };
@@ -373,7 +370,7 @@ namespace lux::render
     struct Attach final
     {
         static constexpr std::string_view name{"render.attach"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = AttachmentRequest;
         using Response = AttachmentCreated;
     };
@@ -382,7 +379,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.detach"};
-        static constexpr bool frame_scoped = true;
+        static constexpr bool requires_frame_boundary = true;
         using Request = AttachmentId;
         using Response = AckResponse;
     };
@@ -393,7 +390,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.stop"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = EmptyRequest;
         using Response = AckResponse;
     };
@@ -402,7 +399,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.execution.progress"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = AttachmentId;
 
         struct Response final
@@ -416,7 +413,7 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.stats.query"};
-        static constexpr bool frame_scoped = false;
+        static constexpr bool requires_frame_boundary = false;
         using Request = EmptyRequest;
         using Response = RenderStatsSnapshot;
     };

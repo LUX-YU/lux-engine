@@ -23,7 +23,7 @@ namespace lux::object
     } // namespace detail
 
     // The allocation is real, not a no-op deleter around a separately erasable Store slot.
-    // Last release queues a node prepared here; destruction only runs in collectRetired().
+    // Last release queues a node prepared here; destruction runs on the ExecutionRuntime application scheduler.
     template <class T, class D>
         requires std::same_as<typename std::unique_ptr<T, D>::pointer, T*> && (!std::is_reference_v<D>) &&
                  std::is_nothrow_move_constructible_v<D> && std::is_nothrow_destructible_v<D>

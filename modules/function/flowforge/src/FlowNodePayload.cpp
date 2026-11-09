@@ -4,7 +4,7 @@ namespace lux::flowforge
 {
     FlowNodePayload::FlowNodePayload(
         object::CodeLease code,
-        cxx::TypeToken type,
+        cxx::type_info type,
         void* value,
         Destroy destroy,
         Clone clone

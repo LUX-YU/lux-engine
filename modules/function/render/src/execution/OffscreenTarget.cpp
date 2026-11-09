@@ -10,11 +10,8 @@ namespace lux::render::detail
     {
     }
 
-    RenderResult<std::unique_ptr<OffscreenTarget>> OffscreenTarget::create(
-        DeviceSession& session,
-        const TargetDesc& description,
-        std::uint32_t frame_count
-    ) noexcept
+    RenderResult<std::unique_ptr<OffscreenTarget>>
+    OffscreenTarget::create(DeviceSession& session, const TargetDesc& description, std::uint32_t frame_count) noexcept
     {
         if (auto valid = description.validate(); !valid)
         {
@@ -73,6 +70,25 @@ namespace lux::render::detail
             }
             result->views_.push_back(handle);
             result->frames_.push_back({image, handle});
+            if (description.sampled)
+            {
+                auto allocated = session.descriptors().allocate(nri::DescriptorType::TEXTURE);
+                if (!allocated)
+                {
+                    return cxx::unexpected(allocated.error());
+                }
+                result->sampled_slots_.push_back(*allocated);
+                nri::Descriptor* sampled = nullptr;
+                const nri::TextureViewDesc sampled_view{image, nri::TextureView::TEXTURE, format.native};
+                const auto created = session.nriCore().CreateTextureView(sampled_view, sampled);
+                if (created != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(created));
+                }
+                result->views_.push_back(sampled);
+                session.descriptors().write(nri::DescriptorType::TEXTURE, *allocated, sampled);
+                result->frames_.back().sampled_index = allocated->index;
+            }
         }
         return result;
     }
@@ -84,8 +100,16 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [nri_core = &session_.nriCore(), images = std::move(images_), views = std::move(views_)]() mutable noexcept
+            [nri_core = &session_.nriCore(),
+             descriptors = &session_.descriptors(),
+             slots = std::move(sampled_slots_),
+             images = std::move(images_),
+             views = std::move(views_)]() mutable noexcept
             {
+                for (auto slot : slots)
+                {
+                    descriptors->release(nri::DescriptorType::TEXTURE, slot);
+                }
                 for (auto view : views)
                 {
                     nri_core->DestroyDescriptor(view);

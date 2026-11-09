@@ -1,12 +1,13 @@
 #include <algorithm>
 #include <lux/engine/editor/SceneProfile3D.hpp>
-#include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/plugins/SceneRegistrations.hpp>
+#include <lux/engine/render/capabilities/RenderPresets.hpp>
+#include <lux/engine/scene/FixedPartitionStreamingSystem.hpp>
 #include <lux/engine/scene/MeshQuerySystem.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <lux/engine/systems/render/RenderSystem.hpp>
+#include <lux/engine/systems/render/RenderSystemConfiguration.hpp>
 
 namespace lux::editor
 {
@@ -20,7 +21,7 @@ namespace lux::editor
         template <class Configuration>
         cxx::expected<void, scene::ScenePackageFailure> addSystem(
             scene::SceneDescriptionBuilder& builder,
-            const project::SceneRegistrations& registrations,
+            const plugins::SceneRegistrations& registrations,
             const system::SystemTypeDescription& expected,
             system::SystemInstanceId id,
             std::string_view name,
@@ -52,7 +53,7 @@ namespace lux::editor
                 }
                 else
                 {
-                    return found->configuration.type != cxx::typeToken<Configuration>();
+                    return found->configuration.type != cxx::make_basic_type_info<Configuration>();
                 }
             }();
             if (wrong_version || wrong_codec)
@@ -103,46 +104,7 @@ namespace lux::editor
             }
             if (info.selection)
             {
-                const auto& selected = *info.selection;
-                if (!selected.simulation || !selected.systems)
-                {
-                    return cxx::unexpected(missing("Scene selection", "missing system description"));
-                }
-                if (selected.partitioner.id.name != "lux.spatial.builtin.single" || selected.partitioner.version != 1)
-                {
-                    return cxx::unexpected(scene::ScenePackageFailure{
-                        scene::EScenePackageError::INDEX_REBUILD_REQUIRED,
-                        info.id,
-                        0,
-                        {},
-                        "Creating an indexed World requires its actual index builder"
-                    });
-                }
-                for (const auto& name : selected.schemas)
-                {
-                    const auto* schema =
-                        info.registrations.components.find(simulation::ecs::componentSchemaId(name.name));
-                    if (!schema)
-                    {
-                        return cxx::unexpected(missing("Scene schema", name.name));
-                    }
-                    const bool is_not_authored =
-                        schema->semantic_kind == simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
-                        schema->snapshot != simulation::ecs::EComponentSnapshotPolicy::COPY;
-                    if (is_not_authored)
-                    {
-                        return cxx::unexpected(missing("Scene schema is not authored", name.name));
-                    }
-                }
-                // Profiles assemble author data. ProjectScenes validates the actual selected static/dynamic
-                // contracts through SceneRuntime before publishing files; do not keep a second partial check here.
-                return scene::createScenePackage(
-                    info.id,
-                    info.name,
-                    selected.schemas,
-                    selected.simulation,
-                    *selected.systems
-                );
+                return createSelectedScene(info);
             }
             // These are authored schema requirements of this profile, not runtime-derived pools.
             constexpr std::string_view schema_names[]{
@@ -155,14 +117,14 @@ namespace lux::editor
             std::vector<world::WorldDataSchemaId> schemas;
             for (const auto name : schema_names)
             {
-                const auto* schema = info.registrations.components.find(simulation::ecs::componentSchemaId(name));
+                const auto* schema = info.registrations.components.find(ecs::componentSchemaId(name));
                 if (!schema)
                 {
                     return cxx::unexpected(missing("3d profile schema", name));
                 }
                 const bool not_authored =
-                    schema->semantic_kind == simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
-                    schema->snapshot != simulation::ecs::EComponentSnapshotPolicy::COPY;
+                    schema->semantic_kind == ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
+                    schema->snapshot != ecs::EComponentSnapshotPolicy::COPY;
                 if (not_authored)
                 {
                     return cxx::unexpected(missing("3d profile non-author schema", name));
@@ -172,8 +134,25 @@ namespace lux::editor
 
             // The profile chooses default capability demand and implementation. Render owns its effect composition.
             const scene::TransformSystemConfiguration transform{4096, 32768, 1U << 20U};
-            const scene::WorldLoadingConfiguration world_loading{{partition::PartitionOrdinal{0}}};
+            const scene::WorldLoadingConfiguration world_loading{};
             scene::SceneDescriptionBuilder builder;
+            const auto geometry = std::ranges::find(
+                info.registrations.geometries,
+                std::string_view{"lux.geometry.mesh3d"},
+                [](const auto& value) { return std::string_view(value.name); }
+            );
+            if (geometry == info.registrations.geometries.end() || geometry->version != 1)
+            {
+                return cxx::unexpected(missing("3d profile geometry", "lux.geometry.mesh3d"));
+            }
+            if (auto chosen = builder.selectGeometry(
+                    {{geometry->name, geometry->version}, std::string(world::kDefaultWorldDomain)}
+                );
+                !chosen)
+            {
+                return cxx::unexpected(missing("3d profile geometry", geometry->name));
+            }
+
             if (auto result = addSystem(
                     builder,
                     info.registrations,
@@ -198,12 +177,33 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(result.error()));
             }
-            scene::RenderSystemConfiguration rendering;
-            rendering.capability = lux::render::kLitSceneCapability;
-            rendering.implementation = "lux.render.scene.clustered";
-            rendering.configuration = *lux::render::encodeLitSceneConfiguration(lux::render::LitSceneConfiguration{});
-            if (auto result =
-                    addSystem(builder, info.registrations, scene::RenderSystem::Description, {3}, "render", &rendering);
+            const scene::WorldStreamingDemand demand{{partition::PartitionOrdinal{0}}, true};
+            if (auto added = addSystem(
+                    builder,
+                    info.registrations,
+                    scene::FixedPartitionStreamingSystem::Description,
+                    {5},
+                    "streaming",
+                    &demand
+                );
+                !added)
+            {
+                return cxx::unexpected(added.error());
+            }
+            if (auto ordered = builder.addDependency({5}, {2}); !ordered)
+            {
+                return cxx::unexpected(missing("streaming dependency", "world_loading"));
+            }
+            ::lux::engine::render::RenderSystemConfiguration rendering;
+            rendering.composition = lux::render::deferredRenderComposition();
+            if (auto result = addSystem(
+                    builder,
+                    info.registrations,
+                    ::lux::engine::render::RenderSystem::Description,
+                    {3},
+                    "render",
+                    &rendering
+                );
                 !result)
             {
                 return cxx::unexpected(std::move(result.error()));
@@ -244,7 +244,10 @@ namespace lux::editor
                 info.name,
                 schemas,
                 std::make_shared<const simulation::SimulationDescription>(),
-                *description
+                *description,
+                SceneCreateSelection{}.domains,
+                info.registrations.partitions,
+                info.stop
             );
         }
     } // namespace

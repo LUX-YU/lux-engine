@@ -116,7 +116,7 @@ namespace element_checks
             Item content(child, "content");
             assert(content.displayed() && !owner.item->displayed());
             assert(root.requestFocus(content));
-            ui::DrawData draw;
+            ui::DrawView draw;
             assert(root.update({{640, 480}, 0.016F}, draw));
             assert(content.draws == 1 && owner.item->draws == 0);
         }
@@ -223,7 +223,7 @@ namespace element_checks
             text.wrap = true;
             const auto hint = vertical.measure(60);
             assert(hint.preferred.height == 60);
-            ui::DrawData draw;
+            ui::DrawView draw;
             assert(root.update({{640, 480}, 0.016F}, draw));
             assert(text.draws == 1 && text.updates == 1);
             assert(root.update());
@@ -290,7 +290,7 @@ namespace element_checks
                 {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {root.paneHandle(pane)}}},
                  {{0, {{0, 0}, {640, 480}}, false}}}
             ));
-            ui::DrawData draw;
+            ui::DrawView draw;
             const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, draw)); };
             for (unsigned i{}; i != 3; ++i)
             {

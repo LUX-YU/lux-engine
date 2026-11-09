@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/graph/CompiledPrograms.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -33,15 +34,16 @@ namespace lux::render::detail
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
         bool validation,
-        std::uint32_t slots
+        std::uint32_t temporary_capacity
     ) noexcept
     {
         auto result = std::unique_ptr<DeviceSession>(new DeviceSession);
-        auto initialized = DeviceBackend::initialize(*result, options, diagnostic, validation, slots);
+        auto initialized = DeviceBackend::initialize(*result, options, diagnostic, validation, temporary_capacity);
         if (!initialized)
         {
             return cxx::unexpected(initialized.error());
         }
+        result->programs_ = std::make_unique<CompiledPrograms>(*result, options.cached_unused_programs);
         return result;
     }
 
@@ -79,6 +81,7 @@ namespace lux::render::detail
             return;
         }
         // Members that can produce cleanup are emptied while admission is still open.
+        if (programs_) programs_->clear();
         cleanup_scope_.close();
         bool joined = false;
         auto join = stdexec::connect(cleanup_scope_.join(), CloseReceiver{joined});
@@ -87,6 +90,7 @@ namespace lux::render::detail
         {
             requireCleanupComplete(drain());
         } while (!joined);
+        programs_.reset();
         descriptor_table_.clear();
         physical_queues_.clear();
         if (device_)

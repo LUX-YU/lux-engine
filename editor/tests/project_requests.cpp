@@ -7,7 +7,7 @@
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <map>
@@ -20,9 +20,13 @@ using namespace std::chrono_literals;
 
 namespace
 {
+    constexpr auto initialization_failure = error::errorId("lux.test.project_initialization");
+    constexpr auto cleanup_failure = error::errorId("lux.test.project_cleanup");
+
     struct Lifetime final
     {
-        unsigned panes{}, contexts{}, constructions{};
+        unsigned panes{}, contexts{}, constructions{}, initialized{}, recovered{};
+        bool reject_initialization{}, reject_close{}, reject_recovery{};
     };
 
     struct Service final
@@ -33,6 +37,36 @@ namespace
         {
             *alive = false;
             ++value.contexts;
+        }
+
+        exec::task<FrameworkResult<void>> initializeProject() noexcept
+        {
+            ++value.initialized;
+            if (value.reject_initialization)
+            {
+                co_return cxx::unexpected(error::Error{initialization_failure});
+            }
+            co_return FrameworkResult<void>{};
+        }
+
+        exec::task<FrameworkResult<void>> closeAsync() noexcept
+        {
+            if (value.reject_close)
+            {
+                co_return cxx::unexpected(error::Error{cleanup_failure});
+            }
+            co_return FrameworkResult<void>{};
+        }
+
+        exec::task<FrameworkResult<void>> recoverClose() noexcept
+        {
+            ++value.recovered;
+            if (value.reject_recovery)
+            {
+                co_return cxx::unexpected(error::Error{cleanup_failure});
+            }
+            value.reject_close = false;
+            co_return FrameworkResult<void>{};
         }
 
         Lifetime& value;
@@ -77,7 +111,7 @@ namespace
 
     void hold(execution::TaskScope& scope, const std::shared_ptr<Held>& held)
     {
-        auto scheduler = scope.execution().blocking();
+        auto scheduler = scope.execution().blockingIoScheduler();
         assert(scheduler);
         assert(scope.submit(
             {"Held operation", "test"},
@@ -96,14 +130,14 @@ namespace
                                                        );
              },
              consume_result =
-                 [held](execution::TTaskResult<void, error::Error>&& result) noexcept
+                 [held](execution::ExecutionResult<void, error::Error>&& result) noexcept
              {
                  assert(result);
                  ++held->delivered;
              }](lux::execution::TaskReporter reporter) mutable noexcept
             {
                 auto ready = stdexec::continues_on(
-                    lux::execution::taskResult(make_work(reporter)),
+                    lux::execution::asResult(make_work(reporter)),
                     scope.execution().mainScheduler()
                 );
                 return stdexec::then(
@@ -122,6 +156,11 @@ namespace
 
 int main(int argc, char** argv)
 {
+    const error::ErrorDescriptor errors[]{
+        {"lux.test.project_initialization", "Test initialization refusal", error::ERecovery::PERMANENT},
+        {"lux.test.project_cleanup", "Test cleanup refusal", error::ERecovery::RETRYABLE}
+    };
+    assert(error::ErrorRegistry::instance().registerTypes(errors));
     assert(argc == 2);
     const auto directory = std::filesystem::absolute(argv[1]);
     std::filesystem::create_directories(directory);
@@ -135,8 +174,8 @@ int main(int argc, char** argv)
     };
     const auto a = file("A"), b = file("B"), c = file("C"), rejected = file("Rejected");
     EditorConfig config{"Project event qualification", 400, 300};
-    config.layout = {{"probe", "project", "Project"}};
-    LuxEngine* engine{};
+    config.layout = defaultProjectLayout({{"probe", "project", "Project"}});
+    EditorApplication* engine{};
     bool request_from_factory{};
     auto assemble = [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
     {
@@ -156,14 +195,15 @@ int main(int argc, char** argv)
                 if (request_from_factory && context.project().name == "B")
                 {
                     request_from_factory = false;
-                    assert(fixture::open(*engine, c));
+                    auto busy = fixture::open(*engine, c);
+                    assert(!busy && busy.error().type == Errors::ProjectLoadBusy);
                 }
                 return candidate;
             }
         );
     };
     config.project_file = a;
-    auto host = LuxEngine::create(std::move(config), assemble);
+    auto host = fixture::createLoadedEditor(std::move(config), assemble);
     assert(host);
     engine = host->get();
     auto& root = engine->window().uiRoot();
@@ -174,7 +214,7 @@ int main(int argc, char** argv)
         while (!ready())
         {
             assert(std::chrono::steady_clock::now() < deadline);
-            assert(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine));
+            assert(fixture::stepEditor(*engine));
             std::this_thread::sleep_for(1ms);
         }
     };
@@ -184,8 +224,11 @@ int main(int argc, char** argv)
         stdexec::schedule(execution.mainScheduler()),
         [&]() noexcept
         {
-            const auto nested = detail::LuxEngineTestAccess::pumpOnce(*engine);
-            assert(!nested && nested.error().type == Errors::EditorRecursiveHostFrame);
+            const auto nested = fixture::stepEditor(*engine);
+            assert(
+                !nested &&
+                nested.error().type == lux::execution::toError(lux::execution::EExecutionError::INVALID_ARGUMENT).type
+            );
             assert(engine->project().project().name == "A");
             rejected_recursive_step = true;
         }
@@ -220,7 +263,7 @@ int main(int argc, char** argv)
     ui::PaneHandle original_handle;
     auto find = [&](ui::Pane& pane) noexcept
     {
-        if (&pane != &global->get())
+        if (pane.title() == "Project")
         {
             original_handle = root.paneHandle(pane);
         }
@@ -237,51 +280,44 @@ int main(int argc, char** argv)
     until([&] { return lives["Rejected"].contexts == 1; }); // Finite cleanup, independent of the rejection fact.
     assert(root.resolvePane(original_handle) && lives["Rejected"].panes == 1 && lives["Rejected"].contexts == 1);
 
-    // L05: occupy the real blocking scheduler, admit B then C, and let both accepted requests settle.
+    // One finite transaction: a second request is BUSY, cancellation drains accepted work once.
     auto blockers = std::make_unique<execution::TaskScope>(engine->engine().execution());
     auto held = std::make_shared<Held>();
     hold(*blockers, held);
     hold(*blockers, held);
     until([&] { return held->started == 2; });
+    const auto completed_before = facts.completed;
     assert(fixture::open(*engine, b));
-    assert(fixture::open(*engine, c));
+    auto busy = fixture::open(*engine, c);
+    assert(!busy && busy.error().type == Errors::ProjectLoadBusy);
+    fixture::cancel(*engine);
     assert(&engine->project() == original);
     held->release.release(2);
     until(idle);
-    assert(engine->project().project().name == "C" && facts.changed == 1 && facts.failed == 2);
-    assert(lives["B"].constructions == 0 && lives["A"].contexts == 1);
+    assert(engine->project().project().name == "A" && facts.changed == 0 && facts.failed == 2);
+    assert(facts.cancelled == 1 && facts.completed == completed_before + 1);
+    assert(lives["B"].constructions == 0);
     until([&] { return held->delivered == 2; });
     blockers.reset();
 
-    // L06: a later accepted intent supersedes B even when its Worker has queued a completion.
-    const auto changed_before = facts.changed;
-    const auto b_before = lives["B"].constructions;
-    assert(fixture::open(*engine, b));
-    const auto deadline = std::chrono::steady_clock::now() + 20s;
-    while (!engine->engine().execution().hasReadyWork())
-    {
-        assert(std::chrono::steady_clock::now() < deadline);
-        std::this_thread::sleep_for(1ms);
-    }
-    assert(fixture::open(*engine, c));
-    until(idle);
-    assert(facts.changed == changed_before + 1 && facts.failed == 2);
-    assert(lives["B"].constructions == b_before);
-    assert(engine->project().project().name == "C");
+    // Requests sent by a candidate factory obey the same admission boundary.
     request_from_factory = true;
     open(b);
-    assert(!request_from_factory && engine->project().project().name == "C" && facts.failed == 2);
-
-    // L09: replacement retires C while its accepted worker is still blocked; the loaded session remains B.
+    assert(!request_from_factory && engine->project().project().name == "B" && facts.failed == 2);
+    open(c);
     held = std::make_shared<Held>();
     hold(engine->project().tasks(), held);
     until([&] { return held->started == 1; });
     const auto contexts = lives["C"].contexts;
-    open(b);
-    assert(lives["C"].contexts == contexts + 1 && held->delivered == 0 && root.resolvePane(global_handle));
+    const auto previous_stop = engine->project().tasks().stopToken();
+    assert(fixture::open(*engine, b));
+    until([&] { return engine->project().project().name == "B"; });
+    assert(engine->state() == EApplicationState::LOADING_PROJECT);
+    assert(lives["C"].contexts == contexts && held->delivered == 0 && root.resolvePane(global_handle));
+    until([&] { return previous_stop.stop_requested(); });
     held->release.release();
-    until([&] { return held->delivered == 1; });
-    assert(held->stopped);
+    until(idle);
+    assert(held->delivered == 1 && held->stopped && lives["C"].contexts == contexts + 1);
 
     // L10: real CREATE publication survives a later plugin failure.
     const auto create_directory =
@@ -290,8 +326,46 @@ int main(int argc, char** argv)
     ProjectManifest broken{1, id("published"), "Published", {{"Missing.Plugin-1", 1}}};
     assert(fixture::create(*engine, {create_directory, broken}));
     until(idle);
-    assert(facts.failed == 3 && facts.failure.manifest_published && engine->project().project().name == "B");
+    assert(
+        facts.failed == 3 && facts.failure.manifest_publication == EManifestPublication::PUBLISHED &&
+        engine->project().project().name == "B"
+    );
     assert(readProjectManifest(create_directory / "Project.luxproj"));
+
+    // Required initialization errors keep B; a missing startup provider is not silently ignored.
+    const auto failed_initialization = file("InitializeFailure");
+    lives["InitializeFailure"].reject_initialization = true;
+    open(failed_initialization);
+    assert(facts.failure.error.type == initialization_failure && !facts.failure.project_published);
+    assert(engine->ready() && engine->project().project().name == "B");
+    ProjectManifest missing_provider{1, id("missing-startup-provider"), "Missing startup provider"};
+    const asset::AssetId startup{id("startup-scene")};
+    missing_provider.scenes.push_back({startup, "Scene", "Scene.luxscene", "test.scene"});
+    missing_provider.startup_scene = startup;
+    const auto startup_file = directory / "Startup.luxproj";
+    assert(writeProjectManifestAtomic(startup_file, missing_provider, EProjectWrite::REPLACE));
+    open(startup_file);
+    assert(facts.failure.error.type == Errors::EditorStartupSceneFailure && engine->ready());
+
+    // A published switch can fail cleanup. The old service remains until explicit recovery succeeds.
+    const auto close_contexts = lives["B"].contexts;
+    lives["B"].reject_close = true;
+    lives["B"].reject_recovery = true;
+    open(a);
+    assert(engine->state() == EApplicationState::PROJECT_CLEANUP_FAILED);
+    assert(facts.failure.error.type == cleanup_failure && facts.failure.project_published);
+    assert(engine->project().project().name == "A" && lives["B"].contexts == close_contexts);
+    const auto terminals = facts.completed;
+    auto rejected_load = fixture::open(*engine, b);
+    assert(!rejected_load && rejected_load.error().type == Errors::ProjectLoadBusy);
+    RetryProjectCleanupRequest retry;
+    assert(object::sendEvent(*engine, retry) && !retry.rejection.type);
+    until(idle);
+    assert(engine->state() == EApplicationState::PROJECT_CLEANUP_FAILED && lives["B"].recovered == 1);
+    lives["B"].reject_recovery = false;
+    assert(object::sendEvent(*engine, retry) && !retry.rejection.type);
+    until(idle);
+    assert(engine->ready() && facts.completed == terminals && lives["B"].contexts == close_contexts + 1);
 
     // L11: a removed and re-registered Pane belongs to the external mount, not the old ProjectUiMount.
     open(a);
@@ -308,11 +382,13 @@ int main(int argc, char** argv)
     assert(root.resolvePane(global_handle));
     connection->disconnect();
 
-    // L12: the real Root forwards an unfocused shortcut to LuxEngine, not a test dispatcher.
+    // L12: the real Root forwards an unfocused shortcut to EditorApplication, not a test dispatcher.
     open(a);
-    assert(root.clearPanes());
+    // Keep the application's modal pane owned until its close transaction has finished.
+    assert(root.removePane(*root.resolvePane(global_handle)));
+    assert(root.removePane(*root.resolvePane(reused_handle)));
     assert(root.setMenu({{{ui::CommandId{"lux.project.close"}, "Close project", "Ctrl+W", {ui::EKey::W, true}}}, {}}));
-    ui::DrawData draw;
+    ui::DrawView draw;
     for (unsigned i{}; i != 3; ++i)
     {
         assert(root.update({{400, 300}, 0.016F}, draw));
@@ -330,8 +406,8 @@ int main(int argc, char** argv)
     host->reset();
     EditorConfig second_config{"Close on adoption", 400, 300};
     second_config.project_file = a;
-    second_config.layout = {{"probe", "project", "Project"}};
-    host = LuxEngine::create(std::move(second_config), assemble);
+    second_config.layout = defaultProjectLayout({{"probe", "project", "Project"}});
+    host = fixture::createLoadedEditor(std::move(second_config), assemble);
     assert(host);
     engine = host->get();
     auto& second_root = engine->window().uiRoot();
@@ -354,6 +430,6 @@ int main(int argc, char** argv)
     close_on_add->disconnect();
     host->reset();
     assert(notifications != 0);
-    std::puts("PASS real Project Events: latest wins, queued stale candidates, Root rollback, immediate close, "
+    std::puts("PASS real Project Events: BUSY/cancel/one terminal, Context cleanup, Root rollback, immediate close, "
               "publication, generations");
 }

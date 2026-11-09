@@ -1,11 +1,12 @@
 #pragma once
 
+#include <array>
+
 // The UUID system generator includes Windows COM headers. Keep their `interface` macro out of value consumers.
 #pragma push_macro("interface")
 #include <uuid.h>
 #pragma pop_macro("interface")
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>

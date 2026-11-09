@@ -1,13 +1,13 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/scene/MeshQuerySystem.hpp>
-#include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/Visual.hpp>
+#include <lux/engine/ecs/Transform.hpp>
+#include <lux/engine/ecs/Visual.hpp>
 
 int main()
 {
     using namespace lux;
-    using namespace simulation::ecs;
+    using namespace ecs;
     Registry world;
     scene::MeshQuerySystem system(world);
     auto& query = world.ctx().get<scene::MeshQuery>();

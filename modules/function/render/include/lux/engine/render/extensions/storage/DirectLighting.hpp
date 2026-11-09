@@ -21,7 +21,7 @@ namespace lux::render
             kDirectLightingStorageType,
             0,
             0,
-            cxx::typeToken<DirectLightingBinding>(),
+            cxx::make_basic_type_info<DirectLightingBinding>(),
             "Scene direct-light GPU arrays: directional, finite point and spot lights, with independent FIF replicas."
         };
     };

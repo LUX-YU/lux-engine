@@ -3,19 +3,11 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 
 #include <mutex>
+#include <lux/engine/core/execution/detail/TaskGroup.hpp>
 
 namespace lux::execution::detail
 {
-    struct TaskGroupWaiter;
     struct TaskCapacityWaiter;
-
-    struct TaskGroup final
-    {
-        bool accepting{true};
-        std::size_t outstanding{};
-        std::stop_source stop;
-        TaskGroupWaiter* waiters{};
-    };
 
     struct TaskRecord final
     {
@@ -25,6 +17,9 @@ namespace lux::execution::detail
         // Covers sender state destruction. External producers retain their own callback code pin.
         std::shared_ptr<const void> code_lifetime;
         std::shared_ptr<TaskGroup> group;
+        TaskGroupAssociation group_association;
+        TaskRecord* group_next{};
+        TaskRecord** group_previous{};
         // One submission-stack reference and one stdexec allocation reference.
         std::atomic<unsigned> accesses{2};
         bool dirty{};
@@ -34,7 +29,6 @@ namespace lux::execution::detail
     {
         TaskRuntime(ExecutionRuntime&, std::size_t capacity, std::size_t history_capacity);
         ~TaskRuntime();
-        void moveTo(ExecutionRuntime&) noexcept;
         void requireMainThread() const noexcept;
         void changed(TaskRecord&) noexcept; // Caller holds mutex.
         [[nodiscard]] TaskCapacityWaiter* takeCapacityWaiters(const TaskGroup* group = nullptr) noexcept;

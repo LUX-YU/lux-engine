@@ -12,10 +12,6 @@ namespace lux::rdesc
     struct MeshVisualDescription final
     {
         asset::AssetId mesh{};
-        asset::AssetId material{};
-        bool visible{true};
-        bool cast_shadow{true};
-        bool receive_shadow{true};
 
         friend bool operator==(const MeshVisualDescription&, const MeshVisualDescription&) noexcept = default;
     };

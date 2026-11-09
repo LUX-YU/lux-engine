@@ -74,14 +74,31 @@ using LuaScriptResult = lux::cxx::expected<LuaScriptBindingBackend, ELuaScriptBi
 create(std::size_t instance_capacity, std::span<const LuaComponentBinding> components = {}) noexcept;
 ```
 
-如果参数列表仍超过 120 列，再按参数逐行换行，注意换行后的参数仅仅比函数名多一级缩进，最后的括号也需要单独换行：
+上述优先级同时适用于声明和定义：先尝试完整签名一行；超过 120 列才将限定符及返回类型与函数名分行。
+分行后，若“缩进＋函数名＋完整参数列表＋尾部限定符”不超过 120 列，必须保持这一行完整，
+不得仅因为原签名过长或参数较多就逐参数展开。例如：
+
+```cpp
+static FrameworkResult<std::unique_ptr<Impl>>
+create(EditorConfig config, EditorAssembly assembly, detail::ProjectStartupRequest startup) noexcept;
+```
+
+只有分离返回类型后的签名行仍超过 120 列，才按参数逐行换行；参数比函数名多一级缩进，
+最后的括号也需要单独换行：
 
 ```cpp
 create(
     std::size_t instance_capacity,
-    std::span<const LuaComponentBinding> components = {}
+    std::span<const LuaComponentBinding> component_bindings,
+    const LuaScriptCompileOptions& compile_options
 ) noexcept;
 ```
+
+格式化工具必须服从上述优先级。调整 `.clang-format` 前用代表性的声明和定义核对输出，
+不得用工具默认的参数展开方式覆盖本约定，也不为格式化开启全仓无关改动。
+
+**成因**：仅设置列宽和禁止参数打包，会将本可在分离返回类型后保持完整的签名拆成多行，
+函数入口反而难以阅读。
 
 多行聚合初始化的最后一个元素与结束花括号分行：
 
@@ -92,6 +109,25 @@ result = Type{
     {}
 };
 ```
+
+### LuxObject 信号声明
+
+`object::LuxObject` 派生类的信号统一放在类开头的第一个 `public:` 区域，位于构造函数和普通操作之前。
+信号签名所需的类型别名可以紧邻其前；不将信号分散到方法列表中间或末尾。
+移动声明时同时核对 C++ 成员初始化顺序，信号初始化不得依赖尚未构造的后续成员。
+
+```cpp
+class EditorApplication final : public object::LuxObject
+{
+public:
+    object::TSignal<> projectChanged{*this};
+    object::TSignal<ProjectOpenFailure> projectOpenFailed{*this};
+
+    // 构造与操作。
+};
+```
+
+**成因**：信号是类型对外发布的事实合同，夹在访问器与生命周期函数之间会隐藏该类型的事件接口。
 
 ### 缩进与对齐
 所有的代码需要按照所在的层级缩进，缩进为4个空格。
@@ -277,18 +313,18 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 入队即可。这一条同时覆盖「组件被摘掉」与「实体被销毁」（EnTT 销毁实体时逐组件发
 `on_destroy`）。现场见 `ecs/render/src/CameraViewSubsystem.cpp` 的 `onBindingDestroyed`。
 
-### 立即观察者 vs 帧内轮询：按「是不是异步就绪」分
+### Observer 与异步结果的安全交付
 
-- **结构性转换**（资源必须与实体同生共死）→ 立即观察者
-- **异步就绪**（回复要等若干帧才回来）→ 观察者只记意图，**帧内轮询**装上结果
+Observer 只记录意图，或读出并移走即将销毁组件中的资源；不得直接修改 Registry。
+异步业务通过 Engine 保证的 Main 安全续执行采用结果，不要求每个业务类维护完成队列。
+Engine 必须在 TaskGraph 已结束、System/Collector 遍历之外和 EnTT 调用栈之外派发全局完成；
+禁止回调重入消息泵。启动根任务使用 starts_on(mainScheduler)，不能在 Observer 栈内内联运行。
+CPU/IO 阶段只访问操作私有数据，采用前回到 Main。停止期间仍推进已接纳任务的完整交付。
 
-`addView` 的回复带**要装回世界的句柄**——必须帧内轮询装上；`removeView` 也有回执
-（GenericOkReply），但那只是失败可见性，没有要装的状态——路径仍是「观察者读句柄 →
-发出即完，`.then` 里只上报不改世界」。两条路径形状不同的判据是**回执里有没有要装回
-世界的东西**，不是「有没有回执」——不要「统一」它们。
-
-同理：资产异步加载的 `ensure*` 路径**保留队列/轮询**，不要改成观察者。组件可能在资产
-到位之前就构造了，`on_construct` 只触发一次，会错过「资产后来到了」这个转换。
+主线程本身不自动等于安全点；代码绕过唯一驱动顺序不在保证内。Worker 不直接触发 Main-only
+ComponentChanges；需要结构修改时使用现有 EcsCommandBuffer，在图完成后统一应用。
+组件在资产就绪前已经存在时，折入存量并启动等待资产的协程，不能只依赖未来的 on_construct。
+晚到结果必须采用或清理；取消不能丢弃已接受资源请求的真实返回身份。
 
 ---
 

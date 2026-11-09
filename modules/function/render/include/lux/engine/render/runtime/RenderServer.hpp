@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/capabilities/CapabilityDeclaration.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
@@ -26,31 +27,33 @@ namespace lux::platform::ipc
 namespace lux::render
 {
     struct StorageFactory;
-    struct FeatureGraphOps;
-    struct CapabilitySupport;
+    struct CapabilityImplementation;
+    struct CapabilityDescription;
+    class CapabilityRegistry;
     class CommandBinding;
 
     namespace runtime_detail
     {
         struct HandlerRecord;
-    }
+        struct FeatureEntry;
+    } // namespace runtime_detail
 
     struct RenderServerConfig final
     {
-        std::string channel_name;
-        bool validation = false;
+        std::string     channel_name;
+        bool            validation = false;
         // In addition to the frame currently consumed by Render, Game may prepare/queue this many.
         // The Client reserves one of max_frames_ahead + 1 input carriers before preparing a frame.
-        std::uint32_t max_frames_ahead = 1;
-        std::size_t max_config_bytes = 1024 * 1024;
+        std::uint32_t   max_frames_ahead = 1;
+        std::size_t     max_config_bytes = 1024 * 1024;
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
-        std::uint32_t frames_in_flight = 2;
-        std::uint64_t gpu_wait_ns = 1'000'000; // 0..1ms; IPC/CPU/stop are checked between waits.
+        std::uint32_t   frames_in_flight = 2;
+        std::uint64_t   gpu_wait_ns = 1'000'000; // 0..1ms; IPC/CPU/stop are checked between waits.
         RenderErrorSink diagnostics;
         // Borrowed application wake hint, called on RenderThread after real reply publication.
         // It must not reenter RenderServer; its context remains valid until the rendering thread joins.
-        void* response_context = nullptr;
+        void*           response_context = nullptr;
         void (*responses_available)(void*) noexcept = nullptr;
         // One immutable failure notification on RenderThread. Keep consuming replies and close the
         // Clients before stop(); device failure alone does not end the responder's lifetime.
@@ -66,7 +69,7 @@ namespace lux::render
         std::uint64_t presentations = 0; // Successful QueuePresent calls, not measured display scanout.
     };
 
-    // The application owns the rendering thread. Only stop() and stats() may race with run().
+    // The application owns the rendering thread. commandId(), stop() and stats() may race with run().
     // Stop and join that thread before destruction; the borrowed ExecutionRuntime must outlive this Server.
     class LUX_RENDER_PUBLIC RenderServer final
     {
@@ -85,42 +88,80 @@ namespace lux::render
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
 
-        // Cold lookup before run() or at a RenderThread safe point; never allocates a CommandId.
-        template <RenderCommand C> [[nodiscard]] RenderResult<CommandId> commandId() const noexcept
+        // Thread-safe descriptor lookup; synchronizes internally with publication and shutdown clearing.
+        // Returns an ID value, never a borrowed registry entry. The Server must outlive the call.
+        template <RenderCommand C> [[nodiscard]] RenderResult<CommandId> 
+        commandId() const noexcept
         {
             return findCommand(commandDescriptor<C>());
         }
 
-        // Graph-author cold lookup. Ordinary applications use ListCapabilities instead.
-        [[nodiscard]] RenderResult<FeatureId> featureId(std::string_view implementation) const noexcept;
+        [[nodiscard]] RenderResult<CommandId> 
+        commandId(const CommandDescriptor& descriptor) const noexcept
+        {
+            return findCommand(descriptor);
+        }
 
-        // Extension authors include extensions/FeatureRegistration.hpp for these template definitions.
+        // Graph-author cold lookup. Ordinary applications use ListCapabilities instead.
+        [[nodiscard]] RenderResult<FeatureId> 
+        featureId(std::string_view implementation) const noexcept;
+
+        // Extension authors include extensions/Registration.hpp for these template definitions.
         // Metadata and callback code must outlive the Server and all accepted work. Register before
         // run() or at a frame-boundary RenderThread safe point. Validation failure changes no directory.
-        template <class Feature> [[nodiscard]] RenderResult<FeatureId> registerFeature() noexcept;
+        template <class Feature> [[nodiscard]] RenderResult<FeatureId> 
+        registerFeature() noexcept;
 
-        // Only installs the Storage factory/default. Commands are declared by the enclosing Feature.
-        template <class Storage>
-            requires(!std::is_void_v<typename Storage::Descriptor::Config>)
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(
-            const typename Storage::Descriptor::Config& config = {}
-        ) noexcept;
+        template <class Implementation> [[nodiscard]] RenderResult<CapabilityImplementationId> 
+        registerCapabilityImplementation() noexcept;
 
-        template <class Storage>
-            requires std::is_void_v<typename Storage::Descriptor::Config>
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorage() noexcept;
+        // Catalog changes are permitted before run(), or after run() has returned and joined all work.
+        // Active execution is rejected rather than implicitly detaching another caller's resources.
+        template <CapabilityConcept C> [[nodiscard]] RenderResult<CapabilityId> registerCapability() noexcept
+        {
+            return registerCapability(describeCapability<C>());
+        }
+
+        [[nodiscard]] RenderResult<CapabilityId> 
+        registerCapability(const CapabilityDescription&) noexcept;
+        
+        [[nodiscard]] const CapabilityRegistry& 
+        capabilities() const noexcept;
+
+        [[nodiscard]] RenderResult<CapabilityImplementationId>
+        addCapabilityImplementation(CapabilityId capability, const CapabilityImplementation& declaration) noexcept;
+        
+        [[nodiscard]] RenderResult<CapabilityImplementationId> 
+        replaceCapabilityImplementation(CapabilityImplementationId previous, const CapabilityImplementation& declaration) noexcept;
+        
+        [[nodiscard]] RenderResult<void> 
+        removeCapabilityImplementation(CapabilityImplementationId id) noexcept;
+        
+        [[nodiscard]] RenderResult<void> 
+        removeCapability(CapabilityId id) noexcept;
+
+        // Installs only the Storage factory/default. Capability implementations declare command methods.
+        template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>) 
+        [[nodiscard]] RenderResult<StorageTypeId>
+        registerStorage(const typename Storage::Descriptor::Config& config = {}) noexcept;
+
+        template <class Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
+        [[nodiscard]] RenderResult<StorageTypeId> 
+        registerStorage() noexcept;
 
         // Registers a Handler factory and its typed methods, without constructing the Handler.
         // Repeating a compatible (type, key) reuses the identity and preserves selected bindings.
-        template <class Handler>
-        [[nodiscard]] RenderResult<HandlerId> registerHandler(std::string_view key = {}) noexcept;
+        template <class Handler, class Bindings> [[nodiscard]] RenderResult<HandlerId> 
+        registerHandler(std::string_view key = {}) noexcept;
 
         // Runs once, blocking the calling thread. Drains accepted work and replies before returning.
-        [[nodiscard]] RenderResult<void> run() noexcept;
+        [[nodiscard]] RenderResult<void> 
+        run() noexcept;
 
         // Cold, before run(). Only this physical IPC Link may submit frames. Other Clients may
         // query and prepare unreferenced assets, but cannot mutate visible state outside a frame.
-        [[nodiscard]] RenderResult<void> setFrameSource(platform::ipc::RequesterId requester) noexcept;
+        [[nodiscard]] RenderResult<void> 
+        setFrameSource(platform::ipc::RequesterId requester) noexcept;
 
         // Thread-safe stop request. It does not join the rendering thread or cancel accepted GPU work.
         void stop() noexcept;
@@ -129,18 +170,15 @@ namespace lux::render
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
     private:
-        [[nodiscard]] RenderResult<FeatureId>
-        registerFeature(
-            std::string_view name,
-            cxx::TypeToken configuration_type,
-            const FeatureGraphOps& graph,
-            const CapabilitySupport* capabilities,
-            std::span<const StorageFactory> storages,
-            std::span<runtime_detail::HandlerRecord> handlers,
-            std::span<const CommandBinding> commands
-        ) noexcept;
+        [[nodiscard]] RenderResult<FeatureId> 
+        registerFeature(runtime_detail::FeatureEntry) noexcept;
+        
+        [[nodiscard]] RenderResult<CapabilityImplementationId>
+        registerCapabilityImplementation(CapabilityDescription, CapabilityImplementation, std::span<runtime_detail::FeatureEntry>, std::span<const StorageFactory>, std::span<runtime_detail::HandlerRecord>, std::span<const CommandBinding>) noexcept;
 
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(StorageFactory, ConfigValue) noexcept;
+        [[nodiscard]] RenderResult<StorageTypeId> 
+        registerStorage(StorageFactory, ConfigValue) noexcept;
+        
         [[nodiscard]] RenderResult<HandlerId>
         registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 

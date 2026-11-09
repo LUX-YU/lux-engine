@@ -90,16 +90,16 @@ namespace lux::material
             };
 
             rdesc::MaterialDescription description;
-            auto& programs = description.programs;
-            programs.parameter_defaults.resize(graph.param_slots.size());
-            for (std::uint32_t parameter = 0; parameter < programs.parameter_defaults.size(); ++parameter)
+            auto& material = description.programs;
+            material.parameter_defaults.resize(graph.param_slots.size());
+            for (std::uint32_t parameter = 0; parameter < material.parameter_defaults.size(); ++parameter)
             {
-                std::copy_n(graph.param_slots[parameter].dflt, 4, programs.parameter_defaults[parameter].begin());
+                std::copy_n(graph.param_slots[parameter].dflt, 4, material.parameter_defaults[parameter].begin());
             }
-            programs.texture_count = static_cast<std::uint32_t>(graph.texture_slots.size());
-            programs.shading_model = lowered->shading_model;
-            programs.alpha_mode = graph.render_state.alpha_mode;
-            programs.double_sided = graph.render_state.double_sided;
+            material.texture_count = static_cast<std::uint32_t>(graph.texture_slots.size());
+            material.shading_model = lowered->shading_model;
+            material.alpha_mode = graph.render_state.alpha_mode;
+            material.double_sided = graph.render_state.double_sided;
             for (auto purpose : purposes)
             {
                 auto compiled = compile_pass(purpose);
@@ -119,14 +119,25 @@ namespace lux::material
                         {
                             continue;
                         }
-                        if (programs.parameters.size && programs.parameters != binding.block)
+                        const bool invalid_binding = binding.type != rdesc::EDescriptorType::STORAGE_BUFFER ||
+                            binding.count != 0 || binding.writable || !binding.readable;
+                        if (invalid_binding)
+                        {
+                            return lux::cxx::unexpected(
+                                failure(
+                                    EMaterialCompileError::INVALID_RESULT,
+                                    "material parameters require a readonly buffer array"
+                                )
+                            );
+                        }
+                        if (material.parameters.size && material.parameters != binding.block)
                         {
                             return lux::cxx::unexpected(failure(
                                 EMaterialCompileError::INVALID_RESULT,
                                 "material uses disagree on the compiled record layout"
                             ));
                         }
-                        programs.parameters = binding.block;
+                        material.parameters = binding.block;
                     }
                 }
                 const std::string_view semantic =
@@ -136,17 +147,17 @@ namespace lux::material
                 rdesc::SpirvArtifact shader;
                 shader.stages.push_back({rdesc::EShaderType::FRAGMENT, "main", std::move(compiled->spirv)});
                 shader.interface = std::move(compiled->info);
-                programs.programs.push_back({purpose, std::string(semantic), std::move(shader)});
+                material.programs.push_back({purpose, std::string(semantic), std::move(shader)});
             }
             // A coverage-only or constant use can have no runtime material record at all.
             // Do not publish author-only slots without a compiled layout for Storage to consume.
-            if (!programs.parameters.size)
+            if (!material.parameters.size)
             {
-                programs.parameter_defaults.clear();
-                programs.texture_count = 0;
+                material.parameter_defaults.clear();
+                material.texture_count = 0;
             }
-            description.texture_slot_ids.resize(programs.texture_count);
-            for (std::uint32_t slot = 0; slot < programs.texture_count; ++slot)
+            description.texture_slot_ids.resize(material.texture_count);
+            for (std::uint32_t slot = 0; slot < material.texture_count; ++slot)
             {
                 description.texture_slot_ids[slot] = graph.texture_slots[slot].texture;
             }

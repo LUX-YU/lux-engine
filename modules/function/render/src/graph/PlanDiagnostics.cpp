@@ -1,6 +1,7 @@
 #include <lux/engine/render/graph/DumpText.hpp>
-#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
+#include <set>
 
 namespace lux::render::detail
 {
@@ -118,6 +119,33 @@ namespace lux::render::detail
             output += "}\n";
             return sink.write(sink.destination, output);
         }
+        std::set<nri::Pipeline*> pipelines;
+        std::set<nri::PipelineLayout*> layouts;
+        std::size_t image_barriers = program.after.images.size();
+        std::size_t buffer_barriers = program.after.buffers.size();
+        std::size_t dynamic_raster_passes = 0;
+        for (const auto& pass : program.passes)
+        {
+            image_barriers += pass.before.images.size();
+            buffer_barriers += pass.before.buffers.size();
+            if (const auto* raster = std::get_if<RasterCommands>(&pass.work))
+            {
+                dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw) ||
+                                         std::holds_alternative<IndexedListCommands>(raster->draw);
+            }
+            if (const auto* raster = std::get_if<RasterCommands>(&pass.work); raster && raster->pipeline)
+            {
+                pipelines.insert(raster->pipeline);
+            }
+            if (const auto* compute = std::get_if<ComputeCommands>(&pass.work); compute && compute->pipeline)
+            {
+                pipelines.insert(compute->pipeline);
+            }
+            if (auto* layout = plan.descriptor_plan_->passes[pass.source_pass].layout)
+            {
+                layouts.insert(layout);
+            }
+        }
         output =
             "{\"queue\":\"compiled physical roles\",\"submission_policy\":\"merge compatible ready intervals; actual "
             "batches in dumpSubmissions\",\"allocation_mode\":" +
@@ -125,8 +153,10 @@ namespace lux::render::detail
             ",\"history_count\":" + std::to_string(plan.histories_.size()) +
             ","
             "\"counts\":\"compiled, not measured\",\"pipelines\":" +
-            std::to_string(plan.pipelines_.size()) + ",\"layouts\":" + std::to_string(plan.layouts_.size()) +
-            ",\"passes\":[";
+            std::to_string(pipelines.size()) + ",\"layouts\":" + std::to_string(layouts.size()) +
+            ",\"dynamic_raster_passes\":" + std::to_string(dynamic_raster_passes) +
+            ",\"image_barrier_descriptions\":" + std::to_string(image_barriers) +
+            ",\"buffer_barrier_descriptions\":" + std::to_string(buffer_barriers) + ",\"passes\":[";
         for (std::size_t p = 0; p < program.passes.size(); ++p)
         {
             if (p)
@@ -225,7 +255,10 @@ namespace lux::render::detail
             const auto& batch = plan.submissions_[i];
             output += "{\"queue_role\":" + std::to_string(static_cast<unsigned>(batch.queue)) +
                       ",\"first_pass\":" + std::to_string(batch.first_pass) +
-                      ",\"pass_count\":" + std::to_string(batch.pass_count) + ",\"dependencies\":[";
+                      ",\"pass_count\":" + std::to_string(batch.pass_count) +
+                      ",\"output_begin\":" + std::to_string(batch.output_begin) +
+                      ",\"reusable_recording\":" + (batch.reusable_recording ? "true" : "false") +
+                      ",\"dependencies\":[";
             for (std::size_t d = 0; d < batch.dependencies.size(); ++d)
             {
                 if (d)

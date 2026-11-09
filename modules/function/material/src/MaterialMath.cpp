@@ -157,7 +157,7 @@ namespace lux::material
         MaterialNodeRegistration result;
         std::string name{MaterialMath::TypeName};
         result.identity = {graph::nodeTypeId(name), std::move(name), 1};
-        result.payload_type = cxx::typeToken<MaterialMath>();
+        result.payload_type = cxx::make_basic_type_info<MaterialMath>();
         detail::installBuiltinCodec<MaterialMath, &cloneMath>(result);
         result.create = [](const object::CodeLease& code) noexcept
         { return MaterialNodePayload::make<MaterialMath, &cloneMath>(code); };

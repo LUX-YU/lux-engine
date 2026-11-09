@@ -10,6 +10,13 @@
 
 namespace lux::execution
 {
+    namespace
+    {
+        // Defined in this library, never in a header or separately in each consumer DLL.
+        std::atomic<ExecutionRuntime*> process_execution{};
+        std::mutex initialization_mutex;
+    }
+
     namespace detail
     {
         bool admitExecution(ExecutionState& state) noexcept
@@ -79,10 +86,13 @@ namespace lux::execution
             {
                 wake_signal.release();
             }
-            if (const auto callback = wake_callback.load(std::memory_order_acquire))
+            // Ordered with setWake: either replacement sees this caller, or this caller sees nullptr.
+            wake_callbacks.fetch_add(1, std::memory_order_seq_cst);
+            if (const auto callback = wake_callback.load(std::memory_order_seq_cst))
             {
                 callback();
             }
+            wake_callbacks.fetch_sub(1, std::memory_order_seq_cst);
         }
 
         namespace
@@ -192,6 +202,11 @@ namespace lux::execution
 
     ExecutionRuntime::CreateResult ExecutionRuntime::create(ExecutionRuntimeConfig config) noexcept
     {
+        std::scoped_lock initialization_lock{initialization_mutex};
+        if (process_execution.load(std::memory_order_acquire))
+        {
+            return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
+        }
         const bool is_invalid_blocking =
             config.blocking && (config.blocking->concurrency == 0U || config.blocking->queue_capacity == 0U);
         const bool is_invalid_config = config.cpu_concurrency == 0U || config.cpu_concurrency > UINT32_MAX ||
@@ -228,12 +243,16 @@ namespace lux::execution
                     state->blocking_workers.emplace_back([raw = state.get()] { detail::blockingWorker(*raw); });
                 }
             }
-            return ExecutionRuntime{
-                std::move(state),
-                std::move(*timer),
-                config.task_capacity,
-                config.task_history_capacity
+            auto execution = std::unique_ptr<ExecutionRuntime>{
+                new ExecutionRuntime{
+                    state,
+                    std::move(*timer),
+                    config.task_capacity,
+                    config.task_history_capacity
+                }
             };
+            process_execution.store(execution.get(), std::memory_order_release);
+            return execution;
         }
         catch (const std::system_error&)
         {
@@ -245,15 +264,12 @@ namespace lux::execution
 
     ExecutionRuntime::~ExecutionRuntime() noexcept
     {
-        if (!state_)
-        {
-            return;
-        }
         if (state_->main_thread != std::this_thread::get_id())
         {
             std::terminate();
         }
         finishShutdown();
+        process_execution.store(nullptr, std::memory_order_release);
     }
 
     void ExecutionRuntime::finishShutdown() noexcept
@@ -266,7 +282,7 @@ namespace lux::execution
         while (true)
         {
             const auto epoch = wakeEpoch();
-            if (!dispatchMainCompletions())
+            if (!dispatch())
             {
                 std::terminate();
             }
@@ -279,49 +295,39 @@ namespace lux::execution
             {
                 std::terminate();
             }
-            waitForWork(epoch);
-        }
-    }
-
-    ExecutionRuntime::ExecutionRuntime(ExecutionRuntime&& other) noexcept
-        : state_(std::move(other.state_)), timer_(std::move(other.timer_)), tasks_(std::move(other.tasks_))
-    {
-        if (tasks_)
-        {
-            tasks_->moveTo(*this);
-        }
-    }
-
-    ExecutionRuntime& ExecutionRuntime::operator=(ExecutionRuntime&& other) noexcept
-    {
-        if (this == &other)
-        {
-            return *this;
-        }
-        if (state_)
-        {
-            if (state_->main_thread != std::this_thread::get_id())
+            if (!hasReadyWork())
             {
-                std::terminate();
+                waitForWork(epoch);
             }
-            finishShutdown();
         }
-        state_ = std::move(other.state_);
-        timer_ = std::move(other.timer_);
-        tasks_ = std::move(other.tasks_);
-        if (tasks_)
+    }
+
+    ExecutionRuntime& ExecutionRuntime::instance() noexcept
+    {
+        auto* execution = process_execution.load(std::memory_order_acquire);
+        if (!execution)
         {
-            tasks_->moveTo(*this);
+            std::terminate();
         }
-        return *this;
+        return *execution;
+    }
+
+    bool ExecutionRuntime::isMainThread() const noexcept
+    {
+        return state_->main_thread == std::this_thread::get_id();
+    }
+
+    bool ExecutionRuntime::isStopping() const noexcept
+    {
+        return (state_->execution_admission.load(std::memory_order_acquire) & 1U) != 0;
     }
 
     std::size_t ExecutionRuntime::cpuConcurrency() const noexcept
     {
-        return state_ && state_->cpu_pool ? state_->cpu_pool->available_parallelism() : 0;
+        return state_->cpu_pool ? state_->cpu_pool->available_parallelism() : 0;
     }
 
-    CpuScheduler ExecutionRuntime::cpu() const noexcept
+    CpuScheduler ExecutionRuntime::cpuScheduler() const noexcept
     {
         return state_->cpu_pool->get_scheduler();
     }
@@ -337,33 +343,21 @@ namespace lux::execution
                state_->main_loop.empty() && state_->main_loop.activePublishers() == 0;
     }
 
-    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::dispatchMainCompletions() noexcept
+    lux::cxx::expected<void, EExecutionError> ExecutionRuntime::dispatch() noexcept
     {
-        if (!tasks_ || state_->main_thread != std::this_thread::get_id())
+        if (!isMainThread())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
-        if (state_->dispatching_main)
+        if (state_->dispatching_main || tasks_->dispatching)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
         state_->dispatching_main = true;
-        const auto count = state_->main_loop.executeReady(state_->main_loop.size());
+        state_->main_loop.executeReady(state_->main_loop.size());
         state_->dispatching_main = false;
-        return count;
-    }
-
-    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::dispatchTaskEvents() noexcept
-    {
-        if (!tasks_ || state_->main_thread != std::this_thread::get_id())
-        {
-            return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
-        }
-        if (tasks_->dispatching || state_->dispatching_main)
-        {
-            return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
-        }
-        return tasks_->dispatch();
+        static_cast<void>(tasks_->dispatch());
+        return {};
     }
 
     std::optional<TaskInfo> ExecutionRuntime::taskInfo(TaskId id) const noexcept
@@ -400,9 +394,9 @@ namespace lux::execution
         return timer_.client();
     }
 
-    lux::cxx::expected<BlockingScheduler, EExecutionError> ExecutionRuntime::blocking() const noexcept
+    lux::cxx::expected<BlockingScheduler, EExecutionError> ExecutionRuntime::blockingIoScheduler() const noexcept
     {
-        if (!state_ || !state_->blocking_enabled)
+        if (!state_->blocking_enabled)
         {
             return lux::cxx::unexpected(EExecutionError::CAPABILITY_UNAVAILABLE);
         }
@@ -430,12 +424,17 @@ namespace lux::execution
         {
             std::terminate();
         }
-        state_->wake_callback.store(wake, std::memory_order_release);
+        state_->wake_callback.store(nullptr, std::memory_order_seq_cst);
+        while (state_->wake_callbacks.load(std::memory_order_seq_cst) != 0)
+        {
+            std::this_thread::yield();
+        }
+        state_->wake_callback.store(wake, std::memory_order_seq_cst);
     }
 
     void ExecutionRuntime::waitForWork(std::uint64_t observed, std::chrono::steady_clock::time_point deadline) noexcept
     {
-        if (state_->main_thread != std::this_thread::get_id() || state_->dispatching_main)
+        if (!isMainThread() || state_->dispatching_main || tasks_->dispatching)
         {
             std::terminate();
         }
@@ -461,23 +460,21 @@ namespace lux::execution
 
     lux::cxx::expected<void, EExecutionError> ExecutionRuntime::validateWait() const noexcept
     {
-        if (!state_ || state_->main_thread != std::this_thread::get_id())
+        if (!isMainThread())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
-        if (state_->dispatching_main)
+        if (state_->dispatching_main || tasks_->dispatching)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
         return {};
     }
 
-    lux::cxx::expected<void, EExecutionError> ExecutionRuntime::waitUntil(
-        void* context,
-        bool (*ready)(void*) noexcept
-    ) noexcept
+    lux::cxx::expected<void, EExecutionError>
+    ExecutionRuntime::waitUntil(void* context, bool (*ready)(void*) noexcept) noexcept
     {
-        if (!state_ || state_->main_thread != std::this_thread::get_id())
+        if (!isMainThread())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
@@ -485,14 +482,14 @@ namespace lux::execution
         {
             return {};
         }
-        if (state_->dispatching_main)
+        if (state_->dispatching_main || tasks_->dispatching)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
         while (!ready(context))
         {
             const auto epoch = wakeEpoch();
-            const auto dispatched = dispatchMainCompletions();
+            const auto dispatched = dispatch();
             if (!dispatched)
             {
                 return lux::cxx::unexpected(dispatched.error());
@@ -507,10 +504,6 @@ namespace lux::execution
 
     void ExecutionRuntime::requestStop() noexcept
     {
-        if (!state_)
-        {
-            return;
-        }
         state_->stop_requested = true;
         state_->execution_admission.fetch_or(1U, std::memory_order_acq_rel);
         tasks_->stop();
@@ -519,10 +512,6 @@ namespace lux::execution
 
     lux::cxx::expected<void, EExecutionError> ExecutionRuntime::join() noexcept
     {
-        if (!state_)
-        {
-            return lux::cxx::unexpected(EExecutionError::ALREADY_JOINED);
-        }
         if (state_->main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
@@ -549,6 +538,15 @@ namespace lux::execution
         timer_.requestStop();
         detail::stopState(state_);
         detail::joinWorkers(*state_);
+        // Worker completion tails may have released an affine owner after their Sender completed.
+        // Workers are now gone; drain their final cleanups before destroying the application scheduler.
+        while (!state_->main_loop.empty() || state_->main_loop.activePublishers() != 0)
+        {
+            if (!dispatch())
+            {
+                std::terminate();
+            }
+        }
         state_->phase.store(detail::EExecutionState::JOINED, std::memory_order_release);
         return {};
     }

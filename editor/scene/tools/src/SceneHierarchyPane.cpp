@@ -3,9 +3,9 @@
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneHierarchyPane.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/scene/Camera.hpp>
-#include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/Visual.hpp>
+#include <lux/engine/scene/ViewComponent.hpp>
+#include <lux/engine/ecs/Transform.hpp>
+#include <lux/engine/ecs/Visual.hpp>
 #include <lux/engine/ui/Element.hpp>
 
 #include <array>
@@ -37,6 +37,8 @@ namespace lux::editor
         bool erase{}, create{}, reparent{}, read_only{};
         std::optional<SceneEdit> pending;
         int create_kind{};
+        std::vector<std::string> domains;
+        std::string primary_domain;
         std::string status;
 
         Impl(ProjectScenes& scenes, execution::ExecutionRuntime& execution) noexcept
@@ -46,6 +48,15 @@ namespace lux::editor
 
         void refresh(SceneDocument& source) noexcept
         {
+            if (document != source.id())
+            {
+                primary_domain.clear();
+            }
+            domains.clear();
+            for (const auto& domain : source.baseline().world->data().domains())
+            {
+                domains.push_back(domain.key);
+            }
             document = source.id();
             revision = source.revision();
             hierarchy_revision = source.hierarchyRevision();
@@ -96,6 +107,24 @@ namespace lux::editor
             ImGui::TextWrapped("%s", status.c_str());
             ImGui::BeginDisabled(read_only || pending.has_value());
             ImGui::Combo("Create", &create_kind, "Empty object\0Camera\0Point light\0");
+            if (ImGui::BeginCombo(
+                    "Primary domain",
+                    primary_domain.empty() ? "Infer if unambiguous" : primary_domain.c_str()
+                ))
+            {
+                if (ImGui::Selectable("Infer if unambiguous", primary_domain.empty()))
+                {
+                    primary_domain.clear();
+                }
+                for (const auto& domain : domains)
+                {
+                    if (ImGui::Selectable(domain.c_str(), domain == primary_domain))
+                    {
+                        primary_domain = domain;
+                    }
+                }
+                ImGui::EndCombo();
+            }
             if (ImGui::Button("Create object"))
             {
                 create = true;
@@ -136,22 +165,19 @@ namespace lux::editor
 
         SceneEditResult<SceneEdit> prepareObject(SceneDocument& source) noexcept
         {
-            // The current creation UI offers single-partition authoring. Indexed worlds need a real placement query.
-            if (source.baseline().world->data().partitioner().id.name != "lux.spatial.builtin.single")
-            {
-                return cxx::unexpected(VSceneEditFailure{ESceneEditError::NOT_RESIDENT});
-            }
             std::mt19937 random{std::random_device{}()};
             uuids::uuid_random_generator generate{random};
-            SceneObjectData object{{generate()}, {0}};
+            scene::SceneObjectData object{{generate()}};
+            object.primary_domain = primary_domain;
             const auto append = [&](const auto& value) -> SceneEditResult<void>
             {
-                const auto* schema = source.schemas().find(cxx::typeToken<std::remove_cvref_t<decltype(value)>>());
+                using Value = std::remove_cvref_t<decltype(value)>;
+                const auto* schema = source.schemas().find(cxx::make_basic_type_info<Value>());
                 if (!schema || !schema->capture_value)
                 {
                     return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
                 }
-                simulation::ecs::WorldEntityMap references;
+                ecs::WorldEntityMap references;
                 auto captured = schema->capture_value(&value, schema->code_lifetime);
                 auto encoded = captured.encode(references, 4096);
                 if (!encoded)
@@ -161,14 +187,14 @@ namespace lux::editor
                 object.components.push_back({schema->id, schema->version, std::move(*encoded)});
                 return {};
             };
-            auto result = append(simulation::ecs::Transform3D{});
+            auto result = append(ecs::Transform3D{});
             if (result && create_kind == 1)
             {
-                result = append(scene::Camera{});
+                result = append(scene::ViewComponent{});
             }
             if (result && create_kind == 2)
             {
-                result = append(simulation::ecs::Light3D{});
+                result = append(ecs::Light3D{});
             }
             if (!result)
             {
@@ -213,7 +239,7 @@ namespace lux::editor
         impl_->waiting_for_edit = true;
         const auto target = objectId();
         auto work =
-            execution::taskResult(stdexec::starts_on(impl_->execution.mainScheduler(), document.whenEditable()));
+            execution::asResult(stdexec::starts_on(impl_->execution.mainScheduler(), document.whenEditable()));
         auto accepted = impl_->execution.spawn(stdexec::then(
             std::move(work),
             [target](auto&& result) noexcept

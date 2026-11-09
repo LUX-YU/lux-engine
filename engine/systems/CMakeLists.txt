@@ -1,0 +1,22 @@
+add_subdirectory(script/backends)
+add_subdirectory(script/execution)
+add_subdirectory(script/description)
+add_subdirectory(script/assets)
+add_subdirectory(script/skeleton)
+if(TARGET simulation_script_lua)
+    add_subdirectory(script/assets_lua)
+endif()
+add_subdirectory(script/runtime)
+
+if(LUX_BUILD_PHYSICS2D)
+    add_subdirectory(physics2d)
+endif()
+
+add_subdirectory(transform)
+add_subdirectory(mesh_query)
+add_subdirectory(world_streaming/system)
+if(LUX_ENGINE_WITH_RENDER AND TARGET lux::engine::function::render)
+    add_subdirectory(render)
+endif()
+
+add_subdirectory(plugins)

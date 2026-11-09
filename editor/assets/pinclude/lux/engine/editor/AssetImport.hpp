@@ -3,7 +3,6 @@
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
-#include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
 namespace lux::editor::detail
@@ -18,8 +17,8 @@ namespace lux::editor::detail
     {
         AssetCatalog catalog;
         std::vector<asset::MountDesc> mounts;
-        std::vector<std::shared_ptr<const asset::ModelAsset>> models;
-        bool complete_catalog{}; // Open/reload replaces all mounts; import replaces only the returned models.
+        std::vector<asset::AssetId> roots;
+        bool complete_catalog{}; // Open/reload replaces all mounts; import replaces only the returned roots.
     };
 
     // Finite pipelines own their arguments. They never borrow EditorContext or ProjectAssets.
@@ -28,11 +27,12 @@ namespace lux::editor::detail
         std::filesystem::path root,
         execution::TaskReporter
     ) noexcept;
-    [[nodiscard]] exec::task<AssetImportResult<ImportedAssets>> importModel(
+    [[nodiscard]] exec::task<AssetImportResult<ImportedAssets>> importAsset(
         execution::ExecutionRuntime&,
         std::filesystem::path root,
         AssetCatalog expected,
         ProjectAsset candidate,
+        AssetImportCook cook,
         execution::TaskReporter
     ) noexcept;
 } // namespace lux::editor::detail

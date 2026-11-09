@@ -1,57 +1,40 @@
 #include <lux/engine/task/TaskExecutor.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <exception>
 #include <new>
 
 namespace lux::task
 {
     struct TaskExecutor::Impl final
     {
-        Impl(execution::CpuScheduler value, std::size_t capacity) noexcept : cpu(value), minimum_task_capacity(capacity)
+        explicit Impl(execution::CpuScheduler scheduler) noexcept : cpu_scheduler(scheduler)
         {
         }
 
         ~Impl() noexcept
         {
+            // Destruction while a connected graph still borrows the workspace is a contract violation.
             if (executing.load(std::memory_order_acquire))
             {
                 std::terminate();
             }
-            ::operator delete(workspace, std::align_val_t(alignment));
+            ::operator delete(workspace, std::align_val_t(workspace_alignment));
         }
 
-        execution::CpuScheduler cpu;
-        std::atomic_bool executing{};
-        void* workspace{};
-        std::size_t minimum_task_capacity{};
-        std::size_t bytes{};
-        std::size_t alignment{alignof(std::max_align_t)};
+        execution::CpuScheduler cpu_scheduler;
+        std::atomic_bool        executing{};
+        void*                   workspace{};
+        std::size_t             workspace_bytes{};
+        std::size_t             workspace_alignment{alignof(std::max_align_t)};
     };
 
-    TaskExecutor::TaskExecutor(execution::CpuScheduler cpu, std::size_t initial_task_capacity) noexcept
-        : impl_(std::make_unique<Impl>(cpu, initial_task_capacity))
+    TaskExecutor::TaskExecutor(execution::CpuScheduler scheduler) noexcept : impl_(std::make_unique<Impl>(scheduler))
     {
     }
 
     TaskExecutor::~TaskExecutor() noexcept = default;
-    TaskExecutor::TaskExecutor(TaskExecutor&&) noexcept = default;
-    TaskExecutor& TaskExecutor::operator=(TaskExecutor&&) noexcept = default;
-
-    std::size_t TaskExecutor::minimumTaskCapacity() const noexcept
-    {
-        return impl_->minimum_task_capacity;
-    }
-
-    TaskExecutor::Result TaskExecutor::setMinimumTaskCapacity(std::size_t minimum_task_capacity) noexcept
-    {
-        if (!acquire())
-        {
-            return lux::cxx::unexpected(TaskExecutorFailure{});
-        }
-        impl_->minimum_task_capacity = std::max(minimum_task_capacity, impl_->minimum_task_capacity);
-        release();
-        return {};
-    }
 
     bool TaskExecutor::acquire() noexcept
     {
@@ -63,22 +46,23 @@ namespace lux::task
         impl_->executing.store(false, std::memory_order_release);
     }
 
-    execution::CpuScheduler TaskExecutor::cpu() const noexcept
+    execution::CpuScheduler TaskExecutor::cpuScheduler() const noexcept
     {
-        return impl_->cpu;
+        return impl_->cpu_scheduler;
     }
 
     void* TaskExecutor::workspace(std::size_t count, std::size_t stride, std::size_t alignment) noexcept
     {
-        impl_->minimum_task_capacity = std::max(impl_->minimum_task_capacity, count);
-        const auto bytes = impl_->minimum_task_capacity * stride;
-        if (bytes > impl_->bytes || alignment > impl_->alignment)
+        const auto bytes = count * stride;
+        if (bytes > impl_->workspace_bytes || alignment > impl_->workspace_alignment)
         {
-            auto* value = ::operator new(bytes, std::align_val_t(alignment));
-            ::operator delete(impl_->workspace, std::align_val_t(impl_->alignment));
-            impl_->workspace = value;
-            impl_->bytes = bytes;
-            impl_->alignment = alignment;
+            const auto allocation_bytes = std::max(bytes, impl_->workspace_bytes);
+            const auto allocation_alignment = std::max(alignment, impl_->workspace_alignment);
+            auto* memory = ::operator new(allocation_bytes, std::align_val_t(allocation_alignment));
+            ::operator delete(impl_->workspace, std::align_val_t(impl_->workspace_alignment));
+            impl_->workspace = memory;
+            impl_->workspace_bytes = allocation_bytes;
+            impl_->workspace_alignment = allocation_alignment;
         }
         return impl_->workspace;
     }
@@ -86,16 +70,5 @@ namespace lux::task
     TaskGraphSender TaskExecutor::schedule(const TaskGraph& graph) noexcept
     {
         return {*this, graph};
-    }
-
-    TaskExecutor::Result TaskExecutor::execute(const TaskGraph& graph) noexcept
-    {
-        auto completed = stdexec::sync_wait(
-            schedule(graph) | stdexec::then([]() noexcept { return Result{}; }) |
-            stdexec::upon_error(
-                [](TaskExecutorFailure failure) noexcept -> Result { return lux::cxx::unexpected(failure); }
-            )
-        );
-        return std::move(std::get<0>(*completed));
     }
 } // namespace lux::task

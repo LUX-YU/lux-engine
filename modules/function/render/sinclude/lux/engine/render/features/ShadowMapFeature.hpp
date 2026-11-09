@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
+
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/extensions/storage/DirectLighting.hpp>
 #include <lux/engine/render/features/ShadowInputs.hpp>
@@ -23,7 +25,7 @@ namespace lux::render
     {
         ShadowMapShape shape;
         std::string lights = "direct_lights";
-        std::vector<ShadowLightSelection> casters;
+        float distance = 100;
         std::uint32_t camera_offset = 0; // ShadowCamera within the immutable attachment input for this frame.
         std::uint32_t pcf_radius = 1;
         bool operator==(const ShadowMapFeatureConfig&) const noexcept = default;

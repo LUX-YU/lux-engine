@@ -4,7 +4,6 @@
 
 #include <compare>
 #include <cstdint>
-#include <memory>
 #include <span>
 #include <utility>
 #include <vector>
@@ -63,7 +62,7 @@ namespace lux::task
         /** Executed by the shared ExecutionRuntime CPU pool. */
         WORKER,
 
-        /** Executed on the graph receiver scheduler; execute() uses the calling thread. */
+        /** Executed on the graph receiver scheduler, supplied by the caller. */
         CALLER_THREAD,
     };
 
@@ -93,11 +92,6 @@ namespace lux::task
     struct TaskAffinity final
     {
         ETaskAffinity value{ETaskAffinity::WORKER};
-    };
-
-    struct TaskLifetimePin final
-    {
-        std::shared_ptr<const void> value;
     };
 
     [[nodiscard]] constexpr TaskResourceAccess read(TaskResourceKey key) noexcept
@@ -142,11 +136,6 @@ namespace lux::task
     [[nodiscard]] constexpr TaskAffinity on(ETaskAffinity affinity) noexcept
     {
         return {affinity};
-    }
-
-    [[nodiscard]] inline TaskLifetimePin keepAlive(std::shared_ptr<const void> lifetime) noexcept
-    {
-        return {std::move(lifetime)};
     }
 
     enum class ETaskGraphError : std::uint8_t

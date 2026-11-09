@@ -5,36 +5,41 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] RenderResult<void> describeMeshGroup(
-        const RasterMeshGroup&,
-        std::string_view prefix,
-        rdesc::EMaterialPurpose,
-        FeaturePorts&,
-        std::uint32_t visible_capacity = 0,
-        std::uint32_t view_count = 1
+    // Immutable material/geometry preparation. These functions do not inspect Storage, Graph,
+    // resource identities or a View and can execute on the shared CPU scheduler.
+    [[nodiscard]] RenderResult<rdesc::SpirvArtifact>
+    buildMeshShader(const rdesc::MaterialProgramSet&, rdesc::EMaterialPurpose, bool paged, bool reflected) noexcept;
+
+    [[nodiscard]] RenderResult<GraphicsState> meshGraphicsState(
+        std::uint32_t vertex_stride,
+        std::span<const MeshAttribute> attributes,
+        const rdesc::MaterialProgramSet&,
+        const rdesc::ShaderInfo&,
+        bool front_counter_clockwise,
+        bool reflected
     ) noexcept;
 
-    void bindVisibleMeshDraw(
-        RasterWork&,
+    // Shared geometric ports describe data, not material groups or pipeline counts.
+    void describeMeshDrawInputs(FeaturePorts&);
+    [[nodiscard]] RasterWork meshRasterStage(const rdesc::ShaderBlock&, FeatureBuildContext&);
+    [[nodiscard]] RenderResult<void> bindMeshDraws(
         FeatureBuildContext&,
-        std::string_view prefix,
-        std::uint32_t capacity,
-        std::uint32_t view,
-        std::uint32_t winding
-    ) noexcept;
-
-    [[nodiscard]] RenderResult<RasterWork> buildMeshGroup(
-        const RasterMeshGroup&,
-        std::string_view prefix,
+        GraphPassId,
         rdesc::EMaterialPurpose,
         bool paged,
-        FeatureBuildContext&,
-        bool derive_members = true,
-        bool reflected = false
+        GraphResourceId views = {},
+        GraphResourceId raster_states = {},
+        bool front_counter_clockwise = true
     ) noexcept;
 
     template <bool Depth> RenderResult<void> describe(const void*, std::string_view, FeaturePorts&) noexcept;
 
     template <bool Depth, bool Paged>
-    RenderResult<void> build(const void*, std::string_view, FeatureBuildContext&) noexcept;
+    RenderResult<void>
+    build(
+        const void*,
+        std::string_view,
+        FeatureBuildContext&,
+        const lux::render::detail::EnabledDeviceFeatures&
+    ) noexcept;
 } // namespace lux::render::detail

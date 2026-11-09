@@ -3,73 +3,98 @@
 `editor/` builds the sole installed `lux_editor`. `editor_legacy/` remains frozen reference source.
 The architecture uses typed Project Events, complete Contexts and atomic UI replacement. ProjectScenes opens authored Scenes through SceneRuntime; scene provider retirement is explicit.
 
+Rendering integration is currently withdrawn pending the new Reaction/Collector implementation.
+There is no installed UI rendering Scene or scene viewport factory in the application composition.
+Project loading, authoring widgets and asset import remain source components; this is not a claim that
+Editor runs against the redesigned Engine. ImguiFrameCapture remains an independent frame-data encoder.
+Older Engine lifecycle consumers and their tests still require a separate migration.
+
+## Generated value editors
+
+`editor/ui` owns the typed widget functions and `value_editor` Inja templates. A consuming target supplies its
+own parsing input and companion policy through `editor_target_add_value_codegen`. The builtin profiles use
+`LUX_REFLECT_EXTERNAL` in `BuiltinValueTypes.hpp` to select lower-layer types and `ValueEditing.json` for control
+labels and bounds. Engine/Render declarations contain no Editor annotations. Policy references are checked
+during generation; typed control constraints are checked when the generated C++ is compiled.
+
+Generated `.value_editor.cpp` functions compile into the consuming target and access members directly. There is
+no per-frame metadata lookup or field-container construction. `ComponentEditor` and `SceneConfigurationEditor`
+remain the composition interfaces. Fields edit an owned draft; existing component transactions and configuration
+codecs validate and adopt the result. UI bounds neither define persistence nor replace domain validation.
+
+EditorContext remains independent of ImGui. Its provider records retain callable code; the UI implementation and
+specialized AssetId/Quaternion controls live in `lux_editor_ui`. Unknown types preserve their value and render a
+read-only explanation rather than guessing a default.
+
 ## Ownership and lifetime
 
 | Owner | Responsibility |
 |---|---|
-| LuxEngine | Window, EngineContext, UI Scene transport, owning product assembly, one loaded project Context and finite candidate preparation |
+| EditorApplication | Window, Engine, UI Scene transport, owning product assembly, one loaded project Context and finite candidate preparation |
 | EditorWindow / ui::Root | One native Input sample; Root uniquely owns mounted Panes and their UI routes |
 | EditorContext | Manifest and summary, independent AssetVfs, verified PluginManager and immutable SceneRegistrations, complete runtime registries, cancellation TaskScope |
 | EditorServices | Lazy unique services, destroyed in reverse successful construction order |
 | EditorUiRegistry | Detached factories; createPane is implemented by lux_editor_ui, Root adopts the returned owners |
 | SceneProfileRegistry | Immutable canonical profile declarations; creation returns an owned authored ScenePackage |
-| ExecutionRuntime / SceneRuntime / RenderExecution | Scheduling, completion, the single frame driver and resource retirement |
+| Engine | Shared completion dispatch, Scene drive, frame handoff, platform wait and final execution shutdown |
+| ExecutionRuntime / SceneRuntime / RenderExecution | Scheduling, actual Scene ownership and retirement, protocol/frame transport |
 
 Parent links still do not own C++ objects. Object/UI/Error Framework v2 contracts remain unchanged.
 TaskScope destruction only requests cancellation. Accepted tasks retain their TaskGroup and own all worker inputs,
 results and code leases; they must not borrow a Context, service, Pane or mutable Registry. Context destruction never
-blocks. A Context with adopted Scenes first closes those leases and retains its providers until their cleanup settles;
+blocks. A Context with associated Scenes first awaits its declared services and Scene retirement while retaining their providers;
 the application continues completion and maintenance-frame processing throughout this phase. Only then does it close
 the project TaskScope. Final application shutdown joins producers after accepted CPU, Render and protocol work settles.
 
 ## Project use
 
 ```cpp
-auto assembly = [](lux::editor::EditorComposition& composition) noexcept
-    -> lux::editor::FrameworkResult<void>
-{
-    return composition.registerSceneProfile(lux::editor::sceneProfile3D());
-};
-config.project_file = project_file; // Absolute path; empty is invalid for this SDK factory.
-auto host = lux::editor::LuxEngine::create(config, std::move(assembly));
-// Check host. project() is now a reference to the successfully adopted project.
-auto result = (*host)->run();
-// A later OpenProjectRequest/CreateProjectRequest prepares a replacement while the current project stays usable.
+config.project_file = project_file; // Optional absolute path. Empty starts project selection.
+auto application = lux::editor::EditorApplication::create(std::move(config), std::move(assembly));
+// Check the factory result. create starts asynchronous loading; it does not promise a project yet.
+auto outcome = (*application)->run();
+// The event loop returns only after accepted cleanup and execution join; then ordinary destruction is safe.
 ```
 
-Assembly belongs to the host lifetime, may own move-only captures, and builds EditorComposition before any candidate
-Context exists. Composition exposes registration only. Its tables move into immutable runtime registries and lazy
-EditorServices when a complete PreparedProject is adopted into a Context. No registration freeze or incomplete public Context constructor exists. Scene retirement is a separate explicit lifetime phase. UI/service factories receive a fully constructed Context. A factory may start accepted transport work but must not publish project effects before adoption.
+EditorApplication keeps its Window and project state across project switches. An empty startup
+path shows ProjectCreationPane in SELECTING_PROJECT. `project()` is borrowed only after project publication; `ready()`
+means RUNNING. The public state distinguishes selecting, loading, cleanup failure, running and closing. Only the private
+transition function writes application mode; callers send intent through Object events.
 
-`CreateProjectRequest{absolute_root, manifest}` creates `Project.luxproj` in an empty directory. `OpenProjectRequest{path}` reads
-an existing manifest. Product configuration supplies plugin catalog locations and the default layout, separately
-from persisted project values. The product executable supports `lux_editor project.luxproj` and
-`lux_editor --create directory name`; a project-free product launch runs ProjectCreationPane before publishing LuxEngine. Startup and the loaded session share the same Window, ExecutionRuntime, RenderExecution and UI Scene. New product projects select the
-existing `lux.builtin.scene_render` runtime plugin; this is product policy, not a framework branch.
+Assembly owns its move-only captures through application shutdown. It registers factories into EditorComposition;
+constructed Contexts receive immutable declarations and one EditorServices table. Optional `initializeProject()` operations
+run in actual dependency construction order. A manifest startup Scene requires exactly one registered
+`initializeStartupScene(AssetId)` provider (the built-in ProjectScenes), which uses the existing open/readiness path.
+No startup Scene means an empty editable project. Required services initialize before detached Pane factories execute.
 
-LuxEngine is an Object Event receiver. OpenProjectRequest/CreateProjectRequest carry owned inputs; CloseProjectRequest
-and the application close/cancel commands express intent. Newer requests invalidate older serials and request stop;
-accepted preparation is owned by the existing TaskScope/stdexec operation and resumes on the shared MainScheduler. No public transition/status API exists.
-CloseProjectRequest ends the loaded session; it does not create a running editor with no project.
-projectChanged and projectOpenFailed are facts, not progress polling. A confirmed created manifest remains on disk even
-when subsequent plugin preparation fails. Cancellation and stale completion do not emit a false open failure.
+OpenProjectRequest/CreateProjectRequest follow one transaction. Manifest/plugin/layout IO runs on the shared blocking
+scheduler; Context/Scene/UI construction and publication run on Main. Only one transaction is admitted: another load is BUSY.
+Cancellation waits for actual reads and candidate cleanup. Root atomically replaces project Panes and their validated
+placement before structural notifications. Application UI state is projected through Root::deferChange, never by changing
+mounted Pane modality in an ordinary event callback.
 
-Preparation runs on the existing blocking scheduler with owned paths/configuration. The Main continuation builds a complete
-detached candidate while A remains intact; failed candidates clean up
-immediately without waiting for their cancellation scopes. Only the host safe point calls Root::replacePanes. Its commit
-publishes the new Context/mount before notifications; old Panes are destroyed before their old Context, without joining
-workers. Global UI remains mounted, and late requests from notifications enter the next batch. Window, Root, ImGui and
-EngineContext survive project switches. Object callbacks may assemble/clean unrelated detached candidates, but cannot
-mutate an attached UI tree or move an already-parented Object relation during dispatch.
+`projectChanged` reports the publication of the new identity. `projectLoadCompleted(ProjectLoadOutcome)` is the exactly-once
+terminal result after old project/candidate cleanup. It records request identity, path, error, manifest publication
+(UNCHANGED/PUBLISHED/UNKNOWN), and whether the running project was published. A later cleanup failure does not undo a
+published project or delete a successfully written manifest. RetryProjectCleanupRequest retries the retained cleanup
+without repeating the original load terminal. No new load is admitted while that owner remains unresolved.
 
-Context construction is private and requires verified PluginManager and SceneRegistrations values. Source tests use a
-noninstalled complete-preparation fixture. Installed consumers use the same public host/project path as the product;
-they cannot obtain an incomplete Context through a test-only SDK overload.
+During loading the previous targets remain available, author commands are blocked by the modal/application admission
+boundary, and simulation clocks are suspended without overwriting per-Scene Play/Pause state. Completion/publication,
+asset upload, rendering and modal UI continue. First presentation and all asset streaming are not promises of load success.
+
+CloseProjectRequest requests Engine shutdown. The project session, UI Scene, asset releases and remaining facilities
+register their actual cleanup operations with dependency ordering. Engine stops shared execution after they finish. Failed cleanup retains its objects and reports CLOSE_FAILED; an explicit
+RetryApplicationCloseRequest resumes unfinished work. The final result preserves earlier device/business errors even when
+physical cleanup succeeds. EditorApplication destruction is not an implicit event loop or recovery driver.
+
+Context construction remains private and accepts verified PluginManager/SceneRegistrations. Tests use existing internal
+preparation fixtures or the public asynchronous host path; no incomplete SDK constructor or compatibility startup path remains.
 
 ## Manifest and scene profiles
 
 ProjectManifest version 1 persists project UUID/name, plugin name/version selections, and scene AssetId/name/relative
-file/profile records with an optional startup AssetId. It does not persist runtime handles, factories, tool state,
+file/profile records with an optional startup AssetId and project-relative editor_layout reference. It does not persist runtime handles, factories, tool state,
 absolute asset paths or an additional scene identity. Empty projects are valid. Scene paths are physical project-relative
 paths, distinct from asset VFS paths. Validation rejects traversal, aliases, duplicate identities and unsupported versions.
 
@@ -85,7 +110,8 @@ a worker must own those registrations for the whole call, not borrow a live Cont
 `sceneProfile3D()` contributes `lux.editor.scene.3d` and spatial.3d/transform.3d/mesh.3d/camera.3d capabilities. It uses
 verified project schema/system registrations and their codecs to create a single-partition world with Parent,
 Transform3D, Mesh3D, Light3D and Camera author schemas; Transform, WorldLoading, MeshQuery and Render systems; an empty Simulation;
-and an explicit lit-scene capability/implementation selection. No editor camera, picking entity or runtime scene is created.
+and an explicit composition of raster, shadows, clustered lighting, deferred lighting and output contributions. Explicit
+selections delegate to the shared `createSelectedScene` algorithm rather than the 3D preset. No editor camera, picking entity or runtime scene is created.
 Missing capabilities and incompatible configuration fail without partial output. A test-only 2D profile uses the same
 public registration/creation path without changing the host.
 
@@ -97,8 +123,11 @@ Tools use the actual SceneDocument, ComponentSchema and product UI factories. Ed
 ComponentEditor callbacks and SceneConfigurationEditor widget factories; EditorContext publishes stable borrows.
 The generic Inspector owns DecodedComponent drafts and uses revision-checked Apply/Revert. Product assembly
 registers ComponentEditors3D and RenderConfigurationEditor; adding another component editor does not modify the Pane.
-The creation widget queries actual Server capabilities and displays unavailable inputs/codecs. Built-in lit-scene
-configuration uses the public encode/decode contract; unknown configuration remains intact and explicitly read-only. Profiles do not create tools;
+The creation widget selects geometry/domain/partition and independent Systems from registered contracts.
+`SceneConfigurationForm` owns a typed draft and emits edits; selection changes prepare one revision-tagged candidate.
+Create consumes that exact candidate and cached Builder qualification. The Render form provides contribution/port editing,
+while the selected System's preparation performs the actual capability/codec/data-input qualification.
+Unknown configuration remains intact and explicitly read-only. Profiles do not create tools;
 there is no World-name-matching SceneToolRegistry or frozen runtime tool directory.
 
 ## Components and verification
@@ -120,7 +149,7 @@ actual plugin-driven profiles, scope completion and existing framework behavior.
 project switching, native close, resize, minimization and the UiRasterFeature and the common complete-frame transport. Installed tests use SDK
 public headers/libraries, including isolated project and context consumers and throwing-callback compile negatives.
 
-The event-driven loop retains one input sample and one SceneRuntime drive per iteration. Backpressure retains captured
+Engine owns the single event loop, with one input sample and one SceneRuntime drive per iteration. Backpressure retains captured
 resource ownership. Accepted completions and retirement continue while a project closes. No private executor, second
 runtime, global event bus or frame-hook registry is added.
 
@@ -131,14 +160,14 @@ qualify them. Exact sanitizer coverage, commands and raw results are retained ou
 
 ProjectManifest schema 1 requires `format: "lux.editor.project"`. Duplicate keys (including escaped spellings)
 and unknown fields at the root or in plugin/scene records are rejected. There is no pre-freeze format fallback.
-Plugin selections use the same `project_identity` grammar as PluginCatalog; scene profile/capability names use
+Plugin selections use the same `plugin_identity` grammar as PluginCatalog; scene profile/capability names use
 `isCanonicalSceneName`. Project display names remain human text.
 
 A prepared ProjectDescription binds the canonical `manifest_file`, independently of its display name. `root`
 is that file's parent, including when the input follows a filesystem alias. Every constructed Context has this exact file binding; the removed incomplete bootstrap is not an SDK fallback.
 
-LuxEngine tracks only the handles from its project mount. Switching atomically replaces those panes, publishes the new Context before notification, then destroys the old
-panes before retiring the old Context. Adopted Scene leases keep their providers until asynchronous cleanup settles;
+EditorApplication tracks only the handles from its project mount. Switching atomically replaces those panes, publishes the new Context before notification, then destroys the old
+panes before retiring the old Context. Scene retirement receipts keep the project providers alive until actual asynchronous cleanup settles;
 project switching does not block on a TaskScope or stop the application's shared execution resources.
 Application panes remain mounted and continue maintenance. Root has no Project grouping or Project ownership tag.
 A pane removed/re-registered by an external owner has a different registration and is no longer part of that mount.
@@ -157,7 +186,7 @@ same stable numeric errors and never register descriptors. There is no aggregate
 registration function. Project's catalog links only its own component and the core error provider, not Context.
 Independent installed consumers qualify registration, idempotence, collisions and descriptor ownership.
 
-`run()` is the only public event-loop entry. Single-step access belongs to a noninstalled test support header;
+`EditorApplication::run()` delegates to Engine. Engine exposes the same driver as `step()`; Editor single-step access belongs to a noninstalled test support header;
 there is no public frame/exec or host profiling API. Pacing tests measure their own elapsed time and query original
 component statistics. EditorWindow owns the native resize/framebuffer/minimize slots and exposes cached metrics;
 the host synchronizes UI extent only when their revision changes.
@@ -206,79 +235,42 @@ Descriptor values can outlive their declaring DLL; no plugin code is required to
 own endpoint still governs business execution and lifetime. `cmake/installed-consumers/ui-actions` exercises the
 public contract, including actual DLL declarations and UI input after that DLL has unloaded.
 
-## Shared rendering and project retirement
+## Asset import and professional consumers
 
-The app owns one RenderExecution and RenderAssets, sharing EngineContext::execution(). The Asset protocol
-thread owns only its SPSC Link; IO and CPU decoding use the existing bounded blocking/CPU resources.
-An independent Render UI Scene presents the native window; it does not create an empty Engine World.
-All Engine Scene commands and UI draw lists join the same Main `FrameInput` before one SubmitFrame.
+ProjectAssets owns directory facts and VFS mounts. Register `AssetImportDeclaration` values with
+`declareAssetImporter<T>()`; the concept binds a typed configuration codec and finite Cook operation.
+The generic transaction owns publication and catalog conflict checks. `ModelImporter` owns model source
+discovery, Cook and product encoding, in `lux_editor_model_import`; the generic assets/app targets do not
+link the model cooker through this path. One import may publish several asset types.
 
-Project factories obtain RenderExecution/RenderAssets from ContextExtensions and their own typed read port
-from EditorContext::prepareAssetReads(). Supply that port to RenderSystemDependencies; use a distinct source namespace when
-opening another project generation. Build with the existing SceneRuntime, then transfer its SceneInstanceLease
-to EditorContext::adoptScene(). Keep the Scene providers and view inputs in project services.
+Catalog version 2 stores importer name/version, opaque configuration, root type and typed product identities.
+Products inherit their record's revision and immutable package location. Version-1 model directories migrate
+without decoding payloads. Dependency types absent in that old format remain explicitly unknown (zero) until
+reimport; they are never used to choose a decoder. Unknown importers preserve configuration and products, and
+reimport reports unavailability. Package opening retains its header/index roots, not decoded Model contents.
 
-Project replacement removes Panes immediately. A finite close operation exclusively retains the old EditorProject
-until Scene retirement receipts and its accepted cleanup tasks settle; the application has no closing-project list.
-A Context without Scene borrows keeps the original immediate, nonblocking destruction contract. Worker
-operations still own their captured inputs and code instead of borrowing a destroyed Context.
+AssetBrowserPane lists generic AssetId/type/revision values. Configuration forms are generated by the Editor's
+Inja projection and matched by importer identity/version plus C++ configuration type. A form owns one decoded
+draft; encoding occurs on explicit import. Toolchain configuration contains no UI annotations. Specialized
+consumers interpret generic drag values; model placement uses `loadAsset<ModelAsset>` on demand, then resolves
+both tool and Document generations and rechecks author/asset revisions before adopting one SceneEdit.
 
-ProjectScenes manages each viewport's sampling relation through the private EditorUiScene. Removing an image
-returns a Sender that completes only for that token's actual removal. Await it before removing the Target;
-an unrelated image addition cannot postpone or certify that removal. App-level setUiImages/uiImagesApplied
-mailboxes do not exist. Window metrics and ImageElement geometry changes directly schedule output adoption.
-
-## Model import and Scene placement
-
-The product registers ProjectAssets before ProjectScenes. ProjectAssets opens `.luxassets/catalog.json`,
-cooks finite model requests on the shared CPU scheduler, reads/writes through the bounded blocking scheduler,
-and publishes immutable LUXPAK products before replacing the catalog. Model subasset identities remain stable
-across reimport; ambiguous source identities fail. AssetBrowserPane displays this catalog and sends a small
-copied AssetId/revision drag payload. SceneViewportPane creates one author SceneEdit through ModelPlacement;
-RenderSystem performs the asynchronous GPU projection.
-
-RenderAssetInput publishes one captured VFS table with its asset revision. Material and texture loads use
-that same snapshot, while RenderAssetVersion distinguishes project generations. A failed unadopted upload
-candidate retains the existing Scene binding; it does not clear the old picture first. RenderSystem exposes
-per-entity pending/error queries for tools without exposing RenderServer or Storage instances.
-
-The current viewport places imported models on the world Y=0 plane. General picking, Inspector, author save
-and isolated Play belong to the Scene tools workflow; their implementation status is recorded separately,
-not inferred from successful importing. Old published product files are retained until a reference-aware
-cleanup is provided; importing never deletes a prior published package that a reader may still need.
-
-Camera outputs are runtime components on ordinary ECS CameraMan entities. ProjectScenes owns each viewport
-Target and temporary editor camera; RenderSystem owns the derived View/Effect/Attachment records. The editor
-camera has no author WorldObjectId and is excluded from save/Undo/Play author snapshots. Picking reads the same
-selected ECS camera and adopted image aspect that rendering uses.
-
-A viewport keeps its image token while Resize is pending. ImageElement fits the last adopted physical aspect
-inside its logical rectangle; framebuffer scale is applied exactly once when requesting pixels. Resize success
-is resumed in a complete frame carrying matching camera/UI data and the replied Target epoch.
-
-Application startup publishes a fully constructed LuxEngine::Impl; partial startup rollback is local to its factory.
-EditorProject retains its Context until Scene/UI retirement completes. The regular loop and destructor share one
-nonblocking close progression. Clients drain and close before RenderServer stops; the shared ExecutionRuntime is
-joined only outside a driven callback. There is no Main 1024-request limit or per-frame reserved correlation slot.
+`MeshQueryAssets` owns the project's requested Mesh/version BVH cache and its actual Scene subscriptions.
+It folds in existing project Scenes and subscribes to Engine's created fact. Reads use AssetRepository, decoding
+and BVH building use the shared CPU scheduler, and adoption uses the Scene edit safe point. Reimport invalidates
+only affected cached meshes; a repeated request shares the same result. The Scene close participant disconnects
+the stable MeshQuery borrow on Main before MeshQuerySystem destruction, including a failed Scene where author
+edits are correctly forbidden. Late work resolves ObjectId/SceneInstanceId and version before adoption.
 
 ## Completion-driven editing and updates
 
-ProjectScenes starts a finite operation for the affected viewport, Play session or document. Window extent,
-Camera selection, geometry completion and close intent schedule that operation; unchanged documents and
+ProjectScenes starts finite document/Play operations. SceneViewport starts only the affected output's operation;
+Camera selection, extent and close intent invalidate that output. MeshQueryAssets delivers geometry to actual
+subscribers. Unchanged documents and
 viewports are not scanned by the app loop. SceneRuntime::editInstanceAsync applies its borrowed callback at
 the actual structural safe point before delivering completion. whenEditable is only a notification: it does
 not grant an edit permit that remains valid across later callbacks.
 
-Camera recipe identity is rechecked after compilation and Attach. Target format/samples and shadow near/far
-cannot be overwritten by newer runtime parameters while retaining an incompatible old recipe. Parameter-only
-Camera changes stay on RenderSystem's parameter path. A relation's retirement does not wait for unrelated
-Scene asset transactions.
-
 Hierarchy and Inspector request UI updates on document/selection facts; Inspector keeps the original draft
-revision and reports stale edits. SceneViewport explicitly requests continuous input/Gizmo updates. Static
+revision and reports stale edits. Static
 Pane/Element update callbacks run only after requestUpdate; there is no static hierarchy-wide update pass.
-
-Normal frames and shutdown maintenance use the same FrameInput preparation/submission function. The outer
-run, controlled test step and final destructor close share one reentry boundary. A nested run from an ordinary
-Main continuation is rejected without closing the application. Object callback borrows and Scene/Root mutation
-boundaries remain separate protections. Final ExecutionRuntime join happens after leaving those callbacks.

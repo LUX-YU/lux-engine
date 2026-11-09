@@ -2,7 +2,7 @@
 
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
-#include <lux/engine/simulation/ecs/Entity.hpp>
+#include <lux/engine/ecs/Entity.hpp>
 
 #include <entt/entity/sparse_set.hpp>
 

@@ -5,6 +5,7 @@
 #include <NRI.h>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <memory>
 #include <vector>
 
@@ -16,11 +17,8 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC OffscreenTarget final
     {
     public:
-        [[nodiscard]] static RenderResult<std::unique_ptr<OffscreenTarget>> create(
-            DeviceSession&,
-            const TargetDesc&,
-            std::uint32_t frame_count
-        ) noexcept;
+        [[nodiscard]] static RenderResult<std::unique_ptr<OffscreenTarget>>
+        create(DeviceSession&, const TargetDesc&, std::uint32_t frame_count) noexcept;
         ~OffscreenTarget() noexcept;
         OffscreenTarget(const OffscreenTarget&) = delete;
         OffscreenTarget& operator=(const OffscreenTarget&) = delete;
@@ -52,5 +50,6 @@ namespace lux::render::detail
         std::vector<nri::Texture*> images_;
         std::vector<nri::Descriptor*> views_;
         std::vector<TargetFrame> frames_;
+        std::vector<DescriptorTable::Slot> sampled_slots_;
     };
 } // namespace lux::render::detail

@@ -2,27 +2,24 @@
 #include <lux/engine/platform/FileIo.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
-#include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <cstring>
 #include <new>
+#include <unordered_set>
 
 namespace lux::editor::detail
 {
     namespace
     {
         constexpr std::size_t catalog_limit = 16U << 20U;
-        constexpr std::size_t source_limit = 256U << 20U;
-        constexpr std::size_t package_limit = 512U << 20U;
 
         AssetImportFailure failed(EAssetImportError code, std::string detail, bool published = false)
         {
             return {code, std::move(detail), published};
         }
 
-        AssetImportFailure taskFailure(const execution::TTaskError<AssetImportFailure>& failure)
+        AssetImportFailure taskFailure(const execution::ExecutionFailure<AssetImportFailure>& failure)
         {
             if (const auto* domain = failure.domainFailure())
             {
@@ -50,32 +47,67 @@ namespace lux::editor::detail
             auto records = nlohmann::json::array();
             for (const auto& record : catalog.records)
             {
-                const auto& settings = record.configuration;
-                const auto& rotation = settings.pre_rotation;
                 auto products = nlohmann::json::array();
-                for (auto id : record.products)
+                for (const auto& product : record.products)
                 {
-                    products.push_back(uuids::to_string(id.uuid()));
+                    products.push_back({{"id", uuids::to_string(product.id.uuid())}, {"type", product.type.value()}});
+                }
+                std::vector<std::uint8_t> configuration;
+                configuration.reserve(record.configuration.size());
+                for (auto byte : record.configuration)
+                {
+                    configuration.push_back(std::to_integer<std::uint8_t>(byte));
                 }
                 records.push_back(
                     {{"id", uuids::to_string(record.id.uuid())},
+                     {"type", record.type.value()},
                      {"name", record.name},
                      {"source", utf8(record.source)},
                      {"revision", record.revision},
                      {"package", record.package},
                      {"products", std::move(products)},
-                     {"scale", settings.uniform_scale},
-                     {"rotation", {rotation.w(), rotation.x(), rotation.y(), rotation.z()}},
-                     {"left_handed", settings.make_left_handed},
-                     {"animations", settings.import_animations}}
+                     {"importer", record.importer},
+                     {"importer_version", record.importer_version},
+                     {"configuration", std::move(configuration)}}
                 );
             }
             return {
                 {"format", "lux.editor.assets"},
-                {"version", 1},
+                {"version", 2},
                 {"revision", catalog.revision},
-                {"models", std::move(records)}
+                {"assets", std::move(records)}
             };
+        }
+
+        // The version-1 catalog described only models. Preserve its codec bytes and
+        // incomplete dependency types explicitly; migration never decodes a product.
+        void migrateVersionOne(nlohmann::json& value)
+        {
+            auto records = std::move(value.at("models"));
+            for (auto& row : records)
+            {
+                const auto configuration = nlohmann::json{
+                    {"scale", row.at("scale")},
+                    {"rotation", row.at("rotation")},
+                    {"left_handed", row.at("left_handed")},
+                    {"animations", row.at("animations")}
+                }.dump();
+                row["configuration"] = std::vector<std::uint8_t>(configuration.begin(), configuration.end());
+                row["importer"] = "lux.import.model";
+                row["importer_version"] = 1;
+                row["type"] = asset::AssetTypeId::fromName("lux.model").value();
+                for (auto& product : row.at("products"))
+                {
+                    const auto id = product.get<std::string>();
+                    product = {
+                        {"id", id},
+                        {"type", id == row.at("id").get<std::string>() ? row.at("type").get<std::uint64_t>() : 0}
+                    };
+                }
+            }
+            value["assets"] = std::move(records);
+            value["version"] = 2;
+            value.erase("models");
         }
 
         AssetImportResult<AssetCatalog> readCatalog(const std::filesystem::path& root, std::stop_token stop) noexcept
@@ -95,61 +127,71 @@ namespace lux::editor::detail
             }
             try
             {
-                const auto value = nlohmann::json::parse(
+                auto value = nlohmann::json::parse(
                     reinterpret_cast<const char*>(bytes->data()),
                     reinterpret_cast<const char*>(bytes->data() + bytes->size())
                 );
-                const bool invalid_header = value.at("format") != "lux.editor.assets" || value.at("version") != 1 ||
-                                            !value.at("models").is_array();
+                if (value.at("format") != "lux.editor.assets")
+                {
+                    return cxx::unexpected(failed(EAssetImportError::INVALID_CATALOG, "Unsupported asset catalog"));
+                }
+                if (value.at("version") == 1)
+                {
+                    migrateVersionOne(value);
+                }
+                const bool invalid_header = value.at("version") != 2 || !value.at("assets").is_array();
                 if (invalid_header)
                 {
                     return cxx::unexpected(failed(EAssetImportError::INVALID_CATALOG, "Unsupported asset catalog"));
                 }
                 AssetCatalog result;
                 result.revision = value.at("revision").get<std::uint64_t>();
-                std::vector<asset::AssetId> identities;
-                for (const auto& row : value.at("models"))
+                std::unordered_set<asset::AssetId> identities;
+                for (const auto& row : value.at("assets"))
                 {
                     auto identity = uuids::uuid::from_string(row.at("id").get<std::string>());
                     if (!identity || identity->is_nil())
                     {
-                        return cxx::unexpected(failed(EAssetImportError::INVALID_CATALOG, "Invalid model identity"));
+                        return cxx::unexpected(failed(EAssetImportError::INVALID_CATALOG, "Invalid asset identity"));
                     }
                     ProjectAsset record;
                     record.id = asset::AssetId{*identity};
+                    record.type = asset::AssetTypeId{row.at("type").get<std::uint64_t>()};
                     record.name = row.at("name").get<std::string>();
                     record.source = std::filesystem::u8path(row.at("source").get<std::string>());
                     record.revision = row.at("revision").get<std::uint64_t>();
                     record.package = row.at("package").get<std::string>();
+                    record.importer = row.at("importer").get<std::string>();
+                    record.importer_version = row.at("importer_version").get<std::uint32_t>();
                     const auto path = std::filesystem::u8path(record.package);
                     const bool invalid_path =
                         path.is_absolute() || !record.package.starts_with(".luxassets/products/") ||
                         path.lexically_normal() != path || record.package.find('\\') != std::string::npos ||
                         path.extension() != ".luxpak";
                     const bool invalid_record = invalid_path || record.name.empty() || record.revision == 0 ||
-                                                !record.source.is_absolute() ||
-                                                std::ranges::find(identities, record.id) != identities.end();
+                                                !record.source.is_absolute() || !record.type ||
+                                                record.importer.empty() || !record.importer_version ||
+                                                !identities.insert(record.id).second;
                     if (invalid_record)
                     {
                         return cxx::unexpected(failed(EAssetImportError::INVALID_CATALOG, "Invalid asset record/path"));
                     }
-                    identities.push_back(record.id);
-                    auto& settings = record.configuration;
-                    settings.uniform_scale = row.at("scale").get<float>();
-                    const auto rotation = row.at("rotation").get<std::array<float, 4>>();
-                    settings.pre_rotation = Eigen::Quaternionf{rotation[0], rotation[1], rotation[2], rotation[3]};
-                    settings.make_left_handed = row.at("left_handed").get<bool>();
-                    settings.import_animations = row.at("animations").get<bool>();
+                    for (auto byte : row.at("configuration").get<std::vector<std::uint8_t>>())
+                    {
+                        record.configuration.push_back(static_cast<std::byte>(byte));
+                    }
                     for (const auto& product : row.at("products"))
                     {
-                        auto id = uuids::uuid::from_string(product.get<std::string>());
+                        auto id = uuids::uuid::from_string(product.at("id").get<std::string>());
                         if (!id || id->is_nil())
                         {
                             return cxx::unexpected(
                                 failed(EAssetImportError::INVALID_CATALOG, "Invalid product identity")
                             );
                         }
-                        record.products.push_back(asset::AssetId{*id});
+                        record.products.push_back(
+                            {asset::AssetId{*id}, asset::AssetTypeId{product.at("type").get<std::uint64_t>()}}
+                        );
                     }
                     result.records.push_back(std::move(record));
                 }
@@ -165,22 +207,16 @@ namespace lux::editor::detail
             }
         }
 
-        struct CatalogFiles final
-        {
-            ImportedAssets values;
-            std::vector<asset::AssetBlob> models;
-        };
-
-        AssetImportResult<CatalogFiles> openProducts(
-            std::filesystem::path root,
+        AssetImportResult<ImportedAssets> openProducts(
+            const std::filesystem::path& root,
             AssetCatalog catalog,
             std::stop_token stop
         ) noexcept
         {
-            CatalogFiles result;
-            result.values.catalog = std::move(catalog);
-            result.values.complete_catalog = true;
-            for (const auto& record : result.values.catalog.records)
+            ImportedAssets result;
+            result.catalog = std::move(catalog);
+            result.complete_catalog = true;
+            for (const auto& record : result.catalog.records)
             {
                 if (stop.stop_requested())
                 {
@@ -191,88 +227,9 @@ namespace lux::editor::detail
                 {
                     return cxx::unexpected(failed(EAssetImportError::READ, provider.error()));
                 }
-                auto model = (*provider)->open(record.id, source_limit);
-                if (!model)
-                {
-                    return cxx::unexpected(
-                        failed(EAssetImportError::READ, "Model root is missing from its product package")
-                    );
-                }
-                result.models.push_back(std::move(*model));
-                result.values.mounts.push_back({"/Game", std::move(*provider), 0});
+                result.roots.push_back(record.id);
+                result.mounts.push_back({"/Game", std::move(*provider), 0});
             }
-            return result;
-        }
-
-        AssetImportResult<ImportedAssets> decodeModels(CatalogFiles files) noexcept
-        {
-            for (std::size_t i = 0; i < files.models.size(); ++i)
-            {
-                auto model = asset::TAssetSerDeser<asset::ModelAsset>::decode(
-                    files.values.catalog.records[i].id,
-                    std::move(files.models[i].bytes),
-                    {source_limit, source_limit, 32}
-                );
-                if (!model)
-                {
-                    return cxx::unexpected(failed(EAssetImportError::INVALID_CATALOG, "Invalid Cooked model root"));
-                }
-                files.values.models.push_back(std::move(*model));
-            }
-            return std::move(files.values);
-        }
-
-        struct EncodedModel final
-        {
-            std::vector<std::byte> package;
-            std::vector<asset::AssetId> products;
-            std::shared_ptr<const asset::ModelAsset> model;
-        };
-
-        AssetImportResult<EncodedModel> encodeModel(toolchain::ModelCookProduct product) noexcept
-        {
-            std::vector<asset::PakWriteEntry> entries;
-            EncodedModel result;
-            result.model = product.model;
-            const auto append = [&]<class Asset>(std::shared_ptr<const Asset>& asset) -> bool
-            {
-                auto encoded = asset::TAssetSerDeser<Asset>::encode(*asset, asset::AssetEncodeLimits{package_limit});
-                if (!encoded)
-                {
-                    return false;
-                }
-                const auto id = asset->id();
-                auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
-                entries.push_back(
-                    {id,
-                     Asset::primary_magic,
-                     uuids::to_string(id.uuid()),
-                     {},
-                     cxx::SharedBytes<>::fromOwner(owner, *owner)}
-                );
-                result.products.push_back(id);
-                asset.reset();
-                return true;
-            };
-            if (!append(product.model))
-            {
-                return cxx::unexpected(failed(EAssetImportError::ENCODE, "Model encoding failed"));
-            }
-            const auto append_all = [&](auto& values)
-            { return std::ranges::all_of(values, [&](auto& value) { return append(value); }); };
-            const bool encoded = append_all(product.meshes) && append_all(product.materials) &&
-                                 append_all(product.textures) && (!product.skeleton || append(*product.skeleton)) &&
-                                 append_all(product.animations);
-            if (!encoded)
-            {
-                return cxx::unexpected(failed(EAssetImportError::ENCODE, "Model dependency encoding failed"));
-            }
-            auto package = asset::encodePak(entries, package_limit);
-            if (!package)
-            {
-                return cxx::unexpected(failed(EAssetImportError::ENCODE, package.error()));
-            }
-            result.package = std::move(*package);
             return result;
         }
 
@@ -338,16 +295,16 @@ namespace lux::editor::detail
         execution::TaskReporter reporter
     ) noexcept
     {
-        const auto blocking = execution.blocking();
+        const auto blocking = execution.blockingIoScheduler();
         if (!blocking)
         {
             co_return cxx::unexpected(failed(EAssetImportError::EXECUTION, "Blocking IO is unavailable"));
         }
         const auto stop = reporter.stopToken();
         reporter.setPhase("Read asset catalog");
-        auto files = co_await execution::taskResult(
+        auto files = co_await execution::asResult(
             stdexec::schedule(*blocking) | stdexec::then(
-                                               [&]() noexcept -> AssetImportResult<CatalogFiles>
+                                               [&]() noexcept -> AssetImportResult<ImportedAssets>
                                                {
                                                    auto catalog = readCatalog(root, stop);
                                                    if (!catalog)
@@ -362,112 +319,46 @@ namespace lux::editor::detail
         {
             co_return cxx::unexpected(taskFailure(files.error()));
         }
-        reporter.setPhase("Decode model roots");
-        auto models = co_await execution::taskResult(
-            stdexec::schedule(execution.cpu()) |
-            stdexec::then([files = std::move(*files)]() mutable noexcept { return decodeModels(std::move(files)); })
-        );
-        if (!models)
-        {
-            co_return cxx::unexpected(taskFailure(models.error()));
-        }
-        co_return std::move(*models);
+        co_return std::move(*files);
     }
 
-    exec::task<AssetImportResult<ImportedAssets>> importModel(
+    exec::task<AssetImportResult<ImportedAssets>> importAsset(
         execution::ExecutionRuntime& execution,
         std::filesystem::path root,
         AssetCatalog expected,
         ProjectAsset candidate,
+        AssetImportCook cook,
         execution::TaskReporter reporter
     ) noexcept
     {
-        const auto blocking = execution.blocking();
+        const auto blocking = execution.blockingIoScheduler();
         if (!blocking)
         {
             co_return cxx::unexpected(failed(EAssetImportError::EXECUTION, "Blocking IO is unavailable"));
         }
         const auto stop = reporter.stopToken();
-        toolchain::ModelSource source;
-        source.entry = utf8(candidate.source.filename());
-        std::vector<std::string> requested{source.entry};
-        toolchain::ModelCookProduct product;
-        std::size_t source_bytes{};
-        for (;;)
-        {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(failed(EAssetImportError::CANCELLED, "Import cancelled before publication"));
-            }
-            reporter.setPhase("Read model dependencies");
-            auto files = co_await execution::taskResult(
-                stdexec::schedule(*blocking) |
-                stdexec::then(
-                    [&]() noexcept -> AssetImportResult<std::vector<toolchain::ModelSourceFile>>
-                    {
-                        auto read = toolchain::readModelSourceFiles(
-                            candidate.source.parent_path(),
-                            requested,
-                            source_limit - source_bytes
-                        );
-                        if (!read)
-                        {
-                            return cxx::unexpected(failed(EAssetImportError::READ, read.error().detail));
-                        }
-                        return std::move(*read);
-                    }
-                )
-            );
-            if (!files)
-            {
-                co_return cxx::unexpected(taskFailure(files.error()));
-            }
-            for (auto& file : *files)
-            {
-                source_bytes += file.bytes.size();
-                source.files.push_back(std::move(file));
-            }
-            reporter.setPhase("Cook model, materials and textures");
-            auto attempt = co_await execution::taskResult(
-                stdexec::schedule(execution.cpu()) |
-                stdexec::then(
-                    [&]() noexcept -> AssetImportResult<toolchain::VModelCookAttempt>
-                    {
-                        auto result = toolchain::cookModel(
-                            {candidate.id, asset::ModelAsset::asset_type},
-                            source,
-                            candidate.configuration
-                        );
-                        if (const auto* failure = std::get_if<toolchain::ModelCookFailure>(&result))
-                        {
-                            return cxx::unexpected(failed(EAssetImportError::COOK, failure->detail));
-                        }
-                        return result;
-                    }
-                )
-            );
-            if (!attempt)
-            {
-                co_return cxx::unexpected(taskFailure(attempt.error()));
-            }
-            if (auto* requests = std::get_if<toolchain::ModelSourceRequests>(&*attempt))
-            {
-                requested = std::move(requests->paths);
-                continue;
-            }
-            product = std::move(std::get<toolchain::ModelCookProduct>(*attempt));
-            break;
-        }
-        source = {}; // Cooked objects no longer borrow captured files.
-        reporter.setPhase("Encode immutable products");
-        auto encoded = co_await execution::taskResult(
-            stdexec::schedule(execution.cpu()) |
-            stdexec::then([product = std::move(product)]() mutable noexcept { return encodeModel(std::move(product)); })
-        );
+        auto encoded = co_await cook(execution, {candidate.id, candidate.source}, candidate.configuration, reporter);
         if (!encoded)
         {
-            co_return cxx::unexpected(taskFailure(encoded.error()));
+            co_return cxx::unexpected(encoded.error());
         }
+        const auto root_product = std::ranges::find(encoded->products, candidate.id, &AssetProduct::id);
+        const bool invalid_root = !encoded->root_type || root_product == encoded->products.end() ||
+                                  (root_product != encoded->products.end() && root_product->type != encoded->root_type);
+        if (invalid_root || encoded->package.empty())
+        {
+            co_return cxx::unexpected(failed(EAssetImportError::ENCODE, "Importer did not produce its declared root"));
+        }
+        std::unordered_set<asset::AssetId> product_ids;
+        for (const auto& product : encoded->products)
+        {
+            const bool invalid_product = product.id.isNull() || !product.type || !product_ids.insert(product.id).second;
+            if (invalid_product)
+            {
+                co_return cxx::unexpected(failed(EAssetImportError::ENCODE, "Invalid or duplicate product identity"));
+            }
+        }
+        candidate.type = encoded->root_type;
         candidate.products = std::move(encoded->products);
         AssetCatalog next = expected;
         ++next.revision;
@@ -481,7 +372,7 @@ namespace lux::editor::detail
             *previous = candidate;
         }
         reporter.setPhase("Publish asset catalog");
-        auto published = co_await execution::taskResult(
+        auto published = co_await execution::asResult(
             stdexec::schedule(*blocking) |
             stdexec::then([&]() noexcept { return publish(root, expected, next, candidate, encoded->package, stop); })
         );
@@ -490,7 +381,7 @@ namespace lux::editor::detail
             co_return cxx::unexpected(taskFailure(published.error()));
         }
         // Publishing succeeded. Complete adoption without a late stop replacing that fact.
-        auto provider = co_await execution::taskResult(
+        auto provider = co_await execution::asResult(
             stdexec::schedule(*blocking) |
             stdexec::then(
                 [&]() noexcept -> AssetImportResult<std::shared_ptr<asset::PakAssetProvider>>
@@ -514,7 +405,7 @@ namespace lux::editor::detail
         ImportedAssets result;
         result.catalog = std::move(next);
         result.mounts.push_back({"/Game", std::move(*provider), 0});
-        result.models.push_back(std::move(encoded->model));
+        result.roots.push_back(candidate.id);
         reporter.setProgress(1, 1);
         co_return result;
     }

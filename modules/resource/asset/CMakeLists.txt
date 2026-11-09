@@ -22,6 +22,7 @@ add_component(
     OUTPUT_NAME    lux_engine_asset
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Asset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CookedAssetImage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/detail/CookedAssetWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialAssets.cpp
@@ -31,6 +32,9 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAsset.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAtlasAssets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetVfs.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetReadSource.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetContentWriter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/directory/DirectoryAssetProvider.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/VirtualPath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakArchive.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakAssetProvider.cpp
@@ -51,9 +55,8 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(asset PRIVATE LUX_ASSET_LIBRARY)

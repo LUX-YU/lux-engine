@@ -2,9 +2,7 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <array>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/extensions/storage/StorageFactory.hpp>
 #include <map>
@@ -24,10 +22,8 @@ namespace lux::render
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
 
         // Configuration/device-thread cold transaction; no instance creation or GPU side effect.
-        [[nodiscard]] RenderResult<StorageTypeId> installFactory(
-            StorageFactory factory,
-            ConfigValue configuration = {}
-        ) noexcept;
+        [[nodiscard]] RenderResult<StorageTypeId>
+        installFactory(StorageFactory factory, ConfigValue configuration = {}) noexcept;
 
         template <class Config>
         [[nodiscard]] RenderResult<StorageTypeId> installFactory(StorageFactory factory, Config configuration) noexcept
@@ -71,8 +67,9 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
             const auto& factory = types_.find(entry->type)->factory;
-            const bool is_wrong_interface =
-                factory.descriptor->type != T::descriptor.type || factory.ops_type != cxx::typeToken<typename T::Ops>();
+            const bool is_wrong_descriptor = factory.descriptor->type != T::descriptor.type;
+            const bool is_wrong_operations = factory.ops_type != cxx::make_basic_type_info<typename T::Ops>();
+            const bool is_wrong_interface = is_wrong_descriptor || is_wrong_operations;
             if (is_wrong_interface)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
@@ -80,25 +77,30 @@ namespace lux::render
             return typename T::Access(entry->instance, *static_cast<const typename T::Ops*>(factory.ops));
         }
 
-        template <class Implementation> [[nodiscard]] RenderResult<Implementation*> borrow(StorageId id) noexcept
+        // One qualified boundary lookup for typed callers and registered command thunks alike.
+        [[nodiscard]] RenderResult<void*> borrow(StorageId id, cxx::type_info implementation) const noexcept
         {
             auto* entry = entries_.find(id);
             if (!entry || !entry->instance)
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            if (types_.find(entry->type)->factory.implementation_type != cxx::typeToken<Implementation>())
+            if (types_.find(entry->type)->factory.implementation_type != implementation)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            return static_cast<Implementation*>(entry->instance);
+            return entry->instance;
         }
 
-        // Resolves an installed capability input once at the command boundary. It cannot create storage.
-        template <class Implementation>
-        [[nodiscard]] RenderResult<Implementation*> borrowInput(const CapabilityInput& input) noexcept
+        template <class Implementation> [[nodiscard]] RenderResult<Implementation*> borrow(StorageId id) const noexcept
         {
-            return borrow<Implementation>(inputStorage(input));
+            constexpr auto implementation = cxx::make_basic_type_info<std::remove_const_t<Implementation>>();
+            auto result = borrow(id, implementation);
+            if (!result)
+            {
+                return cxx::unexpected(result.error());
+            }
+            return static_cast<Implementation*>(*result);
         }
 
         // Non-owning boundary lookup; valid until its StorageSet removes the instance.
@@ -119,12 +121,6 @@ namespace lux::render
         friend class StorageSet;
         friend class RenderServer;
 
-        using ScopeKey = std::array<std::uint64_t, 3>;
-        [[nodiscard]] static ScopeKey scopeKey(const VRenderScope&) noexcept;
-        [[nodiscard]] StorageId inputStorage(const CapabilityInput&) const noexcept;
-        void bindScope(const VRenderScope&, StorageSet&) noexcept;
-        void unbindScope(const VRenderScope&) noexcept;
-
         // Internal registration primitives: built-ins publish known declarations directly;
         // external registration validates the complete closure before calling publishFactory().
         [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&) const noexcept;
@@ -133,11 +129,8 @@ namespace lux::render
 
         // StorageSet owns instances; this index alone mutates their identities and borrowed locations.
         [[nodiscard]] StorageId reserve(StorageSet&, StorageTypeId) noexcept;
-        [[nodiscard]] RenderResult<StorageInstance> create(
-            StorageCreateContext&,
-            StorageId,
-            const void* configuration
-        ) noexcept;
+        [[nodiscard]] RenderResult<StorageInstance>
+        create(StorageCreateContext&, StorageId, const void* configuration) noexcept;
         void publish(StorageId, std::size_t position, void* instance) noexcept;
         void relocate(StorageId, std::size_t position) noexcept;
         void revoke(StorageId) noexcept;
@@ -163,7 +156,6 @@ namespace lux::render
         cxx::SlotMap<Entry, StorageTag> entries_;
         std::map<std::string, StorageTypeId, std::less<>> types_by_name_;
         // Derived non-owning index of the existing Global/Scene/View/Attachment sets.
-        std::map<ScopeKey, StorageSet*> scopes_;
         std::uint64_t creations_ = 0;
     };
 } // namespace lux::render

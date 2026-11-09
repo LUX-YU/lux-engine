@@ -1,0 +1,23 @@
+[
+## set emitted = false
+## for index in marked_record_decls
+##     set type = decl_from_index(index)
+##     set has_static_info = annotation_has(type, "type_info")
+##     set has_static_info = has_static_info and annotation_get_for_or(type, "luxref::class", "type_info", "both") != "runtime"
+##     if has_static_info or annotation_has(type, "component")
+{% if emitted %},{% endif %}{% set emitted = true %}
+{"cpp_type": {{ json_str(type.fq_name) }},
+ "schema": {% if annotation_has(type, "component") %}{{ json_str(annotation_get(type, "schema")) }}{% else %}""{% endif %},
+ "fields": [
+##         set field_emitted = false
+##         for id in type.field_decls
+##             set field = decl_from_id(id)
+##             if field.visibility == 1 and not annotation_get_for_or(field, "luxtype::member", "skip_static", false)
+{% if field_emitted %},{% endif %}{% set field_emitted = true %}
+{"id": {{ json_str(field.name) }}, "type": {{ json_str(field.type_id) }}}
+##             endif
+##         endfor
+]}
+##     endif
+## endfor
+]

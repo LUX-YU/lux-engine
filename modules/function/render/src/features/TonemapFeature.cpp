@@ -13,46 +13,52 @@ namespace lux::render
         RenderResult<void> describeTonemap(const void* value, std::string_view, FeaturePorts& ports) noexcept
         {
             const auto& config = *static_cast<const TonemapFeatureConfig*>(value);
-            if (auto valid = config.target.validate(); !valid)
+            if (auto valid = validateEffectOutput(config.output); !valid)
             {
                 return valid;
             }
-            const bool valid_format = config.target.format == rdesc::ETextureFormat::RGBA8_UNORM ||
-                                      config.target.format == rdesc::ETextureFormat::RGBA8_SRGB ||
-                                      config.target.format == rdesc::ETextureFormat::BGRA8_UNORM ||
-                                      config.target.format == rdesc::ETextureFormat::BGRA8_SRGB;
+            const bool valid_format = config.output.format == rdesc::ETextureFormat::RGBA8_UNORM ||
+                                      config.output.format == rdesc::ETextureFormat::RGBA8_SRGB ||
+                                      config.output.format == rdesc::ETextureFormat::BGRA8_UNORM ||
+                                      config.output.format == rdesc::ETextureFormat::BGRA8_SRGB;
             const bool invalid_encoding =
                 config.encoding > EColorEncoding::SRGB ||
-                (rdesc::isSrgbTextureFormat(config.target.format) && config.encoding != EColorEncoding::SRGB);
-            if (!valid_format || invalid_encoding || config.target.samples != 1)
+                (rdesc::isSrgbTextureFormat(config.output.format) && config.encoding != EColorEncoding::SRGB);
+            if (!valid_format || invalid_encoding || config.output.samples != 1)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
-            GraphImageDesc hdr{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
+            GraphImageDesc hdr{0, 0, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
             hdr.extent.source = EImageExtentSource::TARGET;
             FeaturePort input{"hdr_color", EFeaturePort::INPUT, hdr};
             input.semantic = "lux.color.linear-hdr.v1";
             ports.resources.push_back(std::move(input));
             auto color = hdr;
-            color.format = config.target.format;
+            color.format = config.output.format;
             ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
             return {};
         }
 
-        RenderResult<void> buildTonemap(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildTonemap(
+            const void* value,
+            std::string_view key,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const TonemapFeatureConfig*>(value);
             const bool encode =
-                config.encoding == EColorEncoding::SRGB && !rdesc::isSrgbTextureFormat(config.target.format);
+                config.encoding == EColorEncoding::SRGB && !rdesc::isSrgbTextureFormat(config.output.format);
             auto work = encode ? detail::fullscreenRaster(context, kTonemapSrgb, kTonemapSrgbReflection)
                                : detail::fullscreenRaster(context, kTonemapLinear, kTonemapLinearReflection);
             if (!work)
             {
                 return cxx::unexpected(work.error());
             }
-            work->interface.parameters.instance_layout = config.input_layout;
-            work->interface.parameters.fields = {{"exposure", {}, "exposure"}};
-            work->interface.resources = {{"hdr_color", {context.resource("hdr_color")}}};
+            work->fixed().interface.parameters.instance_layout = config.input_layout;
+            work->fixed().interface.parameters.fields = {{"exposure", {}, "exposure"}};
+            work->fixed().interface.resources = {{"hdr_color", {context.resource("hdr_color")}}};
             work->colors.push_back({{context.resource("color")}});
             auto pass =
                 context.graph.addRasterPass(featureKey(detail::TonemapFeature::name, key, "tonemap"), std::move(*work));
@@ -64,8 +70,8 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<TonemapFeatureConfig>::retainedBytes(const TonemapFeatureConfig& value
-    ) noexcept
+    RenderResult<std::size_t>
+    ConfigValueTraits<TonemapFeatureConfig>::retainedBytes(const TonemapFeatureConfig& value) noexcept
     {
         return sizeof(value) + detail::parameterLayoutBytes(value.input_layout);
     }

@@ -2,7 +2,7 @@
 
 #include <lux/engine/serialization/Serialization.hpp>
 
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 
 #include <cstddef>
 #include <span>
@@ -24,7 +24,7 @@ namespace lux::serialization
 
     struct PortableValueCodec final
     {
-        lux::cxx::TypeToken type{};
+        lux::cxx::type_info type{};
         EncodeDefaultPortableValueFn encode_default{};
         EncodePortableValueFn encode{};
         DecodePortableValueFn decode{};
@@ -45,7 +45,7 @@ namespace lux::serialization
         static_assert(std::is_nothrow_destructible_v<Value>);
 
         return PortableValueCodec{
-            .type = lux::cxx::typeToken<Value>(),
+            .type = lux::cxx::make_basic_type_info<Value>(),
             .encode_default = +[](std::vector<std::byte>& output) noexcept -> SerializationResult
             {
                 Value value{};

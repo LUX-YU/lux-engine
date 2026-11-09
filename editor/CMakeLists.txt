@@ -3,12 +3,14 @@ find_package(lux-cxx REQUIRED COMPONENTS core compile_time container)
 find_package(nlohmann_json CONFIG REQUIRED)
 
 find_package(imgui REQUIRED COMPONENTS core)
+find_package(Eigen3 CONFIG REQUIRED)
 
 add_component(
     COMPONENT_NAME lux_editor_project
     NAMESPACE lux::engine::editor
     STATIC
     SOURCE_FILES
+        project/src/EditorLayout.cpp
         project/src/ProjectManifest.cpp
         project/src/ProjectErrors.cpp
 )
@@ -24,11 +26,12 @@ target_link_libraries(
     PUBLIC
         lux::cxx::compile_time
         lux::engine::resource::identity
+        lux::engine::scene::scene_description
         lux::engine::core::error
     PRIVATE
         nlohmann_json::nlohmann_json
         lux::engine::platform::platform_file
-        lux::engine::project::project_identity
+        lux::engine::plugins::plugin_identity
 )
 
 component_add_transitive_commands(
@@ -36,8 +39,9 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS error)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
     "find_package(nlohmann_json CONFIG REQUIRED)"
-    "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_identity)"
+    "find_package(lux-engine-plugins REQUIRED COMPONENTS plugin_identity)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
 )
 
@@ -73,10 +77,10 @@ target_link_libraries(
         lux::engine::resource::asset
         lux::engine::scene::scene_asset
         lux::engine::core::core_execution
-        lux::engine::engine_context
-        lux::engine::process::asset_loading
+        lux::engine::engine_runtime
+        lux::engine::process::process_assets
     PRIVATE
-        lux::engine::project::project_plugins
+        lux::engine::plugins::plugin_runtime
 )
 
 component_add_internal_dependencies(lux_editor_context lux_editor_project)
@@ -88,9 +92,9 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
-    "find_package(lux-engine-context REQUIRED COMPONENTS engine_context)"
-    "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
-    "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS engine_runtime)"
+    "find_package(lux-engine-process-assets REQUIRED COMPONENTS process_assets)"
+    "find_package(lux-engine-plugins REQUIRED COMPONENTS plugin_runtime)"
 )
 
 lux_classify_target(TARGET lux_editor_context LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -103,6 +107,7 @@ add_component(
         ui/src/EditorUiErrors.cpp
         ui/src/EditorUiFactories.cpp
         ui/src/EditorMenuComposition.cpp
+        ui/src/ValueEditing.cpp
         window/src/EditorWindow.cpp
 )
 
@@ -121,6 +126,8 @@ target_link_libraries(
         lux::engine::function::ui
         lux::engine::function::input
         lux::engine::platform::window
+        imgui::core
+        Eigen3::Eigen
     PRIVATE lux::cxx::container
 )
 
@@ -131,6 +138,8 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS ui input)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS window)"
     "find_package(lux-cxx REQUIRED COMPONENTS container)"
+    "find_package(imgui REQUIRED COMPONENTS core)"
+    "find_package(Eigen3 CONFIG REQUIRED)"
 )
 
 lux_classify_target(TARGET lux_editor_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -141,15 +150,12 @@ add_component(
     STATIC
     SOURCE_FILES
         app/src/AppErrors.cpp
-        app/src/LuxEngine.cpp
+        app/src/EditorApplication.cpp
         app/src/ProjectUiMount.cpp
         app/src/EditorProject.cpp
-        app/src/EditorStartup.cpp
         app/src/ProjectCreationPane.cpp
         app/src/ProjectPreparation.cpp
         app/src/ProjectScenes.cpp
-        app/src/EditorUiScene.cpp
-        app/src/UiDrawInput.cpp
 )
 
 component_include_directories(
@@ -165,12 +171,10 @@ target_link_libraries(
     lux_editor_app
     PUBLIC
         lux::engine::function::render
-        lux::engine::scene::scene_render
-        lux::engine::scene::scene_render_builtin
+        lux::engine::systems::system_render
+        lux::engine::plugins::plugin_runtime
     PRIVATE
-        lux::engine::process::object_execution
-        lux::engine::project::project_plugins
-        lux::engine::engine_render_context
+        lux::engine::core::object
 )
 
 component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor_ui)
@@ -180,11 +184,10 @@ target_compile_options(lux_editor_app PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
 
 component_add_transitive_commands(
     lux_editor_app
-    "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"
-    "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
+    "find_package(lux-engine-plugins REQUIRED COMPONENTS plugin_runtime)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-systems-render REQUIRED COMPONENTS system_render)"
     "find_package(lux-engine-render REQUIRED COMPONENTS render)"
-    "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
-    "find_package(lux-engine-scene-render-builtin REQUIRED COMPONENTS scene_render_builtin)"
 )
 
 lux_classify_target(TARGET lux_editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -211,7 +214,7 @@ target_link_libraries(lux_editor_scene_document
         lux::engine::scene::scene_asset
         lux::engine::scene::scene_composition
         lux::engine::scene::scene_world_loading
-        lux::engine::simulation::ecs::hierarchy
+        lux::engine::ecs::ecs_hierarchy
         lux::engine::core::object
 )
 
@@ -219,7 +222,7 @@ component_add_transitive_commands(
     lux_editor_scene_document
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS hierarchy)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_hierarchy)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
     "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
 )
@@ -253,32 +256,40 @@ component_include_directories(
 target_link_libraries(
     lux_editor_scene_profiles
     PRIVATE
-        lux::engine::scene::scene_render
-        lux::engine::scene::scene_render_builtin
-        lux::engine::project::project_plugins
+        lux::engine::systems::system_render
+        lux::engine::plugins::plugin_runtime
         lux::engine::scene::scene_transform
         lux::engine::scene::scene_world_loading
 )
 
-component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context)
+component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context lux_editor_ui)
+
+target_include_directories(lux_editor_scene_profiles PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/pinclude)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/ui/cmake/editor_value_codegen.cmake)
+editor_target_add_value_codegen(
+    TARGET lux_editor_scene_profiles
+    NAME editor_builtin_values
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/src/ComponentEditors3D.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/pinclude/lux/engine/editor/BuiltinValueTypes.hpp
+    LOGICAL_PATH lux/engine/editor/BuiltinValueTypes.hpp
+    POLICY ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/ValueEditing.json
+)
 
 target_link_libraries(lux_editor_scene_profiles
     PRIVATE
         imgui::core
-        lux::engine::engine_render_context
         lux::engine::function::ui
 )
 
 component_add_transitive_commands(lux_editor_scene_profiles
     "find_package(imgui REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
 )
 
 component_add_transitive_commands(
     lux_editor_scene_profiles
-    "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
-    "find_package(lux-engine-scene-render-builtin REQUIRED COMPONENTS scene_render_builtin)"
+    "find_package(lux-engine-systems-render REQUIRED COMPONENTS system_render)"
     "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)"
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
 )
@@ -304,31 +315,25 @@ component_include_directories(
 component_add_internal_dependencies(lux_editor_assets lux_editor_context)
 
 target_link_libraries(lux_editor_assets
-    PUBLIC lux::engine::toolchain::toolchain_model_cooker
     PRIVATE
         nlohmann_json::nlohmann_json
         lux::cxx::algorithm
-        lux::engine::scene::scene_mesh_query
         lux::engine::platform::platform_file
 )
 
 component_add_transitive_commands(lux_editor_assets
     "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
-    "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)"
     "find_package(nlohmann_json CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
-    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
 )
 
 lux_classify_target(TARGET lux_editor_assets LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 component_add_internal_dependencies(lux_editor_app lux_editor_assets)
 
-target_link_libraries(lux_editor_app PRIVATE lux::engine::scene::scene_mesh_query)
+component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_assets)
+
 target_link_libraries(lux_editor_scene_profiles PRIVATE lux::engine::scene::scene_mesh_query)
-component_add_transitive_commands(lux_editor_app
-    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
-)
 component_add_transitive_commands(lux_editor_scene_profiles
     "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
 )
@@ -355,13 +360,52 @@ component_add_transitive_commands(lux_editor_asset_tools "find_package(imgui REQ
 lux_classify_target(TARGET lux_editor_asset_tools LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_component(
+    COMPONENT_NAME lux_editor_model_import
+    NAMESPACE lux::engine::editor
+    STATIC
+    SOURCE_FILES assets/model/src/ModelImporter.cpp assets/model/src/ModelImportEditor.cpp
+)
+
+component_include_directories(
+    lux_editor_model_import
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/assets/model/include
+    INSTALL_TIME include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/assets/model/pinclude
+)
+
+component_add_internal_dependencies(lux_editor_model_import lux_editor_assets lux_editor_asset_tools)
+
+target_link_libraries(lux_editor_model_import
+    PUBLIC lux::engine::toolchain::toolchain_model_cooker
+    PRIVATE nlohmann_json::nlohmann_json lux::cxx::algorithm
+)
+
+component_add_transitive_commands(lux_editor_model_import
+    "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)"
+    "find_package(nlohmann_json CONFIG REQUIRED)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
+)
+
+editor_target_add_value_codegen(
+    TARGET lux_editor_model_import
+    NAME editor_model_import_values
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/model/src/ModelImportEditor.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/assets/model/pinclude/lux/engine/editor/ModelImportValues.hpp
+    LOGICAL_PATH lux/engine/editor/ModelImportValues.hpp
+    POLICY ${CMAKE_CURRENT_SOURCE_DIR}/assets/model/ValueEditing.json
+)
+
+lux_classify_target(TARGET lux_editor_model_import LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
+
+add_component(
     COMPONENT_NAME lux_editor_scene_tools
     NAMESPACE lux::engine::editor
     STATIC
     SOURCE_FILES
         scene/tools/src/SceneCreationPane.cpp
-        scene/tools/src/SceneViewportPane.cpp
         scene/tools/src/ModelPlacement.cpp
+        scene/tools/src/MeshQueryAssets.cpp
         scene/tools/src/SceneHierarchyPane.cpp
         scene/tools/src/SceneInspectorPane.cpp
         scene/tools/src/SceneTransformGizmo.cpp
@@ -381,16 +425,16 @@ target_include_directories(lux_editor_scene_tools PRIVATE scene/tools/pinclude)
 target_link_libraries(lux_editor_scene_tools PRIVATE
     imgui::core
     lux::engine::scene::scene_mesh_query
-    lux::engine::project::project_plugins
-    lux::engine::simulation::ecs::transform
-    lux::engine::simulation::ecs::visual
+    lux::engine::plugins::plugin_runtime
+    lux::engine::ecs::ecs_transform
+    lux::engine::ecs::ecs_visual
 )
 
 component_add_transitive_commands(lux_editor_scene_tools
     "find_package(imgui REQUIRED COMPONENTS core)"
     "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
-    "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform visual)"
+    "find_package(lux-engine-plugins REQUIRED COMPONENTS plugin_runtime)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_transform ecs_visual)"
 )
 
 lux_classify_target(TARGET lux_editor_scene_tools LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -407,7 +451,8 @@ target_link_libraries(
         lux_editor_scene_tools
         lux_editor_assets
         lux_editor_asset_tools
-        lux::engine::project::project_plugins
+        lux_editor_model_import
+        lux::engine::plugins::plugin_runtime
         lux::engine::platform::platform_process
 )
 
@@ -433,6 +478,7 @@ lux_engine_install_components(
         lux_editor_scene_tools
         lux_editor_assets
         lux_editor_asset_tools
+        lux_editor_model_import
 )
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
@@ -469,8 +515,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     target_link_libraries(editor_scene_document_test PRIVATE
         lux_editor_scene_document
         lux_editor_context
-        lux::engine::project::project_plugins
-        lux::engine::simulation::ecs::transform
+        lux::engine::plugins::plugin_runtime
+        lux::engine::ecs::ecs_transform
     )
 
     target_include_directories(editor_scene_document_test PRIVATE context/sinclude)
@@ -479,17 +525,41 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 
     add_test(NAME framework.scene_document COMMAND editor_scene_document_test)
 
+    add_executable(editor_world_domains_test tests/world_domains.cpp)
+
+    target_link_libraries(editor_world_domains_test PRIVATE
+        lux_editor_scene_document
+        lux_editor_context
+        lux::engine::plugins::plugin_runtime
+        lux::engine::ecs::ecs_transform
+        lux::engine::spatial::spatial3d_index
+    )
+
+    target_include_directories(editor_world_domains_test PRIVATE context/sinclude)
+
+    lux_editor_test_options(editor_world_domains_test)
+
+    add_test(NAME framework.world_domains COMMAND editor_world_domains_test "${CMAKE_CURRENT_BINARY_DIR}/world-domains")
+
+    set_tests_properties(framework.world_domains PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+
     add_executable(editor_scene_profiles_test tests/scene_profiles.cpp)
+
+    target_include_directories(editor_scene_profiles_test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/pinclude
+            ${CMAKE_CURRENT_BINARY_DIR}/value-editors/editor_builtin_values
+    )
+
 
     target_link_libraries(
         editor_scene_profiles_test
         PRIVATE
             lux::engine::scene::scene_asset
             lux_editor_scene_profiles
-            lux::engine::engine_context
-            lux::engine::scene::scene_render
-        lux::engine::scene::scene_render_builtin
-            lux::engine::project::project_plugins
+            lux::engine::engine_runtime
+            lux::engine::systems::system_render
+            lux::engine::plugins::plugin_runtime
             lux::engine::scene::scene_transform
             lux::engine::scene::scene_world_loading
     )
@@ -511,7 +581,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         editor_plugin_selection_test
         PRIVATE
             lux_editor_project
-            lux::engine::project::project_plugins
+            lux::engine::plugins::plugin_runtime
             nlohmann_json::nlohmann_json
     )
 
@@ -564,14 +634,37 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 
     add_test(NAME framework.context_component COMMAND editor_framework_component_test)
 
+    add_executable(editor_asset_catalog_test tests/asset_catalog.cpp)
+
+    target_link_libraries(editor_asset_catalog_test
+        PRIVATE lux_editor_model_import lux::engine::engine_runtime lux::engine::plugins::plugin_runtime nlohmann_json::nlohmann_json
+    )
+
+    target_include_directories(editor_asset_catalog_test PRIVATE tests context/sinclude)
+
+    editor_target_add_value_codegen(
+        TARGET editor_asset_catalog_test
+        NAME editor_test_import_values
+        SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/tests/asset_catalog.cpp
+        HEADER ${CMAKE_CURRENT_SOURCE_DIR}/tests/AssetImportValues.hpp
+        LOGICAL_PATH lux/engine/editor/AssetImportValues.hpp
+        POLICY ${CMAKE_CURRENT_SOURCE_DIR}/tests/AssetImportEditing.json
+    )
+
+    lux_editor_test_options(editor_asset_catalog_test)
+
+    add_test(NAME framework.asset_catalog COMMAND editor_asset_catalog_test ${CMAKE_CURRENT_BINARY_DIR}/asset-import-fixture)
+
+    set_tests_properties(framework.asset_catalog PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
     add_executable(editor_framework_context_test tests/context.cpp)
 
     target_link_libraries(
         editor_framework_context_test
         PRIVATE
             lux_editor_context
-            lux::engine::engine_context
-            lux::engine::project::project_plugins
+            lux::engine::engine_runtime
+            lux::engine::plugins::plugin_runtime
     )
 
     target_include_directories(editor_framework_context_test PRIVATE context/sinclude)
@@ -590,8 +683,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         editor_context_lifetime_test
         PRIVATE
             lux_editor_context
-            lux::engine::engine_context
-            lux::engine::project::project_plugins
+            lux::engine::engine_runtime
+            lux::engine::plugins::plugin_runtime
     )
 
     target_include_directories(editor_context_lifetime_test PRIVATE context/sinclude)
@@ -641,7 +734,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         editor_framework_transport_test
         PRIVATE
             lux_editor_app
-            lux::engine::engine_render_context
+            lux::engine::systems::system_render
     )
 
     lux_editor_test_options(editor_framework_transport_test)
@@ -652,8 +745,8 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         editor_framework_gpu_test
         PRIVATE
             lux_editor_app
-            lux::engine::engine_render_context
-            lux::engine::project::project_plugins
+            lux::engine::systems::system_render
+            lux::engine::plugins::plugin_runtime
     )
 
     target_include_directories(editor_framework_gpu_test PRIVATE app/pinclude)
@@ -668,13 +761,13 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         add_executable(editor_scene_workflow_test tests/scene_workflow.cpp)
 
         target_link_libraries(editor_scene_workflow_test PRIVATE
-            lux_editor_app lux_editor_scene_profiles lux_editor_scene_tools lux::engine::engine_render_context
+            lux_editor_app lux_editor_scene_profiles lux_editor_scene_tools lux_editor_model_import lux::engine::systems::system_render
             lux::engine::scene::scene_mesh_query
         )
 
         target_include_directories(editor_scene_workflow_test PRIVATE
             app/pinclude
-            ${CMAKE_CURRENT_SOURCE_DIR}/../engine/scene/integration/render/pinclude
+            ${CMAKE_CURRENT_SOURCE_DIR}/../engine/systems/render/pinclude
         )
 
         lux_editor_test_options(editor_scene_workflow_test)
@@ -683,6 +776,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
             "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json"
             "${CMAKE_BINARY_DIR}"
             "${CMAKE_CURRENT_BINARY_DIR}/scene-workflow"
+            --render-only
         )
 
         set_tests_properties(framework.scene_workflow PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE LABELS "gpu;desktop")
@@ -693,7 +787,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
                 "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json"
                 "${CMAKE_BINARY_DIR}"
                 "${CMAKE_CURRENT_BINARY_DIR}/scene-workflow"
-                --fault-close
+                --fault-close --render-only
         )
 
         set_tests_properties(framework.scene_failed_close PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE LABELS "gpu;desktop")
@@ -717,7 +811,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_public_host_test tests/installed/host.cpp)
 
-        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::engine_render_context)
+        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::systems::system_render)
 
         lux_editor_test_options(editor_public_host_test)
 
@@ -727,7 +821,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_project_requests_test tests/project_requests.cpp)
 
-        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_render_context)
+        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::systems::system_render)
 
         target_include_directories(editor_project_requests_test PRIVATE app/pinclude)
 
@@ -744,7 +838,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_project_lifecycle_test tests/project_lifecycle.cpp)
 
-        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_render_context)
+        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::systems::system_render)
 
         target_include_directories(editor_project_lifecycle_test PRIVATE app/pinclude)
 
@@ -764,7 +858,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_framework_pacing_test tests/pacing.cpp)
 
-        target_link_libraries(editor_framework_pacing_test PRIVATE lux_editor_app lux::engine::engine_render_context)
+        target_link_libraries(editor_framework_pacing_test PRIVATE lux_editor_app lux::engine::systems::system_render)
 
         lux_editor_test_options(editor_framework_pacing_test)
 
@@ -789,13 +883,13 @@ if(BUILD_TESTING)
     add_executable(engine_render_ui_test tests/render_ui.cpp)
     target_include_directories(engine_render_ui_test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/app/pinclude"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../engine/context/render/test"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../engine/systems/render/test"
         "${CMAKE_CURRENT_SOURCE_DIR}/../modules/function/render/test"
         "${CMAKE_CURRENT_SOURCE_DIR}/../modules/function/render/sinclude"
     )
     target_link_libraries(engine_render_ui_test PRIVATE
-        lux_editor_app lux::engine::engine_render_context lux::engine::function::render_extensions
-        lux::engine::scene::scene_render
+        lux_editor_app lux::engine::systems::system_render lux::engine::function::render_extensions
+        lux::engine::systems::system_render
     )
     add_test(NAME engine.render_ui COMMAND engine_render_ui_test)
     add_test(NAME engine.render_ui32 COMMAND engine_render_ui_test uint32)

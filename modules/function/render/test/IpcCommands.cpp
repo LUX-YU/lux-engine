@@ -17,7 +17,7 @@ struct ScalarResponse final
 struct Increment final
 {
     static constexpr std::string_view name = "ipc.increment";
-    static constexpr bool frame_scoped = false;
+    static constexpr bool requires_frame_boundary = false;
     using Request = Scalar;
     using Response = ScalarResponse;
 };
@@ -31,7 +31,7 @@ struct AssetRequest final
 struct AssetIncrement final
 {
     static constexpr std::string_view name = "ipc.asset.increment";
-    static constexpr bool frame_scoped = false;
+    static constexpr bool requires_frame_boundary = false;
     using Request = AssetRequest;
     using Response = ScalarResponse;
 };
@@ -142,10 +142,10 @@ namespace
         const auto& descriptor = commandDescriptor<AssetIncrement>();
         check(static_cast<bool>(validateCommand(descriptor)), "typed command contract");
         auto conflict = descriptor;
-        conflict.response = lux::cxx::typeToken<Ack>();
+        conflict.response = lux::cxx::make_basic_type_info<Ack>();
         check(!compatibleCommands(descriptor, conflict), "response type rejected by pure protocol");
         conflict = descriptor;
-        conflict.frame_scoped = !descriptor.frame_scoped;
+        conflict.requires_frame_boundary = !descriptor.requires_frame_boundary;
         check(!compatibleCommands(descriptor, conflict), "frame admission policy is part of the cold contract");
         conflict = descriptor;
 
@@ -154,12 +154,12 @@ namespace
             std::uint64_t value;
         };
 
-        conflict.request = lux::cxx::typeToken<AlignedRequest>();
+        conflict.request = lux::cxx::make_basic_type_info<AlignedRequest>();
         check(!compatibleCommands(descriptor, conflict), "different aligned request type rejected");
         conflict.request = {};
         check(!validateCommand(conflict), "missing request type rejected");
         conflict = descriptor;
-        conflict.request = lux::cxx::TypeToken(conflict.request.hash(), "collision.other");
+        conflict.request = lux::cxx::type_info(conflict.request.hash(), "collision.other");
         check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
 
         auto& core = IpcCore::instance();

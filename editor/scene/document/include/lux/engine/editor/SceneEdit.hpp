@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/scene/SceneData.hpp>
+
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/WorldResidency.hpp>
@@ -10,31 +12,17 @@
 
 namespace lux::editor
 {
-    struct SceneComponentData final
-    {
-        simulation::ecs::ComponentSchemaId schema;
-        std::uint32_t version{};
-        std::vector<std::byte> payload;
-    };
-
-    struct SceneObjectData final
-    {
-        world::WorldObjectId id;
-        partition::PartitionOrdinal partition;
-        std::vector<SceneComponentData> components;
-    };
-
     struct SceneComponentEdit final
     {
         world::WorldObjectId object;
-        simulation::ecs::ComponentSchemaId schema;
+        ecs::ComponentSchemaId schema;
         // No value means remove the component. A value is the complete validated author component.
-        std::optional<SceneComponentData> value;
+        std::optional<scene::SceneComponentData> value;
     };
 
     struct SceneCreateObjects final
     {
-        std::vector<SceneObjectData> objects;
+        std::vector<scene::SceneObjectData> objects;
     };
 
     struct SceneEraseObjects final
@@ -72,10 +60,11 @@ namespace lux::editor
         ESceneEditError,
         scene::SceneRuntimeFailure,
         scene::WorldResidencyFailure,
-        simulation::ecs::ComponentDecodeFailure,
+        ecs::ComponentDecodeFailure,
         serialization::SerializationFailure,
         world::WorldStorageCodecFailure,
-        scene::ScenePackageFailure>;
+        scene::ScenePackageFailure,
+        scene::SceneContentFailure>;
     template <class T> using SceneEditResult = cxx::expected<T, VSceneEditFailure>;
 
     // Only this transient boundary permits retrying the exact owned edit without changing based_on.

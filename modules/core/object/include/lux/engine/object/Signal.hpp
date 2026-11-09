@@ -1,9 +1,10 @@
 #pragma once
 
 #include <lux/cxx/memory/intrusive_ptr.hpp>
-#include <lux/engine/object/detail/MessageEnvelope.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/object/detail/ObjectStorageFwd.hpp>
 #include <type_traits>
+#include <utility>
 
 namespace lux::object
 {
@@ -11,25 +12,42 @@ namespace lux::object
 
     namespace detail
     {
-        using QueuedMessageFactory =
-            MessageEnvelope (*)(lux::cxx::intrusive_ptr<ConnectionControl>, const void*) noexcept;
+        using QueuedSignalDelivery = bool (*)(lux::cxx::intrusive_ptr<ConnectionControl>, const void*) noexcept;
 
-        // A fallible value-copy factory. Dispatch itself does not catch foreign exceptions.
         template <class Payload>
-        [[nodiscard]] MessageEnvelope makeQueuedSignalMessage(
-            lux::cxx::intrusive_ptr<ConnectionControl> control,
-            const void* payload
-        ) noexcept
+        [[nodiscard]] bool
+        enqueueSignal(lux::cxx::intrusive_ptr<ConnectionControl> control, const void* payload) noexcept
         {
+            auto& execution = execution::ExecutionRuntime::instance();
+            auto scheduled = stdexec::schedule(execution.mainScheduler());
             if constexpr (std::is_void_v<Payload>)
-                return makeMessage([control = std::move(control)]() noexcept {
-                    invokeConnection(control.get(), nullptr);
-                });
+            {
+                return static_cast<bool>(execution.spawn(
+                    std::move(scheduled) | stdexec::then([control = std::move(control)]() noexcept
+                    {
+                        if (!execution::ExecutionRuntime::instance().isStopping())
+                        {
+                            invokeConnection(control.get(), nullptr);
+                        }
+                    })
+                ));
+            }
             else
-                return makeMessage([control = std::move(control), value = *static_cast<const Payload*>(payload)](
-                                   ) mutable noexcept { invokeConnection(control.get(), &value); });
+            {
+                return static_cast<bool>(execution.spawn(
+                    std::move(scheduled) | stdexec::then(
+                        [control = std::move(control), value = *static_cast<const Payload*>(payload)]() noexcept
+                        {
+                            if (!execution::ExecutionRuntime::instance().isStopping())
+                            {
+                                invokeConnection(control.get(), &value);
+                            }
+                        }
+                    )
+                ));
+            }
         }
-    }
+    } // namespace detail
 
     template <class Payload = void> class TSignal final
     {
@@ -47,12 +65,16 @@ namespace lux::object
 
     private:
         friend class LuxObject;
-        [[nodiscard]] static constexpr detail::QueuedMessageFactory queueFactory() noexcept
+        [[nodiscard]] static constexpr detail::QueuedSignalDelivery queueDelivery() noexcept
         {
             if constexpr (std::is_void_v<Payload> || std::is_copy_constructible_v<Payload>)
-                return &detail::makeQueuedSignalMessage<Payload>;
+            {
+                return &detail::enqueueSignal<Payload>;
+            }
             else
+            {
                 return nullptr;
+            }
         }
 
         LuxObject* owner_;

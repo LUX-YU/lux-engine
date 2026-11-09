@@ -456,7 +456,7 @@ namespace lux::material
             MaterialNodeRegistration result;
             std::string name{T::TypeName};
             result.identity = {graph::nodeTypeId(name), std::move(name), 1};
-            result.payload_type = cxx::typeToken<T>();
+            result.payload_type = cxx::make_basic_type_info<T>();
             detail::installBuiltinCodec<T, &clone<T>>(result);
             if constexpr (std::is_same_v<T, MaterialOutputSurface>)
             {

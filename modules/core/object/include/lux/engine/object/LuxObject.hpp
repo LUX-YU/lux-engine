@@ -25,10 +25,10 @@ namespace lux::object
     // Broadcast admission can be partial; never replay already delivered recipients.
     struct SignalDelivery final
     {
-        std::size_t direct{}, queued{}, full{}, closed{};
+        std::size_t direct{}, queued{}, closed{};
         [[nodiscard]] bool complete() const noexcept
         {
-            return full == 0 && closed == 0;
+            return closed == 0;
         }
     };
 
@@ -50,6 +50,7 @@ namespace lux::object
 
     namespace detail
     {
+        struct Reclamation;
         using SignalCallback = lux::cxx::move_only_function<void(LuxObject*, const void*)>;
         template <class Method> struct TCallbackArguments;
         template <class Result, class... Args> struct TCallbackArguments<Result (*)(Args...) noexcept>
@@ -263,7 +264,7 @@ namespace lux::object
                 return sender->connectSignal(
                     signal.storage_,
                     receiver,
-                    TSignal<Payload>::queueFactory(),
+                    TSignal<Payload>::queueDelivery(),
                     delivery,
                     std::move(invoke)
                 );
@@ -324,6 +325,7 @@ namespace lux::object
         [[nodiscard]] bool acceptsCallbacks() const noexcept;
         void unlinkParent() noexcept;
         friend struct detail::ObjectState;
+        friend struct detail::Reclamation;
         friend class ObjectRuntime;
         friend struct detail::AffinityOwner;
         friend ObjectResult<void> detail::prepareSharedObject(LuxObject&) noexcept;
@@ -338,7 +340,7 @@ namespace lux::object
         [[nodiscard]] ConnectResult connectSignal(
             lux::cxx::intrusive_ptr<detail::SignalStorage>&,
             LuxObject*,
-            detail::QueuedMessageFactory,
+            detail::QueuedSignalDelivery,
             EDelivery,
             detail::SignalCallback
         ) noexcept;

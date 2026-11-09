@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/Registration.hpp>
 #include <probe/Probe.hpp>
 
 namespace probe
@@ -23,11 +23,11 @@ namespace probe
             }
         }
 
-        using Bindings = std::tuple<lux::render::CommandMethod<SetValues, &ProbeCommandHandler::set>>;
     };
 
     lux::render::RenderResult<lux::render::HandlerId> install(lux::render::RenderServer& server) noexcept
     {
-        return server.registerHandler<ProbeCommandHandler>("external");
+        using Bindings = std::tuple<lux::render::CommandMethod<SetValues, &ProbeCommandHandler::set>>;
+        return server.registerHandler<ProbeCommandHandler, Bindings>("external");
     }
 } // namespace probe

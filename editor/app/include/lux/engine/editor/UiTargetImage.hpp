@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/description/UiDraw.hpp>
+#include <lux/engine/description/UiImageToken.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 

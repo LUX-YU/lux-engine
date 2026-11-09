@@ -3,23 +3,22 @@
 #include <atomic>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/editor/EditorApplication.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectErrors.hpp>
-#include <lux/engine/editor/detail/EditorStartup.hpp>
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/plugins/SceneRegistrations.hpp>
+#include <lux/engine/systems/render/RenderExecution.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <random>
+#include <semaphore>
 #include <thread>
 #if defined(_WIN32)
 #define NOMINMAX
@@ -42,6 +41,12 @@ namespace
     struct Service final
     {
         std::vector<int>& deaths;
+        inline static std::uint64_t created{};
+
+        explicit Service(std::vector<int>& counts) : deaths(counts)
+        {
+            ++created;
+        }
 
         ~Service()
         {
@@ -55,10 +60,11 @@ namespace
         TestPane(std::string name, std::vector<int>& deaths)
             : Pane(std::move(name)), deaths_(deaths), content_{}, label_("Actual UI GPU content"), draw_probe_(*this)
         {
+            ++created;
             assert(content_.addElement(label_) && content_.addElement(draw_probe_) && addElement(content_));
         }
 
-        inline static std::uint64_t draws{};
+        inline static std::uint64_t draws{}, created{};
 
         void drawTestContent(ui::Element&) noexcept
         {
@@ -89,10 +95,10 @@ namespace
 
     void nativeLifecycle(const std::filesystem::path& catalog, const std::filesystem::path& plugin_root)
     {
-        assert(!LuxEngine::create({"Invalid extent", 0, 480}));
+        assert(!fixture::createLoadedEditor({"Invalid extent", 0, 480}));
         EditorConfig invalid;
-        invalid.layout = {{"test", "same", "One"}, {"test", "same", "Two"}};
-        assert(!LuxEngine::create(invalid));
+        invalid.layout = defaultProjectLayout({{"test", "same", "One"}, {"test", "same", "Two"}});
+        assert(!fixture::createLoadedEditor(invalid));
         std::mt19937 random{std::random_device{}()};
         uuids::uuid_random_generator generate(random);
         const auto directory = std::filesystem::temp_directory_path() / ("lux-project-" + uuids::to_string(generate()));
@@ -128,15 +134,16 @@ namespace
                              make_work = [](execution::TaskReporter) noexcept
                              { return stdexec::just(FrameworkResult<void>{}); },
                              consume_result =
-                                 [&](execution::TTaskResult<void, error::Error>&& result) noexcept
+                                 [&](execution::ExecutionResult<void, error::Error>&& result) noexcept
                              {
-                                 // C's UI and Context are gone. Completion owns its result, not the failed candidate.
-                                 assert(result && (deaths == std::vector<int>{1, 1, 2, 1, 2}));
+                                 // Cleanup can start after this completion. C's Context/service must remain alive
+                                 // either way.
+                                 assert(result && std::ranges::count(deaths, 2) == 1);
                                  rejected_candidate_delivered = true;
                              }](lux::execution::TaskReporter reporter) mutable noexcept
                             {
                                 auto ready = stdexec::continues_on(
-                                    lux::execution::taskResult(make_work(reporter)),
+                                    lux::execution::asResult(make_work(reporter)),
                                     context.tasks().execution().mainScheduler()
                                 );
                                 return stdexec::then(
@@ -158,11 +165,11 @@ namespace
         };
         EditorConfig config{"Framework project qualification", 640, 480};
         config.enable_validation = true;
-        config.layout = {{"test", "one", "One"}, {"test", "two", "Two"}};
+        config.layout = defaultProjectLayout({{"test", "one", "One"}, {"test", "two", "Two"}});
         config.plugin_locations = {{catalog, plugin_root}};
         config.project_file = directory / "A/Project.luxproj";
-        detail::ProjectStartupRequest startup{manifest("A"), {}};
-        auto engine = take(detail::createEditor(std::move(config), std::move(assembly), std::move(startup)));
+        ProjectStartup startup{manifest("A"), {}};
+        auto engine = take(fixture::createLoadedEditor(std::move(config), std::move(assembly), std::move(startup)));
         auto* runtime = &engine->engine();
         auto* window = &engine->window();
         auto* root = &window->uiRoot();
@@ -170,19 +177,19 @@ namespace
         class Listener final : public object::LuxObject
         {
         public:
-            explicit Listener(LuxEngine& host) : host_(host) {}
+            explicit Listener(EditorApplication& host) : host_(host) {}
 
             void attached(const ui::PaneChanged&) noexcept
             {
                 // Structural facts observe the semantic owner published by on_commit.
-                assert(!host_.project().project().name.empty() || host_.window().shouldClose());
+                assert(host_.engine().closing() || !host_.project().project().name.empty());
                 ++calls;
             }
 
             unsigned calls{};
 
         private:
-            LuxEngine& host_;
+            EditorApplication& host_;
         } listener(*engine);
 
         auto connection = object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
@@ -196,7 +203,7 @@ namespace
             while (!predicate())
             {
                 assert(std::chrono::steady_clock::now() < deadline);
-                assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
+                assert(take(fixture::stepEditor(*engine)) == true);
                 std::this_thread::sleep_for(1ms);
             }
         };
@@ -218,14 +225,41 @@ namespace
         assert(facts.failure.error.type == Errors::ProjectPlugins);
         const auto d = write(manifest("D"));
         assert(fixture::open(*engine, d));
-        assert(fixture::open(*engine, d)); // Latest intent replaces the previous one.
+        auto busy = fixture::open(*engine, d);
+        assert(!busy && busy.error().type == Errors::ProjectLoadBusy);
         fixture::cancel(*engine);
         until(settled);
         assert(facts.failed == 2 && &engine->project() == original);
-        assert(deaths.empty() && ui_test::paneCount(*root) == 2);
+        assert(deaths.empty() && ui_test::paneCount(*root) == 3);
         // Finish worker preparation without collecting it, then cancel. The manifest publication
         // remains a disk fact even though the prepared Context must never be adopted.
+        execution::TaskScope preparation_gate(runtime->execution());
+        std::atomic_uint waiting_workers{};
+        std::counting_semaphore<2> release_workers{0};
+        auto blocking = runtime->execution().blockingIoScheduler();
+        assert(blocking);
+        for (unsigned i = 0; i != 2; ++i)
+        {
+            assert(preparation_gate.submit(
+                {"Hold preparation worker", "test"},
+                [&](execution::TaskReporter) noexcept
+                {
+                    return stdexec::schedule(*blocking) | stdexec::then(
+                                                              [&]() noexcept
+                                                              {
+                                                                  ++waiting_workers;
+                                                                  release_workers.acquire();
+                                                              }
+                                                          );
+                }
+            ));
+        }
+        until([&] { return waiting_workers == 2; });
         assert(fixture::create(*engine, {directory / "PublishedCancelled", manifest("PublishedCancelled")}));
+        // Enter the shared Main stage once; the blocking worker can then finish without adopting its result.
+        assert(fixture::stepEditor(*engine));
+        assert(fixture::stepEditor(*engine));
+        release_workers.release(2);
         const auto prepared_deadline = std::chrono::steady_clock::now() + 20s;
         for (;;)
         {
@@ -243,12 +277,13 @@ namespace
         assert(&engine->project() == original);
         assert(readProjectManifest(directory / "PublishedCancelled/Project.luxproj"));
         assert(deaths.empty());
+        until([&] { return preparation_gate.settled(); });
 
-        // A real accepted task is deliberately held after stop. Switching must destroy A's services immediately
-        // and return from the host iteration; the test releases the worker only after observing several frames.
+        // A real accepted task is held after stop. New UI is published, but A's service owner remains
+        // until its accepted completion drains; the application still pumps frames while waiting.
         std::atomic_bool started{}, release{};
         bool delivered{};
-        auto scheduler = runtime->execution().blocking();
+        auto scheduler = runtime->execution().blockingIoScheduler();
         assert(scheduler);
         assert(original->tasks().submit(
             {"Project close negative", "test"},
@@ -271,14 +306,14 @@ namespace
                  );
              },
              consume_result =
-                 [&](execution::TTaskResult<void, error::Error>&& result) noexcept
+                 [&](execution::ExecutionResult<void, error::Error>&& result) noexcept
              {
-                 assert(result && (deaths == std::vector<int>{1, 1, 2}));
+                 assert(result && (deaths == std::vector<int>{1, 1}));
                  delivered = true;
              }](lux::execution::TaskReporter reporter) mutable noexcept
             {
                 auto ready = stdexec::continues_on(
-                    lux::execution::taskResult(make_work(reporter)),
+                    lux::execution::asResult(make_work(reporter)),
                     runtime->execution().mainScheduler()
                 );
                 return stdexec::then(
@@ -297,15 +332,15 @@ namespace
         b.plugins = {{"lux.builtin.scene_render", 2}};
         assert(fixture::open(*engine, write(b)));
         until([&] { return engine->project().project().name == "B"; });
-        until([&] { return deaths == std::vector<int>{1, 1, 2}; });
-        assert(!delivered && (deaths == std::vector<int>{1, 1, 2}));
+        assert(!delivered && (deaths == std::vector<int>{1, 1}));
+        assert(engine->state() == EApplicationState::LOADING_PROJECT);
         for (int i = 0; i < 3; ++i)
         {
-            assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
+            assert(take(fixture::stepEditor(*engine)) == true);
             assert(engine->project().project().name == "B" && !delivered);
         }
         release = true;
-        until([&] { return delivered; });
+        until(settled);
         assert(delivered && engine->project().project().name == "B");
         assert((deaths == std::vector<int>{1, 1, 2}));
         assert(!engine->project().sceneRegistrations().scene_systems.empty());
@@ -327,7 +362,7 @@ namespace
         before = TestPane::draws;
         for (int i{}; i < 5; ++i)
         {
-            assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
+            assert(take(fixture::stepEditor(*engine)) == true);
         }
         assert(TestPane::draws == before);
         ShowWindow(static_cast<HWND>(window->nativeHandle()), SW_RESTORE);
@@ -338,7 +373,7 @@ namespace
         until(settled);
         assert(facts.failed == 3);
         assert(facts.failure.error.type == FixtureErrors::EditorExpectedSecondFactoryRefusal);
-        assert(&engine->project() == b_context && ui_test::paneCount(*root) == 2);
+        assert(&engine->project() == b_context && ui_test::paneCount(*root) == 3);
         until([&] { return rejected_candidate_delivered; });
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2})); // Only C's detached candidates were destroyed.
         assert(fixture::open(*engine, d));
@@ -349,9 +384,9 @@ namespace
         const auto statistics = engine->rendering().stats();
         assert(statistics.presentations > 0);
         assert(fixture::open(*engine, directory / "A/Project.luxproj"));
-        window->exit(); // Late preparation is drained/cancelled; A is never adopted after native close.
+        engine->engine().requestClose(); // Late preparation is drained/cancelled; A is never adopted after close.
         const auto exit_deadline = std::chrono::steady_clock::now() + 20s;
-        while (take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) != false)
+        while (take(fixture::stepEditor(*engine)) != false)
         {
             assert(std::chrono::steady_clock::now() < exit_deadline);
             std::this_thread::sleep_for(1ms);
@@ -360,7 +395,9 @@ namespace
         assert(listener.calls > 0);
         connection->disconnect();
         engine.reset();
-        assert(deaths.size() == 11 && deaths.back() == 2);
+        assert(std::ranges::count(deaths, 1) == TestPane::created);
+        assert(std::ranges::count(deaths, 2) == Service::created);
+        assert(deaths.size() == TestPane::created + Service::created && deaths.back() == 2);
         std::filesystem::remove_all(directory);
         std::printf(
             "PASS real project create/prepare/cancel/plugins/async close, failed C preserves B, GPU %llu frames\n",

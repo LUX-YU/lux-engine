@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/Error.hpp>
 #include <algorithm>
 #include <lux/engine/render/execution/BindingState.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
@@ -19,17 +20,29 @@ namespace lux::render::detail
         preparation_receivers_.reserve(uploads ? uploads->windowRegionLimit() : 0);
     }
 
-    RenderResult<std::unique_ptr<FrameExecution>> FrameExecution::create(
-        DeviceSession& device,
-        ResourceUploader* uploads,
-        std::uint32_t count
-    ) noexcept
+    RenderResult<std::unique_ptr<FrameExecution>>
+    FrameExecution::create(DeviceSession& device, ResourceUploader* uploads, std::uint32_t count) noexcept
     {
         if (count == 0 || count > 3)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        return std::unique_ptr<FrameExecution>(new FrameExecution(device, uploads, count));
+        auto execution = std::unique_ptr<FrameExecution>(new FrameExecution(device, uploads, count));
+        const auto& core = device.nriCore();
+        for (std::uint32_t slot = 0; slot < count; ++slot)
+        {
+            auto& frame = execution->frames_[slot];
+            auto result = core.CreateCommandAllocator(device.queue().native(), frame.preparation_allocator);
+            if (result == nri::Result::SUCCESS)
+            {
+                result = core.CreateCommandBuffer(*frame.preparation_allocator, frame.preparation_command);
+            }
+            if (result != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(result));
+            }
+        }
+        return execution;
     }
 
     FrameExecution::~FrameExecution() noexcept
@@ -37,6 +50,12 @@ namespace lux::render::detail
         if (frame_waiters_)
         {
             std::terminate();
+        }
+        for (std::uint32_t slot = 0; slot < frame_count_; ++slot)
+        {
+            auto& frame = frames_[slot];
+            if (frame.preparation_command) device_.nriCore().DestroyCommandBuffer(frame.preparation_command);
+            if (frame.preparation_allocator) device_.nriCore().DestroyCommandAllocator(frame.preparation_allocator);
         }
     }
 
@@ -62,14 +81,19 @@ namespace lux::render::detail
     bool FrameExecution::beginFrame(std::uint32_t& slot) noexcept
     {
         auto& frame = frames_[next_frame_];
-        if (frame.phase != EFramePhase::FREE)
+        if (frame.phase == EFramePhase::FREE)
+        {
+            frame.accepted.serials.fill(0);
+            frame.submitted_batches = 0;
+            frame.phase = EFramePhase::COLLECTING;
+        }
+        // Discrete resource writes may precede the frame packet. Adopt their collecting slice
+        // without discarding pending writes or the accepted GPU completion frontiers.
+        if (frame.phase != EFramePhase::COLLECTING)
         {
             return false;
         }
         slot = next_frame_;
-        frame.accepted.serials.fill(0);
-        frame.submitted_batches = 0;
-        frame.phase = EFramePhase::COLLECTING;
         updateUploadAdmission();
         return true;
     }
@@ -278,14 +302,11 @@ namespace lux::render::detail
             next_frame_ = (next_frame_ + 1) % frame_count_;
             return 0;
         }
-        auto& graphics = device_.queue();
-        if (graphics.recording())
+        // A finite preparation window can be ready while its temporary command slot is pending.
+        // Submit those exact staged ranges before preparing again; do not overwrite acceptance callbacks.
+        if ((uploads_ && uploads_->hasFrameCopies()) || !frame.feature_copies.empty())
         {
-            return outcome(EExecutionOutcome::RECORDING_BUSY);
-        }
-        if (!graphics.hasCapacity())
-        {
-            return outcome(EExecutionOutcome::QUEUE_FULL);
+            return submitPreparationCopies(features, false);
         }
         // This synchronous phase may fill staging and update descriptors, but may not
         // submit, suspend or dispatch callbacks. Only the following recording segment owns a CommandBuffer.
@@ -315,6 +336,16 @@ namespace lux::render::detail
         }
         if (instances_ready)
         {
+            const auto prepared = prepareDrawLists(instances);
+            if (!prepared)
+            {
+                cancelSubmissions(prepared.error());
+                return cxx::unexpected(prepared.error());
+            }
+            instances_ready = *prepared;
+        }
+        if (instances_ready)
+        {
             const auto prepared = prepareInstances(instances);
             if (!prepared)
             {
@@ -333,7 +364,12 @@ namespace lux::render::detail
         if (instances_ready)
         {
             collectFeatureCopies(features);
-            prepareSubmissions(instances);
+            auto prepared = prepareSubmissions(instances);
+            if (!prepared)
+            {
+                cancelSubmissions(prepared.error());
+                return cxx::unexpected(prepared.error());
+            }
             return advanceSubmissions();
         }
         auto accepted = submitPreparationCopies(features, *resources_ready);
@@ -387,12 +423,33 @@ namespace lux::render::detail
             {
                 continue;
             }
-            for (std::size_t i = 0; i < binding->inputs.size(); ++i)
+            const auto& definition = *binding->definition;
+            for (std::size_t i = 0; i < definition.inputs.size(); ++i)
             {
-                binding->resolved_inputs[i] = instance->resourceInput(binding->inputs[i], next_frame_);
+                binding->resolved_inputs[i] = instance->resourceInput(definition.inputs[i], next_frame_);
             }
-            const FeatureFrameInput input{next_frame_, instance->instanceParameters(), binding->resolved_inputs};
-            auto prepared = binding->prepare(binding->value.get(), input, *uploads_);
+            const FeatureFrameInput input{
+                next_frame_,
+                instance->instanceParameters().subspan(definition.parameter_offset, definition.parameter_bytes),
+                binding->resolved_inputs
+            };
+            const auto prepare = std::visit(
+                [](const auto& operation) noexcept
+                {
+                    if constexpr (std::same_as<
+                                      std::remove_cvref_t<decltype(operation)>,
+                                      FeatureBinding::RasterPreparation>)
+                    {
+                        return operation.prepare_resources;
+                    }
+                    else
+                    {
+                        return operation;
+                    }
+                },
+                binding->preparation
+            );
+            auto prepared = prepare(binding->value.get(), input, *uploads_);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -412,6 +469,39 @@ namespace lux::render::detail
             has_copies |= !binding->prepared_copies.empty();
         }
         return features_ready;
+    }
+
+    RenderResult<bool> FrameExecution::prepareDrawLists(std::span<RenderGraphInstance* const> instances) noexcept
+    {
+        bool ready = true;
+        for (auto* instance : instances)
+        {
+            if (instance->frames_[next_frame_].draw_lists.empty())
+            {
+                continue;
+            }
+            if (!uploads_)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            auto prepared = instance->prepareDrawListUploads(next_frame_, *uploads_);
+            // No staging progress needs no submission callback. Terminal frame delivery also
+            // settles unprepared sources, including frames with no active output.
+            if (!prepared || uploads_->hasFrameCopies())
+            {
+                onPreparationSubmitted(
+                    instance,
+                    [](void* value, std::uint32_t slot, RenderResult<void> result) noexcept
+                    { static_cast<RenderGraphInstance*>(value)->finishDrawListUploads(slot, result); }
+                );
+            }
+            if (!prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+            ready &= *prepared;
+        }
+        return ready;
     }
 
     RenderResult<bool> FrameExecution::prepareInstances(std::span<RenderGraphInstance* const> instances) noexcept
@@ -451,20 +541,21 @@ namespace lux::render::detail
     {
         auto& frame = frames_[next_frame_];
         auto& graphics = device_.queue();
+        if (include_features)
+        {
+            collectFeatureCopies(features);
+        }
+        if (graphics.recording() || !graphics.hasCapacity())
+        {
+            return 0;
+        }
         auto accepted = graphics.recordAndSubmit(
             [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
             {
                 if (uploads_)
                 {
                     uploads_->recordFrameCopies(command);
-                }
-                if (include_features)
-                {
-                    for (const auto& [instance, binding] : features)
-                    {
-                        uploads_->recordCopies(command, binding->prepared_copies);
-                        binding->prepared_copies = {};
-                    }
+                    uploads_->recordCopies(command, frame.feature_copies);
                 }
                 return {};
             }
@@ -478,6 +569,7 @@ namespace lux::render::detail
         frame.graphics_serial = graphics.submitted();
         frame.recorded_instances = 0;
         frame.recorded_passes = 0;
+        frame.feature_copies.clear();
         finishPreparation({});
         return 1; // A preparation submission does not publish an instance or advance its history.
     }
@@ -520,15 +612,37 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frame_count_; ++slot)
         {
             const auto& frame = frames_[slot];
-            const bool used = frame.phase != EFramePhase::FREE &&
-                              std::ranges::any_of(
-                                  frame.instances,
-                                  [&](const auto& execution)
-                                  { return std::ranges::find(instances, execution.instance) != instances.end(); }
-                              );
-            if (used)
+            if (frame.phase == EFramePhase::FREE)
             {
-                for (std::size_t q = 0; q < result.serials.size(); ++q)
+                continue;
+            }
+            const bool used = std::ranges::any_of(
+                frame.instances,
+                [&](const auto& execution)
+                { return std::ranges::find(instances, execution.instance) != instances.end(); }
+            );
+            if (!used)
+            {
+                continue;
+            }
+            SubmissionFrontiers graph_frontiers;
+            for (const auto& batch : frame.batches)
+            {
+                graph_frontiers.serials[batch.queue] = std::max(graph_frontiers.serials[batch.queue], batch.serial);
+                if (std::ranges::find(instances, frame.instances[batch.instance].instance) != instances.end())
+                {
+                    result.serials[batch.queue] = std::max(result.serials[batch.queue], batch.serial);
+                }
+            }
+            // The first Graphics submission includes shared preparation copies. Discrete
+            // uploads not covered by the graph batch table retain their real queue frontier.
+            const auto graphics = queueIndex(device_.queue());
+            result.serials[graphics] = std::max(result.serials[graphics], frame.preparation_serial);
+            for (std::size_t q = 0; q < result.serials.size(); ++q)
+            {
+                const bool unassigned = frame.preparation_serial == 0 ||
+                    frame.accepted.serials[q] > graph_frontiers.serials[q];
+                if (unassigned)
                 {
                     result.serials[q] = std::max(result.serials[q], frame.accepted.serials[q]);
                 }
@@ -537,7 +651,7 @@ namespace lux::render::detail
         return result;
     }
 
-    void FrameExecution::prepareSubmissions(std::span<RenderGraphInstance* const> instances) noexcept
+    RenderResult<void> FrameExecution::prepareSubmissions(std::span<RenderGraphInstance* const> instances) noexcept
     {
         auto& frame = frames_[next_frame_];
         bool changed = frame.instances.size() != instances.size();
@@ -548,7 +662,12 @@ namespace lux::render::detail
         }
         if (changed)
         {
-            rebuildDependencies(instances);
+            if (auto rebuilt = rebuildDependencies(instances); !rebuilt)
+            {
+                // Do not reuse an incomplete dependency cache on a later frame.
+                frame.instances.clear();
+                return rebuilt;
+            }
         }
         frame.recorded_instances = frame.recorded_passes = 0;
         frame.preparation_serial = 0;
@@ -574,9 +693,10 @@ namespace lux::render::detail
             }
         }
         frame.phase = EFramePhase::SUBMITTING;
+        return {};
     }
 
-    void FrameExecution::rebuildDependencies(std::span<RenderGraphInstance* const> instances) noexcept
+    RenderResult<void> FrameExecution::rebuildDependencies(std::span<RenderGraphInstance* const> instances) noexcept
     {
         auto& frame = frames_[next_frame_];
         ++frame.dependency_rebuilds;
@@ -635,6 +755,36 @@ namespace lux::render::detail
             }
             ++frame.batches[dependency.consumer].predecessor_count;
         }
+        // Imported Target relationships can form a cycle across otherwise valid individual graphs.
+        // Qualify the combined graph once when bindings change, before accepting any submission.
+        std::vector<std::uint32_t> pending;
+        pending.reserve(frame.batches.size());
+        frame.recording_batches.clear();
+        for (std::uint32_t i = 0; i < frame.batches.size(); ++i)
+        {
+            pending.push_back(frame.batches[i].predecessor_count);
+            if (pending.back() == 0)
+            {
+                frame.recording_batches.push_back(i);
+            }
+        }
+        for (std::size_t cursor = 0; cursor < frame.recording_batches.size(); ++cursor)
+        {
+            const auto& batch = frame.batches[frame.recording_batches[cursor]];
+            for (std::uint32_t i = 0; i < batch.successor_count; ++i)
+            {
+                const auto destination = frame.dependencies[batch.first_successor + i].consumer;
+                if (--pending[destination] == 0)
+                {
+                    frame.recording_batches.push_back(destination);
+                }
+            }
+        }
+        if (frame.recording_batches.size() != frame.batches.size())
+        {
+            return cxx::unexpected(RenderError{kGraphDependencyCycle});
+        }
+        frame.recording_batches.clear();
         frame.recording_batches.reserve(frame.batches.size());
         frame.wait_fences.reserve(instances.size() + 3);
         frame.signal_fences.reserve(instances.size());
@@ -642,16 +792,13 @@ namespace lux::render::detail
         {
             ready.reserve(frame.batches.size());
         }
+        return {};
     }
 
     void FrameExecution::appendImportedDependencies(std::span<RenderGraphInstance* const> instances) noexcept
     {
         auto& frame = frames_[next_frame_];
         frame.imported_uses.clear();
-        if (instances.size() < 2)
-        {
-            return;
-        }
         for (std::uint32_t i = 0; i < instances.size(); ++i)
         {
             const auto& bindings = instances[i]->frames_[next_frame_].bindings;
@@ -668,6 +815,10 @@ namespace lux::render::detail
                 auto range = use.range;
                 if (auto* buffer = std::get_if<GraphBufferRange>(&range))
                 {
+                    if (use.whole_resource)
+                    {
+                        buffer->size = binding.buffer_size - buffer->offset;
+                    }
                     buffer->offset += binding.buffer_offset;
                 }
                 frame.imported_uses.push_back(
@@ -676,8 +827,53 @@ namespace lux::render::detail
                      i,
                      base + use.batch,
                      base + use.release_batch,
-                     use.write}
+                     use.write,
+                     use.resource.index == instances[i]->plan_->output()}
                 );
+                for (auto* buffer : binding.addressed_buffers)
+                {
+                    frame.imported_uses.push_back(
+                        {buffer,
+                         GraphBufferRange{0, device_.nriCore().GetBufferDesc(*buffer).size},
+                         i,
+                         base + use.batch,
+                         base + use.release_batch,
+                         use.write}
+                    );
+                }
+            }
+        }
+        for (std::uint32_t i = 0; i < instances.size(); ++i)
+        {
+            const auto& instance = *instances[i];
+            const auto& physical = instance.frames_[next_frame_];
+            const auto base = frame.instances[i].first_batch;
+            for (std::uint32_t batch = 0; batch < instance.plan_->submissions_.size(); ++batch)
+            {
+                const auto& submission = instance.plan_->submissions_[batch];
+                for (std::uint32_t pass = submission.first_pass; pass < submission.first_pass + submission.pass_count;
+                     ++pass)
+                {
+                    const auto* raster = std::get_if<RasterCommands>(&instance.plan_->passes()[pass].work);
+                    if (!raster)
+                    {
+                        continue;
+                    }
+                    const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw);
+                    const auto* streamed = std::get_if<IndexedListCommands>(&raster->draw);
+                    const auto* list = dynamic    ? &physical.raster_draws[dynamic->data_index]
+                                       : streamed ? &physical.draw_lists[streamed->data_index].draws
+                                                  : nullptr;
+                    if (list)
+                    {
+                        for (const auto& read : list->reads)
+                        {
+                            frame.imported_uses.push_back(
+                                {read.physical, read.range, i, base + batch, base + batch, false}
+                            );
+                        }
+                    }
+                }
             }
         }
         std::ranges::sort(
@@ -687,6 +883,10 @@ namespace lux::render::detail
                 if (a.physical != b.physical)
                 {
                     return std::less<const void*>{}(a.physical, b.physical);
+                }
+                if (a.target_output != b.target_output)
+                {
+                    return a.target_output; // A sampled Target is produced before another instance consumes it.
                 }
                 return std::tie(a.instance, a.batch) < std::tie(b.instance, b.batch);
             }
@@ -706,14 +906,16 @@ namespace lux::render::detail
                 {
                     for (std::size_t b = 0; b < a; ++b)
                     {
-                        const bool needs_order =
-                            group[a].instance != group[b].instance && (group[a].write || group[b].write);
+                        const bool needs_order = group[a].batch != group[b].batch && (group[a].write || group[b].write);
                         if (needs_order)
                         {
                             ++frame.imported_comparisons;
                             if (overlaps(group[a].range, group[b].range))
                             {
-                                frame.dependencies.push_back({group[b].release_batch, group[a].batch});
+                                if (group[b].release_batch != group[a].batch)
+                                {
+                                    frame.dependencies.push_back({group[b].release_batch, group[a].batch});
+                                }
                             }
                         }
                     }
@@ -739,6 +941,7 @@ namespace lux::render::detail
                 // Unsubmitted replica copies can still have Sender receivers waiting for acceptance.
                 // Accepted uploads retain their existing GPU completion and finishWrite paths.
                 finishPreparation(cxx::unexpected(error));
+                frame.feature_copies.clear();
                 if (frame.pending_writes == 0)
                 {
                     sealFrame(frame);
@@ -807,11 +1010,11 @@ namespace lux::render::detail
             {
                 if (batch.local_batch == instance.plan_->output_first_batch_)
                 {
-                    presentation->acquired_consumed = true;
+                    presentation->acquire_wait_submitted = true;
                 }
                 if (batch.local_batch + 1 == instance.plan_->submissions_.size())
                 {
-                    presentation->rendered_signalled = true;
+                    presentation->render_signal_submitted = true;
                 }
             }
         }
@@ -855,7 +1058,7 @@ namespace lux::render::detail
             {
                 const auto q = (submit_queue_cursor_ + offset) % queue_count;
                 const auto& queue = device_.physicalQueue(q);
-                if (!frame.ready_batches[q].empty() && !queue.recording() && queue.hasCapacity())
+                if (!frame.ready_batches[q].empty() && !queue.recording())
                 {
                     selected_queue = q;
                     break;
@@ -897,9 +1100,9 @@ namespace lux::render::detail
                 {
                     continue;
                 }
-                if (batch.local_batch == instance.plan_->output_first_batch_ && !presentation->acquired_consumed)
+                if (batch.local_batch == instance.plan_->output_first_batch_ && !presentation->acquire_wait_submitted)
                 {
-                    frame.wait_fences.push_back({presentation->acquired, 0, nri::StageBits::ALL});
+                    frame.wait_fences.push_back({presentation->acquired, 0, instance.plan_->output_wait_stages_});
                 }
                 if (batch.local_batch + 1 == instance.plan_->submissions_.size())
                 {
@@ -907,31 +1110,44 @@ namespace lux::render::detail
                 }
             }
             const bool preparation = frame.preparation_serial == 0;
-            auto accepted = queue.recordAndSubmit(
-                [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+            frame.recording_commands.clear();
+            const bool has_copies = preparation && uploads_ &&
+                (uploads_->hasFrameCopies() || !frame.feature_copies.empty());
+            if (has_copies)
+            {
+                auto result = device_.resetCommandAllocator(*frame.preparation_allocator);
+                if (result == nri::Result::SUCCESS)
                 {
-                    if (preparation && uploads_)
-                    {
-                        uploads_->recordFrameCopies(command);
-                        uploads_->recordCopies(command, frame.feature_copies);
-                    }
-                    BindingState bindings;
-                    for (auto index : frame.recording_batches)
-                    {
-                        const auto& batch = frame.batches[index];
-                        RenderExecutor::recordBatch(
-                            *frame.instances[batch.instance].instance,
-                            command,
-                            next_frame_,
-                            batch.local_batch,
-                            bindings
-                        );
-                    }
-                    return {};
-                },
-                frame.wait_fences,
-                frame.signal_fences
-            );
+                    result = device_.nriCore().BeginCommandBuffer(*frame.preparation_command, nullptr);
+                }
+                if (result == nri::Result::SUCCESS)
+                {
+                    uploads_->recordFrameCopies(*frame.preparation_command);
+                    uploads_->recordCopies(*frame.preparation_command, frame.feature_copies);
+                    result = device_.nriCore().EndCommandBuffer(*frame.preparation_command);
+                }
+                if (result != nri::Result::SUCCESS)
+                {
+                    const auto error = nativeError(result);
+                    cancelSubmissions(error);
+                    return cxx::unexpected(error);
+                }
+                frame.recording_commands.push_back(frame.preparation_command);
+            }
+            for (auto index : frame.recording_batches)
+            {
+                const auto& batch = frame.batches[index];
+                auto commands = RenderExecutor::prepareBatch(
+                    *frame.instances[batch.instance].instance, next_frame_, batch.local_batch
+                );
+                if (!commands)
+                {
+                    cancelSubmissions(commands.error());
+                    return cxx::unexpected(commands.error());
+                }
+                frame.recording_commands.insert(frame.recording_commands.end(), commands->begin(), commands->end());
+            }
+            auto accepted = queue.submit(frame.recording_commands, frame.wait_fences, frame.signal_fences);
             if (!accepted)
             {
                 cancelSubmissions(accepted.error());
@@ -963,12 +1179,11 @@ namespace lux::render::detail
         }
         else if (submissions == 0)
         {
-            // Only actual ready work can be blocked by recording/capacity; dependency-blocked
-            // batches are not repeatedly scanned or misreported as Queue Full.
+            // Graph commands no longer consume temporary slots. Only a currently recording
+            // queue can defer ready work; dependency-blocked batches are not rescanned.
             for (std::uint32_t q = 0; q < queue_count; ++q)
             {
-                const auto reason = device_.physicalQueue(q).recording() ? EExecutionOutcome::RECORDING_BUSY
-                                                                         : EExecutionOutcome::QUEUE_FULL;
+                const auto reason = EExecutionOutcome::RECORDING_BUSY;
                 for (auto index : frame.ready_batches[q])
                 {
                     ++frame.instances[frame.batches[index].instance]

@@ -1,0 +1,41 @@
+// Generated in the concrete System's implementation unit after its configuration reflection.
+// The module supplies the exact create expression; constructor dependencies are never inferred.
+{% if registration_kind == "scene" %}lux::scene::SceneSystemRegistration{% else %}lux::simulation::SimulationSystemRegistration{% endif %}
+{{ registration_function }}() noexcept
+{
+    return {
+        .name = {{ json_str(registration_name) }},
+        .configuration_version = {{ configuration_version }}u,
+        .configuration = {% if configuration_type != "" %}lux::serialization::makePortableValueCodec<{{ configuration_type }}>(){% else %}lux::serialization::noPortableValueCodec(){% endif %},
+        .create = +[](
+            lux::engine::EngineContext& context,
+            lux::world::World& world,
+{% if registration_kind == "scene" %}            lux::simulation::Simulation& simulation,
+            const lux::ecs::ComponentSchemaSet& schemas,
+{% endif %}            std::span<const std::byte> bytes{% if registration_kind == "scene" %},
+            const lux::engine::assets::AssetDataRef<lux::scene::SceneData>& source,
+            const lux::scene::SceneStreamingData& streaming{% endif %}
+        ) noexcept -> lux::cxx::expected<
+            std::unique_ptr<{% if registration_kind == "scene" %}lux::scene::SceneSystem{% else %}lux::simulation::SimulationSystem{% endif %}>, lux::error::Error>
+        {
+{% if configuration_type != "" %}            {{ configuration_type }} configuration{};
+            const auto codec = lux::serialization::makePortableValueCodec<{{ configuration_type }}>();
+            auto decoded = codec.decode(bytes, &configuration);
+            if (!decoded)
+            {
+                return lux::cxx::unexpected(lux::error::Error{
+                    lux::error::errorId("lux.engine.scene.configuration"),
+                    {static_cast<std::uint64_t>(decoded.error().code), decoded.error().offset}
+                });
+            }
+{% else %}            if (!bytes.empty())
+            {
+                return lux::cxx::unexpected(lux::error::Error{
+                    lux::error::errorId("lux.engine.scene.configuration"),
+                    {static_cast<std::uint64_t>(lux::serialization::ESerializationError::INVALID_VALUE), 0}
+                });
+            }
+{% endif %}            return {{ create_expression }};
+        }
+    };
+}

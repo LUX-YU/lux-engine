@@ -1,5 +1,5 @@
 #include <lux/engine/editor/SceneEditing.hpp>
-#include <lux/engine/simulation/ecs/Parent.hpp>
+#include <lux/engine/ecs/Parent.hpp>
 
 #include <algorithm>
 #include <map>
@@ -9,7 +9,7 @@
 
 namespace lux::editor::detail
 {
-    namespace ecs = simulation::ecs;
+    namespace ecs = ecs;
 
     namespace
     {
@@ -47,7 +47,7 @@ namespace lux::editor::detail
             return {};
         }
 
-        SceneEditResult<SceneComponentData> captureComponent(
+        SceneEditResult<scene::SceneComponentData> captureComponent(
             const ecs::Registry& registry,
             const ecs::WorldEntityMap& identities,
             const ecs::ComponentSchema& schema,
@@ -68,7 +68,7 @@ namespace lux::editor::detail
             {
                 return cxx::unexpected(VSceneEditFailure{bytes.error()});
             }
-            return SceneComponentData{schema.id, schema.version, std::move(*bytes)};
+            return scene::SceneComponentData{schema.id, schema.version, std::move(*bytes)};
         }
 
         bool permitsAuthorValue(const scene::WorldResidency& residency, const ecs::ComponentSchema& schema) noexcept
@@ -204,7 +204,7 @@ namespace lux::editor::detail
                     }
                     operation.value.emplace(std::move(*value));
                 }
-                if (schema->cpp_type == cxx::typeToken<ecs::Parent>())
+                if (schema->cpp_type == cxx::make_basic_type_info<ecs::Parent>())
                 {
                     parents[entity] = operation.value ? static_cast<const ecs::Parent*>(operation.value->data())->entity
                                                       : ecs::NullEntity;
@@ -253,19 +253,20 @@ namespace lux::editor::detail
         }
     } // namespace
 
-    SceneEditResult<SceneObjectData> captureSceneObject(
+    SceneEditResult<scene::SceneObjectData> captureSceneObject(
         const ecs::Registry& registry,
         const scene::WorldResidency& residency,
         const ecs::ComponentSchemaSet& schemas,
         world::WorldObjectId id
     ) noexcept
     {
-        SceneObjectData result{id};
+        scene::SceneObjectData result{id};
         const auto entity = residency.identities().entity(id);
         if (!registry.valid(entity) || !residency.partitionOf(entity, result.partition))
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_OBJECT});
         }
+        result.primary_domain = residency.description().domainAt(result.partition)->key;
         for (const auto& schema : schemas.all())
         {
             if (!permitsAuthorValue(residency, schema) || !schema.operations.has(registry, entity))
@@ -297,7 +298,8 @@ namespace lux::editor::detail
         ecs::Registry& registry,
         scene::WorldResidency& residency,
         const ecs::ComponentSchemaSet& schemas,
-        const VSceneEdit& edit
+        const VSceneEdit& edit,
+        std::span<const partition::PartitionOrdinal> destinations
     ) noexcept
     {
         if (const auto* write = std::get_if<SceneWriteComponents>(&edit))
@@ -347,7 +349,7 @@ namespace lux::editor::detail
                 }
                 components[i].push_back({schema, value.version, value.payload});
             }
-            objects.push_back({object.partition, {object.id, components[i]}});
+            objects.push_back({destinations[i], {object.id, components[i]}});
             inverse.objects.push_back(object.id);
         }
         auto prepared = residency.prepareCreate(registry, objects);
@@ -381,7 +383,7 @@ namespace lux::editor::detail
             for (const auto& component : object.components)
             {
                 const auto* schema = schemas.find(component.schema);
-                if (schema->cpp_type != cxx::typeToken<ecs::Parent>())
+                if (schema->cpp_type != cxx::make_basic_type_info<ecs::Parent>())
                 {
                     continue;
                 }
@@ -414,7 +416,7 @@ namespace lux::editor::detail
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::NOT_RESIDENT});
         }
-        std::vector<SceneObjectData> captured;
+        std::vector<scene::SceneObjectData> captured;
         for (const auto& [id, entity] : residency.identities().entries())
         {
             partition::PartitionOrdinal location;
@@ -428,7 +430,7 @@ namespace lux::editor::detail
                 captured.push_back(std::move(*object));
             }
         }
-        std::ranges::sort(captured, world::WorldObjectIdLess{}, &SceneObjectData::id);
+        std::ranges::sort(captured, world::WorldObjectIdLess{}, &scene::SceneObjectData::id);
         std::map<std::string_view, std::uint32_t> ordinals;
         const auto names = residency.description().schemas();
         for (std::uint32_t i = 0; i < names.size(); ++i)

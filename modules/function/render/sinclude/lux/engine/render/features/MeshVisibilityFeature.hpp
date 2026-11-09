@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
+
 #include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <optional>
@@ -8,10 +10,10 @@ namespace lux::render
 {
     struct MeshVisibilityFeatureConfig final
     {
-        std::vector<MeshInstanceDrawGroup> groups;
-        std::string instance_storage = "instances", mesh_storage = "assets";
-        std::uint32_t view_count = 1, candidate_capacity = 1024;
+        std::string instance_storage = "instances";
+        std::uint32_t view_count = 1;
         bool frustum_culling = true;
+        bool shadow_pass = false;
         // When present, build one view from the Attachment's view/projection fields on the GPU.
         // Otherwise the composition must connect the geometric views input (e.g. shadow slices).
         std::optional<rdesc::ShaderBlock> view_parameters;

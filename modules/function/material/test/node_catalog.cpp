@@ -76,7 +76,7 @@ namespace
     {
         MaterialNodeRegistration result;
         result.identity = {graph::nodeTypeId(name), std::move(name), 1};
-        result.payload_type = cxx::typeToken<Payload>();
+        result.payload_type = cxx::make_basic_type_info<Payload>();
         result.create = [](const object::CodeLease& code) noexcept
         { return MaterialNodePayload::make<Payload, &clonePayload>(code); };
         result.validate = [](const MaterialNodePayload& payload) noexcept -> MaterialNodeResult<void>
@@ -149,7 +149,7 @@ int main()
         MaterialNodeCatalog catalog;
         auto input = registration();
         std::string transient_type_name(input.payload_type.name());
-        input.payload_type = cxx::TypeToken{input.payload_type.hash(), transient_type_name};
+        input.payload_type = cxx::type_info{input.payload_type.hash(), transient_type_name};
         require(catalog.add({&input, 1}).has_value());
         type = catalog.find(input.identity.id);
         require(bool(type));

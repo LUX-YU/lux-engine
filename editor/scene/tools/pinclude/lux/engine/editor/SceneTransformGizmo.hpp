@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ui/Geometry.hpp>
 #include <lux/engine/world/WorldObjectId.hpp>
 #include <optional>
@@ -11,7 +11,7 @@ namespace lux::editor
     {
         world::WorldObjectId object;
         std::uint64_t based_on{};
-        simulation::ecs::Transform3D value;
+        ecs::Transform3D value;
         bool begin{}, finish{}, cancel{};
     };
 
@@ -22,7 +22,7 @@ namespace lux::editor
         void prepare(
             world::WorldObjectId,
             std::uint64_t,
-            const simulation::ecs::Transform3D&,
+            const ecs::Transform3D&,
             const Eigen::Affine3d& world,
             const Eigen::Matrix3d& inverse_parent,
             const Eigen::Matrix4d& view_projection,
@@ -36,7 +36,7 @@ namespace lux::editor
     private:
         world::WorldObjectId object_;
         std::uint64_t revision_{};
-        simulation::ecs::Transform3D local_;
+        ecs::Transform3D local_;
         Eigen::Vector3d position_{Eigen::Vector3d::Zero()};
         Eigen::Matrix3d inverse_parent_{Eigen::Matrix3d::Identity()};
         Eigen::Matrix4d projection_{Eigen::Matrix4d::Identity()};

@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/extensions/storage/StorageBinding.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
@@ -8,15 +7,11 @@
 
 namespace lux::render::runtime_detail
 {
-    RenderResult<RenderEffect> compileEffect(
+    RenderResult<std::pair<RenderEffect, RenderGraph>> compileEffect(
         nri::Device& device,
         const nri::CoreInterface& nri_core,
         const detail::EnabledDeviceFeatures& enabled,
-        std::span<const nri::FormatSupportBits> formats,
-        std::array<std::uint32_t, 2> vertex_limits,
         std::array<const detail::QueueProperties*, 3> queues,
-        std::uint32_t sampled_image_capacity,
-        std::uint32_t sampler_capacity,
         std::span<const StorageNameView> storage_types,
         const GraphEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
@@ -37,10 +32,12 @@ namespace lux::render::runtime_detail
                  registration->config_type,
                  &registration->graph,
                  selection.config ? &selection.config : nullptr,
-                 selection.contribution_key}
+                 selection.contribution_key,
+                 selection.parameter_group}
             );
         }
         auto assembly = composeFeatures(
+            enabled,
             selected,
             max_config_bytes,
             input->definition.connections,
@@ -62,11 +59,22 @@ namespace lux::render::runtime_detail
         {
             live_resources[parameter.index] = true;
         }
-        // Keep preparation-only inputs of live outputs, just as Attach does. Dead contributions
-        // cannot introduce allocations or conflicts into the adopted dependency set.
+        std::vector<bool> live_passes(assembly->definition.passes().size(), false);
+        for (auto pass : assembly->analysis.execution_order)
+        {
+            live_passes[pass.index] = true;
+        }
+        for (auto& binding : assembly->bindings)
+        {
+            std::erase_if(binding.passes, [&](auto pass) { return !live_passes[pass.index]; });
+        }
+        // Keep preparation-only inputs of live outputs or passes, just as Attach does.
+        // Dead contributions cannot introduce allocations or conflicts into the dependency set.
         for (const auto& binding : assembly->bindings | std::views::reverse)
         {
-            if (std::ranges::any_of(binding.outputs, [&](auto id) { return live_resources[id.index]; }))
+            const bool is_live = !binding.passes.empty() ||
+                std::ranges::any_of(binding.outputs, [&](auto id) { return live_resources[id.index]; });
+            if (is_live)
             {
                 for (auto resource : binding.inputs)
                 {
@@ -74,9 +82,21 @@ namespace lux::render::runtime_detail
                 }
             }
         }
+        std::vector<StorageArgument*> arguments(assembly->definition.resources().size());
+        for (auto& argument : assembly->arguments)
+        {
+            const auto index = argument.resource.index;
+            if (index >= arguments.size()) return cxx::unexpected(RenderError{kStorageContract});
+            if (!live_resources[index]) continue;
+            if (arguments[index] && *arguments[index] != argument)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
+            arguments[index] = &argument;
+        }
         const auto public_count = storage_dependencies.size();
         std::vector<bool> used_types(public_count);
-        const auto resolve = [&](auto& group, ECapabilityInputScope scope) noexcept -> RenderResult<void>
+        const auto resolve = [&](auto& group, EStorageScope scope) noexcept -> RenderResult<void>
         {
             for (auto& binding : group)
             {
@@ -114,7 +134,8 @@ namespace lux::render::runtime_detail
                 );
                 if (dependency == storage_dependencies.end())
                 {
-                    storage_dependencies.push_back({scope, std::move(requirement), {binding.resource}, {}});
+                    storage_dependencies.push_back({scope, std::move(requirement), {}, {}});
+                    dependency = std::prev(storage_dependencies.end());
                 }
                 else
                 {
@@ -122,8 +143,11 @@ namespace lux::render::runtime_detail
                     {
                         return cxx::unexpected(RenderError{kStorageMismatch});
                     }
-                    dependency->resources.push_back(binding.resource);
                 }
+                StorageArgument argument;
+                argument.resource = binding.resource;
+                if (auto* source = arguments[binding.resource.index]) argument = std::move(*source);
+                dependency->bindings.push_back(std::move(argument));
             }
             return {};
         };
@@ -131,7 +155,7 @@ namespace lux::render::runtime_detail
         const std::array groups{&external.global, &external.scene, &external.view, &external.attachment};
         for (std::size_t i = 0; i < groups.size(); ++i)
         {
-            if (auto resolved = resolve(*groups[i], static_cast<ECapabilityInputScope>(i)); !resolved)
+            if (auto resolved = resolve(*groups[i], static_cast<EStorageScope>(i)); !resolved)
             {
                 return cxx::unexpected(resolved.error());
             }
@@ -140,37 +164,70 @@ namespace lux::render::runtime_detail
         {
             // An upload-only input may legitimately be unused in an empty Effect. If its Storage
             // type is consumed, however, the public destination must be one of those actual bindings.
-            if (used_types[i] && storage_dependencies[i].resources.empty())
+            if (used_types[i] && storage_dependencies[i].bindings.empty())
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
         }
+        std::vector<std::uint32_t> parameter_groups(assembly->definition.passes().size());
+        for (const auto& contribution : assembly->contributions)
+        {
+            std::fill_n(
+                parameter_groups.begin() + contribution.first_pass,
+                contribution.pass_count,
+                contribution.parameter_group
+            );
+        }
         auto compiled = detail::GraphCompiler::compile(
             device,
             nri_core,
-            enabled,
-            formats,
-            vertex_limits,
             queues,
-            sampled_image_capacity,
-            sampler_capacity,
             assembly->definition,
             assembly->analysis,
-            &input->description
+            &input->output,
+            detail::ETransientAllocation::ALIAS_MEMORY,
+            parameter_groups
         );
         if (!compiled)
         {
             return cxx::unexpected(compiled.error());
         }
-        return RenderEffect{
+        std::vector<bool> required(compiled->resources().size());
+        for (std::size_t index = 0; index < required.size(); ++index)
+        {
+            required[index] = compiled->resources()[index].used;
+        }
+        for (const auto& binding : assembly->bindings | std::views::reverse)
+        {
+            const bool live = !binding.passes.empty() ||
+                std::ranges::any_of(binding.outputs, [&](auto id) { return required[id.index]; });
+            if (live)
+            {
+                for (auto id : binding.inputs) required[id.index] = true;
+            }
+        }
+        std::erase_if(assembly->bindings, [&](const auto& binding)
+        {
+            return binding.passes.empty() &&
+                std::ranges::none_of(binding.outputs, [&](auto id) { return required[id.index]; });
+        });
+        for (auto& binding : assembly->bindings)
+        {
+            const auto [offset, size] = compiled->parameterRegion(binding.parameter_group);
+            if (binding.parameter_bytes > size)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            binding.parameter_offset = offset;
+            binding.parameter_bytes = size;
+        }
+        RenderEffect result{
             std::make_unique<detail::RenderPlan>(std::move(*compiled)),
-            std::move(assembly->definition),
-            std::move(assembly->analysis),
             std::move(storage_dependencies),
-            std::move(assembly->arguments),
             std::move(assembly->bindings),
             std::move(assembly->samplers)
         };
+        return std::pair{std::move(result), std::move(assembly->definition)};
     }
 
 } // namespace lux::render::runtime_detail

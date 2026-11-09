@@ -5,13 +5,13 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/project/SceneRegistrations.hpp>
+#include <lux/engine/plugins/SceneRegistrations.hpp>
 
 namespace fixture
 {
     template <class Assembly>
     auto createContext(
-        lux::engine::EngineContext& engine,
+        lux::engine::Engine& engine,
         lux::editor::ProjectDescription description,
         lux::editor::ProjectManifest manifest,
         Assembly&& assembly
@@ -32,12 +32,12 @@ namespace fixture
         {
             return cxx::unexpected(assembled.error());
         }
-        auto plugins = project::PluginManager::create({}, {});
+        auto plugins = plugins::PluginManager::create({}, {});
         if (!plugins)
         {
             return cxx::unexpected(error::Error{Errors::ProjectPlugins});
         }
-        auto registrations = project::readSceneRegistrations();
+        auto registrations = plugins::readSceneRegistrations();
         if (!registrations)
         {
             return cxx::unexpected(error::Error{Errors::ProjectPlugins});
@@ -47,8 +47,8 @@ namespace fixture
             engine,
             {std::move(description),
              std::move(manifest),
-             std::make_unique<project::PluginManager>(std::move(*plugins)),
-             std::make_shared<const project::SceneRegistrations>(std::move(*registrations))},
+             std::make_unique<plugins::PluginManager>(std::move(*plugins)),
+             std::make_shared<const plugins::SceneRegistrations>(std::move(*registrations))},
             std::move(composition)
         );
     }

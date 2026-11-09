@@ -1,6 +1,8 @@
 #include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
 
 #include <lux/engine/material/Cooker.hpp>
+#include <lux/engine/material/Compiler.hpp>
+#include <lux/engine/material/import/MaterialToGraph.hpp>
 #include <lux/engine/platform/FilePath.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureCooker.hpp>
 
@@ -424,7 +426,9 @@ namespace lux::toolchain
             CapturedFiles* captured{};
             ModelCookProduct product;
             std::vector<std::string> material_keys, mesh_keys, animation_keys;
+            std::vector<std::uint32_t> material_indices; // Source ordinal -> cooked material, UINT32_MAX if unused.
             std::unordered_map<std::string, std::size_t> texture_by_key;
+            std::unordered_map<std::uint32_t, rdesc::MaterialProgramSet> material_programs;
             std::unordered_map<std::string, std::int32_t> bone_by_name;
             Eigen::Affine3f import_transform{Eigen::Affine3f::Identity()};
             Eigen::Matrix3f import_rotation{Eigen::Matrix3f::Identity()};
@@ -594,6 +598,10 @@ namespace lux::toolchain
             context.product.materials.reserve(context.scene.mNumMaterials);
             for (std::uint32_t ordinal = 0U; ordinal < context.scene.mNumMaterials; ++ordinal)
             {
+                if (context.material_indices[ordinal] == UINT32_MAX)
+                {
+                    continue;
+                }
                 const aiMaterial& source = *context.scene.mMaterials[ordinal];
                 lux::material::ImportedMaterialDescription imported;
                 if (looksLikePbr(source))
@@ -699,23 +707,49 @@ namespace lux::toolchain
 
                 aiString source_name;
                 aiGetMaterialString(&source, AI_MATKEY_NAME, &source_name);
-                const std::string key = context.captured ? context.material_keys[ordinal] : std::to_string(ordinal);
+                const std::string key = context.captured
+                    ? context.material_keys[context.material_indices[ordinal]] : std::to_string(ordinal);
                 const auto material_id = deriveId(context.model_info.id, "material", key);
-                auto material = lux::material::cookImportedMaterial(
-                    subAssetInfo(
-                        context.model_info,
-                        material_id,
-                        lux::asset::MaterialAsset::asset_type,
-                        source_name.length == 0U ? "material" : source_name.C_Str()
-                    ),
-                    imported,
-                    std::array{lux::rdesc::EMaterialPurpose::GBUFFER, lux::rdesc::EMaterialPurpose::SHADOW}
-                );
+                auto graph = lux::material::compiler::materialToGraph(imported);
+                if (!graph)
+                {
+                    return lux::cxx::unexpected(failure(EModelCookError::MATERIAL_COOK_FAILED, ordinal, graph.error()));
+                }
+                const auto program_key = static_cast<std::uint32_t>(graph->render_state.alpha_mode) |
+                    (std::uint32_t(graph->render_state.double_sided) << 8);
+                auto program = context.material_programs.find(program_key);
+                if (program == context.material_programs.end())
+                {
+                    auto compiled = lux::material::compileMaterial(*graph,
+                        std::array{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW});
+                    if (!compiled)
+                    {
+                        return lux::cxx::unexpected(failure(
+                            EModelCookError::MATERIAL_COOK_FAILED, ordinal, compiled.error().message
+                        ));
+                    }
+                    program = context.material_programs.emplace(program_key, std::move(compiled->programs)).first;
+                }
+                auto description = std::make_shared<rdesc::MaterialDescription>();
+                description->programs = program->second;
+                for (std::size_t parameter = 0; parameter < graph->param_slots.size(); ++parameter)
+                {
+                    std::copy_n(graph->param_slots[parameter].dflt, 4,
+                        description->programs.parameter_defaults[parameter].begin());
+                }
+                for (const auto& slot : graph->texture_slots)
+                {
+                    description->texture_slot_ids.push_back(slot.texture);
+                }
+                auto material = asset::MaterialAsset::create(subAssetInfo(
+                    context.model_info, material_id, asset::MaterialAsset::asset_type,
+                    source_name.length == 0U ? "material" : source_name.C_Str()
+                ), std::move(description));
                 if (!material)
                 {
-                    return lux::cxx::unexpected(
-                        failure(EModelCookError::MATERIAL_COOK_FAILED, ordinal, material.error().message)
-                    );
+                    return lux::cxx::unexpected(failure(
+                        EModelCookError::MATERIAL_COOK_FAILED, ordinal, "invalid cooked material"
+                    ));
                 }
                 context.product.materials.push_back(*material);
             }
@@ -858,8 +892,10 @@ namespace lux::toolchain
             for (std::uint32_t ordinal = 0U; ordinal < context.scene.mNumMeshes; ++ordinal)
             {
                 const aiMesh& source = *context.scene.mMeshes[ordinal];
-                if (source.mNumVertices == 0U || source.mNumFaces == 0U ||
-                    source.mMaterialIndex >= context.product.materials.size())
+                const bool invalid_material = source.mMaterialIndex >= context.material_indices.size() ||
+                    context.material_indices[source.mMaterialIndex] == UINT32_MAX;
+                const bool invalid_mesh = source.mNumVertices == 0U || source.mNumFaces == 0U || invalid_material;
+                if (invalid_mesh)
                 {
                     return lux::cxx::unexpected(failure(
                         EModelCookError::INVALID_MESH,
@@ -1171,10 +1207,34 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(failure(EModelCookError::IMPORT_FAILED, 0U, importer.GetErrorString()));
             }
 
+            CookContext context{*scene, source, configuration, model_info, captured};
+            context.material_indices.assign(scene->mNumMaterials, UINT32_MAX);
+            for (unsigned mesh = 0; mesh < scene->mNumMeshes; ++mesh)
+            {
+                const auto material = scene->mMeshes[mesh]->mMaterialIndex;
+                if (material >= scene->mNumMaterials)
+                {
+                    return lux::cxx::unexpected(
+                        failure(EModelCookError::INVALID_MESH, mesh, "mesh references an invalid material")
+                    );
+                }
+                context.material_indices[material] = 0;
+            }
+            // Assimp may append an unused, unnamed default material. It is not an authored asset.
+            // Keep source ordering for used materials, without merging distinct named materials.
+            std::vector<std::uint32_t> used_materials;
+            for (unsigned material = 0; material < scene->mNumMaterials; ++material)
+            {
+                if (context.material_indices[material] != UINT32_MAX)
+                {
+                    context.material_indices[material] = static_cast<std::uint32_t>(used_materials.size());
+                    used_materials.push_back(material);
+                }
+            }
             if (captured)
             {
                 // Discover the complete external texture closure before material/shader compilation.
-                for (unsigned material{}; material < scene->mNumMaterials; ++material)
+                for (const auto material : used_materials)
                 {
                     constexpr std::array texture_types{
                         aiTextureType_BASE_COLOR,
@@ -1204,14 +1264,16 @@ namespace lux::toolchain
                 }
             }
 
-            CookContext context{*scene, source, configuration, model_info, captured};
             if (captured)
             {
-                auto materials = identityKeys(scene->mNumMaterials, "material", [&](std::uint32_t index) {
-                    aiString name;
-                    aiGetMaterialString(scene->mMaterials[index], AI_MATKEY_NAME, &name);
-                    return std::string(name.C_Str());
-                });
+                auto materials = identityKeys(
+                    static_cast<std::uint32_t>(used_materials.size()), "material", [&](std::uint32_t index)
+                    {
+                        aiString name;
+                        aiGetMaterialString(scene->mMaterials[used_materials[index]], AI_MATKEY_NAME, &name);
+                        return std::string(name.C_Str());
+                    }
+                );
                 auto meshes = identityKeys(scene->mNumMeshes, "mesh", [&](std::uint32_t index) {
                     return std::string(scene->mMeshes[index]->mName.C_Str());
                 });
@@ -1262,7 +1324,7 @@ namespace lux::toolchain
             description->primitives.reserve(scene->mNumMeshes);
             for (std::uint32_t mesh = 0U; mesh < scene->mNumMeshes; ++mesh)
             {
-                const auto material = scene->mMeshes[mesh]->mMaterialIndex;
+                const auto material = context.material_indices[scene->mMeshes[mesh]->mMaterialIndex];
                 if (material >= context.product.materials.size())
                 {
                     return lux::cxx::unexpected(

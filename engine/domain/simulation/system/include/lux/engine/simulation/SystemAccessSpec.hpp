@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 
 #include <entt/core/type_info.hpp>
 
@@ -20,14 +20,14 @@ namespace lux::simulation
 
     struct SystemComponentAccess final
     {
-        lux::cxx::TypeToken type;
+        lux::cxx::type_info type;
         std::uint64_t storage{};
         ESystemAccessMode mode{ESystemAccessMode::READ};
     };
 
     struct SystemExternalAccess final
     {
-        lux::cxx::TypeToken type;
+        lux::cxx::type_info type;
         ESystemAccessMode mode{ESystemAccessMode::READ};
     };
 
@@ -112,7 +112,7 @@ namespace lux::simulation
                     {
                         using Component = typename TComponentSystemAccessTraits<Access>::ComponentType;
                         result[index++] = SystemComponentAccess{
-                            lux::cxx::typeToken<Component>(),
+                            lux::cxx::make_basic_type_info<Component>(),
                             entt::type_hash<Component>::value(),
                             TComponentSystemAccessTraits<Access>::kMode
                         };
@@ -133,7 +133,7 @@ namespace lux::simulation
                     {
                         using External = typename TExternalSystemAccessTraits<Access>::ExternalType;
                         result[index++] = SystemExternalAccess{
-                            lux::cxx::typeToken<External>(),
+                            lux::cxx::make_basic_type_info<External>(),
                             TExternalSystemAccessTraits<Access>::kMode
                         };
                     }

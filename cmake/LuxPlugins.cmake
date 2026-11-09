@@ -7,10 +7,12 @@ set(_lux_plugin_environment "${CMAKE_SYSTEM_NAME};${CMAKE_SYSTEM_PROCESSOR};${CM
 # Installed SDKs carry this value; consumers never inspect the engine source tree.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/LuxPluginSdk.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/LuxPluginSdk.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/plugin_value_contract.cmake")
     if(NOT _lux_plugin_environment STREQUAL LUX_PLUGIN_SDK_ENVIRONMENT)
         message(FATAL_ERROR "Plugin compiler, architecture, runtime or configuration differs from the installed SDK")
     endif()
 else()
+    include("${PROJECT_SOURCE_DIR}/engine/runtime/plugins/cmake/plugin_value_contract.cmake")
     file(GLOB_RECURSE _lux_sdk_headers CONFIGURE_DEPENDS
         "${PROJECT_SOURCE_DIR}/modules/*.hpp" "${PROJECT_SOURCE_DIR}/engine/*.hpp")
     # Runtime plugins must not be invalidated by an Editor-only C++ interface change.
@@ -35,10 +37,18 @@ else()
         DESTINATION share/lux-engine/plugins)
     install(FILES "${CMAKE_CURRENT_LIST_DIR}/plugin_descriptor.py" "${CMAKE_CURRENT_LIST_DIR}/plugin_capabilities.py"
         DESTINATION share/lux-engine/plugins)
+    install(
+        FILES "${PROJECT_SOURCE_DIR}/engine/runtime/plugins/cmake/plugin_value_contract.cmake"
+        DESTINATION share/lux-engine/plugins/cmake
+    )
+    install(
+        FILES "${PROJECT_SOURCE_DIR}/engine/runtime/plugins/template/value_contract.template"
+        DESTINATION share/lux-engine/plugins/template
+    )
 endif()
 
 function(lux_add_plugin_exports)
-    cmake_parse_arguments(P "" "TARGET;DESCRIPTION;MODULE_ID" "INPUTS" ${ARGN})
+    cmake_parse_arguments(P "" "TARGET;DESCRIPTION;MODULE_ID;VALUE_TARGET;VALUE_SOURCE" "INPUTS;VALUE_HEADERS" ${ARGN})
     if(P_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "Unknown plugin export arguments: ${P_UNPARSED_ARGUMENTS}")
     endif()
@@ -54,7 +64,22 @@ function(lux_add_plugin_exports)
     set(_directory "${CMAKE_CURRENT_BINARY_DIR}/plugin/${P_TARGET}")
     set(_identity "${_directory}/identity.cpp")
     set(_descriptor "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/${_module}.json")
-    get_property(_value_fragments GLOBAL PROPERTY LUX_VALUE_METADATA_FRAGMENTS)
+    set(_value_fragments)
+    if(P_VALUE_HEADERS)
+        if(NOT P_VALUE_SOURCE)
+            message(FATAL_ERROR "VALUE_HEADERS requires the plugin's VALUE_SOURCE compile context")
+        endif()
+        if(NOT P_VALUE_TARGET)
+            set(P_VALUE_TARGET ${P_TARGET})
+        endif()
+        engine_generate_plugin_value_contract(
+            TARGET ${P_TARGET}
+            SOURCE_TARGET ${P_VALUE_TARGET}
+            SOURCE_FILE "${P_VALUE_SOURCE}"
+            HEADERS ${P_VALUE_HEADERS}
+            OUTPUT_VARIABLE _value_fragments
+        )
+    endif()
     set(_value_arguments)
     if(_value_fragments)
         set(_value_arguments --value-fragments ${_value_fragments})

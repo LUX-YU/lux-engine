@@ -3,14 +3,16 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <lux/engine/scene/GeometryDeclaration.hpp>
 #include <lux/engine/scene/ScenePluginExports.hpp>
-#include <lux/engine/simulation/ecs/ComponentPluginExports.hpp>
+#include <lux/engine/ecs/ComponentPluginExports.hpp>
+#include <lux/engine/world/PartitionDeclaration.hpp>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <string>
 
-extern "C" const lux::scene::ScenePluginExports* lux_scene_exports_v1() noexcept;
-extern "C" const lux::simulation::ecs::ComponentPluginExports* lux_component_exports_v1() noexcept;
+extern "C" const lux::scene::ScenePluginExports* lux_scene_exports_v3() noexcept;
+extern "C" const lux::ecs::ComponentPluginExports* lux_component_exports_v2() noexcept;
 
 int main(int argc, char** argv)
 {
@@ -19,7 +21,7 @@ int main(int argc, char** argv)
         return 2;
     }
     using Json = nlohmann::json;
-    Json value{{"format", "lux.engine.plugin"}, {"version", 3}};
+    Json value{{"format", "lux.engine.plugin"}, {"version", 4}};
     value["plugin"] = {
         {"id", argc >= 4 ? argv[2] : "lux.builtin.runtime"},
         {"version", 2},
@@ -52,8 +54,8 @@ int main(int argc, char** argv)
             value["abilities"].push_back({{"id", name}, {"version", 1}, {"display_name", name}});
         }
     };
-    const auto component_table = lux_component_exports_v1();
-    const auto componentName = [&](lux::cxx::TypeToken type) -> std::string
+    const auto component_table = lux_component_exports_v2();
+    const auto componentName = [&](lux::cxx::type_info type) -> std::string
     {
         for (const auto& entry : std::span{component_table->entries, component_table->count})
         {
@@ -78,12 +80,12 @@ int main(int argc, char** argv)
              {"display_name", entry.id.name},
              {"fields", Json::array()},
              {"storage",
-              entry.semantic_kind == lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED ? "runtime_derived"
+              entry.semantic_kind == lux::ecs::EComponentSemanticKind::RUNTIME_DERIVED ? "runtime_derived"
                                                                                                    : "authoring"}}
         );
     }
     const auto systemValue =
-        [&](const lux::system::SystemTypeDescription& type, const char* domain, lux::cxx::TypeToken configuration_type)
+        [&](const lux::system::SystemTypeDescription& type, const char* domain, lux::cxx::type_info configuration_type)
     {
         Json system{
             {"id", type.canonical_name},
@@ -117,20 +119,60 @@ int main(int argc, char** argv)
         return system;
     };
 
-    const auto scene = lux_scene_exports_v1();
+    const auto scene = lux_scene_exports_v3();
     for (const auto& entry : std::span{scene->entries, scene->count})
     {
         auto system = systemValue(*entry.description, "scene", entry.configuration.type);
-        for (const auto& requirement : entry.requirements)
+        for (const auto& [name, requirements] :
+             {std::pair{"requirements", entry.requirements},
+              std::pair{"preparation_requirements", entry.preparation_requirements}})
         {
-            addAbility(requirement.capability);
-            system["requirements"].push_back(
-                {{"slot", requirement.name},
-                 {"ability", {{"id", requirement.capability}, {"version", 1}}},
-                 {"optional", requirement.optional}}
-            );
+            system[name] = Json::array();
+            for (const auto& requirement : requirements)
+            {
+                addAbility(requirement.capability);
+                system[name].push_back(
+                    {{"slot", requirement.name},
+                     {"ability", {{"id", requirement.capability}, {"version", 1}}},
+                     {"optional", requirement.optional}}
+                );
+            }
         }
         value["systems"].push_back(std::move(system));
+    }
+    value["geometries"] = Json::array();
+    for (const auto& entry : std::span{scene->geometries, scene->geometry_count})
+    {
+        Json geometry{
+            {"id", entry.name},
+            {"version", entry.version},
+            {"partition_input_type", entry.partition_input_type.name()},
+            {"components", Json::array()},
+            {"data", systemDataJson(entry.data)}
+        };
+        for (const auto& component : entry.components)
+        {
+            geometry["components"].push_back({{"id", component.schema.name}, {"version", component.version}});
+        }
+        value["geometries"].push_back(std::move(geometry));
+    }
+    value["partitions"] = Json::array();
+    for (const auto& entry : std::span{scene->partitions, scene->partition_count})
+    {
+        Json partition{
+            {"id", entry.identity.id.name},
+            {"version", entry.identity.version},
+            {"input_type", entry.input_type.name()},
+            {"configuration_type", entry.configuration.type.name()},
+            {"configuration_version", entry.configuration_version},
+            {"constructs_empty_world", entry.build_empty != nullptr},
+            {"queries", Json::array()}
+        };
+        for (const auto& query : entry.queries)
+        {
+            partition["queries"].push_back({{"id", query.type.name}, {"version", query.version}});
+        }
+        value["partitions"].push_back(std::move(partition));
     }
     const std::string output = value.dump(2) + "\n";
     std::ifstream previous(argv[1], std::ios::binary);

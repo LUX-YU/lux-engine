@@ -55,7 +55,7 @@ namespace
     {
         FlowNodeRegistration result;
         result.identity = {graph::nodeTypeId(name), std::move(name), 1};
-        result.payload_type = cxx::typeToken<T>();
+        result.payload_type = cxx::make_basic_type_info<T>();
         result.create = [](const object::CodeLease& code) noexcept { return FlowNodePayload::make<T, clone<T>>(code); };
         result.describe_pins = [](const FlowNodePayload& value) noexcept { return value.get<T>()->describePins(); };
         result.validate = [](const FlowNodePayload&) noexcept -> FlowForgeResult<void> { return {}; };

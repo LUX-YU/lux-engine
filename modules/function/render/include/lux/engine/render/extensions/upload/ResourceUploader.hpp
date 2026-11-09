@@ -76,6 +76,12 @@ namespace lux::render::detail
             execution::CpuScheduler
         ) noexcept;
 
+        // The shared execution context used for professional CPU preparation before staging.
+        [[nodiscard]] execution::CpuScheduler cpuScheduler() const noexcept
+        {
+            return cpu_scheduler_;
+        }
+
         [[nodiscard]] bool reserveSourceBytes(std::size_t bytes) noexcept;
         void releaseSourceBytes(std::size_t bytes) noexcept;
 
@@ -165,7 +171,7 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] RenderResult<void> collectUploadTimestamps(std::size_t page, std::uint32_t bits) noexcept;
 
-        std::unique_ptr<StagingArena> staging_arena_;
+        std::unique_ptr<StagingArena>   staging_arena_;
         bool                            background_allowed_ = true;
         bool                            reserve_frame_staging_ = false;
         DeviceSession&                  device_;

@@ -44,6 +44,7 @@ namespace lux::render
     } // namespace
 
     RenderResult<FeatureAssembly> composeFeatures(
+        const detail::EnabledDeviceFeatures& enabled,
         std::span<const FeatureBuildInput> inputs,
         std::size_t config_byte_limit,
         std::span<const FeatureConnection> connections,
@@ -85,6 +86,11 @@ namespace lux::render
             {
                 for (auto& port : source)
                 {
+                    if (auto* image = std::get_if<GraphImageDesc>(&port.description);
+                        image && image->extent.source != EImageExtentSource::FIXED)
+                    {
+                        image->width = image->height = 0;
+                    }
                     work[i].declarations.push_back({std::move(port), storage});
                 }
             };
@@ -172,9 +178,15 @@ namespace lux::render
                 return cxx::unexpected(failure(kFeatureContract, i, e));
             }
             const auto& port = work[i].declarations[p].declaration;
+            auto description = input.resource.description;
+            if (auto* image = std::get_if<GraphImageDesc>(&description);
+                image && image->extent.source != EImageExtentSource::FIXED)
+            {
+                image->width = image->height = 0;
+            }
             const bool invalid =
                 port.direction == EFeaturePort::OUTPUT || input.resource.origin != EGraphOrigin::IMPORTED ||
-                input.resource.description != port.description ||
+                description != port.description ||
                 (!port.semantic.empty() && input.semantic != port.semantic) || work[i].incoming[p] != SIZE_MAX ||
                 work[i].resolved[p].version.resource.index != kGraphInvalidIndex;
             if (invalid)
@@ -311,7 +323,8 @@ namespace lux::render
                     auto built = input.graph->build(
                         input.config ? input.config->data() : nullptr,
                         input.contribution_key,
-                        context
+                        context,
+                        enabled
                     );
                     if (!built)
                     {
@@ -350,7 +363,11 @@ namespace lux::render
                         }
                     }
                 }
-                result.contributions.push_back({i, first, builder.passCount() - first});
+                for (std::size_t b = contribution.first_binding; b < result.bindings.size(); ++b)
+                {
+                    result.bindings[b].parameter_group = input.parameter_group;
+                }
+                result.contributions.push_back({i, first, builder.passCount() - first, input.parameter_group});
                 contribution.built = true;
                 --remaining;
                 progressed = true;
@@ -441,15 +458,32 @@ namespace lux::render
             for (auto b = owner.first_binding; b < owner.first_binding + owner.binding_count; ++b)
             {
                 const auto& binding = result.bindings[b];
-                if (!binding.create || binding.outputs.empty())
+                const bool has_work = !binding.outputs.empty() || !binding.passes.empty();
+                if (!binding.create || !has_work)
                 {
                     return cxx::unexpected(failure(kFeatureOwnership, i, b));
                 }
                 for (auto resource : binding.inputs)
                 {
-                    if (!allowed({resource, 0}, false))
+                    // Preparation borrows an identity, not a GPU version. GPU accesses below
+                    // still require the exact version supplied through the Feature port.
+                    const bool is_owned = resource.index >= owner.first_resource &&
+                        resource.index - owner.first_resource < owner.resource_count;
+                    const bool is_supplied = std::ranges::any_of(
+                        owner.supplied, [&](auto version) { return version.resource == resource; }
+                    );
+                    if (!is_owned && !is_supplied)
                     {
                         return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                    }
+                }
+                for (auto pass : binding.passes)
+                {
+                    const bool is_owned = pass.index >= contribution.first_pass &&
+                        pass.index - contribution.first_pass < contribution.pass_count;
+                    if (!is_owned)
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, pass.index));
                     }
                 }
                 for (auto resource : binding.outputs)
@@ -469,9 +503,13 @@ namespace lux::render
             {
                 const auto& pass = graph->passes()[p];
                 const PassInterface* input = nullptr;
+                const ParameterBinding* parameters = nullptr;
                 if (const auto* raster = std::get_if<RasterWork>(&pass.work))
                 {
-                    input = &raster->interface;
+                    const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
+                    input = fixed ? &fixed->interface : nullptr;
+                    parameters = fixed ? &fixed->interface.parameters
+                                       : &std::get<RasterPassTemplate>(raster->program).parameters;
                     if (raster->state_input && !allowed({raster->state_input->resource, 0}, false))
                     {
                         return cxx::unexpected(failure(kFeatureOwnership, i, p));
@@ -480,6 +518,7 @@ namespace lux::render
                 if (const auto* compute = std::get_if<ComputeWork>(&pass.work))
                 {
                     input = &compute->interface;
+                    parameters = &compute->interface.parameters;
                 }
                 if (input)
                 {
@@ -499,7 +538,10 @@ namespace lux::render
                             }
                         }
                     }
-                    for (const auto& field : input->parameters.fields)
+                }
+                if (parameters)
+                {
+                    for (const auto& field : parameters->fields)
                     {
                         if (field.resource.index == kGraphInvalidIndex)
                         {

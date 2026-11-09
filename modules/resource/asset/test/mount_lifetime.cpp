@@ -60,6 +60,21 @@ namespace
             visitor({id_, revision_, "value", false});
         }
 
+        [[nodiscard]] lux::cxx::expected<lux::asset::ProviderEntry, lux::asset::EAssetStorageError>
+        describe(lux::asset::AssetId id) const override
+        {
+            lux::cxx::expected<lux::asset::ProviderEntry, lux::asset::EAssetStorageError> found =
+                lux::cxx::unexpected(lux::asset::EAssetStorageError::NOT_FOUND);
+            enumerate([&](const lux::asset::ProviderEntry& entry)
+            {
+                if (entry.id == id)
+                {
+                    found = entry;
+                }
+            });
+            return found;
+        }
+
         std::optional<std::string> pathOf(const AssetId&) const override
         {
             return "value";

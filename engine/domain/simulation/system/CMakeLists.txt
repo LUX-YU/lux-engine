@@ -13,7 +13,7 @@ add_component(
     NAMESPACE      lux::engine::simulation
     OUTPUT_NAME    lux_engine_simulation_system
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationSystemRegistry.cpp
+        src/SimulationSystem.cpp
 )
 
 component_include_directories(
@@ -28,20 +28,24 @@ target_compile_definitions(system PRIVATE LUX_ENGINE_SIMULATION_SYSTEM_LIBRARY)
 target_link_libraries(
     system
     PUBLIC
+        lux::engine::core::object
+        lux::engine::core::task
         lux::engine::simulation::description
         lux::engine::core::serialization
-        lux::engine::simulation::ecs::core
+        lux::engine::ecs::ecs_core
         EnTT::EnTT
         lux::cxx::compile_time
         lux::cxx::container
 )
 component_add_transitive_commands(
     system
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS task)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_core)"
 )
 
 lux_engine_install_components(

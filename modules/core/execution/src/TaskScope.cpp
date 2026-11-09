@@ -8,10 +8,21 @@ namespace lux::execution
         bool stopped{};
         {
             std::lock_guard lock{tasks.mutex};
-            stopped = !tasks.accepting || !waiter.group->accepting;
+            stopped = !tasks.accepting || !waiter.group->accepting.load(std::memory_order_acquire);
             if (!stopped && tasks.records.size() == tasks.capacity)
             {
                 waiter.next = std::exchange(tasks.capacity_waiters, &waiter);
+                waiter.previous = &tasks.capacity_waiters;
+                if (waiter.next)
+                {
+                    waiter.next->previous = &waiter.next;
+                }
+                waiter.group_next = std::exchange(waiter.group->capacity_waiters, &waiter);
+                waiter.group_previous = &waiter.group->capacity_waiters;
+                if (waiter.group_next)
+                {
+                    waiter.group_next->group_previous = &waiter.group_next;
+                }
                 return;
             }
         }
@@ -19,30 +30,16 @@ namespace lux::execution
         waiter.complete(&waiter, stopped);
     }
 
-    void detail::closeTaskGroup(
-        TaskRuntime& tasks,
-        const std::shared_ptr<TaskGroup>& group,
-        TaskGroupWaiter& waiter
-    ) noexcept
+    void detail::closeTaskGroup(TaskRuntime& tasks, const std::shared_ptr<TaskGroup>& group) noexcept
     {
         TaskCapacityWaiter* capacity_waiters{};
-        bool settled{};
         {
             std::lock_guard lock{tasks.mutex};
-            group->accepting = false;
+            group->accepting.store(false, std::memory_order_release);
             capacity_waiters = tasks.takeCapacityWaiters(group.get());
-            settled = group->outstanding == 0;
-            if (!settled)
-            {
-                waiter.next = std::exchange(group->waiters, &waiter);
-            }
         }
         completeCapacityWaiters(capacity_waiters, true);
-        if (settled)
-        {
-            auto code_lifetime = std::move(waiter.code_lifetime);
-            waiter.complete(&waiter);
-        }
+        group->close();
     }
 
     TaskScope::TaskScope(ExecutionRuntime& execution) noexcept
@@ -64,12 +61,16 @@ namespace lux::execution
         detail::TaskCapacityWaiter* capacity_waiters{};
         {
             std::lock_guard lock{tasks.mutex};
-            group->accepting = false;
-            capacity_waiters = tasks.takeCapacityWaiters(group.get());
-            stops.reserve(group->outstanding);
-            for (auto& record : tasks.records)
+            if (std::exchange(group->stop_requested, true))
             {
-                if (record->group != group || record->info.finished)
+                return;
+            }
+            group->accepting.store(false, std::memory_order_release);
+            capacity_waiters = tasks.takeCapacityWaiters(group.get());
+            stops.reserve(group->task_count);
+            for (auto* record = group->first_task; record; record = record->group_next)
+            {
+                if (record->info.finished)
                 {
                     continue;
                 }
@@ -78,6 +79,7 @@ namespace lux::execution
                 tasks.changed(*record);
             }
         }
+        group->close();
         group->stop.request_stop();
         for (auto& stop : stops)
         {
@@ -94,9 +96,7 @@ namespace lux::execution
 
     bool TaskScope::settled() const noexcept
     {
-        auto& tasks = *execution_.tasks_;
-        std::lock_guard lock{tasks.mutex};
-        return group_->outstanding == 0;
+        return group_->active_operations.load(std::memory_order_acquire) == 0;
     }
 
     TaskScope::CompletionSender TaskScope::whenSettled() noexcept
@@ -118,40 +118,8 @@ namespace lux::execution
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
-        detail::TaskCapacityWaiter* capacity_waiters{};
-        bool settled{};
-        {
-            std::lock_guard lock{tasks.mutex};
-            group->accepting = false;
-            capacity_waiters = tasks.takeCapacityWaiters(group.get());
-            settled = group->outstanding == 0;
-        }
-        detail::completeCapacityWaiters(capacity_waiters, true);
-        if (settled)
-        {
-            return {};
-        }
-        const auto valid = execution.validateWait();
-        if (!valid)
-        {
-            return lux::cxx::unexpected(valid.error());
-        }
-        for (;;)
-        {
-            const auto epoch = execution.wakeEpoch();
-            if (!execution.dispatchMainCompletions())
-            {
-                std::terminate();
-            }
-            {
-                std::lock_guard lock{tasks.mutex};
-                if (group->outstanding == 0)
-                {
-                    return {};
-                }
-            }
-            execution.waitForWork(epoch);
-        }
+        detail::closeTaskGroup(tasks, group);
+        return execution.waitUntil([&group]() noexcept { return group->joined.load(std::memory_order_acquire); });
     }
 
 } // namespace lux::execution

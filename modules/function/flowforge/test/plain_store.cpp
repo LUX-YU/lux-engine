@@ -68,7 +68,7 @@ namespace
     {
         FlowNodeRegistration value;
         value.identity = {graph::nodeTypeId("tests.flow.reference"), "tests.flow.reference", 1};
-        value.payload_type = cxx::typeToken<ReferencePayload>();
+        value.payload_type = cxx::make_basic_type_info<ReferencePayload>();
         value.create = [](const object::CodeLease& code) noexcept
         { return FlowNodePayload::make<ReferencePayload, cloneReference>(code); };
         value.describe_pins = [](const FlowNodePayload&) noexcept -> FlowNodeRegistration::PinResult

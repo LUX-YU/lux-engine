@@ -6,7 +6,16 @@
 
 namespace lux::rdesc
 {
-    inline constexpr std::uint32_t kMaterialShaderAbi = 4;
+    // Stable page addressing: the buffer slot selects the physical FIF replica, then a record within it.
+    struct MaterialGpuReference final
+    {
+        std::uint32_t buffer_index = UINT32_MAX;
+        std::uint32_t record_index = 0;
+    };
+
+    static_assert(sizeof(MaterialGpuReference) == 8 && alignof(MaterialGpuReference) == 4);
+
+    inline constexpr std::uint32_t kMaterialShaderAbi = 5;
     inline constexpr std::uint32_t kTextureDefaultWhite = 1u << 0;
 
     // Cooked Material field names shared by emission and reflected-layout consumers.

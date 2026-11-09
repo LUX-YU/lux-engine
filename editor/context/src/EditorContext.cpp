@@ -1,5 +1,6 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <algorithm>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
@@ -7,12 +8,13 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
+#include <lux/engine/process/assets/AssetRepository.hpp>
+#include <lux/engine/scene/SceneError.hpp>
 
 namespace lux::editor
 {
     EditorContext::EditorContext(
-        engine::EngineContext& engine,
+        engine::Engine& engine,
         detail::PreparedProject prepared,
         EditorComposition&& composition
     ) noexcept
@@ -22,17 +24,17 @@ namespace lux::editor
           component_editors_(std::move(composition.component_editors_)),
           scene_configuration_editors_(std::move(composition.scene_configuration_editors_)),
           extensions_(std::move(composition.extensions_).publish()), services_(std::move(composition.services_)),
-          tasks_(engine.execution())
+          tasks_(execution::ExecutionRuntime::instance())
     {
     }
 
-    const ComponentEditor* EditorContext::componentEditor(cxx::TypeToken type) const noexcept
+    const ComponentEditor* EditorContext::componentEditor(cxx::type_info type) const noexcept
     {
         const auto found = std::ranges::find(component_editors_, type, &ComponentEditor::type);
         return found == component_editors_.end() ? nullptr : &*found;
     }
 
-    const SceneConfigurationEditor* EditorContext::sceneConfigurationEditor(cxx::TypeToken type) const noexcept
+    const SceneConfigurationEditor* EditorContext::sceneConfigurationEditor(cxx::type_info type) const noexcept
     {
         const auto found = std::ranges::find(scene_configuration_editors_, type, &SceneConfigurationEditor::type);
         return found == scene_configuration_editors_.end() ? nullptr : &*found;
@@ -48,7 +50,7 @@ namespace lux::editor
     }
 
     FrameworkResult<std::unique_ptr<EditorContext>> EditorContext::create(
-        engine::EngineContext& engine,
+        engine::Engine& engine,
         detail::PreparedProject prepared,
         EditorComposition&& composition
     ) noexcept
@@ -99,44 +101,66 @@ namespace lux::editor
         return tasks_;
     }
 
-    FrameworkResult<process::asset_loading::AssetReadPort> EditorContext::prepareAssetReads() noexcept
+    FrameworkResult<process::assets::AssetRepository*> EditorContext::prepareAssets() noexcept
     {
-        if (!object::ObjectRuntime::instance().isCurrent())
+        if (!loaded_assets_)
         {
-            return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
-        }
-        if (!asset_reads_)
-        {
-            auto blocking = engine_.execution().blocking();
-            if (!blocking)
-            {
-                return cxx::unexpected(execution::toError(blocking.error()));
-            }
-            auto endpoint = process::asset_loading::VfsAssetReadEndpoint::create(
-                assets_.view(),
-                *blocking,
-                (tasks_).execution(),
-                {16},
-                (tasks_).stopToken()
+            auto repository = process::assets::AssetRepository::create(assets_.view(), {256U << 20U, 512U << 20U, 32}
             );
-            if (!endpoint)
+            if (!repository)
             {
-                std::terminate(); // Valid VFS and fixed nonzero admission capacity.
+                return cxx::unexpected(repository.error());
             }
-            asset_reads_ = std::move(*endpoint);
+            loaded_assets_ = std::move(*repository);
         }
-        return asset_reads_->port();
+        return loaded_assets_.get();
     }
 
-    FrameworkResult<scene::SceneInstanceId> EditorContext::adoptScene(scene::SceneInstanceLease&& scene) noexcept
+    FrameworkResult<scene::SceneInstanceId> EditorContext::createScene(scene::SceneRuntime::Builder& builder) noexcept
     {
-        if (close_stage_ != ECloseStage::OPEN || !scene)
+        if (close_stage_ != ECloseStage::OPEN)
         {
             return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime});
         }
-        const auto id = scene.id();
-        scenes_.push_back(std::move(scene));
-        return id;
+        auto created = builder.build();
+        if (created)
+        {
+            scenes_.push_back(*created);
+            static_cast<void>(emit(sceneAdded, *created));
+        }
+        return created ? FrameworkResult<scene::SceneInstanceId>{*created}
+                       : cxx::unexpected(scene::toError(created.error()));
+    }
+
+    exec::task<FrameworkResult<scene::SceneInstanceId>>
+    EditorContext::createSceneAsync(scene::SceneRuntime::Builder& builder) noexcept
+    {
+        if (close_stage_ != ECloseStage::OPEN)
+        {
+            co_return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime});
+        }
+        auto created = co_await builder.buildAsync();
+        if (!created)
+        {
+            co_return cxx::unexpected(scene::toError(created.error()));
+        }
+        if (close_stage_ != ECloseStage::OPEN)
+        {
+            auto retired = engine_.sceneRuntime().retireInstance(*created);
+            if (!retired)
+            {
+                co_return cxx::unexpected(scene::toError(retired.error()));
+            }
+            auto closed = co_await retired->whenComplete();
+            if (!closed)
+            {
+                co_return cxx::unexpected(closed.error());
+            }
+            co_return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime});
+        }
+        scenes_.push_back(*created);
+        static_cast<void>(emit(sceneAdded, *created));
+        co_return *created;
     }
 
     void EditorContext::close() noexcept
@@ -145,13 +169,26 @@ namespace lux::editor
         {
             return;
         }
-        close_stage_ = ECloseStage::SCENES;
-        scene_retirements_.reserve(scenes_.size());
-        for (auto& scene : scenes_)
+        close_stage_ = ECloseStage::SERVICES;
+        services_.requestClose();
+    }
+
+    FrameworkResult<void> EditorContext::retireScenes() noexcept
+    {
+        scene_retirements_.reserve(scene_retirements_.size() + scenes_.size());
+        // Remove each membership only after Runtime accepts its retirement. A failed suffix remains owned.
+        while (!scenes_.empty())
         {
-            scene_retirements_.push_back(scene.retire());
+            auto retired = engine_.sceneRuntime().retireInstance(scenes_.back());
+            if (!retired)
+            {
+                return cxx::unexpected(scene::toError(retired.error()));
+            }
+            scene_retirements_.push_back(std::move(*retired));
+            scenes_.pop_back();
         }
-        scenes_.clear();
+        close_stage_ = ECloseStage::SCENES;
+        return {};
     }
 
     ProjectResult<void> EditorContext::adoptSceneCatalog(
@@ -175,19 +212,24 @@ namespace lux::editor
         return {};
     }
 
-    FrameworkResult<scene::InstanceRetirement> EditorContext::retireScene(scene::SceneInstanceId id) noexcept
+    FrameworkResult<scene::SceneCloseReceipt> EditorContext::retireScene(scene::SceneInstanceId id) noexcept
     {
-        const auto found = std::ranges::find(scenes_, id, &scene::SceneInstanceLease::id);
+        const auto found = std::ranges::find(scenes_, id);
         if (found == scenes_.end())
         {
-            const auto retired = std::ranges::find(scene_retirements_, id, &scene::InstanceRetirement::id);
+            const auto retired = std::ranges::find(scene_retirements_, id, &scene::SceneCloseReceipt::id);
             if (retired != scene_retirements_.end())
             {
                 return *retired;
             }
             return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime});
         }
-        auto receipt = found->retire();
+        auto retired = engine_.sceneRuntime().retireInstance(id);
+        if (!retired)
+        {
+            return cxx::unexpected(scene::toError(retired.error()));
+        }
+        auto receipt = std::move(*retired);
         scenes_.erase(found);
         scene_retirements_.push_back(receipt);
         return receipt;
@@ -198,6 +240,17 @@ namespace lux::editor
         if (close_stage_ == ECloseStage::OPEN)
         {
             return false;
+        }
+        if (close_stage_ == ECloseStage::SERVICES)
+        {
+            if (!services_.closeComplete())
+            {
+                return false;
+            }
+            if (!retireScenes())
+            {
+                return false;
+            }
         }
         if (close_stage_ == ECloseStage::SCENES)
         {
@@ -210,33 +263,91 @@ namespace lux::editor
             }
             // Retirement receipts now prove Scene cleanup completed before system destruction.
             tasks_.requestStop();
-            asset_reads_.reset();
+            if (loaded_assets_)
+            {
+                loaded_assets_->requestRetirement();
+            }
             close_stage_ = ECloseStage::TASKS;
         }
         // Without Scene borrows, accepted tasks already own their inputs/code independently of this Context.
-        return scene_retirements_.empty() || tasks_.settled();
+        return tasks_.settled() && !loaded_assets_;
     }
 
-    exec::task<void> EditorContext::closeAsync() noexcept
+    exec::task<FrameworkResult<void>> EditorContext::closeAsync() noexcept
     {
         close();
+        if (close_stage_ == ECloseStage::SERVICES)
+        {
+            auto services = co_await services_.closeAsync();
+            if (!services)
+            {
+                co_return cxx::unexpected(services.error());
+            }
+            if (auto retired = retireScenes(); !retired)
+            {
+                co_return retired;
+            }
+        }
         for (const auto& retirement : scene_retirements_)
         {
-            co_await stdexec::continues_on(retirement.whenComplete(), engine_.execution().mainScheduler());
+            auto retired =
+                co_await stdexec::continues_on(
+                    retirement.whenComplete(),
+                    execution::ExecutionRuntime::instance().mainScheduler()
+                );
+            if (!retired)
+            {
+                co_return cxx::unexpected(retired.error());
+            }
         }
         tasks_.requestStop();
-        asset_reads_.reset();
         close_stage_ = ECloseStage::TASKS;
-        if (!scene_retirements_.empty())
+        co_await stdexec::continues_on(tasks_.whenSettled(), execution::ExecutionRuntime::instance().mainScheduler());
+        if (loaded_assets_)
         {
-            co_await stdexec::continues_on(tasks_.whenSettled(), engine_.execution().mainScheduler());
+            loaded_assets_->requestRetirement();
+            auto settled = co_await loaded_assets_->whenQuiescent();
+            if (!settled)
+            {
+                co_return settled;
+            }
+            auto retired = co_await loaded_assets_->retire();
+            if (!retired)
+            {
+                co_return retired;
+            }
+            loaded_assets_.reset();
         }
-        // With no Scene borrows, accepted work already owns its inputs/code in ExecutionRuntime.
-        // Destroy this Context now; its weak ObjectId adoption must fail while that work finishes later.
+        co_return FrameworkResult<void>{};
+    }
+
+    exec::task<FrameworkResult<void>> EditorContext::recoverClose() noexcept
+    {
+        if (close_stage_ == ECloseStage::OPEN)
+        {
+            co_return co_await closeAsync();
+        }
+        auto recovered = co_await services_.recoverClose();
+        if (!recovered)
+        {
+            co_return cxx::unexpected(recovered.error());
+        }
+        for (const auto& receipt : scene_retirements_)
+        {
+            if (receipt.failure().type != 0)
+            {
+                auto retried = engine_.sceneRuntime().retryClose(receipt.id());
+                if (!retried)
+                {
+                    co_return cxx::unexpected(scene::toError(retried.error()));
+                }
+            }
+        }
+        co_return co_await closeAsync();
     }
 
     FrameworkResult<std::unique_ptr<EditorContext>> detail::createEditorContext(
-        engine::EngineContext& engine,
+        engine::Engine& engine,
         PreparedProject prepared,
         EditorComposition&& composition
     ) noexcept

@@ -122,11 +122,10 @@ namespace lux::render::detail
         }
     } // namespace
 
-    RenderResult<void> validateShadowConfiguration(const ShadowMapFeatureConfig& config) noexcept
+    RenderResult<void> validateShadowConfiguration(const ShadowProjectionInput& config) noexcept
     {
-        const bool invalid_shape = !config.shape.view_count || config.pcf_radius > 4 ||
-                                   config.shape.resolution <= 2 * (config.pcf_radius + 2) || config.lights.empty() ||
-                                   config.camera_offset > UINT32_MAX - sizeof(ShadowCamera);
+        const bool invalid_shape =
+            !config.shape.view_count || config.pcf_radius > 4 || config.shape.resolution <= 2 * (config.pcf_radius + 2);
         if (invalid_shape)
         {
             return cxx::unexpected(RenderError{kFeatureContract});
@@ -176,7 +175,7 @@ namespace lux::render::detail
     }
 
     RenderResult<void> projectShadows(
-        const ShadowMapFeatureConfig& config,
+        const ShadowProjectionInput& config,
         const ShadowCamera& camera,
         std::span<const ShadowLightInput> lights,
         std::span<MeshVisibilityView> views,

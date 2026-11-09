@@ -1,32 +1,33 @@
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
 #include "MeshCompact.hpp"
 #include "MeshFrustumCull.hpp"
 #include "MeshFrustumCullPaged.hpp"
+#include "MeshReset.hpp"
 #include "MeshView.hpp"
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
 #include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/render/features/MeshDrawGroups.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
-#include <lux/engine/render/features/RasterMeshDraws.hpp>
 
 namespace lux::render
 {
     namespace
     {
+        constexpr std::array<std::string_view, 6>
+            group_ports{"groups", "candidates", "chunks", "visible", "commands", "dispatch"};
+        constexpr std::array<std::uint64_t, 6> group_minimum{64, 4, 8, 256, 20 * kMeshWindingCount, 24};
+
         RenderResult<void> describeVisibility(const void* value, std::string_view, FeaturePorts& ports) noexcept
         {
             const auto& config = *static_cast<const MeshVisibilityFeatureConfig*>(value);
-            const bool invalid = !config.view_count || !config.candidate_capacity || config.groups.empty() ||
-                                 config.candidate_capacity > UINT32_MAX - 68 || config.instance_storage.empty() ||
-                                 config.mesh_storage.empty();
-            const bool oversized_stream =
-                !invalid && meshVisibleStride(config.candidate_capacity) / 4 >
-                                UINT32_MAX / (std::uint64_t(config.view_count) * kMeshWindingCount);
+            const bool invalid = config.view_count == 0 || config.instance_storage.empty();
             const bool invalid_view_source = config.view_parameters && config.view_count != 1;
-            if (invalid || oversized_stream || invalid_view_source)
+            if (invalid || invalid_view_source)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
@@ -37,71 +38,38 @@ namespace lux::render
             };
             views.semantic = kMeshVisibilityViews;
             ports.resources.push_back(std::move(views));
-            const auto storage = [&](auto& destination,
-                                     std::string name,
-                                     std::uint64_t size,
-                                     StorageNameView type,
-                                     const std::string& key)
+            constexpr std::array names{"transforms", "properties", "alive"};
+            constexpr std::array<std::uint64_t, 3> sizes{sizeof(TransformMatrix), sizeof(MeshInstanceGpuProperty), 8};
+            for (std::size_t i = 0; i < names.size(); ++i)
             {
-                destination.push_back(
-                    {std::move(name),
+                ports.storage.scene.push_back(
+                    {names[i],
                      EFeaturePort::OUTPUT,
-                     GraphBufferDesc{size},
+                     GraphBufferDesc{sizes[i]},
                      EGraphOrigin::IMPORTED,
-                     {GraphBufferRange{0, size}},
-                     StorageRequirement{StorageName(type.name()), key}}
+                     {GraphBufferRange{0, sizes[i]}},
+                     StorageRequirement{StorageName(kMeshInstanceStorageType.name()), config.instance_storage}}
                 );
-            };
-            storage(
-                ports.storage.scene,
-                "transforms",
-                sizeof(TransformMatrix),
-                kMeshInstanceStorageType,
-                config.instance_storage
-            );
-            storage(
-                ports.storage.scene,
-                "alive",
-                sizeof(std::uint64_t),
-                kMeshInstanceStorageType,
-                config.instance_storage
-            );
-            for (std::size_t g = 0; g < config.groups.size(); ++g)
+            }
+            for (std::size_t i = 0; i < group_ports.size(); ++i)
             {
-                const auto prefix = "g" + std::to_string(g) + ".";
-                storage(
-                    ports.storage.global,
-                    prefix + "bounds",
-                    sizeof(MeshGpuBounds),
-                    kMeshStorageType,
-                    config.mesh_storage
-                );
-                ports.resources.push_back(
-                    {prefix + "candidates",
-                     EFeaturePort::OUTPUT,
-                     GraphBufferDesc{24},
-                     EGraphOrigin::IMPORTED,
-                     {GraphBufferRange{0, 24}}}
-                );
-                FeaturePort visible{
-                    prefix + "visible",
+                const auto minimum = group_minimum[i] * (i == 4 ? config.view_count : 1);
+                FeaturePort port{
+                    std::string(group_ports[i]),
                     EFeaturePort::OUTPUT,
-                    GraphBufferDesc{
-                        meshVisibleStride(config.candidate_capacity) * config.view_count * kMeshWindingCount
-                    }
+                    GraphBufferDesc{minimum},
+                    EGraphOrigin::IMPORTED,
+                    {GraphBufferRange{0, minimum}}
                 };
-                visible.semantic = kMeshVisibleMembers;
-                ports.resources.push_back(std::move(visible));
-                ports.resources.push_back(
-                    {prefix + "commands",
-                     EFeaturePort::OUTPUT,
-                     GraphBufferDesc{std::uint64_t(config.view_count) * kMeshWindingCount * 20}}
-                );
-                ports.resources.push_back(
-                    {prefix + "counts",
-                     EFeaturePort::OUTPUT,
-                     GraphBufferDesc{std::uint64_t(config.view_count) * kMeshWindingCount * 4}}
-                );
+                if (i == 0)
+                {
+                    port.semantic = "lux.mesh.draw_groups.v1";
+                }
+                if (i == 3)
+                {
+                    port.semantic = kMeshVisibleMembers;
+                }
+                ports.resources.push_back(std::move(port));
             }
             return {};
         }
@@ -122,10 +90,12 @@ namespace lux::render
         }
 
         template <bool Paged>
-        RenderResult<void> buildVisibility(
+        RenderResult<void>
+        buildVisibility(
             const void* value,
             std::string_view key,
-            FeatureBuildContext& context
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures& enabled
         ) noexcept
         {
             const auto& config = *static_cast<const MeshVisibilityFeatureConfig*>(value);
@@ -174,112 +144,112 @@ namespace lux::render
                 context.resource("alive").resource,
                 MeshInstanceBinding{EMeshInstanceBinding::ALIVE}
             ));
-            for (std::size_t g = 0; g < config.groups.size(); ++g)
+            context.arguments.push_back(StorageArgument::make(
+                context.resource("properties").resource,
+                MeshInstanceBinding{EMeshInstanceBinding::PROPERTIES}
+            ));
+            detail::MeshDrawGroupsConfiguration groups;
+            groups.instances = context.resource("transforms").resource;
+            groups.views = views.resource;
+            for (std::size_t i = 0; i < group_ports.size(); ++i)
             {
-                const auto prefix = "g" + std::to_string(g) + ".";
-                const auto resource = [&](std::string_view name)
-                { return context.resource(prefix + std::string(name)); };
-                const auto candidates = resource("candidates");
-                auto description = ConfigValue::make(detail::MeshDrawConfiguration{
-                    context.resource("transforms").resource,
-                    config.groups[g],
-                    candidates.resource,
-                    config.candidate_capacity
-                });
-                if (!description)
-                {
-                    return cxx::unexpected(description.error());
-                }
-                context.bindings.push_back(
-                    {{candidates.resource}, std::move(*description), &detail::RasterMeshDraws::create}
-                );
-                context.arguments.push_back(StorageArgument::make(
-                    resource("bounds").resource,
-                    MeshBinding{config.groups[g].mesh, EMeshBuffer::BOUNDS, sizeof(MeshGpuBounds)}
-                ));
-                auto visible = resource("visible");
-                // Initialize the declared stream. Only the count-delimited prefix is consumed by Draw.
-                TransferWork reset;
-                reset.operations.push_back(FillBuffer{{visible}, 0});
-                auto cleared = context.graph.addTransferPass(
-                    featureKey(detail::MeshVisibilityFeature::name, key, prefix + "reset"),
-                    std::move(reset)
-                );
-                if (!cleared)
-                {
-                    return cxx::unexpected(cleared.error());
-                }
-                visible = cleared->written.front();
-                ComputeWork cull;
-                cull.interface.program = *cull_program;
-                cull.interface.resources = {
-                    {"transforms", {context.resource("transforms")}},
-                    {"alive", {context.resource("alive")}},
-                    {"views", {views}},
-                    {"candidates", {candidates}},
-                    {"bounds", {resource("bounds")}},
-                    {"visible", {visible, {}, EGraphAccess::READ_WRITE}}
-                };
-                const std::array<std::uint32_t, 3> parameters{
-                    config.candidate_capacity,
-                    config.view_count,
-                    config.frustum_culling
-                };
-                const auto bytes = std::as_bytes(std::span(parameters));
-                cull.interface.parameters.values.assign(bytes.begin(), bytes.end());
-                cull.dispatch = DispatchArguments{{(config.candidate_capacity + 63) / 64, config.view_count, 1}};
-                cull.allow_async_compute = true;
-                auto culled = context.graph.addComputePass(
-                    featureKey(detail::MeshVisibilityFeature::name, key, prefix + "frustum"),
-                    std::move(cull)
-                );
-                if (!culled)
-                {
-                    return cxx::unexpected(culled.error());
-                }
-                visible = culled->written.front();
-                ComputeWork compact;
-                compact.interface.program = *compact_program;
-                compact.interface.resources = {
-                    {"candidates", {candidates}},
-                    {"visible", {visible}},
-                    {"commands", {resource("commands"), {}, EGraphAccess::WRITE}},
-                    {"counts", {resource("counts"), {}, EGraphAccess::WRITE}}
-                };
-                compact.interface.parameters.values.assign(bytes.begin(), bytes.begin() + 8);
-                compact.dispatch = DispatchArguments{{(config.view_count * kMeshWindingCount + 63) / 64, 1, 1}};
-                compact.allow_async_compute = true;
-                auto completed = context.graph.addComputePass(
-                    featureKey(detail::MeshVisibilityFeature::name, key, prefix + "compact"),
-                    std::move(compact)
-                );
-                if (!completed)
-                {
-                    return cxx::unexpected(completed.error());
-                }
-                if (auto result = context.publish(prefix + "visible", visible); !result)
-                {
-                    return result;
-                }
-                if (auto result = context.publish(prefix + "commands", completed->written[0]); !result)
-                {
-                    return result;
-                }
-                if (auto result = context.publish(prefix + "counts", completed->written[1]); !result)
-                {
-                    return result;
-                }
+                groups.outputs[i] = context.resource(group_ports[i]).resource;
+            }
+            auto description = ConfigValue::make(groups);
+            if (!description)
+            {
+                return cxx::unexpected(description.error());
+            }
+            context.bindings.push_back(
+                {{groups.outputs.begin(), groups.outputs.end()},
+                 std::move(*description),
+                 &detail::MeshDrawGroups::create,
+                 {views.resource}}
+            );
+            const auto table = context.resource("groups");
+            const auto dispatch = context.resource("dispatch");
+            auto visible = context.resource("visible");
+            auto reset_program = computeProgram(context, kMeshReset, kMeshResetReflection);
+            if (!reset_program)
+            {
+                return cxx::unexpected(reset_program.error());
+            }
+            ComputeWork reset;
+            reset.interface.program = *reset_program;
+            reset.interface.resources = {{"groups", {table}}, {"visible", {visible, {}, EGraphAccess::WRITE}}};
+            const std::array<std::uint32_t, 2> parameters{config.frustum_culling, config.shadow_pass};
+            const auto bytes = std::as_bytes(std::span(parameters));
+            reset.dispatch = IndirectDispatchArguments{dispatch, 12};
+            reset.allow_async_compute = true;
+            auto cleared = context.graph.addComputePass(
+                featureKey(detail::MeshVisibilityFeature::name, key, "reset"),
+                std::move(reset)
+            );
+            if (!cleared)
+            {
+                return cxx::unexpected(cleared.error());
+            }
+            visible = cleared->written.front();
+            ComputeWork cull;
+            cull.interface.program = *cull_program;
+            cull.interface.resources = {
+                {"transforms", {context.resource("transforms")}},
+                {"alive", {context.resource("alive")}},
+                {"properties", {context.resource("properties")}},
+                {"views", {views}},
+                {"candidates", {context.resource("candidates")}},
+                {"groups", {table}},
+                {"chunks", {context.resource("chunks")}},
+                {"visible", {visible, {}, EGraphAccess::READ_WRITE}}
+            };
+            cull.interface.parameters.values.assign(bytes.begin(), bytes.end());
+            cull.dispatch = IndirectDispatchArguments{dispatch, 0};
+            cull.allow_async_compute = true;
+            auto culled = context.graph.addComputePass(
+                featureKey(detail::MeshVisibilityFeature::name, key, "frustum"),
+                std::move(cull)
+            );
+            if (!culled)
+            {
+                return cxx::unexpected(culled.error());
+            }
+            visible = culled->written.front();
+            ComputeWork compact;
+            compact.interface.program = *compact_program;
+            compact.interface.resources = {
+                {"groups", {table}},
+                {"visible", {visible}},
+                {"commands", {context.resource("commands"), {}, EGraphAccess::WRITE}}
+            };
+            const std::uint32_t shared_members = enabled.indirect_first_instance ? 1u : 0u;
+            const auto compact_bytes = std::as_bytes(std::span(&shared_members, 1));
+            compact.interface.parameters.values.assign(compact_bytes.begin(), compact_bytes.end());
+            compact.dispatch = IndirectDispatchArguments{dispatch, 12};
+            compact.allow_async_compute = true;
+            auto completed = context.graph.addComputePass(
+                featureKey(detail::MeshVisibilityFeature::name, key, "compact"),
+                std::move(compact)
+            );
+            if (!completed)
+            {
+                return cxx::unexpected(completed.error());
+            }
+            if (auto published = context.publish("visible", visible); !published)
+            {
+                return published;
+            }
+            if (auto published = context.publish("commands", completed->written[0]); !published)
+            {
+                return published;
             }
             return {};
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<MeshVisibilityFeatureConfig>::retainedBytes(
-        const MeshVisibilityFeatureConfig& value
-    ) noexcept
+    RenderResult<std::size_t>
+    ConfigValueTraits<MeshVisibilityFeatureConfig>::retainedBytes(const MeshVisibilityFeatureConfig& value) noexcept
     {
-        return sizeof(value) + value.groups.capacity() * sizeof(MeshInstanceDrawGroup) +
-               value.instance_storage.capacity() + value.mesh_storage.capacity() + 2 +
+        return sizeof(value) + value.instance_storage.capacity() + 1 +
                (value.view_parameters ? detail::parameterLayoutBytes(*value.view_parameters) : 0);
     }
 

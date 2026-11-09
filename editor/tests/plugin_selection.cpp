@@ -3,7 +3,7 @@
 #include <fstream>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
-#include <lux/engine/project/PluginCatalog.hpp>
+#include <lux/engine/plugins/PluginCatalog.hpp>
 #include <nlohmann/json.hpp>
 
 int main(int argc, char** argv)
@@ -50,7 +50,7 @@ int main(int argc, char** argv)
             std::ofstream output(file, std::ios::binary);
             output << description.dump();
         }
-        lux::project::PluginCatalog catalog;
+        lux::plugins::PluginCatalog catalog;
         auto accepted = catalog.read(file, directory);
         const bool valid = name[0] != '1';
         assert(bool(accepted) == valid);
@@ -68,7 +68,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            assert(accepted.error().code == lux::project::EPluginError::INVALID_DESCRIPTION);
+            assert(accepted.error().code == lux::plugins::EPluginError::INVALID_DESCRIPTION);
             assert(selected.error().code == lux::editor::EProjectError::INVALID_PLUGIN);
         }
     }

@@ -6,7 +6,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace lux::task
@@ -49,11 +48,6 @@ namespace lux::task
             return roots_.size();
         }
 
-        [[nodiscard]] std::size_t lifetimePinCount() const noexcept
-        {
-            return lifetime_pins_.size();
-        }
-
     private:
         struct TaskRecord final
         {
@@ -61,10 +55,7 @@ namespace lux::task
             ETaskAffinity affinity{ETaskAffinity::WORKER};
         };
 
-        // Destruction is reverse declaration order: task callables die before pins,
-        // so dynamic code remains resident while callable destructors execute.
-        std::vector<std::shared_ptr<const void>> lifetime_pins_;
-        std::vector<TaskRecord> tasks_;
+        std::vector<TaskRecord>    tasks_;
         std::vector<std::uint32_t> initial_dependencies_;
         std::vector<std::uint32_t> successor_offsets_;
         std::vector<std::uint32_t> successors_;

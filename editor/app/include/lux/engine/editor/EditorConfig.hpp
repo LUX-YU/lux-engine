@@ -1,8 +1,11 @@
 #pragma once
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
 #include <lux/engine/core/execution/ExecutionConfig.hpp>
 #include <lux/engine/editor/EditorLayout.hpp>
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
+#include <lux/engine/plugins/PluginCatalog.hpp>
 
 namespace lux::editor
 {
@@ -13,21 +16,25 @@ namespace lux::editor
         std::filesystem::path root;
     };
 
+    struct ProjectStartup final
+    {
+        std::optional<ProjectManifest> create;
+        std::vector<plugins::PluginDescription> available_plugins;
+    };
+
     struct EditorConfig final
     {
-        std::string title{"LuxEngine"};
+        std::string title{"EditorApplication"};
         int width{1280};
         int height{800};
         // Renderer/swapchain preference, never a CPU frame deadline.
         bool enable_vsync{true};
-        EditorLayout layout;
+        ProjectLayout layout;
         std::vector<ProjectPluginLocation> plugin_locations;
         // One application's shared CPU pool and bounded blocking IO resource. No subsystem creates a second pool.
         execution::ExecutionRuntimeConfig execution{2, 512, {256}, execution::BlockingSchedulerConfig{2, 128}};
-        // Product defaults are explicit choices; RenderAssets itself has no built-in implementation name.
-        render::CapabilityQuery asset_capability{"lux.render.capability.raster_assets", 1, "lux.render.assets.raster"};
         bool enable_validation{false}; // Development diagnostics, independent of display pacing.
-        // A running editor always owns a loaded project. Empty is invalid for LuxEngine::create.
+        // Empty opens the project selector. RUNNING always has a loaded project.
         std::filesystem::path project_file;
     };
 } // namespace lux::editor

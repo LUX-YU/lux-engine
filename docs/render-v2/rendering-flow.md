@@ -8,8 +8,8 @@
 ## 1. 先明确“渲染出画面”的边界
 
 当前 Render 能从资源、材质和 Effect 声明生成真正的 GPU 图像，支持主视图剔除、GBuffer、基础阴影、
-Clustered Lighting 和 Tonemap。当前生产终点是 **OffscreenTarget 的纹理**，不是桌面窗口。
-`ETargetKind::SURFACE` 虽然存在，`OffscreenTarget::create()` 仍明确拒绝它；没有生产 SwapChain/Present 路径。
+Clustered Lighting 和 Tonemap。当前生产输出包括 OffscreenTarget 纹理和 SurfaceTarget 的 Swapchain 呈现。
+两者由 Target 独占物理资源，Attachment/Instance 借用输出；Acquire 图像索引与 FIF 切片索引不同。
 测试中的 Copy、映射和图片导出用于观察输出，不是生产 Readback Command。
 
 不能把以下四件事视为同一时刻：
@@ -19,7 +19,7 @@ Clustered Lighting 和 Tonemap。当前生产终点是 **OffscreenTarget 的纹�
 | 上传 Response 成功 | 源 CPU 读取结束，必要 Copy/Acquire 已接纳，资源已发布且后续使用顺序成立 |
 | 图批次提交成功 | Native Queue 接纳了该批命令；GPU 可能尚未执行 |
 | Queue 完成前沿推进 | 该物理 Queue 对应提交已完成，可以解除相应复用/清理条件 |
-| 窗口显示图像 | 当前尚未接入，不能由前三项推断 |
+| 窗口显示图像 | SurfaceTarget 执行呈现；不能由 CPU 回复或队列接纳推断已经显示 |
 
 本文中的 `detail::` 是 Render 项目内实现命名空间，不是另一个模块。Render 是一个库，目标为
 `lux::engine::function::render`；目录是职责分区，不能按目录理解为一串动态库调用。
@@ -96,16 +96,15 @@ ExecutionRuntime::create（应用已有）
 `create()` 直接登记已知实现；不创建 Feature/Storage/Handler，不运行外部兼容验证或注册回退。
 实际设备能力仍在冷态选择支持项，不因自动注册而擅自启用可选能力。
 
-外部扩展通过 `FeatureRegistration.hpp` 的通用模板登记，先验证完整依赖集合，再发布到同一目录。
+外部扩展通过 `extensions/Registration.hpp` 的通用模板登记，先验证完整依赖集合，再发布到同一目录。
 失败不调用实例工厂、不留下部分类型或绑定。Handler 显式提供 `create(ResourceRegistry&)`，不猜测构造参数。
-`run()` 创建当前选中的 Handler；首次切换到其他实现时在控制安全点创建。运行中的外部登记也只允许在
-RenderThread 安全点进行，发布后先落实选中对象再继续分发。普通请求不做实例化判断。
+`run()` 创建当前选中的 Handler；首次切换到其他实现时在控制安全点创建。外部目录改动仅允许在启动前或完整停止清偿后进行；能力请求使用装配得到的准确方法，不按全局 active 重选。
 
 Feature 的 Storage 依赖与 Effect 的资源端口连接是两件事：前者登记实现，后者决定同一张图的数据依赖。
-InstallCapabilities 在已有业务作用域创建实际 Storage，Attach 补齐 Attachment 私有输入；StorageSet 拥有关系不变。构建函数依据已启用的分页路径冷态选定，
+专业 Command 或 Attach 在实际作用域准备 Storage；StorageSet 唯一拥有实例。构建函数依据已启用的分页路径冷态选定，
 编译任务借用稳定 FeatureEntry，热帧不重选。新增 Handler 不抢占当前绑定，旧实例保留到异步工作清偿之后。
 
-Command、配置和绑定选择的 C++ 身份直接使用 `cxx::TypeToken`。Token 比较完整类型名及 hash，
+Command、配置和绑定选择的 C++ 身份直接使用 `cxx::type_info`。Token 比较完整类型名及 hash，
 不表达序列化布局或不同 ABI 的 DLL 兼容性；定义这些类型和回调的模块必须存活到最后一个相关值/对象被销毁。
 
 DeviceSession 不创建 CPU 线程池、不拥有 Scene、不默认安装 Texture Storage，也不负责遍历全图绘制。
@@ -113,16 +112,37 @@ DeviceSession 不创建 CPU 线程池、不拥有 Scene、不默认安装 Textur
 
 ## 4. 请求与回复：业务状态和执行状态分开
 
-Client 可直接使用 `IpcRequester/IpcMessage`；Engine 的 `RenderRequester` 在其上保存有限输入载体、请求关联及类型化 Sender。
-它不拥有 GPU 对象或 connected OperationState。当前不存在旧 `RenderClient/TypedRenderCompletion`。
-Command 声明是稳定名称、Request 和 Response；目录查询得到当前 Server 的生成式 CommandId。
-RequestId 属于 Requester，本身不承担跨 Link 唯一性。
-当前应用在冷态用 `server.commandId<ListCommands>()` 取得 bootstrap ID，再通过 IPC 获取完整目录；
-不要假定有旧 Hello/Client 自动绑定层。`SyncClient.cpp` 是消息值语义消费者，场景测试中的 `call<C>()` 是测试帮助函数，
-不是生产的同步 RPC 接口。
+`lux::render::RenderClient` 是通用客户端，拥有 IPC 请求端和 correlation→operation 借用目录。
+它不拥有 GPU 对象、业务协程或线程，也不借用 RenderServer。QueryCommandIds 占用第一个固定槽位，
+其他命令仍动态分配 SlotMap ID。Client 创建时一次查询通用命令名称列表，结果完整后才返回 Client；
+没有 Hello、完整目录下载或直接 Server 查询回退。专业命令在异步装配阶段批量查询并保存 ID。
+
+Server 注册完成、回复通知已接线、服务线程启动后，宿主在冷态调用 Client::create(IpcRequester)。
+此时该请求端没有业务操作，create 仅等待并消费自己的引导回复，不派发 Execution。服务通知只排队，
+EngineContext 发布 Client 后才推进 Main 安全交付。初始化失败不返回半成品，宿主取消通知并清偿服务线程。
+运行期禁止用 create 做请求等待；专业查询使用 request<QueryCommandIds>()，失败不会发布部分 ID。
+
+EngineContext 拥有 Client，并通过 `renderClient()` 提供稳定借用。Server 发布回复后只通知
+EngineContext 的 CompletionWork；Engine 在 TaskGraph/Registry 遍历之外派发 Execution，
+Client 才消费真实回复并完成 Receiver。完成前先移除 correlation，允许续执行发出下一个请求。
+每次派发最多 128 条，满批再次请求同一个 CompletionWork；这是公平派发，不是帧内请求限额。
+独立宿主可以直接驱动 Client，不能在等待期间阻塞唯一的回复驱动线程。
+
+`request<C>(Request&)` 沿用移动发布、失败恢复合同；`request<C>(Request&&)` 用
+`just + let_value` 持有 Request，取消不会提前释放已接纳请求的源数据。无显式 ID 的重载只接受通用命令和 QueryCommandIds，专业命令必须显式传入装配所得 ID。
+两者直接完成 C::Response，
+不增加一个 exec::task 转发层。Client 不自动深拷贝 span，也不隐式拥有借用的 System。
+运行中的 operation 由现有 stdexec 执行状态拥有，Engine 的对象任务清偿保证业务 Owner 存活。
+
+RenderFrameSubmission 单独保留 L+1 帧载体、领先帧数、帧回执与重同步。它借用 Client 发送 SubmitFrame，
+不承担通用命令关联。CPU 帧借用归还不等于 GPU 完成；真实 FIF 和 cleanup_scope_ 保持原合同。
+
+关闭时先清偿 Scene、帧载体与资产用途，再停止并 join Server。Main 调用 `serverStopped()`，先交付
+已发布回复，再以不确定结果终结剩余请求；随后取消回复 CompletionWork、销毁 Client 与 Server。
+Client 析构不泵事件；仍有在途请求时析构属于合同失败。Provider 的惰性析构不访问已销毁的 Context。
 
 ```text
-Client 构造真实 C++ Request → IpcMessage → IpcRequester::trySend
+Client RequestSender::start → IpcMessage → IpcRequester::trySend
   → Impl::run → responder.tryReceive → dispatchRequest
     → commandIdFromTag → CommandRegistry::findCommand
     → 接纳边界核对身份/请求类型/所选绑定
@@ -157,7 +177,7 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 [StorageSet](../../modules/function/render/sinclude/lux/engine/render/resource/StorageSet.hpp) 独占实际 Storage；
 [ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/storage/ResourceRegistry.hpp) 拥有类型目录、
 生成式 StorageId 和非拥有实例定位。Global StorageSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
-普通客户端提交 InstallCapabilities，获得语义输入的 CapabilityInput；Attach 返回实际采用的输入位置。
+普通客户端先 CreateEffect，随后以 EffectId、能力项序号和作用域调用公开 Command／帧数据；Attach 只返回关联身份。
 StorageId、类型目录与创建算法只用于扩展作者和 Render 内部，普通用户不准备或释放 Storage。
 
 `StorageCreateContext` 只同步借用设备、上传、帧执行和 Registry 等构造依赖。
@@ -460,7 +480,7 @@ Scope join 不替代外部 Producer 退栈或代码模块寿命证明。
 
 1. 应用创建唯一 ExecutionRuntime、诊断目标和 RenderServer；登记内置声明及需要的外部扩展。
 2. 建立主帧与 Asset 的独立 IpcRequester，冷态 setFrameSource；再启动唯一 RenderThread。
-3. 查询目录；CreateScene/View/Target、InstallCapabilities 处理不改变已有可见状态的冷准备。
+3. 查询目录；CreateScene/View/Target 和 CreateEffect 处理不改变已有可见状态的冷准备。
 4. Asset Client 可独立 CreateTexture/CreateMesh；收到成功后才使用其返回 ID。
 5. CreateMaterial、CreateMeshInstances、CreateDirectLights 等共享表更新放进主来源 SubmitFrame。
    初始化可以先提交 NO_DRAW 帧；需要前一条请求返回的新 ID 时，在后续完整载体中使用，不能中途改写已借出的数组。
@@ -488,3 +508,37 @@ Scope join 不替代外部 Producer 退栈或代码模块寿命证明。
 当前尚未闭合：窗口输出、Editor UI GPU 消费、Engine ECS/资产接线、同设备 Target 跨图消费的产品合同。
 阴影质量、真实大场景性能仍需独立工作；主视图剔除/绕序正确性通过不能推导达到 Legacy 1000 FPS。
 已有 Debug `graph.edit` 和完整产品构建限制不因本文升级资格。
+
+
+## Effect 输出与实例尺寸
+
+EffectOutputDesc 只含 format、samples、kind、sampled。CreateEffect 和能力图构建不接收窗口宽高。
+RenderPlan 保存该静态输出合同、尺寸规则及 Graph 显式的固定输出限制，不保存首次 Target 分辨率。
+FIXED 图像保留绝对尺寸；TARGET/IMPORTED 图像在图构建时规范化掉无意义的初始宽高，保留比例、对齐和子资源声明。
+
+Target 与 Effect 都准备好后才 Attach。Instance 根据实际 Target/导入图像创建中间资源及 view，核对 mip、
+附件尺寸、Copy 容量和设备限制，并准备 Dispatch/绑定。Resize 重新准备受影响资源并沿用原 Plan。
+Shadow 的固定分辨率仍来自能力配置；不是所有 Graph 图像都随窗口改变。
+
+每帧先取得可复用 FIF 切片，再 Acquire/选择实际输出；Instance 绑定本帧 image/view，Executor 录制准备好的数据。
+Executor 不承担 Acquire、资源分配或退休。当前 kind/sampled 仍决定编译期输出边界状态，所以跨分辨率共享
+要求输出合同兼容，不表示同一个 Plan 可以任意混用于 Surface 和可采样 Offscreen。
+
+RenderSystem 的公开 create 接口只接收 composition、output、World、Context 和行为元信息。
+CreateEffectRequest 是内部发送时构造的临时通信数据。能力选择保留 capability type_info 与 implementation ID，
+Server 校验两者匹配，Engine 不再反查全量能力目录。
+
+
+### Resize 候选与实际范围
+
+Instance 的已采用规格唯一来自 TargetOutput.description，不另存 TargetDesc 镜像。
+需要最终输出或 TARGET 相对资源的图拒绝空 Resize 输出；完全固定/导入资源图允许没有输出。
+Surface 退出仍通过 releaseOutputReferences 显式撤销图像借用，不使用空 Resize 代替该操作。
+
+Attach、Resize 准备及等待后的采用复核统一检查实际附件和 Resolve 尺寸，以及 CopyImage 的源/目的 mip、
+区域尺寸。没有显式区域的图像复制要求对应完整子资源尺寸一致；局部复制显式声明两端区域，避免把部分写入
+宣称为整个目的子资源已初始化。无效候选不会交给 Executor。
+
+相同规格的健康 Target 直接返回现有描述和 epoch，不重建图像、不暂停输出、不清偿无关 GPU 工作。
+Surface 的 Swapchain 缺失、已有 Acquire/Present 失败，或已消费 acquire 却没有提交呈现信号时仍须重建；
+暂时 NOT_READY 不等于资源失效。

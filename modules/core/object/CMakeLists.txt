@@ -9,8 +9,10 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Object.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectTarget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectRuntime.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Reclamation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CodeLease.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectOwnership.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectScheduler.cpp
 )
 
 component_include_directories(
@@ -27,6 +29,7 @@ target_compile_definitions(object PRIVATE LUX_CORE_LIBRARY)
 target_link_libraries(
     object
     PUBLIC
+        lux::engine::core::core_execution
         lux::cxx::core
         lux::cxx::compile_time
         lux::cxx::memory
@@ -36,6 +39,7 @@ target_link_libraries(
 component_add_transitive_commands(
     object
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time memory container)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
 )
 
 if(BUILD_TESTING)
@@ -98,5 +102,27 @@ if(BUILD_TESTING)
     add_test(
         NAME object.target_contract COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/test/target_contract.py" $<TARGET_FILE:object_target_test>
+    )
+endif()
+
+if(BUILD_TESTING)
+    add_library(object_signal_sender_compile OBJECT test/SignalSenderCompile.cpp)
+    target_link_libraries(object_signal_sender_compile PRIVATE object)
+endif()
+
+if(BUILD_TESTING)
+    cmake_file_api(QUERY API_VERSION 1 CODEMODEL 2)
+    add_executable(object_scheduler_test test/execution/ObjectSchedulerTest.cpp)
+    target_link_libraries(object_scheduler_test PRIVATE object)
+    if(MSVC)
+        target_compile_options(object_scheduler_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(object_scheduler_test PRIVATE -UNDEBUG)
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME object.scheduler COMMAND object_scheduler_test)
+    add_test(
+        NAME object.execution_dependencies COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/execution/check_dependencies.py" "${CMAKE_BINARY_DIR}"
     )
 endif()

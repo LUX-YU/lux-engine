@@ -26,8 +26,7 @@ namespace lux::task
                                               std::same_as<std::remove_cvref_t<Type>, TaskResources> ||
                                               std::same_as<std::remove_cvref_t<Type>, TaskDependency> ||
                                               std::same_as<std::remove_cvref_t<Type>, TaskDependencies> ||
-                                              std::same_as<std::remove_cvref_t<Type>, TaskAffinity> ||
-                                              std::same_as<std::remove_cvref_t<Type>, TaskLifetimePin>;
+                                              std::same_as<std::remove_cvref_t<Type>, TaskAffinity>;
     }
 
     /**
@@ -81,7 +80,6 @@ namespace lux::task
             TaskCallable callable;
             std::vector<TaskResourceAccess> resources;
             std::vector<TaskHandle> dependencies;
-            std::vector<std::shared_ptr<const void>> pins;
             ETaskAffinity affinity{ETaskAffinity::WORKER};
         };
 
@@ -135,12 +133,6 @@ namespace lux::task
         static void collectProperty(PendingTask& pending, TaskAffinity property) noexcept
         {
             pending.affinity = property.value;
-        }
-
-        static void collectProperty(PendingTask& pending, TaskLifetimePin property)
-        {
-            if (property.value)
-                pending.pins.push_back(std::move(property.value));
         }
 
         [[nodiscard]] lux::cxx::expected<TaskHandle, TaskGraphFailure> addPending(PendingTask pending) noexcept;

@@ -10,57 +10,39 @@ namespace lux::render
             return cxx::unexpected(RenderError{kInvalidTargetExtent, {width, height, 0}});
         }
 
-        const bool is_invalid_format = !rdesc::supportsTextureUsage(format, rdesc::ETextureUsage::COLOR_ATTACHMENT);
+        return validateEffectOutput({format, samples, kind, sampled});
+    }
+
+    RenderResult<void> validateEffectOutput(const EffectOutputDesc& output) noexcept
+    {
+        const bool is_invalid_format =
+            !rdesc::supportsTextureUsage(output.format, rdesc::ETextureUsage::COLOR_ATTACHMENT);
         if (is_invalid_format)
         {
-            return cxx::unexpected(RenderError{kInvalidTargetFormat, {static_cast<std::uint64_t>(format), 0, 0}});
+            return cxx::unexpected(RenderError{
+                kInvalidTargetFormat, {static_cast<std::uint64_t>(output.format), 0, 0}
+            });
         }
 
-        const bool is_valid_samples = samples != 0 && samples <= 64 && (samples & (samples - 1)) == 0;
+        const bool is_valid_samples =
+            output.samples != 0 && output.samples <= 64 && (output.samples & (output.samples - 1)) == 0;
         if (!is_valid_samples)
         {
-            return cxx::unexpected(RenderError{kInvalidTargetSamples, {samples, 0, 0}});
+            return cxx::unexpected(RenderError{kInvalidTargetSamples, {output.samples, 0, 0}});
         }
 
-        const bool is_invalid_kind = kind != ETargetKind::OFFSCREEN && kind != ETargetKind::SURFACE;
+        const bool is_invalid_kind = output.kind != ETargetKind::OFFSCREEN && output.kind != ETargetKind::SURFACE;
         if (is_invalid_kind)
         {
-            return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(kind), 0, 0}});
+            return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(output.kind), 0, 0}});
         }
 
-        if (kind == ETargetKind::SURFACE && (samples != 1 || sampled))
+        if (output.kind == ETargetKind::SURFACE && (output.samples != 1 || output.sampled))
         {
-            return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(kind)}});
+            return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(output.kind)}});
         }
 
         return {};
     }
 
-    std::span<const error::ErrorDescriptor> renderCoreErrorDescriptors() noexcept
-    {
-        static constexpr error::ErrorDescriptor descriptors[]{
-            {"lux.render.core.invalid_target_extent",
-             "Target width {0} and height {1} must be nonzero and supported",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
-            {"lux.render.core.invalid_target_format",
-             "Target format {0} must describe an uncompressed color attachment",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::HEX}},
-            {"lux.render.core.invalid_target_samples",
-             "Target sample count {0} must be a power of two from 1 through 64",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED}},
-            {"lux.render.core.invalid_target_kind",
-             "Unknown target kind {0}",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED}},
-            {"lux.render.core.invalid_viewport",
-             "Raster viewport coordinates and depth ranges must be valid",
-             error::ERecovery::PERMANENT,
-             {}},
-            {"lux.render.runtime.outcome_unknown", "Accepted side effects have an unknown outcome"}
-        };
-        return descriptors;
-    }
 } // namespace lux::render

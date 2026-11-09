@@ -21,7 +21,7 @@ namespace lux::render
             kTextureStorageType,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
             static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC),
-            cxx::typeToken<TextureBinding>(),
+            cxx::make_basic_type_info<TextureBinding>(),
             "Single-layer sampled 2D images with mip, R/RG/RGBA and BC1/3/5/7 uploads, regions and a white default."
         };
 

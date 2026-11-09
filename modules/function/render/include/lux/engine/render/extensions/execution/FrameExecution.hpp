@@ -83,11 +83,8 @@ namespace lux::render::detail
             std::size_t bytes_;
         };
 
-        [[nodiscard]] static RenderResult<std::unique_ptr<FrameExecution>> create(
-            DeviceSession&,
-            ResourceUploader*,
-            std::uint32_t frame_count
-        ) noexcept;
+        [[nodiscard]] static RenderResult<std::unique_ptr<FrameExecution>>
+        create(DeviceSession&, ResourceUploader*, std::uint32_t frame_count) noexcept;
         ~FrameExecution() noexcept;
         FrameExecution(const FrameExecution&) = delete;
         FrameExecution& operator=(const FrameExecution&) = delete;
@@ -175,6 +172,7 @@ namespace lux::render::detail
             std::uint32_t instance = 0;
             std::uint32_t batch = 0, release_batch = 0;
             bool write = false;
+            bool target_output = false;
         };
 
         struct FrameSlot final
@@ -201,6 +199,9 @@ namespace lux::render::detail
             std::array<std::vector<std::uint32_t>, 3> ready_batches;
             std::vector<ImportedUse> imported_uses;
             std::vector<std::uint32_t> recording_batches;
+            nri::CommandAllocator* preparation_allocator = nullptr;
+            nri::CommandBuffer* preparation_command = nullptr;
+            std::vector<nri::CommandBuffer*> recording_commands; // Borrowed for one QueueSubmit.
             std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;
             std::vector<ResourceUploader::BufferCopy> feature_copies;
             std::vector<PreparedStorage> prepared_storages;
@@ -215,18 +216,17 @@ namespace lux::render::detail
         void acceptSubmission(std::uint32_t slot, const SubmissionQueue&) noexcept;
         void finishPreparation(RenderResult<void>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameUse>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFeatures(
-            std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>,
-            bool& has_copies
-        ) noexcept;
+        [[nodiscard]] RenderResult<bool>
+        prepareFeatures(std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>, bool& has_copies) noexcept;
         [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareDrawLists(std::span<RenderGraphInstance* const>) noexcept;
         void collectFeatureCopies(std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> submitPreparationCopies(
             std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>,
             bool include_features
         ) noexcept;
-        void prepareSubmissions(std::span<RenderGraphInstance* const>) noexcept;
-        void rebuildDependencies(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] RenderResult<void> prepareSubmissions(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] RenderResult<void> rebuildDependencies(std::span<RenderGraphInstance* const>) noexcept;
         void appendImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;
         void enqueueReadyBatch(FrameSlot&, std::uint32_t batch) noexcept;
         void selectReadyBatches(FrameSlot&, std::uint32_t queue) noexcept;

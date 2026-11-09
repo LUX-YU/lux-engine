@@ -1,0 +1,39 @@
+{"diagnostics": [
+## set emitted = false
+## set matched_types = 0
+## for index in marked_record_decls
+##     set decl = decl_from_index(index)
+##     if existsIn(editors.types, decl.fq_name)
+##         set matched_types = matched_types + 1
+##         set policy = at(editors.types, decl.fq_name)
+##         set matched_fields = 0
+##         for field_id in decl.field_decls
+##             set field = decl_from_id(field_id)
+##             if field.visibility == 1 and existsIn(policy.fields, field.name)
+##                 set matched_fields = matched_fields + 1
+##                 set control = at(policy.fields, field.name)
+##                 if existsIn(control, "minimum") and existsIn(control, "maximum")
+##                     if control.minimum > control.maximum
+{% if emitted %},{% endif %}{% set emitted = true %}
+{"severity":"error","declaration":{{ json_str(field.fq_name) }},"message":"Editor minimum exceeds maximum"}
+##                     endif
+##                 endif
+##             endif
+##         endfor
+##         if matched_fields != length(policy.fields)
+{% if emitted %},{% endif %}{% set emitted = true %}
+{"severity":"error","declaration":{{ json_str(decl.fq_name) }},"message":"Editor policy refers to a missing or non-public member"}
+##         endif
+##     endif
+## endfor
+## for index in marked_enum_decls
+##     set decl = decl_from_index(index)
+##     if existsIn(editors.types, decl.fq_name)
+##         set matched_types = matched_types + 1
+##     endif
+## endfor
+## if matched_types != length(editors.types)
+{% if emitted %},{% endif %}
+{"severity":"error","message":"Editor policy type was not parsed; check its external declaration and compile context"}
+## endif
+]}

@@ -2,8 +2,8 @@
 
 `object` 不依赖 UI、Scene 或 meta。LuxObject 提供非拥有父链、同步事件和模板信号。
 
-ObjectRuntime 在 object 动态库中定义进程唯一实例；宿主先于 worker 首次访问它，确定 owner 线程。
-所有 LuxObject 在该线程构造、访问和实际析构。默认构造取得全局代际 ObjectId；注册表只保存非拥有地址。
+ObjectRuntime 在 object 动态库中定义进程唯一身份目录。宿主必须先显式初始化 ExecutionRuntime；
+所有 LuxObject 在 ExecutionRuntime 的应用线程构造、访问和实际析构。ObjectRuntime 不决定线程归属。默认构造取得全局代际 ObjectId；注册表只保存非拥有地址。
 resolve() 只提供一次同步借用，不能跨回调或跨帧保存。对象关闭后撤销身份与接收资格，槽位复用不恢复旧 ID。
 
 setParent()/addChild()/removeChild() 仅修改关系，不转移删除责任。addChild 可原子移动到新父对象；
@@ -11,31 +11,37 @@ setParent()/addChild()/removeChild() 仅修改关系，不转移删除责任。a
 父对象析构只解绑剩余孩子；成员、unique_ptr、shared_ptr 决定实际析构。需要派生成员的内容必须在该资源
 仍有效时由实际 C++ owner 清理。UI 的类型化入口执行自己的拓扑验证。
 
-Runtime 复用有界双批次消息与连接维护；dispatchPending() 处理固定批次，回调追加留到后批。
-FULL/CLOSED 保留原语义。worker 只能投递拥有型消息、断开连接或交还已准备的回收责任。
-一个 Root 或 Editor 析构不会关闭进程 Runtime，重复创建框架实例仍可使用它。
+ObjectRuntime 没有消息队列、唤醒绑定、dispatchPending 或 collectRetired 接口。
+QUEUED 信号和 ObjectTarget 回调通过 stdexec 调度到 ExecutionRuntime::mainScheduler()，
+唯一应用循环调用 ExecutionRuntime::dispatch()。DIRECT 信号保持同步，不增加排队。
+排队工作按生产者有序，不承诺跨生产者全局 FIFO，也不再提供固定容量 FULL 或双批次隔离合同。
+ECS 修改仍必须在其既有结构安全点采用，不能把队列批次当作 ECS 隔离边界。
 
-shareOnRuntime() 转移真实唯一 allocation 到共享控制块。最后引用可在 worker 释放；回收节点预先准备，
-实际析构在 collectRetired() 的 owner 安全点执行，不依赖父托管或可能已满的业务队列。
-Runtime 最终清理关闭准入、结清已交还的回收责任，不派发业务回调、不等待任务。
-仍有外部共享 owner、活动回调或错误线程使回收无法推进时报告寿命契约错误。
+shareOnRuntime() 转移真实唯一 allocation 到共享控制块。最后引用可在 worker 释放；
+预先准备的 Reclamation 记录嵌入标准 schedule Operation，不再加入 Object 独立回收队列。
+正在执行对象回调时释放被延迟，实际析构在应用线程的后续安全点执行。
+这条已有清理路径不需要新的 spawn 准入，ExecutionRuntime 停止期间仍会排空它。
+所有对象与外部 Producer 必须在 ExecutionRuntime 析构之前结束；ObjectRuntime 静态析构不调用 Execution。
 CodeLease/pinCodeOwner 的宿主释放桥覆盖对象析构、状态型 deleter 清理和返回；weak 控制块可晚于 DLL 卸载。
 pinCodeOwner 只接受真实 unique_ptr allocation，在首次共享时建立代码 pin。之后复制返回的 shared_ptr，
 不得重新包装已有共享 owner；该输入合同从根源禁止释放桥链，不通过 RTTI 查询或全局缓存解包。
 普通 C++ 值在最后强引用释放的线程清理；LuxObject 的线程亲和回收仍使用 shareOnRuntime。
 共享准入失败不消费候选或代码 pin，deleter 移动期间仍受结构保护。
 
-`post(ObjectTarget, callback, code_lifetime)` 在现有消息中保存可选的回调代码 pin。
-它与目标对象的存活是两个条件：目标撤销时仍要执行完成取消，且回调和删除器可能来自另一个插件。
-消息先销毁 callable，再释放 pin，覆盖拒绝和正常交付；Engine ObjectScheduler 从任务环境传递这一借用。
-pin 不占用 callable 的 64B 内联空间，不新增队列或独立完成分配。非插件调用默认不提供 pin。
+`post(ObjectTarget, callback, code_lifetime)` 的 POSTED 表示接纳一次应用线程回调。
+目标失效或 Runtime 停止时回调接收 nullptr，已接纳完成不能静默丢弃；拒绝时不调用回调。
+停止之后的新投递返回 CLOSED。可选代码 pin 保持到 callable 销毁及返回 Core 调度循环之后。
+ObjectScheduler 仍在有效对象借用内交付 set_value，失效或取消交付 stopped。
+`whenEmitted(source, signal)` 等待一次事件，连接 Operation 时取得全局应用线程 Scheduler，
+不再要求调用方另外提供一个可能指向不同线程的 delivery Scheduler。
 
 ```cpp
 class Counter final : public lux::object::LuxObject
 {
 public:
-    using LuxObject::LuxObject;
     lux::object::TSignal<int> changed{*this};
+
+    using LuxObject::LuxObject;
 
     void setValue(int value) noexcept
     {
@@ -60,14 +66,13 @@ value_connection = std::move(*connected);
 
 `Connection` 是唯一的 move-only RAII 凭据：析构或 `disconnect()` 取消，移动赋值先取消原连接。调用方须保存成功结果。发送方或显式接收方销毁也会取消；外部凭据随后析构仍然安全。lambda 捕获遵循普通 C++ 寿命，不自动跟踪任意捕获。
 
-connect/emit 在唯一 owner 线程执行。DIRECT 同步交付；QUEUED 使用 Runtime 后批；AUTO 对同域对象同步交付。无接收方 lambda 仅 DIRECT。异线程可断开 Connection，原子取消立即阻止后续接纳，容器回收在发送方安全点进行；disconnect 不是 join，已开始回调可以完成。
+connect/emit 在唯一 owner 线程执行。DIRECT 同步交付；QUEUED 使用 Execution 主线程调度；AUTO 对同域对象同步交付。无接收方 lambda 仅 DIRECT。异线程可断开 Connection，原子取消立即阻止后续接纳，容器回收在发送方安全点进行；disconnect 不是 join，已开始回调可以完成。
 
-每信号惰性建立 `StableSlotMap`，使用 lux-cxx 的 `SlotKey`，发送只遍历该信号。最外层派发固定可见范围；期间新增连接下次可见，断开的未开始回调跳过。接收端反向链用于关闭，不是第二份订阅表。取消维护不使用可能 FULL 的业务消息；取消记录由 Runtime 安全点和 connect/emit/关闭收尾。
+每信号惰性建立 `StableSlotMap`，使用 lux-cxx 的 `SlotKey`，发送只遍历该信号。最外层派发固定可见范围；期间新增连接下次可见，断开的未开始回调跳过。接收端反向链用于关闭，不是第二份订阅表。取消维护使用记录内的 schedule Operation；connect/emit/关闭也会清理已取消连接。
 
-`SignalDelivery` 分别报告 direct、queued、full、closed。排队载荷由消息工厂固定，实际执行时重查取消及接收端存活。队列不会读取已经销毁的对象。消息准备中的内存不足或载荷复制异常会终止进程。
+`SignalDelivery` 分别报告 direct、queued、closed。排队载荷由类型化 Sender 拥有，实际执行时重查取消及接收端存活。队列不会读取已经销毁的对象。消息准备中的内存不足或载荷复制异常会终止进程。
 
 同步 `EventView` 支持过滤和父链传播，与信号广播分开。当前对象及祖先不能在回调栈中析构；对象在自己的线程销毁，析构不泵消息。关闭业务和结束编辑须先于对象析构。没有公开 `ObjectWeakRef`，UI 的焦点和维护借用由 UI 自身的析构注销协议处理。
 
-测试 `object.tree`、`object.queue` 保留路由和信号行为；`object.ownership` 验证非拥有混合树、
-拒绝不消费、清理期重入、安全点和真实 DLL 析构尾部。独立 object-ownership SDK 消费者使用安装的
-公共头和库重跑这些行为。测试入口的存在不代表已执行，实际结果以阶段验收记录为准。
+Object 与 Execution 的适配代码现在同属 `object` target；旧 `object_execution` 和
+`object_signal_sender` target 已移除。Object 不依赖 Engine、UI、Scene 或 Editor。

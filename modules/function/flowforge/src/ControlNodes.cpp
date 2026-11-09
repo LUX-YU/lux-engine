@@ -93,7 +93,7 @@ namespace lux::flowforge
         {
             FlowNodeRegistration result;
             result.identity = {graph::nodeTypeId(name), std::move(name), 1};
-            result.payload_type = cxx::typeToken<T>();
+            result.payload_type = cxx::make_basic_type_info<T>();
             result.code = code;
             result.create = [](const object::CodeLease& lease) noexcept
             { return FlowNodePayload::make<T, cloneControl<T>>(lease); };

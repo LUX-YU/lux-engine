@@ -1,8 +1,9 @@
 #include "../api_contract.hpp"
 #include "../support/InstalledProjectFixture.hpp"
+#include "../support/ProjectRequests.hpp"
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/AppErrors.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
@@ -74,7 +75,7 @@ int main(int argc, char** argv)
     {
         auto& registry = error::ErrorRegistry::instance();
         assert(registry.registerType({"lux.editor.invalid_window_extent", "Conflicting schema"}));
-        auto host = LuxEngine::create(fixture::loadedConfig("Registration conflict", 160, 120));
+        auto host = fixture::createLoadedEditor(fixture::loadedConfig("Registration conflict", 160, 120));
         assert(!host && host.error().type == error::errorId("lux.error.registration"));
         assert(host.error().args[0] == Errors::EditorInvalidWindowExtent);
         assert(registry.find(Errors::EditorInvalidWindowExtent)->message == "Conflicting schema");
@@ -91,7 +92,7 @@ int main(int argc, char** argv)
     {
         assert(context.bindExtension(extension_assets));
         const auto duplicate = context.bindExtension(extension_assets);
-        assert(!duplicate && duplicate.error() == engine::EContextExtensionError::DUPLICATE_TYPE);
+        assert(!duplicate && duplicate.error() == EEditorFacilityError::DUPLICATE_TYPE);
         assert(context.registerServiceFactory<Service>(
             [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
             {
@@ -138,7 +139,7 @@ int main(int argc, char** argv)
         assert(context.extensions().find<asset::AssetVfs>() == &extension_assets);
         assert(context.extensions().find<Service>() == nullptr && constructed == 0);
         assert(std::as_const(context).extensions().find<asset::AssetVfs>() == &extension_assets);
-        static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
+        static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::Engine&>);
         static_assert(std::is_same_v<decltype(std::as_const(context).assets()), const asset::AssetVfs&>);
         assert(error::ErrorRegistry::instance().find(Errors::EditorInvalidWindowExtent));
         std::thread worker(
@@ -173,12 +174,12 @@ int main(int argc, char** argv)
     std::weak_ptr<asset::IAssetProvider> lifetime = *higher;
     assert(writeProjectManifestAtomic(path / "A.luxproj", manifest("A"), EProjectWrite::REPLACE));
     assert(writeProjectManifestAtomic(path / "B.luxproj", manifest("B"), EProjectWrite::REPLACE));
-    LuxEngine* host{};
+    EditorApplication* host{};
     bool isolated{};
     EditorConfig config{"VFS isolation", 200, 160};
     config.project_file = path / "A.luxproj";
-    config.layout = {{"probe", "probe", "Probe"}};
-    auto made = LuxEngine::create(
+    config.layout = defaultProjectLayout({{"probe", "probe", "Probe"}});
+    auto made = fixture::createLoadedEditor(
         std::move(config),
         [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
         {
@@ -225,7 +226,7 @@ int main(int argc, char** argv)
     host = made->get();
     auto connection = object::LuxObject::connect(
         host,
-        &LuxEngine::projectChanged,
+        &EditorApplication::projectChanged,
         [&]() noexcept
         {
             if (host->project().project().name == "A")
@@ -235,7 +236,7 @@ int main(int argc, char** argv)
             else
             {
                 assert(isolated && lifetime.expired());
-                host->window().exit();
+                host->engine().requestClose();
             }
         }
     );

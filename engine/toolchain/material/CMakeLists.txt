@@ -103,7 +103,6 @@ component_include_directories(
     INSTALL_TIME include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../shader/sinclude
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
@@ -150,6 +149,7 @@ if(LUX_MATERIAL_BUILD_COOKER)
         BUILD_TIME_EXPORT
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${LUX_GENERATE_HEADER_DIR}
+        BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         INSTALL_TIME include
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     )

@@ -4,7 +4,7 @@
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/ui/Docking.hpp>
-#include <lux/engine/ui/DrawData.hpp>
+#include <lux/engine/ui/DrawView.hpp>
 #include <lux/engine/ui/FontAtlas.hpp>
 #include <lux/engine/ui/FontSource.hpp>
 #include <lux/engine/ui/Geometry.hpp>
@@ -39,6 +39,7 @@ namespace lux::ui
     class Pane;
     class Element;
     struct SizeHint;
+    struct DockData;
 
     struct RootConfig final
     {
@@ -62,6 +63,10 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Root final : public lux::object::LuxObject
     {
     public:
+        object::TSignal<PaneChanged> paneChanged{*this};
+        // DIRECT notification; receivers invalidate borrows, never destroy other UI objects.
+        object::TSignal<ObjectRemoved> objectRemoved{*this};
+
         using CreateResult = lux::cxx::expected<std::unique_ptr<Root>, EInitError>;
         [[nodiscard]] static CreateResult create(RootConfig = {}) noexcept;
         ~Root() noexcept override;
@@ -69,10 +74,8 @@ namespace lux::ui
         // FULL leaves this event unaccepted, including both physical/aggregate modifiers.
         // Native sequences are monotonic per Root/window. Zero assigns a local
         // sequence (synthetic input/tests). FULL does not consume the sequence.
-        [[nodiscard]] lux::cxx::expected<void, EInputError> feedInput(
-            const VInputEvent&,
-            std::uint64_t sequence = 0
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EInputError>
+        feedInput(const VInputEvent&, std::uint64_t sequence = 0) noexcept;
         void closeInput() noexcept;
         [[nodiscard]] InputSnapshot inputSnapshot() const noexcept;
         // Optional platform attachment. CPU-only roots have no native window.
@@ -81,15 +84,12 @@ namespace lux::ui
         [[nodiscard]] UpdateStatistics statistics() const noexcept;
         [[nodiscard]] float scale() const noexcept;
         [[nodiscard]] lux::cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
-        using Capture = cxx::function_ref<cxx::expected<void, ECaptureError>(const DrawData&) noexcept>;
+        using Capture = cxx::function_ref<cxx::expected<void, ECaptureError>(const DrawView&) noexcept>;
         // Both overloads adopt the prior structural batch first. No drawing or input replay in maintenance-only use.
         [[nodiscard]] cxx::expected<void, ECaptureError> update() noexcept;
         // Capture pins resources synchronously before remaining input and owner maintenance.
-        [[nodiscard]] cxx::expected<void, ECaptureError> update(
-            FrameInfo,
-            DrawData&,
-            std::optional<Capture> = std::nullopt
-        ) noexcept;
+        [[nodiscard]] cxx::expected<void, ECaptureError>
+        update(FrameInfo, DrawView&, std::optional<Capture> = std::nullopt) noexcept;
 
         [[nodiscard]] PaneResult<std::reference_wrapper<Pane>> addPane(std::unique_ptr<Pane>&&) noexcept;
         [[nodiscard]] PaneResult<void> addPanes(std::span<std::unique_ptr<Pane>>) noexcept;
@@ -100,12 +100,12 @@ namespace lux::ui
         [[nodiscard]] PaneResult<std::vector<std::unique_ptr<Pane>>> replacePanes(
             std::span<const PaneHandle> remove,
             std::span<std::unique_ptr<Pane>> add,
-            PaneCommit on_commit
+            PaneCommit on_commit,
+            std::optional<PanePlacement> placement = {}
         ) noexcept;
         [[nodiscard]] PaneHandle paneHandle(const Pane&) const noexcept;
         // Owner-thread synchronous borrow only; never retain the pointer across callbacks or frames.
         [[nodiscard]] Pane* resolvePane(PaneHandle) const noexcept;
-        object::TSignal<PaneChanged> paneChanged{*this};
 
         using ChangeCallback = void (*)(object::LuxObject&) noexcept;
         // Non-owning, coalesced target/callback intents; inputs stay in the target owner.
@@ -120,8 +120,6 @@ namespace lux::ui
         [[nodiscard]] const MenuDefinition& menu() const noexcept;
         // Borrowed enumeration freezes structure until every callback has returned.
         [[nodiscard]] PaneResult<void> forEachPane(cxx::function_ref<void(Pane&) noexcept>) noexcept;
-        // DIRECT notification; receivers may only invalidate borrows, never destroy other UI objects.
-        object::TSignal<ObjectRemoved> objectRemoved{*this};
 
         [[nodiscard]] Pane* focusedPane() const noexcept;
         [[nodiscard]] bool requestFocus(Pane&) noexcept;
@@ -142,22 +140,23 @@ namespace lux::ui
         using LuxObject::removeChild;
         using LuxObject::setParent;
         [[nodiscard]] PaneResult<void> checkStructureSafe() const noexcept;
+        [[nodiscard]] cxx::expected<std::unique_ptr<DockData>, EDockError> prepareDockTree(
+            DockTree tree,
+            std::span<Pane* const> removed = {},
+            std::span<Pane* const> added = {},
+            std::span<const AddedPanePlacement> placement = {}
+        ) noexcept;
         struct Impl;
         explicit Root(std::unique_ptr<Impl>) noexcept;
         void applyPendingChanges() noexcept;
         [[nodiscard]] cxx::expected<void, ECaptureError>
-        updateFrame(FrameInfo, DrawData*, std::optional<Capture>) noexcept;
+        updateFrame(FrameInfo, DrawView*, std::optional<Capture>) noexcept;
         [[nodiscard]] Pane* findPane(PaneId) const noexcept;
         [[nodiscard]] bool menuTargets(const Element&) const noexcept;
         friend class Pane;
         friend class Element;
-        [[nodiscard]] static PaneResult<void> compose(
-            Pane*,
-            Element*,
-            Element& child,
-            Element* previous,
-            bool replace
-        ) noexcept;
+        [[nodiscard]] static PaneResult<void>
+        compose(Pane*, Element*, Element& child, Element* previous, bool replace) noexcept;
         void releasePane(Pane&) noexcept;
         static void updatePane(object::LuxObject&) noexcept;
         static void updateElement(object::LuxObject&) noexcept;
@@ -180,7 +179,7 @@ namespace lux::ui
         void checkDestruction(const object::LuxObject&) const noexcept;
         void checkContentChange() const noexcept;
         void requireOwner() const noexcept;
-        [[nodiscard]] lux::cxx::expected<void, ECaptureError> collectDrawData(FrameInfo, DrawData&) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ECaptureError> collectDrawData(FrameInfo, DrawView&) noexcept;
         void maintain() noexcept;
         void drawPane(Pane&) noexcept;
         void drawPaneContent(Pane&) noexcept;

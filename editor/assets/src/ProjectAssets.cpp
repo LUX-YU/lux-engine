@@ -1,11 +1,9 @@
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/AssetImport.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
-#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
-#include <lux/engine/scene/MeshQuery.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -16,13 +14,6 @@ namespace lux::editor
 {
     struct ProjectAssets::Impl final
     {
-        struct Geometry final
-        {
-            std::uint64_t revision{};
-            std::shared_ptr<const scene::MeshQueryGeometry> value;
-            std::optional<AssetImportFailure> failure;
-        };
-
         EditorContext& context;
         execution::ExecutionRuntime& execution;
         execution::TaskScope& tasks;
@@ -30,205 +21,16 @@ namespace lux::editor
         std::filesystem::path root;
         detail::AssetCatalog catalog;
         std::map<asset::AssetId, asset::MountLease> mounts;
-        std::map<asset::AssetId, std::shared_ptr<const asset::ModelAsset>> models;
-        std::map<asset::AssetId, Geometry> geometry;
+        std::vector<AssetImportDeclaration> importers;
         std::optional<AssetImportFailure> failure;
         execution::TaskId pending;
         bool ready{};
         std::mt19937 random{std::random_device{}()};
 
-        explicit Impl(EditorContext& context) noexcept
-            : context(context), execution(context.engine().execution()), tasks(context.tasks()),
-              assets(context.assets()), root(context.project().root)
+        Impl(EditorContext& context, std::vector<AssetImportDeclaration> declarations) noexcept
+            : context(context), execution(execution::ExecutionRuntime::instance()), tasks(context.tasks()),
+              assets(context.assets()), root(context.project().root), importers(std::move(declarations))
         {
-        }
-
-        using QueryGeometry = std::shared_ptr<const scene::MeshQueryGeometry>;
-        using QueryCompletion = execution::TTaskResult<QueryGeometry, AssetImportFailure>;
-
-        static AssetImportResult<QueryGeometry> buildQueryGeometry(
-            const asset::MeshAsset& asset,
-            std::stop_token stop
-        ) noexcept
-        {
-            if (stop.stop_requested())
-            {
-                return cxx::unexpected(AssetImportFailure{EAssetImportError::CANCELLED, "Mesh query cancelled"});
-            }
-            auto built = scene::MeshQueryGeometry::build(asset.data());
-            if (!built)
-            {
-                return cxx::unexpected(AssetImportFailure{
-                    EAssetImportError::COOK,
-                    "Mesh query geometry error " + std::to_string(static_cast<unsigned>(built.error().code))
-                });
-            }
-            return std::move(*built);
-        }
-
-        static auto loadQueryGeometry(
-            process::asset_loading::AssetReadPort read,
-            execution::CpuScheduler cpu,
-            asset::AssetId mesh,
-            asset::AssetVfsView snapshot,
-            std::stop_token stop
-        ) noexcept
-        {
-            auto loaded = process::asset_loading::loadAsset<asset::MeshAsset>(
-                read,
-                cpu,
-                mesh,
-                {256U << 20U, 512U << 20U, 32},
-                stop,
-                snapshot
-            );
-            auto normalized = stdexec::let_error(
-                std::move(loaded),
-                [](process::asset_loading::AssetLoadFailure failure) noexcept
-                {
-                    return stdexec::just_error(AssetImportFailure{
-                        EAssetImportError::READ,
-                        "Mesh read/decode stage " + std::to_string(static_cast<unsigned>(failure.code)) +
-                            ", storage result " + std::to_string(static_cast<unsigned>(failure.storage_error))
-                    });
-                }
-            );
-            // Decode and BVH construction stay on the same CPU continuation; no extra Main round-trip.
-            return stdexec::then(
-                std::move(normalized),
-                [stop](const auto& asset) noexcept { return buildQueryGeometry(*asset, stop); }
-            );
-        }
-
-        static execution::ETaskState finishGeometry(
-            object::ObjectId object,
-            asset::AssetId mesh,
-            std::uint64_t revision,
-            QueryCompletion result
-        ) noexcept
-        {
-            const auto resolved = object::ObjectRuntime::instance().resolve(object);
-            if (!resolved)
-            {
-                return execution::ETaskState::CANCELLED;
-            }
-            auto& collection = *static_cast<ProjectAssets*>(*resolved);
-            auto& state = *collection.impl_;
-            const auto found = state.geometry.find(mesh);
-            if (found == state.geometry.end() || found->second.revision != revision)
-            {
-                return execution::ETaskState::CANCELLED;
-            }
-            if (result)
-            {
-                found->second.value = std::move(*result);
-            }
-            else
-            {
-                const auto* domain = result.error().domainFailure();
-                found->second.failure = domain ? *domain
-                                               : AssetImportFailure{
-                                                     result.error().isCancelled() ? EAssetImportError::CANCELLED
-                                                                                  : EAssetImportError::EXECUTION,
-                                                     "Mesh query execution did not complete"
-                                                 };
-            }
-            static_cast<void>(collection.emit(collection.geometryChanged, MeshGeometryChanged{mesh, revision}));
-            return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
-        }
-
-        AssetImportResult<void> admitGeometry(
-            object::ObjectId object,
-            asset::AssetId mesh,
-            std::uint64_t revision
-        ) noexcept
-        {
-            auto& state = *this;
-            auto reads = state.context.prepareAssetReads();
-            if (!reads)
-            {
-                return cxx::unexpected(AssetImportFailure{EAssetImportError::READ, "Project asset endpoint unavailable"}
-                );
-            }
-            auto& target = state.geometry.find(mesh)->second;
-            auto admitted = state.tasks.submit(
-                {"Prepare mesh query", "Assets"},
-                [object,
-                 mesh,
-                 revision,
-                 read = *reads,
-                 snapshot = state.assets.view().capture(),
-                 cpu = state.execution.cpu(),
-                 main = state.execution.mainScheduler()](execution::TaskReporter reporter) noexcept
-                {
-                    auto result =
-                        execution::taskResult(loadQueryGeometry(read, cpu, mesh, snapshot, reporter.stopToken()));
-                    auto delivered = stdexec::then(
-                        stdexec::continues_on(std::move(result), main),
-                        [object, mesh, revision](auto result) noexcept
-                        { return finishGeometry(object, mesh, revision, std::move(result)); }
-                    );
-                    // Explicit stop governs the work; it must not cancel the final Main-thread status delivery.
-                    return stdexec::write_env(
-                        std::move(delivered),
-                        stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
-                    );
-                }
-            );
-            if (!admitted)
-            {
-                if (admitted.error() == execution::EExecutionError::CAPACITY_EXCEEDED)
-                {
-                    state.awaitGeometryCapacity(object, mesh, revision);
-                    return {}; // The accepted demand remains pending; capacity is not a content failure.
-                }
-                target.failure = AssetImportFailure{EAssetImportError::EXECUTION, "Mesh query task admission failed"};
-                return cxx::unexpected(*target.failure);
-            }
-            return {};
-        }
-
-        void awaitGeometryCapacity(object::ObjectId object, asset::AssetId mesh, std::uint64_t revision) noexcept
-        {
-            auto capacity = stdexec::upon_stopped(
-                stdexec::then(tasks.whenCapacityAvailable(), []() noexcept { return true; }),
-                []() noexcept { return false; }
-            );
-            auto completion = stdexec::continues_on(std::move(capacity), execution.mainScheduler());
-            // Only the existing ObjectId survives the unmonitored wait. Closing the TaskScope can
-            // precede this final Main continuation: it never borrows the Context or ProjectAssets.
-            auto accepted = execution.spawn(stdexec::then(
-                std::move(completion),
-                [object, mesh, revision](bool available) noexcept
-                {
-                    const auto resolved = object::ObjectRuntime::instance().resolve(object);
-                    if (!resolved)
-                    {
-                        return;
-                    }
-                    auto& collection = *static_cast<ProjectAssets*>(*resolved);
-                    auto& state = *collection.impl_;
-                    const auto found = state.geometry.find(mesh);
-                    if (found == state.geometry.end() || found->second.revision != revision)
-                    {
-                        return;
-                    }
-                    AssetImportResult<void> admitted =
-                        available ? state.admitGeometry(object, mesh, revision)
-                                  : cxx::unexpected(
-                                        AssetImportFailure{EAssetImportError::CANCELLED, "Mesh query admission stopped"}
-                                    );
-                    if (!admitted)
-                    {
-                        found->second.failure = admitted.error();
-                        (void)collection.emit(collection.geometryChanged, MeshGeometryChanged{mesh, revision});
-                    }
-                }
-            ));
-            if (!accepted)
-            {
-                std::terminate(); // Project tasks stop before shared ExecutionRuntime closes admission.
-            }
         }
 
         AssetImportResult<void> adopt(detail::ImportedAssets result) noexcept
@@ -238,8 +40,7 @@ namespace lux::editor
             for (auto entry = mounts.begin(); entry != mounts.end();)
             {
                 const bool replaced =
-                    result.complete_catalog ||
-                    std::ranges::any_of(result.models, [&](const auto& model) { return model->id() == entry->first; });
+                    result.complete_catalog || std::ranges::find(result.roots, entry->first) != result.roots.end();
                 if (!replaced)
                 {
                     ++entry;
@@ -262,15 +63,9 @@ namespace lux::editor
                     true
                 });
             }
-            if (result.complete_catalog)
+            for (std::size_t i = 0; i < result.roots.size(); ++i)
             {
-                models.clear();
-            }
-            for (std::size_t i = 0; i < result.models.size(); ++i)
-            {
-                const auto id = result.models[i]->id();
-                mounts.emplace(id, std::move((*published)[i]));
-                models[id] = std::move(result.models[i]);
+                mounts.emplace(result.roots[i], std::move((*published)[i]));
             }
             catalog = std::move(result.catalog);
             ready = true;
@@ -280,7 +75,7 @@ namespace lux::editor
 
         static execution::ETaskState finishImport(
             object::ObjectId id,
-            execution::TTaskResult<detail::ImportedAssets, AssetImportFailure> result
+            execution::ExecutionResult<detail::ImportedAssets, AssetImportFailure> result
         ) noexcept
         {
 
@@ -322,7 +117,8 @@ namespace lux::editor
 
         AssetImportResult<execution::TaskId> start(
             ProjectAssets& collection,
-            std::optional<ProjectAsset> input
+            std::optional<ProjectAsset> input,
+            const AssetImportDeclaration* importer = nullptr
         ) noexcept
         {
             if (pending)
@@ -331,23 +127,31 @@ namespace lux::editor
                     AssetImportFailure{EAssetImportError::BUSY, "Another catalog operation is active"}
                 );
             }
+            execution::TaskOptions options{
+                input ? "Import asset" : "Open asset catalog",
+                "Assets",
+                {},
+                importer ? importer->code_lifetime : nullptr
+            };
             auto submitted = tasks.submit(
-                {input ? "Import model" : "Open asset catalog", "Assets"},
+                std::move(options),
                 [id = collection.objectId(),
                  execution = &execution,
                  root = root,
                  expected = catalog,
-                 input = std::move(input)](execution::TaskReporter reporter) mutable noexcept
+                 input = std::move(input),
+                 cook = importer ? importer->cook : nullptr](execution::TaskReporter reporter) mutable noexcept
                 {
-                    auto work = input ? detail::importModel(
+                    auto work = input ? detail::importAsset(
                                             *execution,
                                             std::move(root),
                                             std::move(expected),
                                             std::move(*input),
+                                            cook,
                                             reporter
                                         )
                                       : detail::openAssetCatalog(*execution, std::move(root), reporter);
-                    auto result = execution::taskResult(stdexec::write_env(
+                    auto result = execution::asResult(stdexec::write_env(
                         stdexec::starts_on(execution->mainScheduler(), std::move(work)),
                         stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
                     ));
@@ -366,35 +170,22 @@ namespace lux::editor
         }
     };
 
-    ProjectAssets::ProjectAssets(EditorContext& context) noexcept : impl_(std::make_unique<Impl>(context)) {}
+    ProjectAssets::ProjectAssets(EditorContext& context, std::vector<AssetImportDeclaration> importers) noexcept
+        : impl_(std::make_unique<Impl>(context, std::move(importers)))
+    {
+    }
 
     ProjectAssets::~ProjectAssets() noexcept = default;
 
-    AssetImportResult<void> ProjectAssets::prepareMeshGeometry(asset::AssetId mesh) noexcept
+    std::span<const AssetImportDeclaration> ProjectAssets::importers() const noexcept
     {
-        auto& state = *impl_;
-        auto found = state.geometry.find(mesh);
-        if (found != state.geometry.end() && found->second.revision == state.catalog.revision)
-        {
-            return found->second.failure ? AssetImportResult<void>{cxx::unexpected(*found->second.failure)}
-                                         : AssetImportResult<void>{};
-        }
-        const auto revision = state.catalog.revision;
-        state.geometry[mesh] = Impl::Geometry{revision};
-        auto admitted = state.admitGeometry(objectId(), mesh, revision);
-        if (!admitted)
-        {
-            state.geometry.find(mesh)->second.failure = admitted.error();
-        }
-        return admitted;
+        return impl_->importers;
     }
 
-    std::shared_ptr<const scene::MeshQueryGeometry> ProjectAssets::meshGeometry(asset::AssetId mesh) const noexcept
+    const ProjectAsset* ProjectAssets::find(asset::AssetId id) const noexcept
     {
-        const auto found = impl_->geometry.find(mesh);
-        return found == impl_->geometry.end() || found->second.revision != impl_->catalog.revision
-                   ? nullptr
-                   : found->second.value;
+        const auto found = std::ranges::find(impl_->catalog.records, id, &ProjectAsset::id);
+        return found == impl_->catalog.records.end() ? nullptr : &*found;
     }
 
     AssetImportResult<execution::TaskId> ProjectAssets::open() noexcept
@@ -407,15 +198,17 @@ namespace lux::editor
         return started;
     }
 
-    AssetImportResult<execution::TaskId> ProjectAssets::importModel(
+    AssetImportResult<execution::TaskId> ProjectAssets::importAsset(
+        std::string_view importer,
+        std::uint32_t version,
         std::filesystem::path source,
-        toolchain::ModelCookConfiguration configuration
+        std::vector<std::byte> configuration
     ) noexcept
     {
         if (!source.is_absolute() || source.filename().empty())
         {
             return cxx::unexpected(
-                AssetImportFailure{EAssetImportError::INVALID_INPUT, "Choose an absolute model source path"}
+                AssetImportFailure{EAssetImportError::INVALID_INPUT, "Choose an absolute asset source path"}
             );
         }
         uuids::uuid_random_generator generate{impl_->random};
@@ -424,6 +217,8 @@ namespace lux::editor
         const auto name = source.stem().u8string();
         input.name.assign(reinterpret_cast<const char*>(name.data()), name.size());
         input.source = std::move(source);
+        input.importer = importer;
+        input.importer_version = version;
         input.configuration = std::move(configuration);
         return import(std::move(input));
     }
@@ -433,7 +228,7 @@ namespace lux::editor
         const auto found = std::ranges::find(impl_->catalog.records, id, &ProjectAsset::id);
         if (found == impl_->catalog.records.end())
         {
-            return cxx::unexpected(AssetImportFailure{EAssetImportError::INVALID_INPUT, "Unknown imported model"});
+            return cxx::unexpected(AssetImportFailure{EAssetImportError::INVALID_INPUT, "Unknown imported asset"});
         }
         return import(*found);
     }
@@ -450,11 +245,34 @@ namespace lux::editor
         {
             return cxx::unexpected(AssetImportFailure{EAssetImportError::INVALID_INPUT, "Asset revision exhausted"});
         }
+        const auto provider = std::ranges::find_if(
+            impl_->importers,
+            [&](const auto& declaration)
+            { return declaration.name == input.importer && declaration.version == input.importer_version; }
+        );
+        if (provider == impl_->importers.end())
+        {
+            return cxx::unexpected(
+                AssetImportFailure{EAssetImportError::UNKNOWN_IMPORTER, "Importer/version unavailable"}
+            );
+        }
+        const bool invalid_provider = !provider->cook || provider->configuration_type.name().empty();
+        const auto matches = std::ranges::count_if(
+            impl_->importers,
+            [&](const auto& declaration)
+            { return declaration.name == input.importer && declaration.version == input.importer_version; }
+        );
+        if (invalid_provider || matches != 1)
+        {
+            return cxx::unexpected(
+                AssetImportFailure{EAssetImportError::INVALID_INPUT, "Invalid or ambiguous importer declaration"}
+            );
+        }
         uuids::uuid_random_generator generate{impl_->random};
         ++input.revision;
         input.package =
             ".luxassets/products/" + uuids::to_string(input.id.uuid()) + "/" + uuids::to_string(generate()) + ".luxpak";
-        return impl_->start(*this, std::move(input));
+        return impl_->start(*this, std::move(input), &*provider);
     }
 
     bool ProjectAssets::ready() const noexcept
@@ -475,12 +293,6 @@ namespace lux::editor
     std::span<const ProjectAsset> ProjectAssets::records() const noexcept
     {
         return impl_->catalog.records;
-    }
-
-    const asset::ModelAsset* ProjectAssets::model(asset::AssetId id) const noexcept
-    {
-        const auto found = impl_->models.find(id);
-        return found == impl_->models.end() ? nullptr : found->second.get();
     }
 
     const std::optional<AssetImportFailure>& ProjectAssets::failure() const noexcept

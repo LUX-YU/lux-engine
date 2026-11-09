@@ -108,7 +108,7 @@ namespace lux::editor
         }
     }
 
-    FrameworkResult<void> EditorWindow::updateUi(ui::DrawData& output) noexcept
+    FrameworkResult<void> EditorWindow::updateUi(ui::DrawView& output) noexcept
     {
         return updateUiFrame(&output);
     }
@@ -118,7 +118,7 @@ namespace lux::editor
         return updateUiFrame(nullptr);
     }
 
-    FrameworkResult<void> EditorWindow::updateUiFrame(ui::DrawData* output) noexcept
+    FrameworkResult<void> EditorWindow::updateUiFrame(ui::DrawView* output) noexcept
     {
         const auto now = std::chrono::steady_clock::now();
         const float elapsed =

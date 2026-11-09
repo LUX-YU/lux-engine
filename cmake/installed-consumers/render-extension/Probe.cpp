@@ -4,9 +4,12 @@
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
+#include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/extensions/CommandMethod.hpp>
+#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/storage/StorageBinding.hpp>
@@ -36,13 +39,20 @@ template <class T> auto take(T result)
 struct ProbeUpload final
 {
     static constexpr std::string_view name = "example.capability.upload";
-    static constexpr bool frame_scoped = false;
+    static constexpr bool requires_frame_boundary = false;
 
     struct Request
     {
-        CapabilityInput destination;
+        CapabilityImplementationId implementation;
         std::span<const std::byte> source;
     };
+
+    using Data = std::span<const std::byte>;
+
+    static CapabilityImplementationId implementationId(const Request& request) noexcept
+    {
+        return request.implementation;
+    }
 
     struct Response
     {
@@ -54,9 +64,20 @@ struct ProbeUpload final
 struct ProbeSize final
 {
     static constexpr std::string_view name = "example.capability.size";
-    static constexpr bool frame_scoped = false;
-    using Request = CapabilityInput;
+    static constexpr bool requires_frame_boundary = false;
+
+    struct Request
+    {
+        CapabilityImplementationId implementation;
+    };
+
+    using Data = CapabilityImplementationId;
     using Response = ProbeUpload::Response;
+
+    static CapabilityImplementationId implementationId(const Request& request) noexcept
+    {
+        return request.implementation;
+    }
 };
 
 struct ProbeStorage final
@@ -157,92 +178,90 @@ struct ProbeStorage final
 struct ProbeHandler final
 {
     static constexpr std::string_view name = "example.input.buffer";
-    ResourceRegistry& resources;
-
-    static ProbeHandler* create(ResourceRegistry& resources) noexcept
+    static ProbeHandler* create(ResourceRegistry&) noexcept
     {
-        return new ProbeHandler{resources};
+        return new ProbeHandler;
     }
 
-    exec::task<ProbeUpload::Response> upload(ProbeUpload::Request&& request) noexcept
+    exec::task<ProbeUpload::Response> upload(ProbeStorage& storage, ProbeUpload::Request&& request) noexcept
     {
-        auto storage = resources.borrowInput<ProbeStorage>(request.destination);
-        if (!storage)
-        {
-            co_return ProbeUpload::Response{storage.error()};
-        }
-        co_return co_await (*storage)->write(request.source);
+        co_return co_await storage.write(request.source);
     }
 
-    void size(const ProbeSize::Request& request, ProbeSize::Response& response) noexcept
+    void size(ProbeStorage& storage, const ProbeSize::Request&, ProbeSize::Response& response) noexcept
     {
-        const auto storage = resources.borrowInput<ProbeStorage>(request);
-        response = storage ? ProbeSize::Response{{}, (*storage)->bytes} : ProbeSize::Response{storage.error()};
+        response = {{}, storage.bytes};
     }
-
-    using Bindings =
-        std::tuple<CommandMethod<ProbeUpload, &ProbeHandler::upload>, CommandMethod<ProbeSize, &ProbeHandler::size>>;
 };
 
 static_assert(SyncCommandHandlerFor<ProbeSize, ProbeHandler, &ProbeHandler::size>);
 static_assert(AsyncCommandHandlerFor<ProbeUpload, ProbeHandler, &ProbeHandler::upload>);
 
+struct ProbeCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<ProbeUpload, ProbeSize>;
+    using PerFrameData = std::tuple<>;
+};
+
+struct ProbeGraphCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = ProbeCapability::Commands;
+    using PerFrameData = std::tuple<>;
+};
+
+struct RejectedCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<>;
+    using PerFrameData = std::tuple<>;
+};
+
+struct IncompleteDataCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = ProbeCapability::Commands;
+    using PerFrameData = std::tuple<std::uint32_t>;
+};
+
 template <bool Alternate> struct ProbeFeature final
 {
+    using Capability = ProbeCapability;
+    using Features = std::tuple<>;
+    using FrameBindings = std::tuple<>;
     using Config = void;
     using Storages = std::tuple<ProbeStorage>;
-    using Commands = ProbeHandler::Bindings;
+    using Bindings = std::
+        tuple<CommandMethod<ProbeUpload, &ProbeHandler::upload, 0>, CommandMethod<ProbeSize, &ProbeHandler::size, 0>>;
     static constexpr FeatureName name{Alternate ? "example.buffer.b" : "example.buffer.a"};
 
-    static const FeatureGraphOps& graph(bool) noexcept
+    static CapabilityImplementation implementation() noexcept
     {
-        static const std::array inputs{CapabilityStorageInput{
-            "example.buffer.bytes",
-            1,
-            ECapabilityInputScope::GLOBAL,
+        static const std::array dependencies{CapabilityStorageDependency{
+            EStorageScope::GLOBAL,
             ProbeStorage::Descriptor::descriptor.type,
             Alternate ? "b" : "a"
         }};
-        static const FeatureGraphOps graph{.storage_inputs = inputs};
-        return graph;
-    }
-
-    static const CapabilitySupport& capabilities() noexcept
-    {
-        static const CapabilitySupport value = []
-        {
-            CapabilitySupport result;
-            result.implementation = name.name();
-            RenderCapability capability;
-            capability.name = "example.buffer";
-            RenderPayloadContract input;
-            input.schema = "example.buffer.bytes";
-            input.setCppType(cxx::typeToken<ProbeUpload::Request>());
-            capability.inputs.push_back(std::move(input));
-            capability.outputs = {"bytes"};
-            result.capabilities.push_back(std::move(capability));
-            return result;
-        }();
-        return value;
+        CapabilityImplementation result;
+        result.implementation = name.name();
+        result.storage_dependencies = dependencies;
+        return result;
     }
 };
 
 template <bool Matching> struct ProbeEffect final
 {
+    using Capability = ProbeGraphCapability;
+    using Features = std::tuple<ProbeEffect>;
+    using FrameBindings = std::tuple<>;
     using Config = void;
     using Storages = ProbeFeature<false>::Storages;
-    using Commands = ProbeFeature<false>::Commands;
+    using Bindings = ProbeFeature<false>::Bindings;
     static constexpr FeatureName name{Matching ? "example.graph.match" : "example.graph.mismatch"};
 
     static const FeatureGraphOps& graph(bool) noexcept
     {
-        static const std::array inputs{CapabilityStorageInput{
-            "example.buffer.bytes",
-            1,
-            ECapabilityInputScope::GLOBAL,
-            ProbeStorage::Descriptor::descriptor.type,
-            "a"
-        }};
         static const FeatureGraphOps result{
             .describe_ports = [](const void*, std::string_view, FeaturePorts& ports) noexcept -> RenderResult<void>
             {
@@ -275,25 +294,27 @@ template <bool Matching> struct ProbeEffect final
                     return cxx::unexpected(pass.error());
                 }
                 return context.publish("color", pass->written[1]);
-            },
-            .storage_inputs = inputs
+            }
         };
         return result;
     }
 
-    static const CapabilitySupport& capabilities() noexcept
+    static CapabilityImplementation implementation() noexcept
     {
         static const auto result = []
         {
-            auto value = ProbeFeature<false>::capabilities();
+            auto value = ProbeFeature<false>::implementation();
             value.implementation = name.name();
-            auto& capability = value.capabilities.front();
-            capability.name = "example.graph";
-            capability.kind = ERenderCapabilityKind::EFFECT;
-            capability.outputs = {"color"};
-            capability.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
-            capability.target_samples = {1};
-            capability.target_kinds = {ETargetKind::OFFSCREEN};
+            value.graph.ports = {
+                {"color",
+                 ECapabilityPortDirection::OUTPUT,
+                 "example.color",
+                 CapabilityImageShape{rdesc::ETextureFormat::RGBA8_UNORM, 1, 1},
+                 "viewport"}
+            };
+            value.graph.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
+            value.graph.target_samples = {1};
+            value.graph.target_kinds = {ETargetKind::OFFSCREEN};
             return value;
         }();
         return result;
@@ -323,133 +344,79 @@ struct RejectedStorage final
 
 struct RejectedInstallation final
 {
+    using Capability = RejectedCapability;
+    using Features = std::tuple<>;
+    using FrameBindings = std::tuple<>;
     using Config = void;
     using Storages = std::tuple<ProbeStorage, RejectedStorage>;
-    using Commands = std::tuple<>;
-    static constexpr FeatureName name{"example.install.failure"};
+    using Bindings = std::tuple<>;
 
-    static const FeatureGraphOps& graph(bool) noexcept
+    static CapabilityImplementation implementation() noexcept
     {
-        static const std::array inputs{
-            CapabilityStorageInput{
-                "example.buffer.bytes",
-                1,
-                ECapabilityInputScope::GLOBAL,
+        static const std::array dependencies{
+            CapabilityStorageDependency{
+                EStorageScope::GLOBAL,
                 ProbeStorage::Descriptor::descriptor.type,
                 "unpublished"
             },
-            CapabilityStorageInput{
-                "example.reject",
-                1,
-                ECapabilityInputScope::GLOBAL,
-                RejectedStorage::Descriptor::descriptor.type,
-                "rejected"
-            }
+            CapabilityStorageDependency{EStorageScope::GLOBAL, RejectedStorage::Descriptor::descriptor.type, "rejected"}
         };
-        static const FeatureGraphOps result{.storage_inputs = inputs};
-        return result;
-    }
-
-    static const CapabilitySupport& capabilities() noexcept
-    {
-        static const CapabilitySupport result = []
-        {
-            CapabilitySupport value;
-            value.implementation = name.name();
-            RenderCapability capability{"example.install.failure"};
-            for (auto schema : {"example.buffer.bytes", "example.reject"})
-            {
-                RenderPayloadContract input;
-                input.schema = schema;
-                input.setCppType(cxx::typeToken<ProbeUpload::Request>());
-                capability.inputs.push_back(std::move(input));
-            }
-            value.capabilities.push_back(std::move(capability));
-            return value;
-        }();
+        CapabilityImplementation result;
+        result.implementation = "example.install.failure";
+        result.storage_dependencies = dependencies;
         return result;
     }
 };
 
 struct IncompatibleFeature final
 {
+    using Capability = IncompleteDataCapability;
+    using Features = std::tuple<>;
+    using FrameBindings = std::tuple<>; // Missing required per-frame method must reject registration.
     using Config = void;
     using Storages = ProbeFeature<false>::Storages;
-    using Commands = ProbeFeature<false>::Commands;
-    static constexpr FeatureName name{"example.incompatible"};
+    using Bindings = ProbeFeature<false>::Bindings;
 
-    static const FeatureGraphOps& graph(bool paged) noexcept
+    static CapabilityImplementation implementation() noexcept
     {
-        return ProbeFeature<false>::graph(paged);
-    }
-
-    static const CapabilitySupport& capabilities() noexcept
-    {
-        static const CapabilitySupport result = []
-        {
-            auto value = ProbeFeature<false>::capabilities();
-            value.implementation = name.name();
-            value.capabilities.front().inputs.front().setCppType(cxx::typeToken<std::uint64_t>());
-            return value;
-        }();
-        return result;
+        return ProbeFeature<false>::implementation();
     }
 };
 
 struct RemappedFeature final
 {
+    using Capability = ProbeCapability;
+    using Features = std::tuple<>;
+    using FrameBindings = std::tuple<>;
     using Config = void;
     using Storages = ProbeFeature<false>::Storages;
-    using Commands = ProbeFeature<false>::Commands;
-    static constexpr auto name = ProbeFeature<false>::name;
+    using Bindings = ProbeFeature<false>::Bindings;
 
-    static const CapabilitySupport& capabilities() noexcept
+    static CapabilityImplementation implementation() noexcept
     {
-        return ProbeFeature<false>::capabilities();
-    }
-
-    static const FeatureGraphOps& graph(bool paged) noexcept
-    {
-        static const std::array inputs{CapabilityStorageInput{
-            "example.buffer.bytes",
-            1,
-            ECapabilityInputScope::GLOBAL,
+        static const std::array dependencies{CapabilityStorageDependency{
+            EStorageScope::GLOBAL,
             ProbeStorage::Descriptor::descriptor.type,
             "silently-remapped"
         }};
-        static const auto value = [paged]() noexcept
-        {
-            auto result = ProbeFeature<false>::graph(paged);
-            result.storage_inputs = inputs;
-            return result;
-        }();
-        return value;
+        auto result = ProbeFeature<false>::implementation();
+        result.storage_dependencies = dependencies;
+        return result;
     }
 };
 
 struct UndeclaredInputFeature final
 {
+    using Capability = ProbeCapability;
+    using Features = std::tuple<>;
+    using FrameBindings = std::tuple<>;
     using Config = void;
     using Storages = ProbeFeature<false>::Storages;
-    using Commands = std::tuple<>;
-    static constexpr FeatureName name{"example.undeclared-input"};
+    using Bindings = std::tuple<>; // Missing required discrete methods, not a payload-schema mismatch.
 
-    static const FeatureGraphOps& graph(bool paged) noexcept
+    static CapabilityImplementation implementation() noexcept
     {
-        return ProbeFeature<false>::graph(paged);
-    }
-
-    static const CapabilitySupport& capabilities() noexcept
-    {
-        static const auto result = []
-        {
-            auto value = ProbeFeature<false>::capabilities();
-            value.implementation = name.name();
-            value.capabilities.front().name = "example.undeclared-input";
-            value.capabilities.front().inputs.clear();
-            return value;
-        }();
-        return result;
+        return ProbeFeature<false>::implementation();
     }
 };
 
@@ -481,68 +448,79 @@ int main()
     auto execution = take(execution::ExecutionRuntime::create({2, 32, {16}}));
     RenderServerConfig config{"installed.extension", true};
     config.uploads.emplace();
-    auto server = take(RenderServer::create(config, execution));
+    auto server = take(RenderServer::create(config, *execution));
     // Registration is metadata only. Order does not choose the requested implementation.
-    take(server->registerFeature<ProbeFeature<true>>());
-    take(server->registerFeature<ProbeFeature<false>>());
-    take(server->registerFeature<RejectedInstallation>());
-    take(server->registerFeature<ProbeEffect<true>>());
-    take(server->registerFeature<ProbeEffect<false>>());
-    const auto incompatible = server->registerFeature<IncompatibleFeature>();
-    CHECK(!incompatible && incompatible.error().type == kFeatureResourceMismatch);
-    const auto remapped = server->registerFeature<RemappedFeature>();
-    CHECK(!remapped && remapped.error().type == kFeatureDuplicate);
-    const auto undeclared = server->registerFeature<UndeclaredInputFeature>();
-    CHECK(!undeclared && undeclared.error().type == kFeatureResourceMismatch);
-    CHECK(ProbeStorage::allocations == 0);
+    take(server->registerCapabilityImplementation<ProbeFeature<true>>());
+    take(server->registerCapabilityImplementation<ProbeFeature<false>>());
+    take(server->registerCapabilityImplementation<RejectedInstallation>());
+    take(server->registerCapabilityImplementation<ProbeEffect<true>>());
+    take(server->registerCapabilityImplementation<ProbeEffect<false>>());
+    const auto incompatible = server->registerCapabilityImplementation<IncompatibleFeature>();
+    CHECK(!incompatible && incompatible.error().type == kCapabilityDeclaration);
+    const auto remapped = server->registerCapabilityImplementation<RemappedFeature>();
+    CHECK(!remapped && remapped.error().type == kCapabilityConflict);
+    const auto undeclared = server->registerCapabilityImplementation<UndeclaredInputFeature>();
+    CHECK(!undeclared && undeclared.error().type == kCapabilityDeclaration);
     const auto list = take(server->commandId<ListCapabilities>());
     const auto create_effect = take(server->commandId<CreateEffect>());
-    const auto install = take(server->commandId<InstallCapabilities>());
     const auto upload = take(server->commandId<ProbeUpload>());
     const auto size = take(server->commandId<ProbeSize>());
     auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     RenderResult<void> ran;
     std::thread thread([&]() noexcept { ran = server->run(); });
-    const auto choices = call<ListCapabilities>(client, list, {"example.buffer", 1});
+    const auto choices =
+        call<ListCapabilities>(client, list, {std::string(cxx::make_basic_type_info<ProbeCapability>().name())});
     CHECK(choices.error.type == 0 && choices.implementations.size() == 2);
     CHECK(ProbeStorage::allocations == 0);
-    std::vector<CapabilityInput> destinations;
+    const auto make_effect = [&](CapabilityImplementationId selected, VCapabilityConfiguration config)
+    {
+        const auto graph = call<ListCapabilities>(
+            client,
+            list,
+            {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
+        );
+        CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
+        request.composition.contributions.push_back({
+            "commands", cxx::make_basic_type_info<ProbeCapability>(), selected, std::move(config)
+        });
+        request.composition.contributions.push_back(
+            {"output", graph.implementations.front().capability.type, graph.implementations.front().implementation_id,
+             ConfigValue{}}
+        );
+        request.composition.outputs.push_back({"output", "color"});
+        return call<CreateEffect>(client, create_effect, std::move(request));
+    };
+    std::vector<CapabilityImplementationId> implementations;
     for (const auto& choice : choices.implementations)
     {
-        CHECK(choice.unavailable.type == 0);
-        const auto first = call<InstallCapabilities>(client, install, {choice.selection, GlobalRenderScope{}, {}});
-        const auto again = call<InstallCapabilities>(client, install, {choice.selection, GlobalRenderScope{}, {}});
-        CHECK(first.error.type == 0 && again.error.type == 0 && first.inputs.size() == 1);
-        CHECK(first.inputs.front().destination == again.inputs.front().destination);
-        destinations.push_back(first.inputs.front().destination);
+        const auto effect = make_effect(choice.implementation_id, ConfigValue{});
+        CHECK(effect.error.type == 0 && ProbeStorage::allocations == 0);
+        implementations.push_back(choice.implementation_id);
     }
-    CHECK(ProbeStorage::allocations == 2 && destinations[0] != destinations[1]);
+    CHECK(implementations[0] != implementations[1]);
     std::array<std::byte, 1024> bytes{};
-    for (const auto destination : destinations)
+    for (const auto implementation : implementations)
     {
-        const auto written = call<ProbeUpload>(client, upload, {destination, bytes});
+        const auto written = call<ProbeUpload>(client, upload, {implementation, bytes});
         CHECK(written.error.type == 0 && written.bytes == bytes.size());
-        const auto observed = call<ProbeSize>(client, size, destination);
+        const auto observed = call<ProbeSize>(client, size, {implementation});
         CHECK(observed.error.type == 0 && observed.bytes == bytes.size());
     }
     for (const char* name : {"example.graph.match", "example.graph.mismatch"})
     {
-        const auto choice = call<ListCapabilities>(client, list, {"example.graph", 1, name});
-        CHECK(choice.error.type == 0 && choice.implementations.size() == 1);
-        for (std::size_t index = 0; index < destinations.size(); ++index)
-        {
-            CapabilityInstallation consumer{choice.implementations.front().selection, GlobalRenderScope{}, {}};
-            consumer.source_inputs.push_back({"example.buffer.bytes", 1, destinations[index]});
-            const auto resolved = call<InstallCapabilities>(client, install, std::move(consumer));
-            const bool same_destination = choices.implementations[index].implementation == "example.buffer.a";
-            CHECK(resolved.error.type == (same_destination ? 0 : kFeatureResourceMismatch));
-            CHECK(ProbeStorage::allocations == 2);
-        }
-        const auto effect = call<CreateEffect>(
+        const auto choice = call<ListCapabilities>(
             client,
-            create_effect,
-            {{16, 16, rdesc::ETextureFormat::RGBA8_UNORM}, choice.implementations.front().selection}
+            list,
+            {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), name}
         );
+        CHECK(choice.error.type == 0 && choice.implementations.size() == 1);
+        CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
+        request.composition.contributions.push_back(
+            {"probe", choice.implementations.front().capability.type, choice.implementations.front().implementation_id,
+             ConfigValue{}}
+        );
+        request.composition.outputs.push_back({"probe", "color"});
+        const auto effect = call<CreateEffect>(client, create_effect, std::move(request));
         if (std::string_view(name) == "example.graph.match")
         {
             CHECK(effect.error.type == 0 && !effect.effect.isNull());
@@ -551,25 +529,18 @@ int main()
         {
             CHECK(effect.error.type == kStorageMismatch && effect.effect.isNull());
         }
-        CHECK(ProbeStorage::allocations == 2); // Compile qualification never silently creates a second destination.
+        CHECK(ProbeStorage::allocations == 2);
     }
-    auto wrong = ConfigValue::make(std::uint32_t{1});
-    CHECK(wrong);
-    const auto rejected = call<InstallCapabilities>(
-        client,
-        install,
-        {choices.implementations.front().selection, GlobalRenderScope{}, std::move(*wrong)}
-    );
+    const auto rejected =
+        make_effect(choices.implementations.front().implementation_id, take(ConfigValue::make(std::uint32_t{1})));
     CHECK(rejected.error.type == kInvalidConfig && ProbeStorage::allocations == 2);
-    const auto failure_choice = call<ListCapabilities>(client, list, {"example.install.failure", 1});
+    const auto failure_choice =
+        call<ListCapabilities>(client, list, {std::string(cxx::make_basic_type_info<RejectedCapability>().name())});
     CHECK(failure_choice.implementations.size() == 1);
-    const auto failed = call<InstallCapabilities>(
-        client,
-        install,
-        {failure_choice.implementations.front().selection, GlobalRenderScope{}, {}}
-    );
-    CHECK(failed.error.type == kDeviceCapacity && failed.inputs.empty() && ProbeStorage::allocations == 3);
-    const auto retained = call<ProbeSize>(client, size, destinations.front());
+    const auto failed = make_effect(failure_choice.implementations.front().implementation_id, ConfigValue{});
+    // Storage factories are not called by CreateEffect. A rejected unused dependency has no allocation side effect.
+    CHECK(failed.error.type == 0 && ProbeStorage::allocations == 2);
+    const auto retained = call<ProbeSize>(client, size, {implementations.front()});
     CHECK(retained.error.type == 0 && retained.bytes == bytes.size());
     client.reset();
     server->stop();
@@ -577,7 +548,7 @@ int main()
     CHECK(ran && server->stats().validation_errors == 0 && ProbeStorage::submitted_copies > 0);
     server.reset();
     CHECK(ProbeStorage::allocations == ProbeStorage::releases);
-    execution.requestStop();
-    CHECK(execution.join());
-    std::puts("SDK: two capability choices, one producer, sync/async Handler, real upload and Session cleanup");
+    execution->requestStop();
+    CHECK(execution->join());
+    std::puts("SDK: two capability choices, exact methods, real upload and Session cleanup");
 }

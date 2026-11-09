@@ -1,7 +1,9 @@
+#include <algorithm>
+#include <tuple>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/BarrierPlan.hpp>
-#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 
 namespace lux::render::detail
@@ -27,7 +29,7 @@ namespace lux::render::detail
             return a == nri::StageBits::ALL || b == nri::StageBits::ALL ? nri::StageBits::ALL : a | b;
         }
 
-        Access accessFor(const ResourceAccess& use, const PassLayout& program) noexcept
+        Access accessFor(const ResourceAccess& use, const PassBindings& program) noexcept
         {
             Access result;
             result.write = use.access != EGraphAccess::READ;
@@ -95,6 +97,60 @@ namespace lux::render::detail
             return result;
         }
 
+        Access
+        accessForUse(
+            const ResourceAccess& use,
+            const PassBindings& program,
+            const GraphPass& pass,
+            const VGraphResourceDesc& description,
+            std::uint32_t resource
+        ) noexcept
+        {
+            auto current = accessFor(use, program);
+            if (const auto* image = std::get_if<GraphImageDesc>(&description))
+            {
+                if (const auto* transfer = std::get_if<TransferWork>(&pass.work))
+                {
+                    for (const auto& operation : transfer->operations)
+                    {
+                        const auto* clear = std::get_if<ClearImage>(&operation);
+                        if (clear && clear->destination.version.resource.index == resource)
+                        {
+                            const bool depth = rdesc::textureAspectMask(image->format) != 1;
+                            current.access = depth ? nri::AccessBits::DEPTH_STENCIL_ATTACHMENT
+                                                   : nri::AccessBits::COLOR_ATTACHMENT;
+                            current.stages = depth ? nri::StageBits::DEPTH_STENCIL_ATTACHMENT
+                                                   : nri::StageBits::COLOR_ATTACHMENT;
+                            current.layout =
+                                depth ? nri::Layout::DEPTH_STENCIL_ATTACHMENT : nri::Layout::COLOR_ATTACHMENT;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (const auto* transfer = std::get_if<TransferWork>(&pass.work))
+                {
+                    for (const auto& operation : transfer->operations)
+                    {
+                        const auto* fill = std::get_if<FillBuffer>(&operation);
+                        if (fill && fill->destination.version.resource.index == resource)
+                        {
+                            // NRI v180 implements ZeroBuffer with vkCmdFillBuffer on Vulkan.
+                            // Cover both the API's copy operation and its native clear stage.
+                            current.stages = nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
+                            if (fill->value)
+                            {
+                                current.access = nri::AccessBits::CLEAR_STORAGE;
+                                current.stages = nri::StageBits::CLEAR_STORAGE;
+                            }
+                        }
+                    }
+                }
+            }
+            return current;
+        }
+
         void includeUsage(CompiledResource& resource, const Access& access) noexcept
         {
             if (std::holds_alternative<GraphImageDesc>(resource.description))
@@ -148,13 +204,130 @@ namespace lux::render::detail
         }
     } // namespace
 
+    std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>
+    collectUseStages(const RenderGraph& graph, const ShaderBindingPlan& layouts) noexcept
+    {
+        std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>> result(graph.passes().size());
+        for (std::uint32_t p = 0; p < graph.passes().size(); ++p)
+        {
+            const auto& pass = graph.passes()[p];
+            auto& uses = result[p];
+            uses.reserve(pass.uses.size());
+            for (const auto& use : pass.uses)
+            {
+                const auto fallback = use.access == EGraphAccess::READ && use.fallback
+                    ? use.fallback->resource.index : kGraphInvalidIndex;
+                for (auto resource : {use.version.resource.index, fallback})
+                {
+                    if (resource != kGraphInvalidIndex)
+                    {
+                        const auto access = accessForUse(
+                            use, layouts.passes[p], pass, graph.resources()[resource].description, resource
+                        );
+                        uses.emplace_back(resource, access.stages);
+                    }
+                }
+            }
+            std::ranges::sort(uses, {}, [](const auto& use) { return use.first; });
+            std::size_t count = 0;
+            for (const auto& use : uses)
+            {
+                if (count && uses[count - 1].first == use.first)
+                {
+                    uses[count - 1].second = combineStages(uses[count - 1].second, use.second);
+                }
+                else
+                {
+                    uses[count++] = use;
+                }
+            }
+            uses.resize(count);
+        }
+        return result;
+    }
+
+    void compactImageTransitions(std::span<CompiledResource> resources, RecordingProgram& recording) noexcept
+    {
+        const auto key = [](const ImageTransition& transition) noexcept
+        {
+            const auto& barrier = transition.native;
+            return std::tuple{
+                transition.resource, transition.previous.index, transition.boundary, barrier.planes,
+                barrier.before.access, barrier.before.layout, barrier.before.stages,
+                barrier.after.access, barrier.after.layout, barrier.after.stages
+            };
+        };
+        const auto compact = [&](BarrierBatch& batch) noexcept
+        {
+            for (bool layers : {false, true})
+            {
+                std::ranges::sort(batch.images, [&](const auto& left, const auto& right) noexcept
+                {
+                    const auto a = key(left), b = key(right);
+                    if (a != b) return a < b;
+                    const auto& x = left.native;
+                    const auto& y = right.native;
+                    return layers ? std::tie(x.mipOffset, x.mipNum, x.layerOffset) <
+                                        std::tie(y.mipOffset, y.mipNum, y.layerOffset)
+                                  : std::tie(x.layerOffset, x.layerNum, x.mipOffset) <
+                                        std::tie(y.layerOffset, y.layerNum, y.mipOffset);
+                });
+                std::size_t count = 0;
+                for (const auto& transition : batch.images)
+                {
+                    const auto& image = std::get<GraphImageDesc>(resources[transition.resource].description);
+                    bool merged = false;
+                    if (count && !image.runtime_layers && key(batch.images[count - 1]) == key(transition))
+                    {
+                        auto& previous = batch.images[count - 1].native;
+                        const auto& next = transition.native;
+                        const bool same_identity = previous.texture == next.texture &&
+                            previous.srcQueue == next.srcQueue && previous.dstQueue == next.dstQueue;
+                        const bool adjacent = layers
+                            ? previous.mipOffset == next.mipOffset && previous.mipNum == next.mipNum &&
+                              std::uint32_t(previous.layerOffset) + previous.layerNum == next.layerOffset
+                            : previous.layerOffset == next.layerOffset && previous.layerNum == next.layerNum &&
+                              std::uint32_t(previous.mipOffset) + previous.mipNum == next.mipOffset;
+                        if (same_identity && adjacent)
+                        {
+                            if (layers) previous.layerNum += next.layerNum;
+                            else previous.mipNum += next.mipNum;
+                            merged = true;
+                        }
+                    }
+                    if (!merged) batch.images[count++] = transition;
+                }
+                batch.images.resize(count);
+            }
+        };
+        for (auto& resource : resources)
+        {
+            resource.barrier_uses.clear();
+            resource.final_barrier_uses.clear();
+        }
+        for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
+        {
+            auto& batch = recording.passes[p].before;
+            compact(batch);
+            for (std::uint32_t i = 0; i < batch.images.size(); ++i)
+                resources[batch.images[i].resource].barrier_uses.emplace_back(p, i);
+            for (std::uint32_t i = 0; i < batch.buffers.size(); ++i)
+                resources[batch.buffers[i].resource].barrier_uses.emplace_back(p, i);
+        }
+        compact(recording.after);
+        for (std::uint32_t i = 0; i < recording.after.images.size(); ++i)
+            resources[recording.after.images[i].resource].final_barrier_uses.push_back(i);
+        for (std::uint32_t i = 0; i < recording.after.buffers.size(); ++i)
+            resources[recording.after.buffers[i].resource].final_barrier_uses.push_back(i);
+    }
+
     RenderResult<void> planBarriers(
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        const PipelineLayoutPlan& layouts,
+        const ShaderBindingPlan& layouts,
         std::span<CompiledResource> resources,
         RecordingProgram& recording,
-        const TargetDesc& target,
+        const EffectOutputDesc& target,
         const PhysicalResourcePlan* physical
     ) noexcept
     {
@@ -203,9 +376,19 @@ namespace lux::render::detail
             current.resource = index;
             const bool cross_queue = previous.queue != current.queue;
             const auto* image = std::get_if<GraphImageDesc>(&resources[index].description);
-            const bool transition = !previous.known || previous.resource != index ||
-                                    (image && previous.layout != current.layout) || previous.write || current.write ||
-                                    previous.access != current.access;
+            // Read-after-read can still need visibility established by an earlier write.
+            // Only reuse a state whose access and execution scopes already cover this read.
+            const bool covers_access = (previous.access & current.access) == static_cast<std::uint32_t>(current.access);
+            const bool covers_stages = previous.stages == nri::StageBits::ALL ||
+                (current.stages != nri::StageBits::ALL &&
+                 (previous.stages & current.stages) == static_cast<std::uint32_t>(current.stages));
+            const bool merge_reads = covers_access && covers_stages && previous.known &&
+                                     previous.resource == index && !cross_queue &&
+                                     !previous.write && !current.write &&
+                                     previous.pass.index != kGraphInvalidIndex &&
+                                     current.boundary == ETransitionBoundary::PASS &&
+                                     (!image || previous.layout == current.layout);
+            const bool transition = !merge_reads;
             if (transition)
             {
                 if (image)
@@ -306,51 +489,9 @@ namespace lux::render::detail
                     {
                         continue;
                     }
-                    auto current = accessFor(use, layout);
+                    auto current = accessForUse(use, layout, declared, resource.description, index);
                     current.queue = pass.queue;
                     current.pass = analysis.execution_order[p];
-                    if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
-                    {
-                        if (const auto* transfer = std::get_if<TransferWork>(&declared.work))
-                        {
-                            for (const auto& operation : transfer->operations)
-                            {
-                                const auto* clear = std::get_if<ClearImage>(&operation);
-                                if (clear && clear->destination.version.resource.index == index)
-                                {
-                                    const bool depth = rdesc::textureAspectMask(image->format) != 1;
-                                    current.access = depth ? nri::AccessBits::DEPTH_STENCIL_ATTACHMENT
-                                                           : nri::AccessBits::COLOR_ATTACHMENT;
-                                    current.stages = depth ? nri::StageBits::DEPTH_STENCIL_ATTACHMENT
-                                                           : nri::StageBits::COLOR_ATTACHMENT;
-                                    current.layout =
-                                        depth ? nri::Layout::DEPTH_STENCIL_ATTACHMENT : nri::Layout::COLOR_ATTACHMENT;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (const auto* transfer = std::get_if<TransferWork>(&declared.work))
-                        {
-                            for (const auto& operation : transfer->operations)
-                            {
-                                const auto* fill = std::get_if<FillBuffer>(&operation);
-                                if (fill && fill->destination.version.resource.index == index)
-                                {
-                                    // NRI v180 implements ZeroBuffer with vkCmdFillBuffer on Vulkan.
-                                    // Cover both the API's copy operation and its native clear stage.
-                                    current.stages = nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
-                                    if (fill->value)
-                                    {
-                                        current.access = nri::AccessBits::CLEAR_STORAGE;
-                                        current.stages = nri::StageBits::CLEAR_STORAGE;
-                                        resource.buffer_usage |= nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
-                                    }
-                                }
-                            }
-                        }
-                    }
                     includeUsage(resource, current);
                     if (next[index].empty())
                     {
@@ -466,14 +607,6 @@ namespace lux::render::detail
                     apply(i, cell, final_states[i][cell], recording.after);
                 }
             }
-        }
-        for (std::uint32_t i = 0; i < recording.after.images.size(); ++i)
-        {
-            resources[recording.after.images[i].resource].final_barrier_uses.push_back(i);
-        }
-        for (std::uint32_t i = 0; i < recording.after.buffers.size(); ++i)
-        {
-            resources[recording.after.buffers[i].resource].final_barrier_uses.push_back(i);
         }
         return {};
     }

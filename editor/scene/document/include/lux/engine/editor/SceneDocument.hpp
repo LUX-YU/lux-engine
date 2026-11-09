@@ -12,12 +12,20 @@ namespace lux::editor
     class SceneDocument final : public object::LuxObject
     {
     public:
-        SceneDocument(
+        [[nodiscard]] static SceneEditResult<std::unique_ptr<SceneDocument>> create(
             scene::SceneRuntime&,
             scene::SceneInstanceId,
-            simulation::ecs::ComponentSchemaSet,
-            scene::ScenePackage
+            ecs::ComponentSchemaSet,
+            scene::ScenePackage,
+            std::span<const scene::GeometryDeclaration> = {}
         );
+
+        // Resolve a tool's explicit domain/partition, or infer only an unambiguous single partition.
+        [[nodiscard]] SceneEditResult<partition::PartitionOrdinal> destination(
+            std::span<const ecs::ComponentSchemaId>,
+            std::string_view primary_domain = {},
+            partition::PartitionOrdinal = {UINT32_MAX}
+        ) const noexcept;
 
         [[nodiscard]] asset::AssetId id() const noexcept;
         [[nodiscard]] scene::SceneInstanceId instance() const noexcept;
@@ -37,16 +45,16 @@ namespace lux::editor
         [[nodiscard]] SceneEditResult<void> preview(const SceneEdit&) noexcept;
         [[nodiscard]] SceneEditResult<void> finishPreview(bool commit) noexcept;
         [[nodiscard]] bool previewing() const noexcept;
-        [[nodiscard]] SceneEditResult<SceneObjectData> object(world::WorldObjectId) const noexcept;
+        [[nodiscard]] SceneEditResult<scene::SceneObjectData> object(world::WorldObjectId) const noexcept;
         [[nodiscard]] SceneEditResult<std::vector<world::WorldObjectId>> objects() const noexcept;
-        [[nodiscard]] SceneEditResult<simulation::ecs::DecodedComponent>
-        component(world::WorldObjectId, const simulation::ecs::ComponentSchemaId&) const noexcept;
+        [[nodiscard]] SceneEditResult<ecs::DecodedComponent>
+        component(world::WorldObjectId, const ecs::ComponentSchemaId&) const noexcept;
 
         // Encodes an owned tool draft against this exact revision; apply performs domain admission.
         [[nodiscard]] SceneEditResult<SceneEdit> prepareComponentEdit(
             world::WorldObjectId object,
             std::uint64_t based_on,
-            const simulation::ecs::DecodedComponent& value
+            const ecs::DecodedComponent& value
         ) const noexcept;
 
         template <class T>
@@ -56,7 +64,7 @@ namespace lux::editor
             const T& value
         ) const noexcept
         {
-            return encodeComponentEdit(object, based_on, cxx::typeToken<T>(), &value);
+            return encodeComponentEdit(object, based_on, cxx::make_basic_type_info<T>(), &value);
         }
 
         [[nodiscard]] world::WorldObjectId selection() const noexcept;
@@ -77,7 +85,7 @@ namespace lux::editor
         [[nodiscard]] const scene::ScenePackage& baseline() const noexcept;
 
         // Immutable author codecs retained by this document; tools prepare owned drafts through them.
-        [[nodiscard]] const simulation::ecs::ComponentSchemaSet& schemas() const noexcept
+        [[nodiscard]] const ecs::ComponentSchemaSet& schemas() const noexcept
         {
             return schemas_;
         }
@@ -86,6 +94,18 @@ namespace lux::editor
         object::TSignal<> selectionChanged{*this};
 
     private:
+        SceneDocument(
+            scene::SceneRuntime&,
+            scene::SceneInstanceId,
+            ecs::ComponentSchemaSet,
+            scene::ScenePackage,
+            std::vector<scene::GeometryDeclaration>,
+            scene::SceneContentResolution
+        );
+        [[nodiscard]] SceneEditResult<std::vector<partition::PartitionOrdinal>>
+        validateDomains(const ecs::Registry&, const scene::WorldResidency&, const VSceneEdit&)
+            const noexcept;
+
         struct History final
         {
             VSceneEdit forward, inverse;
@@ -93,13 +113,15 @@ namespace lux::editor
 
         [[nodiscard]] SceneEditResult<VSceneEdit> execute(const VSceneEdit&) noexcept;
         [[nodiscard]] SceneEditResult<SceneEdit>
-        encodeComponentEdit(world::WorldObjectId, std::uint64_t, cxx::TypeToken, const void*) const noexcept;
+        encodeComponentEdit(world::WorldObjectId, std::uint64_t, cxx::type_info, const void*) const noexcept;
         void changedRevision() noexcept;
 
         scene::SceneRuntime& runtime_;
         scene::SceneInstanceId instance_;
-        simulation::ecs::ComponentSchemaSet schemas_;
+        ecs::ComponentSchemaSet schemas_;
         scene::ScenePackage baseline_;
+        std::vector<scene::GeometryDeclaration> geometries_;
+        scene::SceneContentResolution content_;
         std::vector<History> history_;
         std::optional<History> preview_;
         std::map<std::uint32_t, scene::PartitionRetention> retained_partitions_;

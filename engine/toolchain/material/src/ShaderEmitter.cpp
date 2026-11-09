@@ -133,7 +133,7 @@ namespace lux::shadergen::glsl
             std::string* error;
             bool ok = true;
             bool tex_mode = false; // Set when there's a SampleTexture: needs set-2 uTex[] + nonuniform
-            bool need_mat = false; // Set when there's tex/param: needs the cooked material record and vMatIndex
+            bool need_mat = false; // Set when there's tex/param: needs the cooked material record and vMaterial
             std::ostringstream body;
             // Shading inputs actually used: location -> (glslType, name). Using a
             // map guarantees declared_in iterates in ascending location order.
@@ -190,12 +190,13 @@ namespace lux::shadergen::glsl
             bool emitValues(std::span<const std::uint8_t> selected)
             {
                 // Per-material data (textures/params) is fetched from the set-4
-                // Cooked material record, indexed by the flat vMatIndex
+                // Cooked material record, indexed by the flat vMaterial
                 // interpolant (matching gbuffer_pbr.frag).
                 if (need_mat)
                 {
-                    declared_in[4] = {"flat uint", "vMatIndex"};
-                    body << "    GraphMaterialRecord _mat = " << rdesc::kMaterialTableName << ".mats[vMatIndex];\n";
+                    declared_in[4] = {"flat uvec2", "vMaterial"};
+                    body << "    GraphMaterialRecord _mat = " << rdesc::kMaterialTableName
+                         << "[nonuniformEXT(vMaterial.x)].mats[vMaterial.y];\n";
                 }
                 for (size_t i = 0; i < ir.values.size(); ++i)
                 {
@@ -360,9 +361,12 @@ namespace lux::shadergen::glsl
                         // Tangent-space normal -> world. The 2*rgb-1 decode is the
                         // SEPARATE upstream DecodeNormal op (EOp::DECODE_NORMAL); do NOT
                         // re-decode here or a DecodeNormal->TbnTransform chain double-decodes.
-                        rhs = "normalize(mat3(normalize(vWorldTangent.xyz), normalize(vWorldBitangent), "
-                              "normalize(vWorldNormal)) * " +
-                              operand(v, 0) + ")";
+                        // A mesh without UVs can have zero tangents. The default material's neutral
+                        // tangent normal must still resolve to N rather than evaluate normalize(0).
+                        rhs = "normalize(mat3("
+                              "vWorldTangent.xyz * inversesqrt(max(dot(vWorldTangent.xyz,vWorldTangent.xyz),1e-20)), "
+                              "vWorldBitangent * inversesqrt(max(dot(vWorldBitangent,vWorldBitangent),1e-20)), "
+                              "normalize(vWorldNormal)) * " + operand(v, 0) + ")";
                         break;
                     }
                     case EOp::RAW_EXPR:
@@ -519,7 +523,7 @@ namespace lux::shadergen::glsl
         out << "#version 450\n";
         out << "#define LUX_MATERIAL_SHADER_ABI " << rdesc::kMaterialShaderAbi << "u\n";
         out << "#define LUX_TEXTURE_DEFAULT_WHITE " << rdesc::kTextureDefaultWhite << "u\n";
-        if (emitter.tex_mode)
+        if (emitter.need_mat)
         {
             out << "#extension GL_EXT_nonuniform_qualifier : require\n";
         }
@@ -553,7 +557,7 @@ namespace lux::shadergen::glsl
             }
             out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
                 << "    GraphMaterialRecord mats[];\n"
-                << "} " << rdesc::kMaterialTableName << ";\n";
+                << "} " << rdesc::kMaterialTableName << "[];\n";
         }
         if (gbuffer)
         {

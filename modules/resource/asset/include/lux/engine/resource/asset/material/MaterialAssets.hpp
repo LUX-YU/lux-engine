@@ -72,6 +72,14 @@ namespace lux::asset
             const MaterialAsset& asset,
             const AssetEncodeLimits& limits
         ) noexcept;
+
+        // Synchronous borrowing encode; no copy of the payload or artificial shared owner.
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const AssetInfo& asset_info,
+            const MaterialAsset::data_type& data,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 
     template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<MaterialInstanceAsset> final
@@ -81,6 +89,14 @@ namespace lux::asset
 
         [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
             const MaterialInstanceAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
+
+        // Synchronous borrowing encode; no copy of the payload or artificial shared owner.
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const AssetInfo& asset_info,
+            const MaterialInstanceAsset::data_type& data,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
             const AssetEncodeLimits& limits
         ) noexcept;
     };

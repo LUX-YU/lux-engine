@@ -72,7 +72,7 @@ namespace lux::render::detail
             DeviceSession&,
             nri::Queue&,
             QueueProperties,
-            std::uint32_t capacity
+            std::uint32_t temporary_capacity
         ) noexcept;
         ~SubmissionQueue() noexcept;
         SubmissionQueue(const SubmissionQueue&) = delete;
@@ -92,14 +92,14 @@ namespace lux::render::detail
                           Record&,
                           nri::CommandBuffer&,
                           std::uint32_t>);
-            std::uint32_t slot = 0;
-            auto commands = begin(slot);
+            std::uint32_t temporary_slot = 0;
+            auto commands = begin(temporary_slot);
             if (!commands)
             {
                 return cxx::unexpected(commands.error());
             }
             cxx::scope_exit release([this]() noexcept { cancelRecording(); });
-            auto recorded = std::invoke(record, **commands, slot);
+            auto recorded = std::invoke(record, **commands, temporary_slot);
             auto ended = finishRecording();
             if (!ended)
             {
@@ -109,8 +109,21 @@ namespace lux::render::detail
             {
                 return recorded;
             }
-            return submit(waits, signals);
+            auto accepted = submit({&batches_[temporary_slot].command, 1}, waits, signals);
+            if (accepted)
+            {
+                batches_[temporary_slot].serial = submitted_;
+                next_batch_ = (temporary_slot + 1) % temporaryCapacity();
+            }
+            return accepted;
         }
+
+        // Borrowed commands remain owned by their FIF slice until this queue's accepted frontier completes.
+        [[nodiscard]] RenderResult<void> submit(
+            std::span<nri::CommandBuffer* const> commands,
+            std::span<const nri::FenceSubmitDesc> waits = {},
+            std::span<const nri::FenceSubmitDesc> signals = {}
+        ) noexcept;
 
         [[nodiscard]] RenderResult<void> poll() noexcept;
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
@@ -120,7 +133,7 @@ namespace lux::render::detail
         [[nodiscard]] CompletionSender whenAvailable() noexcept;
         // Detach the ready prefix before invoking callbacks; a callback may destroy its own node.
         void dispatchCompleted() noexcept;
-        [[nodiscard]] std::uint32_t capacity() const noexcept;
+        [[nodiscard]] std::uint32_t temporaryCapacity() const noexcept;
         // Cached frontier only; preparing a frame never polls or dispatches callbacks.
         [[nodiscard]] bool hasCapacity() const noexcept;
         [[nodiscard]] bool recording() const noexcept;
@@ -131,13 +144,10 @@ namespace lux::render::detail
 
     private:
         friend class SubmissionCallback;
-        SubmissionQueue(DeviceSession&, nri::Queue&, QueueProperties, std::uint32_t capacity) noexcept;
-        [[nodiscard]] RenderResult<nri::CommandBuffer*> begin(std::uint32_t& slot) noexcept;
+        SubmissionQueue(DeviceSession&, nri::Queue&, QueueProperties, std::uint32_t temporary_capacity) noexcept;
+        [[nodiscard]] RenderResult<nri::CommandBuffer*> begin(std::uint32_t& temporary_slot) noexcept;
         [[nodiscard]] RenderResult<void> finishRecording() noexcept;
-        [[nodiscard]] RenderResult<void> submit(
-            std::span<const nri::FenceSubmitDesc> waits,
-            std::span<const nri::FenceSubmitDesc> signals
-        ) noexcept;
+
 
     public:
         [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(std::uint64_t serial, nri::StageBits)
@@ -156,6 +166,7 @@ namespace lux::render::detail
         {
             nri::CommandAllocator* allocator = nullptr;
             nri::CommandBuffer* command = nullptr;
+            std::uint64_t serial = 0;
         };
 
         DeviceSession& session_;
@@ -163,6 +174,7 @@ namespace lux::render::detail
         QueueProperties properties_;
         nri::Fence* fence_ = nullptr;
         std::vector<SubmittedBatch> batches_;
+        std::uint32_t next_batch_ = 0;
         std::vector<nri::FenceSubmitDesc> submission_signals_;
         std::uint64_t submitted_ = 0, completed_ = 0;
         bool recording_ = false;

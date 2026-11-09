@@ -11,6 +11,7 @@ namespace lux::render
         FeatureId feature;
         std::string contribution_key;
         ConfigValue config;
+        std::uint32_t parameter_group = 0;
     };
 
     struct FeaturePortRef final

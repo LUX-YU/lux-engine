@@ -26,69 +26,51 @@ Extension authors select `render_extensions` in `find_package(lux-engine-render 
 library; it produces no second DLL. NRI and execution-template includes do not propagate from the ordinary Render
 target. An application that creates ExecutionRuntime also declares its own Core Execution dependency.
 
-Server creation registers built-in implementations and their construction/call entries. Applications query
-`ListCapabilities` with a capability schema/version and, optionally, a saved implementation name. The response
-owns its strings and describes the actual inputs, outputs and unsupported choices. A resolved selection belongs
-only to that Server and selects one capability contract of an implementation; persist both names/versions instead
-of identities. A query never borrows another contract's inputs or target support. `RESOURCES` capabilities provide
-asset inputs; only `EFFECT` capabilities can render to a Target. Nonempty resource outputs do not imply an Effect.
+Server creation registers built-in construction/call entries. A public capability is a static type declaring
+`PrerequisiteCapabilities`, discrete `Commands`, and `PerFrameData`. `CapabilityDescription` stores their borrowed
+metadata. `ListCapabilities` discovers concrete implementations by capability type name and implementation name;
+results contain the public declaration, configuration qualification and logical final output names, not resource schemas.
+The saved composition keeps names and actual configuration bytes; generational IDs belong only to this Server.
 
-`InstallCapabilities` resolves input destinations in an existing Global/Scene/View/Attachment scope and creates
-the actual required Storage instances. For example, raster assets can be installed and uploaded before any
-Effect exists. Instances share only when implementation requirements, key and actual scope agree. A failed
-installation removes only its newly created objects. Reinstalling compatible inputs is idempotent.
-When an independently selected asset implementation supplies inputs, pass its advertised destinations in
-`CapabilityInstallation::source_inputs`. Render compares the actual resolved dependencies before publishing;
-equal C++ resource handle types alone do not prove that two implementations share compatible storage.
+`CreateEffect` fixes the chosen implementations and output contract before any asset upload. It returns only
+an EffectId. Commands identify that Effect, the request-local capability ordinal and the actual business scope;
+frames additionally identify the public PerFrameData tuple entry. The server derives Handler/Storage calls from
+the registered implementation. The first command or Attach constructs the needed Storage internally.
 
-Applications send `MeshWrite`, `TextureWrite`, `MaterialWrite`, instance and light requests to the advertised
-`CapabilityInput`. Handlers resolve that input once per batch and continue through the existing Storage Sender
-and ResourceUploader. Logical resource IDs are opaque, comparable values; only extension authors can encode or
-inspect their Storage/local generations. Transform batches carry qualified IDs and retain the contiguous-input
-and dirty-word paths; the batch still fits IPC's inline storage.
+Compatible Views share the immutable plan and its native program cache. Mesh/material IDs, grouping, shadow
+layers and UI images are live instance/frame data, not Effect compilation inputs. Late material programs prepare
+on the shared CPU scheduler and are adopted on RenderThread before recording a frame. A failed frame preserves
+the previous program cache but does not promise to roll back already adopted resource inputs; its completion
+reports the required resynchronization. Only DeviceSession's cleanup scope retires accepted physical uses.
 
-`CreateEffect` takes the selected capability, its typed configuration and cold input data. A composition expands
-inside Render into the existing Feature graph. A single Feature uses the same compiler directly. Applications
-supply public Camera/UI frame data instead of concatenating implementation shader blocks. Attach installs late
-scope dependencies and returns logical input destinations and streaming draw identities, never a Storage list.
-Installation and compilation use the same cold dependency resolver. Compilation merges live Graph requirements
-with public input mappings and rejects conflicting scope/key/configuration before creating an execution instance.
-Attach consumes the resolved dependency records instead of deriving another mapping from public input names.
-The old ListFeatures and ListStorages/FindStorage/PrepareStorage/RemoveStorage control commands are removed.
+One dynamic Raster pass consumes zero or more prepared Draws/Pipelines. Its per-FIF arrays, descriptors and
+parameters belong to the instance. Actual external reads include sampled Target images, material texture tables
+and BDA-addressed buffers; binding changes rebuild the combined submission dependencies before recording.
 
-Built-in lit-scene port composition, cascade selection and shader parameter projection live in Render. Engine
-produces geometry/light/camera facts. Built-in port configurations are project-only headers; extension authors
-provide their own declarations through the author SDK, not through private built-in classes.
+Capability Commands declare real business actions. Their implementation's `Bindings` maps them to concrete Handler
+methods and Storage dependencies. Mesh upload consumes `rdesc::Mesh`; clients do not produce Native GPU layouts.
+Handlers use the existing professional Storage Senders and ResourceUploader. Transform, light, camera and UI updates
+use declared PerFrameData in one frame batch, with no per-item Request or Response.
 
-Private `BuiltinFeatures` declares each Feature's `Storages` and `Commands` tuples. The setup template walks types,
-never objects, and writes factories/call thunks directly into the existing ResourceRegistry, CommandRegistry and
-Feature directory. Known built-ins do not use external validation or rollback. Required capabilities still select
-which declarations are usable; automatic registration never enables unrequested device features.
+An implementation declares `using Capability = ...`, `Features`, `Storages`, `Bindings`, `FrameBindings`, and its
+configuration type. `registerCapabilityImplementation<I>()` checks the external declaration before publishing factories
+and exact methods. Registry membership owns the capability-to-implementation relation; implementation records do not
+repeat CapabilityId or CapabilityDescription. Cold add/replace/remove calls reject active execution and invalid entries;
+replacement creates a fresh generation. Callback/type metadata must outlive the Server. No plugin lifetime service is added.
 
-Installed SDK extensions include `extensions/FeatureRegistration.hpp`. A Feature supplies its stable `name`,
-`Config`, `Storages`, `Commands` and `graph(bool paged_instances)`. Name/config qualification is recorded directly
-in the existing Feature entry; there is no separate FeatureDescriptor wrapper. Port declaration, graph building and optional composition expansion are cold callbacks in FeatureGraphOps.
-An optional `capabilities()` publishes supported payload contracts. `storage_inputs` maps each resource input to
-exactly one private dependency declaration; optional configuration projection supplies actual creation values.
-The selected Effect input type must match the expansion callback. Repeated registration compares the mappings
-as well as callback/configuration identity. These checks qualify declared contracts; arbitrary callback behavior
-is still the extension author's responsibility. Command-only extensions use `registerHandler` directly.
-Each Storage supplies its typed `factory()`. Each CommandMethod names
-one Command and Handler method; the Handler supplies an explicit `create(ResourceRegistry&) noexcept` factory
-returning a valid new object. No constructor-shape inference is performed. External registration checks the full
-closure before publishing, including conflicts between incoming declarations. Repeated compatible registration
-reuses identities and never takes over a selected binding. Failed registration invokes no implementation factory.
+One capability can use several graph Features. The built-in Lighting3d implementation connects shadow projection,
+shadow rasterization, Clustered Lighting, deferred lighting and Tonemap inside one EffectDefinition. These algorithms
+are not separately advertised capabilities. `DeferredLightingConfiguration` owns their actual switches/settings;
+`ClusterGrid`, shadow settings and color encoding are data, not additional configuration services.
 
-`HandlerRecord` is the existing sole runtime record, now containing the constructor as well as the optional object.
-Registration before `run()` creates no Handler or Storage. Startup activates selected Handlers once; selecting an
-unused implementation activates it at that control safe point. A running Server may register extensions only at
-its rendering-thread safe point; after publication it activates newly selected bindings before dispatch resumes.
-Actual Storage instances belong only to their StorageSet; registering a constructor does not instantiate them. Handler objects survive
-selection changes until all accepted work is settled during shutdown. Ordinary Command dispatch stays `{invoke, object}`.
+`CreateEffect` lowers all selected contributions to the existing Graph/Analysis/RenderPlan. Typed cold values are
+owned once and referenced by index. Resource port semantics, shapes and compatibility remain in the extension-only
+`CapabilityGraph.hpp` compiler interface. The ordinary directory does not publish that graph metadata. Engine recipes
+collect data by the static capability type, not by inspecting internal ports or selecting a payload schema.
 
-Command/configuration/binding C++ identities use `cxx::TypeToken` directly. This is semantic type agreement for
-compatible builds, not cross-ABI serialization. Modules supplying names, callbacks and destructors must outlive
-the Server, accepted work and any message/configuration values that use them.
+Command/configuration/binding identity uses `cxx::type_info` from `make_basic_type_info`. It is C++ type agreement for
+compatible builds, not cross-compiler serialization. Actual file codecs preserve their own format identity. Type metadata,
+callbacks and destructors must remain loaded until every dependent operation/value has been cleared.
 
 `FeatureGraphOps::describe_ports` exposes config-dependent port information without building a graph or creating
 device objects. Composition calls that same cold entry. Imported ports carry their initial use; selected exports
@@ -118,11 +100,11 @@ zero `error.type` means success. Internal fallible functions use `RenderResult<T
 The library returns structured diagnostics and never chooses a terminal or logging destination.
 
 Before `run()`, the application selects one IPC Link with `setFrameSource()`. That Client sends a sealed
-`SubmitFrame`: borrowed command arrays grouped by explicit dependencies. `frame_scoped` commands mutate
-visible state only inside this packet; queries and preparation of unreferenced assets remain independent.
-Groups execute in order and independent members may prepare asynchronously. Only after all required updates
-settle does the Server prepare and submit a frame. An empty packet explicitly renders unchanged state;
-the Server does not generate frames merely because its IPC queue is empty.
+`SubmitFrame`: one immutable RenderFrame borrowing entries, explicit phases and stable data blocks. Each entry names
+a precise implementation/input/scope endpoint. Phases execute in written order; entries within one explicitly independent
+phase may prepare asynchronously. Input handlers produce only completion status, never child IPC messages or replies.
+After all started inputs settle the Server prepares/submits the frame and publishes one root FrameCompletion.
+An empty packet explicitly renders unchanged state; an empty IPC queue does not generate frames.
 
 The Client reserves one of `max_frames_ahead + 1` stable input carriers before preparing a game frame.
 `FrameCompletion` ends the input borrow and describes accepted rendering submissions, not GPU or presentation
@@ -143,8 +125,8 @@ also remain active while the Command Scope drains. GPU polling itself does not d
 Outbox service counts settled records, including replies discarded for closed destinations; it is not a delivery
 acknowledgement. The wakeable idle revisit remains bounded because one IPC receive examines only part of the Links.
 The CommandRegistry owns one Command directory, stable Handler objects and one selected binding index per
-Command. External installation validates its entries before publishing. Selection affects future dispatch, never
-an operation already started with another Handler.
+Command. External installation validates its entries before publishing. Framework handler selection affects future framework dispatch. Capability requests use their exact bound method;
+an operation already started never changes its Handler.
 
 Upload sources are borrowed. After successful submission, the Client keeps their addresses, extents and contents
 valid until Response, including failure or cancellation. Failed submission takes no borrow. Abandon or connection
@@ -183,7 +165,7 @@ draws, compilation lowers them, and execution records them. No Feature build cal
 stable frame. Cooked shader reflection remains the source of parameter layouts.
 
 `GraphCompiler::compile` consumes the immutable graph and its analysis, without a Storage registry or Feature
-factory. `PipelineLayoutPlan` determines SPIR-V relocation, PipelineLayout and Descriptor writes together.
+factory. `ShaderBindingPlan` determines SPIR-V relocation, PipelineLayout and Descriptor writes together.
 Private descriptor arrays retain their actual type/count/stages; the shared image/sampler table always uses its
 complete allocation shape. Ordinary sampler inputs are separate dense graph-local input slots: supply borrowed
 samplers through `RenderGraphInstance::bindSampler` before initialization. They do not create image hazards.
@@ -511,7 +493,7 @@ not as a hidden replacement for the successful non-overflow Clustered path.
 
 ## Scene composition and measurement boundaries
 
-`MeshInstanceDrawGroup::material_table_source` selects a material **program table** through a live material in that table;
+`MeshInstanceDrawGroup::material_source` selects a material **program table** through a live material in that table;
 it is not a filter for just that MaterialId. A group selects its Mesh/submesh and all matching instances in that
 table. Each instance's GPU material index selects its own parameters. Configure one group for that Mesh/submesh/table,
 even when many MaterialIds share it. Listing those materials as separate groups repeats the same draws.

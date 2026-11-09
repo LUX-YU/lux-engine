@@ -2,95 +2,65 @@
 #include "UiOutputSrgb.hpp"
 #include "UiRasterFragment.hpp"
 #include "UiRasterVertex.hpp"
+
+#include <imgui.h>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
 
 namespace lux::render
 {
-    std::string uiImagePort(std::uint32_t index)
-    {
-        return "image" + std::to_string(index);
-    }
-
     namespace
     {
         RenderResult<void> describeUi(const void* input, std::string_view, FeaturePorts& ports) noexcept
         {
             const auto& config = *static_cast<const UiRasterFeatureConfig*>(input);
-            if (auto target = config.target.validate(); !target)
+            if (auto target = validateEffectOutput(config.output); !target)
             {
                 return target;
             }
-            const bool invalid_images = config.images.empty() || config.images.size() > UINT32_MAX;
-            const bool invalid_geometry = config.target.samples != 1 || config.index_type > EIndexType::UINT32;
-            const bool invalid_output = config.target.format != rdesc::ETextureFormat::RGBA8_UNORM &&
-                                        config.target.format != rdesc::ETextureFormat::RGBA8_SRGB &&
-                                        config.target.format != rdesc::ETextureFormat::BGRA8_UNORM &&
-                                        config.target.format != rdesc::ETextureFormat::BGRA8_SRGB;
-            if (invalid_images || invalid_geometry || invalid_output)
+            const bool invalid_geometry = config.output.samples != 1 || config.index_type > EIndexType::UINT32;
+            const bool invalid_output = config.output.format != rdesc::ETextureFormat::RGBA8_UNORM &&
+                                        config.output.format != rdesc::ETextureFormat::RGBA8_SRGB &&
+                                        config.output.format != rdesc::ETextureFormat::BGRA8_UNORM &&
+                                        config.output.format != rdesc::ETextureFormat::BGRA8_SRGB;
+            if (invalid_geometry || invalid_output)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
             ports.resources.push_back(
                 {"vertices",
                  EFeaturePort::OUTPUT,
-                 GraphBufferDesc{sizeof(rdesc::UiVertex)},
+                 GraphBufferDesc{sizeof(ImDrawVert)},
                  EGraphOrigin::IMPORTED,
-                 {GraphBufferRange{0, sizeof(rdesc::UiVertex)}}}
+                 {GraphBufferRange{0, sizeof(ImDrawVert)}}}
             );
             ports.resources.push_back(
                 {"indices", EFeaturePort::OUTPUT, GraphBufferDesc{4}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, 4}}}
             );
-            GraphImageDesc color{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
+            GraphImageDesc color{0, 0, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
             color.extent.source = EImageExtentSource::TARGET;
             ports.resources.push_back({"linear_color", EFeaturePort::OUTPUT, color});
-            color.format = config.target.format;
+            color.format = config.output.format;
             ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
-            for (std::uint32_t i = 0; i < config.images.size(); ++i)
-            {
-                auto result = std::visit(
-                    [&](const auto& image) noexcept -> RenderResult<void>
-                    {
-                        const auto& description = image.description;
-                        if (description.layers != 1 || description.samples != 1 ||
-                            rdesc::textureAspectMask(description.format) != 1)
-                        {
-                            return cxx::unexpected(RenderError{kFeatureContract});
-                        }
-                        if constexpr (std::same_as<std::decay_t<decltype(image)>, UiTextureImage>)
-                        {
-                            ports.storage.global.push_back(
-                                {uiImagePort(i),
-                                 EFeaturePort::OUTPUT,
-                                 description,
-                                 EGraphOrigin::IMPORTED,
-                                 {GraphImageRange{1, 0, description.mips, 0, 1}},
-                                 StorageRequirement{StorageName(kTextureStorageType.name()), image.storage_key},
-                                 EGraphUse::SAMPLED}
-                            );
-                        }
-                        else
-                        {
-                            if (description.extent.source != EImageExtentSource::IMPORTED)
-                            {
-                                return cxx::unexpected(RenderError{kFeatureContract});
-                            }
-                            ports.resources.push_back({uiImagePort(i), EFeaturePort::INPUT, description});
-                        }
-                        return {};
-                    },
-                    config.images[i]
-                );
-                if (!result)
-                {
-                    return result;
-                }
-            }
+            // One shared descriptor index space; actual image identities arrive with each frame.
+            ports.resources.push_back(
+                {"sampled_images",
+                 EFeaturePort::OUTPUT,
+                 GraphImageDesc{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM},
+                 EGraphOrigin::IMPORTED,
+                 {GraphImageRange{1, 0, 1, 0, 1}}}
+            );
             return {};
         }
 
-        RenderResult<void> buildUi(const void* input, std::string_view key, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildUi(
+            const void* input,
+            std::string_view key,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const UiRasterFeatureConfig*>(input);
             rdesc::SpirvArtifact shader;
@@ -120,46 +90,26 @@ namespace lux::render
                 return cxx::unexpected(program.error());
             }
             RasterWork work;
-            work.interface.program = *program;
-            work.interface.parameters.values.resize(sizeof(UiDrawParameters));
-            ResourceParameter images{"source_images", {context.resource(uiImagePort(0))}};
-            images.descriptor_count = static_cast<std::uint32_t>(config.images.size());
-            for (std::uint32_t i = 0; i < config.images.size(); ++i)
-            {
-                const auto resource = context.resource(uiImagePort(i));
-                if (i != 0)
-                {
-                    images.elements.push_back({resource});
-                }
-                if (const auto* image = std::get_if<UiTextureImage>(&config.images[i]))
-                {
-                    context.arguments.push_back(StorageArgument::make(resource.resource, TextureBinding{image->texture})
-                    );
-                }
-            }
-            work.interface.resources.push_back(std::move(images));
-            work.interface.samplers.push_back({"source_sampler", {context.addSampler({})}});
-            work.graphics.vertex_bindings = {{0, sizeof(rdesc::UiVertex)}};
-            work.graphics.vertex_attributes = {
-                {0, 0, offsetof(rdesc::UiVertex, position), rdesc::ETextureFormat::RG32_SFLOAT},
-                {1, 0, offsetof(rdesc::UiVertex, uv), rdesc::ETextureFormat::RG32_SFLOAT},
-                {2, 0, offsetof(rdesc::UiVertex, color), rdesc::ETextureFormat::RGBA8_UNORM}
+            auto& fixed_work = work.fixed();
+            fixed_work.interface.program = *program;
+            fixed_work.interface.parameters.values.resize(sizeof(UiDrawParameters));
+            fixed_work.interface.resources.push_back({"source_images", {context.resource("sampled_images")}});
+            fixed_work.interface.samplers.push_back({"source_sampler", {context.addSampler({})}});
+            fixed_work.graphics.vertex_bindings = {{0, sizeof(ImDrawVert)}};
+            fixed_work.graphics.vertex_attributes = {
+                {0, 0, offsetof(ImDrawVert, pos), rdesc::ETextureFormat::RG32_SFLOAT},
+                {1, 0, offsetof(ImDrawVert, uv), rdesc::ETextureFormat::RG32_SFLOAT},
+                {2, 0, offsetof(ImDrawVert, col), rdesc::ETextureFormat::RGBA8_UNORM}
             };
-            work.graphics.blend = {
+            fixed_work.graphics.blend = {
                 true,
                 EBlendFactor::SOURCE_ALPHA,
                 EBlendFactor::ONE_MINUS_SOURCE_ALPHA,
                 EBlendFactor::ONE,
                 EBlendFactor::ONE_MINUS_SOURCE_ALPHA
             };
-            work.vertex_buffers = {{context.resource("vertices"), 0, 0}};
-            work.draw = DrawIndexedList{
-                context.resource("indices"),
-                0,
-                config.index_type,
-                "source_index",
-                static_cast<std::uint32_t>(config.images.size())
-            };
+            fixed_work.vertex_buffers = {{context.resource("vertices"), 0, 0}};
+            fixed_work.draw = DrawIndexedList{context.resource("indices"), 0, config.index_type, "source_index"};
             work.colors.push_back(
                 {{context.resource("linear_color")}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, config.clear}
             );
@@ -173,14 +123,14 @@ namespace lux::render
             {
                 return published;
             }
-            auto output = rdesc::isSrgbTextureFormat(config.target.format)
+            auto output = rdesc::isSrgbTextureFormat(config.output.format)
                               ? detail::fullscreenRaster(context, kUiOutputLinear, kUiOutputLinearReflection)
                               : detail::fullscreenRaster(context, kUiOutputSrgb, kUiOutputSrgbReflection);
             if (!output)
             {
                 return cxx::unexpected(output.error());
             }
-            output->interface.resources = {{"linear_color", {pass->written.front()}}};
+            output->fixed().interface.resources = {{"linear_color", {pass->written.front()}}};
             output->colors.push_back({{context.resource("color")}});
             auto encoded = context.graph.addRasterPass(
                 featureKey(detail::UiRasterFeature::name, key, "output"),
@@ -194,24 +144,10 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<UiRasterFeatureConfig>::retainedBytes(
-        const UiRasterFeatureConfig& config
-    ) noexcept
+    RenderResult<std::size_t>
+    ConfigValueTraits<UiRasterFeatureConfig>::retainedBytes(const UiRasterFeatureConfig& config) noexcept
     {
-        auto bytes = sizeof(config) + config.images.capacity() * sizeof(VUiImage);
-        for (const auto& image : config.images)
-        {
-            if (const auto* texture = std::get_if<UiTextureImage>(&image))
-            {
-                const auto text = reinterpret_cast<std::uintptr_t>(texture->storage_key.data());
-                const auto object = reinterpret_cast<std::uintptr_t>(&texture->storage_key);
-                if (text < object || text >= object + sizeof(texture->storage_key))
-                {
-                    bytes += texture->storage_key.capacity() + 1;
-                }
-            }
-        }
-        return bytes;
+        return sizeof(config);
     }
 
     const FeatureGraphOps& detail::UiRasterFeature::graph(bool) noexcept

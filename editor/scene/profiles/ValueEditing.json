@@ -1,0 +1,166 @@
+{
+  "types": {
+    "lux::ecs::Transform3D": {
+      "label": "Transform",
+      "fields": {
+        "translation": {
+          "label": "Translation",
+          "speed": 0.05
+        },
+        "rotation": {
+          "label": "Rotation"
+        },
+        "scale": {
+          "label": "Scale"
+        }
+      }
+    },
+    "lux::scene::ViewComponent": {
+      "label": "Camera",
+      "fields": {
+        "projection": {
+          "label": "Projection"
+        }
+      }
+    },
+    "lux::scene::PerspectiveProjection": {
+      "label": "Perspective",
+      "fields": {
+        "vertical_fov": {
+          "label": "Vertical FOV"
+        },
+        "near_plane": {
+          "label": "Near"
+        },
+        "far_plane": {
+          "label": "Far"
+        }
+      }
+    },
+    "lux::scene::OrthographicProjection": {
+      "label": "Orthographic",
+      "fields": {
+        "vertical_extent": {
+          "label": "Vertical extent"
+        },
+        "near_plane": {
+          "label": "Near"
+        },
+        "far_plane": {
+          "label": "Far"
+        }
+      }
+    },
+    "lux::ecs::Mesh3D": {
+      "label": "Mesh",
+      "fields": {}
+    },
+    "lux::ecs::MaterialComponent": {
+      "label": "Material slots",
+      "fields": {}
+    },
+    "lux::ecs::Light3D": {
+      "label": "Light",
+      "fields": {}
+    },
+    "lux::rdesc::MeshVisualDescription": {
+      "label": "Mesh",
+      "fields": {
+        "mesh": {
+          "label": "Mesh asset"
+        },
+        "visible": {
+          "label": "Visible"
+        },
+        "cast_shadow": {
+          "label": "Cast shadow"
+        },
+        "receive_shadow": {
+          "label": "Receive shadow"
+        }
+      }
+    },
+    "lux::rdesc::LightDescription": {
+      "label": "Light",
+      "fields": {
+        "color": {
+          "label": "Color",
+          "color": true
+        },
+        "intensity": {
+          "label": "Intensity",
+          "speed": 0.1,
+          "minimum": 0.0,
+          "maximum": 1000000.0
+        },
+        "range": {
+          "label": "Range",
+          "speed": 0.1,
+          "minimum": 0.001,
+          "maximum": 1000000.0
+        },
+        "inner_cone_angle": {
+          "label": "Inner cone (radians)",
+          "minimum": 0.0,
+          "maximum": 3.14
+        },
+        "outer_cone_angle": {
+          "label": "Outer cone (radians)",
+          "minimum": 0.0,
+          "maximum": 3.14
+        },
+        "cast_shadow": {
+          "label": "Cast shadow"
+        },
+        "shadow_bias": {
+          "label": "Shadow bias",
+          "speed": 0.0001
+        }
+      }
+    },
+    "lux::rdesc::ELightType": {
+      "label": "Light type",
+      "fields": {}
+    },
+    "lux::render::RasterSurfaceConfiguration": {
+      "label": "Surface",
+      "fields": {}
+    },
+    "lux::render::MeshShadowsConfiguration": {
+      "label": "Shadows",
+      "fields": {}
+    },
+    "lux::render::ClusterGrid": {
+      "label": "Cluster grid",
+      "fields": {}
+    },
+    "lux::render::DeferredLightingConfiguration": {
+      "label": "Deferred lighting",
+      "fields": {
+        "shadows": {
+          "label": "Enable shadows"
+        },
+        "clustered": {
+          "label": "Use clustered lighting"
+        },
+        "shadow": {
+          "label": "Shadow settings"
+        },
+        "clusters": {
+          "label": "Cluster grid"
+        },
+        "encoding": {
+          "label": "Output encoding"
+        }
+      }
+    },
+    "lux::render::EClusterDepth": {
+      "label": "Depth distribution",
+      "fields": {}
+    },
+    "lux::render::EColorEncoding": {
+      "label": "Color encoding",
+      "fields": {}
+    }
+  }
+}

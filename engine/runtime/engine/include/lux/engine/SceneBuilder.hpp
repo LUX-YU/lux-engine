@@ -1,0 +1,28 @@
+#pragma once
+
+#include <lux/engine/Engine.hpp>
+
+namespace lux::scene
+{
+    struct SceneDescription;
+}
+
+namespace lux::engine
+{
+    class EngineMetaFunctionRegistry;
+
+    // Cold synchronous assembly. Context and metadata outlive the builder and all constructed Systems.
+    // Build never reads assets, starts tasks or adopts the candidate into Engine.
+    class Engine::SceneBuilder final
+    {
+    public:
+        SceneBuilder(Engine& engine, const EngineMetaFunctionRegistry& metadata) noexcept;
+
+        [[nodiscard]] cxx::expected<std::unique_ptr<scene::SceneInstance>, error::Error>
+        build(const scene::SceneDescription& description) const noexcept;
+
+    private:
+        EngineContext& context_;
+        const EngineMetaFunctionRegistry& metadata_;
+    };
+}

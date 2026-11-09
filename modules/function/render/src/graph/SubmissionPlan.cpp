@@ -2,11 +2,17 @@
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/SubmissionPlan.hpp>
 #include <tuple>
+#include <unordered_map>
 
 namespace lux::render::detail
 {
     namespace
     {
+        nri::StageBits combineStages(nri::StageBits a, nri::StageBits b) noexcept
+        {
+            return a == nri::StageBits::ALL || b == nri::StageBits::ALL ? nri::StageBits::ALL : a | b;
+        }
+
         void compactImportedAccesses(std::vector<ImportedAccess>& accesses) noexcept
         {
             std::ranges::sort(
@@ -49,6 +55,7 @@ namespace lux::render::detail
                 if (is_duplicate)
                 {
                     accesses[count - 1].write |= access.write;
+                    accesses[count - 1].whole_resource |= access.whole_resource;
                 }
                 else
                 {
@@ -112,7 +119,8 @@ namespace lux::render::detail
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
         std::span<const CompiledResource> resources,
-        const RecordingProgram& recording,
+        RecordingProgram& recording,
+        const std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>& use_stages,
         std::array<const QueueProperties*, 3> queues,
         std::vector<SubmissionBatch>& batches,
         std::vector<ImportedAccess>& imports,
@@ -131,6 +139,7 @@ namespace lux::render::detail
                 batches.push_back({pass.queue, p});
             }
             const auto batch = static_cast<std::uint32_t>(batches.size() - 1);
+            recording.passes[p].submission = batch;
             ++batches.back().pass_count;
             pass_batches[pass.source_pass] = batch;
             for (const auto& use : graph.passes()[pass.source_pass].uses)
@@ -146,7 +155,7 @@ namespace lux::render::detail
                     if ((resources[resource.index].origin == EGraphOrigin::IMPORTED || resource.index == output) &&
                         !resources[resource.index].shared_table)
                     {
-                        imports.push_back({resource, use.range, write, batch, batch});
+                        imports.push_back({resource, use.range, write, batch, batch, use.whole_resource});
                     }
                 };
                 add(use.version.resource, use.access != EGraphAccess::READ);
@@ -165,19 +174,42 @@ namespace lux::render::detail
         {
             batches.push_back({EQueueRole::GRAPHICS, static_cast<std::uint32_t>(recording.passes.size())});
         }
-        const auto depend = [&](std::uint32_t consumer, std::uint32_t producer)
+        const auto depend = [&](std::uint32_t consumer, std::uint32_t producer, nri::StageBits stages)
         {
             if (consumer != producer)
             {
-                batches[consumer].dependencies.push_back({producer});
+                batches[consumer].dependencies.push_back({producer, stages});
             }
         };
+        // Consumer stages describe every declared use, even when a covered read emitted no barrier.
+        const auto key = [](std::uint32_t a, std::uint32_t b) { return (std::uint64_t(a) << 32) | b; };
+        std::unordered_map<std::uint64_t, nri::StageBits> dependency_stages;
+        for (const auto& hazard : analysis.hazards)
+        {
+            const auto& uses = use_stages[hazard.after.index];
+            const auto resource = std::ranges::lower_bound(
+                uses, hazard.resource.index, {}, [](const auto& use) { return use.first; }
+            );
+            const bool known = resource != uses.end() && resource->first == hazard.resource.index;
+            const auto stages = known ? resource->second : nri::StageBits::ALL;
+            auto [found, inserted] = dependency_stages.emplace(key(hazard.before.index, hazard.after.index), stages);
+            if (!inserted)
+            {
+                found->second = combineStages(found->second, stages);
+            }
+        }
+        for (const auto& edge : graph.dependencies())
+        {
+            // User-declared ordering need not be attributable to a resource.
+            dependency_stages[key(edge.before.index, edge.after.index)] = nri::StageBits::ALL;
+        }
         for (const auto& edge : analysis.dependencies)
         {
             const auto before = pass_batches[edge.before.index], after = pass_batches[edge.after.index];
             if (before != kGraphInvalidIndex && after != kGraphInvalidIndex)
             {
-                depend(after, before);
+                const auto found = dependency_stages.find(key(edge.before.index, edge.after.index));
+                depend(after, before, found == dependency_stages.end() ? nri::StageBits::ALL : found->second);
             }
         }
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
@@ -188,7 +220,7 @@ namespace lux::render::detail
             {
                 if (barrier.previous.index != kGraphInvalidIndex)
                 {
-                    depend(consumer, pass_batches[barrier.previous.index]);
+                    depend(consumer, pass_batches[barrier.previous.index], barrier.native.after.stages);
                 }
             };
             for (const auto& barrier : pass.before.images)
@@ -202,8 +234,10 @@ namespace lux::render::detail
         }
         // The final boundary must observe every accepted producer, including independent branches.
         const auto last = static_cast<std::uint32_t>(batches.size() - 1);
+        std::vector<bool> restored(resources.size());
         const auto finalHistory = [&](const auto& transition)
         {
+            restored[transition.resource] = true;
             if (resources[transition.resource].history != kGraphInvalidIndex)
             {
                 batches[last].histories.push_back({transition.resource});
@@ -219,8 +253,8 @@ namespace lux::render::detail
         }
         for (std::uint32_t b = 1; b < batches.size(); ++b)
         {
-            depend(b, 0);
-            depend(last, b);
+            depend(b, 0, nri::StageBits::ALL);
+            depend(last, b, nri::StageBits::ALL);
         }
         // Object reuse and memory alias proofs include physical-Queue FIFO. Make it an explicit
         // edge before runtime is allowed to select ready batches out of recording-vector order.
@@ -238,7 +272,7 @@ namespace lux::render::detail
             }
             if (previous_queue_batch[q] != kGraphInvalidIndex)
             {
-                depend(b, previous_queue_batch[q]);
+                depend(b, previous_queue_batch[q], nri::StageBits::ALL);
             }
             previous_queue_batch[q] = b;
         }
@@ -246,7 +280,7 @@ namespace lux::render::detail
         for (auto& access : imports)
         {
             const auto& resource = resources[access.resource.index];
-            if (!resource.final_barrier_uses.empty())
+            if (restored[access.resource.index])
             {
                 access.release_batch = last;
             }
@@ -275,14 +309,58 @@ namespace lux::render::detail
         for (auto& batch : batches)
         {
             std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);
-            batch.dependencies.erase(
-                std::unique(
-                    batch.dependencies.begin(),
-                    batch.dependencies.end(),
-                    [](const auto& a, const auto& b) { return a.producer == b.producer; }
-                ),
-                batch.dependencies.end()
-            );
+            std::size_t count = 0;
+            for (const auto& dependency : batch.dependencies)
+            {
+                if (count != 0 && batch.dependencies[count - 1].producer == dependency.producer)
+                {
+                    auto& stages = batch.dependencies[count - 1].stages;
+                    stages = combineStages(stages, dependency.stages);
+                }
+                else
+                {
+                    batch.dependencies[count++] = dependency;
+                }
+            }
+            batch.dependencies.resize(count);
+            // Each physical queue has explicit FIFO edges above and signals whole-submit
+            // completion. Its latest producer covers earlier producers, with all wait stages.
+            std::array<SubmissionDependency, 3> latest;
+            for (auto& dependency : latest)
+            {
+                dependency.producer = kGraphInvalidIndex;
+            }
+            for (const auto& dependency : batch.dependencies)
+            {
+                auto q = static_cast<std::size_t>(batches[dependency.producer].queue);
+                for (std::size_t previous = 0; previous < q; ++previous)
+                {
+                    if (queues[previous] == queues[q])
+                    {
+                        q = previous;
+                        break;
+                    }
+                }
+                auto& retained = latest[q];
+                if (retained.producer == kGraphInvalidIndex)
+                {
+                    retained = dependency;
+                }
+                else
+                {
+                    retained.producer = std::max(retained.producer, dependency.producer);
+                    retained.stages = combineStages(retained.stages, dependency.stages);
+                }
+            }
+            batch.dependencies.clear();
+            for (const auto& dependency : latest)
+            {
+                if (dependency.producer != kGraphInvalidIndex)
+                {
+                    batch.dependencies.push_back(dependency);
+                }
+            }
+            std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);
             std::ranges::sort(batch.histories, {}, &GraphResourceId::index);
             batch.histories.erase(std::unique(batch.histories.begin(), batch.histories.end()), batch.histories.end());
         }

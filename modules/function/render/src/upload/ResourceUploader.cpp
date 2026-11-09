@@ -163,8 +163,8 @@ namespace lux::render::detail
         if (options_.measure_gpu && (state->copy_timestamp_bits_ || state->graphics_timestamp_bits_))
         {
             state->graphics_measurement_base_ =
-                state->copy_queue_ == &device_.queue() ? 0 : state->copy_queue_->capacity();
-            const auto query_slots = state->graphics_measurement_base_ + device_.queue().capacity();
+                state->copy_queue_ == &device_.queue() ? 0 : state->copy_queue_->temporaryCapacity();
+            const auto query_slots = state->graphics_measurement_base_ + device_.queue().temporaryCapacity();
             state->measurements_ = std::make_unique<ResourceUploader::Measurement[]>(query_slots);
             for (std::size_t i = 0; i < query_slots; ++i)
             {
@@ -185,7 +185,7 @@ namespace lux::render::detail
                 const auto type = queues[i]->properties().type == nri::QueueType::COPY
                                       ? nri::QueryType::TIMESTAMP_COPY_QUEUE
                                       : nri::QueryType::TIMESTAMP;
-                const nri::QueryPoolDesc query{type, queues[i]->capacity() * 2};
+                const nri::QueryPoolDesc query{type, queues[i]->temporaryCapacity() * 2};
                 const auto result = device_.nriCore().CreateQueryPool(device_.device(), query, state->timestamps_[i]);
                 if (result != nri::Result::SUCCESS)
                 {
@@ -465,17 +465,27 @@ namespace lux::render::detail
                 {access, nri::StageBits::ALL},
                 {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
             );
-            for (auto i = first; i < last; ++i)
+            for (auto i = first; i < last;)
             {
                 const auto& copy = frame_copies_[i];
+                auto bytes = copy.bytes;
+                auto next = i + 1;
+                while (next < last)
+                {
+                    const auto& following = frame_copies_[next];
+                    const bool adjacent = following.offset == copy.offset + bytes &&
+                        following.staging.buffer == copy.staging.buffer &&
+                        following.staging.offset == copy.staging.offset + bytes;
+                    if (!adjacent) break;
+                    bytes += following.bytes;
+                    ++next;
+                }
+                // Merge only the native copy. Every separately acquired range keeps its existing
+                // commit/cancel responsibility and no span is formed across borrowed CPU objects.
                 nri_core.CmdCopyBuffer(
-                    command,
-                    *target,
-                    copy.offset,
-                    *copy.staging.buffer,
-                    copy.staging.offset,
-                    copy.bytes
+                    command, *target, copy.offset, *copy.staging.buffer, copy.staging.offset, bytes
                 );
+                i = next;
             }
             bufferBarrier(
                 nri_core,

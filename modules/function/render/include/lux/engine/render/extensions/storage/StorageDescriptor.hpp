@@ -18,7 +18,8 @@ namespace lux::render
     {
         NONE = 0,
         SAMPLED_IMAGE_ARRAY = 1,
-        BLOCK_COMPRESSION_BC = 2
+        BLOCK_COMPRESSION_BC = 2,
+        STORAGE_BUFFER_ARRAY = 4
     };
 
     struct StorageRequirement final
@@ -36,16 +37,9 @@ namespace lux::render
         StorageNameView type;
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
-        cxx::TypeToken binding_type;
+        cxx::type_info binding_type;
         std::string_view description;
     };
-
-    inline constexpr auto kStorageContract = error::errorId("lux.render.resource.contract");
-    inline constexpr auto kStorageMismatch = error::errorId("lux.render.resource.mismatch");
-    inline constexpr auto kStorageFactory = error::errorId("lux.render.resource.factory");
-    inline constexpr auto kStorageCapability = error::errorId("lux.render.resource.capability");
-    inline constexpr auto kStorageIdentity = error::errorId("lux.render.resource.identity");
-    inline constexpr auto kStorageCapacity = error::errorId("lux.render.resource.capacity");
 
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validateStorage(const StorageDescriptor& descriptor) noexcept;
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> compatibleStorage(

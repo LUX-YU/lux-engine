@@ -1,12 +1,17 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/Initialization.hpp>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/AssetBrowserPane.hpp>
 #include <lux/engine/editor/ComponentEditors3D.hpp>
+#include <lux/engine/editor/EditorApplication.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorMenuComposition.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/editor/MeshQueryAssets.hpp>
+#include <lux/engine/editor/ModelImportEditor.hpp>
+#include <lux/engine/editor/ModelImporter.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectCreationPane.hpp>
 #include <lux/engine/editor/ProjectErrors.hpp>
@@ -16,12 +21,10 @@
 #include <lux/engine/editor/SceneHierarchyPane.hpp>
 #include <lux/engine/editor/SceneInspectorPane.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
-#include <lux/engine/editor/SceneViewportPane.hpp>
-#include <lux/engine/editor/detail/EditorStartup.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/platform/Process.hpp>
-#include <lux/engine/project/PluginCatalog.hpp>
+#include <lux/engine/plugins/PluginCatalog.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -118,10 +121,32 @@ int main(int argc, char** argv)
                 [](lux::editor::EditorContext& value
                 ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::editor::ProjectAssets>>
                 {
-                    auto assets = std::make_unique<lux::editor::ProjectAssets>(value);
+                    auto importer = lux::editor::declareAssetImporter<lux::editor::ModelImporter>();
+                    if (!importer)
+                    {
+                        std::terminate();
+                    }
+                    auto assets =
+                        std::make_unique<lux::editor::ProjectAssets>(value, std::vector{std::move(*importer)});
                     static_cast<void>(assets->open()
                     ); // The valid service exposes readiness and any IO/admission failure.
                     return assets;
+                }
+            );
+            !registered)
+        {
+            return registered;
+        }
+        if (auto registered = context.registerServiceFactory<lux::editor::MeshQueryAssets>(
+                [](lux::editor::EditorContext& value
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::editor::MeshQueryAssets>>
+                {
+                    auto assets = value.service<lux::editor::ProjectAssets>();
+                    if (!assets)
+                    {
+                        return lux::cxx::unexpected(assets.error());
+                    }
+                    return std::make_unique<lux::editor::MeshQueryAssets>(value, assets->get());
                 }
             );
             !registered)
@@ -132,12 +157,7 @@ int main(int argc, char** argv)
                 [](lux::editor::EditorContext& value
                 ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::editor::ProjectScenes>>
                 {
-                    auto assets = value.service<lux::editor::ProjectAssets>();
-                    if (!assets)
-                    {
-                        return lux::cxx::unexpected(assets.error());
-                    }
-                    return std::make_unique<lux::editor::ProjectScenes>(value, assets->get());
+                    return std::make_unique<lux::editor::ProjectScenes>(value);
                 }
             );
             !registered)
@@ -171,7 +191,11 @@ int main(int argc, char** argv)
                     {
                         return lux::cxx::unexpected(assets.error());
                     }
-                    return std::make_unique<lux::editor::AssetBrowserPane>(assets->get(), description.title);
+                    return std::make_unique<lux::editor::AssetBrowserPane>(
+                        assets->get(),
+                        std::vector{lux::editor::modelImportEditor()},
+                        description.title
+                    );
                 }
             );
             !registered)
@@ -190,7 +214,7 @@ int main(int argc, char** argv)
                     }
                     return std::make_unique<lux::editor::SceneHierarchyPane>(
                         scenes->get(),
-                        value.engine().execution(),
+                        lux::execution::ExecutionRuntime::instance(),
                         description.title
                     );
                 }
@@ -216,34 +240,22 @@ int main(int argc, char** argv)
         {
             return registered;
         }
-        return context.registerUiFactory(
-            "scene.viewport",
-            [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
-            ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
-            {
-                auto scenes = value.service<lux::editor::ProjectScenes>();
-                if (!scenes)
-                {
-                    return lux::cxx::unexpected(scenes.error());
-                }
-                return std::make_unique<lux::editor::SceneViewportPane>(
-                    scenes->get(),
-                    value.service<lux::editor::ProjectAssets>()->get(),
-                    value.engine().sceneRuntime(),
-                    description.title
-                );
-            }
-        );
+        return {};
     };
     lux::editor::EditorConfig config;
-    config.layout = {
-        {"scene.catalog", "scenes", "Scenes", lux::editor::EPaneRegion::LEFT},
-        {"assets.browser", "assets", "Assets", lux::editor::EPaneRegion::BOTTOM},
-        {"scene.viewport", "viewport", "Scene View"},
-        {"scene.viewport", "second_viewport", "Second View"},
-        {"scene.hierarchy", "hierarchy", "Hierarchy", lux::editor::EPaneRegion::LEFT},
-        {"scene.inspector", "inspector", "Inspector", lux::editor::EPaneRegion::RIGHT}
-    };
+    // Construct before any LuxObject or asynchronous borrower; destroyed after the application.
+    auto initialization = lux::engine::init(config.execution);
+    if (!initialization)
+    {
+        std::fprintf(stderr, "Cannot initialize execution: %u\n", static_cast<unsigned>(initialization.error()));
+        return 1;
+    }
+    config.layout = lux::editor::defaultProjectLayout(
+        {{"scene.catalog", "scenes", "Scenes", lux::editor::EPaneRegion::LEFT},
+         {"assets.browser", "assets", "Assets", lux::editor::EPaneRegion::BOTTOM},
+         {"scene.hierarchy", "hierarchy", "Hierarchy", lux::editor::EPaneRegion::LEFT},
+         {"scene.inspector", "inspector", "Inspector", lux::editor::EPaneRegion::RIGHT}}
+    );
     auto executable = lux::engine::platform::executablePath();
     if (!executable)
     {
@@ -256,18 +268,18 @@ int main(int argc, char** argv)
     }
     const auto product_root = executable->parent_path().parent_path();
     config.plugin_locations = {{product_root / "share/lux-engine/plugins/catalog.json", product_root}};
-    lux::project::PluginCatalog catalog;
+    lux::plugins::PluginCatalog catalog;
     if (auto read = catalog.read(config.plugin_locations.front().catalog, product_root); !read)
     {
         std::fprintf(stderr, "Cannot read plugin catalog: %s\n", read.error().detail.c_str());
         return 1;
     }
-    std::vector<lux::editor::ProjectManifest::PluginRecord> available_plugins;
+    std::vector<lux::plugins::PluginDescription> available_plugins;
     for (const auto& plugin : catalog.plugins())
     {
-        available_plugins.push_back({plugin.identity.id, plugin.identity.version});
+        available_plugins.push_back(plugin);
     }
-    lux::editor::detail::ProjectStartupRequest startup;
+    lux::editor::ProjectStartup startup;
     startup.available_plugins = available_plugins;
     if (opening)
     {
@@ -278,9 +290,10 @@ int main(int argc, char** argv)
         std::mt19937 random{std::random_device{}()};
         uuids::uuid_random_generator generate(random);
         config.project_file = requested_path / "Project.luxproj";
-        startup.create = lux::editor::ProjectManifest{1, generate(), args[3], {{"lux.builtin.scene_render", 2}}};
+        startup.create = lux::editor::ProjectManifest{2, generate(), args[3], {{"lux.builtin.scene_render", 2}}};
+        startup.create->content = lux::editor::availableProjectContent(available_plugins, startup.create->plugins);
     }
-    auto engine = lux::editor::detail::createEditor(std::move(config), std::move(assemble), std::move(startup));
+    auto engine = lux::editor::EditorApplication::create(std::move(config), std::move(assemble), std::move(startup));
     if (!engine)
     {
         if (engine.error().type == lux::editor::Errors::ProjectCancelled)
@@ -289,38 +302,6 @@ int main(int argc, char** argv)
         }
         std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
         return 1;
-    }
-    auto chooser = std::make_unique<lux::editor::ProjectCreationPane>(
-        engine->get(),
-        [](void* receiver, lux::editor::OpenProjectRequest& request) noexcept
-        { static_cast<void>(lux::object::sendEvent(*static_cast<lux::editor::LuxEngine*>(receiver), request)); },
-        [](void* receiver, lux::editor::CreateProjectRequest& request) noexcept
-        { static_cast<void>(lux::object::sendEvent(*static_cast<lux::editor::LuxEngine*>(receiver), request)); },
-        std::move(available_plugins)
-    );
-    auto* project_pane = chooser.get();
-    project_pane->setStatus("Project: " + (*engine)->project().project().name);
-    if (!(*engine)->window().uiRoot().addPane(std::move(chooser)))
-    {
-        return 2;
-    }
-    auto project_changed = lux::object::LuxObject::connect(
-        engine->get(),
-        &lux::editor::LuxEngine::projectChanged,
-        project_pane,
-        [application = engine->get(), project_pane]() noexcept
-        { project_pane->setStatus("Project: " + application->project().project().name); }
-    );
-    auto project_failed = lux::object::LuxObject::connect(
-        engine->get(),
-        &lux::editor::LuxEngine::projectOpenFailed,
-        project_pane,
-        [project_pane](const lux::editor::ProjectOpenFailure& failure) noexcept
-        { project_pane->setStatus(lux::error::format(failure.error)); }
-    );
-    if (!project_changed || !project_failed)
-    {
-        return 2;
     }
     // Product key bindings, transported by the same menu/shortcut path as external commands.
     lux::editor::EditorMenuComposition contributions;

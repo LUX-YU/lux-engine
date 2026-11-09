@@ -64,6 +64,8 @@ namespace lux::asset
 
         void enumerate(const std::function<void(const ProviderEntry&)>& fn) const override;
 
+        [[nodiscard]] cxx::expected<ProviderEntry, EAssetStorageError> describe(AssetId id) const override;
+
         [[nodiscard]] std::optional<std::string> pathOf(const AssetId& id) const override;
 
     private:

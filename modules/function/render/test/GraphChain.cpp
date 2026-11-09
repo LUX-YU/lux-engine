@@ -1,4 +1,5 @@
 #include "Support.hpp"
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <bit>
 #include <chrono>
 #include <cstring>
@@ -25,11 +26,8 @@
 using namespace foundation_test;
 namespace rdesc = lux::rdesc;
 
-static rdesc::SpirvArtifact program(
-    rdesc::EShaderType type,
-    std::span<const std::uint32_t> words,
-    std::span<const std::byte> reflection
-)
+static rdesc::SpirvArtifact
+program(rdesc::EShaderType type, std::span<const std::uint32_t> words, std::span<const std::byte> reflection)
 {
     rdesc::SpirvArtifact result;
     result.stages.push_back({type, "main", {words.begin(), words.end()}});
@@ -37,10 +35,8 @@ static rdesc::SpirvArtifact program(
     return result;
 }
 
-static rdesc::SpirvArtifact rasterProgram(
-    std::span<const std::uint32_t> fragment,
-    std::span<const std::byte> reflection
-)
+static rdesc::SpirvArtifact
+rasterProgram(std::span<const std::uint32_t> fragment, std::span<const std::byte> reflection)
 {
     auto result = program(rdesc::EShaderType::FRAGMENT, fragment, reflection);
     auto vertex = program(rdesc::EShaderType::VERTEX, kGraphTriangle, kGraphTriangleReflection);
@@ -61,22 +57,24 @@ static RenderPlan compile(
     ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY
 )
 {
-    return take(GraphCompiler::compile(
+    std::optional<EffectOutputDesc> output;
+    if (target) output.emplace(target->format, target->samples, target->kind, target->sampled);
+    auto plan = take(GraphCompiler::compile(
         session.device(),
         session.nriCore(),
-        session.enabledFeatures(),
-        session.formatSupport(),
-        {session.vertexStrideLimit(), session.vertexOffsetLimit()},
         {&session.queue(EQueueRole::GRAPHICS).properties(),
          &session.queue(EQueueRole::COMPUTE).properties(),
          &session.queue(EQueueRole::TRANSFER).properties()},
-        0,
-        0,
         graph,
         analysis,
-        target,
+        output ? &*output : nullptr,
         allocation
     ));
+    auto ready = stdexec::sync_wait(plan.preparePrograms(
+        session, graph, lux::execution::ExecutionRuntime::instance().cpuScheduler()
+    ));
+    CHECK(ready && std::get<0>(*ready));
+    return plan;
 }
 
 static ResourceVersion written(const PassResult& pass, GraphResourceId resource)
@@ -216,23 +214,25 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     compute.dispatch = DispatchArguments{{8, 8, 1}};
     const auto generated = take(builder.addComputePass("generate mip 1", std::move(compute)));
     RasterWork mrt;
-    mrt.interface.program = take(builder.addProgram(rasterProgram(kGraphMrt, kGraphMrtReflection)));
-    mrt.interface.resources = {
+    auto& fixed_mrt = mrt.fixed();
+    fixed_mrt.interface.program = take(builder.addProgram(rasterProgram(kGraphMrt, kGraphMrtReflection)));
+    fixed_mrt.interface.resources = {
         {"source_image", {generated.written.front(), GraphImageRange{1, 1, 1}}},
         {"tint", {tint_pass.written.front()}}
     };
-    mrt.interface.samplers = {{"source_sampler", {0}}};
+    fixed_mrt.interface.samplers = {{"source_sampler", {0}}};
     mrt.colors = {{{{first, 0}}}, {{{second, 0}}}};
     mrt.depth = RasterAttachment{{{depth, 0}, GraphImageRange{2}}};
-    mrt.graphics.depth_test = mrt.graphics.depth_write = true;
+    fixed_mrt.graphics.depth_test = fixed_mrt.graphics.depth_write = true;
     const auto raster = take(builder.addRasterPass("MRT and depth", std::move(mrt)));
     RasterWork present;
-    present.interface.program = take(builder.addProgram(rasterProgram(kGraphPresent, kGraphPresentReflection)));
-    present.interface.resources = {
+    auto& fixed_present = present.fixed();
+    fixed_present.interface.program = take(builder.addProgram(rasterProgram(kGraphPresent, kGraphPresentReflection)));
+    fixed_present.interface.resources = {
         {"colors", {written(raster, first)}, {{written(raster, second)}}},
         {"depth_image", {written(raster, depth), GraphImageRange{2}}}
     };
-    present.interface.samplers = {{"source_sampler", {0}}};
+    fixed_present.interface.samplers = {{"source_sampler", {0}}};
     present.colors = {{{{final, 0}}}};
     const auto resolved = take(builder.addRasterPass("postprocess", std::move(present)));
     const auto initialized =
@@ -276,6 +276,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     CHECK(instance->initialize());
     CHECK(instance->dumpResources(sink));
     CHECK(dump.find("\"allocation_requirement_bytes\":") != std::string::npos);
+    CHECK(dump.find("\"owned_command_buffers\":") != std::string::npos);
     if (const auto* path = std::getenv("LUX_GRAPH_DUMP"))
     {
         std::ofstream output(path, std::ios::app);
@@ -369,9 +370,10 @@ static void indirectCounts(Validation& validation)
     compute.dispatch = IndirectDispatchArguments{dispatch_ready.written.front(), 16};
     const auto generated = take(builder.addComputePass("GPU commands and count", std::move(compute)));
     RasterWork draw;
-    draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
+    auto& fixed_draw = draw.fixed();
+    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
     draw.colors = {{{{color, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 0, 1}}};
-    draw.draw = DrawIndexedIndirect{
+    fixed_draw.draw = DrawIndexedIndirect{
         written(generated, indices),
         0,
         EIndexType::UINT32,
@@ -446,7 +448,8 @@ static void resolveAndCopy(Validation& validation)
     const auto packed = take(builder.declareResource({"packed", GraphBufferDesc{4096}}));
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{4352}}));
     RasterWork draw;
-    draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
+    auto& fixed_draw = draw.fixed();
+    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
     RasterAttachment attachment{{{source, 0}}};
     attachment.resolve = ResourceAccess{{resolved, 0}};
     draw.colors.push_back(attachment);
@@ -530,7 +533,8 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     RenderGraphBuilder builder;
     const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
     const auto enabled = take(builder.declareCondition("update"));
-    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{36}}));
+    const auto independent = take(builder.declareHistory("independent", GraphBufferDesc{16}));
+    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{52}}));
     const auto valid = take(builder.declareResource({"valid", GraphBufferDesc{4}}));
     std::optional<ResourceVersion> shader_fallback, copy_fallback;
     if (use_fallback)
@@ -557,6 +561,15 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
         builder.addComputePass("increment", std::move(work), {false, PassCondition{EConditionSource::INPUT, enabled}})
     );
     CHECK(builder.publishHistory(incremented.written.front()));
+    ComputeWork advancing;
+    advancing.interface.program =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+    advancing.interface.resources = {
+        {"previous_sample", {{independent.previous, 0}}},
+        {"current_sample", {{independent.current, 0}, {}, EGraphAccess::WRITE}}
+    };
+    const auto advanced = take(builder.addComputePass("advance independent", std::move(advancing)));
+    CHECK(builder.publishHistory(advanced.written.front()));
     const auto marker = take(builder.addTransferPass("invalid marker", TransferWork{{FillBuffer{{{valid, 0}}}}}));
     const auto valid_marker = take(builder.addTransferPass(
         "valid marker",
@@ -571,7 +584,8 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
                  {{history.previous, 0}, {}, EGraphAccess::READ, 0, copy_fallback},
                  {{output, 0}, GraphBufferRange{16, 16}}
              },
-             CopyBuffer{{valid_marker.written.front()}, {{output, 0}, GraphBufferRange{32, 4}}}}
+             CopyBuffer{{valid_marker.written.front()}, {{output, 0}, GraphBufferRange{32, 4}}},
+             CopyBuffer{{advanced.written.front()}, {{output, 0}, GraphBufferRange{36, 16}}}}
         }
     ));
     CHECK(builder.exportOutput({observed.written.front()}));
@@ -617,11 +631,13 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
         CHECK(submitted == 1);
         const auto slot = instance->progress().last_submitted_slot;
         CHECK(session->drain());
-        const auto values = readHistoryResult(*session, *instance->nativeBuffer(output.index, slot));
+        const auto values = readHistoryResult<13>(*session, *instance->nativeBuffer(output.index, slot));
         for (unsigned i = 0; i < 4; ++i)
         {
             CHECK(values[i] == (enabled_value ? sequence : 0));
             CHECK(values[i + 4] == (!previous && use_fallback ? 29 : previous));
+            // A paused writer in the first history must not suppress this history's publication.
+            CHECK(values[i + 9] == (execution < 8 ? execution + 1 : execution - 7));
         }
         CHECK(values[8] == unsigned(previous != 0));
     }
@@ -930,6 +946,20 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     const bool separate = &session->queue() != &session->queue(EQueueRole::COMPUTE);
     CHECK(plan.submissions().size() == (separate ? 7 : 1));
+    if (separate)
+    {
+        const auto& copy_dependencies = plan.submissions()[2].dependencies;
+        const auto copy = std::ranges::find(copy_dependencies, 1u, &SubmissionDependency::producer);
+        CHECK(copy != copy_dependencies.end() && copy->stages == nri::StageBits::COPY);
+        const auto& compute_dependencies = plan.submissions()[3].dependencies;
+        const auto compute = std::ranges::find(compute_dependencies, 2u, &SubmissionDependency::producer);
+        // The latest Graphics producer also covers the shared preparation edge (ALL).
+        CHECK(compute != compute_dependencies.end() && compute->stages == nri::StageBits::ALL);
+        CHECK(
+            std::ranges::find(compute_dependencies, 0u, &SubmissionDependency::producer) == compute_dependencies.end()
+        );
+    }
+
     auto first = std::make_unique<RenderGraphInstance>(*session, fif, plan);
     auto second = std::make_unique<RenderGraphInstance>(*session, fif, plan);
     CHECK(first->initialize() && second->initialize());
@@ -941,8 +971,10 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         CHECK(take(frames->render(instances, {})) != 0);
         if (separate)
         {
-            CHECK(frames->submitting(*first) && frames->submitting(*second));
-            CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == frame);
+            // Every graph batch owns a FIF command buffer: seven batches must no longer
+            // stop at the temporary pool's three slots.
+            CHECK(!frames->submitting(*first) && !frames->submitting(*second));
+            CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == frame + 1);
             if (frame == 0)
             {
                 CHECK(first->invalidateHistory());
@@ -962,14 +994,34 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
             readHistoryResult<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
         CHECK(a[0] == (separate ? 4 : 4 + frame * 3));
         CHECK(b[0] == 4 + frame * 3);
+        if (const auto* path = std::getenv("LUX_SYNC_PLAN_DUMP"))
+        {
+            std::ofstream output(path, std::ios::app);
+            const DumpSink sink{&output, [](void* context, std::string_view text) noexcept
+            {
+                auto& stream = *static_cast<std::ofstream*>(context);
+                stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+                return stream.good();
+            }};
+            CHECK(dumpPlan(plan, EGraphDumpFormat::JSON, sink));
+            CHECK(frames->dumpSubmissions(sink));
+        }
     }
     if (separate)
     {
-        CHECK(take(frames->render(instances, {})) != 0);
-        CHECK(frames->submitting());
-        frames->cancelSubmissions(RenderError{kDeviceArgument});
-        CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == 2);
-        CHECK(!frames->submitting() && !first->prepareFrame(0));
+        // Retain partial-submission cancellation coverage without the removed pool bottleneck.
+        // A real in-progress Compute recording lets Graphics accept its prefix, then defers Compute.
+        CHECK(session->queue(EQueueRole::COMPUTE).recordAndSubmit(
+            [&](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void>
+            {
+                CHECK(take(frames->render(instances, {})) != 0);
+                CHECK(frames->submitting());
+                frames->cancelSubmissions(RenderError{kDeviceArgument});
+                CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == 2);
+                CHECK(!frames->submitting() && !first->prepareFrame(0));
+                return {};
+            }
+        ));
     }
     first.reset();
     second.reset();
@@ -1048,13 +1100,8 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool a
     CHECK(session->drain());
 }
 
-static void physicalReuse(
-    Validation& validation,
-    DeviceOptions options,
-    std::uint32_t fif,
-    bool ordered,
-    bool alias_memory = false
-)
+static void
+physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, bool ordered, bool alias_memory = false)
 {
     auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
@@ -1170,11 +1217,66 @@ static void physicalReuse(
     CHECK(session->drain());
 }
 
+static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
+{
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    GraphImageDesc description{32, 32};
+    description.mips = 4;
+    description.layers = 3;
+    const auto image = take(builder.declareResource({"array", description}));
+    const auto output = take(builder.declareResource({"readback", GraphBufferDesc{8192}}));
+    TransferWork clear;
+    for (std::uint32_t mip = 0; mip < description.mips; ++mip)
+    {
+        clear.operations.push_back(ClearImage{
+            {{image, 0}, GraphImageRange{1, mip, 1, 0, description.layers}}, {.25f, .5f, .75f, 1}
+        });
+    }
+    const auto cleared = take(builder.addTransferPass("clear every mip and layer", std::move(clear)));
+    const auto version = written(cleared, image);
+    const auto copied = take(builder.addTransferPass(
+        "read last layer", TransferWork{{CopyImageBuffer{
+            {version, GraphImageRange{1, 0, 1, 2, 1}}, {{output, 0}}, 256, 8192
+        }}}
+    ));
+    exportRows(builder, copied.written.front(), 32, 32, 256);
+    CHECK(builder.exportOutput({version, GraphImageRange{1, 0, 4, 0, 3}, {}, EGraphUse::SAMPLED}));
+    auto graph = take(std::move(builder).finish());
+    auto analysis = take(analyzeRenderGraph(graph));
+    auto plan = compile(*session, graph, analysis, nullptr);
+    const auto& transitions = plan.passes().front().before.images;
+    CHECK(transitions.size() == 1);
+    const auto& transition = transitions.front();
+    CHECK(transition.resource == image.index && transition.previous.index == kGraphInvalidIndex);
+    CHECK(transition.native.mipOffset == 0 && transition.native.mipNum == 4);
+    CHECK(transition.native.layerOffset == 0 && transition.native.layerNum == 3);
+    CHECK(transition.native.before.layout == nri::Layout::UNDEFINED);
+    CHECK(transition.native.after.layout == nri::Layout::COLOR_ATTACHMENT);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    CHECK(instance->initialize());
+    const std::array instances{instance.get()};
+    for (std::uint32_t frame = 0; frame < fif; ++frame)
+    {
+        CHECK(take(frames->render(instances, {})) != 0);
+        finishSubmissions(*session, *frames);
+        CHECK(session->drain());
+        checkPixels(*session, *instance->nativeBuffer(output.index, frame), 32, 0, {64, 128, 191, 255}, 256);
+    }
+    instance.reset();
+    CHECK(session->drain());
+    std::printf("COALESCED RANGE PASS cells=12 descriptors=1 FIF=%u last_layer_readback=correct\n", fif);
+}
+
 int main()
 {
+    auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
+    CHECK(execution);
     Validation validation;
     for (std::uint32_t fif : {1u, 2u, 3u})
     {
+        coalescedImageRanges(validation, fif);
         imageChain(validation, fif);
         imageChain(validation, fif, true);
         historySequence(validation, fif, false);

@@ -43,17 +43,22 @@ namespace lux::render::detail
             const auto& reference = raster->colors.empty() ? *raster->depth : raster->colors.front();
             const auto& reference_range = std::get<GraphImageRange>(reference.access.range);
             const auto& reference_image = core.GetTextureDesc(*binding(reference.access.version.resource.index).image);
-            const auto matchesExtent = [&](const RasterAttachment& input)
+            const auto matchesExtent = [&](const ResourceAccess& access)
             {
-                const auto& range = std::get<GraphImageRange>(input.access.range);
-                const auto& image = core.GetTextureDesc(*binding(input.access.version.resource.index).image);
+                const auto& range = std::get<GraphImageRange>(access.range);
+                const auto& image = core.GetTextureDesc(*binding(access.version.resource.index).image);
                 return std::max(1u, std::uint32_t(image.width) >> range.first_mip) ==
                            std::max(1u, std::uint32_t(reference_image.width) >> reference_range.first_mip) &&
                        std::max(1u, std::uint32_t(image.height) >> range.first_mip) ==
                            std::max(1u, std::uint32_t(reference_image.height) >> reference_range.first_mip);
             };
-            if (!std::ranges::all_of(raster->colors, matchesExtent) ||
-                (raster->depth && !matchesExtent(*raster->depth)))
+            const auto attachmentFits = [&](const RasterAttachment& attachment) noexcept
+            {
+                return matchesExtent(attachment.access) &&
+                    (!attachment.resolve || matchesExtent(*attachment.resolve));
+            };
+            if (!std::ranges::all_of(raster->colors, attachmentFits) ||
+                (raster->depth && !attachmentFits(*raster->depth)))
             {
                 return cxx::unexpected(RenderError{kInvalidTargetExtent});
             }
@@ -92,6 +97,28 @@ namespace lux::render::detail
                         !regionValid(copy->destination, copy->destination_region))
                     {
                         return cxx::unexpected(RenderError{kDeviceArgument});
+                    }
+                    const auto& source_range = std::get<GraphImageRange>(copy->source.range);
+                    const auto& destination_range = std::get<GraphImageRange>(copy->destination.range);
+                    const bool different_ranges = source_range.mip_count != destination_range.mip_count ||
+                        source_range.layer_count != destination_range.layer_count;
+                    if (different_ranges) return cxx::unexpected(RenderError{kDeviceArgument});
+                    const auto& source = core.GetTextureDesc(*binding(copy->source.version.resource.index).image);
+                    const auto& destination =
+                        core.GetTextureDesc(*binding(copy->destination.version.resource.index).image);
+                    for (std::uint32_t mip = 0; mip < source_range.mip_count; ++mip)
+                    {
+                        const auto source_width = copy->source_region ? copy->source_region->width :
+                            std::max(1u, std::uint32_t(source.width) >> (source_range.first_mip + mip));
+                        const auto source_height = copy->source_region ? copy->source_region->height :
+                            std::max(1u, std::uint32_t(source.height) >> (source_range.first_mip + mip));
+                        const auto destination_width = copy->destination_region ? copy->destination_region->width :
+                            std::max(1u, std::uint32_t(destination.width) >> (destination_range.first_mip + mip));
+                        const auto destination_height = copy->destination_region ? copy->destination_region->height :
+                            std::max(1u, std::uint32_t(destination.height) >> (destination_range.first_mip + mip));
+                        const bool different_extent = source_width != destination_width ||
+                            source_height != destination_height;
+                        if (different_extent) return cxx::unexpected(RenderError{kInvalidTargetExtent});
                     }
                 }
                 else if (const auto* copy = std::get_if<CopyImageBuffer>(&operation))

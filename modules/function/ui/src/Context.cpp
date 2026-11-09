@@ -524,12 +524,12 @@ namespace lux::ui::detail
         return {};
     }
 
-    cxx::expected<void, ECaptureError> Context::endFrame(DrawData& output, UpdateStatistics& statistics) noexcept
+    cxx::expected<void, ECaptureError> Context::endFrame(DrawView& output, UpdateStatistics& statistics) noexcept
     {
         ImGui::Render();
         input_pending_ = !native_->InputEventsTrail.empty() || !input_records_.empty();
         const auto start = std::chrono::steady_clock::now();
-        const auto captured = output.captureCurrent();
+        const auto captured = output.borrowCurrent();
         statistics.capture = std::chrono::steady_clock::now() - start;
         if (captured != ECaptureError::NONE)
         {

@@ -25,19 +25,18 @@ find_package(
         lux_editor_assets
 )
 
-find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
+find_package(lux-engine-runtime REQUIRED COMPONENTS engine_runtime)
 
-find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)
+find_package(lux-engine-systems-render REQUIRED COMPONENTS system_render)
 
 find_package(lux-engine-core REQUIRED COMPONENTS object error)
-find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)
 find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)
 find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)
 find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)
 
 find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)
 
-find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)
+find_package(lux-engine-plugins REQUIRED COMPONENTS plugin_runtime)
 
 get_filename_component(sdk_root "${lux-engine-editor-framework_DIR}/../.." ABSOLUTE)
 
@@ -69,7 +68,7 @@ target_link_libraries(framework_component PRIVATE lux::engine::editor::lux_edito
 
 add_executable(framework_context context.cpp)
 
-target_link_libraries(framework_context PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context)
+target_link_libraries(framework_context PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_runtime)
 
 add_executable(framework_transaction "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/ui/test/transaction.cpp")
 
@@ -90,9 +89,9 @@ target_link_libraries(
     PRIVATE
         lux::engine::scene::scene_asset
         lux::engine::editor::lux_editor_scene_profiles
-        lux::engine::engine_context
-        lux::engine::project::project_plugins
-        lux::engine::scene::scene_render
+        lux::engine::engine_runtime
+        lux::engine::plugins::plugin_runtime
+        lux::engine::systems::system_render
         lux::engine::scene::scene_transform
         lux::engine::scene::scene_world_loading
 )
@@ -103,7 +102,7 @@ target_link_libraries(framework_manifest PRIVATE lux::engine::editor::lux_editor
 
 add_executable(framework_pacing ../pacing.cpp)
 
-target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_render_context)
+target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::systems::system_render)
 
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -113,7 +112,7 @@ target_link_libraries(
     framework_identity
     PRIVATE
         lux::engine::editor::lux_editor_project
-        lux::engine::project::project_plugins
+        lux::engine::plugins::plugin_runtime
         nlohmann_json::nlohmann_json
 )
 
@@ -123,7 +122,7 @@ target_link_libraries(framework_scene_file PRIVATE lux::engine::scene::scene_ass
 
 add_executable(framework_host host.cpp)
 
-target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_render_context)
+target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::systems::system_render)
 
 add_executable(framework_shutdown ../shutdown.cpp)
 
@@ -217,7 +216,7 @@ set(
     EditorUiErrors
     AppErrors
     EditorWindow
-    LuxEngine
+    EditorApplication
     EditorAssembly
     ProjectManifest
     ProjectEvents
@@ -271,15 +270,15 @@ set(
     object/ObjectOwnership
     object/CodeLease
     object/Connection
-    rendering/RenderExecution
-    rendering/RenderRequester
-    rendering/RenderAssets
-    rendering/RenderDiagnostics
-    rendering/UiDrawInput
-    rendering/WindowSurface
+    context/render/RenderExecution
+    context/render/RenderRequester
+    context/render/RenderAssets
+    context/render/RenderDiagnostics
+    ui/DrawView
+    context/render/WindowSurface
     window/NativeWindowHandle
     ui/WindowInput
-    process/asset_loading/VfsAssetReadEndpoint
+    process/assets/AssetRepository
     process/world_loading/WorldFileStorageSource
     error/Error
     error/ErrorDescriptor
@@ -306,7 +305,7 @@ foreach(header IN LISTS foundation_headers)
         header_${name}
         PRIVATE
             lux::engine::editor::lux_editor_ui
-            lux::engine::engine_render_context
+            lux::engine::systems::system_render
             lux::engine::process::world_loading
             lux::engine::scene::scene_asset
     )

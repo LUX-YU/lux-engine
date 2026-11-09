@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace lux::project
+namespace lux::plugins
 {
     struct SceneRegistrations;
 }
@@ -22,19 +22,24 @@ namespace lux::editor
         std::vector<world::WorldDataSchemaId> schemas;
         std::shared_ptr<const simulation::SimulationDescription> simulation;
         std::shared_ptr<const scene::SceneDescription> systems;
-        world::WorldPartitionerDescriptor partitioner{world::worldPartitionerId("lux.spatial.builtin.single"), 1};
+        std::vector<world::WorldDomainSelection> domains{
+            {std::string(world::kDefaultWorldDomain), {world::worldPartitionerId("lux.spatial.builtin.single"), 1}}
+        };
     };
 
     struct SceneCreateInfo final
     {
         asset::AssetId id;
         std::string_view name;
-        const project::SceneRegistrations& registrations;
+        const plugins::SceneRegistrations& registrations;
         std::stop_token stop;
         const SceneCreateSelection* selection{};
     };
 
     using SceneCreateResult = cxx::expected<scene::ScenePackage, scene::ScenePackageFailure>;
+
+    // Assemble explicit author choices. Profiles may delegate here; no preset-specific type checks.
+    [[nodiscard]] SceneCreateResult createSelectedScene(const SceneCreateInfo&) noexcept;
 
     // A copy retains provider code. Creation synchronously borrows the verified project
     // registrations; the returned package owns only authored values, never a runtime Scene.

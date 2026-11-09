@@ -16,6 +16,8 @@ namespace lux::object::detail
         lux::cxx::intrusive_ptr<ObjectState> receiver;
         lux::cxx::SlotKey<ConnectionControl> key;
         SignalCallback callback;
+        void* close_context{};
+        void (*source_closed)(void*) noexcept{};
         EDelivery delivery{EDelivery::DIRECT};
         ConnectionControl* previous_incoming{};
         ConnectionControl* next_incoming{};
@@ -41,24 +43,29 @@ namespace lux::object::detail
         void deliver(cxx::move_only_function<void(LuxObject*) noexcept>&) noexcept;
     };
 
-    struct SignalStorage final
+    struct SignalStorage final : Reclamation
     {
         using Records =
             lux::cxx::StableSlotMap<lux::cxx::intrusive_ptr<ConnectionControl>, ConnectionControl, lux::cxx::NoAux, 8>;
-        SignalStorage(QueuedMessageFactory factory) noexcept
-            : queue_factory(factory)
-        {}
+        explicit SignalStorage(QueuedSignalDelivery delivery) noexcept : queue_delivery(delivery)
+        {
+            reclaim = [](Reclamation& node) noexcept
+            {
+                auto& storage = static_cast<SignalStorage&>(node);
+                storage.maintain();
+                intrusive_ptr_release(&storage);
+                return true;
+            };
+        }
 
         std::atomic_size_t refs{};
-        QueuedMessageFactory queue_factory;
+        QueuedSignalDelivery queue_delivery;
         Records records;
         std::atomic_bool closed{};
         std::size_t depth{}, visible_count{};
         bool maintaining{};
         std::mutex cancel_mutex;
         ConnectionControl* cancelled{};
-        SignalStorage* next_maintenance{}; // Dispatcher mutex only, with one owning reference.
-        bool maintenance_queued{};
 
         void cancel(ConnectionControl&) noexcept;
         void remove(ConnectionControl&) noexcept;

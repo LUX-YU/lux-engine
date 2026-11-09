@@ -19,33 +19,14 @@ namespace lux::render::detail
         const Description& description
     ) noexcept
         : device_(device), frames_(frames), resources_(resources), lights_(light_storage), description_(description),
-          selected_lights_(description.config.casters.size()), views_(description.config.shape.view_count),
-          slices_(description.config.shape.view_count), raster_states_(description.config.shape.view_count)
+          views_(description.config.shape.view_count), slices_(description.config.shape.view_count),
+          raster_states_(description.config.shape.view_count)
     {
         for (std::size_t i = 0; i < updates_.size(); ++i)
         {
             updates_[i].resource = description.outputs[i];
         }
-        view_layout_ = {static_cast<std::uint32_t>(views_.size() * sizeof(MeshVisibilityView)), 16};
-        for (std::uint32_t i = 0; i < views_.size(); ++i)
-        {
-            view_layout_.fields.push_back(
-                {"view" + std::to_string(i), rdesc::EDataScalar::FLOAT, i * sizeof(MeshVisibilityView), 4, 4, 0, 16}
-            );
-        }
         updates_[0].input.parameters = std::as_bytes(std::span(views_));
-        updates_[0].input.parameter_layout = &view_layout_;
-        std::size_t view = 0;
-        for (const auto& caster : description.config.casters)
-        {
-            const auto count = caster.kind == EDirectLightingBuffer::DIRECTIONAL ? caster.cascade_far_distances.size()
-                               : caster.kind == EDirectLightingBuffer::POINT     ? 6u
-                                                                                 : 1u;
-            for (std::size_t i = 0; i < count; ++i)
-            {
-                raster_states_[view++] = {RasterViewport{}, caster.depth_bias_constant, caster.depth_bias_slope};
-            }
-        }
         updates_[3].input.parameters = std::as_bytes(std::span(raster_states_));
     }
 
@@ -64,6 +45,8 @@ namespace lux::render::detail
         DeviceSession& device,
         FrameExecution& frames,
         ResourceRegistry& resources,
+        RenderGraphInstance&,
+        CompiledPrograms&,
         std::span<const StorageId> storages,
         const void* value
     ) noexcept
@@ -75,16 +58,6 @@ namespace lux::render::detail
         {
             return cxx::unexpected(storage.error());
         }
-        for (const auto& selection : description.config.casters)
-        {
-            VDirectLight light;
-            std::uint32_t index = 0;
-            if (!(*storage)->read(selection.light, light, index) ||
-                light.index() != static_cast<std::size_t>(selection.kind))
-            {
-                return cxx::unexpected(RenderError{kStorageIdentity});
-            }
-        }
         auto binding = new ShadowProjectionBinding(device, frames, resources, light_storage, description);
         FeatureBinding result{
             {binding, [](void* pointer) noexcept { delete static_cast<ShadowProjectionBinding*>(pointer); }},
@@ -95,10 +68,8 @@ namespace lux::render::detail
         return result;
     }
 
-    RenderResult<FeatureBinding::Preparation> ShadowProjectionBinding::prepareFrame(
-        const FeatureFrameInput& input,
-        ResourceUploader& uploads
-    ) noexcept
+    RenderResult<FeatureBinding::Preparation>
+    ShadowProjectionBinding::prepareFrame(const FeatureFrameInput& input, ResourceUploader& uploads) noexcept
     {
         const auto& config = description_.config;
         const bool invalid_parameters = config.camera_offset > input.parameters.size() ||
@@ -114,10 +85,10 @@ namespace lux::render::detail
         {
             return cxx::unexpected(light_storage.error());
         }
-        if (camera != camera_ || light_revision_ != (*light_storage)->revision())
+        if (camera != camera_ || applied_shadow_revision_ != (*light_storage)->shadowRevision())
         {
             // A rejected input may have changed scratch values. It cannot leave the previous cache key valid.
-            light_revision_ = 0;
+            applied_shadow_revision_ = 0;
             const auto counts = (*light_storage)->counts();
             const std::array<std::uint32_t, 3> offsets{0, counts[0], counts[0] + counts[1]};
             const auto count = std::size_t(counts[0]) + counts[1] + counts[2];
@@ -132,23 +103,72 @@ namespace lux::render::detail
                 reinterpret_cast<LightShadowRange*>(mappings_.data() + sizeof(header)),
                 std::max<std::size_t>(1, count)
             );
-            for (std::size_t i = 0; i < selected_lights_.size(); ++i)
+            casters_.clear();
+            const auto near_distance = camera.position_near[3];
+            const auto far_distance = std::min(camera.direction_far[3], config.distance);
+            std::uint64_t view_count = 0;
+            (*light_storage)
+                ->forEachShadow(
+                    [&](LightId id, std::uint32_t kind, const LightShadowSettings& settings)
+                    {
+                        ShadowLightSelection selected;
+                        selected.light = id;
+                        selected.kind = static_cast<EDirectLightingBuffer>(kind);
+                        selected.normal_offset = settings.normal_bias;
+                        selected.comparison_offset = settings.bias;
+                        selected.caster_distance = config.distance;
+                        selected.depth_bias_constant = settings.depth_bias_constant;
+                        selected.depth_bias_slope = settings.depth_bias_slope;
+                        selected.cascade_far_distances.clear();
+                        if (kind == 0)
+                        {
+                            for (auto split : std::span(settings.cascade_splits).first(settings.cascade_count))
+                            {
+                                selected.cascade_far_distances.push_back(
+                                    near_distance + (far_distance - near_distance) * split
+                                );
+                            }
+                        }
+                        view_count += kind == 0 ? settings.cascade_count : kind == 1 ? 6 : 1;
+                        casters_.push_back(std::move(selected));
+                    }
+                );
+            if (view_count > device_.description().dimensions.textureLayerMaxNum)
             {
-                auto& light = selected_lights_[i];
-                const auto& selected = config.casters[i];
-                light.active = (*light_storage)->read(selected.light, light.value, light.dense_index);
-                if (light.active && light.value.index() != static_cast<std::size_t>(selected.kind))
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+            }
+            const auto layers = std::max<std::uint32_t>(config.shape.view_count, static_cast<std::uint32_t>(view_count));
+            views_.resize(layers);
+            slices_.resize(layers);
+            raster_states_.assign(layers, RasterState{});
+            std::size_t raster_view = 0;
+            for (const auto& caster : casters_)
+            {
+                const auto count = caster.kind == EDirectLightingBuffer::DIRECTIONAL
+                                       ? caster.cascade_far_distances.size()
+                                   : caster.kind == EDirectLightingBuffer::POINT ? 6u
+                                                                                 : 1u;
+                for (std::size_t view = 0; view < count; ++view)
                 {
-                    return cxx::unexpected(RenderError{kFeatureContract});
+                    raster_states_[raster_view++] =
+                        {RasterViewport{}, caster.depth_bias_constant, caster.depth_bias_slope};
                 }
             }
-            if (auto projected = projectShadows(config, camera, selected_lights_, views_, slices_, ranges, offsets);
+            selected_lights_.resize(casters_.size());
+            for (std::size_t i = 0; i < casters_.size(); ++i)
+            {
+                auto& light = selected_lights_[i];
+                light.active = (*light_storage)->read(casters_[i].light, light.value, light.dense_index);
+            }
+            const ShadowProjectionInput projection{{config.shape.resolution, layers}, casters_, config.pcf_radius};
+            if (auto projected = projectShadows(projection, camera, selected_lights_, views_, slices_, ranges, offsets);
                 !projected)
             {
                 return cxx::unexpected(projected.error());
             }
+            updates_[3].input.parameters = std::as_bytes(std::span(raster_states_));
             camera_ = camera;
-            light_revision_ = (*light_storage)->revision();
+            applied_shadow_revision_ = (*light_storage)->shadowRevision();
             ++revision_;
             for (auto& slice : gpu_)
             {
@@ -185,7 +205,6 @@ namespace lux::render::detail
             }
             updates_[i].input = {buffer, 0, sources[i].size(), sources[i]};
         }
-        updates_[0].input.parameter_layout = &view_layout_;
         updates_[0].input.parameter_revision = revision_;
         updates_[3].input.parameter_revision = revision_;
         const auto prepared = [&](FeatureBinding::EPreparation state) noexcept

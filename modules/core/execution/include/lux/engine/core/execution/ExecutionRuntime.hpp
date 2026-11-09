@@ -62,22 +62,28 @@ namespace lux::execution
     class LUX_CORE_EXECUTION_PUBLIC ExecutionRuntime final
     {
     public:
-        using CreateResult = lux::cxx::expected<ExecutionRuntime, EExecutionError>;
+        using CreateResult = lux::cxx::expected<std::unique_ptr<ExecutionRuntime>, EExecutionError>;
 
         [[nodiscard]] static CreateResult create(ExecutionRuntimeConfig config) noexcept;
 
+        // One explicitly created instance per process. The owner outlives every scheduler borrower.
+        // Access before successful create or after destruction is a programming error.
+        [[nodiscard]] static ExecutionRuntime& instance() noexcept;
+        [[nodiscard]] bool isMainThread() const noexcept;
+        [[nodiscard]] bool isStopping() const noexcept;
+
         ~ExecutionRuntime() noexcept;
-        ExecutionRuntime(ExecutionRuntime&& other) noexcept;
-        ExecutionRuntime& operator=(ExecutionRuntime&& other) noexcept;
+        ExecutionRuntime(ExecutionRuntime&&) = delete;
+        ExecutionRuntime& operator=(ExecutionRuntime&&) = delete;
         ExecutionRuntime(const ExecutionRuntime&) = delete;
         ExecutionRuntime& operator=(const ExecutionRuntime&) = delete;
 
-        // Borrowed CPU pool; stop/join all external users before join(). Not callable after join.
-        [[nodiscard]] CpuScheduler cpu() const noexcept;
+        // Borrowed CPU pool; settle and join all external users before destroying the Runtime.
+        [[nodiscard]] CpuScheduler cpuScheduler() const noexcept;
         // Owner-thread admission fact, before shutdown/join mutates worker storage.
         [[nodiscard]] std::size_t cpuConcurrency() const noexcept;
         [[nodiscard]] TimerClient timer() const noexcept;
-        [[nodiscard]] lux::cxx::expected<BlockingScheduler, EExecutionError> blocking() const noexcept;
+        [[nodiscard]] lux::cxx::expected<BlockingScheduler, EExecutionError> blockingIoScheduler() const noexcept;
 
         // Starts finite work without TaskId, monitoring or a per-operation stop source. Consume
         // business results and normalize errors/stopped inside sender before spawning it. Accepted
@@ -85,32 +91,14 @@ namespace lux::execution
         // The caller keeps this Runtime alive through the submission call, including synchronous completion.
         template <class Sender> [[nodiscard]] lux::cxx::expected<void, EExecutionError> spawn(Sender sender) noexcept
         {
-            if (!state_ || !detail::admitExecution(*state_))
-            {
-                return lux::cxx::unexpected(EExecutionError::STOPPING);
-            }
-            auto& scope = detail::executionScope(*state_);
-            // The extra association covers the submission tail if start completes synchronously.
-            auto submitting = scope.get_token().try_associate();
-            stdexec::spawn(
-                stdexec::write_env(
-                    std::move(sender),
-                    stdexec::prop{stdexec::get_allocator, std::allocator<std::byte>{}}
-                ),
-                scope.get_token(),
-                stdexec::env{stdexec::prop{stdexec::get_allocator, detail::ExecutionAllocator<std::byte>{*state_}}}
-            );
-            detail::releaseExecution(*state_);
-            return {};
+            return spawnWithAllocator(std::move(sender), detail::ExecutionAllocator<std::byte>{*state_});
         }
 
         // The returned Task is a nonblocking cancellation handle, not an operation owner.
         // Work and captured inputs remain in this Runtime until their real terminal completion.
         template <class Factory>
-        [[nodiscard]] lux::cxx::expected<Task, EExecutionError> submit(
-            TaskOptions options,
-            Factory&& make_sender
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<Task, EExecutionError>
+        submit(TaskOptions options, Factory&& make_sender) noexcept
         {
             static_assert(std::is_nothrow_invocable_v<Factory, TaskReporter>);
             auto admitted = detail::admitTask(*tasks_, std::move(options));
@@ -128,12 +116,11 @@ namespace lux::execution
         // Borrowed scheduler for this Runtime's application thread. It delivers determined
         // results even after task cancellation; business adoption checks its own target/revision.
         [[nodiscard]] RunLoop::Scheduler mainScheduler() noexcept;
-        // Runs a batch bounded by the entry count, outside queue locks. Returns consumed schedule
-        // nodes, including revoked coalesced notifications; concurrent publication can join the batch.
-        [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError> dispatchMainCompletions() noexcept;
+        // The application loop calls dispatch at a safe point, never while a scene graph is executing.
+        // Delivers main-thread continuations and task observations; nested dispatch is rejected.
+        [[nodiscard]] lux::cxx::expected<void, EExecutionError> dispatch() noexcept;
         // Tasks and Main work are quiescent; external producer tails still require their join.
         [[nodiscard]] bool settled() const noexcept;
-        [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError> dispatchTaskEvents() noexcept;
         [[nodiscard]] std::optional<TaskInfo> taskInfo(TaskId id) const noexcept;
         [[nodiscard]] std::vector<TaskInfo> taskInfos() const noexcept;
         [[nodiscard]] bool requestStop(TaskId id) noexcept;
@@ -147,16 +134,15 @@ namespace lux::execution
         // awaiting work do not make this true.
         [[nodiscard]] bool hasReadyWork() const noexcept;
         void wake() noexcept;
-        // Notification only: the callback must not join/wait or recursively dispatch this Runtime.
+        // Notification only: callback must not block, rebind or dispatch this Runtime. Main-thread
+        // replacement waits for old callbacks to return; clear before destroying the platform target.
         void setWake(void (*wake)() noexcept) noexcept;
         void waitForWork(
             std::uint64_t observed,
             std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max()
         ) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EExecutionError> waitUntil(
-            void* context,
-            bool (*ready)(void*) noexcept
-        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EExecutionError>
+        waitUntil(void* context, bool (*ready)(void*) noexcept) noexcept;
 
         template <class Predicate>
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> waitUntil(Predicate&& ready) noexcept
@@ -167,10 +153,33 @@ namespace lux::execution
             );
         }
 
+    private:
         void requestStop() noexcept;
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> join() noexcept;
 
-    private:
+        template <class Sender, class Allocator>
+        [[nodiscard]] cxx::expected<void, EExecutionError>
+        spawnWithAllocator(Sender sender, Allocator allocator) noexcept
+        {
+            if (!detail::admitExecution(*state_))
+            {
+                return lux::cxx::unexpected(EExecutionError::STOPPING);
+            }
+            auto& scope = detail::executionScope(*state_);
+            // The extra association covers the submission tail if start completes synchronously.
+            auto submitting = scope.get_token().try_associate();
+            stdexec::spawn(
+                stdexec::write_env(
+                    std::move(sender),
+                    stdexec::prop{stdexec::get_allocator, std::allocator<std::byte>{}}
+                ),
+                scope.get_token(),
+                stdexec::env{stdexec::prop{stdexec::get_allocator, std::move(allocator)}}
+            );
+            detail::releaseExecution(*state_);
+            return {};
+        }
+
         friend class CompletionWork;
         friend class TaskScope;
         friend struct detail::TaskRuntime;

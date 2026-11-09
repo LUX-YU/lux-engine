@@ -1,5 +1,5 @@
 #include <imgui.h>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
@@ -15,7 +15,7 @@ namespace lux::editor
         struct Draft final
         {
             std::string label;
-            simulation::ecs::DecodedComponent value;
+            ecs::DecodedComponent value;
             const ComponentEditor* editor;
         };
 
@@ -36,7 +36,7 @@ namespace lux::editor
         std::string status;
 
         Impl(EditorContext& context, ProjectScenes& scenes) noexcept
-            : context(context), scenes(scenes), execution(context.engine().execution())
+            : context(context), scenes(scenes), execution(execution::ExecutionRuntime::instance())
         {
         }
 
@@ -144,7 +144,7 @@ namespace lux::editor
         impl_->waiting_for_edit = true;
         const auto target = objectId();
         auto work =
-            execution::taskResult(stdexec::starts_on(impl_->execution.mainScheduler(), document.whenEditable()));
+            execution::asResult(stdexec::starts_on(impl_->execution.mainScheduler(), document.whenEditable()));
         auto accepted = impl_->execution.spawn(stdexec::then(
             std::move(work),
             [target](auto&& result) noexcept

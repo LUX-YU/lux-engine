@@ -1,7 +1,7 @@
 #pragma once
 
 #include <concepts>
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <memory>
 #include <type_traits>
@@ -22,20 +22,21 @@ namespace lux::render
     };
 
     // One immutable, exclusively owned configuration. Borrowed views last only as long as this value.
-    // TypeToken compares semantic C++ identity, not a portable serialization/DLL ABI. The defining module
+    // type_info compares semantic C++ identity, not a portable serialization/DLL ABI. The defining module
     // supplies equality/destruction code and must remain loaded until this value is destroyed.
     class ConfigValue final
     {
     public:
-        [[nodiscard]] cxx::TypeToken type() const noexcept
+        [[nodiscard]] cxx::type_info type() const noexcept
         {
-            return type_ ? type_->identity : cxx::TypeToken{};
+            return type_ ? type_->identity : cxx::type_info{};
         }
 
         // Cold semantic agreement only. No object representation/padding comparison and no hash shortcut.
         [[nodiscard]] bool operator==(const ConfigValue& other) const noexcept
         {
-            if (type() != other.type())
+            const bool is_type_mismatch = type() != other.type() || type().name() != other.type().name();
+            if (is_type_mismatch)
             {
                 return false;
             }
@@ -81,18 +82,18 @@ namespace lux::render
             auto bytes = ConfigValueTraits<Value>::retainedBytes(value);
             if (!bytes)
             {
-                return cxx::unexpected(bytes.error());
+                return cxx::unexpected<RenderError>(bytes.error());
             }
             if (*bytes < sizeof(Value))
             {
-                return cxx::unexpected(RenderError{kInvalidConfig});
+                return cxx::unexpected<RenderError>(RenderError{kInvalidConfig});
             }
             ConfigValue result;
             result.value_ = ConfigObject{
                 new const Value(std::forward<T>(value)),
                 [](const void* object) noexcept { delete static_cast<const Value*>(object); }
             };
-            static constexpr Metadata type{cxx::typeToken<Value>(), equality<Value>()};
+            static constexpr Metadata type{cxx::make_basic_type_info<Value>(), equality<Value>()};
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
             return result;
@@ -110,11 +111,11 @@ namespace lux::render
 
         template <class T> [[nodiscard]] const T* borrow() const noexcept
         {
-            const bool matches = type() == cxx::typeToken<T>();
+            const bool matches = type() == cxx::make_basic_type_info<T>();
             return matches ? static_cast<const T*>(value_.get()) : nullptr;
         }
 
-        // Trusted typed Factory/Graph thunk uses this after its single cold TypeToken check.
+        // Trusted typed Factory/Graph thunk uses this after its single cold type_info check.
         [[nodiscard]] const void* data() const noexcept
         {
             return value_.get();
@@ -125,9 +126,9 @@ namespace lux::render
 
         struct Metadata final
         {
-            cxx::TypeToken identity;
+            cxx::type_info identity;
             Equal equal;
-        };
+        }; 
 
         template <class T> static constexpr Equal equality() noexcept
         {

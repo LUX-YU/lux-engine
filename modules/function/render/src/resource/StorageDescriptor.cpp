@@ -8,7 +8,7 @@ namespace lux::render
         const bool invalid_identity = !descriptor.type.isValid();
         const auto capabilities = descriptor.required_capabilities | descriptor.optional_capabilities;
         const bool invalid_capabilities =
-            (capabilities & ~3u) != 0 || (descriptor.required_capabilities & descriptor.optional_capabilities) != 0;
+            (capabilities & ~7u) != 0 || (descriptor.required_capabilities & descriptor.optional_capabilities) != 0;
         if (invalid_identity || invalid_capabilities)
         {
             return cxx::unexpected(RenderError{kStorageContract});

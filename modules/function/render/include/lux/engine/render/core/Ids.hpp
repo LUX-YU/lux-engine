@@ -26,6 +26,8 @@ namespace lux::render
     struct EffectTag;
     struct AttachmentTag;
     struct FeatureTag;
+    struct CapabilityTag;
+    struct CapabilityImplementationTag;
     struct StorageTypeTag;
     struct StorageTag;
 
@@ -35,6 +37,8 @@ namespace lux::render
     using EffectId = cxx::SlotKey<EffectTag>;
     using AttachmentId = cxx::SlotKey<AttachmentTag>;
     using FeatureId = cxx::SlotKey<FeatureTag>;
+    using CapabilityId = cxx::SlotKey<CapabilityTag>;
+    using CapabilityImplementationId = cxx::SlotKey<CapabilityImplementationTag>;
     using StorageTypeId = cxx::SlotKey<StorageTypeTag>;
     using StorageId = cxx::SlotKey<StorageTag>;
 

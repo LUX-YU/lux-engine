@@ -212,7 +212,7 @@ namespace
         auto& owner = ui_test::makePane<ChangeOwner>(root);
         auto& content = *owner.content;
         content.defer_draw = content.defer_update = true;
-        ui::DrawData draw;
+        ui::DrawView draw;
         assert(root.update({{640, 480}, 0.016F}, draw));
         assert(content.draws == 1 && content.updates == 1 && content.applications == 0);
         ui::Command command{ui::CommandIdView{"test.change"}};
@@ -288,7 +288,7 @@ namespace
         const auto destroy =
             +[](ChangeElement& target) noexcept { static_cast<ChangeOwner&>(target.pane()).content.reset(); };
         ui::Command command{ui::CommandIdView{"test.change"}};
-        ui::DrawData draw;
+        ui::DrawView draw;
         // Run these modes in a subprocess and require the production contract's abnormal exit.
         // Returning EXIT_FAILURE means the forbidden operation was allowed; it is not a passing probe.
         if (scenario == "apply-in-draw" || scenario == "destroy-in-draw")
@@ -344,7 +344,7 @@ namespace
         bool nested{}, reject_capture{}, edit_text{}, consume_keys{true}, immediate_input{};
         Probe* transfer_capture{};
         std::array<char, 32> text{};
-        lux::ui::DrawData reentrant;
+        lux::ui::DrawView reentrant;
 
     private:
     public:
@@ -443,7 +443,7 @@ int main(int argc, char** argv)
     assert(first && second && ImGui::GetCurrentContext() == original);
     auto font = (*first)->fontAtlas();
     assert(font && font->pixels.size() == std::size_t(font->width) * font->height * 4);
-    ui::DrawData slot;
+    ui::DrawView slot;
     {
         auto& passive = ui_test::makePane<Probe>(**first, "requested maintenance");
         passive.setContinuousUpdate(false);

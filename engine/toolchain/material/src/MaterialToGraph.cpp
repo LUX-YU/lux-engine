@@ -27,13 +27,6 @@ namespace lux::material::compiler
         using EVT = ::lux::material::EValueType;
         using EAttr = ::lux::material::EMaterialAttribute;
 
-        constexpr float kEps = 1e-6f;
-
-        bool isOne(float v) noexcept
-        {
-            return v > 1.f - kEps && v < 1.f + kEps;
-        } // occlusion.strength only
-
         // A small helper set for building all the SampleTexture / weaving
         // nodes into a single graph.
         struct Builder
@@ -157,12 +150,20 @@ namespace lux::material::compiler
                 return id;
             }
 
-            NodeId mul(NodeId a, NodeId b, EVT t)
+            NodeId math(EMathOp operation, NodeId a, NodeId b, EVT type)
             {
-                const NodeId id = add(MaterialMath{EMathOp::MUL, t}, "Math");
+                const NodeId id = add(MaterialMath{operation, type}, "Math");
                 connect(a, id);
-                connect(b, id, 1);
+                if (b != NodeId{})
+                {
+                    connect(b, id, 1);
+                }
                 return id;
+            }
+
+            NodeId mul(NodeId a, NodeId b, EVT type)
+            {
+                return math(EMathOp::MUL, a, b, type);
             }
 
             void bind(EAttr attr, NodeId v)
@@ -177,12 +178,9 @@ namespace lux::material::compiler
         };
     } // namespace
 
-    // W5b: ImportedMaterialDesc (flat POD, closure-free) -> MaterialGraph. Produces
-    // a STRUCTURALLY IDENTICAL graph to the rdesc::Material PBR path above (same Param
-    // names + slot order + texture-slot indices), so an imported material dedups
-    // byte-for-byte against an equivalent hand-authored one.
-    lux::cxx::expected<MaterialGraph, std::string> materialToGraph(const ::lux::material::ImportedMaterialDescription& d
-    )
+    // Default imported PBR has one topology. Resource identities and parameter values are data only.
+    lux::cxx::expected<MaterialGraph, std::string>
+    materialToGraph(const ::lux::material::ImportedMaterialDescription& d)
     {
         const auto invalid_reference = [](const auto& reference) noexcept
         { return reference && reference->texture.isNull(); };
@@ -202,129 +200,69 @@ namespace lux::material::compiler
         Builder b(g);
         g.shading_model = ::lux::rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
 
-        const auto slot = [&g](
-                              const std::optional<::lux::material::ImportedTextureReference>& texture,
-                              std::string_view name
-                          ) -> std::optional<std::uint32_t>
+        // Fixed semantic slots. Missing inputs use Native's white texture; asset identity never changes topology.
+        const auto slot = [&g](const std::optional<ImportedTextureReference>& texture, std::string name)
         {
-            if (!texture)
-            {
-                return std::nullopt;
-            }
-            if (texture->texture.isNull())
-            {
-                return std::nullopt;
-            }
-            for (std::uint32_t index = 0U; index < g.texture_slots.size(); ++index)
-            {
-                if (g.texture_slots[index].texture == texture->texture)
-                {
-                    return index;
-                }
-            }
             const auto index = static_cast<std::uint32_t>(g.texture_slots.size());
-            g.texture_slots.push_back(TextureSlotDecl{std::string{name}, texture->texture});
+            g.texture_slots.push_back({std::move(name), texture ? texture->texture : asset::AssetId{}});
             return index;
         };
-
-        const auto base_color_texture = slot(d.base_color_texture, "base-color");
-        const auto normal_texture = slot(d.normal_texture, "normal");
-        const auto metallic_roughness_texture = slot(d.metallic_roughness_texture, "metallic-roughness");
-        const auto occlusion_texture = slot(d.occlusion_texture, "occlusion");
-        const auto emissive_texture = slot(d.emissive_texture, "emissive");
-
-        // color3 factor [* tex.rgb] as a Param (mirrors Builder::color3).
-        const auto color3 = [&](const std::string& name, const Eigen::Vector3f& v, std::optional<uint32_t> tex
-                            ) -> NodeId
+        const auto base = slot(d.base_color_texture, "base-color");
+        const auto normal = slot(d.normal_texture, "normal");
+        const auto metallic_roughness = slot(d.metallic_roughness_texture, "metallic-roughness");
+        const auto occlusion = slot(d.occlusion_texture, "occlusion");
+        const auto emissive = slot(d.emissive_texture, "emissive");
+        const auto color = [&](std::string name, const Eigen::Vector3f& value, std::uint32_t texture)
         {
-            const NodeId factor = b.param(name, EVT::VEC3, v.x(), v.y(), v.z());
-            if (tex)
-            {
-                return b.mul(factor, b.swizzle(b.sample(*tex), EVT::VEC3, 0, 1, 2), EVT::VEC3);
-            }
-            return factor;
+            return b.mul(b.param(name, EVT::VEC3, value.x(), value.y(), value.z()),
+                b.swizzle(b.sample(texture), EVT::VEC3, 0, 1, 2), EVT::VEC3);
         };
-        // scalar factor [* tex[channel]] as a Param (mirrors Builder::scalar).
-        const auto scalar = [&](const std::string& name, float val, std::optional<uint32_t> tex, uint8_t channel
-                            ) -> NodeId
+        const auto scalar = [&](std::string name, float value, std::uint32_t texture, std::uint8_t channel)
         {
-            const NodeId factor = b.param(name, EVT::FLOAT, val);
-            if (tex)
-            {
-                return b.mul(factor, b.swizzle(b.sample(*tex), EVT::FLOAT, channel), EVT::FLOAT);
-            }
-            return factor;
+            return b.mul(b.param(name, EVT::FLOAT, value),
+                b.swizzle(b.sample(texture), EVT::FLOAT, channel), EVT::FLOAT);
         };
+        b.bind(EAttr::BASE_COLOR, color("BaseColor", d.base_color, base));
+        // ModelCooker repacks glTF B/G into cooked R/G before TextureCooker creates RG8.
+        b.bind(EAttr::METALLIC, scalar("Metallic", d.legacy_lit ? 0 : d.metallic, metallic_roughness, 0));
+        b.bind(EAttr::ROUGHNESS, scalar("Roughness", d.legacy_lit ? 0.5F : d.roughness, metallic_roughness, 1));
+        b.bind(EAttr::EMISSIVE, color("Emissive", (d.emissive * d.emissive_intensity).eval(), emissive));
 
-        b.bind(EAttr::BASE_COLOR, color3("BaseColor", d.base_color, base_color_texture));
-
-        // Legacy (Phong) imports collapse to PBR with metallic=0 / roughness=0.5.
-        const float metallic = d.legacy_lit ? 0.0f : d.metallic;
-        const float roughness = d.legacy_lit ? 0.5f : d.roughness;
-        b.bind(EAttr::METALLIC, scalar("Metallic", metallic, metallic_roughness_texture, 0));
-        b.bind(EAttr::ROUGHNESS, scalar("Roughness", roughness, metallic_roughness_texture, 1));
-
-        if (normal_texture)
+        const auto one = b.constant(EVT::FLOAT, 1);
+        const auto two = b.constant(EVT::FLOAT, 2);
+        const auto strength = b.param("NormalScale", EVT::FLOAT, d.normal_texture ? d.normal_scale : 0);
+        const auto normal_component = [&](std::uint8_t channel)
         {
-            // normal map: sample -> rgb -> DecodeNormal (2*rgb-1 -> tangent normal) ->
-            // TbnTransform (tangent -> WORLD via T/B/N) -> NormalTS. The TbnTransform was
-            // MISSING here, so the tangent-space normal was bound directly as the world
-            // normal -> ~constant world normal -> flat/unlit shading on every imported
-            // normal-mapped material.
-            const NodeId rgb = b.swizzle(b.sample(*normal_texture), EVT::VEC3, 0, 1, 2);
-            const NodeId decn = b.add(MaterialDecodeNormal{}, "Decode Normal");
-            b.connect(rgb, decn);
-            const NodeId tbn = b.add(MaterialTbnTransform{}, "TBN Transform");
-            b.connect(decn, tbn);
-            b.bind(EAttr::NORMAL_WORLD, tbn);
-        }
-        if (occlusion_texture)
-        {
-            const NodeId ao = b.swizzle(b.sample(*occlusion_texture), EVT::FLOAT, 0);
-            b.bind(
-                EAttr::AMBIENT_OCCLUSION,
-                isOne(d.occlusion_strength) ? ao : b.mul(b.constant(EVT::FLOAT, d.occlusion_strength), ao, EVT::FLOAT)
-            );
-        }
+            const auto sampled = b.swizzle(b.sample(normal), EVT::FLOAT, channel);
+            const auto decoded = b.math(EMathOp::SUB, b.mul(sampled, two, EVT::FLOAT), one, EVT::FLOAT);
+            return b.mul(decoded, strength, EVT::FLOAT);
+        };
+        // BC5 carries XY only. Reconstruct positive Z instead of reading the absent blue channel.
+        const auto x = normal_component(0);
+        const auto y = normal_component(1);
+        const auto squared = b.math(EMathOp::ADD, b.mul(x, x, EVT::FLOAT), b.mul(y, y, EVT::FLOAT), EVT::FLOAT);
+        const auto z_squared = b.math(EMathOp::SUB, one, squared, EVT::FLOAT);
+        const auto clamped = b.math(EMathOp::MAX, z_squared, b.constant(EVT::FLOAT, 0), EVT::FLOAT);
+        const auto z = b.math(EMathOp::SQRT, clamped, {}, EVT::FLOAT);
+        const auto tangent_normal = b.add(MaterialConstruct{EVT::VEC3}, "Tangent Normal");
+        b.connect(x, tangent_normal, 0);
+        b.connect(y, tangent_normal, 1);
+        b.connect(z, tangent_normal, 2);
+        const auto world_normal = b.add(MaterialTbnTransform{}, "World Normal");
+        b.connect(tangent_normal, world_normal);
+        b.bind(EAttr::NORMAL_WORLD, world_normal);
 
-        // emissive = factor(=value*intensity) [* tex.rgb], Param (always bound).
-        {
-            const Eigen::Vector3f scaled = d.emissive * d.emissive_intensity;
-            const NodeId factor = b.param("Emissive", EVT::VEC3, scaled.x(), scaled.y(), scaled.z());
-            if (emissive_texture)
-            {
-                b.bind(
-                    EAttr::EMISSIVE,
-                    b.mul(factor, b.swizzle(b.sample(*emissive_texture), EVT::VEC3, 0, 1, 2), EVT::VEC3)
-                );
-            }
-            else
-            {
-                b.bind(EAttr::EMISSIVE, factor);
-            }
-        }
-
-        // opacity: glTF alpha-test/blend takes the silhouette from the BASE-COLOR
-        // texture's ALPHA channel. Route factor * baseColorTex.a for non-opaque
-        // materials so the baked `if (opacity < cutoff) discard` (ShaderEmitter)
-        // can actually cut the shape — without this, masked hair/eyelashes only
-        // ever see the constant factor (never discard) and render as solid cards.
-        // `scalar` reuses the SAME cached BaseColor SampleTexture node (no extra
-        // sample). Opaque materials keep the plain factor (opacity is unused in
-        // the opaque deferred path) so their graph/SPIR-V stays byte-identical and
-        // dedups exactly as before.
-        if (d.alpha_mode != ::lux::rdesc::EAlphaMode::OPAQUE_SURFACE && base_color_texture)
-        {
-            b.bind(EAttr::OPACITY, scalar("Opacity", d.opacity, base_color_texture, 3));
-        }
-        else
-        {
-            b.bind(EAttr::OPACITY, b.param("Opacity", EVT::FLOAT, d.opacity));
-        }
-
-        // render state (W3a): alpha mode / cutoff / double-sided 1:1.
+        const auto ao = b.swizzle(b.sample(occlusion), EVT::FLOAT, 0);
+        const auto difference = b.math(EMathOp::SUB, ao, one, EVT::FLOAT);
+        const auto ao_strength = b.param("OcclusionStrength", EVT::FLOAT, d.occlusion_strength);
+        b.bind(EAttr::AMBIENT_OCCLUSION,
+            b.math(EMathOp::ADD, one, b.mul(difference, ao_strength, EVT::FLOAT), EVT::FLOAT));
+        const auto opacity = scalar("Opacity", d.opacity, base, 3);
+        const auto cutoff = b.param("AlphaCutoff", EVT::FLOAT, d.alpha_cutoff);
+        b.bind(EAttr::OPACITY, b.math(EMathOp::ADD,
+            b.math(EMathOp::SUB, opacity, cutoff, EVT::FLOAT), b.constant(EVT::FLOAT, 0.5F), EVT::FLOAT));
         g.render_state.alpha_mode = d.alpha_mode;
-        g.render_state.alpha_cutoff = d.alpha_cutoff;
+        g.render_state.alpha_cutoff = 0.5F;
         g.render_state.double_sided = d.double_sided;
 
         if (b.error)

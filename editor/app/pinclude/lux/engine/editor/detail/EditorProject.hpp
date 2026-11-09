@@ -2,33 +2,43 @@
 
 #include <exec/task.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
+#include <lux/engine/editor/ProjectEvents.hpp>
 #include <lux/engine/editor/detail/ProjectUiMount.hpp>
+#include <lux/engine/ui/Pane.hpp>
 #include <memory>
 #include <optional>
 
 namespace lux::editor
 {
     class EditorContext;
-    class ProjectScenes;
-} // namespace lux::editor
+}
 
 namespace lux::editor::detail
 {
-    // One adopted project. Shared execution/render/window resources outlive this object.
+    // Shared application facilities outlive the project and its asynchronous close.
     struct EditorProject final
     {
         explicit EditorProject(std::unique_ptr<EditorContext>) noexcept;
         ~EditorProject() noexcept;
-
-        // Start teardown on Main. No pending Scene/producer borrow means immediate destruction is safe;
-        // otherwise the caller keeps this project until the returned continuation finishes.
-        [[nodiscard]] std::optional<exec::task<FrameworkResult<void>>> close() noexcept;
-
+        [[nodiscard]] exec::task<FrameworkResult<void>> close() noexcept;
+        [[nodiscard]] exec::task<FrameworkResult<void>> recoverClose() noexcept;
         std::unique_ptr<EditorContext> context;
-        ProjectScenes* scenes{}; // Optional service, resolved at construction/close boundaries only.
         ProjectUiMount ui;
+    };
 
-    private:
-        [[nodiscard]] exec::task<FrameworkResult<void>> completeClose() noexcept;
+    // Finite transaction data, not an execution owner or another project registry.
+    struct ProjectChange final
+    {
+        std::uint64_t request{};
+        std::filesystem::path manifest_file;
+        std::optional<ProjectManifest> create;
+        EManifestPublication manifest_publication{EManifestPublication::UNCHANGED};
+        std::unique_ptr<EditorProject> candidate;
+        std::unique_ptr<EditorProject> previous;
+        std::vector<std::unique_ptr<ui::Pane>> panes;
+        ui::PanePlacement placement;
+        error::Error preparation_failure;
+        error::Error cleanup_failure;
+        bool project_published = false;
     };
 } // namespace lux::editor::detail

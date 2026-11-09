@@ -6,9 +6,9 @@
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/SurfaceTarget.hpp>
+#include <lux/engine/render/extensions/CapabilityRegistry.hpp>
+#include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
-#include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
 #include <lux/engine/render/extensions/storage/Binding.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
@@ -66,26 +66,48 @@ namespace lux::render::runtime_detail
     struct RenderEffect final
     {
         std::unique_ptr<detail::RenderPlan> plan;
-        RenderGraph graph;
-        RenderGraphAnalysis analysis;
 
         // One cold-resolved dependency used by both public upload inputs and Graph resource bindings.
         // These records own creation values only; the actual instances remain in the business StorageSets.
         struct StorageDependency final
         {
-            ECapabilityInputScope scope;
+            EStorageScope scope;
             StorageRequirement requirement;
-            std::vector<GraphResourceId> resources;
-            std::vector<std::uint32_t> inputs;
+            std::vector<StorageArgument> bindings;
+
+            struct Input final
+            {
+                std::uint32_t capability = 0;
+                std::uint32_t index = 0;
+            };
+
+            std::vector<Input> inputs;
         };
 
         std::vector<StorageDependency> storage_dependencies;
-        std::vector<StorageArgument> arguments;
         std::vector<detail::FeatureFrameContribution> bindings;
         std::vector<SamplerDescription> samplers;
         std::vector<AttachmentId> attachments;
-        FeatureGraphOps::Parameters project_parameters = nullptr;
-        CapabilitySelection implementation;
+        std::vector<ParameterProjection> parameter_projections;
+
+        struct Implementation final
+        {
+            CapabilityImplementationId id;
+            std::string contribution;
+
+            // Actual compiled pass identities for frame inputs; never looked up by name during a frame.
+            struct FrameCall final
+            {
+                const FrameDataCall* method;
+                GraphPassId pass;
+                ParameterProjection parameters;
+            };
+
+            std::vector<FrameCall> frame_calls;
+            std::vector<std::uint32_t> storage_dependencies;
+        };
+
+        std::vector<Implementation> implementations;
     };
 
     struct EffectAttachment final
@@ -105,11 +127,8 @@ namespace lux::render::runtime_detail
         struct StorageInput final
         {
             detail::RenderGraphInstance* instance;
-            StorageId storage_id;
             std::uint32_t resource;
             detail::StorageSubscription subscription;
-            void* native = nullptr;
-            const detail::StorageBindingOps* ops = nullptr;
         };
 
         // Destruction disconnects professional data and inputs before the graph instance and local StorageSet.
@@ -125,7 +144,6 @@ namespace lux::render::runtime_detail
         std::vector<TargetImage> target_images;
         [[nodiscard]] RenderResult<void> bindStorage(
             std::uint32_t resource,
-            StorageId,
             const detail::StorageBindingOps&,
             void* native,
             const void* argument,

@@ -24,7 +24,7 @@ Root::update 采用排队结构变化；绘制和捕获通过明确的帧入口�
 
 ## 项目装配与退出
 
-宿主拥有 Window、EngineContext 和产品 Assembly，项目切换不重建这些基础设施。
+宿主拥有 Window、Engine 和产品 Assembly，项目切换不重建这些基础设施。
 EditorComposition 构造声明，完整 EditorContext 发布后提供不可变目录和惰性唯一服务。
 Pane、项目服务和 Context 的实际关系及异步项目采用规则以
 [Editor 所有权合同](../editor/README.md#ownership-and-lifetime) 为准。

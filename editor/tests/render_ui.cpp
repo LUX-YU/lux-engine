@@ -1,22 +1,55 @@
 #include "RenderTest.hpp"
 #include "SceneCapture.hpp"
 #include "support/RenderRoleInputs.hpp"
-#include <lux/engine/editor/UiDrawInput.hpp>
-#include <lux/engine/render/capabilities/RasterAssets.hpp>
+#include <lux/engine/systems/render/ImguiFrameCapture.hpp>
+#include <lux/engine/render/capabilities/ImguiCapability.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
+#include <lux/engine/render/commands/ImageCommands.hpp>
 #include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
+#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 
 using namespace lux;
 using namespace lux::render;
 using namespace lux::engine::render;
-using lux::editor::makeUiDrawInput;
-using lux::editor::UiImageSelection;
+using lux::engine::render::captureImguiFrame;
+
+struct CopyPixelsCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<>;
+    using PerFrameData = std::tuple<>;
+};
+
+struct CopyPixelsImplementation final
+{
+    using Capability = CopyPixelsCapability;
+    using Features = std::tuple<CaptureFeature>;
+    using Config = CaptureConfig;
+    using Storages = std::tuple<CaptureBuffer>;
+    using Bindings = std::tuple<>;
+    using FrameBindings = std::tuple<>;
+
+    static CapabilityImplementation implementation() noexcept
+    {
+        CapabilityImplementation result;
+        result.implementation = "test.ui.copy_pixels";
+        result.graph.ports = {
+            {"color",
+             ECapabilityPortDirection::INPUT,
+             "lux.color.display.v1",
+             CapabilityImageShape{rdesc::ETextureFormat::RGBA8_UNORM, 1, 1},
+             "lux.coordinates.viewport"},
+            {"pixels", ECapabilityPortDirection::OUTPUT, "test.pixels", CapabilityBufferShape{1, 1}, "bytes"}
+        };
+        return result;
+    }
+};
 
 int main(int argc, char**)
 {
-    const bool wide_indices = argc > 1;
-    const unsigned vertex_base = wide_indices ? 70000 : 0;
+    const bool large_vertex_offset = argc > 1;
+    const unsigned vertex_base = large_vertex_offset ? 70000 : 0;
     auto execution = integration_test::take(execution::ExecutionRuntime::create({2, 128, {16}}));
     RenderExecutionConfig config;
     config.render.channel_name = "engine.ui.drawing";
@@ -28,12 +61,17 @@ int main(int argc, char**)
     config.feature_registration = &graph_features;
     config.register_features = [](void* destination, RenderServer& server) noexcept -> RenderResult<void>
     {
-        auto roles = server.registerFeature<fixture::RoleFeature>();
+        auto roles = server.registerCapabilityImplementation<fixture::RoleFeature>();
         if (!roles)
         {
             return cxx::unexpected(roles.error());
         }
-        auto registration = server.registerFeature<CaptureFeature>();
+        auto capture = server.registerCapabilityImplementation<CopyPixelsImplementation>();
+        if (!capture)
+        {
+            return cxx::unexpected(capture.error());
+        }
+        auto registration = server.featureId(CaptureFeature::name.name());
         if (!registration)
         {
             return cxx::unexpected(registration.error());
@@ -48,60 +86,68 @@ int main(int argc, char**)
     };
     auto rendering = integration_test::take(RenderExecution::create(std::move(config), execution));
     auto& client = rendering->mainClient();
+    const auto create_effect = [&](CapabilityImplementationId selected, VCapabilityConfiguration configuration)
     {
-        auto supports =
-            integration_test::call<ListCapabilities>(*rendering, {std::string(fixture::RoleFeature::name.name())});
-        const auto selected = supports.implementations.front().selection;
-        auto globals =
-            integration_test::call<InstallCapabilities>(*rendering, {selected, GlobalRenderScope{}, ConfigValue{}});
-        CHECK(globals.inputs.size() == 2 && fixture::RoleStorage::live == 2);
-        scene::RenderBindingPlan plan;
-        scene::RenderBindingDeclaration role;
-        role.inputs = fixture::RoleFeature::capabilities().capabilities.front().inputs;
-        role.resource_inputs.push_back({"test.role", scene::ERenderInputSource::ASSETS, selected, 1});
-        plan.declarations.push_back(role);
-        auto source = integration_test::take(scene::selectRenderAssetInputs(plan, globals.inputs));
-        CHECK(source.size() == 1 && source.front().destination.index == 1);
+        CreateEffectRequest request{{64, 64, rdesc::ETextureFormat::RGBA8_UNORM}};
+        request.composition.contributions.push_back({"selected", selected, std::move(configuration)});
+        const auto ui = integration_test::call<ListCapabilities>(*rendering, {std::string(kUiSceneCapability)});
+        request.composition.contributions.push_back(
+            {"output",
+             ui.implementations.front().implementation_id,
+             integration_test::take(ConfigValue::make(UiConfiguration{}))}
+        );
+        request.composition.outputs.push_back({"output", "color"});
+        return integration_test::call<CreateEffect>(*rendering, std::move(request)).effect;
+    };
+    {
+        auto supports = integration_test::call<ListCapabilities>(
+            *rendering,
+            {std::string(cxx::make_basic_type_info<fixture::RoleCapability>().name())}
+        );
+        const auto selected = supports.implementations.front().implementation_id;
+        const auto role_effect = create_effect(selected, ConfigValue{});
+        CHECK(fixture::RoleStorage::live == 0);
+        const CommandDestination global_routes{role_effect, 0, GlobalRenderScope{}};
+        const auto first_route = integration_test::take(client.commandBinding<fixture::RoleCommand<0>>(global_routes));
+        const auto second_route = integration_test::take(client.commandBinding<fixture::RoleCommand<1>>(global_routes));
+        CHECK(first_route.command != second_route.command);
+        CHECK(
+            integration_test::call<fixture::RoleCommand<0>>(*rendering, first_route, {first_route.destination})
+                .storage !=
+            integration_test::call<fixture::RoleCommand<1>>(*rendering, second_route, {second_route.destination})
+                .storage
+        );
         const auto scene_id = integration_test::call<CreateScene>(*rendering, {}).scene;
         const auto a = integration_test::call<CreateView>(*rendering, {scene_id}).view;
         const auto b = integration_test::call<CreateView>(*rendering, {scene_id}).view;
-        auto first = integration_test::call<InstallCapabilities>(
-            *rendering,
-            {selected, ViewRequest{scene_id, a}, ConfigValue{}, source}
+        const auto route_a = integration_test::take(
+            client.commandBinding<fixture::RoleCommand<2>>({role_effect, 0, ViewRequest{scene_id, a}})
         );
-        auto second = integration_test::call<InstallCapabilities>(
-            *rendering,
-            {selected, ViewRequest{scene_id, b}, ConfigValue{}, source}
+        const auto route_b = integration_test::take(
+            client.commandBinding<fixture::RoleCommand<2>>({role_effect, 0, ViewRequest{scene_id, b}})
         );
-        CHECK(fixture::RoleStorage::live == 4);
-        role.scope = scene::ERenderOperationScope::VIEW;
-        role.resource_inputs = {{"test.role", scene::ERenderInputSource::VIEW, selected, 2}};
-        auto inputs_a =
-            integration_test::take(scene::resolveRenderBindingInputs(role, {}, first.inputs, globals.inputs));
-        auto inputs_b =
-            integration_test::take(scene::resolveRenderBindingInputs(role, {}, second.inputs, globals.inputs));
-        CHECK(inputs_a.size() == 1 && inputs_b.size() == 1);
-        CHECK(inputs_a.front().destination != inputs_b.front().destination);
+        CHECK(route_a.destination != route_b.destination);
+        const auto storage_a =
+            integration_test::call<fixture::RoleCommand<2>>(*rendering, route_a, {route_a.destination}).storage;
+        const auto storage_b =
+            integration_test::call<fixture::RoleCommand<2>>(*rendering, route_b, {route_b.destination}).storage;
+        CHECK(storage_a != storage_b && fixture::RoleStorage::live == 4);
         integration_test::call<RemoveView>(*rendering, {scene_id, a});
         integration_test::call<RemoveView>(*rendering, {scene_id, b});
         integration_test::call<RemoveScene>(*rendering, {scene_id});
         CHECK(fixture::RoleStorage::live == 2);
     }
 
-    const auto choices = integration_test::call<ListCapabilities>(
-        *rendering,
-        {std::string(kUiSceneCapability), 1, "lux.render.scene.ui"}
-    );
+    const auto choices =
+        integration_test::call<ListCapabilities>(*rendering, {std::string(kUiSceneCapability), "lux.render.scene.ui"});
     CHECK(choices.implementations.size() == 1);
-    const auto installed = integration_test::call<InstallCapabilities>(
-        *rendering,
-        {choices.implementations.front().selection,
-         GlobalRenderScope{},
-         integration_test::take(ConfigValue::make(UiConfiguration{}))}
+    const auto upload_effect = create_effect(
+        choices.implementations.front().implementation_id,
+        integration_test::take(ConfigValue::make(UiConfiguration{}))
     );
-    const auto input = std::ranges::find(installed.inputs, kSampledTextureInput, &CapabilitiesInstalled::Input::schema);
-    CHECK(input != installed.inputs.end());
-    const auto storage = input->destination;
+    const CommandDestination routes{upload_effect, 0, GlobalRenderScope{}};
+    const auto storage = integration_test::take(client.commandBinding<ImageCommands::Upload>(routes));
+    const auto release_texture = integration_test::take(client.commandBinding<ImageCommands::Release>(routes));
     rdesc::TextureInfo description{};
     description.width = description.height = 1;
     description.channel = 4;
@@ -110,8 +156,16 @@ int main(int argc, char**)
     description.mip_ranges[0] = {0, 4, 1, 1};
     const std::array<std::byte, 4> white{std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255}};
     const std::array<std::byte, 4> green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
-    const auto font = integration_test::call<CreateTexture>(*rendering, {storage, description, white}).texture;
-    const auto picture = integration_test::call<CreateTexture>(*rendering, {storage, description, green}).texture;
+    const auto font = integration_test::call<ImageCommands::Upload>(
+                          *rendering,
+                          storage,
+                          {storage.destination, {description, white}}
+    ).texture;
+    const auto picture = integration_test::call<ImageCommands::Upload>(
+                             *rendering,
+                             storage,
+                             {storage.destination, {description, green}}
+    ).texture;
     const TargetDesc target_description{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
     const auto scene = integration_test::call<CreateScene>(*rendering, {}).scene;
     const auto view = integration_test::call<CreateView>(*rendering, {scene}).view;
@@ -124,7 +178,6 @@ int main(int argc, char**)
     const auto viewport_target = integration_test::call<CreateTarget>(*rendering, {viewport_description}).target;
     UiRasterFeatureConfig viewport{viewport_description};
     viewport.clear = {0, 0.5f, 0, 1};
-    viewport.images = {UiTextureImage{font, GraphImageDesc{1, 1}, "ui"}};
     GraphEffectRequest viewport_program{viewport_description};
     viewport_program.definition.features.push_back(
         {graph_features[0], "viewport", integration_test::take(ConfigValue::make(viewport))}
@@ -135,37 +188,29 @@ int main(int argc, char**)
     const auto viewport_effect =
         integration_test::call<CreateGraphEffect>(*rendering, std::move(viewport_program)).effect;
     integration_test::call<Attach>(*rendering, {viewport_scene, viewport_view, viewport_target, viewport_effect});
-    GraphImageDesc sampled_viewport{1, 1, 1, 1, viewport_description.format};
-    sampled_viewport.extent.source = EImageExtentSource::IMPORTED;
-    UiRasterFeatureConfig ui{target_description};
-    ui.index_type = wide_indices ? EIndexType::UINT32 : EIndexType::UINT16;
-    ui.clear = {0, 0, 0, 1};
-    ui.images = {
-        UiTextureImage{font, GraphImageDesc{1, 1}, "ui"},
-        UiTextureImage{picture, GraphImageDesc{1, 1}, "ui"},
-        UiTargetImage{sampled_viewport}
-    };
+    const std::array images{ImguiImage{0, font, {}}, ImguiImage{17, picture, {}}, ImguiImage{19, {}, viewport_target}};
+    const auto capture_choices = integration_test::call<ListCapabilities>(
+        *rendering,
+        {std::string(cxx::make_basic_type_info<CopyPixelsCapability>().name())}
+    );
+    CHECK(capture_choices.implementations.size() == 1);
     CapturedPixels pixels;
-    GraphEffectRequest effect{target_description};
-    effect.definition.features.push_back({graph_features[0], "ui", integration_test::take(ConfigValue::make(ui))});
-    effect.definition.features.push_back(
-        {graph_features[1], "capture", integration_test::take(ConfigValue::make(CaptureConfig{&pixels}))}
+    CreateEffectRequest effect{target_description};
+    UiConfiguration ui;
+    ui.index_type = sizeof(ImDrawIdx) == 2 ? EIndexType::UINT16 : EIndexType::UINT32;
+    effect.composition.contributions.push_back(
+        {"ui", choices.implementations.front().implementation_id, integration_test::take(ConfigValue::make(ui))}
     );
-    effect.definition.connections.push_back({{0, "color"}, {1, "color"}});
-    effect.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{target_description.format, 1}});
-    effect.definition.outputs.push_back({{1, "pixels"}});
-    effect.definition.inputs.push_back(
-        {{0, uiImagePort(2)},
-         {"viewport", sampled_viewport, EGraphOrigin::IMPORTED, {GraphImageRange{}}, EGraphUse::SAMPLED}}
+    effect.composition.contributions.push_back(
+        {"capture",
+         capture_choices.implementations.front().implementation_id,
+         integration_test::take(ConfigValue::make(CaptureConfig{&pixels}))}
     );
-    const auto program = integration_test::call<CreateGraphEffect>(*rendering, std::move(effect)).effect;
+    effect.composition.outputs = {{"ui", "color"}, {"capture", "pixels"}};
+    const auto program = integration_test::call<CreateEffect>(*rendering, std::move(effect)).effect;
     AttachmentRequest attachment{scene, view, target, program};
-    attachment.target_images.push_back({"viewport", viewport_target});
     const auto attached = integration_test::call<Attach>(*rendering, std::move(attachment));
-    CHECK(attached.draw_lists.size() == 1);
-    const auto update = integration_test::take(client.bind<UpdateDrawList>());
-    const std::array<UiImageSelection, 3> images{{{{0}, 0}, {{17}, 1}, {{19}, 2}}};
-    bool resynchronize = false;
+    const auto update = frameDataBinding<ImguiCapability, ImguiFrameData>({program, 0, attached.attachment});
     std::uint64_t viewport_epoch = 1;
     for (unsigned frame_number = 0; frame_number < 9; ++frame_number)
     {
@@ -175,54 +220,48 @@ int main(int argc, char**)
             resized.width = resized.height = 32;
             viewport_epoch = integration_test::call<ResizeTarget>(*rendering, {viewport_target, resized}).epoch;
         }
-        auto* frame = integration_test::take(client.beginFrame());
-        frame->resynchronize = resynchronize;
         if (frame_number == 5)
         {
-            integration_test::check(bool(client.append(
-                *frame,
-                integration_test::take(client.bind<SetTargetActive>()),
-                SetTargetActive::Request{viewport_target, true, viewport_epoch}
-            )));
+            integration_test::call<SetTargetActive>(*rendering, {viewport_target, true, viewport_epoch});
         }
-        auto vertices = frame->allocate<rdesc::UiVertex>(vertex_base + 12);
-        std::ranges::fill(vertices, rdesc::UiVertex{});
+        auto* frame = integration_test::take(client.beginFrame());
+        FrameWriter writer{*frame};
+        ImDrawList list{nullptr};
+        list.VtxBuffer.resize(vertex_base + 12);
         for (unsigned quad = 0; quad < 3; ++quad)
         {
             const auto color = quad == 0 ? 0x800000ffu : 0xffffffffu;
-            vertices[vertex_base + quad * 4 + 0] = {{7, 11}, {0, 0}, color};
-            vertices[vertex_base + quad * 4 + 1] = {{39, 11}, {1, 0}, color};
+            list.VtxBuffer[vertex_base + quad * 4 + 0] = {{7, 11}, {0, 0}, color};
+            list.VtxBuffer[vertex_base + quad * 4 + 1] = {{39, 11}, {1, 0}, color};
             const auto bottom = quad == 0 ? 27.0f : 43.0f;
-            vertices[vertex_base + quad * 4 + 2] = {{39, bottom}, {1, 1}, color};
-            vertices[vertex_base + quad * 4 + 3] = {{7, bottom}, {0, 1}, color};
+            list.VtxBuffer[vertex_base + quad * 4 + 2] = {{39, bottom}, {1, 1}, color};
+            list.VtxBuffer[vertex_base + quad * 4 + 3] = {{7, bottom}, {0, 1}, color};
         }
-        // Odd 16-bit index count exercises native four-byte copy-tail padding without a whole-stream copy.
-        constexpr std::array<std::uint16_t, 21> triangles{0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2,
-                                                          3, 0, 1, 2, 0, 2, 3, 0, 1, 2};
-        std::span<const std::byte> indices;
-        if (wide_indices)
-        {
-            auto values = frame->allocate<std::uint32_t>(triangles.size());
-            std::ranges::transform(triangles, values.begin(), [&](auto index) { return vertex_base + index; });
-            indices = std::as_bytes(values);
-        }
-        else
-        {
-            indices = std::as_bytes(frame->freeze(std::span(triangles)));
-        }
-        constexpr std::array<rdesc::UiDrawCommand, 3> draws{
-            {{0, 6, 0, {15, 19, 31, 35}, {0}}, {6, 6, 4, {7, 11, 15, 43}, {17}}, {12, 6, 8, {31, 35, 39, 43}, {19}}}
-        };
-        const rdesc::UiDrawData source{vertices, indices, draws, {7, 11}, {32, 32}, {2, 2}, wide_indices ? 4u : 2u};
-        auto selections = images;
+        constexpr std::array<ImDrawIdx, 21> triangles{0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2, 3, 0, 1, 2};
+        list.IdxBuffer.resize(static_cast<int>(triangles.size()));
+        std::copy(triangles.begin(), triangles.end(), list.IdxBuffer.Data);
+        list.CmdBuffer.resize(3);
         const bool invalid_selection = frame_number == 3;
-        if (invalid_selection)
+        const std::array<ImVec4, 3> clips{{{15, 19, 31, 35}, {7, 11, 15, 43}, {31, 35, 39, 43}}};
+        for (unsigned i = 0; i < 3; ++i)
         {
-            selections[0].index = 3;
+            auto& command = list.CmdBuffer[i];
+            command.ClipRect = clips[i];
+            command.TextureId = i == 0 ? (invalid_selection ? 99 : 0) : i == 1 ? 17 : 19;
+            command.IdxOffset = i * 6;
+            command.ElemCount = 6;
+            command.VtxOffset = vertex_base + i * 4;
         }
-        const auto data = integration_test::take(makeUiDrawInput(*frame, source, selections));
-        CHECK(client.append(*frame, update, {attached.attachment, attached.draw_lists[0].second, data}));
-        frame->group_ends.push_back(frame->commands.size());
+        ImDrawData source;
+        source.Valid = true;
+        source.CmdLists.push_back(&list);
+        source.CmdListsCount = 1;
+        source.TotalVtxCount = list.VtxBuffer.Size;
+        source.TotalIdxCount = list.IdxBuffer.Size;
+        source.DisplayPos = {7, 11};
+        source.DisplaySize = {32, 32};
+        source.FramebufferScale = {2, 2};
+        CHECK(captureImguiFrame(writer, update, source, images));
         bool completed = false;
         auto task = integration_test::take(execution.submit(
             {},
@@ -236,9 +275,8 @@ int main(int argc, char**)
                         {
                             reportRenderFailure(response.error, "UI frame");
                         }
-                        CHECK(response.error.type == (invalid_selection ? kDeviceArgument : 0));
+                        CHECK(response.error.type == (invalid_selection ? kRuntimeIdentity : 0));
                         CHECK(response.requires_resynchronization == invalid_selection);
-                        resynchronize = response.requires_resynchronization;
                         CHECK(client.releaseFrame(*frame));
                         completed = true;
                     }
@@ -259,8 +297,8 @@ int main(int argc, char**)
     integration_test::call<RemoveScene>(*rendering, {viewport_scene});
     integration_test::call<RemoveEffect>(*rendering, {viewport_effect});
     integration_test::call<RemoveTarget>(*rendering, viewport_target);
-    integration_test::call<ReleaseTexture>(*rendering, font);
-    integration_test::call<ReleaseTexture>(*rendering, picture);
+    integration_test::call<ImageCommands::Release>(*rendering, release_texture, {release_texture.destination, font});
+    integration_test::call<ImageCommands::Release>(*rendering, release_texture, {release_texture.destination, picture});
     CHECK(rendering->shutdown());
     CHECK(rendering->stats().validation_errors == 0);
     CHECK(pixels.ready.load() != 0 && pixels.frames.size() == 3);

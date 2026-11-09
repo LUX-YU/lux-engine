@@ -1,0 +1,3 @@
+{"types":{"lux::toolchain::ModelCookConfiguration":{"label":"Model import","fields":{
+"uniform_scale":{"label":"Scale","minimum":0.0001},"pre_rotation":{"label":"Rotation"},
+"make_left_handed":{"label":"Left handed"},"import_animations":{"label":"Animations"}}}}}

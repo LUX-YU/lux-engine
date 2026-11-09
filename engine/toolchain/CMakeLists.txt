@@ -13,3 +13,5 @@ add_subdirectory(scene_seed)
 if(TARGET physics2d_simulation)
     add_subdirectory(physics2d)
 endif()
+
+add_subdirectory(scene)

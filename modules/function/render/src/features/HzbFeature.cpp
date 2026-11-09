@@ -12,9 +12,12 @@ namespace lux::render
         {
             const auto& config = *static_cast<const HzbFeatureConfig*>(value);
             const auto& depth = config.depth;
-            const bool invalid_extent = !depth.width || !depth.height || depth.layers != 1 || depth.samples != 1;
+            const bool invalid_extent =
+                (depth.extent.source == EImageExtentSource::FIXED && (!depth.width || !depth.height)) ||
+                depth.layers != 1 || depth.samples != 1;
             const bool invalid_mips =
-                !config.mip_count || config.mip_count > std::bit_width(std::max(depth.width, depth.height));
+                !config.mip_count || (depth.extent.source == EImageExtentSource::FIXED &&
+                 config.mip_count > std::bit_width(std::max(depth.width, depth.height)));
             const bool invalid_format = depth.format != rdesc::ETextureFormat::D32_SFLOAT;
             if (invalid_extent || invalid_mips || invalid_format)
             {
@@ -30,7 +33,13 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> buildHzb(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildHzb(
+            const void* value,
+            std::string_view key,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const HzbFeatureConfig*>(value);
             rdesc::SpirvArtifact shader;

@@ -86,17 +86,56 @@ namespace lux::render
         std::uint32_t offset = 0;
     };
 
+    // Dynamic programs fill these read-only slots at frame preparation. A slot describes a use,
+    // not an allocated Graph resource or a provisional descriptor set/binding.
+    struct RasterPassTemplate final
+    {
+        struct Input final
+        {
+            std::string name;
+            // Vertex/index/indirect and BDA inputs have no descriptor binding.
+            std::optional<rdesc::EDescriptorType> kind;
+            EGraphUse usage = EGraphUse::UNSPECIFIED;
+            // Shader reads use Vertex=1 / Fragment=2. Geometry/indirect stages derive from usage.
+            std::uint32_t stages = 0;
+        };
+
+        std::string purpose;
+        std::vector<Input> inputs;
+        // Fixed graph inputs keep their ordinary hazard/alias analysis. Actual external inputs
+        // are resolved from the slots above and participate in the frame's imported dependencies.
+        std::vector<ResourceAccess> resources;
+        ParameterBinding parameters;
+    };
+
     struct RasterWork final
     {
-        PassInterface interface;
+        struct FixedProgram final
+        {
+            PassInterface interface;
+            GraphicsState graphics;
+            std::vector<ProgramVertexBuffer> vertex_buffers;
+            VDrawCommand draw = DrawVertices{};
+        };
+
+        using VProgram = std::variant<FixedProgram, RasterPassTemplate>;
+        VProgram program;
         std::vector<RasterAttachment> colors;
         std::optional<RasterAttachment> depth;
-        GraphicsState graphics;
-        std::vector<ProgramVertexBuffer> vertex_buffers;
-        VDrawCommand draw = DrawVertices{};
         // Per-pass rectangle in its attachment; absent uses the instance's normalized viewport.
         std::optional<RasterViewport> viewport;
         std::optional<RasterStateInput> state_input; // Prepared CPU parameter record; overrides viewport and bias.
+
+        // Explicit fixed-program authoring; dynamic producers assign RasterPassTemplate instead.
+        [[nodiscard]] FixedProgram& fixed() noexcept
+        {
+            return std::get<FixedProgram>(program);
+        }
+
+        [[nodiscard]] const FixedProgram& fixed() const noexcept
+        {
+            return std::get<FixedProgram>(program);
+        }
     };
 
     struct DispatchArguments final

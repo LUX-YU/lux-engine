@@ -40,7 +40,7 @@ namespace lux::flowforge
         {
             FlowNodeRegistration result;
             result.identity = {graph::nodeTypeId(name), std::move(name), 1};
-            result.payload_type = cxx::typeToken<T>();
+            result.payload_type = cxx::make_basic_type_info<T>();
             result.code = code;
             result.create = [](const object::CodeLease& lease) noexcept
             { return FlowNodePayload::make<T, cloneFunction<T>>(lease); };
@@ -412,7 +412,7 @@ namespace lux::flowforge
         FlowNodeRegistration result;
         constexpr std::string_view name = "lux.flow.native_call";
         result.identity = {graph::nodeTypeId(name), std::string(name), 1};
-        result.payload_type = cxx::typeToken<NativeCallPayload>();
+        result.payload_type = cxx::make_basic_type_info<NativeCallPayload>();
         result.code = std::move(code);
         result.create = [](const object::CodeLease& lease) noexcept
         { return FlowNodePayload::make<NativeCallPayload, cloneNativeCall>(lease); };

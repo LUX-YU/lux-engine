@@ -52,7 +52,7 @@ namespace lux::material
         using Decode = MaterialNodeResult<MaterialNodePayload> (*)(std::string_view, const object::CodeLease&) noexcept;
 
         graph::GraphNodeTypeIdentity identity;
-        cxx::TypeToken payload_type;
+        cxx::type_info payload_type;
         object::CodeLease code{object::CodeLease::builtin()};
         Create create{};
         // Authoring schema admission is independent of compilation eligibility. This callback must

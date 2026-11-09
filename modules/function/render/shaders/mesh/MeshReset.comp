@@ -1,0 +1,30 @@
+#version 450
+layout(local_size_x = 64) in;
+// Records/chunk indices address the dense live-group table, not recycled CPU logical slots.
+struct DrawGroup
+{
+    uint index_count;
+    uint candidate_count;
+    uint first_index;
+    int vertex_offset;
+    uint candidate_offset;
+    uint visible_offset;
+    uint visible_stride;
+    uint view_count;
+    vec4 center;
+    vec4 half_extent;
+};
+layout(set = 0, binding = 0, std430) readonly buffer Groups { DrawGroup records[]; } groups;
+layout(set = 0, binding = 1, std430) writeonly buffer Visible { uint words[]; } visible;
+
+void main()
+{
+    uint stream = gl_GlobalInvocationID.x;
+    uint streams_per_group = groups.records[0].view_count * 2;
+    uint group_index = stream / streams_per_group;
+    if (group_index >= groups.records.length()) return;
+    DrawGroup group = groups.records[group_index];
+    if (group.candidate_count == 0) return;
+    uint view_winding = stream % streams_per_group;
+    visible.words[group.visible_offset + view_winding * group.visible_stride + 1] = 0;
+}

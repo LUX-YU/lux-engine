@@ -1,0 +1,27 @@
+#pragma once
+// Scene-domain wire projection. Position itself has no Scene serialization policy.
+#include <lux/engine/world/SceneGridConfiguration.hpp>
+#include <lux/engine/serialization/Serialization.hpp>
+
+namespace lux::serialization
+{
+{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}    template <> struct TSerializer<::{{ decl.fq_name }}> final
+    {
+        template <class Writer> static SerializationResult
+        write(Writer& writer, const ::{{ decl.fq_name }}& value, const SerializationContext& context) noexcept
+        {
+            return serialization::write(writer,
+                std::tie(value.origin.x, value.origin.y, value.origin.z, value.cell_size), context);
+        }
+
+        template <class Reader> static SerializationResult
+        read(Reader& reader, ::{{ decl.fq_name }}& value, const SerializationContext& context) noexcept
+        {
+            ::{{ decl.fq_name }} candidate;
+            auto fields = std::tie(candidate.origin.x, candidate.origin.y, candidate.origin.z, candidate.cell_size);
+            auto decoded = serialization::read(reader, fields, context);
+            if (decoded) value = candidate;
+            return decoded;
+        }
+    };
+{% endfor %}} // namespace lux::serialization

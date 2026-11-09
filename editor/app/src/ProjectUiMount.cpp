@@ -1,14 +1,55 @@
 #include <exception>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/ProjectUiMount.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <unordered_map>
 #include <utility>
 
 namespace lux::editor::detail
 {
+    ProjectResult<ui::PanePlacement> ProjectUiMount::placement(const ProjectLayout& layout) noexcept
+    {
+        if (auto valid = validateProjectLayout(layout); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
+        std::unordered_map<std::string_view, std::uint32_t> panes;
+        panes.reserve(layout.panes.size());
+        for (std::uint32_t i = 0; i < layout.panes.size(); ++i)
+        {
+            panes.emplace(layout.panes[i].name, i);
+        }
+        ui::PanePlacement placement;
+        placement.tree.nodes.reserve(layout.nodes.size());
+        placement.added.reserve(layout.panes.size());
+        for (std::uint32_t i = 0; i < layout.nodes.size(); ++i)
+        {
+            const auto& node = layout.nodes[i];
+            const auto split = node.split == ELayoutSplit::LEAF         ? ui::EDockSplit::LEAF
+                               : node.split == ELayoutSplit::HORIZONTAL ? ui::EDockSplit::HORIZONTAL
+                                                                        : ui::EDockSplit::VERTICAL;
+            placement.tree.nodes.push_back({split, node.first, node.second, node.ratio});
+            for (const auto& key : node.panes)
+            {
+                placement.added.push_back({i, panes.find(key)->second});
+            }
+        }
+        for (const auto& surface : layout.surfaces)
+        {
+            placement.tree.surfaces.push_back(
+                {surface.node, {{surface.x, surface.y}, {surface.width, surface.height}}, surface.floating}
+            );
+        }
+        return placement;
+    }
+
     ProjectUiMount::~ProjectUiMount() noexcept
     {
-        clear();
+        if (!unmount())
+        {
+            std::terminate();
+        }
     }
 
     ProjectUiMount::ProjectUiMount(ProjectUiMount&& other) noexcept
@@ -20,7 +61,10 @@ namespace lux::editor::detail
     {
         if (this != &other)
         {
-            clear();
+            if (!unmount())
+            {
+                std::terminate();
+            }
             root_ = std::exchange(other.root_, nullptr);
             handles_ = std::move(other.handles_);
         }
@@ -53,24 +97,27 @@ namespace lux::editor::detail
         handles_.clear();
     }
 
-    void ProjectUiMount::clear() noexcept
+    FrameworkResult<void> ProjectUiMount::unmount() noexcept
     {
         if (!root_)
         {
-            return;
+            return {};
         }
         if (handles_.empty())
         {
             disarm();
-            return;
+            return {};
         }
         auto commit = [this](std::span<const ui::PaneHandle>) noexcept { disarm(); };
         auto removed = root_->replacePanes(handles_, {}, commit);
         if (!removed)
         {
-            std::terminate();
+            return cxx::unexpected(
+                error::Error{Errors::EditorCannotMountProjectWindows, {static_cast<std::uint64_t>(removed.error())}}
+            );
         }
         // Root is final and this responsibility is disarmed before user destructors run.
         removed->clear();
+        return {};
     }
 } // namespace lux::editor::detail

@@ -4,6 +4,14 @@
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <string_view>
+#include <tuple>
+
+struct RenderProbeCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<>;
+    using PerFrameData = std::tuple<>;
+};
 
 namespace lux::platform::ipc
 {
@@ -12,13 +20,11 @@ namespace lux::platform::ipc
 
 namespace mesh_sample
 {
-    // Client implementation has no Native includes or link dependency. The application supplies the service name and a
-    // real cold-query CommandId.
+    // Each caller owns a RenderClient and drives its replies; no Engine or Native headers are required.
     void runClients(
-        lux::platform::ipc::IpcRequester& main,
+        lux::platform::ipc::IpcRequester main,
         std::string_view channel,
-        lux::render::CommandId list_commands,
         const char* cooked_fragment,
-        std::array<lux::render::FeatureId, 3> graph_features
+        std::array<lux::render::CapabilityImplementationId, 2> implementations
     );
 } // namespace mesh_sample

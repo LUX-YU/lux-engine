@@ -14,10 +14,11 @@ namespace lux::render
     struct FeatureBuildInput final
     {
         FeatureName type;
-        cxx::TypeToken config_type;
+        cxx::type_info config_type;
         const FeatureGraphOps* graph = nullptr;
         const ConfigValue* config = nullptr;
         std::string_view contribution_key;
+        std::uint32_t parameter_group = 0;
     };
 
     struct FeatureContribution final
@@ -25,6 +26,7 @@ namespace lux::render
         std::size_t input_index;
         std::size_t first_pass;
         std::size_t pass_count;
+        std::uint32_t parameter_group = 0;
     };
 
     struct FeatureAssembly final
@@ -41,6 +43,7 @@ namespace lux::render
     // Synchronous cold assembly. Inputs/configurations are borrowed for this call only; the result owns
     // graph, analysis and Attach arguments. Failure publishes no Effect and leaves inputs untouched.
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<FeatureAssembly> composeFeatures(
+        const detail::EnabledDeviceFeatures& enabled,
         std::span<const FeatureBuildInput> instances,
         std::size_t config_byte_limit,
         std::span<const FeatureConnection> connections,

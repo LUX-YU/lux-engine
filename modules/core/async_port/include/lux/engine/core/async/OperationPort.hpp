@@ -8,7 +8,7 @@
  * registry, dependency graph or worker policy.
  */
 
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstddef>
@@ -90,9 +90,9 @@ namespace lux::async
     template <Operation T>
     using OperationOutcome = lux::cxx::expected<typename T::Value, TOperationFailure<typename T::Error>>;
 
-    template <Operation T> [[nodiscard]] constexpr lux::cxx::TypeToken operationType() noexcept
+    template <Operation T> [[nodiscard]] constexpr lux::cxx::type_info operationType() noexcept
     {
-        return lux::cxx::typeToken<T>();
+        return lux::cxx::make_basic_type_info<T>();
     }
 
     namespace detail

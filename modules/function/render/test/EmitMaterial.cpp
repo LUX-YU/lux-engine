@@ -30,15 +30,23 @@ int main(int argc, char** argv)
     {
         material_test::check(material_test::connect(graph, parameter, 0, surface, 0));
     }
-    constexpr std::array purposes{lux::rdesc::EMaterialPurpose::FORWARD};
+    constexpr std::array purposes{lux::rdesc::EMaterialPurpose::FORWARD, lux::rdesc::EMaterialPurpose::SHADOW};
     auto compiled = compileMaterial(graph, purposes);
     if (!compiled)
     {
         std::fprintf(stderr, "%s\n", compiled.error().message.c_str());
     }
     material_test::check(compiled.has_value());
-    const auto& words = compiled->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words;
-    std::ofstream output(argv[1], std::ios::binary);
-    output.write(reinterpret_cast<const char*>(words.data()), static_cast<std::streamsize>(words.size() * 4));
-    return output ? 0 : 3;
+    for (const auto purpose : purposes)
+    {
+        const auto& words = compiled->programs.find(purpose)->shader.stages.front().words;
+        const auto path = std::string(argv[1]) + (purpose == lux::rdesc::EMaterialPurpose::SHADOW ? ".shadow" : "");
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(words.data()), static_cast<std::streamsize>(words.size() * 4));
+        if (!output)
+        {
+            return 3;
+        }
+    }
+    return 0;
 }

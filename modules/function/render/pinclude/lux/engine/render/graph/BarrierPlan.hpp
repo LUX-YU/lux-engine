@@ -4,15 +4,21 @@
 
 namespace lux::render::detail
 {
-    struct PipelineLayoutPlan;
+    struct ShaderBindingPlan;
+
+    [[nodiscard]] std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>
+    collectUseStages(const RenderGraph&, const ShaderBindingPlan&) noexcept;
+
+    // Compact only fixed subresource ranges; publish reverse indexes after all planning mutations.
+    void compactImageTransitions(std::span<CompiledResource>, RecordingProgram&) noexcept;
 
     [[nodiscard]] RenderResult<void> planBarriers(
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        const PipelineLayoutPlan& layouts,
+        const ShaderBindingPlan& layouts,
         std::span<CompiledResource> resources,
         RecordingProgram& recording,
-        const TargetDesc& target,
+        const EffectOutputDesc& target,
         const PhysicalResourcePlan* physical = nullptr
     ) noexcept;
 } // namespace lux::render::detail

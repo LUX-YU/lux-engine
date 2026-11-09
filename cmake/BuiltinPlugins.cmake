@@ -11,7 +11,12 @@ if(TARGET physics2d_simulation)
             ${_physics_source}/src/Box2DWorld.cpp
             ${_physics_source}/include/lux/engine/physics2d/Physics2DComponents.hpp
             ${_physics_source}/include/lux/engine/physics2d/Physics2DSystem.hpp
-            ${_physics_source}/include/lux/engine/physics2d/abilities/PhysicsQuery2D.hpp)
+            ${_physics_source}/include/lux/engine/physics2d/abilities/PhysicsQuery2D.hpp
+        VALUE_SOURCE ${_physics_source}/src/Physics2DPluginExports.cpp
+        VALUE_HEADERS
+            ${_physics_source}/include/lux/engine/physics2d/Physics2DComponents.hpp
+            ${_physics_source}/include/lux/engine/physics2d/Physics2DSystem.hpp
+    )
     add_dependencies(physics2d_simulation_plugin_identity physics2d_declaration)
 endif()
 if(TARGET builtin_runtime_plugin)
@@ -19,7 +24,16 @@ if(TARGET builtin_runtime_plugin)
     get_target_property(_runtime_binary builtin_runtime_plugin BINARY_DIR)
     lux_add_plugin_exports(TARGET builtin_runtime_plugin MODULE_ID lux.builtin.runtime
         DESCRIPTION "${_runtime_binary}/builtin.declaration.json"
-        INPUTS ${_runtime_source}/BuiltinRuntimeExports.cpp "${_runtime_binary}/builtin.declaration.json")
+        INPUTS ${_runtime_source}/BuiltinRuntimeExports.cpp "${_runtime_binary}/builtin.declaration.json"
+        VALUE_TARGET builtin_runtime_exports
+        VALUE_SOURCE ${_runtime_source}/BuiltinRuntimeExports.cpp
+        VALUE_HEADERS
+            ${PROJECT_SOURCE_DIR}/engine/foundation/ecs/hierarchy/include/lux/engine/ecs/Parent.hpp
+            ${PROJECT_SOURCE_DIR}/engine/domain/components/transform/include/lux/engine/ecs/Transform.hpp
+            ${PROJECT_SOURCE_DIR}/engine/domain/components/visual/include/lux/engine/ecs/Visual.hpp
+            ${PROJECT_SOURCE_DIR}/engine/systems/transform/include/lux/engine/scene/TransformSystem.hpp
+            ${PROJECT_SOURCE_DIR}/engine/domain/world/composition/include/lux/engine/world/ObserverComponent.hpp
+    )
     add_dependencies(builtin_runtime_plugin_plugin_identity builtin_runtime_declaration)
 endif()
 if(TARGET builtin_scene_render_plugin)
@@ -27,7 +41,11 @@ if(TARGET builtin_scene_render_plugin)
     get_target_property(_render_binary builtin_scene_render_plugin BINARY_DIR)
     lux_add_plugin_exports(TARGET builtin_scene_render_plugin MODULE_ID lux.builtin.scene_render
         DESCRIPTION "${_render_binary}/scene-render.declaration.json"
-        INPUTS ${_render_source}/BuiltinSceneRenderExports.cpp "${_render_binary}/scene-render.declaration.json")
+        INPUTS ${_render_source}/BuiltinSceneRenderExports.cpp "${_render_binary}/scene-render.declaration.json"
+        VALUE_TARGET builtin_scene_render_exports
+        VALUE_SOURCE ${_render_source}/BuiltinSceneRenderExports.cpp
+        VALUE_HEADERS ${PROJECT_SOURCE_DIR}/engine/domain/components/view/include/lux/engine/scene/ViewComponent.hpp
+    )
     add_dependencies(builtin_scene_render_plugin_plugin_identity builtin_scene_render_declaration)
 endif()
 

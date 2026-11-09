@@ -38,7 +38,7 @@ namespace lux::material
     struct TextureSlotDecl
     {
         std::string name;
-        lux::asset::AssetId texture;
+        lux::asset::AssetId texture; // Null means the neutral white texture, not a missing declaration.
         friend bool operator==(const TextureSlotDecl&, const TextureSlotDecl&) = default;
     };
 

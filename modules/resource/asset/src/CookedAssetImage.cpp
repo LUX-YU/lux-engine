@@ -38,13 +38,6 @@ namespace lux::asset
 
     namespace
     {
-        struct WireAssetInfoV1 final
-        {
-            std::array<std::uint8_t, 16U> id{};
-            std::uint32_t type{};
-            std::uint64_t date{};
-        };
-
         struct WireAssetInfoV2 final
         {
             std::array<std::uint8_t, 16U> id{};
@@ -72,15 +65,11 @@ namespace lux::asset
             std::uint64_t size{};
         };
 
-        using WireHeaderV1 = TWireHeader<WireAssetInfoV1>;
         using WireHeaderV2 = TWireHeader<WireAssetInfoV2>;
 
-        static_assert(sizeof(WireAssetInfoV1) == 32U);
         static_assert(sizeof(WireAssetInfoV2) == 360U);
-        static_assert(sizeof(WireHeaderV1) == 72U);
         static_assert(sizeof(WireHeaderV2) == 400U);
         static_assert(sizeof(AuxiliaryHeader) == 16U);
-        static_assert(std::is_trivially_copyable_v<WireHeaderV1>);
         static_assert(std::is_trivially_copyable_v<WireHeaderV2>);
 
         [[nodiscard]] AssetDecodeFailure failure(EAssetDecodeError code, std::size_t offset = 0U) noexcept
@@ -93,6 +82,63 @@ namespace lux::asset
             return offset <= total && size <= total - offset;
         }
     } // namespace
+
+    cxx::expected<void, AssetDecodeFailure> inspectCookedAssetHeader(
+        std::span<const std::byte> prefix,
+        std::uint64_t file_size,
+        CookedAssetMetadata& metadata,
+        std::uint32_t& magic
+    ) noexcept
+    {
+        if (prefix.size() < 8)
+        {
+            return cxx::unexpected(failure(EAssetDecodeError::TRUNCATED));
+        }
+        std::uint32_t version;
+        std::memcpy(&version, prefix.data() + 4, sizeof(version));
+        auto inspect = [&]<class Header>() noexcept -> cxx::expected<void, AssetDecodeFailure>
+        {
+            if (prefix.size() < sizeof(Header))
+            {
+                return cxx::unexpected(failure(EAssetDecodeError::TRUNCATED));
+            }
+            Header header{};
+            std::memcpy(&header, prefix.data(), sizeof(header));
+            const bool invalid_info = header.info_offset != sizeof(Header) || header.info_offset > file_size ||
+                header.info_size > file_size - header.info_offset;
+            const bool invalid_data = header.data_offset > file_size ||
+                header.data_size > file_size - header.data_offset;
+            if (invalid_info || invalid_data)
+            {
+                return cxx::unexpected(failure(EAssetDecodeError::INVALID_LAYOUT));
+            }
+            if (header.data_offset != header.info_offset + header.info_size)
+            {
+                return cxx::unexpected(failure(EAssetDecodeError::INVALID_LAYOUT));
+            }
+            CookedAssetMetadata value{AssetId{header.metadata.id}, header.metadata.type, header.metadata.date};
+            if (value.id.isNull())
+            {
+                return cxx::unexpected(failure(EAssetDecodeError::INVALID_ASSET_ID));
+            }
+            if constexpr (std::same_as<Header, WireHeaderV2>)
+            {
+                value.display_name = header.metadata.display_name;
+                value.source_path = header.metadata.source_path;
+                value.source_mtime = header.metadata.source_mtime;
+            }
+            metadata = value;
+            magic = header.magic;
+            return {};
+        };
+        switch (version)
+        {
+        case kCookedAssetVersionV2:
+            return inspect.template operator()<WireHeaderV2>();
+        default:
+            return cxx::unexpected(failure(EAssetDecodeError::UNSUPPORTED_VERSION));
+        }
+    }
 
     std::uint32_t CookedAssetImage::magic() const noexcept
     {
@@ -225,8 +271,6 @@ namespace lux::asset
                 return result;
             };
 
-            if (version == kCookedAssetVersionV1)
-                return inspect.template operator()<WireHeaderV1>();
             if (version == kCookedAssetVersionV2)
                 return inspect.template operator()<WireHeaderV2>();
             return lux::cxx::unexpected(failure(EAssetDecodeError::UNSUPPORTED_VERSION, sizeof(std::uint32_t)));

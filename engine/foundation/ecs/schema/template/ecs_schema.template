@@ -1,0 +1,60 @@
+#pragma once
+// Generated module-local ECS schema projection with owned value decoding and immediate installation.
+#include <lux/engine/ecs/ComponentDecode.hpp>
+#include <lux/engine/ecs/ComponentSchema.hpp>
+#include <lux/engine/ecs/WorldComponentArchive.hpp>
+#include <array>
+#include <span>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+
+namespace lux::ecs::generated
+{
+    [[nodiscard]] inline std::span<const ComponentSchema>
+    {{ projection_symbol }}ComponentSchemas() noexcept
+    {
+        static const std::array schemas{
+{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") %}{% if emitted %},
+{% endif %}            []() noexcept
+            {
+                auto schema = makeComponentSchema<::{{ decl.fq_name }}>(
+                    componentSchemaId("{{ annotation_get(decl, "schema") }}"),
+                    {{ annotation_get(decl, "version") }}u,
+                    {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %},
+                    {},
+                    {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentDecodeEmplace<::{{ decl.fq_name }}, {{ annotation_get(decl, "version") }}u>(){% endif %},
+                    EComponentSemanticKind::{{ annotation_get(decl, "semantic") }},
+                    {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentCapture<::{{ decl.fq_name }}>(){% endif %},
+                    {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentDecodeValue<::{{ decl.fq_name }}, {{ annotation_get(decl, "version") }}u>(){% endif %},
+                    {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentValueCapture<::{{ decl.fq_name }}>(){% endif %},
+                    {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentReferences<::{{ decl.fq_name }}>(){% endif %},
+                    {% if annotation_get(decl, "create") == "DEFAULT" %}directComponentCreate<::{{ decl.fq_name }}>(){% else %}nullptr{% endif %}
+                );
+{% if annotation_get(decl, "persistent") == true %}                schema.persistent = true;
+                schema.encode = +[](
+                    const Registry& registry, Entity entity,
+                    std::vector<std::byte>& output, const serialization::SerializationBudget& budget
+                ) noexcept -> serialization::SerializationResult
+                {
+                    const auto* value = registry.try_get<::{{ decl.fq_name }}>(entity);
+                    if (!value)
+                    {
+                        return cxx::unexpected(serialization::SerializationFailure{
+                            serialization::ESerializationError::INVALID_VALUE, 0
+                        });
+                    }
+                    std::vector<std::byte> candidate;
+                    serialization::BinaryWriter binary(candidate);
+                    TWorldComponentArchive writer(binary, registry);
+                    auto encoded = serialization::write(writer, *value, budget);
+                    if (encoded)
+                    {
+                        output = std::move(candidate);
+                    }
+                    return encoded;
+                };
+{% endif %}                return schema;
+            }(){% set emitted = true %}{% endif %}{% endfor %}
+        };
+        return schemas;
+    }
+} // namespace lux::ecs::generated

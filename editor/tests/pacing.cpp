@@ -2,11 +2,12 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
+#include <functional>
+#include <lux/engine/Engine.hpp>
+#include <lux/engine/editor/EditorApplication.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/object/LuxObject.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/systems/render/RenderExecution.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -45,9 +46,9 @@ namespace
         void update() noexcept override
         {
             ++state.updates;
-            if (close_window)
+            if (close_engine)
             {
-                close_window->exit();
+                close_engine->requestClose();
             }
             if (!scheduled)
             {
@@ -60,23 +61,25 @@ namespace
         }
 
         ui::Label label;
-        window::LuxWindow* close_window{};
+        engine::Engine* close_engine{};
         ProbeState& state;
         bool scheduled{};
     };
 
     struct Receiver final : object::LuxObject
     {
-        explicit Receiver(editor::LuxEngine& value) : host(value) {}
+        explicit Receiver(editor::EditorApplication& value) : host(value) {}
 
         object::TSignal<> finished{*this};
-        editor::LuxEngine& host;
+        editor::EditorApplication& host;
         bool called{};
+        std::function<void()> finish_measurement;
 
         void complete() noexcept
         {
             called = true;
-            host.window().exit();
+            finish_measurement();
+            host.engine().requestClose();
         }
 
         void queue() noexcept
@@ -86,7 +89,7 @@ namespace
         }
     };
 
-    auto timer(editor::LuxEngine& host, Receiver& receiver)
+    auto timer(editor::EditorApplication& host, Receiver& receiver)
     {
         auto& runtime = host.engine().execution();
         using Result = cxx::expected<void, execution::ETimerError>;
@@ -102,14 +105,14 @@ namespace
                  );
              },
              consume_result =
-                 [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
+                 [&](execution::ExecutionResult<void, execution::ETimerError>&& result) noexcept
              {
                  assert(result);
                  receiver.queue(); // Work from dispatch reaches the existing Object batch.
              }](lux::execution::TaskReporter reporter) mutable noexcept
             {
                 auto ready =
-                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                    stdexec::continues_on(lux::execution::asResult(make_work(reporter)), runtime.mainScheduler());
                 return stdexec::then(
                     std::move(ready),
                     [consume_result = std::move(consume_result)](auto result) mutable noexcept
@@ -125,7 +128,7 @@ namespace
 
     void run(bool vsync, bool minimized, bool native_close)
     {
-        auto made = editor::LuxEngine::create(fixture::loadedConfig("Framework pacing", 640, 480, vsync));
+        auto made = fixture::createLoadedEditor(fixture::loadedConfig("Framework pacing", 640, 480, vsync));
         assert(made);
         auto host = std::move(*made);
         ProbeState state;
@@ -141,6 +144,14 @@ namespace
             object::EDelivery::QUEUED
         );
         assert(connection);
+        // Project readiness does not promise the first UI presentation. Qualify idle pacing only after it.
+        const auto presentation_deadline = std::chrono::steady_clock::now() + 20s;
+        while (host->rendering().stats().presentations == 0)
+        {
+            assert(std::chrono::steady_clock::now() < presentation_deadline);
+            assert(fixture::stepEditor(*host));
+            std::this_thread::sleep_for(1ms);
+        }
 #if defined(_WIN32)
         const auto hwnd = static_cast<HWND>(host->window().nativeHandle());
         if (minimized)
@@ -151,7 +162,20 @@ namespace
         // Observe only after a real timer wakes the public event loop. No public
         // frame hook or host-owned profiling state is used by this SDK consumer.
         std::size_t before_updates{}, before_frames{}, before_messages{};
-        std::chrono::steady_clock::time_point started;
+        std::chrono::steady_clock::time_point started, finished;
+        std::size_t final_updates{}, final_frames{};
+        const auto finish_measurement = [&]() noexcept
+        {
+            finished = std::chrono::steady_clock::now();
+            final_updates = state.updates;
+            final_frames = host->rendering().stats().presentations;
+        };
+        receiver.finish_measurement = finish_measurement;
+        host->window().on_close = [&](const window::WindowCloseEvent&) noexcept
+        {
+            finish_measurement();
+            host->engine().requestClose(); // The replacement callback owns the actual close request.
+        };
         execution::Task task;
         std::jthread close;
         bool warmed{};
@@ -172,7 +196,7 @@ namespace
                  );
              },
              consume_result =
-                 [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
+                 [&](execution::ExecutionResult<void, execution::ETimerError>&& result) noexcept
              {
                  assert(result && state.changed);
                  warmed = true;
@@ -201,7 +225,7 @@ namespace
              }](lux::execution::TaskReporter reporter) mutable noexcept
             {
                 auto ready =
-                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), execution.mainScheduler());
+                    stdexec::continues_on(lux::execution::asResult(make_work(reporter)), execution.mainScheduler());
                 return stdexec::then(
                     std::move(ready),
                     [consume_result = std::move(consume_result)](auto result) mutable noexcept
@@ -216,9 +240,11 @@ namespace
         assert(warm);
         assert(host->run());
         assert(warmed);
-        const auto elapsed = std::chrono::steady_clock::now() - started;
-        const auto iterations = state.updates - before_updates;
-        const auto frames = host->rendering().stats().presentations - before_frames;
+        const auto elapsed = finished - started;
+        const auto iterations = final_updates - before_updates;
+        const auto frames = final_frames - before_frames;
+        const auto cleanup = std::chrono::steady_clock::now() - finished;
+        assert(cleanup < 3s); // Shutdown callbacks are measured separately from the stable idle interval.
         std::printf(
             "PACING vsync=%d minimized=%d native=%d updates=%llu rendered=%llu elapsed_ms=%.3f\n",
             vsync,
@@ -228,6 +254,7 @@ namespace
             static_cast<unsigned long long>(frames),
             std::chrono::duration<double, std::milli>(elapsed).count()
         );
+        std::fflush(stdout);
         assert(elapsed >= 650ms && elapsed < 3s);
         assert(native_close || receiver.called);
         assert(native_close || object::ObjectRuntime::instance().statistics().posted > before_messages);
@@ -249,19 +276,22 @@ namespace
 
     void closeDuringMaintenance()
     {
-        auto made = editor::LuxEngine::create(fixture::loadedConfig("Close during maintenance", 640, 480));
+        auto made = fixture::createLoadedEditor(fixture::loadedConfig("Close during maintenance", 640, 480));
         assert(made);
         auto host = std::move(*made);
         ProbeState state;
         auto pane = std::make_unique<Probe>(state);
-        pane->close_window = &host->window();
+        pane->close_engine = &host->engine();
         std::unique_ptr<ui::Pane> owner = std::move(pane);
         assert(host->window().uiRoot().addPane(std::move(owner)));
 #if defined(_WIN32)
         ShowWindow(static_cast<HWND>(host->window().nativeHandle()), SW_MINIMIZE);
 #endif
         assert(host->run());
-        assert(state.destroyed && state.updates <= 2);
+        assert(state.destroyed && state.updates != 0);
+        const auto completed_updates = state.updates;
+        assert(host->window().uiRoot().update());
+        assert(state.updates == completed_updates); // Modal shutdown maintenance never calls a released Pane.
     }
 } // namespace
 

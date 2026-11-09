@@ -1,3 +1,4 @@
+#include <cmath>
 #include <lux/engine/render/features/ShadowMapFeature.hpp>
 
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
@@ -9,8 +10,8 @@ namespace lux::render
 {
     template <> struct ConfigValueTraits<detail::ShadowProjectionBinding::Description> final
     {
-        static RenderResult<std::size_t> retainedBytes(const detail::ShadowProjectionBinding::Description& value
-        ) noexcept
+        static RenderResult<std::size_t>
+        retainedBytes(const detail::ShadowProjectionBinding::Description& value) noexcept
         {
             auto bytes = ConfigValueTraits<ShadowMapFeatureConfig>::retainedBytes(value.config);
             return bytes ? RenderResult<std::size_t>{*bytes + sizeof(value) - sizeof(value.config)}
@@ -23,9 +24,13 @@ namespace lux::render
         RenderResult<void> describeShadows(const void* value, std::string_view, FeaturePorts& ports) noexcept
         {
             const auto& config = *static_cast<const ShadowMapFeatureConfig*>(value);
-            if (auto valid = detail::validateShadowConfiguration(config); !valid)
+            const bool invalid_shape = config.pcf_radius > 4 || config.shape.resolution <= 2 * (config.pcf_radius + 2);
+            const bool invalid_inputs = config.lights.empty() || !std::isfinite(config.distance) ||
+                                        config.distance <= 0 ||
+                                        config.camera_offset > UINT32_MAX - sizeof(ShadowCamera);
+            if (invalid_shape || invalid_inputs)
             {
-                return valid;
+                return cxx::unexpected(RenderError{kFeatureContract});
             }
             const auto add = [&](std::string name, std::uint64_t bytes, std::string_view semantic)
             {
@@ -60,7 +65,13 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> buildShadows(const void* value, std::string_view, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildShadows(
+            const void* value,
+            std::string_view,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const ShadowMapFeatureConfig*>(value);
             const std::array<GraphResourceId, 4> outputs{
@@ -95,20 +106,15 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<ShadowMapFeatureConfig>::retainedBytes(
-        const ShadowMapFeatureConfig& value
-    ) noexcept
+    RenderResult<std::size_t>
+    ConfigValueTraits<ShadowMapFeatureConfig>::retainedBytes(const ShadowMapFeatureConfig& value) noexcept
     {
-        auto bytes = sizeof(value) + value.casters.capacity() * sizeof(ShadowLightSelection);
+        auto bytes = sizeof(value);
         const auto address = reinterpret_cast<std::uintptr_t>(value.lights.data());
         const auto begin = reinterpret_cast<std::uintptr_t>(&value.lights);
         if (address < begin || address >= begin + sizeof(value.lights))
         {
             bytes += value.lights.capacity() + 1;
-        }
-        for (const auto& caster : value.casters)
-        {
-            bytes += caster.cascade_far_distances.capacity() * sizeof(float);
         }
         return bytes;
     }

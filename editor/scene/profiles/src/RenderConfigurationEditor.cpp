@@ -1,73 +1,144 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <algorithm>
 #include <imgui.h>
-#include <lux/engine/EngineContext.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/Engine.hpp>
+#include <lux/engine/editor/BuiltinValueTypes.value_editor.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/RenderConfigurationEditor.hpp>
+#include <lux/engine/editor/SceneConfigurationForm.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/render/RenderBindingPlan.hpp>
-#include <lux/engine/ui/Element.hpp>
+#include <lux/engine/systems/render/RenderExecution.hpp>
+#include <lux/engine/systems/render/RenderSystemConfiguration.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor
 {
     namespace
     {
-        class RenderConfigurationEditor final : public ui::Element
+        template <class Value, auto Decode, auto Encode> class ConfigurationFields final : public SceneConfigurationForm
+        {
+        public:
+            explicit ConfigurationFields(std::span<const std::byte> bytes) noexcept
+            {
+                if (bytes.empty())
+                {
+                    valid_ = true;
+                    return;
+                }
+                auto value = Decode(bytes);
+                valid_ = bool(value);
+                if (value)
+                {
+                    value_ = std::move(*value);
+                }
+            }
+
+            bool serialize(std::vector<std::byte>& output) const noexcept override
+            {
+                if (!valid_)
+                {
+                    return false;
+                }
+                auto result = Encode(value_);
+                if (!result)
+                {
+                    return false;
+                }
+                output = std::move(result->bytes);
+                return true;
+            }
+
+        private:
+            ui::SizeHint sizeHintContent() noexcept override
+            {
+                ui::SizeHint result;
+                result.minimum = {180, 32};
+                result.preferred = {320, 160};
+                return result;
+            }
+
+            void draw() noexcept override
+            {
+                if (!valid_)
+                {
+                    ImGui::TextWrapped("Invalid configuration bytes; reset the selected contribution to edit.");
+                    return;
+                }
+                if (editValue(ValueEditOptions{}, value_))
+                {
+                    invalid_fields_ = !Encode(value_);
+                    static_cast<void>(emit(edited));
+                    requestUpdate();
+                }
+                if (invalid_fields_)
+                {
+                    ImGui::TextWrapped("Invalid field value; Apply will preserve the current configuration.");
+                }
+            }
+
+            Value value_{};
+            bool valid_ = false;
+            bool invalid_fields_ = false;
+        };
+
+        template <class Value, auto Decode, auto Encode>
+        FrameworkResult<void> registerConfigurationFields(EditorComposition& composition) noexcept
+        {
+            using Widget = ConfigurationFields<Value, Decode, Encode>;
+            return composition.registerSceneConfigurationEditor(
+                {{},
+                 cxx::make_basic_type_info<Value>(),
+                 +[](EditorContext&, std::span<const std::byte> bytes
+                  ) noexcept -> std::unique_ptr<SceneConfigurationForm> { return std::make_unique<Widget>(bytes); }}
+            );
+        }
+
+        class RenderConfigurationEditor final : public SceneConfigurationForm
         {
         public:
             RenderConfigurationEditor(EditorContext& context, std::span<const std::byte> bytes) noexcept
+                : context_(context)
             {
-                valid_ = scene::renderConfigurationCodec().decode(bytes, &configuration_).has_value();
-                auto rendering = context.extensions().find<engine::render::RenderExecution>();
+                valid_ = ::lux::engine::render::renderConfigurationCodec().decode(bytes, &configuration_).has_value();
+                auto* rendering = context.extensions().find<::lux::engine::render::RenderExecution>();
                 if (!rendering)
                 {
-                    status_ = "Render is unavailable in this session; the stored configuration is preserved";
-                    return;
-                }
-                bindings_ = context.extensions().find<scene::RenderBindingDeclarations>();
-                if (!bindings_)
-                {
-                    status_ = "Scene input bindings are unavailable; the stored configuration is preserved";
+                    status_ = "Render declarations are unavailable; stored bytes are preserved";
                     return;
                 }
                 auto& client = rendering->mainClient();
                 auto command = client.bind<lux::render::ListCapabilities>();
                 if (!command)
                 {
-                    status_ = "Capability discovery is unavailable";
+                    status_ = "Capability discovery unavailable";
                     return;
                 }
                 const auto target = objectId();
-                auto work = execution::taskResult(
-                    stdexec::starts_on(context.engine().execution().mainScheduler(), query(client, *command))
+                auto work = execution::asResult(
+                    stdexec::starts_on(execution::ExecutionRuntime::instance().mainScheduler(), query(client, *command))
                 );
-                auto accepted = context.engine().execution().spawn(stdexec::then(
+                auto accepted = execution::ExecutionRuntime::instance().spawn(stdexec::then(
                     std::move(work),
                     [target](auto&& result) noexcept
                     {
-                        auto found = object::ObjectRuntime::instance().resolve(target);
-                        if (!found)
+                        auto resolved = object::ObjectRuntime::instance().resolve(target);
+                        if (!resolved)
                         {
                             return;
                         }
-                        auto& editor = *static_cast<RenderConfigurationEditor*>(*found);
+                        auto& editor = *static_cast<RenderConfigurationEditor*>(*resolved);
                         if (result)
                         {
-                            editor.adoptSupports(std::move(*result));
-                            editor.status_ = "Select a supported capability and implementation";
+                            editor.supports_ = std::move(*result);
+                            editor.rebuildDrafts();
+                            editor.status_ = "Select capabilities, their implementation settings, and a final output";
                         }
                         else
                         {
-                            editor.status_ = "Capability discovery failed; the stored configuration is preserved";
+                            editor.status_ = "Capability discovery failed; configuration is preserved";
                         }
-                        if (auto* pane = editor.containingPane())
-                        {
-                            pane->requestUpdate();
-                        }
+                        editor.requestUpdate();
                     }
                 ));
                 if (!accepted)
@@ -76,18 +147,33 @@ namespace lux::editor
                 }
             }
 
-            bool serialize(std::vector<std::byte>& output) const noexcept
+            ~RenderConfigurationEditor() noexcept override
             {
-                return valid_ && scene::renderConfigurationCodec().encode(&configuration_, output).has_value();
+                clearElements();
+            }
+
+            bool serialize(std::vector<std::byte>& output) const noexcept override
+            {
+                auto candidate = pending_configuration_ ? *pending_configuration_ : configuration_;
+                if (!valid_ || !drafts_valid_ || (!pending_configuration_ && !captureDrafts(candidate)))
+                {
+                    return false;
+                }
+                // Port/provider/device qualification belongs to the shared creation candidate, not this widget.
+                return ::lux::engine::render::renderConfigurationCodec().encode(&candidate, output).has_value();
             }
 
         private:
-            static exec::task<lux::render::RenderResult<std::vector<lux::render::CapabilitySupport>>> query(
-                engine::render::RenderRequester& client,
-                engine::render::BoundCommand<lux::render::ListCapabilities> command
+            struct Draft final
+            {
+                std::unique_ptr<SceneConfigurationForm> widget;
+            };
+
+            static exec::task<lux::render::RenderResult<std::vector<lux::render::CapabilityImplementationInfo>>> query(
+                ::lux::engine::render::RenderRequester& client,
+                ::lux::engine::render::BoundCommand<lux::render::ListCapabilities> command
             ) noexcept
             {
-                // The coroutine owns its request; no pane/Context borrow crosses the response wait.
                 lux::render::CapabilityQuery input;
                 auto result = co_await client.request(command, input);
                 if (result.error.type != 0)
@@ -97,189 +183,312 @@ namespace lux::editor
                 co_return std::move(result.implementations);
             }
 
-            const char* unavailable(
-                const lux::render::CapabilitySupport& support,
-                const lux::render::RenderCapability& capability
-            ) noexcept
+            const lux::render::CapabilityImplementationInfo*
+            support(const lux::render::CapabilityContributionDescription& contribution) const noexcept
             {
-                if (support.unavailable.type != 0)
-                {
-                    return "Unavailable on this device";
-                }
-                if (!support.portable_configuration)
-                {
-                    return "This implementation has no portable configuration codec";
-                }
-                if (capability.kind != lux::render::ERenderCapabilityKind::EFFECT)
-                {
-                    return "Resource capability; it does not produce a Scene output";
-                }
-                if (!scene::resolveRenderBindings(*bindings_, capability))
-                {
-                    return "The selected Scene declarations cannot satisfy this capability";
-                }
-                return nullptr;
+                const auto found = std::ranges::find_if(
+                    supports_,
+                    [&](const auto& value)
+                    {
+                        return value.implementation == contribution.implementation &&
+                               value.capability.type.name() == contribution.capability;
+                    }
+                );
+                return found == supports_.end() ? nullptr : &*found;
             }
 
-            struct Choice
+            bool captureDrafts(
+                ::lux::engine::render::RenderSystemConfiguration& candidate,
+                std::optional<std::size_t> excluded = {}
+            ) const noexcept
             {
-                lux::render::CapabilitySupport support;
-                std::vector<const char*> reasons;
-            };
-
-            void adoptSupports(std::vector<lux::render::CapabilitySupport> supports) noexcept
-            {
-                choices_.clear();
-                choices_.reserve(supports.size());
-                for (auto& support : supports)
+                for (std::size_t i = 0; i < drafts_.size(); ++i)
                 {
-                    auto& choice = choices_.emplace_back(std::move(support));
-                    for (const auto& capability : choice.support.capabilities)
+                    if (excluded != i && drafts_[i].widget &&
+                        !drafts_[i].widget->serialize(candidate.composition.contributions[i].configuration.bytes))
                     {
-                        choice.reasons.push_back(unavailable(choice.support, capability));
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            ::lux::engine::render::RenderSystemConfiguration*
+            beginChange(std::optional<std::size_t> excluded = {}) noexcept
+            {
+                if (!pending_configuration_)
+                {
+                    auto candidate = configuration_;
+                    if (!captureDrafts(candidate, excluded))
+                    {
+                        status_ = "Correct invalid fields before changing contributions";
+                        return nullptr;
+                    }
+                    pending_configuration_ = std::move(candidate);
+                }
+                requestUpdate();
+                return &*pending_configuration_;
+            }
+
+            void update() noexcept override
+            {
+                if (pending_configuration_)
+                {
+                    configuration_ = std::move(*pending_configuration_);
+                    pending_configuration_.reset();
+                    rebuildDrafts();
+                    static_cast<void>(emit(edited));
+                }
+            }
+
+            void rebuildDrafts() noexcept
+            {
+                // Recompute only when discovery or the selected composition changes.
+                // draw() consumes these flags; it does not resolve dependency metadata.
+                available_.clear();
+                available_.reserve(supports_.size());
+                for (const auto& value : supports_)
+                {
+                    const bool prerequisites_present = std::ranges::all_of(
+                        value.capability.prerequisites,
+                        [&](auto prerequisite) noexcept
+                        {
+                            return std::ranges::any_of(
+                                configuration_.composition.contributions,
+                                [&](const auto& item) noexcept
+                                {
+                                    const auto* selected = support(item);
+                                    return selected && selected->capability.type == prerequisite;
+                                }
+                            );
+                        }
+                    );
+                    available_.push_back(
+                        value.unavailable.type == 0 && value.portable_configuration && prerequisites_present
+                    );
+                }
+                draft_connections_.clear();
+                clearElements();
+                drafts_.clear();
+                drafts_valid_ = true;
+                for (const auto& contribution : configuration_.composition.contributions)
+                {
+                    auto& draft = drafts_.emplace_back();
+                    const auto* value = support(contribution);
+                    if (!value)
+                    {
+                        continue;
+                    }
+                    const auto& encoded = contribution.configuration;
+                    if (encoded.schema != value->configuration.schema ||
+                        encoded.version != value->configuration.version)
+                    {
+                        continue;
+                    }
+                    const auto* editor = context_.sceneConfigurationEditor(value->config_type);
+                    if (editor)
+                    {
+                        draft.widget = editor->create(context_, encoded.bytes);
+                        if (!draft.widget || !addElement(*draft.widget))
+                        {
+                            drafts_valid_ = false;
+                            status_ = "The selected configuration editor could not be created or attached";
+                            continue;
+                        }
+                        auto connected = connect(
+                            draft.widget.get(),
+                            &SceneConfigurationForm::edited,
+                            this,
+                            [this]() noexcept { static_cast<void>(emit(edited)); }
+                        );
+                        if (!connected)
+                        {
+                            drafts_valid_ = false;
+                            status_ = "The selected configuration editor could not connect its change signal";
+                            continue;
+                        }
+                        draft_connections_.push_back(std::move(*connected));
                     }
                 }
             }
 
-            const scene::RenderBindingDeclarations* bindings_{};
-
-            void drawConfiguration() noexcept
+            bool acceptsElements() const noexcept override
             {
-                const auto& encoded = configuration_.configuration;
-                if (encoded.schema != lux::render::kLitSceneConfigurationSchema || encoded.version != 1)
-                {
-                    ImGui::TextWrapped("No field editor installed; existing configuration bytes are preserved.");
-                    return;
-                }
-                auto value = lux::render::decodeLitSceneConfiguration(encoded.bytes);
-                if (!value)
-                {
-                    ImGui::TextWrapped("Stored configuration is invalid; choose a supported default to replace it.");
-                    return;
-                }
-                bool edited = ImGui::Checkbox("Shadows", &value->shadows);
-                edited |= ImGui::InputScalar("Shadow resolution", ImGuiDataType_U32, &value->shadow_resolution);
-                edited |= ImGui::InputScalar("Shadow filter radius", ImGuiDataType_U32, &value->shadow_filter_radius);
-                edited |= ImGui::DragFloat("Shadow distance", &value->shadow_distance, 1.F, 0.1F, 1.0e6F);
-                edited |=
-                    ImGui::InputScalar("Cluster index capacity", ImGuiDataType_U32, &value->cluster_index_capacity);
-                if (edited)
-                {
-                    auto replacement = lux::render::encodeLitSceneConfiguration(*value);
-                    if (replacement)
-                    {
-                        configuration_.configuration = std::move(*replacement);
-                        pane().requestUpdate();
-                    }
-                    else
-                    {
-                        status_ = "Invalid configuration; the previous value is preserved";
-                    }
-                }
+                return true;
             }
 
             ui::SizeHint sizeHintContent() noexcept override
             {
                 ui::SizeHint hint;
-                hint.minimum = {180, 150};
-                hint.preferred = {360, 230};
+                hint.minimum = {220, 180};
+                hint.preferred = {460, 440};
                 return hint;
             }
 
             void draw() noexcept override
             {
-                ImGui::BeginChild("render-capability", {rect().size.width, rect().size.height});
+                ImGui::BeginChild("render-composition", {rect().size.width, rect().size.height});
                 ImGui::TextWrapped("%s", status_.c_str());
-                const auto preview = configuration_.capability + " / " + configuration_.implementation;
-                if (ImGui::BeginCombo("Render capability", preview.c_str()))
+                auto& composition = configuration_.composition;
+                std::optional<std::size_t> remove;
+                for (std::size_t i = 0; i < composition.contributions.size(); ++i)
                 {
-                    for (const auto& choice : choices_)
+                    auto& contribution = composition.contributions[i];
+                    ImGui::PushID(static_cast<int>(i));
+                    ImGui::SeparatorText(contribution.key.c_str());
+                    ImGui::TextWrapped("%s / %s", contribution.capability.c_str(), contribution.implementation.c_str());
+                    if (ImGui::SmallButton("Remove"))
                     {
-                        const auto& support = choice.support;
-                        std::size_t ordinal = 0;
-                        for (const auto& capability : support.capabilities)
+                        remove = i;
+                    }
+                    const auto* value = support(contribution);
+                    if (value)
+                    {
+                        if (ImGui::SmallButton("Reset configuration"))
                         {
-                            const auto label = capability.name + " / " + support.implementation;
-                            const auto* reason = choice.reasons[ordinal++];
-                            ImGui::BeginDisabled(reason != nullptr);
-                            const bool selected = configuration_.capability == capability.name &&
-                                                  configuration_.implementation == support.implementation;
-                            if (ImGui::Selectable(label.c_str(), selected) && !selected)
+                            if (auto* candidate = beginChange(i))
                             {
-                                configuration_ = {};
-                                configuration_.capability = capability.name;
-                                configuration_.capability_version = capability.version;
-                                configuration_.implementation = support.implementation;
-                                configuration_.implementation_version = support.implementation_version;
-                                configuration_.configuration = {
-                                    support.configuration.schema,
-                                    support.configuration.version,
-                                    support.default_configuration
-                                };
-                                valid_ = true;
-                                pane().requestUpdate();
+                                candidate->composition.contributions[i]
+                                    .configuration = {value->configuration.schema, value->configuration.version, {}};
                             }
-                            ImGui::EndDisabled();
-                            if (reason)
+                        }
+                    }
+                    if (i < drafts_.size() && drafts_[i].widget)
+                    {
+                        auto& child = *drafts_[i].widget;
+                        const auto origin = ImGui::GetCursorScreenPos();
+                        const auto size = child.measure(ImGui::GetContentRegionAvail().x).preferred;
+                        child.arrange({{}, size});
+                        drawChild(child, {origin.x - contentOrigin().x, origin.y - contentOrigin().y});
+                        ImGui::SetCursorScreenPos(origin);
+                        ImGui::Dummy({size.width, size.height});
+                    }
+                    else
+                    {
+                        ImGui::TextWrapped("No matching field editor; existing bytes are preserved.");
+                    }
+                    ImGui::PopID();
+                }
+                if (remove)
+                {
+                    auto* candidate = beginChange();
+                    if (candidate)
+                    {
+                        const auto key = composition.contributions[*remove].key;
+                        auto& edited = candidate->composition;
+                        std::erase_if(edited.outputs, [&](const auto& output) { return output.contribution == key; });
+                        std::erase_if(
+                            edited.contributions,
+                            [&](const auto& contribution) { return contribution.key == key; }
+                        );
+                    }
+                }
+                if (ImGui::BeginCombo("Add contribution", "Select a capability"))
+                {
+                    for (std::size_t option = 0; option < supports_.size(); ++option)
+                    {
+                        const auto& value = supports_[option];
+                        const auto& capability = value.capability;
+                        if (value.outputs.empty())
+                        {
+                            continue;
+                        }
+                        const auto label = std::string(capability.type.name()) + " / " + value.implementation;
+                        ImGui::BeginDisabled(!available_[option]);
+                        if (ImGui::Selectable(label.c_str()))
+                        {
+                            auto* candidate = beginChange();
+                            if (candidate)
                             {
-                                ImGui::TextDisabled("%s", reason);
+                                auto& edited = candidate->composition;
+                                std::string key;
+                                do
+                                {
+                                    key = "contribution" + std::to_string(++next_key_);
+                                } while (std::ranges::any_of(
+                                    edited.contributions,
+                                    [&](const auto& item) { return item.key == key; }
+                                ));
+                                edited.contributions.push_back(
+                                    {std::move(key),
+                                     std::string(capability.type.name()),
+                                     value.implementation,
+                                     {value.configuration.schema, value.configuration.version, {}}}
+                                );
+                                valid_ = true;
+                            }
+                        }
+                        ImGui::EndDisabled();
+                    }
+                    ImGui::EndCombo();
+                }
+                const auto final = composition.outputs.empty() ? std::string("Select final output")
+                                                               : composition.outputs.front().contribution + "/" +
+                                                                     composition.outputs.front().name;
+                if (ImGui::BeginCombo("Final output", final.c_str()))
+                {
+                    for (const auto& contribution : composition.contributions)
+                    {
+                        const auto* selected = support(contribution);
+                        if (!selected)
+                        {
+                            continue;
+                        }
+                        for (const auto& output : selected->outputs)
+                        {
+                            const auto label = contribution.key + "/" + output;
+                            if (ImGui::Selectable(label.c_str(), label == final))
+                            {
+                                if (auto* candidate = beginChange())
+                                {
+                                    candidate->composition.outputs = {{contribution.key, output}};
+                                }
                             }
                         }
                     }
                     ImGui::EndCombo();
                 }
-                for (const auto& choice : choices_)
-                {
-                    const auto& support = choice.support;
-                    if (support.implementation != configuration_.implementation)
-                    {
-                        continue;
-                    }
-                    ImGui::TextWrapped("%s", support.description.c_str());
-                    ImGui::Text(
-                        "Configuration: %s v%u (%zu bytes)",
-                        configuration_.configuration.schema.c_str(),
-                        configuration_.configuration.version,
-                        configuration_.configuration.bytes.size()
-                    );
-                    drawConfiguration();
-                    for (const auto& capability : support.capabilities)
-                    {
-                        if (capability.name != configuration_.capability)
-                        {
-                            continue;
-                        }
-                        for (const auto& input : capability.inputs)
-                        {
-                            ImGui::TextWrapped(
-                                "%s v%u (%s): %s",
-                                input.schema.c_str(),
-                                input.version,
-                                input.required ? "required" : "optional",
-                                input.description.c_str()
-                            );
-                        }
-                    }
-                }
                 ImGui::EndChild();
             }
 
-            scene::RenderSystemConfiguration configuration_;
-            std::vector<Choice> choices_;
-            std::string status_ = "Reading Server capabilities...";
+            EditorContext& context_;
+            ::lux::engine::render::RenderSystemConfiguration configuration_;
+            std::optional<::lux::engine::render::RenderSystemConfiguration> pending_configuration_;
+            std::vector<lux::render::CapabilityImplementationInfo> supports_;
+            std::vector<Draft> drafts_;
+            std::vector<bool> available_;
+            std::vector<object::Connection> draft_connections_;
+            std::string status_ = "Reading Render capabilities...";
+            std::uint64_t next_key_ = 0;
             bool valid_ = false;
+            bool drafts_valid_ = true;
         };
     } // namespace
 
     FrameworkResult<void> registerRenderConfigurationEditor(EditorComposition& composition) noexcept
     {
+        using namespace lux::render;
+        auto result = registerConfigurationFields<
+            RasterSurfaceConfiguration,
+            decodeRasterSurfaceConfiguration,
+            encodeRasterSurfaceConfiguration>(composition);
+        if (result)
+        {
+            result = registerConfigurationFields<
+                DeferredLightingConfiguration,
+                decodeDeferredLightingConfiguration,
+                encodeDeferredLightingConfiguration>(composition);
+        }
+        if (!result)
+        {
+            return result;
+        }
         return composition.registerSceneConfigurationEditor(
             {{},
-             cxx::typeToken<scene::RenderSystemConfiguration>(),
-             +[](EditorContext& context, std::span<const std::byte> bytes) noexcept -> std::unique_ptr<ui::Element>
-             { return std::make_unique<RenderConfigurationEditor>(context, bytes); },
-             +[](const ui::Element& element, std::vector<std::byte>& output) noexcept
-             { return static_cast<const RenderConfigurationEditor&>(element).serialize(output); }}
+             cxx::make_basic_type_info<::lux::engine::render::RenderSystemConfiguration>(),
+             +[](EditorContext& context,
+                 std::span<const std::byte> bytes) noexcept -> std::unique_ptr<SceneConfigurationForm>
+             { return std::make_unique<RenderConfigurationEditor>(context, bytes); }}
         );
     }
 } // namespace lux::editor

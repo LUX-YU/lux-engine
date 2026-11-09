@@ -1,10 +1,10 @@
 #include <lux/engine/editor/ModelPlacement.hpp>
 #include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
-#include <lux/engine/simulation/ecs/Parent.hpp>
-#include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/Visual.hpp>
-#include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
+#include <lux/engine/ecs/Parent.hpp>
+#include <lux/engine/ecs/Transform.hpp>
+#include <lux/engine/ecs/Visual.hpp>
+#include <lux/engine/ecs/WorldEntityMap.hpp>
 
 #include <random>
 
@@ -17,12 +17,20 @@ namespace lux::editor
         partition::PartitionOrdinal partition
     ) noexcept
     {
-        namespace ecs = simulation::ecs;
+        namespace ecs = ecs;
+        const std::array geometry{ecs::componentSchemaId("lux.ecs.Mesh3D")};
+        auto resolved = document.destination(geometry, {}, partition);
+        if (!resolved)
+        {
+            return cxx::unexpected(resolved.error());
+        }
+        partition = *resolved;
         const auto& model = asset.data(); // ModelAsset construction already validated its indices and graph.
-        const auto* transforms = document.schemas().find(cxx::typeToken<ecs::Transform3D>());
-        const auto* parents = document.schemas().find(cxx::typeToken<ecs::Parent>());
-        const auto* meshes = document.schemas().find(cxx::typeToken<ecs::Mesh3D>());
-        const bool missing_schema = !transforms || !parents || !meshes;
+        const auto* transforms = document.schemas().find(cxx::make_basic_type_info<ecs::Transform3D>());
+        const auto* parents = document.schemas().find(cxx::make_basic_type_info<ecs::Parent>());
+        const auto* meshes = document.schemas().find(cxx::make_basic_type_info<ecs::Mesh3D>());
+        const auto* materials = document.schemas().find(cxx::make_basic_type_info<ecs::MaterialComponent>());
+        const bool missing_schema = !transforms || !parents || !meshes || !materials;
         if (missing_schema || !placement.matrix().allFinite())
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
@@ -55,7 +63,7 @@ namespace lux::editor
                 parent[child] = i;
             }
         }
-        const auto append = [&](SceneObjectData& object, const ecs::ComponentSchema& schema, const void* value
+        const auto append = [&](scene::SceneObjectData& object, const ecs::ComponentSchema& schema, const void* value
                             ) -> SceneEditResult<void>
         {
             auto capture = schema.capture_value(value, schema.code_lifetime);
@@ -85,7 +93,7 @@ namespace lux::editor
                 return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
             }
             ecs::Transform3D transform{local.translation(), Eigen::Quaterniond{rotation}, scaling.diagonal()};
-            SceneObjectData object{node_ids[i], partition};
+            scene::SceneObjectData object{node_ids[i], partition};
             if (auto encoded = append(object, *transforms, &transform); !encoded)
             {
                 return cxx::unexpected(encoded.error());
@@ -102,14 +110,16 @@ namespace lux::editor
             for (auto index : node.primitives)
             {
                 const auto& primitive = model.primitives[index];
-                SceneObjectData mesh{world::WorldObjectId{generate()}, partition};
+                scene::SceneObjectData mesh{world::WorldObjectId{generate()}, partition};
                 const ecs::Transform3D identity;
                 const ecs::Parent value{static_cast<ecs::Entity>(i)};
-                const ecs::Mesh3D visual{rdesc::MeshVisualDescription{primitive.mesh, primitive.material}};
+                const ecs::Mesh3D visual{rdesc::MeshVisualDescription{primitive.mesh}};
+                const ecs::MaterialComponent material{{primitive.material}};
                 for (auto encoded :
                      {append(mesh, *transforms, &identity),
                       append(mesh, *parents, &value),
-                      append(mesh, *meshes, &visual)})
+                      append(mesh, *meshes, &visual),
+                      append(mesh, *materials, &material)})
                 {
                     if (!encoded)
                     {

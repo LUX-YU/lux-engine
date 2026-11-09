@@ -87,7 +87,7 @@ namespace lux::flowforge
         using CompileExecution = FlowForgeResult<void> (*)(const FlowNodePayload&, FlowExecutionCompiler&) noexcept;
 
         graph::GraphNodeTypeIdentity identity;
-        cxx::TypeToken payload_type;
+        cxx::type_info payload_type;
         object::CodeLease code{object::CodeLease::builtin()};
         Create create{};
         DescribePins describe_pins{};

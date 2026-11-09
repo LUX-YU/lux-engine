@@ -1,0 +1,163 @@
+#pragma once
+
+#include <lux/cxx/concurrent/LatestSpscExchange.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/scene/SceneSystem.hpp>
+#include <lux/engine/scene/ScriptSimulationInputs.hpp>
+#include <lux/engine/SceneSystemRegistration.hpp>
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
+#include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/script_runtime/visibility.h>
+#include <lux/engine/scene/scripting/ScriptAssetAccess.hpp>
+#include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string_view>
+
+namespace lux::scene
+{
+    enum class EScriptRealDelayProviderError : std::uint8_t
+    {
+        INVALID_ARGUMENT,
+    };
+
+    class LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC ScriptRealDelayProvider final
+    {
+    public:
+        using CreateResult =
+            lux::cxx::expected<std::unique_ptr<ScriptRealDelayProvider>, EScriptRealDelayProviderError>;
+
+        [[nodiscard]] static CreateResult create(
+            execution::ExecutionRuntime&,
+            execution::TimerClient timer,
+            std::size_t capacity
+        ) noexcept;
+
+        ~ScriptRealDelayProvider() noexcept;
+        ScriptRealDelayProvider(const ScriptRealDelayProvider&) = delete;
+        ScriptRealDelayProvider& operator=(const ScriptRealDelayProvider&) = delete;
+        ScriptRealDelayProvider(ScriptRealDelayProvider&&) = delete;
+        ScriptRealDelayProvider& operator=(ScriptRealDelayProvider&&) = delete;
+
+        // Synchronous borrow, valid only during this provider's lifetime. Runtime outlives accepted work.
+        [[nodiscard]] simulation::script::ScriptRealDelayEndpoint endpoint() noexcept;
+        [[nodiscard]] bool drainCompletions() noexcept;
+
+    private:
+        struct Impl;
+        explicit ScriptRealDelayProvider(std::shared_ptr<Impl> impl) noexcept;
+        [[nodiscard]] lux::script::ScriptAbilityStartResult start(
+            std::chrono::nanoseconds duration,
+            lux::script::TScriptAbilityCompletion<void> completion
+        ) noexcept;
+        // Only synchronous calls retain Impl across callbacks. Accepted tasks own individual requests.
+        std::shared_ptr<Impl> impl_;
+    };
+
+    struct ScriptRuntimeHost final
+    {
+        using SimulationBinding = std::function<bool(simulation::Simulation&, ScriptSimulationInputs&)>;
+        using AssetCapabilityFactory =
+            simulation::script::ScriptApiCapabilityPublication (*)(script::ScriptAssetAccess&) noexcept;
+        execution::ExecutionRuntime& execution;
+        simulation::script::ScriptRuntimeLimits limits;
+        scene::script::ScriptSystemCodecLimits codec_limits;
+        std::size_t real_delay_capacity{};
+        simulation::script::ScriptArtifactResolver artifacts;
+        scene::script::WorldObjectResolver world;
+        std::span<const simulation::script::ScriptBackendDescriptor> backends;
+        std::span<const simulation::script::ScriptDeferredComponent> components;
+        ecs::EcsCommandProducerCapacity command_capacity{1024U, 65536U};
+        // Optional asset service; its owner outlives this system and its pending tasks.
+        engine::assets::AssetRepository* assets = nullptr;
+        asset::AssetVfsView asset_source;
+        script::ScriptAssetLimits asset_limits;
+        // Explicit independent capabilities; the host has no asset-type dispatch.
+        std::span<const AssetCapabilityFactory> asset_capabilities;
+        // Cold binders may capture the explicitly chosen SystemInstanceId. They borrow installed
+        // objects, append descriptors, and never create a second System/asset/operation owner.
+        std::span<const SimulationBinding> simulation_bindings;
+    };
+
+    struct ScriptRuntimeCommandStats final
+    {
+        std::uint64_t accepted{};
+        std::uint64_t rejected{};
+        std::size_t rejected_at_commit{};
+        std::size_t discarded{};
+        std::optional<ecs::EcsCommandFailure> last_rejection;
+    };
+
+    class LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC ScriptRuntimeSystem final
+    {
+    public:
+        inline static constexpr std::array<std::string_view, 1U> Capabilities{"lux.script.runtime"};
+        inline static constexpr system::SystemTypeDescription Description{
+            .canonical_name = "lux.scene.ScriptRuntimeSystem",
+            .version = 1U,
+            .capabilities = Capabilities,
+            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
+        };
+
+        ScriptRuntimeSystem(
+            std::unique_ptr<ScriptRealDelayProvider> real_delay,
+            std::unique_ptr<scene::script::ScriptSystemDescription> description,
+            simulation::script::ScriptSystem system,
+            script::WorldObjectResolver world,
+            ecs::Registry& registry,
+            std::unique_ptr<ecs::EcsCommandBuffer> commands,
+            std::unique_ptr<simulation::script::DeferredScriptHost> host,
+            std::unique_ptr<script::ScriptAssetAccess> assets
+        ) noexcept;
+        ~ScriptRuntimeSystem() noexcept;
+
+        ScriptRuntimeSystem(const ScriptRuntimeSystem&) = delete;
+        ScriptRuntimeSystem& operator=(const ScriptRuntimeSystem&) = delete;
+
+        [[nodiscard]] bool bindSimulation(simulation::Simulation& simulation) noexcept;
+        // Observation only, on the execution owner at a safe point. Gameplay pumping is graph-owned.
+        [[nodiscard]] const simulation::script::ScriptSystem& scriptSystem() const noexcept;
+        [[nodiscard]] ScriptRuntimeCommandStats commandStats() const noexcept;
+        // One observation consumer may call this on another thread; no live runtime storage is borrowed.
+        [[nodiscard]] bool acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept;
+        // Receives native outcomes without running gameplay or entering a VM, also while paused.
+        [[nodiscard]] SceneStageResult maintain(SceneStageContext&) noexcept;
+
+    private:
+        struct Loader;
+        [[nodiscard]] bool prepareLoader() noexcept;
+        [[nodiscard]] bool submitResolved() noexcept;
+        [[nodiscard]] bool beginCommands() noexcept;
+        void endCommands() noexcept;
+        [[nodiscard]] bool commitCommands() noexcept;
+        std::unique_ptr<Loader> loader_;
+        script::WorldObjectResolver world_;
+        ecs::Registry* registry_{};
+        std::unique_ptr<ScriptRealDelayProvider> real_delay_;
+        std::unique_ptr<scene::script::ScriptSystemDescription> description_;
+        std::unique_ptr<ecs::EcsCommandBuffer> commands_;
+        std::unique_ptr<simulation::script::DeferredScriptHost> host_;
+        // System bindings are retired before native admission closes; Runtime collects accepted work.
+        std::unique_ptr<script::ScriptAssetAccess> assets_;
+        simulation::script::ScriptSystem system_;
+        std::optional<simulation::script::ScriptSystem::ExecutionRegion> execution_region_;
+        std::optional<ecs::EcsCommandWriter> command_writer_;
+        std::optional<simulation::script::DeferredScriptHost::Batch> command_batch_;
+        simulation::SimulationHookConnection hook_connection_;
+        lux::cxx::LatestSpscExchange<simulation::script::ScriptRuntimeStats> stats_exchange_;
+    };
+
+    [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC SceneSystemRegistration
+    builtinScriptRuntimeSystemRegistration() noexcept;
+
+    [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC std::span<const SceneSystemRegistration>
+    builtinScriptRuntimeSystemRegistrations() noexcept;
+} // namespace lux::scene

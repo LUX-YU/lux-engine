@@ -2,6 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/core/execution/TaskInfo.hpp>
+#include <lux/engine/core/execution/ExecutionResult.hpp>
 #include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/core/execution/visibility.h>
 
@@ -32,60 +33,6 @@ namespace lux::execution
         struct TaskGroup;
         struct TaskEnvironment;
     } // namespace detail
-
-    struct TaskCancelled final
-    {
-    };
-
-    template <class E> class TTaskError final
-    {
-    public:
-        [[nodiscard]] static TTaskError domain(E error) noexcept
-        {
-            return TTaskError(std::in_place_index<0>, std::move(error));
-        }
-
-        [[nodiscard]] static TTaskError execution(EExecutionError error) noexcept
-        {
-            return TTaskError(std::in_place_index<1>, error);
-        }
-
-        [[nodiscard]] static TTaskError cancelled() noexcept
-        {
-            return TTaskError(std::in_place_index<2>, TaskCancelled{});
-        }
-
-        [[nodiscard]] const E* domainFailure() const noexcept
-        {
-            return std::get_if<0>(&error_);
-        }
-
-        [[nodiscard]] E* domainFailure() noexcept
-        {
-            return std::get_if<0>(&error_);
-        }
-
-        [[nodiscard]] const EExecutionError* executionFailure() const noexcept
-        {
-            return std::get_if<1>(&error_);
-        }
-
-        [[nodiscard]] bool isCancelled() const noexcept
-        {
-            return error_.index() == 2U;
-        }
-
-    private:
-        template <std::size_t Index, class Value>
-        TTaskError(std::in_place_index_t<Index> index, Value&& value) noexcept
-            : error_(index, std::forward<Value>(value))
-        {
-        }
-
-        std::variant<E, EExecutionError, TaskCancelled> error_;
-    };
-
-    template <class T, class E> using TTaskResult = lux::cxx::expected<T, TTaskError<E>>;
 
     class LUX_CORE_EXECUTION_PUBLIC TaskReporter final
     {
@@ -219,27 +166,6 @@ namespace lux::execution
             }
         };
 
-        template <class... Values> struct TSingleTaskValue;
-
-        template <class Value> struct TSingleTaskValue<Value>
-        {
-            using Type = Value;
-        };
-
-        template <class Tuple> struct TTaskValue;
-
-        template <class T, class E> struct TTaskValue<std::tuple<lux::cxx::expected<T, E>>>
-        {
-            using Value = T;
-            using Error = E;
-            using Input = lux::cxx::expected<T, E>;
-            using Result = TTaskResult<T, E>;
-        };
-
-        template <class Sender>
-        using TTaskTypes =
-            TTaskValue<typename stdexec::value_types_of_t<Sender, TaskEnvironment, std::tuple, TSingleTaskValue>::Type>;
-
         template <class Sender> void spawnTask(TaskRecord& record, TaskReporter reporter, Sender sender) noexcept
         {
             auto completed = stdexec::then(
@@ -301,57 +227,7 @@ namespace lux::execution
         }
     } // namespace detail
 
-    // Materialize a task's typed result where the caller needs to inspect failure/cancellation.
-    // This is a sender composition: no scheduling, queue, result allocation or implicit callback.
-    template <class Sender> [[nodiscard]] auto taskResult(Sender sender) noexcept
-    {
-        using Types = detail::TTaskTypes<Sender>;
-        using Result = typename Types::Result;
-        using Error = TTaskError<typename Types::Error>;
-        auto value = stdexec::then(
-            std::move(sender),
-            [](typename Types::Input&& input) noexcept -> Result
-            {
-                if (!input)
-                {
-                    return lux::cxx::unexpected(Error::domain(std::move(input.error())));
-                }
-                if constexpr (std::is_void_v<typename Types::Value>)
-                {
-                    return {};
-                }
-                else
-                {
-                    return std::move(*input);
-                }
-            }
-        );
-        auto error = stdexec::upon_error(
-            std::move(value),
-            [](auto&& failure) noexcept -> Result
-            {
-                using Failure = std::remove_cvref_t<decltype(failure)>;
-                if constexpr (std::same_as<Failure, std::exception_ptr>)
-                {
-                    std::terminate();
-                }
-                else if constexpr (std::same_as<Failure, EExecutionError>)
-                {
-                    return lux::cxx::unexpected(Error::execution(failure));
-                }
-                else
-                {
-                    return lux::cxx::unexpected(Error::domain(std::forward<decltype(failure)>(failure)));
-                }
-            }
-        );
-        return stdexec::upon_stopped(
-            std::move(error),
-            []() noexcept -> Result { return lux::cxx::unexpected(Error::cancelled()); }
-        );
-    }
-
-    template <class T, class E> [[nodiscard]] ETaskState taskState(const TTaskResult<T, E>& result) noexcept
+    template <class T, class E> [[nodiscard]] ETaskState taskState(const ExecutionResult<T, E>& result) noexcept
     {
         return result                         ? ETaskState::SUCCEEDED
                : result.error().isCancelled() ? ETaskState::CANCELLED

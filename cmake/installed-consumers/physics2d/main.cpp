@@ -5,6 +5,7 @@
 #include <iostream>
 #include <limits>
 #include <lux/engine/physics2d/Physics2DSystem.hpp>
+#include <lux/engine/function/script/ScriptAbility.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationSystemInstaller.hpp>
@@ -169,11 +170,13 @@ int main()
             assert(!failed && failed.error().code == ESimulationSystemBuildError::CONSTRUCTION_FAILURE);
         }
         auto simulation = Simulation::create(registry, valid, types);
-        assert(simulation && simulation->taskCount() == 1 && !simulation->scriptApiCapabilities().empty());
+        assert(simulation && simulation->taskCount() == 1);
+        auto* physics = simulation->findSystem<Physics2DSystem>(system::SystemInstanceId{1});
+        assert(physics && physics->scriptAbility().valid());
         assert(simulation->seal());
         auto execution = execution::ExecutionRuntime::create({1, 32, {32}});
         assert(execution);
-        task::TaskExecutor executor{execution->cpu(), 1024};
+        task::TaskExecutor executor{execution->cpuScheduler()};
         const auto bad_time =
             simulation->execute(executor, {.delta = SimulationDuration{16'666'667}, .step_index = 1});
         assert(!bad_time && bad_time.error().code == ESimulationExecutionError::INVALID_STEP_TIME);

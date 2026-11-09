@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
+
 #include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
@@ -8,13 +10,10 @@ namespace lux::render
 {
     struct GBufferFeatureConfig final
     {
-        TargetDesc target;
-        std::vector<RasterMeshGroup> groups;
+        EffectOutputDesc output;
         // Composition can provide one larger typed input block; only view/projection are consumed here.
         rdesc::ShaderBlock input_layout = meshViewParameterBlock();
-        // Nonzero: consume groupN.members/commands/counts from an explicit visibility producer,
-        // one geometric view per Attachment. Zero: render all candidates as a reference path.
-        std::uint32_t visible_capacity = 0;
+        bool front_counter_clockwise = true;
         bool operator==(const GBufferFeatureConfig&) const noexcept = default;
     };
 

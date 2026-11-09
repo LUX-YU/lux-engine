@@ -6,6 +6,8 @@ namespace lux::editor
     cxx::expected<void, error::Error> registerProjectErrors() noexcept
     {
         static constexpr error::ErrorDescriptor descriptors[]{
+            Errors::ProjectLoadBusyDescriptor,
+            Errors::ProjectAlreadyPublishedDescriptor,
             Errors::EditorUiClearDescriptor,
             Errors::EditorUiClearBusyDescriptor,
             Errors::EditorProjectChangeInsideAHostOperationDescriptor,

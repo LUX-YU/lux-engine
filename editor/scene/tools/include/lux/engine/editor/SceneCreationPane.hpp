@@ -18,6 +18,9 @@ namespace lux::editor
     private:
         void update() noexcept override;
         void refreshCatalog() noexcept;
+        void connectConfigurations() noexcept;
+        void invalidateSelection() noexcept;
+        void qualifySelection() noexcept;
         void createScene() noexcept;
         void openScene() noexcept;
         struct Impl;

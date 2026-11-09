@@ -77,7 +77,13 @@ namespace lux::render
             return context.graph.addProgram(std::move(shader));
         }
 
-        RenderResult<void> buildClusters(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildClusters(
+            const void* value,
+            std::string_view key,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const ClusteredLightingFeatureConfig*>(value);
             const auto count = static_cast<std::uint32_t>(config.grid.count());
@@ -104,14 +110,15 @@ namespace lux::render
             }
             auto reset = context.graph.addTransferPass(
                 featureKey(detail::ClusteredLightingFeature::name, key, "reset"),
-                TransferWork{{FillBuffer{{context.resource("status")}, 0}, FillBuffer{{context.resource("indices")}, 0}}
-                }
+                TransferWork{{FillBuffer{{context.resource("status")}, 0}}}
             );
             if (!reset)
             {
                 return cxx::unexpected(reset.error());
             }
-            auto status = reset->written[0], indices = reset->written[1];
+            auto status = reset->written[0];
+            // Fill writes every referenced index; offsets/counts bound all consumers, including overflow fallback.
+            const auto indices = context.resource("indices");
             ComputeWork build;
             build.interface.program = *build_program;
             build.interface.resources = {
@@ -133,9 +140,9 @@ namespace lux::render
             };
             std::memcpy(build.interface.parameters.values.data() + 96, constants.data(), sizeof(constants));
             build.interface.parameters.fields = {
-                {"inverse_view_projection", {}, "cluster_inverse_view_projection"},
-                {"position_near", {}, "cluster_position_near"},
-                {"direction_far", {}, "cluster_direction_far"}
+                {"inverse_view_projection", {}, "inverse_view_projection"},
+                {"position_near", {}, "position_near"},
+                {"direction_far", {}, "direction_far"}
             };
             build.dispatch = DispatchArguments{{dispatch, 1, 1}};
             build.allow_async_compute = true;

@@ -19,15 +19,18 @@ set(shader_root "${render_source_root}/modules/function/material/shaders")
 set(shader "${CMAKE_CURRENT_BINARY_DIR}/assets/UnlitTexture.frag")
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
 add_custom_command(
-    OUTPUT "${shader}.spv" "${shader}.spv.meta"
+    OUTPUT "${shader}.spv" "${shader}.spv.meta" "${shader}.spv.shadow" "${shader}.spv.shadow.meta"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/assets"
     COMMAND render_material_asset_tool "${shader}.spv" texture
     COMMAND lux_shader_metadata "${shader}.spv" "${shader}.spv.meta"
+    COMMAND lux_shader_metadata "${shader}.spv.shadow" "${shader}.spv.shadow.meta"
     DEPENDS render_material_asset_tool lux_shader_metadata "${shader_root}/material_types.glsl"
         "${shader_root}/texture_sampling.glsl"
     VERBATIM
 )
-add_custom_target(render_sample_assets ALL DEPENDS "${shader}.spv" "${shader}.spv.meta")
+add_custom_target(render_sample_assets ALL DEPENDS
+    "${shader}.spv" "${shader}.spv.meta" "${shader}.spv.shadow" "${shader}.spv.shadow.meta"
+)
 
 add_library(render_basic_mesh_client OBJECT Client.cpp)
 target_link_libraries(render_basic_mesh_client PRIVATE render lux::engine::platform::platform_ipc lux::engine::resource::shader_metadata)
@@ -138,4 +141,9 @@ set_tests_properties(platform.ipc.protocol render.ipc.command_cost PROPERTIES TI
 target_link_libraries(render_basic_mesh_client PRIVATE render_extensions)
 foreach(consumer IN ITEMS render_basic_mesh_client render_basic_mesh)
     target_include_directories(${consumer} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+endforeach()
+
+# Only fixtures constructing rdesc::Mesh require its Math dependency. Command-only Clients stay neutral.
+foreach(consumer IN ITEMS render_basic_mesh_client render_deferred_scene render_shadow_scene render_clustered_scene)
+    target_link_libraries(${consumer} PRIVATE lux::engine::core::math)
 endforeach()

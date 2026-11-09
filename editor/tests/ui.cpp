@@ -93,13 +93,13 @@ int main()
     assert(
         next_pane && !object::ObjectRuntime::instance().resolve(identity) && next_pane->get().attachedRoot() == &root
     );
-    auto capture = [&](const ui::DrawData&) noexcept -> cxx::expected<void, ui::ECaptureError>
+    auto capture = [&](const ui::DrawView&) noexcept -> cxx::expected<void, ui::ECaptureError>
     {
         auto blocked = root.clearPanes();
         assert(!blocked && blocked.error() == ui::EPaneError::BUSY);
         return {};
     };
-    ui::DrawData data;
+    ui::DrawView data;
     assert(root.feedInput(ui::WindowFocus{true}, 1));
     assert(root.feedInput(ui::PointerMove{{20, 20}}, 2));
     assert(root.feedInput(ui::Text{0x4e2d}, 3));

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/material/MaterialCompileFailure.hpp>
 #include <lux/engine/material/graph/visibility.h>
@@ -42,7 +42,7 @@ namespace lux::material
             auto value = std::make_unique<T>(std::forward<Args>(args)...);
             return MaterialNodePayload{
                 std::move(code),
-                cxx::typeToken<T>(),
+                cxx::make_basic_type_info<T>(),
                 value.release(),
                 [](void* pointer) noexcept { delete static_cast<T*>(pointer); },
                 [](const void* pointer) noexcept -> MaterialNodeResult<void*>
@@ -61,12 +61,12 @@ namespace lux::material
 
         template <class T> [[nodiscard]] T* get() noexcept
         {
-            return type_ == cxx::typeToken<T>() ? static_cast<T*>(value_) : nullptr;
+            return type_ == cxx::make_basic_type_info<T>() ? static_cast<T*>(value_) : nullptr;
         }
 
         template <class T> [[nodiscard]] const T* get() const noexcept
         {
-            return type_ == cxx::typeToken<T>() ? static_cast<const T*>(value_) : nullptr;
+            return type_ == cxx::make_basic_type_info<T>() ? static_cast<const T*>(value_) : nullptr;
         }
 
     private:
@@ -74,11 +74,11 @@ namespace lux::material
         using Destroy = void (*)(void*) noexcept;
         using Clone = MaterialNodeResult<void*> (*)(const void*) noexcept;
 
-        MaterialNodePayload(object::CodeLease, cxx::TypeToken, void*, Destroy, Clone) noexcept;
+        MaterialNodePayload(object::CodeLease, cxx::type_info, void*, Destroy, Clone) noexcept;
         void reset() noexcept;
 
         object::CodeLease code_{object::CodeLease::builtin()};
-        cxx::TypeToken type_;
+        cxx::type_info type_;
         void* value_{};
         Destroy destroy_{};
         Clone clone_{};

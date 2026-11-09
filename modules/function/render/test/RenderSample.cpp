@@ -1,4 +1,6 @@
 #include "Sample.hpp"
+#include "SceneCapture.hpp"
+#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
@@ -24,6 +26,29 @@ namespace
     }
 
 } // namespace
+
+static RenderResult<CapabilityGraphContribution> lowerClientProbe(const CapabilityBuildInput& input) noexcept
+{
+    const auto& config = *static_cast<const MeshFeatureConfig*>(input.configuration.data());
+    CapabilityGraphContribution result;
+    result.definition.features.push_back({input.features[0], "main", take(ConfigValue::make(config))});
+    if (input.features.size() == 3)
+    {
+        HzbFeatureConfig hzb{{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT}, 6};
+        hzb.depth.extent.source = EImageExtentSource::TARGET;
+        result.definition.features.push_back({input.features[2], "depth pyramid", take(ConfigValue::make(hzb))});
+        result.definition.connections.push_back({{0, "depth"}, {1, "depth"}});
+    }
+    MeshVisibilityFeatureConfig visible;
+    visible.view_parameters = meshViewParameterBlock();
+    const auto index = static_cast<std::uint32_t>(result.definition.features.size());
+    result.definition.features.push_back({input.features[1], "visibility", take(ConfigValue::make(visible))});
+    for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
+        result.definition.connections.push_back({{index, port}, {0, port}});
+    result.ports.push_back({{0, "color"}});
+    if (input.features.size() == 3) result.ports.push_back({{0, "depth"}});
+    return result;
+}
 
 int main(int argc, char** argv)
 {
@@ -71,14 +96,24 @@ int main(int argc, char** argv)
             return 2;
         }
     }
-    auto server = require(RenderServer::create(config, execution, options));
+    auto server = require(RenderServer::create(config, *execution, options));
     const std::array graph_features{
         require(server->featureId("lux.render.feature.MaterialMeshRaster")),
         require(server->featureId("lux.render.feature.MeshDepthRaster")),
-        require(server->featureId("lux.render.feature.Hzb"))
+        require(server->featureId("lux.render.feature.Hzb")),
+        require(server->featureId("lux.render.feature.MeshVisibilityFeature"))
     };
 
-    const auto directory_id = require(server->commandId<lux::render::ListCommands>());
+    const std::array implementations{
+        registerRenderProbe<MeshFeatureConfig>(
+            *server, "test.client.color", {graph_features[0], graph_features[3]},
+            probePorts({"color"}, {}), kRasterProbeDependencies, lowerClientProbe
+        ),
+        registerRenderProbe<MeshFeatureConfig>(
+            *server, "test.client.depth", {graph_features[1], graph_features[3], graph_features[2]},
+            probePorts({"color", "depth"}, {}), kRasterProbeDependencies, lowerClientProbe
+        )
+    };
     auto main_client = lux::platform::ipc::IpcCore::instance().createRequester(config.channel_name);
     if (!main_client || !server->setFrameSource(main_client->id()))
     {
@@ -101,7 +136,7 @@ int main(int argc, char** argv)
             }
         }
     );
-    mesh_sample::runClients(*main_client, config.channel_name, directory_id, argv[1], graph_features);
+    mesh_sample::runClients(std::move(*main_client), config.channel_name, argv[1], implementations);
     server->stop();
     render.join();
     const auto stats = server->stats();
@@ -110,11 +145,7 @@ int main(int argc, char** argv)
         std::abort();
     }
     server.reset();
-    execution.requestStop();
-    if (!execution.join())
-    {
-        std::abort();
-    }
+    execution.reset();
     std::printf(
         "3D sample: two Clients, one ExecutionRuntime, one Mesh/Material shared, typed Camera parameters and "
         "sealed frame rendering; "

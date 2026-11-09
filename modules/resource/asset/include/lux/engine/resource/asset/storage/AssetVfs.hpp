@@ -7,6 +7,8 @@
 // ============================================================================
 
 #include <lux/engine/resource/asset/storage/AssetProvider.hpp>
+#include <lux/engine/resource/asset/storage/AssetReadSource.hpp>
+#include <lux/engine/resource/asset/storage/AssetContentWriter.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
 #include <cstddef>
@@ -84,6 +86,15 @@ namespace lux::asset
         // Providers still define content immutability (e.g. a versioned LUXPAK).
         [[nodiscard]] AssetVfsView capture() const;
         [[nodiscard]] AssetId resolve(std::string_view vpath) const;
+        [[nodiscard]] cxx::expected<ProviderEntry, EAssetStorageError> describe(AssetId id) const;
+        [[nodiscard]] cxx::expected<AssetReadSource, EAssetStorageError> openSource(AssetId id) const noexcept;
+        [[nodiscard]] cxx::expected<AssetContentWriter, EAssetStorageError>
+        beginContentWrite(
+            AssetId id, const AssetReadSource* base, EAssetContentWrite mode, std::string_view new_path
+        ) const noexcept;
+        [[nodiscard]] cxx::expected<void, EAssetStorageError> replace(AssetId id, std::span<const std::byte> bytes) const;
+        [[nodiscard]] cxx::expected<std::vector<AssetId>, EAssetStorageError>
+        refresh(std::span<const std::filesystem::path> paths) const;
         [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError> open(
             AssetId id,
             std::size_t max_bytes = SIZE_MAX

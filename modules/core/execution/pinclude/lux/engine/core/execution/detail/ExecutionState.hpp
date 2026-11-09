@@ -39,6 +39,8 @@ namespace lux::execution::detail
         std::atomic_bool wake_pending{};
         std::binary_semaphore wake_signal{0};
         std::atomic<void (*)() noexcept> wake_callback{};
+        // Covers the borrowed platform callback, including wake() calls outside RunLoop publication.
+        std::atomic_size_t wake_callbacks{};
         RunLoop main_loop;
         bool dispatching_main{};
         bool stop_requested{};

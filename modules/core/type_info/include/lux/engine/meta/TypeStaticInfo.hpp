@@ -6,24 +6,18 @@
 
 namespace lux::meta
 {
+    // Structural projection for consumers that need typed member traversal.
+    // Domain policies belong to their own projections, not to this record.
     template <auto Member> struct TTypeStaticField final
     {
         static constexpr auto pointer = Member;
         std::string_view name;
-        std::string_view display_name;
-        double edit_speed{0.01};
-        bool read_only{};
     };
 
     template <auto Member>
-    [[nodiscard]] consteval TTypeStaticField<Member> typeStaticField(
-        std::string_view name,
-        std::string_view display_name = {},
-        double edit_speed = 0.01,
-        bool read_only = false
-    ) noexcept
+    [[nodiscard]] constexpr TTypeStaticField<Member> typeStaticField(std::string_view name) noexcept
     {
-        return {name, display_name.empty() ? name : display_name, edit_speed, read_only};
+        return {name};
     }
 
     template <class T> struct TTypeStaticInfo
@@ -33,4 +27,5 @@ namespace lux::meta
 
     template <class T>
     concept HasTypeStaticInfo = TTypeStaticInfo<std::remove_cvref_t<T>>::available;
+
 } // namespace lux::meta

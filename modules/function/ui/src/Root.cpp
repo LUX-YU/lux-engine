@@ -81,7 +81,7 @@ namespace lux::ui
 
     cxx::expected<void, ECaptureError> Root::update(
         FrameInfo info,
-        DrawData& output,
+        DrawView& output,
         std::optional<Capture> capture
     ) noexcept
     {
@@ -90,7 +90,7 @@ namespace lux::ui
 
     lux::cxx::expected<void, ECaptureError> Root::updateFrame(
         FrameInfo info,
-        DrawData* output,
+        DrawView* output,
         std::optional<Capture> capture
     ) noexcept
     {
@@ -138,7 +138,7 @@ namespace lux::ui
         return result;
     }
 
-    lux::cxx::expected<void, ECaptureError> Root::collectDrawData(FrameInfo info, DrawData& output) noexcept
+    lux::cxx::expected<void, ECaptureError> Root::collectDrawData(FrameInfo info, DrawView& output) noexcept
     {
         requireOwner();
         if (impl_->drawing || impl_->updating)

@@ -1,5 +1,6 @@
 #pragma once
 #include "ProjectRequests.hpp"
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
@@ -23,11 +24,11 @@ namespace fixture
         assert(writeProjectManifestAtomic(file, manifest, EProjectWrite::REPLACE));
         EditorConfig config{"Installed Context consumer", 160, 120};
         config.project_file = file;
-        auto made = LuxEngine::create(std::move(config), EditorAssembly{std::forward<Assembly>(assembly)});
+        auto made = EditorApplication::create(std::move(config), EditorAssembly{std::forward<Assembly>(assembly)});
         assert(made);
         auto host = std::move(*made);
         inspect(host->project());
-        host->window().exit();
+        host->engine().requestClose();
         assert(host->run());
     }
 } // namespace fixture

@@ -2,11 +2,9 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/extensions/storage/StorageFactory.hpp>
 #include <map>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -36,11 +34,8 @@ namespace lux::render
         StorageSet& operator=(StorageSet&&) = delete;
 
         template <class T>
-        [[nodiscard]] RenderResult<StorageId> getOrCreate(
-            StorageCreateContext& dependencies,
-            std::string_view key,
-            const ConfigValue& config = {}
-        ) noexcept
+        [[nodiscard]] RenderResult<StorageId>
+        getOrCreate(StorageCreateContext& dependencies, std::string_view key, const ConfigValue& config = {}) noexcept
         {
             return getOrCreateImpl(
                 dependencies,
@@ -51,11 +46,11 @@ namespace lux::render
                 {
                     if constexpr (std::is_void_v<typename T::Config>)
                     {
-                        return cxx::TypeToken{};
+                        return cxx::type_info{};
                     }
                     else
                     {
-                        return cxx::typeToken<typename T::Config>();
+                        return cxx::make_basic_type_info<typename T::Config>();
                     }
                 }(),
                 storageOpsType<T>()
@@ -87,12 +82,6 @@ namespace lux::render
 
     private:
         friend class ResourceRegistry;
-        friend class RenderServer;
-        // Called after the containing business object's identity has been published.
-        void bindScope(VRenderScope) noexcept;
-        void bindInput(CapabilitySelection, std::uint32_t input, StorageId) noexcept;
-        using InputKey = std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>;
-        [[nodiscard]] StorageId inputStorage(CapabilitySelection, std::uint32_t input) const noexcept;
         using NameKey = std::tuple<std::uint32_t, std::uint32_t, std::string>;
         using NameIndex = std::map<NameKey, StorageId, std::less<>>;
 
@@ -108,8 +97,8 @@ namespace lux::render
             const StorageDescriptor&,
             std::string_view,
             const ConfigValue&,
-            cxx::TypeToken,
-            cxx::TypeToken
+            cxx::type_info,
+            cxx::type_info
         ) noexcept;
         [[nodiscard]] RenderResult<StorageId>
         ensure(StorageCreateContext&, StorageTypeId, std::string_view, const ConfigValue&) noexcept;
@@ -118,7 +107,5 @@ namespace lux::render
         bool global_;
         std::vector<Record> records_;
         NameIndex instances_by_name_;
-        std::optional<VRenderScope> scope_;
-        std::map<InputKey, StorageId> input_bindings_;
     };
 } // namespace lux::render

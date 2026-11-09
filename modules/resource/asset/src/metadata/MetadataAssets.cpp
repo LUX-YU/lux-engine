@@ -264,14 +264,16 @@ namespace lux::asset
 
         template <class ConcreteAsset, class Encode>
         [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encodeMetadata(
-            const ConcreteAsset& asset,
+            const AssetInfo& asset_info,
+            const typename ConcreteAsset::data_type& data,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
             const AssetEncodeLimits& limits,
             Encode&& encode
         ) noexcept
         {
             try
             {
-                const auto information = encode(asset.data());
+                const auto information = encode(data);
                 if (!information)
                 {
                     const auto error =
@@ -286,10 +288,10 @@ namespace lux::asset
                     detail::CookedAssetWriteRequest{
                         ConcreteAsset::primary_magic,
                         ConcreteAsset::legacy_type_tag,
-                        asset.info(),
+                        asset_info,
                         *information,
                         {},
-                        asset.auxiliaryPayloads()
+                        auxiliary
                     },
                     limits
                 );
@@ -398,9 +400,19 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validMesh(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<MeshAsset>::encode(
+        const AssetInfo& asset_info,
+        const MeshAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validMesh(data))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
-        return encodeMetadata(asset, limits, &detail::encodeMeshDescription);
+        return encodeMetadata<MeshAsset>(asset_info, data, auxiliary, limits, &detail::encodeMeshDescription);
     }
 
     lux::cxx::expected<std::shared_ptr<const SkeletonAsset>, AssetDecodeFailure> TAssetSerDeser<SkeletonAsset>::decode(
@@ -423,9 +435,19 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validSkeleton(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<SkeletonAsset>::encode(
+        const AssetInfo& asset_info,
+        const SkeletonAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validSkeleton(data))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
-        return encodeMetadata(asset, limits, &detail::encodeSkeletonDescription);
+        return encodeMetadata<SkeletonAsset>(asset_info, data, auxiliary, limits, &detail::encodeSkeletonDescription);
     }
 
     lux::cxx::expected<std::shared_ptr<const AnimationClipAsset>, AssetDecodeFailure> TAssetSerDeser<
@@ -446,8 +468,18 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validAnimation(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<AnimationClipAsset>::encode(
+        const AssetInfo& asset_info,
+        const AnimationClipAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validAnimation(data))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
-        return encodeMetadata(asset, limits, &detail::encodeAnimationClipDescription);
+        return encodeMetadata<AnimationClipAsset>(asset_info, data, auxiliary, limits, &detail::encodeAnimationClipDescription);
     }
 } // namespace lux::asset

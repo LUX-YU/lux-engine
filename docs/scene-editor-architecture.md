@@ -60,31 +60,35 @@ Editor 类型。无须新增 CompatibilityManager、SceneManager、TaskManager �
 | 运行相机引用 | SceneInstanceId 加实体代际；持久引用使用 WorldObjectId，不保存 EnTT 数值 |
 | Render View | 本次观察所需的渲染状态与 View Storage，由 RenderSystem 维护 |
 | Attachment | 将 Effect、Scene、View 与 Target 关联；仍由现有 Render 合同控制 |
-| `CameraTargetsComponent` | CameraMan 的运行期输出意图；Target、实际描述/epoch、viewport 和参数，不拥有 Render 对象 |
-| 私有 `RenderViewComponent` | 该实体唯一的 View/Effect/Attachment 派生绑定；不安装、不持久化 |
-| `SceneViewportPane` | 拥有视口输入与显示控件，借用 ProjectScenes 的 SceneViewportId；不持有 GPU 清理状态 |
-| `ProjectScenes` 的视口记录 | 独占 Target 的删除责任及 UI 图像关系，存活到撤销、观察退役和 RemoveTarget 完成 |
+| OffscreenTargetComponent | 唯一输出意图：请求描述和 viewport；不保存第二份相机参数 |
+| 隐藏 RenderTargetComponent | 实际 TargetId、已采用尺寸/epoch 与激活状态 |
+| 私有 `RenderViewComponent` | 该实体的 View/Attachment/实际 Target 借用；Effect 由 RenderScene 共享，不持久化 |
+| `SceneViewportPane` | 文档/工具选择、图像与输入坐标；调用已装配工具，不解释专业组件 |
+| `SceneViewport` / `SceneViewports` | 输出对象拥有 UI 采样和源的退出职责；Target 由实际组件行为创建/撤销，集合保留对象至清偿完成 |
+| `CameraViewport` | 选择普通相机实体、拥有临时相机和内部 Target 意图，不直接操作 Native View/Target |
+| `MeshViewportTool` | 相机控件、MeshQuery 拾取、模型放置、Gizmo 手势与撤销；通用 Pane 不依赖它 |
 
-相机不是视口。无人使用的 Camera 不必产生 Render View；同一 Camera 可以被不同视口选择。
-每个实际观察关联使用稳定的局部身份，RenderSystem 内部记录对应 View/Attachment 和参数版本。
-首次按每个请求独立 View 实现，不提前共享 View Storage 或添加相机缓存管理器。
+相机不是视口。没有 Target 意图的 Camera 不产生 View。一个实体只拥有一个独立输出；
+第二个独立窗口选择同一实体会明确拒绝，保留其原输出。多个普通相机可共享同一 Scene/Effect，
+分别使用不同分辨率。没有 CameraTargetId、观察实体或相机参数采用镜像。
 
 游戏主相机选择可以保留 `Camera.primary` 作为默认策略；Editor 的显式选择优先。切换相机只更新
 实际观察记录，不重建整份 Scene 资产投影。同一 Scene 的 Mesh/Material/实例数据仍共享。
 
 ### 2.2 Editor 自由相机
 
-自由相机也是 Scene Registry 中的普通 CameraMan：Camera + Transform3D，WorldTransform3D 由已有
-TransformSystem 生成。ProjectScenes 在安全段创建它，不加入 WorldEntityMap 的作者集合，保存/Undo/Play
-作者快照不包含它。Pane 保存操作控件和选择意图，不保留另一份作为渲染来源的相机姿态。
+自由相机也是 Scene Registry 中的普通相机实体：Camera + Transform3D，WorldTransform3D 由已有
+TransformSystem 生成。CameraViewport 在安全段创建它，不加入 WorldEntityMap 的作者集合，保存/Undo/Play
+作者快照不包含它。专业工具保存操作控件和选择意图，不保留另一份作为渲染来源的相机姿态。
 
-Primary 与作者 WorldObjectId 的选择属于 ProjectScenes；Camera 信号使选择失效，RenderSystem 只消费
+Primary 与作者 WorldObjectId 的选择属于 CameraViewport；Camera 信号使选择失效，RenderSystem 只消费
 已经解析的 ECS 实体。拾取与 Gizmo 读取同一个实体的 Camera/WorldTransform 和实际采用的图像尺寸。
 缺失或多个 Primary 明确报告错误；不会自动选择别的相机。Edit/Play 各自解析作者身份，自由相机各自创建。
 
 ### 2.3 输出与 UI
 
-Editor 视口创建可采样的 Offscreen Target，RenderSystem 为它准备 View/Effect/Attachment。
+Editor 视口创建/撤销内部 OffscreenTargetComponent；OffscreenTargetReaction 创建实际 Target，
+CameraViewReaction 为其准备 View/Attachment，借用 RenderScene 已创建的共享 Effect。
 生产者准备成功后才加入 `EditorUiScene` 的 imported target 图像关系；UI Scene 输出到窗口 Surface。
 二者仍通过 Render 的资源依赖排序，不让 Scene Feature 知道 UiRasterFeature。
 
@@ -95,39 +99,22 @@ Offscreen 候选失败保留旧输出；Surface 已关闭旧链时以真实 outp
 
 关闭顺序：停止该视口的未来帧输入；撤销 UI 对它的采样并等待真实采用；解除观察关联并等待应答；
 删除 Target。旧帧物理引用仍由真实 FIF、Queue 前沿和唯一 `DeviceSession::cleanup_scope_` 保护。
-Pane 从 Root 移除不允许提前销毁尚被清理过程借用的状态。ProjectScenes 在 Pane 销毁后继续保留必要记录并推进清偿；
+Pane 从 Root 移除不允许提前销毁尚被清理过程借用的状态。SceneViewports 在 Pane 销毁后继续保留输出对象并推进清偿；
 SceneDocument 不反向依赖 Render。这不是新的 GPU 清理 Scope。
 
-### 2.4 观察输入 API
+### 2.4 输出意图和异步采用
 
-`RenderSystem::addCameraTarget/updateCameraTarget/removeCameraTarget` 只在 Main 的 Scene 编辑安全段
-patch CameraTargetsComponent。CameraTargetId 在该 Scene 内单调生成，不复用，不是 vector 下标。
-调用方按 SceneInstanceId + Entity generation + CameraTargetId 路由，实际运行绑定只在该实体的
-私有 RenderViewComponent 中。`attachment(camera, id)`、`cameraTargetError(camera, id)` 为只读查询；
-移除意图后等待 `whenCameraTargetRetired(camera, id)` 的真实完成再释放 Target；同步只读查询
-`cameraTargetRetired` 仍保留给独立消费者。等待只覆盖该关系，不受无关资产事务阻塞。
+CameraViewport 在 SceneRuntime 的拥有型编辑安全点写入/移除 OffscreenTargetComponent，
+先撤掉 UI 采样，再等待 Target/View 退出。观察者只记录意图；实际结构变化不发生在 EnTT 信号栈中。
+连接时折入存量组件，作者修改使用 patch/replace。
 
-观察者只记录变更；实体删除时把仍可读的绑定移动到 RenderSystem 的退出记录，不再活动查找。
-创建/编译 coroutine 仅保留身份与值，回 Main 后重新定位，不跨挂起借用组件或 vector 元素。
-零变化不重新计算相机参数；变更实体只准备自身输出。近远面配方判断不求整个逆矩阵。
-RenderAssetInput 单独提供稳定资产域和一起发布的 revision/VFS snapshot，不再混入相机集合。
+Reaction 按 Entity（含 generation）保存一个标准共享事务。输入删除在实际 Pending 中记录一个
+撤销标记，即使同一实体立刻重加组件，也不会误采用旧请求。成功后删除 Pending；
+真实清理失败只保留未清偿句柄，不新建退休目录或局部 Scope。Scene 组负责根寿命，RenderSystem
+拥有行为对象；参数 Collector 与每帧回调在退出前清偿。
 
-纯尺寸 Resize 保持实例、Feature/Storage 订阅、计划、Pipeline、DescriptorPool 和固定资源。
-成功回复后目标暂停，下一完整帧同时发布新参数和 `SetTargetActive{target, true, epoch}`。
-启用必须匹配实际 epoch，排在回复前的旧帧不能重新激活新尺寸。失败回复保留实际描述和
-output_available；关闭旧 SwapChain 后失败不会伪装旧输出仍可用。物理回收仍归唯一 cleanup_scope_。
-子视口按实际 framebuffer scale 一次换算到像素；旧图像保持同一个 token 并按旧宽高比 fit，留边不接受拾取。
-
-内置图像能力为 `lux.render.capability.lit_scene`，实现选项为 `lux.render.scene.deferred` 和
-`lux.render.scene.clustered`。普通用户选择能力、实现及公开配置，不直接选择 Feature 或 Storage。
-资源能力不能作为 Scene 图像候选；每个选择只采用自己声明的输入和 Target 约束。
-Profile 配置保留原 schema/version。创建面板通过 SceneSystemRegistration 已登记的对应 decoder
-产生当前值，再由当前 codec 编码，成功后才交给编辑器并采用当前版本。没有对应 decoder 时保留原
-字节、拒绝创建；不能在没有字段编辑器时跳过资格。Simulation 暂未声明版本迁移表，只接受当前合同。
-阴影采用统一数组分辨率，由 LitSceneConfiguration 的 `shadow_resolution` 指定；
-Light 的 `cast_shadow`、级联划分和偏移参与实际投影。
-当前配方不实现每灯混合分辨率，不把 Light 的旧 `shadow_map_size` 当成已生效。
-阴影可见性读取 ShadowMapFeature 的 views 端口，主视图可见性读取观察参数；二者不是同一种输入。
+实际目标尺寸与请求尺寸分开。Resize 不重建 View/Attachment/Effect；当前 Camera/WorldTransform
+直接产生参数，无 adopted 参数镜像。普通同步查询不作为异步完成许可。
 
 ## 3 不反向依赖的兼容约束
 
@@ -146,7 +133,7 @@ World/Spatial 集成模块验证自己的格式合同；不能删掉这种验证
 |---|---|---|---|
 | 数据 schema | 实际消费者 | Scene 冷态组合 | 需要 Camera 和 Transform3D schema；不要求每个实体具有它们 |
 | 派生结果可用性 | 生产者与消费者 | 组合阶段解析生产者和阶段顺序 | WorldTransform3D 在渲染投影之前准备完成 |
-| 运行服务 | 实际消费者 | 现有 `SceneCapabilityProvider` 类型化绑定 | RenderSystem 借 RenderRequester/RenderAssets；加载系统借读取接口 |
+| 运行服务 | 实际消费者 | 现有 `ResolvedSceneDependency` 类型化绑定 | RenderSystem 借 RenderRequester/RenderAssets；加载系统借读取接口 |
 | 格式与硬件限制 | 格式实现或 Render Backend | 实际解码/设备/图编译边界 | 索引版本、Shader 输出格式、Descriptor/Queue 能力 |
 
 System 的 READ/WRITE 访问声明用于竞争分析；可选组件查询也会有 READ，不能自动推成必需组件。
@@ -173,7 +160,7 @@ ECS 组件或 Editor。具体 schema 身份到中立声明的投影由现有 sch
 ComponentSchemaSet、阶段与依赖图；没有长期实例、线程、注册目录或运行期轮询。
 输出是一次构建所需的已解析顺序和结构化诊断。随后沿现有 Installer 构造对象，不在每帧重新解析。
 
-`SceneSystemRequirementSpec` 继续处理实际对象借用；不能为每个数据事实伪造一个 void* Provider。
+`SceneDependencyRequirement` 继续处理实际对象借用；不能为每个数据事实伪造一个 void* Provider。
 `SystemAccessSpec` 继续处理调度读写，不合并成万能合同。
 
 ### 3.4 组合算法
@@ -246,14 +233,13 @@ Render 运行库、CommandRegistry、DeviceSession 和 cleanup_scope_。普通�
 独占 SceneDocument；它不复制 ProjectManifest 场景目录，不驱动 Runtime、不拥有第二份 ECS。
 Pane 借文档或使用 ObjectId 连接。这个类型有实际多文档所有权，不能与“全局 Scene 管理器”混同。
 
-**保留现有 EditorContext 的唯一 SceneInstanceLease 拥有位置。** SceneDocument 只保存编辑/Play
-实例身份；构建得到的 Lease 一次交给 `adoptScene()`。配对的 `retireScene()` 让 ProjectScenes 关闭文档时可以
-取得 InstanceRetirement 值并等待，Context 保证项目退出时剩余实例全部清偿。退休回执是完成事实，
-不拥有第二份执行状态。文档及其输入在对应退休完成前不得释放。
+EditorContext 保存项目 Scene 的成员 ID；`createScene(builder)` 在 Builder 返回前同步提交关联。
+SceneRuntime 是唯一实例 Owner，取消或拒绝采用通过 `retireScene()` 取得 SceneCloseReceipt 并等待。
+退休回执保存完成或失败事实，不拥有第二份执行状态。文档及其输入在真实退休完成前不得释放。
 
-ProjectScenes 与 EditorContext 的冷态装配沿现有项目操作完成；文档不保存整个 Context 作为热态
-服务定位器。应用关闭项目时先撤销项目 UI 的采样关系，再由 Context 退休剩余实例，最后释放文档服务和插件。
-不为了减少一个容器把 Lease 从 Context 与文档之间来回迁移，也不增加文档级物理清理 Scope。
+必要的外部清理通过 SceneCloseParticipant 声明，由 Runtime 按依赖推进。关闭失败保留实例和
+已完成步骤；重复请求观察同一次结果。项目 Context 先等待实际服务退出及 Scene 退休，再结束
+项目任务和插件借用。没有 SceneInstanceLease、文档级物理清理 Scope 或第二实例目录。
 
 ### 5.2 作者数据的唯一可变来源
 
@@ -291,7 +277,9 @@ ProjectScenes 与 EditorContext 的冷态装配沿现有项目操作完成；文
 
 `editor/scene/document` 的 `lux_editor_scene_document` 提供文档和事务；依赖真实
 SceneRuntime 与 WorldResidency，不链接 Render/UI。ProjectScenes 位于 `editor/app`：它是项目打开、
-运行服务与视口的实际装配点，独占文档和视口记录，但 Scene Lease 仍归 EditorContext。`scene_asset` 提供 ScenePackage 文件 IO，使用 Platform 的 `AtomicFileWriter`，不链接
+文档和 Play 实例的集合，不再拥有视口或相机业务。EditorContext 记录项目 Scene 成员，Engine 唯一拥有实际实例。
+SceneViewport/SceneViewports 位于 app 的输出接线边界，因为它们使用该层私有 EditorUiScene；CameraViewport 和工具归 scene/tools。
+`scene_asset` 提供 ScenePackage 文件 IO，使用 Platform 的 `AtomicFileWriter`，不链接
 ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增能力而被迫加载运行系统。
 
 组件替换由 `DecodedComponent::replaceInto()` 发出 on_update；构造、删除仍使用原有 WorldResidency
@@ -306,26 +294,42 @@ ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增�
 
 ### 5.5 产品创建与视口调用
 
-`ProjectCreationPane` 发送原有 typed Project Event；`SceneCreationPane` 从项目的不可变注册表列出
-作者 schema、Simulation 与 Scene Systems。配置默认值来自原有 Codec/profile；具体配置控件由
-EditorComposition 的 SceneConfigurationEditor 函数声明提供，通用 Pane 不识别 RenderSystem 类名。
-Render 控件查询 Server 的真实能力、实现及 payload，显示设备/生产者不相容原因。内置光照配置
-通过公开 codec 编辑，校验失败保留旧值。没有字段编辑器的配置保留原始持久字节，明确显示不可编辑；
-切换实现使用该实现公布的默认配置。
-选择产生 SceneCreateSelection，仍由同一 SceneCompatibility
-解析，不另建 UI 兼容矩阵。当前新建 World 限 single；其它索引必须有实际生成算法，不能偷偷替换。
+`ProjectCreationPane` 发送 typed Project Event；项目 allowance 与每份 Scene 的选择分开保存。
+`SceneCreationPane` 从不可变声明列出 Geometry、可接受其输入类型的 Partition、作者 Schema、Simulation 和
+Scene Systems。几何选择补入其声明要求的作者组件；不自动删除额外组件。主域键可以共享，也可以为不同几何
+指定独立域。划分配置使用已有 Codec 和 Editor 字段工厂；算法必须提供实际 `build_empty`，不偷偷替换为 single。
+流送策略是独立 Scene System，不由划分算法决定。未知条目、旧配置及无字段编辑器的 payload 保留；不兼容时
+报告错误，不能把原字节重新标成当前版本。存在依赖的 System 被取消选择后必须解决实际依赖，不自动丢掉边。
 
-`ProjectScenes::create()` 使用现有 TaskScope 跟踪用户任务：CPU 准备/编码，blocking 发布 Scene 文件与
-项目根目录，Main 采用目录并打开实例。一个项目同时只有一个目录写入者。取消只能发生在发布前；
-SceneCreationFailure 明确说明 Scene 文件是否已发布，根目录失败不删除已发布文件或伪造回滚。
-`open()` 则只读取、解码、验证并采用已有包。所有工作借用在 ProjectScenes 的关闭清偿结束后释放。
+`SceneConfigurationEditor` 冷态注册生成表单工厂；`SceneConfigurationForm` 拥有具体草稿、序列化和 `edited`
+信号。普通配置复用领域 Inja 投影；Render 专业表单只负责贡献、端口选项和字节编辑，不维护第二个相容性裁决。
+选择变化在 UI 安全点合并，最多一个预校验在途；旧 revision 的结果只销毁，不采用。不逐帧扫描或解码配置。
 
-`addViewport/updateViewport/closeViewport` 只提交观察意图；同一视口只有一个有限配置操作，新意图合并为
-最新值。实际回复立即推进该操作，不由主循环扫描所有视口。
-对应 RenderSystem 已采用 Attachment 后，才将 Target 加入现有 EditorUiScene。`viewport()` 区分真实
+`ProjectScenes::prepare()` 返回有限 `SceneCreationCandidate`：拥有包、预期目录版本和已验证 Builder。
+准备阶段只调用所选 System 的注册准备入口，不创建运行 Scene/GPU 对象；Render 的设备能力检查只查询并校验。
+`create(candidate)` 使用同一包及缓存解析结果，准确检查目录版本后编码、发布并采用。实际运行 System 的
+初始化仍可能失败，不能把预校验当成设备资源分配保证。`create(record, selection)` 复用同一准备/发布管线。
+
+WorldLoading 在自己的模块把 ScenePackage 和共享 TaskScope 转为加载服务。RenderScenePreparation 在专业
+Editor 装配中提供已有 Render 设施，并在资产目录变化时只发布一次项目级 RenderAssetInput；不遍历所有文档
+或 Play。资产读取入口仅在选中的 Render producer 需要它时准备。ProjectScenes 不再识别这些专业类型。
+Builder 保持准备对象直至初始 readiness 完成；System 必须复制/移动其长期需要的数据，不能保留候选对象借用。
+准备对象可以借出已经解析的数据输入；复用绑定到它保留的不可变 SceneDescription 和 System 实例身份。
+因此正常 Render 候选不会在 Builder 中第二次解码配置；另一描述或直接外部 provider 仍执行完整一致性检查。
+这份作者源只在有限候选内共享，不成为运行期 Registry、异步 OperationState 或第二套生命周期目录。
+
+任务复用共享 ExecutionRuntime：CPU 组装/编码，blocking IO 发布 Scene 文件与项目目录，Main 采用。
+一个项目只有一个目录写入者。SceneCreationFailure 明确说明文件是否已发布，目录失败不删除已发布文件或伪造回滚。
+`open()` 读取、解码、验证并采用已有包；所有借用在项目关闭清偿后结束。
+
+`SceneViewports::add/close` 与 `SceneViewport::resize` 提交输出意图；同一输出只有一个有限配置操作，新意图合并为
+最新值。实际回复推进该操作，不由主循环扫描全部视口。CameraViewport 的初始 System 获取遇到 BUSY 时，
+等待现有 whenEditable 后重新借用；该通知不是跨调度有效的许可。
+对应 RenderSystem 已采用 Attachment 后，才将 Target 加入现有 EditorUiScene。`status()` 区分真实
 错误与尚未就绪；尺寸候选未采用时不能报告 ready。失效相机撤销采样，恢复有效相机后重新加入。
 
-关闭项目先停止新文档输入，撤下 UI 采样、清偿视口，再用 Context.retireScene 退休实际实例。
+关闭项目先停止新文档输入并请求 Context.retireScene；SceneViewports 的已注册参与者撤下 UI 采样、清偿视口，
+完成后 Runtime 才结束实际 Scene。工具通过 Scene closing 信号结束纯同步手势；异步输出清偿仍返回 Sender。
 Scope 任务完成、Runtime 实例数为零、ProjectScenes 清空各表达不同事实；重开不能用其中一个代替
 其它清偿条件。产品 Pane 被 Root 移除后，这些记录仍由项目服务拥有。
 
@@ -411,7 +415,7 @@ Inspector 草稿不会被后台刷新自动改写 based_on。只有 SceneRuntime
 草稿或锁住文档。当前轴柄提供平移；旋转/缩放使用 Inspector，更多 Gizmo 形式不是已有能力。
 
 MeshQuerySystem 仍拥有实际空间索引，结构重建提供缺失的 Mesh 身份。ProjectAssets 在共享执行资源上
-读取 Mesh、解码并构造不可变 BVH；ProjectScenes 在 Scene 安全点采用结果。同一项目多个观察复用几何，
+读取 Mesh、解码并构造不可变 BVH；MeshQueryAssets 在 Scene 安全点采用结果。同一项目多个观察复用几何，
 不从 GPU Readback 生成选择数据。没有 MeshQuery 的组合可以通过 Hierarchy 选择，界面准确报告拾取不可用。
 
 这些工具位于 Editor 的纵向主题目录，使用现有 Pane/Root、LuxObject signal 和路由事件。
@@ -450,7 +454,7 @@ Headless 预览使用显式运行选择，排除已声明为可选呈现的 Rend
 
 ProjectScenes 通过 `startPlay(document, ESceneRunMode)` 装配运行实例，复用同一个 Builder 创建路径。
 `ESceneRunMode` 仅表达 GRAPHICAL/HEADLESS 两个实际选择。RenderSystem 的输入保存在该实例的稳定记录中；
-唯一 SceneInstanceLease 仍归 EditorContext。Play 视口使用自己的 Target，停止先撤下 UI 引用和观察，
+实例由 SceneRuntime 拥有，项目 Context 仅记录成员 ID。Play 视口使用自己的 Target，关闭参与者先撤下 UI 引用和观察，
 再退休运行 Scene。编辑实例及作者数据保留，Play 中的更改不自动写回。目录发布的新资产版本可以更新
 两种实例的只读资产投影，这不会共享它们的可变 Registry。
 
@@ -460,16 +464,16 @@ ProjectScenes 通过 `startPlay(document, ESceneRunMode)` 装配运行实例，�
 
 | 组合 | 必须具备 | 不应具备 |
 |---|---|---|
-| Editor | EngineContext、窗口、UI Render、工具和 Cook 能力 | 第二个 CPU 池 |
+| Editor | Engine、窗口、UI Render、工具和 Cook 能力 | 第二个 CPU 池 |
 | 图形运行预览 | Engine Scene、RenderExecution、选定呈现配方 | Editor 工具依赖进入底层 |
-| Headless 核验程序 | EngineContext、Scene/Simulation、所选 CPU 插件/IO | Render/NRI/Vulkan/窗口查找、链接或装载 |
+| Headless 核验程序 | Engine、Scene/Simulation、所选 CPU 插件/IO | Render/NRI/Vulkan/窗口查找、链接或装载 |
 
-EngineContext 保持无图形成员。项目包含 RenderSystem 不会让基础 Engine 强制链接 Render；
+Engine 保持无图形成员。项目包含 RenderSystem 不会让基础 Engine 强制链接 Render；
 图形模块由应用组合根明确选择。装载插件前从数据目录选择允许的依赖闭包，不为了发现 System
 先加载所有 DLL。缺少必需渲染能力时失败，不安装空 RenderSystem 代替。
 
 本轮为根构建提供明确的 CPU-only 选项组合，确保 `modules/platform`、`modules/function`、
-`engine/context/render` 和 `scene_render` 不被配置。选项控制真实源/target，不用全局宏遮蔽实现。
+`engine/systems/render` 和 `scene_render` 不被配置。选项控制真实源/target，不用全局宏遮蔽实现。
 使用安装后的 Engine SDK 独立构建 Headless 消费者，并检查传递 find_package、链接、动态依赖。
 仅不打开窗口不足以通过；无 Linux/无桌面环境实测时保留该环境 NOT_RUN。
 
@@ -534,7 +538,7 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 | `RenderSystem.hpp/.cpp` | 多观察记录、相机正确发布、明确配方配置；不认识 World 索引 |
 | `render/src/features/LitScene.cpp`、`UiScene.cpp` | Render 私有组合与参数映射；普通消费者使用能力/data合同 |
 | `Camera.hpp/.cpp` | 保留中立 Camera/姿态算法；删除注释中不必要的 Vulkan 身份，保留准确坐标约定 |
-| `CameraTargetsComponent / RenderAssetInput` | 输出意图与资产版本分开；旧 SceneRenderInputs、SceneViewRequest 和来源 variant 已删除 |
+| `OffscreenTargetComponent / RenderAssetInput` | 输出意图与资产版本分开；旧 SceneRenderInputs、SceneViewRequest 和来源 variant 已删除 |
 | `SceneDocument.hpp/.cpp` | 作者 revision、编辑/Play 实例身份、保存/撤销、选择和关闭；不拥有重复 Lease |
 | `ProjectScenes.hpp/.cpp` | 项目内已打开文档的唯一集合；沿现有 EditorServices 持有，不复制 SceneRuntime |
 | `SceneEdit.hpp` | 事务输入值；实际采用由 SceneDocument 执行，不引用 Runtime 来自行调度 |
@@ -543,7 +547,7 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 | `EditorContext::adoptScene/scenes_` | 保留唯一 Lease 所有权，增加配对 retireScene；文档不再另持一份 Lease |
 | `SceneToolRegistry.hpp/.cpp` | 已删除 provisional World match/factory 通路；真实工具直接消费文档与 Schema |
 | `ScenePackageFile.cpp` | 分离纯编码和 blocking 原子写，保留格式与错误事实 |
-| `LuxEngine.cpp` | 装配/帧安全点/关闭，不承接 Inspector、导入或具体配方算法 |
+| `EditorApplication.cpp` | 装配/帧安全点/关闭，不承接 Inspector、导入或具体配方算法 |
 
 文件按功能使用 include/sinclude/pinclude/src，非平凡类与其 `.hpp/.cpp` 同名；模板、纯值头可没有
 源文件。SDK 扩展接口安装，Editor 私有工具不因测试方便公开。不存在新的万能 Installation/Provider 层。
@@ -565,33 +569,33 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 共享 RenderExecution 持有协议设施；Scene 级 RenderSystem 仅投影自己的 ECS。Main 的请求关联按实际
 完整帧增长并复用，领先控制只在 beginFrame；独立 Asset 的可选在途量不成为主帧命令上限。
 
-LuxEngine 工厂在局部准备完整依赖后才构造 Impl。EditorProject 负责其 Context/Scene 的关闭，应用只推进
+EditorApplication 工厂在局部准备完整依赖后才构造 Impl。EditorProject 负责其 Context/Scene 的关闭，应用只推进
 这些实际拥有者。关闭时先清偿 Scene/UI/资产和 FrameCompletion，再关闭 Client、停止 Server，最后
 停止共享 ExecutionRuntime。Runtime join 在主循环回调之外，原生窗口始终晚于 SwapChain 结束。
 
-ProjectScenes 的 Camera 信号连接借用 Registry，开始 InstanceRetirement 前必须断开，不能等到 Play/文档
-记录析构时才断连。实体运行绑定的退出记录与这些观察连接是不同职责，不增加新的清理 Scope。
+CameraViewport 的 Camera 信号连接借用 Registry，在输出关闭开始时断开，不能等到 Scene 的 Registry
+析构后才断连。实体运行绑定的退出记录与这些观察连接是不同职责，不增加新的清理 Scope。
 
 ## 响应式采用与关闭
 
 运行会话必须有已采用项目；无项目仅存在于共享设施上的启动选择过程。候选准备成功后在 Root
 安全段同时替换项目/UI，失败保持旧项目。旧 EditorProject 由有限关闭操作独占；没有 Scene 借用
 的失败候选在当前安全段释放，不为同步清理加入调度跳转。已有 Scene 借用则先撤下采样/Target、
-等待每个 InstanceRetirement 的真实完成，再清偿 Context 依赖。应用不扫描一份关闭项目列表。
+等待每个 SceneCloseReceipt 的真实完成，再清偿 Context 依赖。应用不扫描一份关闭项目列表。
 
-ProjectAssets 的几何完成携带 AssetId/revision，ProjectScenes 仅向登记需求的 Scene 调度采用。
+MeshQueryAssets 的专业几何完成携带 AssetId/revision，只向实际订阅 Scene 调度采用；通用 ProjectAssets/ProjectScenes 不处理它。
 MeshQuery 的缺失集合发起需求；任务容量耗尽保留需求并等待现有 TaskScope 容量通知，恢复后自动接纳，
 不把暂忙写成永久几何错误。RenderAssets 的完成只通知实际登记该版本的 Scene；容量等待另行通知。
 RenderAssets
 的零引用释放由原 stdexec 通路推进，失败记录与物理清偿分别处理。静态 UI 通过现有 Signal 与
 Root::deferChange/requestUpdate 采用事实，持续交互显式启用连续更新。
 
-CameraGraphInputs 保存相机冷态裁剪事实；渲染能力决定对应算法。每次编译与 Attach 挂起后复核
-Entity、实际 ViewId、配置与输入 revision；同实体重新创建 View 不得采用旧操作的结果。
-Primary 候选属于文档/Play Scene 的一个选择事实。首次观察折入已有 Camera，此后仅 primary 成员变化
-更新集合，多视口复用；多个 Primary 仍准确报错。固定相机只因身份变化重新选择。
-只改姿态或其它运行参数不重新选择 Primary 或构建配方。已成功 Attach 但资格失效的候选先真实
-Detach 再退出，不发布旧配方配新参数的混合状态。
+CameraOutputDescription 只保存目标身份与格式/采样等相容事实；相机裁剪、位姿和 FOV 归动态 CameraInput。
+Attach 挂起后复核 Entity、View、Target revision，迟到结果不采用。Effect 在 Scene 装配时创建并在多个 View 间借用，
+相机变化不会重新编译 Effect。Attachment Collector 从现有候选事务解析 Camera/Target 关系，安装成功后才发布 ECS 结果。
+Primary 来自 ECS Camera.primary，不另存项目级 Primary 集合。连接时折入存量；多个 Primary 准确报错。
+受影响视口的冷态 Camera 解析仍有线性扫描；它不是逐帧重建配方。已成功 Attach 但资格失效的候选真实退出，
+原 native 关联已经被替换时也清偿旧帧作用域，不发布旧身份配新参数的混合状态。
 
 窗口 metrics 在连接时折入存量，后续变化直接调度 EditorUiScene；子视口只在矩形/DPI 变化时换算
 像素。Resize 返回实际描述/epoch/output_available；旧链已关闭后的失败不得伪报旧图可用。

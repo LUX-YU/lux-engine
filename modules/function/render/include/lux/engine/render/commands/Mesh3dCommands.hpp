@@ -1,0 +1,132 @@
+#pragma once
+
+#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
+#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
+
+namespace lux::render::Mesh3dCommands
+{
+    struct UploadMesh final
+    {
+        static constexpr std::string_view name = "lux.render.mesh3d.upload_mesh";
+        static constexpr bool requires_frame_boundary = false;
+        using Data = rdesc::Mesh;
+
+        struct Request final
+        {
+            CapabilityImplementationId implementation;
+            // Keep the Mesh and all its arrays immutable until the terminal Response.
+            // Abandon does not end this borrow; Host shutdown must settle all producers.
+            const Data* mesh = nullptr;
+        };
+
+        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        {
+            return request.implementation;
+        }
+
+        struct Response final
+        {
+            RenderError error{};
+            MeshId mesh{};
+        };
+    };
+
+    struct ReleaseMesh final
+    {
+        static constexpr std::string_view name = "lux.render.mesh3d.release_mesh";
+        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool failure_safe = true;
+        using Data = MeshId;
+        struct Request final
+        {
+            Data data;
+        };
+
+        [[nodiscard]] static MeshId resourceId(const Request& request) noexcept
+        {
+            return request.data;
+        }
+
+        using Response = AckResponse;
+    };
+
+    struct CreateInstance final
+    {
+        static constexpr std::string_view name = "lux.render.mesh3d.create_instance";
+        static constexpr bool requires_frame_boundary = true;
+        using Data = MeshInstanceData;
+
+        struct Request final
+        {
+            CapabilityImplementationId implementation;
+            SceneId scene;
+            Data data;
+        };
+
+        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        {
+            return request.implementation;
+        }
+
+        [[nodiscard]] static SceneId sceneId(const Request& request) noexcept
+        {
+            return request.scene;
+        }
+
+        struct Response final
+        {
+            RenderError error{};
+            MeshInstanceId instance{};
+        };
+    };
+
+    struct CreateInstances final
+    {
+        static constexpr std::string_view name = "lux.render.mesh3d.create_instances";
+        static constexpr bool requires_frame_boundary = true;
+        using Data = std::span<const MeshInstanceData>;
+
+        struct Request final
+        {
+            CapabilityImplementationId implementation;
+            SceneId scene;
+            Data data;
+        };
+
+        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        {
+            return request.implementation;
+        }
+
+        [[nodiscard]] static SceneId sceneId(const Request& request) noexcept
+        {
+            return request.scene;
+        }
+
+        struct Response final
+        {
+            RenderError error{};
+            std::vector<MeshInstanceId> instances;
+        };
+    };
+
+    struct ReleaseInstance final
+    {
+        static constexpr std::string_view name = "lux.render.mesh3d.release_instance";
+        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool failure_safe = true;
+        using Data = MeshInstanceId;
+        struct Request final
+        {
+            Data data;
+        };
+
+        [[nodiscard]] static MeshInstanceId resourceId(const Request& request) noexcept
+        {
+            return request.data;
+        }
+
+        using Response = AckResponse;
+    };
+} // namespace lux::render::Mesh3dCommands

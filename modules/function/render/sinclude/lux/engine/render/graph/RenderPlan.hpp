@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/core/execution/Scheduler.hpp>
+#include <exec/task.hpp>
 #include <lux/engine/render/visibility.h>
 
 #include <NRI.h>
@@ -12,8 +14,9 @@
 
 namespace lux::render::detail
 {
-    struct PipelineLayoutPlan;
-    struct EnabledDeviceFeatures;
+    struct ShaderBindingPlan;
+    class CompiledPrograms;
+    class DeviceSession;
     class RenderPlan;
     [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
@@ -45,6 +48,7 @@ namespace lux::render::detail
         bool memory_used = false;
         bool target_sized = false;
         bool shared_table = false;
+        bool sampled_target_input = false;
         std::uint32_t history = kGraphInvalidIndex;
         // Immutable reverse indexes shared by every Context frame slice.
         std::vector<std::pair<std::uint32_t, std::uint32_t>> barrier_uses, descriptor_uses;
@@ -106,13 +110,23 @@ namespace lux::render::detail
         ResourceVersion index_resource;
         std::uint64_t index_offset;
         EIndexType type;
-        std::uint32_t selection_offset, selection_count, data_index;
+        std::uint32_t selection_offset, data_index;
+        bool partial_parameters = false;
     };
 
-    using VRasterDraw = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, IndexedListCommands>;
+    struct RasterListCommands final
+    {
+        std::uint32_t data_index;
+        RasterPassTemplate description;
+    };
+
+    using VRasterDraw =
+        std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, IndexedListCommands, RasterListCommands>;
 
     struct RasterCommands final
     {
+        // Fixed raster program. Dynamic raster lists carry the program on each draw packet.
+        nri::Pipeline* pipeline = nullptr;
         std::vector<RasterAttachment> colors;
         std::optional<RasterAttachment> depth;
         std::vector<VertexSource> vertices;
@@ -125,6 +139,7 @@ namespace lux::render::detail
     struct ComputeCommands final
     {
         VDispatchArguments dispatch;
+        nri::Pipeline* pipeline = nullptr;
     };
 
     using VPassCommands = std::variant<RasterCommands, ComputeCommands, TransferWork>;
@@ -133,8 +148,8 @@ namespace lux::render::detail
     {
         VPassCommands work;
         BarrierBatch before;
-        nri::Pipeline* pipeline = nullptr;
         std::uint32_t source_pass = kGraphInvalidIndex;
+        std::uint32_t submission = kGraphInvalidIndex;
         std::uint32_t rendering_group = kGraphInvalidIndex;
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
         std::uint32_t condition_region = kGraphInvalidIndex;
@@ -195,6 +210,8 @@ namespace lux::render::detail
         std::vector<SubmissionDependency> dependencies;
         std::vector<SubmissionSuccessor> successors;
         std::vector<GraphResourceId> histories;
+        std::uint32_t output_begin = kGraphInvalidIndex;
+        bool reusable_recording = true;
     };
 
     struct ImportedAccess final
@@ -205,6 +222,7 @@ namespace lux::render::detail
         std::uint32_t batch = 0;
         // A later canonical-state restoration belongs to the same physical access interval.
         std::uint32_t release_batch = 0;
+        bool whole_resource = false;
     };
 
     enum class ETransientAllocation : std::uint8_t
@@ -217,6 +235,7 @@ namespace lux::render::detail
     enum class EResourceReuse : std::uint8_t
     {
         UNUSED,
+        DYNAMIC_EXTENT,
         EXTERNAL,
         HISTORY,
         EXPORTED,
@@ -249,6 +268,7 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC RenderPlan final
     {
     public:
+        [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> parameterRegion(std::uint32_t) const noexcept;
         ~RenderPlan() noexcept;
         RenderPlan(RenderPlan&& other) noexcept;
         RenderPlan& operator=(RenderPlan&&) = delete;
@@ -260,9 +280,9 @@ namespace lux::render::detail
             return device_;
         }
 
-        [[nodiscard]] const TargetDesc& target() const noexcept
+        [[nodiscard]] const EffectOutputDesc& outputDescription() const noexcept
         {
-            return target_;
+            return output_description_;
         }
 
         [[nodiscard]] std::span<const CompiledResource> resources() const noexcept
@@ -279,6 +299,11 @@ namespace lux::render::detail
         {
             return output_;
         }
+
+        // Unpublished plan, called once on RenderThread. Graph and Session outlive completion.
+        // Workers compile frozen inputs; publication/references return to the caller's scheduler.
+        [[nodiscard]] exec::task<RenderResult<void>>
+        preparePrograms(DeviceSession&, const RenderGraph&, execution::CpuScheduler) noexcept;
 
         [[nodiscard]] bool compatible(const TargetDesc& target) const noexcept;
 
@@ -299,12 +324,13 @@ namespace lux::render::detail
         friend class FrameExecution;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
-        RenderPlan(nri::Device& device, const nri::CoreInterface&, TargetDesc target) noexcept;
-        std::unique_ptr<PipelineLayoutPlan> descriptor_plan_;
+        RenderPlan(nri::Device& device, EffectOutputDesc output) noexcept;
+        std::unique_ptr<ShaderBindingPlan> descriptor_plan_;
         nri::Device* device_;
-        const nri::CoreInterface* nri_core_;
-        TargetDesc target_;
-        std::vector<nri::PipelineLayout*> layouts_;
+        EffectOutputDesc output_description_;
+        CompiledPrograms* program_cache_ = nullptr;
+        std::vector<nri::Pipeline*> program_uses_;
+        std::vector<nri::PipelineLayout*> layout_uses_;
         std::vector<CompiledResource> resources_;
         std::vector<HistoryPlan> histories_;
         std::uint32_t condition_count_ = 0;
@@ -314,10 +340,10 @@ namespace lux::render::detail
         PhysicalResourcePlan physical_resources_;
         std::vector<std::uint32_t> pass_indices_;
 
-        std::vector<nri::Pipeline*> pipelines_; // unique physical owners; recorded work only borrows handles
         std::uint32_t output_ = kGraphInvalidIndex;
         std::uint32_t output_first_batch_ = kGraphInvalidIndex;
-        bool resizable_output_ = false;
+        nri::StageBits output_wait_stages_ = nri::StageBits::ALL;
+        std::array<std::uint32_t, 2> fixed_output_extent_{};
     };
 
 } // namespace lux::render::detail

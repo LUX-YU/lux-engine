@@ -43,18 +43,37 @@ and releases it only after control returns to Core. This prevents unloading the 
 stdexec's terminal state destruction. It adds no operation owner or per-notification heap allocation;
 unpinned operations carry an empty shared_ptr. Producer callback tails still require their own lifetime proof.
 
+## Process lifetime and application dispatch
+
+`ExecutionRuntime::create(config)` returns the unique owner of a non-movable runtime. Only one runtime
+may be alive per process; duplicate creation returns INVALID_STATE. `instance()` borrows it, never creates
+it. The instance lives in the Execution library's source file, not one static per header consumer/DLL.
+Engine applications normally own it through `lux::engine::init()` and its RAII Initialization result.
+Independent Object/Execution consumers can own the result of ExecutionRuntime::create directly.
+
+`dispatch()` is the sole public dispatch entry: it delivers a bounded batch of main completions and then
+task observations. Nested dispatch/wait is rejected. Object uses this same scheduler; no Object queue
+needs separate pumping. Global stop and join are private destructor steps; per-task cancellation remains
+public. Destruction runs on the initializing thread, keeps the singleton published while draining and
+joining, drains cleanup released by worker tails, and only then removes the global pointer.
+
+A single host loop drives platform events, dispatch and scene advancement. Execution does not own that
+loop. Retain external callbacks, borrowed state and code until their real completion/tails have ended.
+Before destroying the platform wake target, call setWake(nullptr) on Main. Replacement waits for in-flight
+notification callbacks to return. This cold lifetime boundary does not add a mutex to queue publication;
+the callback itself must not block or rebind the wake target.
+
 ## Shared CPU pool
 
-ExecutionRuntime owns one pinned `exec::static_thread_pool`; `cpu()` returns that library scheduler directly.
+ExecutionRuntime owns one pinned `exec::static_thread_pool`; `cpuScheduler()` returns that library scheduler directly.
 CPU scheduling has no Lux queue-capacity or weak lifetime wrapper. The scheduler is a borrow, not an ownership
 lease: finish all external Render, Scene and asset operations before joining/destroying ExecutionRuntime.
-`requestStop()` stops accepted business scopes and timers; the pool remains available for their cleanup.
-`join()` destroys the pool only after its own tasks and completion work have settled. Applications must also
+The destructor stops accepted business scopes and timers; the pool remains available for their cleanup.
+Its internal join destroys the pool only after its own tasks and completion work have settled. Applications must also
 join their external producers. Pool destruction joins worker callback tails; a scope join alone does not.
 
 TaskExecutor uses the same scheduler for worker-affine DAG nodes. BlockingScheduler retains its separate bounded
-IO queue and threads because blocking IO must not occupy all CPU workers. Timer and Object/CompletionWork contracts
-are unchanged. stdexec's pool may use locks when idle; only the Lux RunLoop publication path is lock-free.
+IO queue and threads because blocking IO must not occupy all CPU workers. Timer and CompletionWork retain their existing resource contracts. stdexec's pool may use locks when idle; only the Lux RunLoop publication path is lock-free.
 
 ## Finite tasks
 
@@ -76,7 +95,7 @@ A typed error or stopped signal records failure/cancellation. An exception escap
 
 ExecutionRuntime owns one `stdexec::simple_counting_scope` for these connected operations. TaskRecord stores
 monitoring and cancellation metadata, never an operation pointer or deleter. The existing per-task cancellation
-sources are authoritative; there is no additional scope stop source. Project TaskScope destruction requests
+sources are authoritative; there is no additional scope stop source. TaskScope destruction requests
 stop without joining or destroying accepted operations.
 
 The outer spawn allocator uses ordinary allocation and reports destruction back to the admitted metadata.
@@ -105,13 +124,13 @@ Main and Asset drivers use this same publication contract, with their own actual
 
 A VFS read can complete on an IO worker and immediately schedule CPU decoding. Only code that changes
 Main-thread state uses `continues_on(execution.mainScheduler())`; object-affine adoption may instead use the
-Engine ObjectScheduler. Do not schedule through both unless they perform genuinely different actions.
-`taskResult(sender)` materializes existing typed expected/error/stopped channels for a caller that must inspect
+ObjectScheduler. Do not schedule through both unless they perform genuinely different actions.
+`asResult(sender)` materializes existing typed expected/error/stopped channels for a caller that must inspect
 them. It is standard composition, without a queue or heap result envelope. Preserve the actual terminal state
 with `taskState(result)` when consuming the value, rather than marking a handled failure as success.
 
-`dispatchMainCompletions()` runs a bounded batch of ready continuations. `dispatchTaskEvents()` only notifies
-monitoring; it never invokes business adoption. `settled()` observes monitored/unmonitored work and Main quiescence,
+`dispatch()` runs a bounded batch of ready continuations, then publishes task monitoring changes.
+Monitoring does not perform a second business-adoption pass. `settled()` observes monitored/unmonitored work and Main quiescence,
 not external producer callback tails. CompletionWork shares this same RunLoop with a cold-allocated,
 coalesced notification state and reusable schedule operation. It does not allocate on every request.
 `hasReadyWork()` is only an event-loop wake predicate: a worker may still be preparing a continuation when
@@ -127,3 +146,30 @@ that same callback stack to return.
 states have released their TaskRecord access. It does not request stop or drive a nested loop. Await it from outside
 the group; use `continues_on(execution.mainScheduler())` for thread-affine teardown. Already-completed groups may
 complete synchronously. This group fact does not replace Runtime join or the producer callback/code-pin tail contract.
+
+## Ordinary groups and typed results
+
+TaskScope::spawn(sender) accepts finite unmonitored work without a TaskRecord, TaskId or monitoring-directory
+lock. stdexec associations and Runtime spawn own connected states. The group retains cancellation and join
+metadata; it does not own another operation pointer. Submission associations cover close racing admission
+and inline completion. settled() observes open-group idleness without changing admission; the locked stdexec
+scope lacks this query, so an atomic observation count remains. whenSettled() closes admission and uses
+stdexec join. External Producer tails still require their existing owner/Runtime barriers.
+
+ExecutionResult<T, E>, ExecutionFailure<E> and asResult(sender) materialize domain failure, execution failure
+and stopped where a caller needs to inspect them. asResult does not schedule or allocate a result record.
+Completion-signature inspection supplies the scheduler query required by exec::task; this is type inspection,
+not execution on that scheduler.
+
+Use submit where TaskId, progress, history or selective task cancellation are consumed. Use ordinary spawn
+for other finite work. Cleanup of an accepted reply can use stdexec::never_stop_token in its completion
+environment; this does not reopen closed admission and must not turn an indefinite wait uninterruptible.
+
+The object target provides whenEmitted(source, signal). It waits for one signal value, source closure or
+stop and obtains the process mainScheduler when connected. It is not a request/reply correlator or a
+replayable event queue. ObjectScheduler and SignalSender no longer need separate bridge targets.
+
+A task keeps its initiating scheduler affinity. Scheduling one CPU operation does not by itself mean
+the rest of a coroutine migrates there. Use exec::reschedule_coroutine_on when a transport/thread domain
+actually changes; ordinary child tasks are directly awaited. Keep a posted handoff where erasure must
+wait until a notifying table or foreign callback has returned.

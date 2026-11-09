@@ -6,25 +6,19 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/core/RenderScope.hpp>
 #include <span>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 
 namespace lux::render
 {
-    // Some accepted side effects cannot be certified as rolled back. This is a generic terminal fact,
-    // not a CPU/GPU operation category.
-    struct CommandFailure final
-    {
-        RenderError error;
-        bool outcome_unknown = false;
-    };
-
     struct CommandTag;
     struct HandlerTag;
     struct CommandNameTag;
@@ -60,12 +54,18 @@ namespace lux::render
     struct CommandDescriptor final
     {
         CommandName name;
-        cxx::TypeToken request;
-        cxx::TypeToken response;
-        // Visible-state mutations are admitted only inside the configured source's sealed frame.
-        bool frame_scoped = false;
+        cxx::type_info request;
+        cxx::type_info response;
+        // This discrete operation starts after older frames have settled. Later requests,
+        // including frame submissions, wait until its terminal response has been produced.
+        // It is never encoded as an entry in RenderFrame.
+        bool requires_frame_boundary = false;
         // Cleanup/query operations may run after device failure; they must not start new GPU production.
         bool failure_safe = false;
+        // Business data belongs to the Command, not to a parallel capability payload declaration.
+        // Framework controls have no capability data and leave this empty.
+        cxx::type_info data;
+        bool capability_command = false;
     };
 
     template <typename C>
@@ -74,7 +74,7 @@ namespace lux::render
             typename C::Request;
             typename C::Response;
             std::string_view{C::name};
-            std::bool_constant<C::frame_scoped>{};
+            std::bool_constant<C::requires_frame_boundary>{};
             { response.error } -> std::same_as<RenderError&>;
         } && std::is_nothrow_default_constructible_v<typename C::Response> &&
         std::is_nothrow_move_constructible_v<typename C::Request> &&
@@ -82,12 +82,19 @@ namespace lux::render
         std::is_nothrow_move_constructible_v<typename C::Response> &&
         std::is_nothrow_destructible_v<typename C::Response>;
 
+    // Capability membership is declared by Capability::Commands. Data identifies the command's
+    // business payload; Request fields and implementation/resource selectors belong to that command.
+    template <class C>
+    concept CapabilityCommand = RenderCommand<C> && requires {
+        typename C::Data;
+    };
+
     template <RenderCommand C>
     inline constexpr CommandDescriptor kCommandDescriptor{
         CommandName(C::name),
-        cxx::typeToken<typename C::Request>(),
-        cxx::typeToken<typename C::Response>(),
-        C::frame_scoped,
+        cxx::make_basic_type_info<typename C::Request>(),
+        cxx::make_basic_type_info<typename C::Response>(),
+        C::requires_frame_boundary,
         []() constexpr
         {
             if constexpr (requires { C::failure_safe; })
@@ -95,7 +102,16 @@ namespace lux::render
                 return C::failure_safe;
             }
             return false;
-        }()
+        }(),
+        []() constexpr
+        {
+            if constexpr (requires { typename C::Data; })
+            {
+                return cxx::make_basic_type_info<typename C::Data>();
+            }
+            return cxx::type_info{};
+        }(),
+        CapabilityCommand<C>
     };
 
     template <RenderCommand C> [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept
@@ -116,10 +132,9 @@ namespace lux::render
     inline constexpr auto kCommandContract = error::errorId("lux.render.protocol.contract");
 
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept;
-    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> compatibleCommands(
-        const CommandDescriptor& left,
-        const CommandDescriptor& right
-    ) noexcept;
+    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void>
+    compatibleCommands(const CommandDescriptor& left, const CommandDescriptor& right) noexcept;
 
     [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor> renderCommandErrorDescriptors() noexcept;
+
 } // namespace lux::render

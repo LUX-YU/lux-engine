@@ -20,7 +20,7 @@ namespace lux::flowforge
         FlowNodeRegistration result;
         constexpr std::string_view name = "lux.flow.ability_call";
         result.identity = {graph::nodeTypeId(name), std::string(name), 1};
-        result.payload_type = cxx::typeToken<ScriptAbilityPayload>();
+        result.payload_type = cxx::make_basic_type_info<ScriptAbilityPayload>();
         result.code = std::move(code);
         result.create = [](const object::CodeLease& lease) noexcept
         { return FlowNodePayload::make<ScriptAbilityPayload, cloneAbility>(lease, ScriptAbilityNodeDescription{}); };

@@ -17,6 +17,7 @@
 namespace lux::render::detail
 {
     struct DeviceBackend;
+    class CompiledPrograms;
     struct StorageBindingOps;
     struct StorageFrameUse;
 
@@ -28,6 +29,10 @@ namespace lux::render::detail
         bool texture_compression_bc = false;
         bool texture_descriptors = false;
         bool buffer_device_address = false;
+        bool multi_draw_indirect = false;
+        bool indirect_first_instance = false;
+        bool buffer_descriptors = false;
+        bool variable_descriptor_count = false;
     };
 
     // NRI owns the sole native Instance, Device and physical allocator. Aliased roles share
@@ -39,7 +44,7 @@ namespace lux::render::detail
             const DeviceOptions& options,
             const nri::CallbackInterface& diagnostic,
             bool validation = false,
-            std::uint32_t slots = 3
+            std::uint32_t temporary_capacity = 3
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
@@ -53,57 +58,63 @@ namespace lux::render::detail
         // in the last ordered completion callback. No resource is retained by the queue itself.
         template <class Release> void deferRelease(Release release) noexcept
         {
+            SubmissionFrontiers frontiers;
+            for (std::size_t q = 0; q < physical_queues_.size(); ++q)
+            {
+                frontiers.serials[q] = physical_queues_[q]->submitted();
+            }
+            deferRelease(frontiers, std::move(release));
+        }
+
+        template <class Release> void deferRelease(SubmissionQueue& queue, Release release) noexcept
+        {
+            SubmissionFrontiers frontiers;
+            frontiers.serials[queueIndex(queue)] = queue.submitted();
+            deferRelease(frontiers, std::move(release));
+        }
+
+        // Explicit accepted values, indexed by physical queue. Zero means no dependency.
+        template <class Release> void deferRelease(SubmissionFrontiers frontiers, Release release) noexcept
+        {
+            std::array<std::size_t, 3> pending;
+            std::size_t count = 0;
+            for (std::size_t q = 0; q < physical_queues_.size(); ++q)
+            {
+                if (frontiers.serials[q] != 0)
+                {
+                    pending[count++] = q;
+                }
+            }
+            const auto wait = [&](std::size_t index)
+            {
+                const auto q = pending[index];
+                return physical_queues_[q]->whenSubmissionCompletes(frontiers.serials[q]);
+            };
             auto complete = [release = std::move(release)](auto... results) mutable noexcept
             {
                 (requireCleanupComplete(results), ...);
                 std::invoke(release);
             };
-            switch (physical_queues_.size())
+            switch (count)
             {
             case 1:
-                stdexec::spawn(
-                    physical_queues_[0]->whenSubmittedWorkCompletes() | stdexec::then(std::move(complete)),
-                    cleanup_scope_.get_token()
-                );
+                stdexec::spawn(wait(0) | stdexec::then(std::move(complete)), cleanup_scope_.get_token());
                 break;
             case 2:
                 stdexec::spawn(
-                    stdexec::when_all(
-                        physical_queues_[0]->whenSubmittedWorkCompletes(),
-                        physical_queues_[1]->whenSubmittedWorkCompletes()
-                    ) | stdexec::then(std::move(complete)),
+                    stdexec::when_all(wait(0), wait(1)) | stdexec::then(std::move(complete)),
                     cleanup_scope_.get_token()
                 );
                 break;
             case 3:
                 stdexec::spawn(
-                    stdexec::when_all(
-                        physical_queues_[0]->whenSubmittedWorkCompletes(),
-                        physical_queues_[1]->whenSubmittedWorkCompletes(),
-                        physical_queues_[2]->whenSubmittedWorkCompletes()
-                    ) | stdexec::then(std::move(complete)),
+                    stdexec::when_all(wait(0), wait(1), wait(2)) | stdexec::then(std::move(complete)),
                     cleanup_scope_.get_token()
                 );
                 break;
             default:
-                // No queue exists only during rollback of device construction.
-                complete();
+                stdexec::spawn(stdexec::just() | stdexec::then(std::move(complete)), cleanup_scope_.get_token());
             }
-        }
-
-        template <class Release> void deferRelease(SubmissionQueue& queue, Release release) noexcept
-        {
-            stdexec::spawn(
-                queue.whenSubmittedWorkCompletes() |
-                    stdexec::then(
-                        [release = std::move(release)](RenderResult<void> result) mutable noexcept
-                        {
-                            requireCleanupComplete(result);
-                            std::invoke(release);
-                        }
-                    ),
-                cleanup_scope_.get_token()
-            );
         }
 
         [[nodiscard]] RenderResult<void> pollQueues() noexcept;
@@ -134,6 +145,8 @@ namespace lux::render::detail
         // Backend operations absent from the core interface. No native API types escape.
         [[nodiscard]] nri::Result queryFence(nri::Fence&, std::uint64_t&) const noexcept;
         [[nodiscard]] nri::Result waitFence(nri::Fence&, std::uint64_t, std::uint64_t, bool&) const noexcept;
+        // Reusable recording is legal only after the owning FIF slice has completed all prior GPU use.
+        [[nodiscard]] nri::Result beginCommandBuffer(nri::CommandBuffer&, bool reusable) const noexcept;
         [[nodiscard]] nri::Result resetCommandAllocator(nri::CommandAllocator&) const noexcept;
         [[nodiscard]] nri::Result flushMappedRange(nri::Buffer&, std::uint64_t, std::uint64_t) const noexcept;
         [[nodiscard]] nri::Result invalidateMappedRange(nri::Buffer&, std::uint64_t, std::uint64_t) const noexcept;
@@ -142,6 +155,9 @@ namespace lux::render::detail
         {
             return *physical_queues_[queue_roles_[static_cast<std::size_t>(role)]];
         }
+
+        // Device-wide native program cache; callers hold explicit logical uses, never native ownership.
+        [[nodiscard]] CompiledPrograms& programs() noexcept { return *programs_; }
 
         [[nodiscard]] DescriptorTable& descriptors() noexcept
         {
@@ -172,6 +188,16 @@ namespace lux::render::detail
         {
             return format_support_;
         }
+
+        // Surface creation requires an enabled native presentation-retirement contract.
+        [[nodiscard]] bool supportsPresentRetirement() const noexcept;
+        // Caller excludes new use and has settled accepted GPU work. Cold, bounded, one-shot.
+        [[nodiscard]] nri::Result
+        retireSwapChain(
+            nri::SwapChain& swap_chain,
+            nri::Fence* unconsumed_acquire,
+            std::uint64_t timeout_ns
+        ) const noexcept;
 
         // Cold creation qualification using the pinned backend's complete image-create key.
         [[nodiscard]] RenderResult<void> validateTexture(const nri::TextureDesc&) const noexcept;
@@ -223,6 +249,7 @@ namespace lux::render::detail
         std::array<std::uint8_t, 3> queue_roles_{};
         // External producers settle before close; descriptors and queues are explicitly destroyed before Device.
         DescriptorTable descriptor_table_;
+        std::unique_ptr<CompiledPrograms> programs_;
         stdexec::simple_counting_scope cleanup_scope_;
         bool closed_ = false;
     };

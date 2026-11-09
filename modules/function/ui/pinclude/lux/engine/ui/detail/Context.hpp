@@ -4,7 +4,7 @@
 #include <imgui_internal.h>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/function_ref.hpp>
-#include <lux/engine/ui/DrawData.hpp>
+#include <lux/engine/ui/DrawView.hpp>
 #include <lux/engine/ui/FontAtlas.hpp>
 #include <lux/engine/ui/FontSource.hpp>
 #include <lux/engine/ui/InputEvent.hpp>
@@ -49,7 +49,7 @@ namespace lux::ui::detail
         [[nodiscard]] cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
         void bindWindow(void*) noexcept;
         [[nodiscard]] cxx::expected<void, ECaptureError> beginFrame(FrameInfo) noexcept;
-        [[nodiscard]] cxx::expected<void, ECaptureError> endFrame(DrawData&, UpdateStatistics&) noexcept;
+        [[nodiscard]] cxx::expected<void, ECaptureError> endFrame(DrawView&, UpdateStatistics&) noexcept;
         [[nodiscard]] cxx::expected<void, EInputError> feedInput(const VInputEvent&, std::uint64_t) noexcept;
         [[nodiscard]] bool closeInput() noexcept;
         [[nodiscard]] InputSnapshot inputSnapshot(bool composing, bool pointer_captured) const noexcept;

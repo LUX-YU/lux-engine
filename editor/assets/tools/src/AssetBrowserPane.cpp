@@ -4,7 +4,9 @@
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/DragDrop.hpp>
 #include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Root.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -18,7 +20,7 @@ namespace lux::editor
             struct Row final
             {
                 std::string label, imgui_id;
-                ModelAssetReference reference;
+                AssetReference reference;
             };
 
             std::vector<Row> rows;
@@ -52,7 +54,7 @@ namespace lux::editor
                         if (ImGui::BeginDragDropSource())
                         {
                             ui::setDragDropPayload(
-                                ui::PayloadTypeIdView{kModelAssetPayload},
+                                ui::PayloadTypeIdView{kAssetPayload},
                                 std::as_bytes(std::span(&row.reference, 1))
                             );
                             ImGui::TextUnformatted(row.label.c_str());
@@ -68,14 +70,26 @@ namespace lux::editor
         ProjectAssets& assets;
         ui::Layout layout;
         ui::TextEdit source;
-        ui::Button import{"Import model"}, reimport{"Reimport selected"}, reload{"Reload catalog"};
+        ui::Choice importer_choice{{}};
+        ui::Layout configuration;
+        std::vector<AssetImportEditor> editors;
+        std::unique_ptr<ui::Element> draft;
+        const AssetImportEditor* editor = nullptr;
+        ui::Button import{"Import asset"}, reimport{"Reimport selected"}, reload{"Reload catalog"};
         ui::Label status;
         AssetList list;
         std::vector<object::Connection> connections;
 
-        explicit Impl(ProjectAssets& assets) noexcept : assets(assets)
+        Impl(ProjectAssets& assets, std::vector<AssetImportEditor> editors) noexcept
+            : assets(assets), editors(std::move(editors))
         {
-            source.setHint("Absolute model path (.gltf/.obj/...)");
+            source.setHint("Absolute source path");
+            std::vector<ui::ChoiceOption> choices;
+            for (std::size_t i = 0; i < assets.importers().size(); ++i)
+            {
+                choices.push_back({static_cast<std::int64_t>(i), assets.importers()[i].name});
+            }
+            importer_choice.setOptions(std::move(choices));
             const auto add = [&](ui::Element& value)
             {
                 if (!layout.addElement(value))
@@ -83,7 +97,9 @@ namespace lux::editor
                     std::terminate();
                 }
             };
+            add(importer_choice);
             add(source);
+            add(configuration);
             add(import);
             add(reimport);
             add(reload);
@@ -96,8 +112,8 @@ namespace lux::editor
         }
     };
 
-    AssetBrowserPane::AssetBrowserPane(ProjectAssets& assets, std::string title)
-        : Pane(std::move(title)), impl_(std::make_unique<Impl>(assets))
+    AssetBrowserPane::AssetBrowserPane(ProjectAssets& assets, std::vector<AssetImportEditor> editors, std::string title)
+        : Pane(std::move(title)), impl_(std::make_unique<Impl>(assets, std::move(editors)))
     {
         if (!addElement(impl_->layout))
         {
@@ -118,7 +134,24 @@ namespace lux::editor
             this,
             [this]() noexcept
             {
-                auto result = impl_->assets.importModel(std::filesystem::u8path(impl_->source.value()));
+                const auto index = impl_->importer_choice.value();
+                if (index >= impl_->assets.importers().size() || !impl_->draft || !impl_->editor)
+                {
+                    return;
+                }
+                auto bytes = impl_->editor->encode(*impl_->draft);
+                if (!bytes)
+                {
+                    impl_->status.setText(bytes.error().detail);
+                    return;
+                }
+                const auto& provider = impl_->assets.importers()[index];
+                auto result = impl_->assets.importAsset(
+                    provider.name,
+                    provider.version,
+                    std::filesystem::u8path(impl_->source.value()),
+                    std::move(*bytes)
+                );
                 impl_->status.setText(result ? "Importing..." : result.error().detail);
             }
         ));
@@ -142,7 +175,57 @@ namespace lux::editor
                 impl_->status.setText(result ? "Opening catalog..." : result.error().detail);
             }
         ));
+        retain(connect(
+            &impl_->importer_choice,
+            &ui::Choice::edited,
+            this,
+            [this](auto) noexcept
+            {
+                root().deferChange(
+                    *this,
+                    [](object::LuxObject& value) noexcept { static_cast<AssetBrowserPane&>(value).selectImporter(); }
+                );
+            }
+        ));
+        selectImporter();
         refresh();
+    }
+
+    void AssetBrowserPane::selectImporter() noexcept
+    {
+        impl_->draft.reset();
+        impl_->editor = nullptr;
+        impl_->import.setEnabled(false);
+        const auto index = impl_->importer_choice.value();
+        if (index >= impl_->assets.importers().size())
+        {
+            return;
+        }
+        const auto& provider = impl_->assets.importers()[index];
+        const auto compatible = [&](const AssetImportEditor& editor) noexcept
+        {
+            return editor.importer == provider.name && editor.version == provider.version &&
+                   editor.type == provider.configuration_type;
+        };
+        const auto found = std::ranges::find_if(impl_->editors, compatible);
+        if (found == impl_->editors.end() || std::ranges::count_if(impl_->editors, compatible) != 1)
+        {
+            impl_->status.setText("Configuration editor unavailable; stored bytes remain unchanged");
+            return;
+        }
+        auto draft = found->create(provider.default_configuration);
+        if (!draft)
+        {
+            impl_->status.setText(draft.error().detail);
+            return;
+        }
+        impl_->draft = std::move(*draft);
+        impl_->editor = &*found;
+        impl_->import.setEnabled(true);
+        if (!impl_->configuration.addElement(*impl_->draft))
+        {
+            std::terminate();
+        }
     }
 
     AssetBrowserPane::~AssetBrowserPane() noexcept = default;
@@ -152,16 +235,18 @@ namespace lux::editor
         impl_->list.rows.clear();
         for (const auto& record : impl_->assets.records())
         {
-            ModelAssetReference reference;
+            AssetReference reference;
             std::memcpy(reference.id.data(), record.id.bytes().data(), reference.id.size());
             reference.revision = record.revision;
+            reference.type = record.type;
             impl_->list.rows.push_back(
                 {record.name + " v" + std::to_string(record.revision), uuids::to_string(record.id.uuid()), reference}
             );
         }
         impl_->status.setText(
             impl_->assets.failure() ? impl_->assets.failure()->detail
-            : impl_->assets.ready() ? "Drag a model into a Scene viewport"
+            : !impl_->editor        ? "Importer/configuration editor unavailable; existing records remain unchanged"
+            : impl_->assets.ready() ? "Drag an asset to a compatible tool"
                                     : "Opening asset catalog..."
         );
     }

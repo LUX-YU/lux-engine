@@ -1,18 +1,21 @@
 #pragma once
 
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
+#include <string_view>
 #include <lux/engine/render/core/ResourceId.hpp>
 
 #include <lux/engine/render/visibility.h>
 
 #include <algorithm>
 #include <array>
+#include <vector>
 #include <lux/engine/description/MaterialProgramSet.hpp>
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 
 namespace lux::render
 {
+    inline constexpr std::string_view kRasterMaterialInput = "lux.render.input.raster_material";
+
     struct MaterialTag;
     using MaterialId = ResourceId<MaterialTag>;
     // Client-supplied finite values in the Cooked parameter order; Render checks the actual layout and count.
@@ -28,26 +31,13 @@ namespace lux::render
 
     static_assert(sizeof(MaterialTextureGpuRef) == 16);
 
-    struct MaterialWrite final
+    // Cooked material value. Asset identifiers have already been resolved by the caller.
+    struct MaterialData final
     {
-        CapabilityInput destination;
         rdesc::MaterialProgramSet program;
         MaterialParameters parameters{};
         // Client keeps referenced textures valid and explicitly updates these fields before releasing them.
         std::vector<TextureId> textures;
-    };
-
-    struct CreateMaterial final
-    {
-        static constexpr std::string_view name = "lux.render.CreateMaterial";
-        static constexpr bool frame_scoped = true;
-        using Request = MaterialWrite;
-
-        struct Response final
-        {
-            RenderError error{};
-            MaterialId material{};
-        };
     };
 
     struct MaterialUpdate final
@@ -55,25 +45,6 @@ namespace lux::render
         MaterialId material;
         MaterialParameters parameters;
         std::vector<TextureId> textures;
-    };
-
-    struct UpdateMaterial final
-    {
-        static constexpr std::string_view name = "lux.render.UpdateMaterial";
-        static constexpr bool frame_scoped = true;
-        // Related writes and releases are ordered by the Client, including across Client connections.
-        // Program and table slot remain fixed. A different program requires a new Material identity.
-        using Request = MaterialUpdate;
-        using Response = AckResponse;
-    };
-
-    struct ReleaseMaterial final
-    {
-        static constexpr bool failure_safe = true;
-        static constexpr std::string_view name = "lux.render.ReleaseMaterial";
-        static constexpr bool frame_scoped = true;
-        using Request = MaterialId;
-        using Response = AckResponse;
     };
 
     template <> struct ConfigValueTraits<rdesc::MaterialProgramSet> final

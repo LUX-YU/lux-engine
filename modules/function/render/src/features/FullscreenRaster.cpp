@@ -21,16 +21,17 @@ namespace lux::render::detail
         }
         shader.interface.entry_points.push_back({"main", rdesc::EShaderType::VERTEX});
         RasterWork work;
+        auto& fixed_work = work.fixed();
         if (!shader.interface.push_constants.empty())
         {
-            work.interface.parameters.values.resize(shader.interface.push_constants.front().size);
+            fixed_work.interface.parameters.values.resize(shader.interface.push_constants.front().size);
         }
         auto program = context.graph.addProgram(std::move(shader));
         if (!program)
         {
             return cxx::unexpected(program.error());
         }
-        work.interface.program = *program;
+        fixed_work.interface.program = *program;
         return work;
     }
 

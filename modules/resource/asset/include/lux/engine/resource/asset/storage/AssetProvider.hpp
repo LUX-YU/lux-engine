@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <span>
@@ -23,6 +24,11 @@
 
 namespace lux::asset
 {
+    class AssetReadSource;
+    class AssetContentWriter;
+    enum class EAssetContentWrite : std::uint8_t;
+    class AssetVfsView;
+
     /// Ownership-erased bytes of a complete storage record. Callers must not
     /// assume the record is an AssetFileHeader image or that it is small.
     struct AssetBlob
@@ -82,6 +88,38 @@ namespace lux::asset
 
         virtual void enumerate(const std::function<void(const ProviderEntry&)>& fn) const = 0;
 
+        // Lookup an existing identity without materializing its data. Providers preserve their
+        // native index (including paged Pak lookup); no full-catalog scan is required.
+        [[nodiscard]] virtual cxx::expected<ProviderEntry, EAssetStorageError> describe(AssetId id) const = 0;
+
+        // Replace an existing record; immutable providers remain explicitly read-only.
+        [[nodiscard]] virtual cxx::expected<void, EAssetStorageError>
+        replace(AssetId, std::span<const std::byte>)
+        {
+            return cxx::unexpected(EAssetStorageError::UNSUPPORTED);
+        }
+
+        // Physical paths affected by a directory notification. Immutable providers have no changes.
+        [[nodiscard]] virtual cxx::expected<std::vector<AssetId>, EAssetStorageError>
+        refresh(std::span<const std::filesystem::path>)
+        {
+            return std::vector<AssetId>{};
+        }
+
         [[nodiscard]] virtual std::optional<std::string> pathOf(const AssetId& id) const = 0;
+
+    protected:
+        friend class AssetVfsView;
+        friend class AssetContentWriter;
+        [[nodiscard]] virtual cxx::expected<AssetReadSource, EAssetStorageError> openSource(AssetId id) noexcept;
+        [[nodiscard]] virtual cxx::expected<AssetContentWriter, EAssetStorageError>
+        beginContentWrite(
+            AssetId id, const AssetReadSource* base, EAssetContentWrite mode, std::string_view new_path
+        ) noexcept;
+        [[nodiscard]] virtual cxx::expected<void, EAssetStorageError>
+        publishContentRoot(
+            AssetId id, const AssetReadSource* base, const std::filesystem::path& destination,
+            std::span<const std::byte> root
+        ) noexcept;
     };
 } // namespace lux::asset

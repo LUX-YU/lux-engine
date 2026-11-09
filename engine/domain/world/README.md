@@ -10,15 +10,17 @@ World 描述世界中需要保存和恢复的内容；运行时内容物化到 E
 
 | 子模块 | 职责 |
 | --- | --- |
-| `identity` | 持久对象身份 `WorldObjectId` |
-| `description` | schema、分区器、分区与存储索引的描述 |
-| `partition` | 内容归属、分区表及分区索引描述 |
-| `storage` | 分区内容、存储格式与 codec |
-| `asset` | World 资产的读取和编码边界 |
+| `description` | 可直接构造的 World 名称、几何及分区描述 |
+| `partition` | 分区数据合同 |
+| `composition` | 实际 World 与 Registry 的所有权 |
+
+持久身份位于 `engine/foundation/identity/world`；分区格式/读取位于 `engine/services/world_storage`；
+资产编码位于 `engine/services/serialization/world`。当前持久化旧消费者的迁移尚未完成，
+不得将旧 bundle/generation/schema 字段重新加入 WorldDescription 来恢复旧接口。
 
 ## WorldObjectId 不是运行时 Entity
 
-[`WorldObjectId`](identity/include/lux/engine/world/WorldObjectId.hpp) 是持久内容中某些对象的静态身份。它用于恢复对象和持久引用，不是 ECS 分配的动态句柄。
+[`WorldObjectId`](../../foundation/identity/world/include/lux/engine/world/WorldObjectId.hpp) 是持久内容中某些对象的静态身份。它用于恢复对象和持久引用，不是 ECS 分配的动态句柄。
 
 | 问题 | 使用的身份 |
 | --- | --- |
@@ -36,9 +38,9 @@ World 描述世界中需要保存和恢复的内容；运行时内容物化到 E
 
 ## WorldDescription 是描述，不是活动 Registry
 
-[`WorldDescription`](description/include/lux/engine/world/WorldDescription.hpp) 当前提供 schema、partitioner、分区数量、存储卷、分区表与索引描述。它不拥有所有活动实体，也不提供射线检测。
+[`WorldDescription`](description/include/lux/engine/world/WorldDescription.hpp) 提供 schema、域集合、分区数量、存储卷和唯一全局分区表。每个 `WorldDomainDescription` 值保存稳定域键、partitioner 身份/配置、全局 ordinal 区间和查询索引；没有第二份全局 partitioner。它不拥有所有活动实体，也不提供射线检测。
 
-当前 `Scene::worldDescription()` 返回的是这份描述，实际组件位于 `Scene::registry()`。不能将这两个入口混为同一份数据，也不能为解释 World 概念再建立一份可写 EditorWorld。
+SceneRuntime 实例持有这份描述，实际组件通过受控 Registry 借用访问。不能将这两个入口混为同一份数据，也不能为解释 World 概念再建立一份可写 EditorWorld。
 
 ## 分区索引服务于加载
 
@@ -78,7 +80,7 @@ World 不固定为三维、透视相机或父子树。
 ## 当前实现与目标的差距
 
 - `WorldObjectId`、World 描述、分区格式与组件 codec 已存在。
-- [`WorldEntityMap`](../simulation/ecs/schema/include/lux/engine/simulation/ecs/WorldEntityMap.hpp) 当前承担身份映射，它不是空间查询索引。
+- [`WorldEntityMap`](../simulation/ecs/schema/include/lux/engine/ecs/WorldEntityMap.hpp) 当前承担身份映射，它不是空间查询索引。
 - 现有 Editor／Run 对象目录仍有对持久身份的依赖，包括为新运行实体安排静态身份。这个调用关系需要收敛到持久化和编辑器需要的边界，不能作为新的运行时查询契约。
 
 ## 接线应验证的性质
@@ -90,3 +92,19 @@ World 不固定为三维、透视相机或父子树。
 5. 编辑器临时对象和渲染句柄不会进入 World 资产。
 
 相关说明：[ECS 身份与组件](../simulation/ecs/README.md)、[Scene 装配](../../scene/README.md)。
+
+## 多域构建与格式
+
+World 根格式 v3 持久化域值；v2 在解码边界迁为 `default` 域，保存只写 v3。
+各域区间连续覆盖唯一分区表，不重叠；索引 root 指向同一 bundle/generation 的存储卷。
+相同索引类型可以出现在不同域中。域的配置和区间与分区内容共同参与包 generation。
+
+`PartitionAlgorithm` 描述实际输入、配置 Codec、构建函数及查询合同；`partitionDeclaration<T>()`
+提供类型化入口，产物继续使用 `WorldPartitionBuildProduct`。`SinglePartitionAlgorithm` 复用现有
+layout 构建器完成对象唯一分配；空作者域也有一个真实分区。没有 World 构建器的 Grid/Octree
+不登记为可用能力。几何、System、Editor 控件与流送行为不进入 World 描述或分区算法。
+
+
+Scene 打包核查所有分区的 WorldObjectId 唯一性。主域由对象所在的唯一分区确定，不再保存第二张可写的
+“对象→主域”目录；几何相容性由上层 Scene 作者边界核对。辅助查询可以引用相同 ordinal，但不复制主体数据。
+现有 Spatial2D/Spatial3D 查询算法可供策略使用；这不代表已经实现对应的 World Grid 构建、持久化及重建器。

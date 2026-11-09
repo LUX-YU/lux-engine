@@ -1,6 +1,9 @@
-#include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/render/capabilities/RasterAssets.hpp>
 #pragma once
+
+#include "Sample.hpp"
+
+#include <lux/engine/render/capabilities/DeferredLighting.hpp>
+#include <lux/engine/render/capabilities/RasterSurface.hpp>
 
 #include "Support.hpp"
 #include <atomic>
@@ -8,11 +11,25 @@
 #include <cstring>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
+#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/frame/FrameStorage.hpp>
+#include <lux/engine/render/inputs/DirectLightInputs.hpp>
+#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
+#include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
+#include <lux/engine/render/inputs/RasterMaterialInputs.hpp>
+#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
+#include <map>
+#include <tuple>
+#include <initializer_list>
 #include <thread>
 
 using namespace foundation_test;
@@ -20,6 +37,529 @@ namespace ipc = lux::platform::ipc;
 namespace rdesc = lux::rdesc;
 using Clock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
+
+// Test configurations compose existing typed Feature inputs; preserve their real cold memory accounting.
+namespace lux::render
+{
+    template <class... Fields> struct ConfigValueTraits<std::tuple<Fields...>>
+    {
+        static RenderResult<std::size_t> retainedBytes(const std::tuple<Fields...>& value) noexcept
+        {
+            RenderResult<std::size_t> total{sizeof(value)};
+            std::apply(
+                [&](const auto&... fields) noexcept
+                {
+                    const auto add = [&](const auto& field) noexcept
+                    {
+                        if (!total) return;
+                        using Field = std::remove_cvref_t<decltype(field)>;
+                        auto bytes = ConfigValueTraits<Field>::retainedBytes(field);
+                        if (!bytes) total = lux::cxx::unexpected(bytes.error());
+                        else if (*bytes < sizeof(Field) || *bytes - sizeof(Field) > SIZE_MAX - *total)
+                            total = lux::cxx::unexpected(RenderError{kInvalidConfig});
+                        else *total += *bytes - sizeof(Field);
+                    };
+                    (add(fields), ...);
+                },
+                value
+            );
+            return total;
+        }
+    };
+}
+
+// Test-only observation: installed by the first CaptureBuffer before the first frame.
+// The fixture serializes uploads/Attach before frame submission. Installation never races
+// a producer; native program preparation can subsequently run on CPU workers.
+inline nri::CoreInterface call_capture_original{};
+inline bool call_capture_first_instance = false;
+inline nri::CoreInterface* call_capture_core = nullptr;
+inline std::atomic<std::uint64_t> call_capture_fail_set = 0;
+inline std::atomic<std::uint64_t> call_capture_fail_pool = 0;
+inline std::atomic<std::uint64_t> call_capture_failed_allocations = 0;
+inline std::array<std::atomic<std::uint64_t>, 45> call_capture_counts{};
+
+inline void beginCallCapture(const nri::CoreInterface& input) noexcept
+{
+    if (call_capture_core || !std::getenv("LUX_DRAW_CALL_COUNTS"))
+    {
+        return;
+    }
+    // DeviceSession owns a non-const interface and destroys it before Server::run returns.
+    auto& core = const_cast<nri::CoreInterface&>(input);
+    call_capture_core = &core;
+    call_capture_original = core;
+    core.CreateDescriptorPool = [](
+        nri::Device& device,
+        const nri::DescriptorPoolDesc& descriptorPoolDesc,
+        nri::DescriptorPool*& descriptorPool
+    ) noexcept -> nri::Result
+    {
+        const auto attempt = call_capture_counts[0].fetch_add(1, std::memory_order_relaxed) + 1;
+        if (call_capture_fail_pool.load(std::memory_order_relaxed) == attempt)
+        {
+            call_capture_fail_pool.store(0, std::memory_order_relaxed);
+            call_capture_failed_allocations.fetch_add(1, std::memory_order_relaxed);
+            return nri::Result::OUT_OF_MEMORY;
+        }
+        return call_capture_original.CreateDescriptorPool(device, descriptorPoolDesc, descriptorPool);
+    };
+    core.CreatePipelineLayout = [](
+        nri::Device& device,
+        const nri::PipelineLayoutDesc& pipelineLayoutDesc,
+        nri::PipelineLayout*& pipelineLayout
+    ) noexcept -> nri::Result
+    {
+        call_capture_counts[1].fetch_add(1, std::memory_order_relaxed);
+        return call_capture_original.CreatePipelineLayout(device, pipelineLayoutDesc, pipelineLayout);
+    };
+    core.CreateGraphicsPipeline = [](
+        nri::Device& device,
+        const nri::GraphicsPipelineDesc& graphicsPipelineDesc,
+        nri::Pipeline*& pipeline
+    ) noexcept -> nri::Result
+    {
+        call_capture_counts[2].fetch_add(1, std::memory_order_relaxed);
+        return call_capture_original.CreateGraphicsPipeline(device, graphicsPipelineDesc, pipeline);
+    };
+    core.CreateComputePipeline = [](
+        nri::Device& device, const nri::ComputePipelineDesc& description, nri::Pipeline*& pipeline
+    ) noexcept -> nri::Result
+    {
+        call_capture_counts[40].fetch_add(1, std::memory_order_relaxed);
+        return call_capture_original.CreateComputePipeline(device, description, pipeline);
+    };
+    core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
+    {
+        call_capture_counts[41].fetch_add(pipeline != nullptr, std::memory_order_relaxed);
+        call_capture_original.DestroyPipeline(pipeline);
+    };
+    core.DestroyPipelineLayout = [](nri::PipelineLayout* layout) noexcept
+    {
+        call_capture_counts[42].fetch_add(layout != nullptr, std::memory_order_relaxed);
+        call_capture_original.DestroyPipelineLayout(layout);
+    };
+    core.CreateBufferView = [](
+        const nri::BufferViewDesc& bufferViewDesc,
+        nri::Descriptor*& bufferView
+    ) noexcept -> nri::Result
+    {
+        call_capture_counts[3].fetch_add(1, std::memory_order_relaxed);
+        return call_capture_original.CreateBufferView(bufferViewDesc, bufferView);
+    };
+    core.AllocateDescriptorSets = [](
+        nri::DescriptorPool& descriptorPool,
+        const nri::PipelineLayout& pipelineLayout,
+        uint32_t setIndex,
+        nri::DescriptorSet** descriptorSets,
+        uint32_t instanceNum,
+        uint32_t variableDescriptorNum
+    ) noexcept -> nri::Result
+    {
+        const auto attempt = call_capture_counts[4].fetch_add(1, std::memory_order_relaxed) + 1;
+        if (call_capture_fail_set.load(std::memory_order_relaxed) == attempt)
+        {
+            call_capture_fail_set.store(0, std::memory_order_relaxed);
+            call_capture_failed_allocations.fetch_add(1, std::memory_order_relaxed);
+            return nri::Result::OUT_OF_MEMORY;
+        }
+        const auto result = call_capture_original.AllocateDescriptorSets(
+            descriptorPool, pipelineLayout, setIndex, descriptorSets, instanceNum, variableDescriptorNum
+        );
+        if (result == nri::Result::SUCCESS)
+        {
+            call_capture_counts[34].fetch_add(instanceNum, std::memory_order_relaxed);
+        }
+        return result;
+    };
+    core.UpdateDescriptorRanges = [](
+        const nri::UpdateDescriptorRangeDesc* updateDescriptorRangeDescs,
+        uint32_t updateDescriptorRangeDescNum
+    ) noexcept -> void
+    {
+        call_capture_counts[5].fetch_add(1, std::memory_order_relaxed);
+        call_capture_counts[35].fetch_add(updateDescriptorRangeDescNum, std::memory_order_relaxed);
+        call_capture_original.UpdateDescriptorRanges(updateDescriptorRangeDescs, updateDescriptorRangeDescNum);
+    };
+    core.BeginCommandBuffer = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::DescriptorPool* descriptorPool
+    ) noexcept -> nri::Result
+    {
+        call_capture_counts[6].fetch_add(1, std::memory_order_relaxed);
+        return call_capture_original.BeginCommandBuffer(commandBuffer, descriptorPool);
+    };
+    core.CmdSetDescriptorPool = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::DescriptorPool& descriptorPool
+    ) noexcept -> void
+    {
+        call_capture_counts[7].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetDescriptorPool(commandBuffer, descriptorPool);
+    };
+    core.CmdSetPipelineLayout = [](
+        nri::CommandBuffer& commandBuffer,
+        nri::BindPoint bindPoint,
+        const nri::PipelineLayout& pipelineLayout
+    ) noexcept -> void
+    {
+        call_capture_counts[8].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetPipelineLayout(commandBuffer, bindPoint, pipelineLayout);
+    };
+    core.CmdSetDescriptorSet = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::SetDescriptorSetDesc& setDescriptorSetDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[9].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetDescriptorSet(commandBuffer, setDescriptorSetDesc);
+    };
+    core.CmdSetRootConstants = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::SetRootConstantsDesc& setRootConstantsDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[10].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetRootConstants(commandBuffer, setRootConstantsDesc);
+    };
+    core.CmdSetPipeline = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::Pipeline& pipeline
+    ) noexcept -> void
+    {
+        call_capture_counts[11].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetPipeline(commandBuffer, pipeline);
+    };
+    core.CmdBarrier = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::BarrierDesc& barrierDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[12].fetch_add(1, std::memory_order_relaxed);
+        call_capture_counts[25].fetch_add(barrierDesc.textureNum, std::memory_order_relaxed);
+        call_capture_counts[26].fetch_add(barrierDesc.bufferNum, std::memory_order_relaxed);
+        call_capture_counts[27].fetch_add(barrierDesc.globalNum, std::memory_order_relaxed);
+        call_capture_original.CmdBarrier(commandBuffer, barrierDesc);
+    };
+    core.CmdSetIndexBuffer = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::Buffer& buffer,
+        uint64_t offset,
+        nri::IndexType indexType
+    ) noexcept -> void
+    {
+        call_capture_counts[13].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetIndexBuffer(commandBuffer, buffer, offset, indexType);
+    };
+    core.CmdSetVertexBuffers = [](
+        nri::CommandBuffer& commandBuffer,
+        uint32_t baseSlot,
+        const nri::VertexBufferDesc* vertexBufferDescs,
+        uint32_t vertexBufferNum
+    ) noexcept -> void
+    {
+        call_capture_counts[14].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetVertexBuffers(commandBuffer, baseSlot, vertexBufferDescs, vertexBufferNum);
+    };
+    core.CmdSetScissors = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::Rect* rects,
+        uint32_t rectNum
+    ) noexcept -> void
+    {
+        call_capture_counts[15].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetScissors(commandBuffer, rects, rectNum);
+    };
+    core.CmdSetDepthBias = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::DepthBiasDesc& depthBiasDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[16].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdSetDepthBias(commandBuffer, depthBiasDesc);
+    };
+    core.CmdBeginRendering = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::RenderingDesc& renderingDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[17].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdBeginRendering(commandBuffer, renderingDesc);
+    };
+    core.CmdDraw = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::DrawDesc& drawDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[18].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdDraw(commandBuffer, drawDesc);
+    };
+    core.CmdDrawIndexed = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::DrawIndexedDesc& drawIndexedDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[19].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdDrawIndexed(commandBuffer, drawIndexedDesc);
+    };
+    core.CmdDrawIndexedIndirect = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::Buffer& buffer,
+        uint64_t offset,
+        uint32_t drawNum,
+        uint32_t stride,
+        const nri::Buffer* countBuffer,
+        uint64_t countBufferOffset
+    ) noexcept -> void
+    {
+        call_capture_counts[20].fetch_add(1, std::memory_order_relaxed);
+        call_capture_counts[33].fetch_add(drawNum, std::memory_order_relaxed);
+        call_capture_counts[36].fetch_add(drawNum > 1, std::memory_order_relaxed);
+        call_capture_counts[39].fetch_add(countBuffer != nullptr, std::memory_order_relaxed);
+        const auto maximum = [](std::atomic<std::uint64_t>& value, std::uint64_t sample) noexcept
+        {
+            auto previous = value.load(std::memory_order_relaxed);
+            while (sample > previous && !value.compare_exchange_weak(previous, sample, std::memory_order_relaxed)) {}
+        };
+        maximum(call_capture_counts[37], drawNum);
+        maximum(call_capture_counts[38], stride);
+        call_capture_original.CmdDrawIndexedIndirect(
+            commandBuffer, buffer, offset, drawNum, stride, countBuffer, countBufferOffset
+        );
+    };
+    core.CmdEndRendering = [](
+        nri::CommandBuffer& commandBuffer
+    ) noexcept -> void
+    {
+        call_capture_counts[21].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdEndRendering(commandBuffer);
+    };
+    core.CmdDispatch = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::DispatchDesc& dispatchDesc
+    ) noexcept -> void
+    {
+        call_capture_counts[22].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdDispatch(commandBuffer, dispatchDesc);
+    };
+    core.CmdDispatchIndirect = [](
+        nri::CommandBuffer& commandBuffer,
+        const nri::Buffer& buffer,
+        uint64_t offset
+    ) noexcept -> void
+    {
+        call_capture_counts[23].fetch_add(1, std::memory_order_relaxed);
+        call_capture_original.CmdDispatchIndirect(commandBuffer, buffer, offset);
+    };
+    core.CmdCopyBuffer = [](
+        nri::CommandBuffer& command, nri::Buffer& destination, std::uint64_t destination_offset,
+        const nri::Buffer& source, std::uint64_t source_offset, std::uint64_t bytes
+    ) noexcept
+    {
+        call_capture_counts[43].fetch_add(1, std::memory_order_relaxed);
+        call_capture_counts[44].fetch_add(bytes, std::memory_order_relaxed);
+        call_capture_original.CmdCopyBuffer(command, destination, destination_offset, source, source_offset, bytes);
+    };
+    core.QueueSubmit = [](
+        nri::Queue& queue,
+        const nri::QueueSubmitDesc& queueSubmitDesc
+    ) noexcept -> nri::Result
+    {
+        call_capture_counts[24].fetch_add(1, std::memory_order_relaxed);
+        const auto result = call_capture_original.QueueSubmit(queue, queueSubmitDesc);
+        call_capture_counts[result == nri::Result::SUCCESS ? 28 : 29].fetch_add(1, std::memory_order_relaxed);
+        if (result == nri::Result::SUCCESS)
+        {
+            call_capture_counts[30].fetch_add(queueSubmitDesc.waitFenceNum, std::memory_order_relaxed);
+            call_capture_counts[31].fetch_add(queueSubmitDesc.signalFenceNum, std::memory_order_relaxed);
+            call_capture_counts[32].fetch_add(queueSubmitDesc.commandBufferNum, std::memory_order_relaxed);
+        }
+        return result;
+    };
+}
+
+inline void writeCallCounts(const char* path) noexcept
+{
+    auto* output = std::fopen(path, "w");
+    CHECK(output);
+    std::fputs("{\n", output);
+    std::fprintf(output, "  \"CmdCopyBuffer\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[43].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"copied_buffer_bytes\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[44].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CreateComputePipeline\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[40].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"DestroyPipeline\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[41].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"DestroyPipelineLayout\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[42].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CreateDescriptorPool\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[0].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CreatePipelineLayout\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[1].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CreateGraphicsPipeline\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[2].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CreateBufferView\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[3].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"AllocateDescriptorSets\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[4].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"UpdateDescriptorRanges\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[5].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"BeginCommandBuffer\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[6].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetDescriptorPool\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[7].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetPipelineLayout\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[8].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetDescriptorSet\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[9].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetRootConstants\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[10].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetPipeline\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[11].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdBarrier\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[12].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetIndexBuffer\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[13].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetVertexBuffers\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[14].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetScissors\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[15].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdSetDepthBias\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[16].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdBeginRendering\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[17].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdDraw\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[18].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdDrawIndexed\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[19].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdDrawIndexedIndirect\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[20].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdEndRendering\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[21].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdDispatch\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[22].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"CmdDispatchIndirect\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[23].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"QueueSubmit\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[24].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"image_barriers\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[25].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"buffer_barriers\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[26].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"global_barriers\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[27].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"submit_success\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[28].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"submit_failure\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[29].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"waits\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[30].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"signals\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[31].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"submitted_command_buffers\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[32].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"indirect_record_capacity\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[33].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"multi_draw_calls\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[36].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"max_indirect_records_per_call\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[37].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"max_indirect_stride\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[38].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"count_buffer_calls\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[39].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"allocated_sets\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_counts[34].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"updated_ranges\": %llu\n",
+        static_cast<unsigned long long>(call_capture_counts[35].load(std::memory_order_relaxed)));
+    std::fputs("}\n", output);
+    std::fclose(output);
+}
+
+inline void endCallCapture() noexcept
+{
+    if (call_capture_core)
+    {
+        // Called after run() joins: DeviceSession has already been destroyed. Never write back
+        // through this identity. Function targets and counters are test-static and outlive it.
+        call_capture_core = nullptr;
+        writeCallCounts(std::getenv("LUX_DRAW_CALL_COUNTS"));
+    }
+}
+
+// Test-only capability: implementations produce explicit render/readback probes.
+// No Graph description is carried in its public Commands or frame protocol.
+
+
+inline constexpr std::array kRasterProbeDependencies{
+    CapabilityStorageDependency{EStorageScope::GLOBAL, kMeshStorageType, "assets"},
+    CapabilityStorageDependency{EStorageScope::GLOBAL, kTextureStorageType, "assets"},
+    CapabilityStorageDependency{EStorageScope::GLOBAL, kMaterialStorageType, "assets"},
+    CapabilityStorageDependency{EStorageScope::SCENE, kMeshInstanceStorageType, "instances"}
+};
+
+inline constexpr std::array kLitProbeDependencies{
+    kRasterProbeDependencies[0], kRasterProbeDependencies[1], kRasterProbeDependencies[2],
+    kRasterProbeDependencies[3],
+    CapabilityStorageDependency{EStorageScope::SCENE, kDirectLightingStorageType, "direct_lights"}
+};
+
+inline std::vector<CapabilityPort>
+probePorts(std::initializer_list<std::string_view> images, std::initializer_list<std::string_view> buffers)
+{
+    std::vector<CapabilityPort> ports;
+    for (auto key : images)
+        ports.push_back({std::string(key), ECapabilityPortDirection::OUTPUT, "test.image", CapabilityImageShape{}});
+    for (auto key : buffers)
+        ports.push_back(
+            {std::string(key), ECapabilityPortDirection::OUTPUT, "test.readback", CapabilityBufferShape{1}}
+        );
+    return ports;
+}
+
+template <class Configuration>
+CapabilityImplementationId registerRenderProbe(
+    RenderServer& server, std::string name, std::vector<FeatureId> features, std::vector<CapabilityPort> ports,
+    std::span<const CapabilityStorageDependency> dependencies,
+    RenderResult<CapabilityGraphContribution> (*build)(const CapabilityBuildInput&) noexcept
+)
+{
+    CapabilityImplementation implementation;
+    implementation.implementation = std::move(name);
+    implementation.features = std::move(features);
+    implementation.config_type = lux::cxx::make_basic_type_info<Configuration>();
+    implementation.storage_dependencies = dependencies;
+    implementation.build_graph = build;
+    implementation.graph.ports = std::move(ports);
+    implementation.graph.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA16_SFLOAT};
+    implementation.graph.target_samples = {1};
+    implementation.graph.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
+    const auto capability = take(server.registerCapability<RenderProbeCapability>());
+    return take(server.addCapabilityImplementation(capability, implementation));
+}
+
+// Each implementation declares these output ports in the same order as its fixed graph outputs.
+inline void publishProbeOutputs(CapabilityGraphContribution& graph, const CapabilityBuildInput& input)
+{
+    CHECK(graph.definition.outputs.size() == input.ports.size());
+    for (const auto& output : graph.definition.outputs) graph.ports.push_back({output.source});
+}
+
+template <class Configuration>
+CreateEffectRequest probeRequest(
+    TargetDesc target, CapabilityImplementationId implementation, Configuration configuration,
+    std::initializer_list<std::string_view> outputs
+)
+{
+    CreateEffectRequest request{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
+    request.composition.contributions.push_back(
+        {"probe", lux::cxx::make_basic_type_info<RenderProbeCapability>(), implementation,
+         take(ConfigValue::make(std::move(configuration)))}
+    );
+    for (auto port : outputs) request.composition.outputs.push_back({"probe", std::string(port)});
+    return request;
+}
 
 // Test extension: ordinary graph copies, mapped only after Detach and actual GPU cleanup.
 // No production Readback command, implicit Draw, Native accessor on Client, or timing-based completion.
@@ -93,12 +633,11 @@ public:
         );
     }
 
-    static RenderResult<std::unique_ptr<CaptureBuffer>> create(
-        StorageCreateContext& context,
-        StorageId,
-        const CaptureConfig& config
-    ) noexcept
+    static RenderResult<std::unique_ptr<CaptureBuffer>>
+    create(StorageCreateContext& context, StorageId, const CaptureConfig& config) noexcept
     {
+        beginCallCapture(context.device.nriCore());
+        call_capture_first_instance = context.device.enabledFeatures().indirect_first_instance;
         auto value = std::make_unique<CaptureBuffer>(context, config);
         const auto alignment = context.device.description().memoryAlignment.uploadBufferTextureRow;
         value->pitch_ = (256 + alignment - 1) / alignment * alignment;
@@ -187,7 +726,13 @@ struct CaptureFeature
         return {};
     }
 
-    static RenderResult<void> build(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+    static RenderResult<void>
+    build(
+        const void* value,
+        std::string_view key,
+        FeatureBuildContext& context,
+        const lux::render::detail::EnabledDeviceFeatures&
+    ) noexcept
     {
         auto initialized = context.graph.addTransferPass(
             featureKey(FeatureName{"test.deferred.Copy"}, key, "initialize"),
@@ -238,40 +783,19 @@ static std::uint64_t nextSceneRequest() noexcept
 }
 
 template <class C>
-static typename C::Response call(
-    ipc::IpcRequester& client,
-    const CommandList& catalog,
-    typename C::Request request,
-    bool success = true
-)
+static typename C::Response
+call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request request, bool success = true)
 {
     const auto found = std::ranges::find(catalog.commands, C::name, &CommandInfo::name);
     CHECK(found != catalog.commands.end());
     const auto request_id = nextSceneRequest();
     ipc::IpcMessage message;
-    FrameCommand command{found->id, {request_id}, {}};
-    const FrameCommandGroup group{std::span(&command, 1)};
-    std::uint64_t frame_id = 0;
-    if constexpr (C::frame_scoped)
-    {
-        command.request.emplace<typename C::Request>(std::move(request));
-        const auto frame = std::ranges::find(catalog.commands, SubmitFrame::name, &CommandInfo::name);
-        CHECK(frame != catalog.commands.end());
-        frame_id = nextSceneRequest();
-        message.emplace<FrameSubmission>(FrameSubmission{frame_id, std::span(&group, 1)});
-        CHECK(client.trySend(commandTag(frame->id), frame_id, message));
-    }
-    else
-    {
-        message.emplace<typename C::Request>(std::move(request));
-        CHECK(client.trySend(commandTag(found->id), request_id, message));
-    }
+    message.emplace<typename C::Request>(std::move(request));
+    CHECK(client.trySend(commandTag(found->id), request_id, message));
     typename C::Response response{};
-    bool received_response = false;
-    bool received_frame = !C::frame_scoped;
     const auto deadline = Clock::now() + 30s;
     auto& notifications = ipc::IpcCore::instance();
-    while (!received_response || !received_frame)
+    for (;;)
     {
         const auto observed = notifications.workEpoch();
         std::uint64_t correlation = 0;
@@ -282,31 +806,10 @@ static typename C::Response call(
             notifications.waitUntil(observed, deadline);
             continue;
         }
-        if (correlation == request_id)
-        {
-            response = std::move(message.get<typename C::Response>());
-            received_response = true;
-        }
-        else if constexpr (std::same_as<C, SubmitFrame>)
-        {
-            // This fixture call only needs the aggregate outcome. Each child's error is reflected
-            // there; callers needing a child value use the typed frame-scoped call above.
-        }
-        else
-        {
-            CHECK(C::frame_scoped && correlation == frame_id);
-            const auto& frame = message.get<FrameCompletion>();
-            if (frame.error.type != 0 && (response.error.type == 0 || !received_response))
-            {
-                response.error = frame.error;
-            }
-            if (frame.outcome == EFrameOutcome::REJECTED)
-            {
-                received_response = true;
-            }
-            received_frame = true;
-        }
-        message.reset();
+        // Frames have one terminal, and structural controls are ordinary discrete requests.
+        CHECK(correlation == request_id);
+        response = std::move(message.get<typename C::Response>());
+        break;
     }
     if (success && response.error.type)
     {
@@ -347,22 +850,110 @@ static void detach(ipc::IpcRequester& client, const CommandList& commands, Attac
     }
 }
 
-static CapabilityInput installInput(
+struct SceneInputRoutes final
+{
+    EffectId effect;
+    VRenderScope scope;
+    std::vector<CapabilityDescription> capabilities;
+    std::vector<CapabilityImplementationId> implementations;
+};
+
+static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandList& commands, VRenderScope scope)
+{
+    static thread_local std::vector<std::pair<decltype(client.id()), SceneInputRoutes>> cache;
+    if (auto found = std::ranges::find_if(cache, [&](const auto& value) { return value.first == client.id(); });
+        found != cache.end())
+    {
+        auto routes = found->second;
+        routes.scope = scope;
+        return routes;
+    }
+    const auto choices = call<ListCapabilities>(client, commands, {});
+    CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
+    SceneInputRoutes routes{{}, scope};
+    for (auto name : {kRasterSurfaceCapability, kDeferredLightingCapability})
+    {
+        const auto found = std::ranges::find_if(
+            choices.implementations,
+            [name](const auto& value) { return value.capability.type.name() == name; }
+        );
+        CHECK(found != choices.implementations.end());
+        const auto key = routes.capabilities.empty() ? "mesh" : "light";
+        request.composition.contributions.push_back(
+            {key,
+             found->capability.type, found->implementation_id,
+             SerializedRenderConfiguration{found->configuration.schema, found->configuration.version, {}}}
+        );
+        routes.capabilities.push_back(found->capability);
+        routes.implementations.push_back(found->implementation_id);
+    }
+    request.composition.outputs.push_back({"light", "color"});
+    routes.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+    cache.emplace_back(client.id(), routes);
+    return routes;
+}
+
+template <CapabilityCommand C>
+static CapabilityImplementationId
+installCommand(ipc::IpcRequester& client, const CommandList& commands, VRenderScope scope = GlobalRenderScope{})
+{
+    const auto routes = installInputs(client, commands, scope);
+    for (std::uint32_t i = 0; i < routes.capabilities.size(); ++i)
+    {
+        for (const auto* command : routes.capabilities[i].commands)
+        {
+            if (command->name.name() == C::name)
+            {
+                return routes.implementations[i];
+            }
+        }
+    }
+    CHECK(false);
+    return {};
+}
+
+template <class T> static FrameDataBinding<T> frameBinding(const SceneInputRoutes& routes)
+{
+    const auto type = lux::cxx::make_basic_type_info<T>();
+    for (std::uint32_t i = 0; i < routes.capabilities.size(); ++i)
+    {
+        const auto& types = routes.capabilities[i].per_frame_data;
+        const auto found = std::ranges::find(types, type);
+        if (found != types.end())
+        {
+            return {{routes.effect, i, static_cast<std::uint32_t>(found - types.begin()), routes.scope}};
+        }
+    }
+    CHECK(false);
+    return {};
+}
+
+static void writeFrameData(FrameWriter& writer, FrameDataBinding<LightUpdates> binding, const LightUpdates& input)
+{
+    CHECK(writer.write(binding, {input.sequence, take(writer.copy<DirectLightUpdate>(input.values))}));
+}
+
+static void
+writeFrameData(FrameWriter& writer, FrameDataBinding<MeshInstanceUpdates> binding, const MeshInstanceUpdates& input)
+{
+    CHECK(writer.write(binding, {input.sequence, take(writer.copy<MeshInstanceUpdate>(input.updates))}));
+}
+
+template <class T>
+static FrameCompletion submitFrameData(
     ipc::IpcRequester& client,
     const CommandList& commands,
-    std::string_view schema,
-    VRenderScope scope = GlobalRenderScope{}
+    FrameStorage& storage,
+    FrameDataBinding<T> binding,
+    const T& input,
+    bool success = true,
+    bool resynchronize = false
 )
 {
-    const auto choices =
-        call<ListCapabilities>(client, commands, {std::string(kLitSceneCapability), 1, "lux.render.scene.clustered"});
-    CHECK(choices.implementations.size() == 1);
-    const auto result = call<InstallCapabilities>(
-        client,
-        commands,
-        {choices.implementations.front().selection, scope, take(ConfigValue::make(LitSceneConfiguration{}))}
-    );
-    const auto found = std::ranges::find(result.inputs, schema, &CapabilitiesInstalled::Input::schema);
-    CHECK(found != result.inputs.end());
-    return found->destination;
+    FrameWriter writer{storage};
+    writeFrameData(writer, binding, input);
+    const auto result = call<SubmitFrame>(client, commands, storage.seal(nextSceneRequest(), resynchronize), success);
+    // Only the complete frame terminal ends every source borrow.
+    storage.reset();
+    return result;
 }

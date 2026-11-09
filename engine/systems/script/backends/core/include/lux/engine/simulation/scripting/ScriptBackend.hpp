@@ -1,0 +1,225 @@
+#pragma once
+
+#include <lux/engine/function/script/BoundScriptCall.hpp>
+#include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
+#include <lux/engine/ecs/Entity.hpp>
+#include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
+#include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
+#include <lux/engine/simulation/scripting/ScriptSyncStep.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+#include <variant>
+#include <span>
+
+namespace lux::simulation::script
+{
+    struct SimulationScriptScope final
+    {
+        friend constexpr bool operator==(SimulationScriptScope, SimulationScriptScope) noexcept = default;
+    };
+
+    struct EntityScriptScope final
+    {
+        ecs::Entity self{ecs::NullEntity};
+
+        friend constexpr bool operator==(EntityScriptScope, EntityScriptScope) noexcept = default;
+    };
+
+    using VScriptInstanceScope = std::variant<SimulationScriptScope, EntityScriptScope>;
+
+    enum class EScriptHostCommand : std::uint8_t
+    {
+        CREATE_ENTITY,
+        DESTROY_ENTITY,
+        EMPLACE_COMPONENT,
+        REMOVE_COMPONENT,
+    };
+
+    struct ScriptHostComponentContract final
+    {
+        std::uint64_t component_type{};
+        std::uint64_t semantic_type{};
+        std::string_view canonical_name;
+        std::uint8_t abi_kind{LUX_SCRIPT_VK_VOID};
+        std::size_t size{};
+        std::size_t alignment{};
+    };
+
+    struct ScriptHostApi final
+    {
+        void* context{};
+        const void* (*read)(void*, ecs::Entity, std::uint64_t) noexcept {};
+        // Mutation callbacks accept owned deferred commands. They must not mutate the Registry inline.
+        bool (*record_patch)(void*, ecs::Entity, std::uint64_t, const void*) noexcept {};
+        bool (*record_command)(void*, EScriptHostCommand, ecs::Entity, std::uint64_t, const void*) noexcept {};
+        bool (*component_contract)(void*, std::uint64_t, ScriptHostComponentContract&) noexcept {};
+    };
+
+    // Read-only borrowed qualification. Valid only within the protected backend call that captured it.
+    class ScriptInvocationValidity final
+    {
+    public:
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return check_ && check_(context_, instance_, epoch_, category_);
+        }
+
+    private:
+        const void* context_{};
+        ScriptInstanceId instance_;
+        std::uint64_t epoch_{};
+        std::uint8_t category_{};
+        bool (*check_)(const void*, ScriptInstanceId, std::uint64_t, std::uint8_t) noexcept {};
+        friend class detail::ScriptRuntimeAccess;
+    };
+
+    class ScriptBehavior final
+    {
+    public:
+        [[nodiscard]] bool isAttached() const noexcept
+        {
+            return api_ != nullptr;
+        }
+        // Configuration, not current permission: an installed but invalid authority is never standalone.
+        [[nodiscard]] bool hasInvocationAuthority() const noexcept
+        {
+            return capture_invocation_ != nullptr;
+        }
+        [[nodiscard]] ScriptInvocationValidity captureInvocation() const noexcept
+        {
+            return capture_invocation_ ? capture_invocation_(invocation_context_) : ScriptInvocationValidity{};
+        }
+
+        [[nodiscard]] bool hasSelf() const noexcept
+        {
+            return std::holds_alternative<EntityScriptScope>(scope_);
+        }
+
+        [[nodiscard]] ecs::Entity self() const noexcept
+        {
+            const auto* entity = std::get_if<EntityScriptScope>(&scope_);
+            return entity ? entity->self : ecs::NullEntity;
+        }
+
+        [[nodiscard]] const void* read(std::uint64_t component_type) const noexcept
+        {
+            return hasSelf() && api_ && api_->read ? api_->read(api_->context, self(), component_type) : nullptr;
+        }
+
+        [[nodiscard]] bool patch(std::uint64_t component_type, const void* value) const noexcept
+        {
+            return hasSelf() && api_ && api_->record_patch &&
+                   api_->record_patch(api_->context, self(), component_type, value);
+        }
+
+        [[nodiscard]] bool command(
+            EScriptHostCommand command,
+            std::uint64_t component_type = 0U,
+            const void* value = nullptr
+        ) const noexcept
+        {
+            return api_ && api_->record_command &&
+                   api_->record_command(api_->context, command, self(), component_type, value);
+        }
+
+        [[nodiscard]] bool componentContract(std::uint64_t component_type, ScriptHostComponentContract& result)
+            const noexcept
+        {
+            return api_ && api_->component_contract && api_->component_contract(api_->context, component_type, result);
+        }
+
+    private:
+        VScriptInstanceScope scope_;
+        const ScriptHostApi* api_{};
+        const void* invocation_context_{};
+        ScriptInvocationValidity (*capture_invocation_)(const void*) noexcept {};
+
+        void attach(VScriptInstanceScope scope, const ScriptHostApi& api) noexcept
+        {
+            scope_ = scope;
+            api_ = &api;
+        }
+
+        friend class detail::ScriptRuntimeAccess;
+    };
+
+    struct ScriptBackendInstance final
+    {
+        void* value{};
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return value != nullptr;
+        }
+    };
+
+    enum class EScriptBackendResult : std::uint8_t
+    {
+        SUCCESS,
+        UNSUPPORTED_SIGNATURE,
+        UNSUPPORTED_MARSHAL_TYPE,
+        CAPACITY_EXCEEDED,
+        ALLOCATION_FAILURE,
+        CONSTRUCTION_FAILURE,
+        EXECUTABLE_CONTRACT_MISMATCH,
+        HOST_COMPONENT_CONTRACT_MISMATCH,
+        HOST_CONTEXT_MISMATCH,
+    };
+
+    struct ScriptInstanceCreateContext final
+    {
+        lux::asset::AssetId asset;
+        VScriptInstanceScope scope;
+        ScriptBehavior* behavior{};
+        ScriptInstanceId instance;
+        std::span<const PreparedScriptApiCapability> capabilities;
+        std::span<const PreparedScriptEventAdmission> events;
+        const ScriptSyncStepSetView* sync_steps{};
+    };
+
+    struct BoundScriptStepCall final
+    {
+        using InvokeFn = ScriptStepResult (*)(
+            void*, lux_script_call_frame&, ScriptStepContext&, ScriptBackendContinuation&
+        ) noexcept;
+
+        void* context{};
+        InvokeFn invoke{};
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return invoke != nullptr;
+        }
+    };
+
+    struct ScriptBackendPreparedMethod final
+    {
+        void* token{};
+        lux::script::BoundScriptCall synchronous;
+        BoundScriptStepCall resumable;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return token != nullptr && (static_cast<bool>(synchronous) || static_cast<bool>(resumable));
+        }
+    };
+
+    struct ScriptBackendDescriptor final
+    {
+        using CreateInstanceFn = EScriptBackendResult (*)(
+            void*, const ScriptInstanceCreateContext&, const lux::script::ScriptArtifact&, ScriptBackendInstance&
+        ) noexcept;
+        using PrepareMethodFn = EScriptBackendResult (*)(
+            void*, ScriptBackendInstance, const lux::rdesc::ScriptFunction&, ScriptBackendPreparedMethod&
+        ) noexcept;
+
+        lux::rdesc::Script::EKind kind{lux::rdesc::Script::EKind::UNKNOWN};
+        void* context{};
+        CreateInstanceFn createInstance{};
+        PrepareMethodFn prepareMethod{};
+        void (*releaseMethod)(void*, ScriptBackendInstance, ScriptBackendPreparedMethod) noexcept {};
+        void (*destroyInstance)(void*, ScriptBackendInstance) noexcept {};
+    };
+}

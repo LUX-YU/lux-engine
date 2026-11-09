@@ -3,13 +3,14 @@
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/WindowInput.hpp>
 using namespace lux;
+
 int main()
 {
     auto created = ui::Root::create();
     assert(created);
     auto& root = **created;
-    ui::DrawData data;
-    auto capture = [](const ui::DrawData&) noexcept -> cxx::expected<void, ui::ECaptureError> { return {}; };
+    ui::DrawView data;
+    auto capture = [](const ui::DrawView&) noexcept -> cxx::expected<void, ui::ECaptureError> { return {}; };
     input::InputSnapshot snapshot;
     snapshot.events.emplace_back(input::FocusAction{true, 1});
     snapshot.events.emplace_back(input::CursorAction{20, 20, 2});

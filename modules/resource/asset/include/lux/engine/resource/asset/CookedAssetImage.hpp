@@ -18,7 +18,6 @@ namespace lux::asset
         struct CookedAssetImageAccess;
     }
 
-    inline constexpr std::uint32_t kCookedAssetVersionV1 = 20250128U;
     inline constexpr std::uint32_t kCookedAssetVersionV2 = 20260606U;
 
     struct CookedAssetMetadata final
@@ -32,6 +31,15 @@ namespace lux::asset
     };
 
     class CookedAssetImage;
+
+    // Inspect only the fixed header against the actual file size. Directory indexing never
+    // reads the payload. Output parameters change only after the header has been validated.
+    [[nodiscard]] LUX_ASSET_PUBLIC cxx::expected<void, AssetDecodeFailure> inspectCookedAssetHeader(
+        std::span<const std::byte> prefix,
+        std::uint64_t file_size,
+        CookedAssetMetadata& metadata,
+        std::uint32_t& magic
+    ) noexcept;
 
     [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<CookedAssetImage, AssetDecodeFailure> inspectCookedAssetImage(
         lux::cxx::SharedBytes<> image,

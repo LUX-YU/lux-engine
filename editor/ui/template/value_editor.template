@@ -1,0 +1,121 @@
+## if projection_name == "declarations"
+#pragma once
+#include <lux/engine/editor/ValueEditing.hpp>
+#include <{{ include_dir }}>
+
+namespace lux::editor
+{
+## for index in marked_record_decls
+##     set decl = decl_from_index(index)
+##     if existsIn(editors.types, decl.fq_name)
+##         set policy = at(editors.types, decl.fq_name)
+    template <> constexpr const char* valueLabel<::{{ decl.fq_name }}>() noexcept
+    {
+        return "{{ cxx_str(policy.label) }}";
+    }
+
+    template <> bool editValue(const ValueEditOptions&, ::{{ decl.fq_name }}&) noexcept;
+
+##     endif
+## endfor
+## for index in marked_enum_decls
+##     set decl = decl_from_index(index)
+##     if existsIn(editors.types, decl.fq_name)
+    template <> bool editValue(const ValueEditOptions&, ::{{ decl.fq_name }}&) noexcept;
+##     endif
+## endfor
+} // namespace lux::editor
+## else
+// Generated Editor functions. Type structure comes from lux-cxx; policy belongs to Editor.
+#include <{{ generated_header }}>
+
+namespace lux::editor
+{
+## for index in marked_record_decls
+##     set decl = decl_from_index(index)
+##     if existsIn(editors.types, decl.fq_name)
+##         set policy = at(editors.types, decl.fq_name)
+    template <>
+    bool editValue(const ValueEditOptions&, ::{{ decl.fq_name }}& value) noexcept
+    {
+        bool edited{};
+##         for field_id in decl.field_decls
+##             set field = decl_from_id(field_id)
+##             if field.visibility == 1
+##                 set label = field.name
+##                 set speed = 0.01
+##                 set minimum = "std::nullopt"
+##                 set maximum = "std::nullopt"
+##                 set tooltip = ""
+##                 set read_only = false
+##                 set color = false
+##                 if existsIn(policy.fields, field.name)
+##                     set control = at(policy.fields, field.name)
+##                     if existsIn(control, "label")
+##                         set label = control.label
+##                     endif
+##                     if existsIn(control, "speed")
+##                         set speed = control.speed
+##                     endif
+##                     if existsIn(control, "minimum")
+##                         set minimum = control.minimum
+##                     endif
+##                     if existsIn(control, "maximum")
+##                         set maximum = control.maximum
+##                     endif
+##                     if existsIn(control, "tooltip")
+##                         set tooltip = control.tooltip
+##                     endif
+##                     if existsIn(control, "read_only")
+##                         set read_only = control.read_only
+##                     endif
+##                     if existsIn(control, "color")
+##                         set color = control.color
+##                     endif
+##                 endif
+##                 if minimum != "std::nullopt" or maximum != "std::nullopt"
+        static_assert(
+            std::is_arithmetic_v<std::remove_cvref_t<decltype(value.{{ field.name }})>>,
+            "Editor bounds require a numeric field: {{ cxx_str(field.name) }}"
+        );
+##                 endif
+##                 if color
+        static_assert(
+            std::same_as<std::remove_cvref_t<decltype(value.{{ field.name }})>, std::array<float, 3>>,
+            "Editor color requires three floating point channels: {{ cxx_str(field.name) }}"
+        );
+##                 endif
+        static constexpr ValueEditOptions {{ field.name }}_options{
+            "{{ cxx_str(label) }}", static_cast<float>({{ speed }}), {{ minimum }}, {{ maximum }},
+            "{{ cxx_str(tooltip) }}", {% if read_only %}true{% else %}false{% endif %}, {% if color %}true{% else %}false{% endif %}
+        };
+        edited |= editField("{{ cxx_str(field.name) }}", value.{{ field.name }}, {{ field.name }}_options);
+
+##             endif
+##         endfor
+        return edited;
+    }
+
+##     endif
+## endfor
+## for index in marked_enum_decls
+##     set decl = decl_from_index(index)
+##     if existsIn(editors.types, decl.fq_name)
+    template <>
+    bool editValue(const ValueEditOptions& options, ::{{ decl.fq_name }}& value) noexcept
+    {
+        using Value = ::{{ decl.fq_name }};
+        static constexpr std::array<EnumChoice<Value>, {{ length(decl.enumerators) }}> choices{
+            {
+##         for entry in decl.enumerators
+                {Value::{{ entry.name }}, "{{ cxx_str(entry.name) }}"},
+##         endfor
+            }
+        };
+        return editEnumeration<Value>(options, value, choices);
+    }
+
+##     endif
+## endfor
+} // namespace lux::editor
+## endif

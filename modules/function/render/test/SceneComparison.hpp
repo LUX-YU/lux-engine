@@ -22,7 +22,13 @@ struct SceneComparison
         return {};
     }
 
-    static RenderResult<void> build(const void*, std::string_view key, FeatureBuildContext& context) noexcept
+    static RenderResult<void>
+    build(
+        const void*,
+        std::string_view key,
+        FeatureBuildContext& context,
+        const lux::render::detail::EnabledDeviceFeatures&
+    ) noexcept
     {
         rdesc::SpirvArtifact shader;
         shader.stages.push_back(

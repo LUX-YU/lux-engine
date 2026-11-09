@@ -23,9 +23,6 @@ namespace lux::render::detail
 
         struct Entry final
         {
-            MeshId mesh;
-            MaterialId material;
-            std::uint32_t submesh = 0;
             cxx::SlotKey<MeshInstanceTag> key;
         };
 
@@ -64,11 +61,11 @@ namespace lux::render::detail
         RasterMeshInstanceStorage(const RasterMeshInstanceStorage&) = delete;
         RasterMeshInstanceStorage& operator=(const RasterMeshInstanceStorage&) = delete;
 
-        [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceDescription) noexcept;
+        [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceData) noexcept;
         [[nodiscard]] exec::task<
-            RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceDescription>) noexcept;
-        [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(TransformBatch) noexcept;
-        [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(MeshInstanceBatch) noexcept;
+            RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceData>) noexcept;
+        [[nodiscard]] RenderResult<TransformApplied> update(TransformData) noexcept;
+        [[nodiscard]] RenderResult<TransformApplied> update(MeshInstanceUpdates) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
         void observe(Observer&) noexcept;
 
@@ -92,16 +89,21 @@ namespace lux::render::detail
 
     private:
         template <class Input>
-        using CreateValue = std::
-            conditional_t<std::same_as<Input, MeshInstanceDescription>, MeshInstanceId, std::vector<MeshInstanceId>>;
+        using CreateValue =
+            std::conditional_t<std::same_as<Input, MeshInstanceData>, MeshInstanceId, std::vector<MeshInstanceId>>;
         template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>> createBatch(Input) noexcept;
         [[nodiscard]] RenderResult<void>
-        resolve(const VGraphResourceDesc&, const MeshInstanceBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
+        resolve(
+            const VGraphResourceDesc&,
+            const MeshInstanceBinding&,
+            StorageSubscription&,
+            std::span<ResourceInput>
+        ) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;
-        [[nodiscard]] RenderResult<MeshInstanceGpuProperty> resolveReferences(const MeshInstanceDescription&)
-            const noexcept;
+        [[nodiscard]] RenderResult<MeshInstanceGpuProperty>
+        resolveReferences(const MeshInstanceData&, std::uint32_t frame) const noexcept;
         [[nodiscard]] Selection selection(const Entry&) const noexcept;
         void notify(const Entry&, bool removed) noexcept;
         void publishBuffers(std::uint32_t slot) noexcept;

@@ -3,6 +3,8 @@
 #include <lux/engine/render/execution/SurfaceTarget.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
+#include <algorithm>
+
 namespace lux::render::detail
 {
     SurfaceTarget::SurfaceTarget(DeviceSession& session, TargetDesc description, SurfaceDescription surface) noexcept
@@ -62,6 +64,10 @@ namespace lux::render::detail
         if (invalid_kind || invalid_window || invalid_extent)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        if (!session.supportsPresentRetirement())
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         auto output = std::unique_ptr<SurfaceTarget>(new SurfaceTarget(session, description, surface));
         auto status = nri::nriGetInterface(
@@ -154,11 +160,15 @@ namespace lux::render::detail
         retire();
     }
 
-    RenderResult<void> SurfaceTarget::acquire(std::uint32_t frame_slot) noexcept
+    RenderResult<bool> SurfaceTarget::acquire(std::uint32_t frame_slot) noexcept
     {
         if (failure_.type != 0)
         {
             return cxx::unexpected(failure_);
+        }
+        if (presentation_.render_signal_submitted)
+        {
+            return false; // Keep the accepted rendered signal until Present can consume it.
         }
         if (acquired_image_ == UINT32_MAX)
         {
@@ -167,6 +177,10 @@ namespace lux::render::detail
                 *acquire_semaphores_[frame_slot],
                 acquired_image_
             );
+            if (status == nri::Result::NOT_READY)
+            {
+                return false;
+            }
             if (status != nri::Result::SUCCESS)
             {
                 acquired_image_ = UINT32_MAX;
@@ -175,29 +189,50 @@ namespace lux::render::detail
             }
             presentation_ = {acquire_semaphores_[frame_slot], release_semaphores_[acquired_image_]};
         }
+        else
+        {
+            if (presentation_.acquire_wait_submitted)
+            {
+                // Partial submission is retired, never replayed against an already consumed binary wait.
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            // A failed preparation can advance FIF without consuming this acquire signal. Move its
+            // ownership to the reusable slot that will submit the wait; that slot's frontier then
+            // protects reuse. Release semaphores remain indexed by the acquired swap-chain image.
+            const auto previous = std::ranges::find(acquire_semaphores_, presentation_.acquired);
+            std::iter_swap(previous, acquire_semaphores_.begin() + frame_slot);
+        }
         frames_[frame_slot] = {images_[acquired_image_], views_[acquired_image_], &presentation_};
-        return {};
+        return true;
     }
 
     RenderResult<bool> SurfaceTarget::present() noexcept
     {
-        if (!presentation_.rendered_signalled)
+        if (failure_.type != 0)
+        {
+            return cxx::unexpected(failure_);
+        }
+        if (!presentation_.render_signal_submitted)
         {
             return false;
         }
         const auto status = swap_chain_operations_.QueuePresent(*swap_chain_, *presentation_.rendered);
-        has_presented_ = true;
-        acquired_image_ = UINT32_MAX;
-        presentation_ = {};
+        if (status == nri::Result::NOT_READY)
+        {
+            return false; // The native call has not enqueued Present; preserve both semaphore identities.
+        }
         if (status != nri::Result::SUCCESS)
         {
             failure_ = nativeError(status);
             return cxx::unexpected(failure_);
         }
+        acquired_image_ = UINT32_MAX;
+        presentation_ = {};
         return true;
     }
 
-    void SurfaceTarget::retire(void* completion, Completion complete) noexcept
+    void
+    SurfaceTarget::retire(const SubmissionFrontiers* frontiers, void* completion, Completion complete) noexcept
     {
         auto* swap_chain = std::exchange(swap_chain_, nullptr);
         if (!swap_chain)
@@ -208,45 +243,28 @@ namespace lux::render::detail
             }
             return;
         }
-        session_.deferRelease(
-            [core = &session_.nriCore(),
-             operations = swap_chain_operations_,
-             swap_chain,
-             queue = &session_.queue().native(),
-             presented = has_presented_,
-             views = std::move(views_),
-             acquired = std::move(acquire_semaphores_),
-             released = std::move(release_semaphores_),
-             unused_acquire =
-                 acquired_image_ != UINT32_MAX && !presentation_.acquired_consumed ? presentation_.acquired : nullptr,
-             completion,
-             complete]() noexcept
+        auto release =
+            [
+                core = &session_.nriCore(),
+                operations = swap_chain_operations_,
+                swap_chain,
+                session = &session_,
+                views = std::move(views_),
+                acquired = std::move(acquire_semaphores_),
+                released = std::move(release_semaphores_),
+                unused_acquire = acquired_image_ != UINT32_MAX && !presentation_.acquire_wait_submitted
+                    ? presentation_.acquired : nullptr,
+                completion,
+                complete
+            ]() noexcept
             {
-                // GPU queue frontiers do not prove presentation consumed its binary semaphore.
-                // This cold close/rebuild boundary drains only the actual presentation queue.
-                auto status = nri::Result::SUCCESS;
-                if (unused_acquire)
-                {
-                    // An abandoned acquired image still has a WSI signal operation. Consume it
-                    // with an empty presentation wait before destroying its semaphore. There is
-                    // no command allocator, frame resource or second submission queue here.
-                    const nri::FenceSubmitDesc wait{unused_acquire, 0, nri::StageBits::ALL};
-                    nri::QueueSubmitDesc consume{};
-                    consume.waitFences = &wait;
-                    consume.waitFenceNum = 1;
-                    status = core->QueueSubmit(*queue, consume);
-                    if (status != nri::Result::SUCCESS && status != nri::Result::DEVICE_LOST)
-                    {
-                        std::terminate(); // No proof that the pending WSI signal may be destroyed.
-                    }
-                }
-                if (presented || unused_acquire)
-                {
-                    status = core->QueueWaitIdle(queue);
-                }
+                // GPU frontiers prove G; native maintenance fences and image release prove P/A.
+                // One bounded cold operation retains every owner until all three facts hold.
+                const auto status = session->deviceLost() ? nri::Result::DEVICE_LOST
+                    : session->retireSwapChain(*swap_chain, unused_acquire, 1'000'000'000);
                 if (status != nri::Result::SUCCESS && status != nri::Result::DEVICE_LOST)
                 {
-                    std::terminate();
+                    std::terminate(); // Do not release captured handles without the retirement proof.
                 }
                 for (auto* view : views)
                 {
@@ -268,7 +286,14 @@ namespace lux::render::detail
                 {
                     complete(completion, result);
                 }
-            }
-        );
+            };
+        if (frontiers)
+        {
+            session_.deferRelease(*frontiers, std::move(release));
+        }
+        else
+        {
+            session_.deferRelease(std::move(release));
+        }
     }
 } // namespace lux::render::detail

@@ -1,51 +1,16 @@
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/storage/SampledTexture2DCommandHandler.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
 namespace lux::render::detail
 {
-    template <class Response> static exec::task<Response> rejected(RenderError error) noexcept
-    {
-        co_return cxx::unexpected(error);
-    }
-
-    exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::uploadTexture(CreateTexture::Request&& input
-    ) noexcept
-    {
-        auto storage = resources_.borrowInput<SampledTexture2DStorage>(input.destination);
-        if (!storage)
-        {
-            return rejected<RenderResult<TextureId>>(storage.error());
-        }
-        return render::upload(**storage, std::move(input));
-    }
-
-    exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::uploadPatchedTexture(
-        CreatePatchedTexture::Request&& input
-    ) noexcept
-    {
-        auto storage =
-            resources_.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::storage(input.texture));
-        if (!storage)
-        {
-            return rejected<RenderResult<TextureId>>(storage.error());
-        }
-        return render::upload(**storage, std::move(input));
-    }
 
     void SampledTexture2DCommandHandler::releaseTexture(
-        const ReleaseTexture::Request& input,
-        ReleaseTexture::Response& response
+        SampledTexture2DStorage& storage,
+        const ImageCommands::Release::Request& input,
+        ImageCommands::Release::Response& response
     ) noexcept
     {
-        auto storage = resources_.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::storage(input));
-        if (!storage)
-        {
-            response.error = storage.error();
-            return;
-        }
-        const auto released = (*storage)->release(input);
+        const auto released = storage.release(input.data);
         response.error = released ? RenderError{} : released.error();
     }
-
 } // namespace lux::render::detail

@@ -49,12 +49,23 @@ FrameExecution 负责帧准备、批次依赖和提交合并，RenderExecutor �
 装配 Server，并在冷态注册 Feature/Storage 描述。应用拥有线程；Server 借用同一个 CPU scheduler。
 具体内置实现不公开，不需要应用构造 Provider 或包含专业 Storage 实现头。
 
-Client 直接使用 `IpcRequester` 和 `IpcMessage`，自行生成 RequestId，通过普通目录请求取得 CommandId。
-Render 库没有 RenderClient 包装。Engine 可使用 `engine/context/render/RenderRequester` 复用有限帧载体、
-类型化 Sender、RequestId 关联和回复消费；它不拥有 connected OperationState 或 GPU 对象。两个 Client 的 RequestId 数值可以相同，回复仍沿原 Link 返回。
-发送成功转移消息值；发送失败保留原消息。Response 包含显式 `RenderError error` 和业务字段，
-业务字段只在成功时消费。回复不自动返还原 Request。
-断连只说明结果无法送达，不保证已接纳的业务被撤销。
+普通客户端使用 [`RenderClient`](../../modules/function/render/include/lux/engine/render/runtime/RenderClient.hpp)。
+它拥有 IPC 请求端、通用 CommandId 缓存和请求关联表；`request<C>()` 直接返回 Sender，
+不为每个命令创建转发协程。Client 不借用 RenderServer：创建时通过固定引导槽位发送一次
+QueryCommandIds，批量取得全部通用命令 ID；专业命令在异步装配阶段用同一命令解析，再交给同步工厂保存。
+普通请求仍按 SlotMap ID 分发，没有按名称或 hash 分发的第二条热路径。
+
+同步 create 仅用于冷态连接：Server 必须已运行，请求端尚未发送业务请求。它只消费自己的初始化回复，
+不调用 Main dispatcher；查询成功后才发布完整 Client。运行期 QueryCommandIds 使用普通 Sender，
+不在 Main 回调中阻塞等待。查询结果按输入顺序返回 ID，未知名称返回输入位置且不发布部分结果。
+Client 不是单例，不拥有线程、ExecutionRuntime 或 connected operation。各 Client 的 start 和
+`dispatchResponses()` 在同一调用线程串行执行；不同 Client 可由不同线程驱动。
+EngineContext 用现有 CompletionWork 把 Server 的回复通知合并到 Main 安全点，再调用 Client 派发。
+独立 Render 宿主自行提供安全点；IPC 协议测试仍可直接操作 IpcRequester/IpcMessage。
+
+左值 Request 在发布时移动到 IPC，发送失败恢复原值；右值 Request 由 Sender 组合持有。
+Request 中的指针和 span 不因此拥有源数据。Response 包含显式 `RenderError error` 和业务字段，
+业务字段只在成功时消费。回复不自动返还原 Request。已接纳请求不能因取消提前结束源借用。
 
 上传源是借用：Client 从提交成功到收到 Response 保持源地址、范围和内容有效。
 FAILED/CANCELLED 同样在最后一次 CPU 读取结束后产生；abandon 或断连不证明读取已经结束。

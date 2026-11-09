@@ -24,6 +24,22 @@ namespace lux::render::detail
         delete std::exchange(backend_, nullptr);
     }
 
+    bool DeviceSession::supportsPresentRetirement() const noexcept
+    {
+        // Pinned NRI derives this fact from the enabled swapchainMaintenance1 feature.
+        return description().features.resizableSwapChain;
+    }
+
+    nri::Result
+    DeviceSession::retireSwapChain(
+        nri::SwapChain& swap_chain,
+        nri::Fence* unconsumed_acquire,
+        std::uint64_t timeout_ns
+    ) const noexcept
+    {
+        return backend_->vulkan.RetireSwapChainVK(swap_chain, unconsumed_acquire, timeout_ns);
+    }
+
     RenderResult<void> DeviceSession::validateTexture(const nri::TextureDesc& texture) const noexcept
     {
         const auto& properties = *nri::nriGetFormatProps(texture.format);
@@ -116,10 +132,10 @@ namespace lux::render::detail
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
         bool validation,
-        std::uint32_t slots
+        std::uint32_t temporary_capacity
     ) noexcept
     {
-        const bool invalid_capacity = slots == 0;
+        const bool invalid_capacity = temporary_capacity == 0;
         if (invalid_capacity || !diagnostic.MessageCallback)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -231,7 +247,13 @@ namespace lux::render::detail
             description.shaderFeatures.inputAttachments,
             description.features.textureCompressionBC,
             bindless,
-            features12.bufferDeviceAddress != 0
+            features12.bufferDeviceAddress != 0,
+            features.features.multiDrawIndirect != 0,
+            features.features.drawIndirectFirstInstance != 0,
+            features12.runtimeDescriptorArray && features12.descriptorBindingPartiallyBound &&
+                features12.descriptorBindingStorageBufferUpdateAfterBind &&
+                features12.shaderStorageBufferArrayNonUniformIndexing,
+            features12.descriptorBindingVariableDescriptorCount != 0
         };
         const bool unsupported = (options.texture_descriptors && !enabled.texture_descriptors) ||
                                  (options.texture_compression_bc && !enabled.texture_compression_bc) ||
@@ -262,16 +284,6 @@ namespace lux::render::detail
         VkPhysicalDeviceVulkan12Properties indexing{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES};
         VkPhysicalDeviceProperties2 properties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &indexing};
         query_properties2(physical, &properties2);
-        const auto sampler_capacity = std::min(
-            {description.descriptorSet.updateAfterSet.samplerMaxNum,
-             description.shaderStage.updateAfterSet.descriptorSamplerMaxNum,
-             indexing.maxUpdateAfterBindDescriptorsInAllPools / 2}
-        );
-        const auto image_capacity = std::min(
-            {description.descriptorSet.updateAfterSet.textureMaxNum,
-             description.shaderStage.updateAfterSet.descriptorTextureMaxNum,
-             indexing.maxUpdateAfterBindDescriptorsInAllPools - sampler_capacity}
-        );
         result->upload_alignment_ = std::lcm<std::uint64_t>(
             properties.limits.nonCoherentAtomSize,
             description.memoryAlignment.uploadBufferTextureSlice
@@ -311,7 +323,7 @@ namespace lux::render::detail
                     {granularity.width, granularity.height, granularity.depth},
                     properties.timestampValidBits
                 };
-                auto queue = SubmissionQueue::create(*result, *queues[role], facts, slots);
+                auto queue = SubmissionQueue::create(*result, *queues[role], facts, temporary_capacity);
                 if (!queue)
                 {
                     return cxx::unexpected(queue.error());
@@ -322,11 +334,11 @@ namespace lux::render::detail
         }
         if (options.texture_descriptors)
         {
-            if (image_capacity == 0 || sampler_capacity == 0)
-            {
-                return cxx::unexpected(RenderError{kDeviceUnsupported});
-            }
-            if (auto ready = session.descriptor_table_.initialize(image_capacity, sampler_capacity); !ready)
+            auto ready = session.descriptor_table_.initialize(
+                options,
+                indexing.maxUpdateAfterBindDescriptorsInAllPools
+            );
+            if (!ready)
             {
                 return ready;
             }
@@ -343,6 +355,12 @@ namespace lux::render::detail
         const noexcept
     {
         return backend_->vulkan.WaitFenceCheckedVK(fence, value, timeout, ready);
+    }
+
+    nri::Result DeviceSession::beginCommandBuffer(nri::CommandBuffer& command, bool reusable) const noexcept
+    {
+        return reusable ? backend_->vulkan.BeginReusableCommandBufferVK(command, nullptr)
+                        : nriCore().BeginCommandBuffer(command, nullptr);
     }
 
     nri::Result DeviceSession::resetCommandAllocator(nri::CommandAllocator& allocator) const noexcept

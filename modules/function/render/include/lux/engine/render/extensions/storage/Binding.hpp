@@ -71,7 +71,7 @@ namespace lux::render
                 new const T(std::move(value)),
                 [](const void* object) noexcept { delete static_cast<const T*>(object); }
             };
-            result.type_ = cxx::typeToken<T>();
+            result.type_ = cxx::make_basic_type_info<T>();
             if constexpr (requires(const T& a, const T& b) {
                               { a == b } noexcept -> std::convertible_to<bool>;
                           })
@@ -82,7 +82,7 @@ namespace lux::render
             return result;
         }
 
-        [[nodiscard]] cxx::TypeToken type() const noexcept
+        [[nodiscard]] cxx::type_info type() const noexcept
         {
             return type_;
         }
@@ -101,7 +101,7 @@ namespace lux::render
     private:
         using Value = std::unique_ptr<const void, void (*)(const void*) noexcept>;
         Value value_{nullptr, nullptr};
-        cxx::TypeToken type_{};
+        cxx::type_info type_{};
         bool (*equal_)(const void*, const void*) noexcept = nullptr;
     };
 

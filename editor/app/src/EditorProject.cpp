@@ -1,42 +1,28 @@
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/detail/EditorProject.hpp>
 
 namespace lux::editor::detail
 {
-    EditorProject::EditorProject(std::unique_ptr<EditorContext> value) noexcept : context(std::move(value))
-    {
-        scenes = context->services().constructed<ProjectScenes>();
-    }
+    EditorProject::EditorProject(std::unique_ptr<EditorContext> value) noexcept : context(std::move(value)) {}
 
     EditorProject::~EditorProject() noexcept = default;
 
-    std::optional<exec::task<FrameworkResult<void>>> EditorProject::close() noexcept
+    exec::task<FrameworkResult<void>> EditorProject::close() noexcept
     {
-        ui = {};
-        scenes = context->services().constructed<ProjectScenes>();
-        if (scenes)
+        if (auto removed = ui.unmount(); !removed)
         {
-            scenes->closeAll();
-            if (!scenes->settled())
-            {
-                return completeClose();
-            }
+            co_return removed;
         }
-        context->close();
-        return context->finishClose() ? std::nullopt : std::optional{completeClose()};
+        co_return co_await context->closeAsync();
     }
 
-    exec::task<FrameworkResult<void>> EditorProject::completeClose() noexcept
+    exec::task<FrameworkResult<void>> EditorProject::recoverClose() noexcept
     {
-        if (scenes)
+        // An earlier Root rejection may have left live Pane borrows. End those before recovering providers.
+        if (auto removed = ui.unmount(); !removed)
         {
-            if (auto closed = co_await scenes->closeAsync(); !closed)
-            {
-                co_return cxx::unexpected(closed.error());
-            }
+            co_return removed;
         }
-        co_await context->closeAsync();
-        co_return FrameworkResult<void>{};
+        co_return co_await context->recoverClose();
     }
 } // namespace lux::editor::detail

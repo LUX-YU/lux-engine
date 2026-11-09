@@ -14,7 +14,6 @@ add_component(
     OUTPUT_NAME    lux_engine_toolchain_shader_asset_cooker
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderCooker.cpp
-        $<TARGET_OBJECTS:toolchain_shader_reflection>
 )
 
 component_include_directories(
@@ -25,7 +24,6 @@ component_include_directories(
     INSTALL_TIME include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../shader/sinclude
 )
 
 target_compile_definitions(
@@ -44,3 +42,5 @@ component_add_transitive_commands(
     toolchain_shader_asset_cooker
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
+
+target_link_libraries(toolchain_shader_asset_cooker PRIVATE toolchain_shader_reflection)

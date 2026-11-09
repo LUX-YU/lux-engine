@@ -60,7 +60,10 @@ namespace lux::asset
             {
                 for (const auto& binding : set.bindings)
                 {
-                    if (binding.name == "uMats" && (!binding.block.runtime_records || binding.block.fields.empty()))
+                    const bool invalid_material_buffer = binding.type != rdesc::EDescriptorType::STORAGE_BUFFER ||
+                        binding.count != 0 || binding.writable || !binding.readable ||
+                        !binding.block.runtime_records || binding.block.fields.empty();
+                    if (binding.name == rdesc::kMaterialTableName && invalid_material_buffer)
                     {
                         return false;
                     }
@@ -360,7 +363,8 @@ namespace lux::asset
 
         template <class Asset>
         [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> wrap(
-            const Asset& asset,
+            const AssetInfo& asset_info,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
             std::vector<std::byte> information,
             const AssetEncodeLimits& limits
         ) noexcept
@@ -369,10 +373,10 @@ namespace lux::asset
                 detail::CookedAssetWriteRequest{
                     Asset::primary_magic,
                     Asset::legacy_type_tag,
-                    asset.info(),
+                    asset_info,
                     information,
                     {},
-                    asset.auxiliaryPayloads()
+                    auxiliary
                 },
                 limits
             );
@@ -538,7 +542,17 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validMaterial(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<MaterialAsset>::encode(
+        const AssetInfo& asset_info,
+        const MaterialAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validMaterial(data))
         {
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         }
@@ -546,25 +560,25 @@ namespace lux::asset
             Writer writer;
             writer.pod(kMaterialVersion);
             writer.pod(rdesc::kMaterialShaderAbi);
-            writer.pod(static_cast<std::uint32_t>(asset.data().programs.parameter_defaults.size()));
-            for (std::size_t parameter = 0U; parameter < asset.data().programs.parameter_defaults.size(); ++parameter)
+            writer.pod(static_cast<std::uint32_t>(data.programs.parameter_defaults.size()));
+            for (std::size_t parameter = 0U; parameter < data.programs.parameter_defaults.size(); ++parameter)
             {
-                for (const float value : asset.data().programs.parameter_defaults[parameter])
+                for (const float value : data.programs.parameter_defaults[parameter])
                 {
                     writer.pod(value);
                 }
             }
-            writer.pod(static_cast<std::uint32_t>(asset.data().programs.alpha_mode));
-            writer.pod(static_cast<std::uint8_t>(asset.data().programs.double_sided ? 1U : 0U));
-            writer.pod(static_cast<std::uint32_t>(asset.data().texture_slot_ids.size()));
-            writer.pod(static_cast<std::uint8_t>(asset.data().programs.shading_model));
-            for (const auto id : asset.data().texture_slot_ids)
+            writer.pod(static_cast<std::uint32_t>(data.programs.alpha_mode));
+            writer.pod(static_cast<std::uint8_t>(data.programs.double_sided ? 1U : 0U));
+            writer.pod(static_cast<std::uint32_t>(data.texture_slot_ids.size()));
+            writer.pod(static_cast<std::uint8_t>(data.programs.shading_model));
+            for (const auto id : data.texture_slot_ids)
             {
                 writer.id(id);
             }
-            writer.layout(asset.data().programs.parameters);
-            writer.pod(static_cast<std::uint32_t>(asset.data().programs.programs.size()));
-            for (const auto& program : asset.data().programs.programs)
+            writer.layout(data.programs.parameters);
+            writer.pod(static_cast<std::uint32_t>(data.programs.programs.size()));
+            for (const auto& program : data.programs.programs)
             {
                 const auto& stage = program.shader.stages.front();
                 const auto info = rdesc::ShaderInfo::serialize(program.shader.interface);
@@ -576,7 +590,7 @@ namespace lux::asset
                 writer.pod(static_cast<std::uint32_t>(info.size()));
                 writer.raw(info.data(), info.size());
             }
-            return wrap(asset, std::move(writer.bytes), limits);
+            return wrap<MaterialAsset>(asset_info, auxiliary, std::move(writer.bytes), limits);
         }
     }
 
@@ -661,16 +675,26 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (!validMaterialInstance(asset.data()))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<MaterialInstanceAsset>::encode(
+        const AssetInfo& asset_info,
+        const MaterialInstanceAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (!validMaterialInstance(data))
         {
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         }
         {
             Writer writer;
             writer.pod(kMaterialInstanceVersion);
-            writer.id(asset.data().parent_material_id);
-            writer.pod(static_cast<std::uint32_t>(asset.data().parameters.size()));
-            for (const auto& entry : asset.data().parameters)
+            writer.id(data.parent_material_id);
+            writer.pod(static_cast<std::uint32_t>(data.parameters.size()));
+            for (const auto& entry : data.parameters)
             {
                 writer.pod(entry.slot);
                 for (float value : entry.value)
@@ -678,16 +702,16 @@ namespace lux::asset
                     writer.pod(value);
                 }
             }
-            writer.pod(static_cast<std::uint32_t>(asset.data().textures.size()));
-            for (const auto& entry : asset.data().textures)
+            writer.pod(static_cast<std::uint32_t>(data.textures.size()));
+            for (const auto& entry : data.textures)
             {
                 writer.pod(entry.slot);
                 writer.id(entry.texture);
             }
-            writer.pod(asset.data().render_state_override);
-            writer.pod(static_cast<std::uint32_t>(asset.data().alpha_mode));
-            writer.pod(static_cast<std::uint32_t>(asset.data().double_sided ? 1U : 0U));
-            return wrap(asset, std::move(writer.bytes), limits);
+            writer.pod(data.render_state_override);
+            writer.pod(static_cast<std::uint32_t>(data.alpha_mode));
+            writer.pod(static_cast<std::uint32_t>(data.double_sided ? 1U : 0U));
+            return wrap<MaterialInstanceAsset>(asset_info, auxiliary, std::move(writer.bytes), limits);
         }
     }
 } // namespace lux::asset

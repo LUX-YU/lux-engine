@@ -5,6 +5,7 @@
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 
+
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/container/ScopeId.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
@@ -17,6 +18,11 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+namespace lux::asset
+{
+    class AssetCodec;
+}
 
 namespace lux::script
 {
@@ -121,5 +127,18 @@ namespace lux::asset
 
         [[nodiscard]] static LUX_SCRIPT_ARTIFACT_PUBLIC lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
         encode(const lux::script::ScriptArtifactAsset& asset, const AssetEncodeLimits& limits) noexcept;
+
+        [[nodiscard]] static LUX_SCRIPT_ARTIFACT_PUBLIC cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const AssetInfo& info,
+            const lux::script::ScriptArtifact& data,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 } // namespace lux::asset
+
+namespace lux::script
+{
+    // Supplied by the Script module at application assembly; the resource layer never links Script.
+    [[nodiscard]] LUX_SCRIPT_ARTIFACT_PUBLIC std::unique_ptr<asset::AssetCodec> createScriptArtifactCodec();
+}

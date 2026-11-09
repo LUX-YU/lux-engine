@@ -2,13 +2,13 @@ cmake_minimum_required(VERSION 3.25)
 
 project(lux_headless_engine_consumer LANGUAGES CXX)
 
-find_package(lux-engine-context CONFIG REQUIRED COMPONENTS engine_context)
+find_package(lux-engine-runtime CONFIG REQUIRED COMPONENTS engine_runtime)
 
 add_executable(headless_engine main.cpp)
 
 target_compile_features(headless_engine PRIVATE cxx_std_20)
 
-target_link_libraries(headless_engine PRIVATE lux::engine::engine_context)
+target_link_libraries(headless_engine PRIVATE lux::engine::engine_runtime)
 
 if(MSVC)
     target_compile_options(headless_engine PRIVATE /GR- /utf-8)

@@ -81,7 +81,8 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 3. Reflected type: constructed from a RefClass                     */
         /* ------------------------------------------------------------------ */
-        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> create(const RefClass* cls) noexcept
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> 
+        create(const RefClass* cls) noexcept
         {
             if (cls == nullptr || !validHeapType(cls->type))
             {
@@ -113,7 +114,8 @@ namespace lux::meta
         }
 
         // special support for std::string
-        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> create(std::string value) noexcept
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> 
+        create(std::string value) noexcept
         {
             if (!ReflectionRegistry::initialized())
             {
@@ -141,7 +143,7 @@ namespace lux::meta
         /* 4. Built-in types ≤ 16 B: stored directly in the SBO (trivially copyable) */
         /* ------------------------------------------------------------------ */
         template <typename T, typename U = std::decay_t<T>>
-            requires(sizeof(U) <= SBO_SIZE && std::is_trivially_copyable_v<U> && alignof(U) <= SBO_ALIGN)
+        requires(sizeof(U) <= SBO_SIZE && std::is_trivially_copyable_v<U> && alignof(U) <= SBO_ALIGN)
         explicit RuntimeObject(T&& v) noexcept
         {
             auto* type_ptr = builtin_ref_type_ptr<U>();
@@ -378,9 +380,15 @@ namespace lux::meta
             const auto& expected = ref_type_of_v<T>;
             // Inline metadata has a separate address in each DLL. Keep the original metadata
             // borrow for destruction; typed access compares identity and layout, not its address.
-            const bool has_matching_identity = actual && actual->hash == expected.hash &&
-                                               actual->name == expected.name && actual->qtype == expected.qtype;
-            return has_matching_identity && actual->size == expected.size && actual->alignment == expected.alignment;
+            const bool has_matching_identity = 
+                actual && 
+                actual->hash == expected.hash &&
+                actual->name == expected.name && 
+                actual->qtype == expected.qtype;
+
+            return has_matching_identity && 
+                actual->size == expected.size && 
+                actual->alignment == expected.alignment;
         }
     };
 

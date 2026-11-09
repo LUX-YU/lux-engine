@@ -218,11 +218,11 @@ namespace lux::flowforge
     }
 
     FlowForgeResult<lux::script::ScriptArtifact> linkFlowForgeObject(
-        const FlowForgeObject& object,
+        const FlowForgeObject& compiled,
         const std::filesystem::path& linker
     ) noexcept
     {
-        if (object.object.empty() || object.description.module_name.empty() || object.target_triple.empty())
+        if (compiled.object.empty() || compiled.description.module_name.empty() || compiled.target_triple.empty())
         {
             return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});
         }
@@ -231,12 +231,12 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(std::move(temporary.error()));
         }
-        const llvm::Triple triple(object.target_triple);
+        const llvm::Triple triple(compiled.target_triple);
         const auto module_path =
             temporary->path() / (triple.isOSBinFormatCOFF() ? "flowforge-script.dll" : "flowforge-script.so");
         FlowForgeCompileOptions options;
         options.linker = linker;
-        auto linked = linkSharedLibrary(object.object, module_path, options, object.target_triple);
+        auto linked = linkSharedLibrary(compiled.object, module_path, options, compiled.target_triple);
         if (!linked)
         {
             return lux::cxx::unexpected(std::move(linked.error()));
@@ -246,7 +246,7 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(std::move(payload.error()));
         }
-        auto artifact = lux::script::ScriptArtifact::create(object.description, std::move(*payload));
+        auto artifact = lux::script::ScriptArtifact::create(compiled.description, std::move(*payload));
         if (!artifact)
         {
             return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});

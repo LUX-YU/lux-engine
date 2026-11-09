@@ -1,10 +1,10 @@
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/SceneDocument.hpp>
-#include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
+#include <lux/engine/world/storage/io/WorldMemoryStorageSource.hpp>
 #include <lux/engine/scene/ScenePackageFile.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
-#include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/ecs/Transform.hpp>
+#include <lux/engine/ecs/TransformSchema.hpp>
 
 #include <cassert>
 #include <chrono>
@@ -21,10 +21,10 @@ int main(int argc, char** argv)
 {
     assert(argc == 2);
     static_cast<void>(object::ObjectRuntime::instance());
-    auto engine = take(engine::EngineContext::create({1, 64, {64}}, 64));
+    auto engine = take(engine::Engine::create({1, 64, {64}}, 64));
     execution::TaskScope tasks{engine->execution()};
     const auto schemas =
-        take(simulation::ecs::ComponentSchemaSet::build(simulation::ecs::transformComponentSchemas(), {}));
+        take(ecs::ComponentSchemaSet::build(ecs::transformComponentSchemas(), {}));
     const auto loading = scene::worldLoadingSystemRegistration();
     std::vector<std::byte> configuration;
     const scene::WorldLoadingConfiguration bootstrap{{partition::PartitionOrdinal{0}}};
@@ -49,10 +49,10 @@ int main(int argc, char** argv)
         take(std::move(description).buildResolved())
     ));
     auto world = std::shared_ptr<const world::WorldDescription>{package.world, &package.world->data()};
-    auto source = take(process::world_loading::makeWorldMemoryStorageSource(world, package.volumes));
+    auto source = take(engine::world_storage::makeWorldMemoryStorageSource(world, package.volumes));
     scene::WorldLoadingServices loading_services{source, tasks};
     loading_services.initial_partitions = package.partitions;
-    auto provider = scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>(
+    auto provider = scene::makeSceneDependency<scene::WorldLoadingServices>(
         "loading",
         "lux.world.loading",
         loading_services
@@ -65,14 +65,13 @@ int main(int argc, char** argv)
                           .setSimulation({package.simulation, &package.simulation->data()})
                           .setRegistrations(schemas, systems, std::span(&loading, 1))
                           .setProviders(std::span(&provider, 1))
-                          .setFrameAdmissionRequired(false)
                           .build());
-    assert(runtime.pauseSimulation(lease.id()));
-    auto document = std::make_unique<editor::SceneDocument>(runtime, lease.id(), schemas, package);
+    assert(runtime.pauseSimulation(lease));
+    auto document = std::make_unique<editor::SceneDocument>(runtime, lease, schemas, package);
     const world::WorldObjectId entity{ids("entity")};
-    const auto& schema = *schemas.find(cxx::typeToken<simulation::ecs::Transform3D>());
-    simulation::ecs::WorldEntityMap references;
-    simulation::ecs::Transform3D transform;
+    const auto& schema = *schemas.find(cxx::make_basic_type_info<ecs::Transform3D>());
+    ecs::WorldEntityMap references;
+    ecs::Transform3D transform;
     auto capture = schema.capture_value(&transform, schema.code_lifetime);
     editor::SceneComponentData component{schema.id, schema.version, take(capture.encode(references, 4096))};
     editor::SceneCreateObjects create{{{entity, {0}, {std::move(component)}}}};
@@ -90,14 +89,14 @@ int main(int argc, char** argv)
     assert(reopened.scene->id() == package.scene->id());
     assert(reopened.partitions.front()->objectAt(0).id() == entity);
     auto decoded = take(document->component(entity, schema.id));
-    assert(static_cast<const simulation::ecs::Transform3D*>(decoded.data())->translation.x() == 3);
-    const auto retired = lease.retire();
+    assert(static_cast<const ecs::Transform3D*>(decoded.data())->translation.x() == 3);
+    const auto retired = *runtime.retireInstance(lease);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!retired.complete())
     {
         assert(std::chrono::steady_clock::now() < deadline);
         assert(engine->execution().dispatchMainCompletions());
-        assert(runtime.driveFrame(scene::ESceneDriveMode::MAINTENANCE));
+        assert(runtime.driveFrame(scene::ESceneDriveMode::ADVANCE));
     }
     document.reset();
     assert(runtime.instanceCount() == 0);

@@ -1,12 +1,11 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/BarrierPlan.hpp>
 #include <lux/engine/render/graph/ConditionalPlan.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
-#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RenderingPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/SubmissionPlan.hpp>
@@ -18,59 +17,6 @@ namespace lux::render::detail
 {
     namespace
     {
-        RenderResult<nri::PipelineLayout*> createLayout(
-            nri::Device& device,
-            const nri::CoreInterface& core,
-            const PassLayout& program,
-            std::uint32_t image_capacity,
-            std::uint32_t sampler_capacity
-        ) noexcept
-        {
-            const auto shared = DescriptorTable::layoutRanges(image_capacity, sampler_capacity);
-            const auto local = descriptorRanges(program.private_bindings, 0, 0);
-            std::vector<nri::DescriptorSetDesc> sets;
-            if (program.shared)
-            {
-                sets.push_back(
-                    {0,
-                     shared.data(),
-                     static_cast<std::uint32_t>(shared.size()),
-                     nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET}
-                );
-            }
-            if (!local.empty())
-            {
-                sets.push_back({program.private_set, local.data(), static_cast<std::uint32_t>(local.size())});
-            }
-            const nri::RootConstantDesc parameters{0, program.parameter_bytes, program.parameter_stages};
-            nri::PipelineLayoutDesc description{};
-            description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
-            description.shaderStages =
-                nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
-            description.descriptorSets = sets.data();
-            description.descriptorSetNum = static_cast<std::uint32_t>(sets.size());
-            description.rootConstants = program.parameter_bytes ? &parameters : nullptr;
-            description.rootConstantNum = unsigned(program.parameter_bytes != 0);
-            nri::PipelineLayout* layout = nullptr;
-            const auto created = core.CreatePipelineLayout(device, description, layout);
-            if (created != nri::Result::SUCCESS)
-            {
-                return cxx::unexpected(nativeError(created));
-            }
-            return layout;
-        }
-
-        bool sameLayout(const PassLayout& a, const PassLayout& b) noexcept
-        {
-            const auto same_binding = [](const ShaderBinding& left, const ShaderBinding& right)
-            {
-                return left.set == right.set && left.binding == right.binding && left.kind == right.kind &&
-                       left.count == right.count && left.stages == right.stages;
-            };
-            return a.shared == b.shared && std::ranges::equal(a.private_bindings, b.private_bindings, same_binding) &&
-                   a.parameter_bytes == b.parameter_bytes && a.parameter_stages == b.parameter_stages;
-        }
-
         RenderResult<void> validateTransfer(const TransferWork& work, const RenderGraph& graph) noexcept
         {
             for (const auto& operation : work.operations)
@@ -121,7 +67,10 @@ namespace lux::render::detail
                                 const auto bh = copy.destination_region ? copy.destination_region->height
                                                                         : std::max(1u, b.height >> to_image->first_mip);
                                 const bool is_same_format = a.format == b.format && a.samples == b.samples;
-                                const bool is_same_extent = aw == bw && ah == bh && a.extent == b.extent;
+                                const bool comparable_mips = a.extent.source == EImageExtentSource::FIXED ||
+                                    from_image->first_mip == to_image->first_mip;
+                                const bool is_same_extent =
+                                    comparable_mips && aw == bw && ah == bh && a.extent == b.extent;
                                 const bool is_same_subresources = from_image->aspects == to_image->aspects &&
                                                                   from_image->mip_count == to_image->mip_count &&
                                                                   from_image->layer_count == to_image->layer_count;
@@ -151,7 +100,7 @@ namespace lux::render::detail
         }
 
         RenderResult<void> validateDraw(
-            const RasterWork& work,
+            const RasterWork::FixedProgram& work,
             const RenderGraph& graph,
             const nri::DeviceDesc& limits
         ) noexcept
@@ -242,7 +191,7 @@ namespace lux::render::detail
                     {
                         const bool invalid_list = work.vertex_buffers.size() != 1 || draw.index_offset != 0 ||
                                                   work.vertex_buffers.front().offset != 0 ||
-                                                  draw.selection_parameter.empty() || draw.selection_count == 0;
+                                                  draw.selection_parameter.empty();
                         if (invalid_list)
                         {
                             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -286,16 +235,12 @@ namespace lux::render::detail
     RenderResult<RenderPlan> GraphCompiler::compile(
         nri::Device& device,
         const nri::CoreInterface& core,
-        const EnabledDeviceFeatures& enabled,
-        std::span<const nri::FormatSupportBits> formats,
-        std::array<std::uint32_t, 2> vertex_limits,
         std::array<const QueueProperties*, 3> queues,
-        std::uint32_t image_capacity,
-        std::uint32_t sampler_capacity,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        const TargetDesc* target,
-        ETransientAllocation allocation
+        const EffectOutputDesc* target,
+        ETransientAllocation allocation,
+        std::span<const std::uint32_t> parameter_groups
     ) noexcept
     {
         if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
@@ -304,13 +249,13 @@ namespace lux::render::detail
         }
         if (target)
         {
-            if (auto valid = target->validate(); !valid)
+            if (auto valid = validateEffectOutput(*target); !valid)
             {
                 return cxx::unexpected(valid.error());
             }
         }
         const auto& limits = core.GetDeviceDesc(device);
-        RenderPlan plan(device, core, target ? *target : TargetDesc{});
+        RenderPlan plan(device, target ? *target : EffectOutputDesc{});
         plan.condition_count_ = static_cast<std::uint32_t>(graph.conditions().size());
         std::vector<bool> live(graph.resources().size(), false);
         for (const auto& lifetime : analysis.lifetimes)
@@ -335,6 +280,23 @@ namespace lux::render::detail
             }
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
             {
+                if (image->runtime_layers)
+                {
+                    if (resource.origin != EGraphOrigin::TRANSIENT || image->extent.source != EImageExtentSource::FIXED)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                    for (const auto& pass : graph.passes())
+                    {
+                        for (const auto& use : pass.uses)
+                        {
+                            if (use.version.resource.index == i && !use.whole_resource)
+                            {
+                                return cxx::unexpected(RenderError{kGraphInvalidRange});
+                            }
+                        }
+                    }
+                }
                 const auto format = imageFormat(image->format).native;
                 const bool invalid = format == nri::Format::UNKNOWN ||
                                      image->width > limits.dimensions.texture2DMaxDim ||
@@ -348,6 +310,24 @@ namespace lux::render::detail
                 if (output.target_sized && !target)
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
+                }
+            }
+        }
+        for (std::uint32_t index = 0; index < plan.resources_.size(); ++index)
+        {
+            auto& resource = plan.resources_[index];
+            resource.sampled_target_input = resource.memory_used &&
+                resource.origin == EGraphOrigin::IMPORTED &&
+                std::holds_alternative<GraphImageDesc>(resource.description) &&
+                graph.resources()[index].initial_use == EGraphUse::SAMPLED;
+        }
+        for (auto id : analysis.execution_order)
+        {
+            for (const auto& use : graph.passes()[id.index].uses)
+            {
+                if (use.access != EGraphAccess::READ || use.usage != EGraphUse::SAMPLED)
+                {
+                    plan.resources_[use.version.resource.index].sampled_target_input = false;
                 }
             }
         }
@@ -400,38 +380,26 @@ namespace lux::render::detail
             const bool incompatible =
                 !image || resource.origin != EGraphOrigin::TRANSIENT || requirement.format != target->format ||
                 requirement.samples != target->samples ||
-                (image && (image->extent.numerator != image->extent.denominator || image->extent.alignment != 1)) ||
-                (!relative && (requirement.width != target->width || requirement.height != target->height));
+                (image && (image->extent.numerator != image->extent.denominator || image->extent.alignment != 1));
             if (incompatible)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
             plan.output_ = index;
-            plan.resizable_output_ = relative;
+            plan.fixed_output_extent_ = {requirement.width, requirement.height};
             resource.target_sized = relative;
         }
-        auto layouts = planLayouts(limits, graph, analysis);
+        auto layouts = planLayouts(limits, graph, analysis, parameter_groups);
         if (!layouts)
         {
             return cxx::unexpected(layouts.error());
         }
-        plan.descriptor_plan_ = std::make_unique<PipelineLayoutPlan>(std::move(*layouts));
+        plan.descriptor_plan_ = std::make_unique<ShaderBindingPlan>(std::move(*layouts));
 
-        struct PipelineIdentity final
-        {
-            rdesc::SpirvArtifact shader;
-            nri::PipelineLayout* layout;
-            GraphicsState state;
-            std::vector<nri::Format> colors;
-            nri::Format depth = nri::Format::UNKNOWN;
-            std::uint32_t samples = 1;
-            bool operator==(const PipelineIdentity&) const noexcept = default;
-        };
-
-        std::vector<PipelineIdentity> identities;
         plan.pass_indices_.resize(graph.passes().size(), kGraphInvalidIndex);
         std::size_t parameter_bytes = 0;
         std::uint32_t draw_list_count = 0;
+        std::uint32_t raster_list_count = 0;
         for (const auto id : analysis.execution_order)
         {
             const auto& source = graph.passes()[id.index];
@@ -450,10 +418,10 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             const PassInterface* input = nullptr;
-            PipelineIdentity identity{};
             if (const auto* raster = std::get_if<RasterWork>(&source.work))
             {
-                input = &raster->interface;
+                const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
+                input = fixed ? &fixed->interface : nullptr;
                 if (raster->colors.empty() && !raster->depth)
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
@@ -462,7 +430,6 @@ namespace lux::render::detail
                 const auto& reference_desc =
                     std::get<GraphImageDesc>(graph.resources()[reference.access.version.resource.index].description);
                 const auto& reference_range = std::get<GraphImageRange>(reference.access.range);
-                identity.samples = reference_desc.samples;
                 auto validateAttachment = [&](const RasterAttachment& attachment, bool depth) noexcept
                 {
                     const auto& description =
@@ -509,87 +476,83 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 }
-                for (const auto& color : raster->colors)
-                {
-                    const auto& description =
-                        std::get<GraphImageDesc>(plan.resources_[color.access.version.resource.index].description);
-                    identity.colors.push_back(imageFormat(description.format).native);
-                }
-                if (raster->depth)
-                {
-                    const auto& description = std::get<GraphImageDesc>(
-                        plan.resources_[raster->depth->access.version.resource.index].description
-                    );
-                    identity.depth = imageFormat(description.format).native;
-                }
-                identity.state = raster->graphics;
-                if (raster->state_input)
-                {
-                    if (!limits.features.dynamicDepthBias)
-                    {
-                        return cxx::unexpected(RenderError{kDeviceUnsupported});
-                    }
-                    // Keep bias enabled in the pipeline; the prepared value may be exactly zero.
-                    identity.state.depth_bias_constant = 1;
-                }
-                if (auto valid = validateDraw(*raster, graph, limits); !valid)
-                {
-                    return cxx::unexpected(valid.error());
-                }
                 auto& recorded = std::get<RasterCommands>(pass.work);
                 recorded.colors = raster->colors;
                 recorded.depth = raster->depth;
-                if (const auto* list = std::get_if<DrawIndexedList>(&raster->draw))
-                {
-                    const auto reflected = shaderInterface(graph.programs()[input->program].interface);
-                    if (!reflected)
-                    {
-                        return cxx::unexpected(reflected.error());
-                    }
-                    const auto& fields = reflected->parameters.fields;
-                    const auto field = std::ranges::find(fields, list->selection_parameter, &rdesc::ShaderMember::path);
-                    const bool invalid_selection = field == fields.end() || field->scalar != rdesc::EDataScalar::UINT ||
-                                                   field->rows != 1 || field->columns != 1 || field->array_stride != 0;
-                    if (invalid_selection)
-                    {
-                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                    }
-                    recorded.draw = IndexedListCommands{
-                        list->index_resource,
-                        list->index_offset,
-                        list->type,
-                        field->offset,
-                        list->selection_count,
-                        draw_list_count++
-                    };
-                }
-                else
-                {
-                    std::visit(
-                        [&](const auto& draw) noexcept
-                        {
-                            if constexpr (!std::same_as<std::decay_t<decltype(draw)>, DrawIndexedList>)
-                            {
-                                recorded.draw = draw;
-                            }
-                        },
-                        raster->draw
-                    );
-                }
                 recorded.viewport = raster->viewport;
                 recorded.state_input = raster->state_input;
-                recorded.depth_bias = {raster->graphics.depth_bias_constant, raster->graphics.depth_bias_slope};
                 if (raster->viewport && !raster->viewport->validate())
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
-                for (const auto& source : raster->vertex_buffers)
+                if (fixed)
                 {
-                    const auto binding =
-                        std::ranges::find(raster->graphics.vertex_bindings, source.binding, &VertexBinding::binding);
-                    recorded.vertices.push_back(
-                        {source.resource.resource, source.binding, source.offset, binding->stride}
-                    );
+                    if (raster->state_input)
+                    {
+                        if (!limits.features.dynamicDepthBias)
+                        {
+                            return cxx::unexpected(RenderError{kDeviceUnsupported});
+                        }
+                    }
+                    if (auto valid = validateDraw(*fixed, graph, limits); !valid)
+                    {
+                        return cxx::unexpected(valid.error());
+                    }
+                    if (const auto* list = std::get_if<DrawIndexedList>(&fixed->draw))
+                    {
+                        const auto reflected = shaderInterface(graph.programs()[input->program].interface);
+                        if (!reflected)
+                        {
+                            return cxx::unexpected(reflected.error());
+                        }
+                        const auto& fields = reflected->parameters.fields;
+                        const auto field =
+                            std::ranges::find(fields, list->selection_parameter, &rdesc::ShaderMember::path);
+                        const bool missing_selection = field == fields.end();
+                        const bool wrong_selection =
+                            !missing_selection && (field->scalar != rdesc::EDataScalar::UINT || field->rows != 1 ||
+                                                   field->columns != 1 || field->array_stride != 0);
+                        if (missing_selection || wrong_selection)
+                        {
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                        }
+                        recorded.draw = IndexedListCommands{
+                            list->index_resource,
+                            list->index_offset,
+                            list->type,
+                            field->offset,
+                            draw_list_count++
+                        };
+                        auto& compiled_list = std::get<IndexedListCommands>(recorded.draw);
+                        compiled_list.partial_parameters = limits.features.rootConstantsOffset;
+                    }
+                    else
+                    {
+                        std::visit(
+                            [&](const auto& draw) noexcept
+                            {
+                                if constexpr (!std::same_as<std::decay_t<decltype(draw)>, DrawIndexedList>)
+                                {
+                                    recorded.draw = draw;
+                                }
+                            },
+                            fixed->draw
+                        );
+                    }
+                    recorded.depth_bias = {fixed->graphics.depth_bias_constant, fixed->graphics.depth_bias_slope};
+                    for (const auto& source : fixed->vertex_buffers)
+                    {
+                        const auto binding =
+                            std::ranges::find(fixed->graphics.vertex_bindings, source.binding, &VertexBinding::binding);
+                        recorded.vertices.push_back(
+                            {source.resource.resource, source.binding, source.offset, binding->stride}
+                        );
+                    }
+                }
+                else
+                {
+                    recorded.draw =
+                        RasterListCommands{raster_list_count++, std::get<RasterPassTemplate>(raster->program)};
                 }
             }
             else if (const auto* compute = std::get_if<ComputeWork>(&source.work))
@@ -633,85 +596,12 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (!input)
+            if (std::holds_alternative<TransferWork>(source.work))
             {
                 pass.work = std::get<TransferWork>(source.work);
                 if (auto valid = validateTransfer(std::get<TransferWork>(source.work), graph); !valid)
                 {
                     return cxx::unexpected(valid.error());
-                }
-            }
-            auto& placement = plan.descriptor_plan_->passes[id.index];
-            if (input || !placement.private_bindings.empty())
-            {
-                if (placement.shared && (!image_capacity || !sampler_capacity))
-                {
-                    return cxx::unexpected(RenderError{kDeviceUnsupported});
-                }
-                for (const auto previous : analysis.execution_order)
-                {
-                    if (previous == id)
-                    {
-                        break;
-                    }
-                    const auto& other = plan.descriptor_plan_->passes[previous.index];
-                    if (other.layout && sameLayout(placement, other))
-                    {
-                        placement.layout = other.layout;
-                        break;
-                    }
-                }
-                if (!placement.layout)
-                {
-                    auto layout = createLayout(device, core, placement, image_capacity, sampler_capacity);
-                    if (!layout)
-                    {
-                        return cxx::unexpected(layout.error());
-                    }
-                    placement.layout = *layout;
-                    plan.layouts_.push_back(*layout);
-                }
-            }
-            if (input)
-            {
-                auto shader = relocateShader(graph.programs()[input->program], placement.bindings);
-                if (!shader)
-                {
-                    return cxx::unexpected(shader.error());
-                }
-                identity.shader = std::move(*shader);
-                identity.layout = placement.layout;
-                const auto found = std::ranges::find(identities, identity);
-                if (found != identities.end())
-                {
-                    pass.pipeline = plan.pipelines_[found - identities.begin()];
-                }
-                else
-                {
-                    auto pipeline = std::holds_alternative<ComputeWork>(source.work)
-                                        ? compileCompute(device, core, enabled, *identity.layout, identity.shader)
-                                        : compileGraphics(
-                                              device,
-                                              core,
-                                              enabled,
-                                              formats,
-                                              vertex_limits,
-                                              *identity.layout,
-                                              identity.shader,
-                                              identity.state,
-                                              identity.colors,
-                                              identity.depth,
-                                              identity.samples
-                                          );
-                    if (!pipeline)
-                    {
-                        auto error = pipeline.error();
-                        error.args[2] = std::uint64_t(id.index) + 1;
-                        return cxx::unexpected(error);
-                    }
-                    pass.pipeline = *pipeline;
-                    plan.pipelines_.push_back(*pipeline);
-                    identities.push_back(std::move(identity));
                 }
             }
             plan.pass_indices_[id.index] = static_cast<std::uint32_t>(plan.recording_.passes.size());
@@ -727,11 +617,55 @@ namespace lux::render::detail
                 }
             }
         }
+        auto& parameter_plan = *plan.descriptor_plan_;
+        parameter_plan.parameter_uses.resize(plan.resources_.size());
+        for (std::uint32_t p = 0; p < plan.passes().size(); ++p)
+        {
+            const auto& pass = plan.passes()[p];
+            if (const auto* raster = std::get_if<RasterCommands>(&pass.work); raster && raster->state_input)
+            {
+                parameter_plan.parameter_uses[raster->state_input->resource.index].push_back(p);
+            }
+            for (const auto& mapping : parameter_plan.passes[pass.source_pass].parameters)
+            {
+                auto& uses = mapping.resource == kGraphInvalidIndex
+                    ? parameter_plan.instance_parameter_uses : parameter_plan.parameter_uses[mapping.resource];
+                uses.push_back(p);
+                if (mapping.resource == kGraphInvalidIndex)
+                {
+                    const auto& field = mapping.destination;
+                    const auto bytes = field.rows * 4 + (field.columns ? (field.columns - 1) * field.matrix_stride : 0);
+                    for (auto& region : parameter_plan.parameter_regions)
+                    {
+                        if (mapping.source_offset < region.offset + region.layout.size &&
+                            region.offset < mapping.source_offset + bytes)
+                        {
+                            region.passes.push_back(p);
+                        }
+                    }
+                }
+            }
+        }
+        const auto deduplicate = [](auto& uses)
+        {
+            std::ranges::sort(uses);
+            uses.erase(std::unique(uses.begin(), uses.end()), uses.end());
+        };
+        deduplicate(parameter_plan.instance_parameter_uses);
+        for (auto& region : parameter_plan.parameter_regions) deduplicate(region.passes);
+        for (std::uint32_t resource = 0; resource < parameter_plan.parameter_uses.size(); ++resource)
+        {
+            auto& uses = parameter_plan.parameter_uses[resource];
+            deduplicate(uses);
+            if (!uses.empty()) parameter_plan.parameter_resources.push_back(resource);
+        }
         planConditions(graph, plan.recording_);
         selectQueues(graph, queues, plan.recording_);
         // Logical transitions establish the original batch dependency graph before choosing storage.
         auto barriers =
-            planBarriers(graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.target_);
+            planBarriers(
+                graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_
+            );
         if (!barriers)
         {
             return cxx::unexpected(barriers.error());
@@ -769,11 +703,13 @@ namespace lux::render::detail
                 }
             }
         }
+        const auto use_stages = collectUseStages(graph, *plan.descriptor_plan_);
         planSubmissions(
             graph,
             analysis,
             plan.resources_,
             plan.recording_,
+            use_stages,
             queues,
             plan.submissions_,
             plan.imported_accesses_,
@@ -799,7 +735,7 @@ namespace lux::render::detail
                 *plan.descriptor_plan_,
                 plan.resources_,
                 plan.recording_,
-                plan.target_,
+                plan.output_description_,
                 &plan.physical_resources_
             );
             if (!barriers)
@@ -807,11 +743,69 @@ namespace lux::render::detail
                 return cxx::unexpected(barriers.error());
             }
         }
+        if (plan.output_first_batch_ != kGraphInvalidIndex)
+        {
+            const auto& batch = plan.submissions_[plan.output_first_batch_];
+            bool found_output_use = false;
+            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            {
+                for (const auto& [resource, stages] : use_stages[plan.recording_.passes[p].source_pass])
+                {
+                    if (resource != plan.output_) continue;
+                    const bool includes_all = found_output_use &&
+                        (plan.output_wait_stages_ == nri::StageBits::ALL || stages == nri::StageBits::ALL);
+                    plan.output_wait_stages_ = !found_output_use ? stages
+                        : includes_all ? nri::StageBits::ALL : plan.output_wait_stages_ | stages;
+                    found_output_use = true;
+                }
+            }
+        }
         auto rendering = planRendering(analysis, plan.resources_, plan.recording_);
         if (!rendering)
         {
             return cxx::unexpected(rendering.error());
         }
+        for (std::uint32_t index = 0; index < plan.submissions_.size(); ++index)
+        {
+            auto& batch = plan.submissions_[index];
+            batch.reusable_recording = batch.histories.empty() && (index != 0 || plan.histories_.empty());
+            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            {
+                const auto& pass = plan.recording_.passes[p];
+                const auto& source = graph.passes()[pass.source_pass];
+                const auto* raster = std::get_if<RasterCommands>(&pass.work);
+                if (source.side_effect || (raster && std::holds_alternative<IndexedListCommands>(raster->draw)))
+                {
+                    batch.reusable_recording = false;
+                }
+                if (plan.output_description_.kind == ETargetKind::SURFACE && std::ranges::any_of(source.uses,
+                    [&](const auto& use) noexcept { return use.version.resource.index == plan.output_; }))
+                {
+                    batch.output_begin = std::min(batch.output_begin, p);
+                }
+            }
+            if (plan.output_description_.kind == ETargetKind::SURFACE && index + 1 == plan.submissions_.size() &&
+                std::ranges::any_of(plan.recording_.after.images,
+                    [&](const auto& barrier) noexcept { return barrier.resource == plan.output_; }))
+            {
+                batch.output_begin = std::min(batch.output_begin, batch.first_pass + batch.pass_count);
+            }
+            if (batch.output_begin != kGraphInvalidIndex)
+            {
+                auto begin = batch.output_begin;
+                do
+                {
+                    batch.output_begin = begin;
+                    if (begin == batch.first_pass + batch.pass_count) break;
+                    const auto& pass = plan.recording_.passes[begin];
+                    if (pass.rendering_group != kGraphInvalidIndex)
+                        begin = std::min(begin, plan.recording_.groups[pass.rendering_group].first_pass);
+                    if (pass.condition_region != kGraphInvalidIndex)
+                        begin = std::min(begin, plan.recording_.conditions[pass.condition_region].first_pass);
+                } while (begin != batch.output_begin);
+            }
+        }
+        compactImageTransitions(plan.resources_, plan.recording_);
         return plan;
     }
 } // namespace lux::render::detail

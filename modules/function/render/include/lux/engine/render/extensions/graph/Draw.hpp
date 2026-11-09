@@ -119,7 +119,6 @@ namespace lux::render
         std::uint64_t index_offset = 0;
         EIndexType type = EIndexType::UINT32;
         std::string selection_parameter;
-        std::uint32_t selection_count = 0;
     };
 
     using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, DrawIndexedList>;

@@ -55,7 +55,7 @@ extern "C" MATERIAL_TEST_EXPORT void materialNodeRegistration(
     using namespace lux::material;
     plugin_state = &state;
     result.identity = {graph::nodeTypeId("external.material.constant.v1"), "external.material.constant.v1", 1};
-    result.payload_type = cxx::typeToken<ExternalPayload>();
+    result.payload_type = cxx::make_basic_type_info<ExternalPayload>();
     result.code = code;
     result.create = [](const object::CodeLease& code) noexcept
     { return MaterialNodePayload::make<ExternalPayload, &clone>(code); };

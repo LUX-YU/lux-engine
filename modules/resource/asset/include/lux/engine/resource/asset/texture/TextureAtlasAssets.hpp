@@ -71,6 +71,14 @@ namespace lux::asset
             const TextureAtlasAsset& asset,
             const AssetEncodeLimits& limits
         ) noexcept;
+
+        // Synchronous borrowing encode; no copy of the payload or artificial shared owner.
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const AssetInfo& asset_info,
+            const TextureAtlasAsset::data_type& data,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 
     template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<FlipbookClipAsset> final
@@ -83,6 +91,14 @@ namespace lux::asset
 
         [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
             const FlipbookClipAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
+
+        // Synchronous borrowing encode; no copy of the payload or artificial shared owner.
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const AssetInfo& asset_info,
+            const FlipbookClipAsset::data_type& data,
+            std::span<const AssetAuxiliaryPayload> auxiliary,
             const AssetEncodeLimits& limits
         ) noexcept;
     };

@@ -31,7 +31,8 @@ add_library(
 set_property(TARGET toolchain_shader_reflection PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(
     toolchain_shader_reflection
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_SPIRV_TOOLS_INCLUDE}
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sinclude>
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_SPIRV_TOOLS_INCLUDE}
 )
 target_link_libraries(
     toolchain_shader_reflection

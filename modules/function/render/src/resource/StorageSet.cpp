@@ -6,34 +6,7 @@ namespace lux::render
 {
     StorageSet::~StorageSet() noexcept
     {
-        if (scope_)
-        {
-            registry_.unbindScope(*scope_);
-        }
         clear();
-    }
-
-    void StorageSet::bindScope(VRenderScope scope) noexcept
-    {
-        scope_ = std::move(scope);
-        registry_.bindScope(*scope_, *this);
-    }
-
-    void StorageSet::bindInput(CapabilitySelection selection, std::uint32_t input, StorageId storage) noexcept
-    {
-        const auto implementation = selection.implementation_;
-        input_bindings_.insert_or_assign(
-            InputKey{implementation.index, implementation.gen, selection.capability_, input},
-            storage
-        );
-    }
-
-    StorageId StorageSet::inputStorage(CapabilitySelection selection, std::uint32_t input) const noexcept
-    {
-        const auto implementation = selection.implementation_;
-        const auto found =
-            input_bindings_.find(InputKey{implementation.index, implementation.gen, selection.capability_, input});
-        return found == input_bindings_.end() ? StorageId{} : found->second;
     }
 
     StorageId StorageSet::find(StorageTypeId type, std::string_view key) const noexcept
@@ -101,8 +74,8 @@ namespace lux::render
         const StorageDescriptor& description,
         std::string_view key,
         const ConfigValue& config,
-        cxx::TypeToken config_type,
-        cxx::TypeToken ops_type
+        cxx::type_info config_type,
+        cxx::type_info ops_type
     ) noexcept
     {
         const auto type = registry_.typeId(description.type);
@@ -161,7 +134,6 @@ namespace lux::render
 
     void StorageSet::clear() noexcept
     {
-        input_bindings_.clear();
         for (const auto& record : records_)
         {
             registry_.revoke(record.id);

@@ -20,7 +20,12 @@ namespace lux::editor
             Errors::SceneProfileDuplicateDescriptor,
             Errors::SceneProfileUnknownDescriptor,
             Errors::ValueEditorInvalidDescriptor,
-            Errors::ValueEditorDuplicateDescriptor
+            Errors::ValueEditorDuplicateDescriptor,
+            Errors::EditorIncompleteServiceLifecycleDescriptor,
+            Errors::EditorInitializationDependencyDescriptor,
+            Errors::EditorStartupSceneFailureDescriptor,
+            Errors::EditorRenderBindingsDescriptor,
+            Errors::EditorRenderAssetObservationDescriptor
         };
         static const auto registered = error::ErrorRegistry::instance().registerTypes(descriptors);
         return registered;

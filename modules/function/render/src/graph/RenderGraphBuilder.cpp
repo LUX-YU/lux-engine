@@ -40,10 +40,8 @@ namespace lux::render
         }
 
         // Empty means the footprint depends on the instance extent or backend-selected pitch.
-        RenderResult<std::vector<GraphBufferRange>> copyBufferRanges(
-            const CopyImageBuffer& copy,
-            const GraphImageDesc& image
-        ) noexcept
+        RenderResult<std::vector<GraphBufferRange>>
+        copyBufferRanges(const CopyImageBuffer& copy, const GraphImageDesc& image) noexcept
         {
             const bool source_image = std::holds_alternative<GraphImageRange>(copy.source.range);
             const auto& image_range =
@@ -100,8 +98,14 @@ namespace lux::render
             return ranges;
         }
 
-        RenderResult<void> validateResource(const GraphResource& resource) noexcept
+        RenderResult<void> prepareResource(GraphResource& resource) noexcept
         {
+            if (auto* image = std::get_if<GraphImageDesc>(&resource.description);
+                image && image->extent.source != EImageExtentSource::FIXED)
+            {
+                image->width = image->height = 0;
+            }
+
             const bool is_invalid_origin = resource.origin > EGraphOrigin::HISTORY_CURRENT ||
                                            !compatibleUse(resource.description, resource.initial_use);
             const bool has_illegal_initial = !resource.initial_ranges.empty() &&
@@ -121,9 +125,10 @@ namespace lux::render
             else
             {
                 const auto& image = std::get<GraphImageDesc>(resource.description);
-                const bool is_invalid_extent = image.width == 0 || image.height == 0 || image.layers == 0;
+                const bool fixed = image.extent.source == EImageExtentSource::FIXED;
+                const bool is_invalid_extent = image.layers == 0 || (fixed && (!image.width || !image.height));
                 const bool is_invalid_mips =
-                    image.mips == 0 || image.mips > std::bit_width(std::max(image.width, image.height));
+                    image.mips == 0 || (fixed && image.mips > std::bit_width(std::max(image.width, image.height)));
                 const bool is_invalid_samples =
                     !std::has_single_bit(image.samples) || image.samples > 64 || (image.samples > 1 && image.mips != 1);
                 const bool is_invalid_format = rdesc::textureAspectMask(image.format) == 0;
@@ -168,7 +173,7 @@ namespace lux::render
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         }
-        if (auto valid = validateResource(resource); !valid)
+        if (auto valid = prepareResource(resource); !valid)
         {
             return cxx::unexpected(graphError(valid.error().type, {}, id));
         }
@@ -208,14 +213,14 @@ namespace lux::render
             return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         }
         GraphResource previous{key + ".previous", description, EGraphOrigin::HISTORY_PREVIOUS, {{}}, canonical_use};
-        if (auto valid = validateResource(previous); !valid)
+        if (auto valid = prepareResource(previous); !valid)
         {
             return cxx::unexpected(valid.error());
         }
         const auto whole = detail::normalize(previous, {});
         previous.initial_ranges = {*whole};
         GraphResource
-            current{key + ".current", std::move(description), EGraphOrigin::HISTORY_CURRENT, {}, canonical_use};
+            current{key + ".current", previous.description, EGraphOrigin::HISTORY_CURRENT, {}, canonical_use};
         HistoryDescription history;
         history.previous = {static_cast<std::uint32_t>(candidate_.resources_.size())};
         history.current = {history.previous.index + 1};
@@ -267,39 +272,26 @@ namespace lux::render
         return index;
     }
 
-    RenderResult<PassResult> RenderGraphBuilder::addRasterPass(
-        std::string key,
-        RasterWork work,
-        GraphPassOptions options
-    ) noexcept
+    RenderResult<PassResult>
+    RenderGraphBuilder::addRasterPass(std::string key, RasterWork work, GraphPassOptions options) noexcept
     {
         return addWork(std::move(key), std::move(work), EGraphPassKind::GRAPHICS, options);
     }
 
-    RenderResult<PassResult> RenderGraphBuilder::addComputePass(
-        std::string key,
-        ComputeWork work,
-        GraphPassOptions options
-    ) noexcept
+    RenderResult<PassResult>
+    RenderGraphBuilder::addComputePass(std::string key, ComputeWork work, GraphPassOptions options) noexcept
     {
         return addWork(std::move(key), std::move(work), EGraphPassKind::COMPUTE, options);
     }
 
-    RenderResult<PassResult> RenderGraphBuilder::addTransferPass(
-        std::string key,
-        TransferWork work,
-        GraphPassOptions options
-    ) noexcept
+    RenderResult<PassResult>
+    RenderGraphBuilder::addTransferPass(std::string key, TransferWork work, GraphPassOptions options) noexcept
     {
         return addWork(std::move(key), std::move(work), EGraphPassKind::TRANSFER, options);
     }
 
-    RenderResult<PassResult> RenderGraphBuilder::addWork(
-        std::string key,
-        VPassWork work,
-        EGraphPassKind kind,
-        GraphPassOptions options
-    ) noexcept
+    RenderResult<PassResult>
+    RenderGraphBuilder::addWork(std::string key, VPassWork work, EGraphPassKind kind, GraphPassOptions options) noexcept
     {
         GraphPass pass{std::move(key), kind, {}, std::move(work), options.side_effect, options.condition};
         PassResult result;
@@ -448,7 +440,65 @@ namespace lux::render
                 using Work = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::is_same_v<Work, RasterWork>)
                 {
-                    interface(value.interface);
+                    auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
+                    if (fixed)
+                    {
+                        interface(fixed->interface);
+                    }
+                    else
+                    {
+                        auto& dynamic = std::get<RasterPassTemplate>(value.program);
+                        if (dynamic.purpose.empty())
+                        {
+                            failure = graphError(kGraphInvalidDescriptor);
+                            return;
+                        }
+                        for (const auto& input : dynamic.inputs)
+                        {
+                            const bool is_read = input.usage == EGraphUse::SAMPLED ||
+                                                 input.usage == EGraphUse::STORAGE_READ ||
+                                                 input.usage == EGraphUse::VERTEX || input.usage == EGraphUse::INDEX ||
+                                                 input.usage == EGraphUse::INDIRECT;
+                            const bool is_shader_input =
+                                input.usage == EGraphUse::SAMPLED || input.usage == EGraphUse::STORAGE_READ;
+                            const bool is_invalid_stage =
+                                is_shader_input ? input.stages == 0 || (input.stages & ~3u) != 0 : input.stages != 0;
+                            const bool is_invalid_kind = !is_shader_input && input.kind.has_value();
+                            const bool is_invalid_slot =
+                                input.name.empty() || !is_read || is_invalid_stage || is_invalid_kind ||
+                                std::ranges::count(dynamic.inputs, input.name, &RasterPassTemplate::Input::name) != 1;
+                            if (is_invalid_slot)
+                            {
+                                failure = graphError(kGraphInvalidDescriptor);
+                                return;
+                            }
+                        }
+                        for (auto& resource : dynamic.resources)
+                        {
+                            if (resource.access != EGraphAccess::READ)
+                            {
+                                failure = graphError(kGraphInvalidDescriptor, {}, resource.version.resource);
+                                return;
+                            }
+                            append(resource, resource.usage);
+                        }
+                        for (const auto& field : dynamic.parameters.fields)
+                        {
+                            const auto resource = field.resource;
+                            if (resource.index == kGraphInvalidIndex)
+                            {
+                                continue;
+                            }
+                            const bool is_imported =
+                                resource.index < candidate_.resources_.size() &&
+                                candidate_.resources_[resource.index].origin == EGraphOrigin::IMPORTED;
+                            if (!is_imported)
+                            {
+                                failure = graphError(kGraphInvalidDescriptor, {}, resource);
+                                return;
+                            }
+                        }
+                    }
                     if (value.state_input)
                     {
                         const auto resource = value.state_input->resource;
@@ -478,7 +528,11 @@ namespace lux::render
                                                          : EGraphAccess::WRITE;
                         append(value.depth->access, EGraphUse::DEPTH_ATTACHMENT);
                     }
-                    for (const auto& vertex : value.vertex_buffers)
+                    if (!fixed)
+                    {
+                        return;
+                    }
+                    for (const auto& vertex : fixed->vertex_buffers)
                     {
                         read(vertex.resource, EGraphUse::VERTEX);
                     }
@@ -530,7 +584,7 @@ namespace lux::render
                                 }
                             }
                         },
-                        value.draw
+                        fixed->draw
                     );
                 }
                 else if constexpr (std::is_same_v<Work, ComputeWork>)

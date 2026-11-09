@@ -28,7 +28,7 @@ namespace lux::render
             kMeshInstanceStorageType,
             0,
             0,
-            cxx::typeToken<MeshInstanceBinding>(),
+            cxx::make_basic_type_info<MeshInstanceBinding>(),
             "Paged raster transforms, indexed mesh/material references and live records; no skinning ABI."
         };
 

@@ -135,7 +135,7 @@ namespace lux::flowforge
         {
             return {
                 {graph::nodeTypeId(name), std::string(name), 1},
-                cxx::typeToken<ScalarNodePayload>(),
+                cxx::make_basic_type_info<ScalarNodePayload>(),
                 code,
                 createScalar<Operation>,
                 describeScalar<Operation>,

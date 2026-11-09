@@ -2,6 +2,7 @@
 #include "DeferredLightingClustered.hpp"
 #include "DeferredLightingClusteredShadow.hpp"
 #include "DeferredLightingShadow.hpp"
+#include <cstring>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/extensions/storage/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
@@ -22,10 +23,12 @@ namespace lux::render
         RenderResult<void> describeLighting(const void* value, std::string_view, FeaturePorts& result) noexcept
         {
             const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
-            const bool invalid_extent = !config.extent.width || !config.extent.height || config.extent.mips != 1 ||
+            const bool invalid_extent = (config.extent.extent.source == EImageExtentSource::FIXED &&
+                (!config.extent.width || !config.extent.height)) || config.extent.mips != 1 ||
                                         config.extent.layers != 1 || config.extent.samples != 1;
-            const bool missing_lights = !config.shadows && !config.clusters && config.lights.empty();
-            const bool invalid_clusters = config.clusters && !config.clusters->valid();
+            const bool missing_lights = !config.external_lights && config.lights.empty();
+            const bool invalid_clusters =
+                config.clusters && (config.clusters->cluster_count == 0 || config.clusters->index_capacity == 0);
             const bool invalid_configuration = invalid_extent || missing_lights || invalid_clusters;
             if (invalid_configuration)
             {
@@ -38,7 +41,7 @@ namespace lux::render
                 FeaturePort port{std::string(surfaces[i]), EFeaturePort::INPUT, image};
                 port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(surfaces[i]);
                 result.resources.push_back(std::move(port));
-                if (config.shadows || config.clusters)
+                if (config.external_lights)
                 {
                     result.resources.push_back(
                         {std::string(lights[i]), EFeaturePort::INPUT, GraphBufferDesc{strides[i]}}
@@ -85,7 +88,7 @@ namespace lux::render
                     result.resources.push_back(std::move(input));
                 };
                 port("cluster_grid", sizeof(ClusterGridGpu), kClusterGrid);
-                port("cluster_offsets", (config.clusters->count() + 1) * 4, kClusterOffsets);
+                port("cluster_offsets", (std::uint64_t(config.clusters->cluster_count) + 1) * 4, kClusterOffsets);
                 port("cluster_indices", std::uint64_t(config.clusters->index_capacity) * 4, kClusterIndices);
                 port("cluster_status", sizeof(ClusterStatusGpu), kClusterStatus);
             }
@@ -97,7 +100,13 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> buildLighting(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+        RenderResult<void>
+        buildLighting(
+            const void* value,
+            std::string_view key,
+            FeatureBuildContext& context,
+            const lux::render::detail::EnabledDeviceFeatures&
+        ) noexcept
         {
             const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
             auto work = config.clusters
@@ -124,13 +133,13 @@ namespace lux::render
             }
             for (auto name : surfaces)
             {
-                work->interface.resources.push_back({std::string(name), {context.resource(name)}});
+                work->fixed().interface.resources.push_back({std::string(name), {context.resource(name)}});
             }
             for (std::uint32_t i = 0; i < lights.size(); ++i)
             {
                 auto resource = context.resource(lights[i]);
-                work->interface.resources.push_back({std::string(lights[i]), {resource}});
-                if (!config.shadows && !config.clusters)
+                work->fixed().interface.resources.push_back({std::string(lights[i]), {resource}});
+                if (!config.external_lights)
                 {
                     context.arguments.push_back(StorageArgument::make(
                         resource.resource,
@@ -142,24 +151,41 @@ namespace lux::render
             {
                 for (auto name : {"shadow_views", "shadow_slices", "shadow_ranges", "shadow_depth"})
                 {
-                    work->interface.resources.push_back({name, {context.resource(name)}});
+                    work->fixed().interface.resources.push_back({name, {context.resource(name)}});
                 }
                 const auto sampler = context.addSampler(
                     {ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_BORDER, EDepthCompare::LESS_EQUAL, 1}
                 );
-                work->interface.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
+                work->fixed().interface.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
             }
             if (config.clusters)
             {
                 for (auto name : {"cluster_grid", "cluster_offsets", "cluster_indices", "cluster_status"})
                 {
-                    work->interface.resources.push_back({name, {context.resource(name)}});
+                    work->fixed().interface.resources.push_back({name, {context.resource(name)}});
                 }
             }
-            work->interface.parameters.instance_layout = config.input_layout;
-            for (auto name : {"inverse_view_projection", "camera_position", "viewport", "background", "environment"})
+            work->fixed().interface.parameters.instance_layout = config.input_layout;
+            for (auto name : {"inverse_view_projection", "viewport", "background"})
             {
-                work->interface.parameters.fields.push_back({name, {}, name});
+                work->fixed().interface.parameters.fields.push_back({name, {}, name});
+            }
+            work->fixed().interface.parameters.fields.push_back({"camera_position", {}, "position_near"});
+            const bool supplied_environment =
+                std::ranges::find(config.input_layout.fields, "environment", &rdesc::ShaderMember::path) !=
+                config.input_layout.fields.end();
+            if (supplied_environment)
+            {
+                work->fixed().interface.parameters.fields.push_back({"environment", {}, "environment"});
+            }
+            else
+            {
+                std::memcpy(
+                    work->fixed().interface.parameters.values.data() +
+                        offsetof(DeferredLightingParameters, environment),
+                    config.environment.data(),
+                    sizeof(config.environment)
+                );
             }
             work->colors.push_back({{context.resource("hdr_color")}});
             auto pass = context.graph.addRasterPass(
@@ -178,9 +204,8 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<DeferredLightingFeatureConfig>::retainedBytes(
-        const DeferredLightingFeatureConfig& value
-    ) noexcept
+    RenderResult<std::size_t>
+    ConfigValueTraits<DeferredLightingFeatureConfig>::retainedBytes(const DeferredLightingFeatureConfig& value) noexcept
     {
         auto bytes = sizeof(value) + detail::parameterLayoutBytes(value.input_layout);
         const auto begin = reinterpret_cast<std::uintptr_t>(&value.lights);

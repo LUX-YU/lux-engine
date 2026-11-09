@@ -3,9 +3,13 @@
 #include "SceneComparison.hpp"
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/material/Compiler.hpp>
-#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/commands/Lighting3dCommands.hpp>
+#include <lux/engine/render/commands/MaterialCommands.hpp>
+#include <lux/engine/render/commands/Mesh3dCommands.hpp>
 #include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -62,7 +66,13 @@ struct ClusterCapture
         return {};
     }
 
-    static RenderResult<void> build(const void* data, std::string_view key, FeatureBuildContext& context) noexcept
+    static RenderResult<void>
+    build(
+        const void* data,
+        std::string_view key,
+        FeatureBuildContext& context,
+        const lux::render::detail::EnabledDeviceFeatures&
+    ) noexcept
     {
         const auto lengths = sizes(static_cast<const ClusterCaptureConfig*>(data)->grid);
         TransferWork work;
@@ -103,7 +113,13 @@ struct ScanProbe
         return {};
     }
 
-    static RenderResult<void> build(const void*, std::string_view key, FeatureBuildContext& context) noexcept
+    static RenderResult<void>
+    build(
+        const void*,
+        std::string_view key,
+        FeatureBuildContext& context,
+        const lux::render::detail::EnabledDeviceFeatures&
+    ) noexcept
     {
         auto initialized = take(context.graph.addTransferPass(
             featureKey(FeatureName{"test.Scan"}, key, "initialize"),
@@ -183,6 +199,8 @@ static auto layout()
     block.size = sizeof(Parameters);
     for (auto field : deferredLightingParameterBlock().fields)
     {
+        // Share the cluster camera's actual near plane; never publish conflicting field names.
+        if (field.path == "inverse_view_projection" || field.path == "position_near") continue;
         field.offset += offsetof(Parameters, lighting);
         block.fields.push_back(std::move(field));
     }
@@ -317,6 +335,85 @@ static void verifyLists(
     CHECK(observed);
 }
 
+using ClusterProbeConfiguration = std::tuple<
+    GBufferFeatureConfig, DeferredLightingFeatureConfig, ClusteredLightingFeatureConfig,
+    ClusterCaptureConfig, CaptureConfig
+>;
+
+static RenderResult<CapabilityGraphContribution> lowerClusterProbe(const CapabilityBuildInput& input) noexcept
+{
+    const auto& [surface, reference, clustered, list_capture, capture_diff] =
+        *static_cast<const ClusterProbeConfiguration*>(input.configuration.data());
+    const auto& grid = clustered.grid;
+    const auto& block = surface.input_layout;
+    auto optimized = reference;
+    optimized.clusters = ClusterLightListShape{static_cast<std::uint32_t>(grid.count()), grid.index_capacity};
+    optimized.external_lights = true;
+    const auto gbuffer = input.features[0], lighting = input.features[1], cluster = input.features[2];
+    const auto compare = input.features[3], capture = input.features[4], cluster_capture = input.features[5];
+    const auto visibility = input.features[6];
+    CapabilityGraphContribution request;
+    request.definition.features.push_back({gbuffer, "surface", take(ConfigValue::make(surface))});
+    request.definition.features.push_back({lighting, "reference", take(ConfigValue::make(reference))});
+    request.definition.features.push_back({cluster, "cluster", take(ConfigValue::make(clustered))});
+    request.definition.features.push_back({lighting, "optimized", take(ConfigValue::make(optimized))});
+    request.definition.features.push_back({compare, "compare", {}});
+    request.definition.features.push_back({capture, "differences", take(ConfigValue::make(capture_diff))});
+    request.definition.features.push_back(
+        {cluster_capture, "lists", take(ConfigValue::make(list_capture))}
+    );
+    auto& connections = request.definition.connections;
+    for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
+    {
+        connections.push_back({{0, name}, {1, name}});
+        connections.push_back({{0, name}, {3, name}});
+    }
+    for (auto name : {"directional_lights", "point_lights", "spot_lights", "light_counts"})
+    {
+        connections.push_back({{2, name}, {3, name}});
+    }
+    for (auto name : {"grid", "offsets", "indices", "status"})
+    {
+        connections.push_back({{2, name}, {3, "cluster_" + std::string(name)}});
+    }
+    for (auto name : outputs)
+    {
+        connections.push_back({{2, std::string(name)}, {6, std::string(name)}});
+    }
+    connections.push_back({{1, "hdr_color"}, {4, "reference"}});
+    connections.push_back({{3, "hdr_color"}, {4, "candidate"}});
+    connections.push_back({{4, "differences"}, {5, "color"}});
+    request.definition.outputs = {{{5, "pixels"}, {}}, {{6, "pixels"}, {}}};
+    MeshVisibilityFeatureConfig main_visibility;
+    main_visibility.view_parameters = block;
+    const auto visibility_index = static_cast<std::uint32_t>(request.definition.features.size());
+    request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
+    );
+    for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
+    {
+        connections.push_back({{visibility_index, port}, {0, port}});
+    }
+    publishProbeOutputs(request, input);
+    return request;
+}
+
+using ScanProbeConfiguration = std::array<CaptureConfig, 2>;
+
+static RenderResult<CapabilityGraphContribution> lowerScanProbe(const CapabilityBuildInput& input) noexcept
+{
+    const auto& [offset_config, status_config] =
+        *static_cast<const ScanProbeConfiguration*>(input.configuration.data());
+    const auto scan_probe = input.features[0], capture = input.features[1];
+    CapabilityGraphContribution scan_request;
+    scan_request.definition.features.push_back({scan_probe, "scan", {}});
+    scan_request.definition.features.push_back({capture, "offsets", take(ConfigValue::make(offset_config))});
+    scan_request.definition.features.push_back({capture, "status", take(ConfigValue::make(status_config))});
+    scan_request.definition.connections = {{{0, "offsets"}, {1, "color"}}, {{0, "status"}, {2, "color"}}};
+    scan_request.definition.outputs = {{{1, "pixels"}, {}}, {{2, "pixels"}, {}}};
+    publishProbeOutputs(scan_request, input);
+    return scan_request;
+}
+
 int main(int argc, char** argv)
 {
     const unsigned fif = argc > 1 ? unsigned(std::atoi(argv[1])) : 3;
@@ -340,7 +437,7 @@ int main(int argc, char** argv)
     {
         device.buffer_device_address = true;
     }
-    auto server = take(RenderServer::create(config, *execution, device));
+    auto server = take(RenderServer::create(config, **execution, device));
     auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
     auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
     auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
@@ -349,6 +446,14 @@ int main(int argc, char** argv)
     auto cluster_capture = take(server->registerFeature<ClusterCapture>());
     auto compare = take(server->registerFeature<SceneComparison>());
     auto scan_probe = take(server->registerFeature<ScanProbe>());
+    take(server->registerStorage<CaptureBuffer>({}));
+    const auto cluster_probe = registerRenderProbe<ClusterProbeConfiguration>(
+        *server, "test.clustered", {gbuffer, lighting, cluster, compare, capture, cluster_capture, visibility},
+        probePorts({}, {"differences", "lists"}), kLitProbeDependencies, lowerClusterProbe
+    );
+    const auto scan_implementation = registerRenderProbe<ScanProbeConfiguration>(
+        *server, "test.scan", {scan_probe, capture}, probePorts({}, {"offsets", "status"}), {}, lowerScanProbe
+    );
     CommandList bootstrap;
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -356,8 +461,8 @@ int main(int argc, char** argv)
     CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
-    const auto meshes = installInput(*client, commands, kIndexedMeshInput);
-    const auto materials = installInput(*client, commands, kRasterMaterialInput);
+    const auto meshes = installCommand<Mesh3dCommands::UploadMesh>(*client, commands);
+    const auto materials = installCommand<MaterialCommands::Create>(*client, commands);
 
     struct Vertex
     {
@@ -368,19 +473,21 @@ int main(int argc, char** argv)
         {{{-1, -1, 0}, {0, 0, 1}}, {{1, -1, 0}, {0, 0, 1}}, {{1, 1, 0}, {0, 0, 1}}, {{-1, 1, 0}, {0, 0, 1}}}
     };
     const std::array<std::uint32_t, 6> indices{0, 1, 2, 0, 2, 3};
-    std::vector<std::byte> source(sizeof(vertices) + sizeof(indices));
-    std::memcpy(source.data(), vertices.data(), sizeof(vertices));
-    std::memcpy(source.data() + sizeof(vertices), indices.data(), sizeof(indices));
-    MeshDescription geometry{
-        sizeof(Vertex),
-        4,
-        sizeof(vertices),
-        4,
-        6,
-        {{0, 0, rdesc::ETextureFormat::RGB32_SFLOAT}, {2, 12, rdesc::ETextureFormat::RGB32_SFLOAT}},
-        {{0, 6, 0}}
-    };
-    const auto mesh = call<CreateMesh>(*client, commands, {meshes, geometry, source}).mesh;
+    rdesc::Mesh mesh_data;
+    mesh_data.indices.assign(indices.begin(), indices.end());
+    mesh_data.vertices.resize(vertices.size());
+    for (std::size_t i = 0; i < vertices.size(); ++i)
+    {
+        const auto& source_vertex = vertices[i];
+        auto& vertex = mesh_data.vertices[i];
+        vertex.position = Eigen::Map<const Eigen::Vector3f>(source_vertex.position.data());
+        vertex.normal = Eigen::Map<const Eigen::Vector3f>(source_vertex.normal.data());
+        vertex.uv.setZero();
+        vertex.tangent = {1, 0, 0};
+        vertex.bitangent = {0, 1, 0};
+    }
+    auto geometry = take(describeIndexedMesh(mesh_data));
+    const auto mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
     using namespace lux::material;
     MaterialGraph author;
     author.shading_model = rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
@@ -392,23 +499,25 @@ int main(int argc, char** argv)
     constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER};
     auto compiled = compileMaterial(author, purposes);
     CHECK(compiled);
-    const auto material = call<CreateMaterial>(
+    const auto material = call<MaterialCommands::Create>(
                               *client,
                               commands,
-                              {materials, compiled->programs, MaterialParameters{{.5F, .6F, .7F, 1}}}
+                              {materials, {compiled->programs, MaterialParameters{{.5F, .6F, .7F, 1}}}}
     ).material;
-    RasterMeshGroup group{geometry, compiled->programs, {mesh, material}};
-    group.front_counter_clockwise = false;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN};
     const auto block = layout();
     for (unsigned scenario = 0; scenario < 6; ++scenario)
     {
         const bool perspective = scenario % 2 != 0;
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
-        auto instances = installInput(*client, commands, kRasterInstancesInput, scene);
-        const std::array descriptions{MeshInstanceDescription{mesh, material}};
-        call<CreateMeshInstances>(*client, commands, {instances, descriptions});
-        auto light_storage = installInput(*client, commands, kDirectLightsInput, scene);
+        auto instances = installCommand<Mesh3dCommands::CreateInstance>(*client, commands, scene);
+        const std::array descriptions{MeshInstanceData{mesh, material, 0, kIdentityTransform, true}};
+        call<Mesh3dCommands::CreateInstances>(
+            *client,
+            commands,
+            {installCommand<Mesh3dCommands::CreateInstances>(*client, commands, scene), scene, descriptions}
+        );
+        auto light_storage = installCommand<Lighting3dCommands::CreateLights>(*client, commands, scene);
         std::vector<VDirectLight> lights;
         if (scenario)
         {
@@ -432,7 +541,7 @@ int main(int argc, char** argv)
         }
         if (!lights.empty())
         {
-            call<CreateDirectLights>(*client, commands, {light_storage, 1, lights});
+            call<Lighting3dCommands::CreateLights>(*client, commands, {light_storage, scene, {1, lights}});
         }
         ClusterGrid grid{
             scenario < 2 ? std::array<std::uint32_t, 3>{1, 1, 1} : std::array<std::uint32_t, 3>{7, 5, 9},
@@ -440,73 +549,24 @@ int main(int argc, char** argv)
             perspective ? EClusterDepth::LOGARITHMIC : EClusterDepth::LINEAR
         };
         CapturedPixels differences, lists;
-        GBufferFeatureConfig surface{target};
-        surface.groups = {group};
+        GBufferFeatureConfig surface{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
+        surface.front_counter_clockwise = false;
         surface.input_layout = block;
-        surface.visible_capacity = 8;
         DeferredLightingFeatureConfig reference;
         reference.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         reference.extent.extent.source = EImageExtentSource::TARGET;
         reference.input_layout = block;
-        auto optimized = reference;
-        optimized.clusters = grid;
         ClusteredLightingFeatureConfig clustered;
         clustered.grid = grid;
         clustered.input_layout = block;
         CaptureConfig capture_diff{&differences};
         capture_diff.bytes = 64 * 64 * 4;
-        GraphEffectRequest request{target};
-        request.definition.features.push_back({gbuffer, "surface", take(ConfigValue::make(surface))});
-        request.definition.features.push_back({lighting, "reference", take(ConfigValue::make(reference))});
-        request.definition.features.push_back({cluster, "cluster", take(ConfigValue::make(clustered))});
-        request.definition.features.push_back({lighting, "optimized", take(ConfigValue::make(optimized))});
-        request.definition.features.push_back({compare, "compare", {}});
-        request.definition.features.push_back({capture, "differences", take(ConfigValue::make(capture_diff))});
-        request.definition.features.push_back(
-            {cluster_capture, "lists", take(ConfigValue::make(ClusterCaptureConfig{grid, &lists}))}
+        auto request = probeRequest(
+            target, cluster_probe,
+            ClusterProbeConfiguration{surface, reference, clustered, ClusterCaptureConfig{grid, &lists}, capture_diff},
+            {"differences", "lists"}
         );
-        auto& connections = request.definition.connections;
-        for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
-        {
-            connections.push_back({{0, name}, {1, name}});
-            connections.push_back({{0, name}, {3, name}});
-        }
-        for (auto name : {"directional_lights", "point_lights", "spot_lights", "light_counts"})
-        {
-            connections.push_back({{2, name}, {3, name}});
-        }
-        for (auto name : {"grid", "offsets", "indices", "status"})
-        {
-            connections.push_back({{2, name}, {3, "cluster_" + std::string(name)}});
-        }
-        for (auto name : outputs)
-        {
-            connections.push_back({{2, std::string(name)}, {6, std::string(name)}});
-        }
-        connections.push_back({{1, "hdr_color"}, {4, "reference"}});
-        connections.push_back({{3, "hdr_color"}, {4, "candidate"}});
-        connections.push_back({{4, "differences"}, {5, "color"}});
-        request.definition.outputs = {{{5, "pixels"}, {}}, {{6, "pixels"}, {}}};
-        MeshVisibilityFeatureConfig main_visibility;
-        for (const auto& group : surface.groups)
-        {
-            main_visibility.groups.push_back(group.group);
-        }
-        main_visibility.candidate_capacity = surface.visible_capacity;
-        main_visibility.view_parameters = block;
-        const auto visibility_index = static_cast<std::uint32_t>(request.definition.features.size());
-        request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
-        );
-        for (unsigned g = 0; g < surface.groups.size(); ++g)
-        {
-            const auto source = "g" + std::to_string(g) + ".";
-            const auto destination = "group" + std::to_string(g) + ".";
-            for (auto [from, to] : {std::pair{"visible", "members"}, {"commands", "commands"}, {"counts", "counts"}})
-            {
-                connections.push_back({{visibility_index, source + from}, {0, destination + to}});
-            }
-        }
-        auto effect = call<CreateGraphEffect>(*client, commands, std::move(request)).effect;
+        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         std::array<AttachmentId, 2> attachments;
         for (unsigned i = 0; i < 2; ++i)
         {
@@ -555,13 +615,10 @@ int main(int argc, char** argv)
     offset_config.bytes = 130 * 4;
     CaptureConfig status_config{&status};
     status_config.bytes = 16;
-    GraphEffectRequest scan_request{target};
-    scan_request.definition.features.push_back({scan_probe, "scan", {}});
-    scan_request.definition.features.push_back({capture, "offsets", take(ConfigValue::make(offset_config))});
-    scan_request.definition.features.push_back({capture, "status", take(ConfigValue::make(status_config))});
-    scan_request.definition.connections = {{{0, "offsets"}, {1, "color"}}, {{0, "status"}, {2, "color"}}};
-    scan_request.definition.outputs = {{{1, "pixels"}, {}}, {{2, "pixels"}, {}}};
-    auto scan_effect = call<CreateGraphEffect>(*client, commands, std::move(scan_request)).effect;
+    auto scan_request = probeRequest(
+        target, scan_implementation, ScanProbeConfiguration{offset_config, status_config}, {"offsets", "status"}
+    );
+    auto scan_effect = call<CreateEffect>(*client, commands, std::move(scan_request)).effect;
     auto scan_scene = call<CreateScene>(*client, commands, {}).scene;
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
     auto scan_target = call<CreateTarget>(*client, commands, {target}).target;
@@ -606,13 +663,20 @@ int main(int argc, char** argv)
     }
     call<RemoveEffect>(*client, commands, {scan_effect});
     call<RemoveScene>(*client, commands, {scan_scene});
-    call<ReleaseMaterial>(*client, commands, material);
-    call<ReleaseMesh>(*client, commands, mesh);
+    call<MaterialCommands::Release>(
+        *client,
+        commands,
+        {material}
+    );
+    call<Mesh3dCommands::ReleaseMesh>(
+        *client,
+        commands,
+        {mesh}
+    );
     server->stop();
     thread.join();
     CHECK(server->stats().validation_errors == 0);
     server.reset();
-    execution->requestStop();
-    CHECK(execution->join());
+    execution->reset(); // Runtime RAII settles execution after the RenderServer has been destroyed.
     std::printf("clustered scene FIF=%u HDR comparison and CPU list oracle passed\n", fif);
 }

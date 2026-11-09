@@ -19,7 +19,7 @@ namespace lux::flowforge
         FlowNodeRegistration result;
         constexpr std::string_view name = "lux.flow.event_wait";
         result.identity = {graph::nodeTypeId(name), std::string(name), 1};
-        result.payload_type = cxx::typeToken<ScriptEventPayload>();
+        result.payload_type = cxx::make_basic_type_info<ScriptEventPayload>();
         result.code = std::move(code);
         result.create = [](const object::CodeLease& lease) noexcept
         {

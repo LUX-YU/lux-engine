@@ -16,7 +16,15 @@ namespace lux::render::runtime_detail
 
     EffectAttachment::EffectAttachment() noexcept = default;
 
-    EffectAttachment::~EffectAttachment() noexcept = default;
+    EffectAttachment::~EffectAttachment() noexcept
+    {
+        // Feature data follows Graph dependency order at construction. Consumers disconnect
+        // before their producing data, and all of them precede the instance and local Storage.
+        while (!feature_bindings.empty())
+        {
+            feature_bindings.pop_back();
+        }
+    }
 
     EffectAttachment::EffectAttachment(EffectAttachment&&) noexcept = default;
 
@@ -24,7 +32,10 @@ namespace lux::render::runtime_detail
     {
         if (this != &other)
         {
-            feature_bindings.clear();
+            while (!feature_bindings.empty())
+            {
+                feature_bindings.pop_back();
+            }
             storage_inputs.clear();
             instance.reset();
             storages = std::move(other.storages);
@@ -44,25 +55,22 @@ namespace lux::render::runtime_detail
 
     RenderResult<void> EffectAttachment::bindStorage(
         std::uint32_t resource,
-        StorageId id,
         const detail::StorageBindingOps& ops,
         void* native,
         const void* argument,
         std::uint32_t frame_count
     ) noexcept
     {
-        auto& use = storage_inputs.emplace_back(instance.get(), id, resource);
+        auto& use = storage_inputs.emplace_back(instance.get(), resource);
         use.subscription.receiver = &use;
         use.subscription.changed = [](void* value, std::uint32_t slot, const detail::ResourceInput& resource) noexcept
         {
             auto& link = *static_cast<EffectAttachment::StorageInput*>(value);
             link.instance->setResource(link.resource, slot, resource);
         };
-        use.ops = &ops;
-        use.native = native;
         std::array<detail::ResourceInput, 3> slices;
         auto resolved = ops.resolve(
-            use.native,
+            native,
             instance->plan().resources()[resource].description,
             argument,
             use.subscription,

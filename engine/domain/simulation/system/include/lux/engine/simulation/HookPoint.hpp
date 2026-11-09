@@ -9,10 +9,7 @@
 
 namespace lux::simulation
 {
-    namespace script
-    {
-        template <class Signature> class TScriptHookEndpoint;
-    }
+    class SimulationSystemInstaller;
     enum class EEndpointMutationError : std::uint8_t
     {
         NONE,
@@ -104,8 +101,7 @@ namespace lux::simulation
             const bool wrong_owner = binding_owner_ != nullptr && invocation.owner_ != binding_owner_;
             const bool wrong_endpoint =
                 binding_system_.valid() && (invocation.system_ != binding_system_ || invocation.hook_ != binding_hook_);
-            const bool is_non_script_hook = binding_system_.valid() && !invocation.scriptCapable();
-            const bool is_invalid_invocation = wrong_owner || wrong_endpoint || is_non_script_hook;
+            const bool is_invalid_invocation = wrong_owner || wrong_endpoint;
             if (is_invalid_invocation)
             {
                 return 0U;
@@ -159,7 +155,7 @@ namespace lux::simulation
         const void* binding_owner_{};
         lux::system::SystemInstanceId binding_system_;
         HookPointId binding_hook_;
-        template <class> friend class script::TScriptHookEndpoint;
+        friend class SimulationSystemInstaller;
     };
 
     template <class... Parameters>

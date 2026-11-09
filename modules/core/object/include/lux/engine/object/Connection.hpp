@@ -7,6 +7,7 @@
 namespace lux::object
 {
     class LuxObject;
+    template <class Source, class Declaring, class Payload> class SignalSender;
 
     class LUX_CORE_PUBLIC Connection final
     {
@@ -23,6 +24,8 @@ namespace lux::object
 
     private:
         friend class LuxObject;
+        template <class, class, class> friend class SignalSender;
+        void observeSourceClose(void*, void (*)(void*) noexcept) noexcept;
         explicit Connection(lux::cxx::intrusive_ptr<detail::ConnectionControl> control) noexcept
             : control_(std::move(control))
         {}

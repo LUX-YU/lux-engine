@@ -43,6 +43,14 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] const MeshDescription* find(MeshId) const noexcept;
+
+        struct BufferViews final
+        {
+            ResourceInput vertices, indices;
+            std::uint32_t vertex_stride = 0, index_stride = 0;
+        };
+
+        [[nodiscard]] RenderResult<BufferViews> bufferViews(MeshId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MeshId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
@@ -52,8 +60,8 @@ namespace lux::render::detail
     private:
         friend struct lux::render::StorageTraits<IndexedTriangleMeshStorage>;
         using UploadResult = exec::task<RenderResult<MeshId>>;
-        [[nodiscard]] UploadResult upload(MeshWrite) noexcept;
-        [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
+        [[nodiscard]] UploadResult upload(const rdesc::Mesh&) noexcept;
+        [[nodiscard]] RenderResult<void> validate(const MeshDescription&) const noexcept;
         void retire(Geometry&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
@@ -70,6 +78,6 @@ namespace lux::render
     template <> struct StorageTraits<detail::IndexedTriangleMeshStorage> final
     {
         using Result = exec::task<RenderResult<MeshId>>;
-        [[nodiscard]] static Result upload(detail::IndexedTriangleMeshStorage&, MeshWrite) noexcept;
+        [[nodiscard]] static Result upload(detail::IndexedTriangleMeshStorage&, const rdesc::Mesh&) noexcept;
     };
 } // namespace lux::render

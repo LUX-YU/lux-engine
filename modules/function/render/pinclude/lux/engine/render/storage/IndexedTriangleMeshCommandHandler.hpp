@@ -1,12 +1,17 @@
 #pragma once
+#include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/commands/Mesh3dCommands.hpp>
 
-#include <lux/engine/render/extensions/CommandMethod.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 
 #include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
 #include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+
+namespace lux::render
+{
+    class ResourceRegistry;
+}
 
 namespace lux::render::detail
 {
@@ -16,7 +21,13 @@ namespace lux::render::detail
     class IndexedTriangleMeshCommandHandler final
     {
     private:
-        static constexpr auto create_mesh_response_ = [](RenderResult<MeshId> result) noexcept -> CreateMesh::Response
+        static exec::task<RenderResult<MeshId>> rejectMesh(RenderError error) noexcept
+        {
+            co_return cxx::unexpected(error);
+        }
+
+        static constexpr auto create_mesh_response_ = [](RenderResult<MeshId> result
+                                                      ) noexcept -> Mesh3dCommands::UploadMesh::Response
         {
             if (!result)
             {
@@ -26,33 +37,32 @@ namespace lux::render::detail
         };
 
     public:
-        // Factory registration does not construct an object. Activation borrows the one resource directory.
-        static IndexedTriangleMeshCommandHandler* create(ResourceRegistry& resources) noexcept
+        // Stateless typed methods; the Server supplies the selected Storage at dispatch.
+        static IndexedTriangleMeshCommandHandler* create(ResourceRegistry&) noexcept
         {
-            return new IndexedTriangleMeshCommandHandler(resources);
+            return new IndexedTriangleMeshCommandHandler;
         }
 
-        using CreateMeshSender =
+        using UploadMeshSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<MeshId>>>(), create_mesh_response_));
 
         static constexpr std::string_view name = "lux.render.storage.IndexedTriangleMeshCommandHandler";
 
-        explicit IndexedTriangleMeshCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
-
-        CreateMeshSender createMesh(CreateMesh::Request&& input) noexcept
+        UploadMeshSender
+        createMesh(IndexedTriangleMeshStorage& storage, Mesh3dCommands::UploadMesh::Request&& input) noexcept
         {
-            return uploadMesh(std::move(input)) | stdexec::then(create_mesh_response_);
+            if (!input.mesh)
+            {
+                return rejectMesh(RenderError{kCommandContract}) | stdexec::then(create_mesh_response_);
+            }
+            return render::upload(storage, *input.mesh) | stdexec::then(create_mesh_response_);
         }
 
-        void releaseMesh(const ReleaseMesh::Request&, ReleaseMesh::Response&) noexcept;
-        using Bindings = std::tuple<
-            CommandMethod<CreateMesh, &IndexedTriangleMeshCommandHandler::createMesh>,
-            CommandMethod<ReleaseMesh, &IndexedTriangleMeshCommandHandler::releaseMesh>>;
-
-    private:
-        exec::task<RenderResult<MeshId>> uploadMesh(CreateMesh::Request&&) noexcept;
-
-        ResourceRegistry& resources_;
+        void releaseMesh(
+            IndexedTriangleMeshStorage& storage,
+            const Mesh3dCommands::ReleaseMesh::Request& input,
+            Mesh3dCommands::ReleaseMesh::Response& response
+        ) noexcept;
     };
 
 } // namespace lux::render::detail

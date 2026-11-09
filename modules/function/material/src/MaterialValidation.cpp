@@ -47,10 +47,7 @@ namespace lux::material::detail
         }
         for (const auto& texture : graph.texture_slots)
         {
-            if (texture.texture.isNull())
-            {
-                return invalidGraph("material texture slot has a null AssetId");
-            }
+            // A declared slot may have no asset override; runtime uses its neutral white input.
             resources.textures.push_back({texture.name});
         }
         for (const auto& parameter : graph.param_slots)

@@ -15,7 +15,7 @@ add_library(
     ui_imgui_backend
     OBJECT
     src/DragDrop.cpp
-    src/DrawData.cpp
+    src/DrawView.cpp
     src/Table.cpp
     src/Root.cpp
     src/RootTransaction.cpp

@@ -150,7 +150,7 @@ namespace
         auto& pane = *owner;
         assert(root.addPane(std::move(owner)));
         assert(root.setMenu({{{ui::CommandId{"test.ordered"}, "Ordered", "Ctrl+K", {ui::EKey::K, true}}}, {}}));
-        ui::DrawData draw;
+        ui::DrawView draw;
         for (unsigned index{}; index != 3; ++index)
         {
             assert(root.update({{640, 480}, 0.016f}, draw));
@@ -194,7 +194,7 @@ namespace
         Counts application;
         Fallback fallback(application);
         root.setCommandFallback(&fallback);
-        ui::DrawData draw;
+        ui::DrawView draw;
         for (unsigned index{}; index != 3; ++index)
         {
             assert(root.update({{640, 480}, 0.016f}, draw));
@@ -292,7 +292,7 @@ namespace
         invalid.menus[1].id = {};
         rejected(std::move(invalid), ui::EMenuError::INVALID_MENU);
 
-        ui::DrawData draw;
+        ui::DrawView draw;
         const auto frame = [&] { assert(root.update({{640, 480}, 0.016f}, draw)); };
         for (unsigned index{}; index != 3; ++index)
         {
@@ -441,6 +441,45 @@ namespace
         assert(root.clearPanes());
     }
 
+    void replacementLayout()
+    {
+        auto made = ui::Root::create({.docking = true, .pane_capacity = 2});
+        assert(made);
+        auto& root = **made;
+        Counts old, next;
+        auto owner = root.addPane(std::make_unique<Pane>(old));
+        assert(owner);
+        const auto handle = root.paneHandle(owner->get());
+        const std::array remove{handle};
+        std::vector<std::unique_ptr<ui::Pane>> candidates;
+        candidates.push_back(std::make_unique<Pane>(next));
+        ui::PanePlacement placement;
+        placement.tree.nodes.push_back({});
+        placement.tree.surfaces.push_back({0, {{0, 0}, {1280, 800}}, false});
+        placement.added.push_back({0, 0});
+        unsigned commits{};
+        auto commit = [&](std::span<const ui::PaneHandle> added) noexcept
+        {
+            ++commits;
+            const auto tree = root.captureDockTree();
+            assert(tree.nodes.front().panes.size() == 1);
+            assert(tree.nodes.front().panes.front() == added.front());
+            assert(!root.resolvePane(handle));
+        };
+        auto bad = placement;
+        bad.added.front().added_pane = 1;
+        assert(!root.replacePanes(remove, candidates, commit, std::move(bad)));
+        assert(commits == 0 && candidates.front() && root.resolvePane(handle));
+        bad = placement;
+        bad.tree.nodes.front().panes.push_back(handle); // Cannot retain a removed owner in the new layout.
+        assert(!root.replacePanes(remove, candidates, commit, std::move(bad)));
+        assert(commits == 0 && candidates.front() && root.resolvePane(handle));
+        auto removed = root.replacePanes(remove, candidates, commit, std::move(placement));
+        assert(removed && commits == 1 && !candidates.front() && old.destroyed == 0);
+        removed->clear();
+        assert(old.destroyed == 1 && root.clearPanes());
+    }
+
     void fallback(bool with_pane, bool handled, bool enabled, bool remove_before_dispatch, bool destroy_fallback)
     {
         auto made = ui::Root::create({.docking = false});
@@ -459,7 +498,7 @@ namespace
             pane->enabled = enabled;
             assert(root.addPane(std::move(candidate)));
         }
-        ui::DrawData draw;
+        ui::DrawView draw;
         for (unsigned n{}; n != 3; ++n)
         {
             assert(root.update({{640, 480}, 0.016f}, draw));
@@ -502,6 +541,7 @@ int main()
 {
     static_cast<void>(lux::object::ObjectRuntime::instance());
     replacement();
+    replacementLayout();
     fallback(false, false, true, false, false);
     fallback(true, true, true, false, false);
     fallback(true, true, false, false, false);

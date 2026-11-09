@@ -12,9 +12,9 @@ namespace lux::render::detail
         DeviceSession& session,
         nri::Queue& queue,
         QueueProperties properties,
-        std::uint32_t capacity
+        std::uint32_t temporary_capacity
     ) noexcept
-        : session_(session), queue_(queue), properties_(properties), batches_(capacity)
+        : session_(session), queue_(queue), properties_(properties), batches_(temporary_capacity)
     {
     }
 
@@ -22,14 +22,16 @@ namespace lux::render::detail
         DeviceSession& session,
         nri::Queue& queue,
         QueueProperties properties,
-        std::uint32_t capacity
+        std::uint32_t temporary_capacity
     ) noexcept
     {
-        if (capacity == 0)
+        if (temporary_capacity == 0)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        auto result_queue = std::unique_ptr<SubmissionQueue>(new SubmissionQueue(session, queue, properties, capacity));
+        auto result_queue = std::unique_ptr<SubmissionQueue>(
+            new SubmissionQueue(session, queue, properties, temporary_capacity)
+        );
         const auto& nri_core = session.nriCore();
         auto result = nri_core.CreateFence(session.device(), 0, result_queue->fence_);
         if (result != nri::Result::SUCCESS)
@@ -184,7 +186,7 @@ namespace lux::render::detail
         return error;
     }
 
-    RenderResult<nri::CommandBuffer*> SubmissionQueue::begin(std::uint32_t& slot) noexcept
+    RenderResult<nri::CommandBuffer*> SubmissionQueue::begin(std::uint32_t& temporary_slot) noexcept
     {
         if (terminal_)
         {
@@ -195,16 +197,14 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
         // The device progress phase observes completion and dispatches dependent reuse callbacks.
-        // Refreshing the frontier here could reuse a query slot before its completed measurement
+        // Refreshing the frontier here could reuse a query temporary_slot before its completed measurement
         // has been consumed. Recording never advances or re-enters that phase.
-        const bool is_full = submitted_ - completed_ == capacity();
-        const bool is_exhausted = submitted_ == std::numeric_limits<std::uint64_t>::max();
-        if (is_full || is_exhausted)
+        if (!hasCapacity())
         {
             return cxx::unexpected(RenderError{kDeviceCapacity});
         }
-        slot = static_cast<std::uint32_t>(submitted_ % capacity());
-        const auto& batch = batches_[slot];
+        temporary_slot = next_batch_;
+        const auto& batch = batches_[temporary_slot];
         auto result = session_.resetCommandAllocator(*batch.allocator);
         if (result != nri::Result::SUCCESS)
         {
@@ -221,13 +221,13 @@ namespace lux::render::detail
 
     bool SubmissionQueue::hasCapacity() const noexcept
     {
-        return submitted_ - completed_ < capacity();
+        return batches_[next_batch_].serial <= completed_;
     }
 
     RenderResult<void> SubmissionQueue::finishRecording() noexcept
     {
-        const auto slot = static_cast<std::uint32_t>(submitted_ % capacity());
-        const auto result = session_.nriCore().EndCommandBuffer(*batches_[slot].command);
+        const auto temporary_slot = next_batch_;
+        const auto result = session_.nriCore().EndCommandBuffer(*batches_[temporary_slot].command);
         if (result != nri::Result::SUCCESS)
         {
             return cxx::unexpected(failure(result));
@@ -236,15 +236,23 @@ namespace lux::render::detail
     }
 
     RenderResult<void> SubmissionQueue::submit(
+        std::span<nri::CommandBuffer* const> commands,
         std::span<const nri::FenceSubmitDesc> waits,
         std::span<const nri::FenceSubmitDesc> signals
     ) noexcept
     {
-        const auto slot = static_cast<std::uint32_t>(submitted_ % capacity());
+        if (terminal_)
+        {
+            return cxx::unexpected(*terminal_);
+        }
+        if (submitted_ == std::numeric_limits<std::uint64_t>::max())
+        {
+            return cxx::unexpected(RenderError{kDeviceCapacity});
+        }
         const nri::FenceSubmitDesc signal{fence_, submitted_ + 1, nri::StageBits::ALL};
         nri::QueueSubmitDesc submission{};
-        submission.commandBuffers = &batches_[slot].command;
-        submission.commandBufferNum = 1;
+        submission.commandBuffers = commands.data();
+        submission.commandBufferNum = static_cast<std::uint32_t>(commands.size());
         submission.waitFences = waits.data();
         submission.waitFenceNum = static_cast<std::uint32_t>(waits.size());
         if (signals.empty())
@@ -350,8 +358,7 @@ namespace lux::render::detail
 
     SubmissionQueue::CompletionSender SubmissionQueue::whenAvailable() noexcept
     {
-        const auto serial = submitted_ < capacity() ? 0 : submitted_ - capacity() + 1;
-        return CompletionSender{*this, serial};
+        return CompletionSender{*this, batches_[next_batch_].serial};
     }
 
     std::uint64_t SubmissionQueue::completed() const noexcept
@@ -364,7 +371,7 @@ namespace lux::render::detail
         return submitted_;
     }
 
-    std::uint32_t SubmissionQueue::capacity() const noexcept
+    std::uint32_t SubmissionQueue::temporaryCapacity() const noexcept
     {
         return static_cast<std::uint32_t>(batches_.size());
     }

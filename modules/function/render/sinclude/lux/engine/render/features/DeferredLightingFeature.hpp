@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
+
 #include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
@@ -25,7 +27,7 @@ namespace lux::render
         rdesc::ShaderBlock block{sizeof(DeferredLightingParameters), 16};
         block.fields = {
             {"inverse_view_projection", rdesc::EDataScalar::FLOAT, 0, 4, 4, 0, 16},
-            {"camera_position", rdesc::EDataScalar::FLOAT, 64, 4, 1, 0, 0},
+            {"position_near", rdesc::EDataScalar::FLOAT, 64, 4, 1, 0, 0},
             {"viewport", rdesc::EDataScalar::FLOAT, 80, 4, 1, 0, 0},
             {"background", rdesc::EDataScalar::FLOAT, 96, 4, 1, 0, 0},
             {"environment", rdesc::EDataScalar::FLOAT, 112, 4, 1, 0, 0}
@@ -33,13 +35,23 @@ namespace lux::render
         return block;
     }
 
+    // The consumer needs only the encoded buffer extents, not the producer's
+    // cluster partition algorithm or its spatial grid configuration.
+    struct ClusterLightListShape final
+    {
+        std::uint32_t cluster_count = 0, index_capacity = 0;
+        bool operator==(const ClusterLightListShape&) const noexcept = default;
+    };
+
     struct DeferredLightingFeatureConfig final
     {
         GraphImageDesc extent{1, 1, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         std::string lights = "direct_lights";
         rdesc::ShaderBlock input_layout = deferredLightingParameterBlock();
         std::optional<ShadowMapShape> shadows;
-        std::optional<ClusterGrid> clusters;
+        std::optional<ClusterLightListShape> clusters;
+        bool external_lights = false;
+        std::array<float, 4> environment{};
         bool operator==(const DeferredLightingFeatureConfig&) const noexcept = default;
     };
 

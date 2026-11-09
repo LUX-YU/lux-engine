@@ -13,6 +13,7 @@ add_component(
     OUTPUT_NAME    lux_engine_world_partition
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartition.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SinglePartitionAlgorithm.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartitionFailureInjection.cpp
 )
 add_library(lux::engine::world::partition ALIAS world_partition)
@@ -29,12 +30,14 @@ target_link_libraries(
         lux::engine::world::identity
         lux::engine::partition::identity
         lux::cxx::compile_time
+        lux::engine::core::serialization
 )
 component_add_transitive_commands(
     world_partition
     "find_package(lux-engine-world-identity REQUIRED COMPONENTS world_identity)"
     "find_package(lux-engine-partition-identity REQUIRED COMPONENTS partition_identity)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "add_library(lux::engine::world::partition INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::world::partition PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_partition)"
 )

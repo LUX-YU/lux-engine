@@ -1,0 +1,8 @@
+add_subdirectory(identity/world)
+add_subdirectory(identity/partition)
+add_subdirectory(system)
+add_subdirectory(ecs/core)
+add_subdirectory(ecs/schema)
+add_subdirectory(ecs/snapshot)
+add_subdirectory(ecs/hierarchy)
+add_subdirectory(spatial)

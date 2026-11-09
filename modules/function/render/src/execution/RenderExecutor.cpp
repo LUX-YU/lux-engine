@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/Error.hpp>
 #include <algorithm>
 #include <cstring>
 #include <lux/engine/render/device/BufferAccess.hpp>
@@ -7,14 +8,209 @@
 #include <lux/engine/render/execution/HistoryState.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {
-    void RenderExecutor::recordHistoryInitialization(
-        RenderGraphInstance& instance,
-        nri::CommandBuffer& command
+    namespace
+    {
+        void bindDescriptors(
+            DeviceSession& session,
+            nri::CommandBuffer& command,
+            const PassBindings& bindings,
+            std::span<nri::DescriptorSet* const> private_sets,
+            BindingState& state
+        ) noexcept
+        {
+            const auto bind = [&](std::uint32_t set, nri::DescriptorSet* descriptors) noexcept
+            {
+                if (state.descriptors[set] != descriptors)
+                {
+                    session.nriCore().CmdSetDescriptorSet(command, {set, descriptors, state.point});
+                    state.descriptors[set] = descriptors;
+                }
+            };
+            constexpr auto kinds = std::array{
+                nri::DescriptorType::TEXTURE,
+                nri::DescriptorType::SAMPLER,
+                nri::DescriptorType::STORAGE_STRUCTURED_BUFFER
+            };
+            for (std::size_t kind = 0; kind < kinds.size(); ++kind)
+            {
+                const auto set = bindings.shared_sets[kind];
+                if (set != kGraphInvalidIndex) bind(set, session.descriptors().descriptors(kinds[kind]));
+            }
+            for (std::uint32_t i = 0; i < private_sets.size(); ++i) bind(bindings.private_set + i, private_sets[i]);
+        }
+
+        void
+        setScissor(
+            const nri::CoreInterface& core,
+            nri::CommandBuffer& command,
+            const nri::Rect& value,
+            BindingState& state
+        ) noexcept
+        {
+            const bool changed = !state.scissor || state.scissor->x != value.x || state.scissor->y != value.y ||
+                                 state.scissor->width != value.width || state.scissor->height != value.height;
+            if (changed)
+            {
+                core.CmdSetScissors(command, &value, 1);
+                state.scissor = value;
+            }
+        }
+
+        void
+        setDepthBias(
+            const nri::CoreInterface& core,
+            nri::CommandBuffer& command,
+            const nri::DepthBiasDesc& value,
+            BindingState& state
+        ) noexcept
+        {
+            const bool changed = !state.depth_bias || state.depth_bias->constant != value.constant ||
+                                 state.depth_bias->clamp != value.clamp || state.depth_bias->slope != value.slope;
+            if (changed)
+            {
+                core.CmdSetDepthBias(command, value);
+                state.depth_bias = value;
+            }
+        }
+    } // namespace
+
+    void RenderExecutor::recordRasterDraws(
+        DeviceSession& session,
+        nri::CommandBuffer& command,
+        const RasterDrawList& list,
+        BindingState& state
     ) noexcept
+    {
+        const auto& core = session.nriCore();
+        // Graph-local vertex indices cannot describe the physical arrays in a dynamic packet.
+        state.vertices = {};
+        std::span<const RasterDrawList::Vertex> previous_vertices;
+        for (const auto& section : list.sections)
+        {
+            const auto colors = std::span(list.colors).subspan(section.first_color, section.color_count);
+            nri::RenderingDesc rendering{};
+            rendering.colors = colors.data();
+            rendering.colorNum = static_cast<std::uint32_t>(colors.size());
+            rendering.depth = section.depth;
+            core.CmdBeginRendering(command, rendering);
+            core.CmdSetViewports(command, &section.viewport, 1);
+            bool section_parameters_pending = section.parameter_size != 0;
+            for (const auto& packet : std::span(list.packets).subspan(section.first_draw, section.draw_count))
+            {
+                if (state.layout != packet.bindings->layout || state.point != nri::BindPoint::GRAPHICS)
+                {
+                    core.CmdSetPipelineLayout(command, nri::BindPoint::GRAPHICS, *packet.bindings->layout);
+                    state.layout = packet.bindings->layout;
+                    state.point = nri::BindPoint::GRAPHICS;
+                    state.descriptors = {};
+                    section_parameters_pending = section.parameter_size != 0;
+                }
+                if (section_parameters_pending)
+                {
+                    core.CmdSetRootConstants(
+                        command,
+                        {0,
+                         list.parameters.data() + section.parameter_offset,
+                         section.parameter_size,
+                         0,
+                         nri::BindPoint::GRAPHICS}
+                    );
+                    section_parameters_pending = false;
+                }
+                if (state.pipeline != packet.pipeline)
+                {
+                    core.CmdSetPipeline(command, *packet.pipeline);
+                    state.pipeline = packet.pipeline;
+                    state.depth_bias.reset();
+                }
+                if (section.depth_bias)
+                {
+                    setDepthBias(core, command, *section.depth_bias, state);
+                }
+                const auto descriptors =
+                    std::span(list.descriptors).subspan(packet.first_descriptor, packet.descriptor_count);
+                bindDescriptors(session, command, *packet.bindings, descriptors, state);
+                const auto vertices = std::span(list.vertices).subspan(packet.first_vertex, packet.vertex_count);
+                const bool same_vertices = std::ranges::equal(
+                    vertices,
+                    previous_vertices,
+                    [](const auto& a, const auto& b) noexcept
+                    {
+                        return a.binding == b.binding && a.buffer.buffer == b.buffer.buffer &&
+                               a.buffer.offset == b.buffer.offset && a.buffer.stride == b.buffer.stride;
+                    }
+                );
+                if (!same_vertices)
+                {
+                    for (const auto& vertex : vertices)
+                    {
+                        core.CmdSetVertexBuffers(command, vertex.binding, &vertex.buffer, 1);
+                    }
+                    previous_vertices = vertices;
+                }
+                if (packet.parameter_size)
+                {
+                    core.CmdSetRootConstants(
+                        command,
+                        {0,
+                         list.parameters.data() + packet.parameter_offset,
+                         packet.parameter_size,
+                         packet.parameter_destination,
+                         nri::BindPoint::GRAPHICS}
+                    );
+                }
+                setScissor(core, command, packet.scissor, state);
+                std::visit(
+                    [&](const auto& draw) noexcept
+                    {
+                        using Draw = std::remove_cvref_t<decltype(draw)>;
+                        if constexpr (std::same_as<Draw, nri::DrawDesc>)
+                        {
+                            core.CmdDraw(command, draw);
+                        }
+                        else
+                        {
+                            const bool changed_index = state.index != packet.index ||
+                                                       state.index_offset != packet.index_offset ||
+                                                       state.index_type != packet.index_type;
+                            if (changed_index)
+                            {
+                                core.CmdSetIndexBuffer(command, *packet.index, packet.index_offset, packet.index_type);
+                                state.index = packet.index;
+                                state.index_offset = packet.index_offset;
+                                state.index_type = packet.index_type;
+                            }
+                            if constexpr (std::same_as<Draw, nri::DrawIndexedDesc>)
+                            {
+                                core.CmdDrawIndexed(command, draw);
+                            }
+                            else
+                            {
+                                core.CmdDrawIndexedIndirect(
+                                    command,
+                                    *draw.arguments,
+                                    draw.offset,
+                                    draw.count,
+                                    draw.stride,
+                                    draw.count_buffer,
+                                    draw.count_offset
+                                );
+                            }
+                        }
+                    },
+                    packet.draw
+                );
+            }
+            core.CmdEndRendering(command);
+        }
+    }
+
+    void
+    RenderExecutor::recordHistoryInitialization(RenderGraphInstance& instance, nri::CommandBuffer& command) noexcept
     {
         const auto& core = instance.session_->nriCore();
         for (auto& history : instance.histories_)
@@ -52,8 +248,11 @@ namespace lux::render::detail
                     }
                     transition.after =
                         depth
-                            ? nri::
-                                  AccessLayoutStage{nri::AccessBits::DEPTH_STENCIL_ATTACHMENT, nri::Layout::DEPTH_STENCIL_ATTACHMENT, nri::StageBits::DEPTH_STENCIL_ATTACHMENT}
+                            ? nri::AccessLayoutStage{
+                                  nri::AccessBits::DEPTH_STENCIL_ATTACHMENT,
+                                  nri::Layout::DEPTH_STENCIL_ATTACHMENT,
+                                  nri::StageBits::DEPTH_STENCIL_ATTACHMENT
+                              }
                             : nri::AccessLayoutStage{
                                   nri::AccessBits::COLOR_ATTACHMENT,
                                   nri::Layout::COLOR_ATTACHMENT,
@@ -117,11 +316,41 @@ namespace lux::render::detail
         }
     }
 
-    void RenderExecutor::recordBatch(
+    RenderResult<std::span<nri::CommandBuffer* const>>
+    RenderExecutor::prepareBatch(RenderGraphInstance& instance, std::uint32_t frame_slot, std::uint32_t batch) noexcept
+    {
+        auto& frame = instance.frames_[frame_slot];
+        auto& device = *instance.session_;
+        const auto& description = instance.plan_->submissions()[batch];
+        const bool has_tail = description.output_begin != kGraphInvalidIndex;
+        const std::uint32_t first_part = has_tail && description.output_begin == description.first_pass ? 1u : 0u;
+        const std::uint32_t end_part = has_tail ? 2u : 1u;
+        for (auto part = first_part; part < end_part; ++part)
+        {
+            const bool reusable = part == 0 && description.reusable_recording;
+            if (reusable && frame.recording_revisions[batch] == frame.recorded_revisions[batch]) continue;
+            if (part == 0) frame.recorded_revisions[batch] = 0;
+            auto* command = frame.command_buffers[batch][part];
+            auto result = device.resetCommandAllocator(*frame.command_allocators[batch][part]);
+            if (result == nri::Result::SUCCESS) result = device.beginCommandBuffer(*command, reusable);
+            if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
+            BindingState bindings;
+            recordBatchPart(instance, *command, frame_slot, batch, part == 1, bindings);
+            result = device.nriCore().EndCommandBuffer(*command);
+            if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
+            if (reusable) frame.recorded_revisions[batch] = frame.recording_revisions[batch];
+        }
+        return std::span<nri::CommandBuffer* const>{
+            frame.command_buffers[batch].data() + first_part, end_part - first_part
+        };
+    }
+
+    void RenderExecutor::recordBatchPart(
         RenderGraphInstance& instance,
         nri::CommandBuffer& command,
         std::uint32_t slot,
         std::uint32_t batch_index,
+        bool output_tail,
         BindingState& binding_state
     ) noexcept
     {
@@ -143,13 +372,22 @@ namespace lux::render::detail
         // Logical vertex-resource indices are instance-local. Pipeline and descriptor state
         // use physical identities and may be retained across the whole merged recording.
         binding_state.vertices = {};
-        if (batch_index == 0)
+        const bool has_tail = batch.output_begin != kGraphInvalidIndex;
+        const bool first_part = !output_tail || batch.output_begin == batch.first_pass;
+        const bool last_part = output_tail || !has_tail;
+        if (batch_index == 0 && first_part)
         {
             recordHistoryInitialization(instance, command);
             if (!instance.histories_.empty())
             {
                 binding_state = {};
             }
+        }
+        if (frame.descriptor_pool && binding_state.descriptor_pool != frame.descriptor_pool)
+        {
+            core.CmdSetDescriptorPool(command, *frame.descriptor_pool);
+            binding_state.descriptor_pool = frame.descriptor_pool;
+            binding_state.descriptors = {};
         }
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
@@ -174,7 +412,9 @@ namespace lux::render::detail
                 planes
             };
         };
-        for (std::size_t p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+        const auto first_pass = output_tail ? batch.output_begin : batch.first_pass;
+        const auto end_pass = !output_tail && has_tail ? batch.output_begin : batch.first_pass + batch.pass_count;
+        for (std::size_t p = first_pass; p < end_pass; ++p)
         {
             const auto& pass = frame.passes[p];
             const auto& compiled = *pass.compiled_pass;
@@ -203,6 +443,35 @@ namespace lux::render::detail
             }
             const auto* raster = std::get_if<RasterCommands>(&compiled.work);
             const auto* compute = std::get_if<ComputeCommands>(&compiled.work);
+            if (raster)
+            {
+                if (const auto* list = std::get_if<IndexedListCommands>(&raster->draw))
+                {
+                    recordRasterDraws(
+                        *instance.session_, command, frame.draw_lists[list->data_index].draws, binding_state
+                    );
+                    continue;
+                }
+                if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
+                {
+                    const auto& draws = frame.raster_draws[dynamic->data_index];
+                    if (draws.sections.empty())
+                    {
+                        // The complete dynamic stage still observes declared Clear/Load/Store with zero draws.
+                        nri::RenderingDesc rendering{};
+                        rendering.colors = pass.colors.data();
+                        rendering.colorNum = static_cast<std::uint32_t>(pass.colors.size());
+                        rendering.depth = pass.depth;
+                        core.CmdBeginRendering(command, rendering);
+                        core.CmdEndRendering(command);
+                    }
+                    else
+                    {
+                        recordRasterDraws(*instance.session_, command, draws, binding_state);
+                    }
+                    continue;
+                }
+            }
             const auto& placement = plan.descriptor_plan_->passes[compiled.source_pass];
             if (placement.layout)
             {
@@ -215,22 +484,17 @@ namespace lux::render::detail
                     binding_state.point = point;
                     binding_state.descriptors = {};
                 }
-                if (compiled.pipeline && binding_state.pipeline != compiled.pipeline)
+                auto* pipeline = raster ? raster->pipeline : compute ? compute->pipeline : nullptr;
+                if (pipeline && binding_state.pipeline != pipeline)
                 {
-                    core.CmdSetPipeline(command, *compiled.pipeline);
-                    binding_state.pipeline = compiled.pipeline;
-                    binding_state.prepared_depth_bias = false;
+                    core.CmdSetPipeline(command, *pipeline);
+                    binding_state.pipeline = pipeline;
+                    binding_state.depth_bias.reset();
                 }
-                for (std::uint32_t set = 0; set < pass.descriptors.size(); ++set)
-                {
-                    const bool changed_set = set >= binding_state.descriptors.size() ||
-                                             binding_state.descriptors[set] != pass.descriptors[set];
-                    if (changed_set)
-                    {
-                        core.CmdSetDescriptorSet(command, {set, pass.descriptors[set], point});
-                    }
-                }
-                binding_state.descriptors = pass.descriptors;
+                bindDescriptors(
+                    *instance.session_, command, program,
+                    {&pass.private_descriptors, pass.private_descriptors ? 1u : 0u}, binding_state
+                );
                 if (!parameters.empty() && (!raster || !std::holds_alternative<IndexedListCommands>(raster->draw)))
                 {
                     core.CmdSetRootConstants(
@@ -279,20 +543,18 @@ namespace lux::render::detail
                         static_cast<nri::Dim_t>(area.height * height)
                     };
                     core.CmdSetViewports(command, &viewport, 1);
-                    core.CmdSetScissors(command, &scissor, 1);
+                    setScissor(core, command, scissor, binding_state);
                 }
                 if (raster->state_input)
                 {
-                    core.CmdSetDepthBias(
-                        command,
-                        {pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope}
+                    setDepthBias(
+                        core, command,
+                        {pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope}, binding_state
                     );
-                    binding_state.prepared_depth_bias = true;
                 }
-                else if (binding_state.prepared_depth_bias)
+                else if (binding_state.depth_bias)
                 {
-                    core.CmdSetDepthBias(command, {raster->depth_bias[0], 0, raster->depth_bias[1]});
-                    binding_state.prepared_depth_bias = false;
+                    setDepthBias(core, command, {raster->depth_bias[0], 0, raster->depth_bias[1]}, binding_state);
                 }
                 if (!std::ranges::equal(binding_state.vertices, raster->vertices))
                 {
@@ -312,7 +574,11 @@ namespace lux::render::detail
                     [&](const auto& draw)
                     {
                         using Draw = std::decay_t<decltype(draw)>;
-                        if constexpr (std::is_same_v<Draw, DrawVertices>)
+                        if constexpr (std::same_as<Draw, RasterListCommands> || std::same_as<Draw, IndexedListCommands>)
+                        {
+                            // Prepared lists were consumed before entering the fixed-program path.
+                        }
+                        else if constexpr (std::is_same_v<Draw, DrawVertices>)
                         {
                             core.CmdDraw(command, {draw.count, draw.instances, draw.first, draw.first_instance});
                         }
@@ -349,41 +615,6 @@ namespace lux::render::detail
                                     command,
                                     {draw.count, draw.instances, draw.first, draw.vertex_offset, draw.first_instance}
                                 );
-                            }
-                            else if constexpr (std::same_as<Draw, IndexedListCommands>)
-                            {
-                                auto& list = frame.draw_lists[draw.data_index];
-                                for (const auto& range : list.ranges)
-                                {
-                                    if (!range.index_count || !range.width || !range.height)
-                                    {
-                                        continue;
-                                    }
-                                    const nri::Rect scissor{
-                                        static_cast<std::int16_t>(range.x),
-                                        static_cast<std::int16_t>(range.y),
-                                        static_cast<nri::Dim_t>(range.width),
-                                        static_cast<nri::Dim_t>(range.height)
-                                    };
-                                    core.CmdSetScissors(command, &scissor, 1);
-                                    std::memcpy(
-                                        list.parameters.data() + draw.selection_offset,
-                                        &range.selection,
-                                        sizeof(range.selection)
-                                    );
-                                    core.CmdSetRootConstants(
-                                        command,
-                                        {0,
-                                         list.parameters.data(),
-                                         static_cast<std::uint32_t>(list.parameters.size()),
-                                         0,
-                                         nri::BindPoint::GRAPHICS}
-                                    );
-                                    core.CmdDrawIndexed(
-                                        command,
-                                        {range.index_count, 1, range.first_index, range.vertex_offset, 0}
-                                    );
-                                }
                             }
                             else
                             {
@@ -576,7 +807,7 @@ namespace lux::render::detail
                 }
             }
         }
-        if (batch_index + 1 == plan.submissions_.size() &&
+        if (last_part && batch_index + 1 == plan.submissions_.size() &&
             (!frame.final_images.empty() || !frame.final_buffers.empty()))
         {
             const nri::BarrierDesc barrier{

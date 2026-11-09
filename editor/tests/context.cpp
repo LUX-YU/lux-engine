@@ -1,8 +1,9 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include "api_contract.hpp"
 #include "support/ContextFixture.hpp"
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
@@ -72,7 +73,8 @@ int main(int argc, char** argv)
         auto& registry = error::ErrorRegistry::instance();
         assert(registry.registerType({"lux.editor.recursive_service_factory", "Conflicting schema"}));
         auto& runtime = object::ObjectRuntime::instance();
-        auto engine = engine::EngineContext::create({1, 64, {32}}, 64);
+        auto engine = engine::Engine::create({1, 64, {32}}, 64);
+        cxx::scope_exit close_engine([&]() noexcept { assert((*engine)->close()); });
         assert(engine && runtime.isCurrent());
         bool assembled{};
         auto assembly = [&](EditorComposition&) noexcept -> FrameworkResult<void>
@@ -103,7 +105,8 @@ int main(int argc, char** argv)
     static_assert(!std::is_copy_constructible_v<EditorServices>);
     static_assert(!std::is_move_constructible_v<EditorUiRegistry>);
     auto& queue = object::ObjectRuntime::instance();
-    auto engine = engine::EngineContext::create({1, 64, {32}}, 64);
+    auto engine = engine::Engine::create({1, 64, {32}}, 64);
+    cxx::scope_exit close_engine([&]() noexcept { assert((*engine)->close()); });
     assert(queue.isCurrent() && engine);
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{};
@@ -113,7 +116,7 @@ int main(int argc, char** argv)
         {
             assert(context.bindExtension(external_assets));
             const auto duplicate = context.bindExtension(external_assets);
-            assert(!duplicate && duplicate.error() == engine::EContextExtensionError::DUPLICATE_TYPE);
+            assert(!duplicate && duplicate.error() == EEditorFacilityError::DUPLICATE_TYPE);
             assert(context.registerServiceFactory<Service>(
                 [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 {
@@ -164,7 +167,7 @@ int main(int argc, char** argv)
                       decltype(std::as_const(context).extensions().find<asset::AssetVfs>()),
                       const asset::AssetVfs*>);
 
-        static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
+        static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::Engine&>);
         static_assert(std::is_same_v<decltype(std::as_const(context).assets()), const asset::AssetVfs&>);
         assert(error::ErrorRegistry::instance().find(Errors::EditorRecursiveServiceFactory));
         std::thread worker(
@@ -192,6 +195,11 @@ int main(int argc, char** argv)
         );
         assert(empty);
         assert(!(*empty)->extensions().find<asset::AssetVfs>());
+        context.close();
+        assert(context.service<Service>()); // Existing dependencies remain usable by cleanup.
+        auto late = context.service<Recursive>();
+        assert(!late && late.error().type == Errors::EditorServiceUseOutsideProjectLifetime);
+        assert(context.finishClose());
     }
     assert((destroyed == std::vector<int>{2, 1}));
     std::puts("PASS lazy services, build-only registration, recursion, retry, reverse destruction");

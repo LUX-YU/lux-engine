@@ -373,17 +373,27 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        auto information = encodeModel(asset.data(), limits.max_encoded_bytes);
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<ModelAsset>::encode(
+        const AssetInfo& asset_info,
+        const ModelAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        auto information = encodeModel(data, limits.max_encoded_bytes);
         if (!information)
             return lux::cxx::unexpected(information.error());
         return detail::encodeCookedAssetImage(
             detail::CookedAssetWriteRequest{
                 ModelAsset::primary_magic,
                 ModelAsset::legacy_type_tag,
-                asset.info(),
+                asset_info,
                 *information,
                 {},
-                asset.auxiliaryPayloads()
+                auxiliary
             },
             limits
         );

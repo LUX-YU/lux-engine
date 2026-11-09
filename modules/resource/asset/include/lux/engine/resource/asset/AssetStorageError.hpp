@@ -12,5 +12,7 @@ namespace lux::asset
         UNSUPPORTED,
         LIMIT_EXCEEDED,
         CONTENT_CHANGED,
+        ID_CONFLICT,
+        PUBLICATION_UNKNOWN,
     };
 } // namespace lux::asset

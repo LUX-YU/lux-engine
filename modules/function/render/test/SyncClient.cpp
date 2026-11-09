@@ -1,9 +1,10 @@
+#include <lux/engine/render/commands/Mesh3dCommands.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/inputs/CameraInputs.hpp>
 #include <vector>
 
 #if defined(VK_VERSION_1_0) || defined(_WINDOWS_)
@@ -26,7 +27,7 @@ namespace ipc = lux::platform::ipc;
 struct ExternalCommand final
 {
     static constexpr std::string_view name = "installed.client.external";
-    static constexpr bool frame_scoped = false;
+    static constexpr bool requires_frame_boundary = false;
     using Request = std::vector<unsigned>;
 
     struct Response final
@@ -37,7 +38,8 @@ struct ExternalCommand final
 };
 
 static_assert(RenderCommand<ExternalCommand>);
-static_assert(sizeof(TransformBatch) <= ipc::IpcMessage::typed_inline_capacity);
+static_assert(std::is_trivially_copyable_v<FrameDataLayout<TransformData>::Stored>);
+static_assert(std::is_standard_layout_v<FrameDataLayout<TransformData>::Stored>);
 static_assert(std::is_trivially_copyable_v<MeshId> && std::is_standard_layout_v<MeshId>);
 static_assert(sizeof(MeshId) == 16);
 static_assert(sizeof(RequestId) == sizeof(std::uint64_t));

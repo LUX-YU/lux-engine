@@ -29,6 +29,10 @@ The test compares generated field order, pointer identity and actual typed acces
 
 These projections share declaration parsing, but are not interchangeable:
 
+`TTypeStaticField` contains only the member name and typed pointer. Core does not define control labels,
+editing bounds, tooltips or ECS schemas. Consumers can generate code directly from lux-cxx declarations;
+they do not have to pass through `TTypeStaticInfo`. Domain templates and build inputs belong to that domain.
+
 | Contract | Engine `TTypeStaticInfo` | lux-cxx `ser::meta_info` |
 |---|---|---|
 | Public field order/access | Declaration order; compile-time member pointer | Declaration order; typed member pointer |

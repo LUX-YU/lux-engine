@@ -43,7 +43,7 @@ namespace
     {
         FlowNodeRegistration result;
         result.identity = {graph::nodeTypeId("test.variable_outputs"), "test.variable_outputs", 3};
-        result.payload_type = cxx::typeToken<Payload>();
+        result.payload_type = cxx::make_basic_type_info<Payload>();
         result.create = [](const object::CodeLease& code) noexcept
         { return FlowNodePayload::make<Payload, clone>(code); };
         result.describe_pins = [](const FlowNodePayload& payload) noexcept -> FlowNodeRegistration::PinResult

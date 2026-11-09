@@ -13,7 +13,9 @@ namespace lux::render
 
         [[nodiscard]] GraphImageDesc image() const noexcept
         {
-            return {resolution, resolution, 1, view_count, rdesc::ETextureFormat::D32_SFLOAT};
+            GraphImageDesc result{resolution, resolution, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
+            result.runtime_layers = true;
+            return result;
         }
     };
 

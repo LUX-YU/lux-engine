@@ -1,16 +1,25 @@
 #pragma once
 
+#include <string_view>
+#include <array>
 #include <lux/engine/render/visibility.h>
 
 #include <lux/engine/description/Image.hpp>
-#include <lux/engine/render/capabilities/RenderCapability.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/core/ResourceId.hpp>
 #include <span>
 #include <vector>
 
+namespace lux::rdesc
+{
+    struct Mesh;
+}
+
 namespace lux::render
 {
+    inline constexpr std::string_view kIndexedMeshInput = "lux.render.input.indexed_triangle_mesh";
+
     class ResourceRegistry;
     struct MeshTag;
     using MeshId = ResourceId<MeshTag>;
@@ -39,6 +48,13 @@ namespace lux::render
 
     static_assert(sizeof(MeshGpuBounds) == 32);
 
+    struct MeshLodRange final
+    {
+        std::uint32_t first_index = 0, index_count = 0;
+        float error = 0;
+        bool operator==(const MeshLodRange&) const noexcept = default;
+    };
+
     struct MeshDescription final
     {
         std::uint32_t vertex_stride = 0, vertex_count = 0;
@@ -47,6 +63,7 @@ namespace lux::render
         std::vector<MeshAttribute> attributes;
         std::vector<MeshSubmesh> submeshes;
         MeshGpuBounds bounds;
+        std::vector<MeshLodRange> lods;
         bool operator==(const MeshDescription&) const noexcept = default;
     };
 
@@ -59,37 +76,6 @@ namespace lux::render
     };
 
     static_assert(sizeof(MeshGpuSection) == 12);
-
-    struct MeshWrite final
-    {
-        CapabilityInput destination;
-        MeshDescription description;
-        // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
-        // Abandon/connection loss is not completion: the application must drain Server and Producers before freeing it.
-        std::span<const std::byte> source;
-    };
-
-    struct CreateMesh final
-    {
-        static constexpr std::string_view name = "lux.render.CreateMesh";
-        static constexpr bool frame_scoped = false;
-        using Request = MeshWrite;
-
-        struct Response final
-        {
-            RenderError error{};
-            MeshId mesh{};
-        };
-    };
-
-    struct ReleaseMesh final
-    {
-        static constexpr bool failure_safe = true;
-        static constexpr std::string_view name = "lux.render.ReleaseMesh";
-        static constexpr bool frame_scoped = true;
-        using Request = MeshId;
-        using Response = AckResponse;
-    };
 
     template <> struct ConfigValueTraits<MeshDescription> final
     {

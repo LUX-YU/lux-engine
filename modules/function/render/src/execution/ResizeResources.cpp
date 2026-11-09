@@ -1,3 +1,4 @@
+#include <lux/engine/render/commands/ImageCommands.hpp>
 #include <lux/engine/render/execution/PassExtent.hpp>
 #include <lux/engine/render/execution/ResizeResources.hpp>
 
@@ -5,7 +6,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -46,6 +47,12 @@ namespace lux::render::detail
     ) noexcept
     {
         const bool has_output = !output.frames.empty();
+        const bool needs_output = plan_->output() != kGraphInvalidIndex ||
+            std::ranges::any_of(plan_->resources(), [](const auto& resource) noexcept
+            {
+                return resource.target_sized;
+            });
+        if (needs_output && !has_output) return cxx::unexpected(RenderError{kDeviceArgument});
         const bool is_incompatible_output =
             has_output && (output.frames.size() != frames_.size() || !plan_->compatible(output.description));
         if (is_incompatible_output)
@@ -56,7 +63,7 @@ namespace lux::render::detail
         ResizeResources result{session};
         result.output = output;
         result.frames.resize(frames_.size());
-        const auto target = output.frames.empty() ? target_ : output.description;
+        const auto& target = output.description;
 
         if (auto prepared = prepareResizeHistories(result, target); !prepared)
         {
@@ -80,8 +87,17 @@ namespace lux::render::detail
             {
                 const auto& expected = std::get<GraphImageDesc>(plan_->resources()[input.resource.index].description);
                 const auto& actual = session.nriCore().GetTextureDesc(*input.frames[f].image);
+                auto width = expected.width, height = expected.height;
+                const auto& resource = plan_->resources()[input.resource.index];
+                if (resource.target_sized)
+                {
+                    auto resolved = textureDescription(resource, target);
+                    if (!resolved) return cxx::unexpected(resolved.error());
+                    width = resolved->width;
+                    height = resolved->height;
+                }
                 const bool extent_mismatch = expected.extent.source != EImageExtentSource::IMPORTED &&
-                                             (actual.width != expected.width || actual.height != expected.height);
+                                             (actual.width != width || actual.height != height);
                 const bool description_mismatch =
                     extent_mismatch || actual.format != imageFormat(expected.format).native ||
                     actual.mipNum != expected.mips || actual.layerNum != expected.layers ||
@@ -694,6 +710,7 @@ namespace lux::render::detail
                 pass.dispatch_groups = extent.dispatch_groups;
                 pass.copy_layouts = std::move(extent.copy_layouts);
             }
+            invalidateRecordings(static_cast<std::uint32_t>(&frame - frames_.data()));
             frame.invalidateImportedBindings();
             std::ranges::fill(frame.history_valid, 0);
         }
@@ -706,10 +723,6 @@ namespace lux::render::detail
             history.invalidate = true;
         }
         output_ = result.output;
-        if (!output_.frames.empty())
-        {
-            target_ = output_.description;
-        }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             bindHistory(slot);
@@ -745,6 +758,7 @@ namespace lux::render::detail
                     views.push_back(std::exchange(descriptor, nullptr));
                 }
             }
+            invalidateRecordings(static_cast<std::uint32_t>(&frame - frames_.data()));
             frame.invalidateImportedBindings();
         }
         output_.frames = {};

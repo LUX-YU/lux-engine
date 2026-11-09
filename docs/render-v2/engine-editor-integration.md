@@ -41,27 +41,27 @@ Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品
 
 | 事实 | 源码依据 | 本轮处置 |
 |---|---|---|
-| EngineContext 已唯一创建 ExecutionRuntime，SceneRuntime 借用其 CPU Scheduler | [EngineContext.cpp](../../engine/context/src/EngineContext.cpp) | 保留，不再把共享池写成待从零实现 |
+| Engine 已唯一创建 ExecutionRuntime，SceneRuntime 借用其 CPU Scheduler | [Engine.cpp](../../engine/context/runtime/src/Engine.cpp) | 保留，不再把共享池写成待从零实现 |
 | CPU 后端已为 stdexec static_thread_pool；阻塞 IO 有独立 bounded workers | [ExecutionRuntime.cpp](../../modules/core/execution/src/ExecutionRuntime.cpp) | 一处配置；区分计算和阻塞，不把“同一个 Runtime”说成“所有工作同一批线程” |
 | TaskExecutor 已无私有池，整图 Sender 使用 CSR 后继算法 | [TaskExecutor.hpp](../../modules/core/task/include/lux/engine/task/TaskExecutor.hpp) | 保留 O(V+E)、affinity 和 workspace；不以 worker_count=0 规避接线 |
 | RenderServer::create 已接收 ExecutionRuntime&，不创建 CPU 池 | [RenderServer.cpp](../../modules/function/render/src/runtime/RenderServer.cpp) | 实际应用组合根尚需接入 |
 | Render 已有标准 Scope、完成调度、完整 SubmitFrame 和真正 FIF | [FrameSubmission.cpp](../../modules/function/render/src/runtime/FrameSubmission.cpp) | 复用，不能再造 PendingOperation 或外层帧循环 |
-| RenderRequester 已有 typed RequestSender/FrameSender、关联表和 L+1 输入载体 | [RenderRequester.hpp](../../engine/context/render/include/lux/engine/context/render/RenderRequester.hpp) | 扩展实际装配，不能再次实现同名桥接 |
+| RenderClient 提供 typed Sender 与请求关联；RenderFrameSubmission 拥有 L+1 输入载体 | [RenderClient.hpp](../../modules/function/render/include/lux/engine/render/runtime/RenderClient.hpp) | EngineContext 只接 Main 完成交付和帧阶段 |
 | TaskScope 的 connected operation 已交给 stdexec；结果交付由 Sender 显式表达 | [Task.hpp](../../modules/core/execution/include/lux/engine/core/execution/Task.hpp)、[Task.cpp](../../modules/core/execution/src/Task.cpp) | 任务监控、逐任务取消和实际代码寿命仍保留 |
 | TaskScope 只有一个工厂式 submit，已删除隐式 Completion 参数 | [TaskScope.hpp](../../modules/core/execution/include/lux/engine/core/execution/TaskScope.hpp) | 业务结果在流水线消费，Runtime 只记录终态 |
-| VFS read 在有限 IO Sender 内直接完成端口交付 | [VfsAssetReadEndpoint.cpp](../../engine/process/asset_loading/src/VfsAssetReadEndpoint.cpp) | Main 只承担确有需要的业务采用 |
-| AssetLoadSender 已用标准 Sender 表达读取→CPU 解码 | [AssetLoadSender.hpp](../../engine/process/asset_loading/include/lux/engine/process/asset_loading/AssetLoadSender.hpp) | 已删除专用转发 Receiver/TState，停止与错误仍准确传播 |
+| VFS read 在有限 IO Sender 内直接完成端口交付 | [VfsAssetReadEndpoint.cpp](../../engine/process/assets/src/VfsAssetReadEndpoint.cpp) | Main 只承担确有需要的业务采用 |
+| AssetLoadSender 已用标准 Sender 表达读取→CPU 解码 | [AssetLoadSender.hpp](../../engine/process/assets/include/lux/engine/process/assets/AssetLoadSender.hpp) | 已删除专用转发 Receiver/TState，停止与错误仍准确传播 |
 | 世界解码的有限 coroutine 保持 CPU affinity | [WorldPartitionLoadSender.cpp](../../engine/process/world_loading/src/WorldPartitionLoadSender.cpp) | 每次读取后执行原 decoder.accept；Scene 采用单独进行 |
-| Editor 项目准备已用同一 Runtime + ObjectScheduler | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp) | 保留项目序号和安全采用；删除完成回传的空绕行 |
+| Editor 项目准备已用同一 Runtime + ObjectScheduler | [EditorApplication.cpp](../../editor/app/src/EditorApplication.cpp) | 保留项目序号和安全采用；删除完成回传的空绕行 |
 | WorldFileStorageSource 提供正式有限文件范围读取 | [WorldFileStorageSource.cpp](../../engine/process/world_loading/src/WorldFileStorageSource.cpp) | 测试只保留延迟控制；实际 IO 复用该 provider |
-| EngineContext、Scene 和 EditorUiScene 已迁统一运输；旧 UiFrame/UiRenderSyncStage 删除 | 各模块 CMake 与 Editor app | 根 EDITOR 使用真实 Engine/Render 依赖，不加空 target/兼容别名 |
+| Engine、Scene 和 EditorUiScene 已迁统一运输；旧 UiFrame/UiRenderSyncStage 删除 | 各模块 CMake 与 Editor app | 根 EDITOR 使用真实 Engine/Render 依赖，不加空 target/兼容别名 |
 | SurfaceTarget 已使用 NRI SwapChain；Target 图像输入与 Resize 有实际消费者关系 | [SurfaceTarget.cpp](../../modules/function/render/src/execution/SurfaceTarget.cpp)、RenderServerImpl | 窗口与 Scene 输出接入现有 FIF，不创建呈现调度层 |
-| CPU UI 捕获中立 UiDrawData，Editor 直接写入共同 FrameInput | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 顶点与索引只捕获一次；Native 只补齐复制尾部 1–3 字节 |
-| Raster 已具有 IndexedDrawList、逐 draw 裁剪、图像选择与颜色混合 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/extensions/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | UiRasterFeature 只消费中立数据，不链接 ImGui/Editor |
+| UI Collector 将原生 ImGui 数组一次写入共同帧块 | [ImguiFrameCapture.cpp](../../editor/app/src/ImguiFrameCapture.cpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | DrawView 仅短期借用；Native 在最终采用处生成范围 |
+| Raster 已具有 IndexedDrawList、逐 draw 裁剪、图像选择与颜色混合 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/extensions/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | 通用 Executor 消费索引范围，UI 专业入口消费 ImGui 数据，不依赖 Editor |
 
-旧文档中“Asset Client 回主线程发送”“TaskExecutor 尚有私有池”“新建 RenderRequester”均被本版取代。
+旧文档中“Asset Client 回主线程发送”“TaskExecutor 尚有私有池”“新建 Engine 客户端桥接层”均被本版取代。
 历史 Root EDITOR 曾缺失 `engine_context_render`、`project_plugin_rendering`；活动配置已迁入真实
-`engine_render_context`/`scene_render`，旧包不再作为依赖。历史失败不回写，产品验收绑定最终精确提交。
+`process_render`/`scene_render`，旧包不再作为依赖。历史失败不回写，产品验收绑定最终精确提交。
 
 ## 3. 线程、执行资源与唯一权威
 
@@ -86,26 +86,26 @@ Core RunLoop 是现有线程驱动的标准 Scheduler，不拥有线程。Main�
 
 ### 3.2 装配与对象寿命
 
-`EngineContext` 继续拥有 ExecutionRuntime、AssetVfs 和 SceneRuntime。
+`Engine` 继续拥有 ExecutionRuntime、AssetVfs 和 SceneRuntime。
 删除它当前失效的 `RenderContext/rendering_/EngineRenderAccess` 接缝，不再给 headless Context 增加可变渲染设施。
 
 实际应用组合根显式拥有 `RenderExecution`、`RenderAssets` 和窗口：
 
-1. 创建 ObjectRuntime 和 EngineContext。
+1. 创建 ObjectRuntime 和 Engine。
 2. 用 `engine.execution()` 创建 RenderExecution，再建立 Main/Asset 两个 Requester。
 3. 构造 RenderAssets 和 Scene 所需的窄依赖。
 4. 构造 EditorContext、窗口对应的 EditorUiScene 和项目 Scene。
 5. 关闭按相反依赖关系清偿，不能只依赖成员析构自动等待业务。
 
-Scene 使用已有 SceneCapabilityProvider/构造参数取得依赖；Editor 的 ContextExtensions 只在冷态绑定已经存在的对象。
-不在 EngineContext 发布后的扩展表补写 RenderExecution，也不通过查询偷偷创建服务。
+Scene 使用已有 ResolvedSceneDependency/构造参数取得依赖；Editor 的 EditorFacilities 只在冷态绑定已经存在的对象。
+不在 Engine 发布后的扩展表补写 RenderExecution，也不通过查询偷偷创建服务。
 
 | 类型 | 实际责任 |
 |---|---|
 | `RenderExecution` | 一个 RenderServer、RenderThread、Asset 协议线程及其 RunLoop；组合两个现有 Requester，管理启动和关闭 |
-| `RenderRequester` | 一个 Link 的 Command 绑定、有限关联与输入载体；不创建线程，不拥有 connected operation |
+| `RenderClient` | 一个 IPC 请求端的命令 ID 缓存、请求关联和 Sender；不拥有线程或 connected operation |
 | `RenderAssets` | Main 线程的 AssetId/版本到真实 Render 句柄、业务使用关系与采用事实 |
-| `RenderSystem` | 从 Scene 提取增量输入，维护该 Scene 的非拥有渲染关联，向共同 FrameInput 追加命令 |
+| `RenderSystem` | 从 Scene 提取增量输入，维护该 Scene 的非拥有渲染关联，向共同 FrameStorage 追加命令 |
 | `EditorUiScene` | 独立 Render Scene/View/Effect 和 UI 帧捕获；不再创建空 Engine World/Simulation |
 | `UiRasterFeature` | 将中立 UI 绘制数据降低为既有 Graph/Raster 工作；不认识 ImGui Context、Pane 或项目 |
 
@@ -193,7 +193,7 @@ ExecutionRuntime 的通用完成交付复用现有 Core RunLoop 实现，提供�
 
 | 消费者 | 修改 |
 |---|---|
-| `LuxEngine::Impl::admitProject` | 文件和插件阻塞阶段用 blocking；确有重计算的阶段再切 cpu；最终通过 Main Scheduler 直接采用候选，不再经过 ProjectPrepared 事件或 Task completed 转发 |
+| `EditorApplication::Impl::admitProject` | 文件和插件阻塞阶段用 blocking；确有重计算的阶段再切 cpu；最终通过 Main Scheduler 直接采用候选，不再经过 ProjectPrepared 事件或 Task completed 转发 |
 | `receivePrepared/applyPendingHostChanges` | 保留请求序号、重入后的二次资格检查、候选采用和真实 published 事实；文件已发布后取消不能说成回滚 |
 | `EditorContext::tasks_` | 保留项目取消分组，迁统一 submit；析构不 join 全局执行资源 |
 | `WorldLoadingSystem` | 直接发布拥有型解码结果到现有 Read 状态；主阶段按 epoch/revision 采用，不让 Worker 改 Registry |
@@ -291,7 +291,8 @@ Main 暂停时，已接纳且依赖已满足的读取、解码、上传和运输
 
 ### 6.1 两条 Link，一处业务权威
 
-`RenderExecution` 创建两个现有 RenderRequester：
+当前 EngineContext 创建一个 RenderClient，资产读取在共享执行设施上完成，上传在 Main 安全点发起。
+Render 模块支持独立宿主为不同调用线程显式创建 Client，以下线程分工不要求 Engine 新增 Asset 线程：
 
 | Client | 唯一发送/收取线程 | 用途 |
 |---|---|---|
@@ -311,10 +312,10 @@ RenderAssets 的 Main 业务目录只在结果采用时更新；上传流水线�
 CreateMaterial/UpdateMaterial、实例操作和 Texture/Mesh/Material 释放是 frame-scoped。
 
 第一闭环保持这个准确边界：读取、Cooked 解码和 Texture/Mesh 上传后台化，Material/实例可见发布进入 Main 帧。
-不能为了“所有上传都走 Asset”直接翻转 frame_scoped 标志。
+离散资源请求与 PerFrameData 的入口分离；两者仍遵守已接受帧的有序边界。
 若以后确需离帧创建未引用材质，必须单独证明表更新与当前帧的隔离，再修改该 Command 合同。
 
-两个 Link 没有天然全序。Main 只有收到对应成功结果并采用后，才能在后续 FrameInput 中引用该资源。
+两个 Link 没有天然全序。Main 只有收到对应成功结果并采用后，才能在后续 FrameStorage 中引用该资源。
 Render 不根据资源名称猜测跨 Client 依赖，不恢复 Texture→Material 自动联动或资源保活网络。
 
 ### 6.3 唤醒与 pump
@@ -353,7 +354,7 @@ Request 所有权恢复不属于当前 IPC 合同。不要恢复已删除的 Typ
 
 ### 7.1 SceneSystem 接线
 
-新增正式 `engine/scene/builtin_systems/render`，遵循当前 SceneSystemRegistration/Installer，
+新增正式 `engine/systems/render`，遵循当前 SceneSystemRegistration/Installer，
 不恢复旧 RenderFeatureSceneBindings 或旧 ECS Render bridge。
 
 | Scene 阶段 | RenderSystem 动作 |
@@ -361,7 +362,7 @@ Request 所有权恢复不属于当前 IPC 合同。不要恢复已删除的 Typ
 | MAINTENANCE | 采用已到达结果，核对 Entity generation、Scene/revision；结构改变在现有 EcsCommandBuffer 安全点执行 |
 | SYNCHRONIZATION | 原 TransformSystem 更新世界矩阵及结构命令 |
 | STABLE | RenderSystem 在所有同步系统完成后借用矩阵，准备变化身份和 Camera 参数，不再计算第二份 Transform |
-| PUBLICATION | 向共同 FrameInput 追加本 Scene 的 K 项变化及 Attachment 参数；不自行 SubmitFrame |
+| PUBLICATION | 向共同 FrameStorage 追加本 Scene 的 K 项变化及 Attachment 参数；不自行 SubmitFrame |
 
 观察者只记意图/脏项，连接时折入存量；on_update 写入走 patch/replace；
 on_destroy 在字段尚可读时提取句柄。不能把历史 AGENTS 示例路径当成当前存在的系统恢复回来。
@@ -391,22 +392,22 @@ L+1 CPU 载体、GPU FIF slot、SwapChain image index 是三种身份，不能�
 FrameCompletion 表示输入消费和提交结果，不证明 GPU 完成或已经显示。
 GPU slice/descriptor/command allocator 仍按真实 Queue 前沿复用。
 
-CPU 数据的权威保持清楚：Scene 拥有活动世界；FrameInput 冻结本批 K 项，Transform 可直接在载体内由 double 转成 GPU float；
+CPU 数据的权威保持清楚：Scene 拥有活动世界；FrameStorage 冻结本批 K 项，Transform 可直接在载体内由 double 转成 GPU float；
 Render 的已发布数据与逐 slot 脏状态用于修复尚未更新的 FIF slice。
 不为了减少一次必要快照而借用下一次 Simulation 会改写的内存，也不复制完整世界。
 revision n 仅确认 n，等待期间的新变化不能被旧回复清掉。
 
-结构性帧内控制也可用现有 RequestSender：Requester 暂存真实命令输入，下一次 beginFrame 纳入完整帧，
-Response 仍交给原 stdexec Operation。它不创建第二套结果队列或操作 Owner。
+结构命令直接通过 RenderClient 的 RequestSender 发送，Response 交给原 stdexec Operation；
+不会暂存在客户端等待 beginFrame，也不进入 PerFrameData 批次。
 创建、移除和替换可以在项目关闭时由维护帧清偿；普通热帧批量数据仍直接 append，避免逐项 Task。
 Attach 可携带同 Scene/View 的待替换 AttachmentId；目的 Target 必须空闲或由该 Attachment 写入，候选全部准备成功后才替换；
 失败保留旧实例，不能先 detach 再赌新 attach 成功。
 
-`RenderRequester::buildingFrame()` 是当前唯一正在构造的 Main 帧借用；Scene 从这里追加，
-CameraTargetsComponent 与 RenderAssetInput 都不保存第二份帧指针。submit/release 结束该借用。
-Requester 根据收到的 FrameCompletion 更新 resynchronization 版本，各 Scene 只重发自己的权威值。
+`RenderFrameSubmission::frame()` 是当前唯一正在构造的 Main 帧借用；Scene 从这里追加，
+OffscreenTargetComponent 与 RenderAssetInput 都不保存第二份帧指针。submit/release 结束该借用。
+RenderFrameSubmission 根据收到的 FrameCompletion 更新 resynchronization 版本，各 Scene 只重发自己的权威值。
 
-FrameInput 可以把平凡数组冻结到自身的分配区，直到真实 FrameCompletion 后再释放；
+FrameStorage 可以把平凡数组冻结到自身的分配区，直到真实 FrameCompletion 后再释放；
 Scene 或 Pane 提前销毁不会使这些 span 悬空。L+1 载体共用标准 PMR 块复用，
 每个载体只有自己的临时数据范围，不增加 Scope、资源身份或任务 Owner。
 已有应用级稳定数组仍可直接借用；不强制多复制一次。
@@ -422,7 +423,7 @@ Main 资产需求/版本
   → Asset：Texture/Mesh 上传请求
   → Render：Storage Sender → stdexec 上传 → 真实资源发布
   → Asset：运输 Response，释放已结束的 source 借用
-  → Main：RenderAssets 采用 → FrameInput 创建/更新 Material 与 Instance
+  → Main：RenderAssets 采用 → 能力 Command 创建资源，帧批次更新可见状态
   → Render Graph：通过明确端口渲染 Scene
 ```
 
@@ -494,36 +495,23 @@ RemoveTarget 的 Response 才归还平台窗口借用。冷态关闭/同窗口�
 
 ## 9. 独立 UI Scene 与 ImGui Feature
 
-### 9.1 保留独立 Scene，删除空 World 运输
+### 9.1 独立 Scene，相同装配
 
-保留 `EditorUiScene` 名称，但重写为真正的 Render Scene/View/Effect 组合。
-删除其仅为旧 RenderSystem 运送 UI 帧而构建的空 World、空 Simulation 和 UiFrame ECS 组件。
+UI 属于窗口/应用并跨项目存活。EditorUiScene 使用正常 SceneRuntime Builder 和 RenderSystem
+安装 ImguiCapability 的注册 recipe；空作者世界没有虚构 ECS Camera、UI 组件或第二执行循环。
+EditorApplication 只准备 ImGui 帧，ImguiCollector Collector 在正常 Scene 发布阶段写入共同 FrameStorage。
+项目与 UI 每主帧只产生一个 SubmitFrame，均使用原完成通路。
 
-`publishFrame()` 改为 `appendFrameCommands(FrameInput&)`：
-只追加本次 UI 输入，由应用统一 SubmitFrame，不能 UI 和项目各提交一帧。
-保留 hasWritableFrame/capture 的背压语义，复用 CPU 数组容量。
-删除 use_count()==1 判断、旧 RenderFrame/submission.complete()、bindProgress 和专用完成扫描。
+### 9.2 原生 ImGui 数组快照
 
-UI 场景属于窗口/应用，可跨项目存活；项目 Scene 关闭只解除其视口图像引用。
-Root、Pane、输入路由、DPI 和 LuxObject Signal 仍由 Editor/UI 线程管理。
+UI 的 DrawView 仅短期借用完成的 ImDrawData。captureImguiFrame 将本地 ImGui 分支的真实
+ImDrawVert/ImDrawIdx/ImDrawCmd 数组直接一次复制到稳定帧块，不先生成 UiDrawData/克隆 DrawList。
+下一次 NewFrame 可以覆盖 UI 源数组；Render 只借已提交的帧块，根 Response 后归还。
 
-### 9.2 中立绘制数据与实际必要快照
-
-新增资源描述域 `UiDraw.hpp`，公开纯值格式：Position/UV/Color 顶点、索引宽度/范围、
-元素数、base vertex/index offset、clip、图像 token、DisplayPos/DisplaySize/FramebufferScale。
-它不包含 ImDrawData、UI 对象、RenderStorage 或 NRI 类型。
-
-`ui::DrawData::capture` 从 ImGui 活动数组直接生成可复用拥有型快照；
-删除“先复制完整 ImDrawList、再复制等价 Render 数组”的双重运输。
-ImGui 下一帧会覆盖原数组，因此必要的一次冻结不能声称可以无条件消除。
-移除 VulkanRenderer friend 与旧 RTextureHandle；ImageElement 使用中立 token。
-
-应用在捕获边界将 token 解析为本帧 Texture/Target 引用表，GPU draw 使用紧凑索引。
-这只是帧数据，不新增全局图片 Registry。无效 token 在 Client 捕获边界决定失败/占位语义，
-不让每个 draw 在 GPU 录制层查业务名称。
-
-任意 ImGui UserCallback 不跨线程执行。已知 ResetRenderState 规范化为实际绘制状态需求，
-其它回调明确拒绝；不把函数指针保存到 RenderGraph。
+UiInputHandler 在实际 FIF 槽生成最终 IndexedDrawRange，复用上传描述和尾部补齐空间，沿
+ResourceUploader 执行 stdexec 上传。它不创建专用队列、Scope、UI Storage 或第二套完成协议。
+任意 UserCallback 不跨线程执行；ResetRenderState 对应已声明状态。没有新 UI 输入的后续帧
+只使用 FrameResources 已采用的数据，不引用已回收的 CPU 帧块。
 
 ### 9.3 Feature、Storage 与 Raster
 
@@ -554,7 +542,7 @@ clip clamp、IdxOffset/VtxOffset、Alpha Blend 等成熟算法。
 
 ### 10.1 主循环
 
-`LuxEngine::run` 的外层重入保护覆盖普通 Main continuation；私有受控单步与析构关闭遵循同一保护。
+`EditorApplication::run` 的外层重入保护覆盖普通 Main continuation；私有受控单步与析构关闭遵循同一保护。
 Object 回调借用另行保留，最终 join 在回调之外。普通帧与关闭维护共用 `Impl::renderFrame`，只有一处
 未提交 carrier 的释放和一处完整提交。执行阶段为：
 
@@ -573,7 +561,7 @@ Object 回调借用另行保留，最终 join 在回调之外。普通帧与关�
 停止新的帧投影，清偿已接纳结构操作，发送关闭维护命令并归还资产引用；全部完成后才销毁系统并完成退休回执。
 析构不再申请任务资格，RenderSystem 不通过共享状态跨越系统寿命。
 
-有限 EditorProject 关闭操作持有 Context，并等待原 lease 的 InstanceRetirement 完成；应用只继续驱动
+有限 EditorProject 关闭操作持有 Context，并等待原 lease 的 SceneCloseReceipt 完成；应用只继续驱动
 实际 Scene/Frame/Execution 安全点，不查询关闭项目列表。Context 在退休完成后关闭业务 TaskScope、
 撤销文件读取入口并清偿实际借用。没有 Scene 借用的候选可立即销毁，独立任务继续拥有自己的输入/代码。读取结果的输入寿命由有限 Sender 和 ExecutionRuntime
 覆盖，不为每次文件范围读取建立 TaskRecord。UI Scene 仅在释放 Response 成功后清空对应句柄；失败不是 settled。
@@ -606,13 +594,13 @@ join Producer 后才把缺失终态结为 Unknown，不能以关闭意图提前�
 应用每轮仅调用一次 RenderExecution::beginFrame(draw)；无绘制/维护需求或暂无可复用输入时返回空借用。
 维护期间新产生的帧内请求保留到下一轮准入，frameReady() 结合真实容量和需求决定是否立即继续；
 不在同一轮第二次取帧，也不丢掉无帧维护中新到的工作。
-submitFrame 接手提交、失败诊断和实际回复后的回收。LuxEngine 不再保存待完成帧计数，Scene 继续通过
+submitFrame 接手提交、失败诊断和实际回复后的回收。EditorApplication 不再保存待完成帧计数，Scene 继续通过
 Main Requester 的 buildingFrame 在同一安全段追加数据。直接使用 Requester 的 SDK 消费者保留显式完成/释放合同。
 
-LuxEngine::Impl 只持有已完整构造的必需成员，启动失败回滚留在工厂局部。旧 ApplicationResources 聚合
+EditorApplication::Impl 只持有已完整构造的必需成员，启动失败回滚留在工厂局部。旧 ApplicationResources 聚合
 已删除；EditorProject 保有其 Context 和 Scene 关闭责任，不把裸 Context 交回应用后每帧猜测服务状态。
-`advanceClose()` 与普通帧共用已有完成/维护通路，`run()` 与析构调用相同的关闭推进，不在主循环里
-嵌套一套关机事件泵。驱动返回 RUNNING / WAITING / STOPPED，等待前核对原有 wake epoch，删除
+`RenderExecution::closeAsync()` 复用普通安全点的回复消费与 Main continuation；内部关闭推进不再公开。
+应用等待 Scene 真实退休及协议线程 join，析构仅释放已清偿设施，不嵌套关机事件泵。驱动返回 RUNNING / WAITING / STOPPED，等待前核对原有 wake epoch，删除
 hasImmediateWork 的重复呈现查询。Headless Scene 的真实时钟继续由 SceneRuntime 的现有 Timer 唤醒。
 
 Main 完整帧没有 1024 条请求上限，也不为 SubmitFrame 预留一个关联槽。仅在下一帧开始处检查
@@ -623,8 +611,8 @@ Main 完整帧没有 1024 条请求上限，也不为 SubmitFrame 预留一个�
 普通用户链接 `lux::engine::function::render`，使用能力、输入、资源句柄和 Command 数据。
 作者链接 `render_extensions`，取得 Feature/Storage 声明、同步/异步 Handler Concept、Graph 和设备接缝；
 这个 INTERFACE target 没有第二份运行库。内置 Feature 和 Storage 实现不安装，普通 Engine/Editor 不包含作者头。
-ListCapabilities/InstallCapabilities 取代普通 Feature/Storage 发现与准备；CreateEffect 以能力输入构建，
-Graph 作者的 CreateGraphEffect 仍通过同一个编译和采用路径。
+ListCapabilities 查询能力及已注册实现；CreateEffect 接收能力实现选择，由 Render 内部展开 Feature/Storage 准备依赖并编译。
+Graph 作者在能力实现内部构图；不再提供绕过能力准备合同的 CreateGraphEffect 命令。
 
 Scene 的配置保存能力和实现的稳定名称/版本，输入生产者在冷态核对公开 payload 合同。运行期 ID 不持久化。
 EditorComposition 只在装配期登记 ComponentEditor 与 SceneConfigurationEditor 函数，Context 发布稳定借用。
@@ -681,12 +669,12 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
 ## 13. 实际接入接口
 
 - 应用启动以 `RenderExecution::create(config, execution)` 组合 Server/Main/Asset；
-  Editor 的 `LuxEngine::rendering()` 与 `renderAssets()` 借用同一设施。
-- EditorComposition 的 ContextExtensions 发布这两个现存对象；它们不变成 Context 的第二份 Owner。
+  Editor 的 `EditorApplication::rendering()` 与 `renderAssets()` 借用同一设施。
+- EditorComposition 的 EditorFacilities 发布这两个现存对象；它们不变成 Context 的第二份 Owner。
   `EditorContext::prepareAssetReads()` 提供项目 VFS 端点，使用同一 ExecutionRuntime 的阻塞资源。
   RenderSystemDependencies 的 source 显式传入此端点，RenderAssets 每次 acquire 捕获它，
   不通过全局“当前项目”选择器路由。调用方用不同 asset_revision 区分来源代次。
-- CameraTargetsComponent 在 CameraMan 上保存 Target/Viewport 意图；RenderAssetInput 单独提供资产版本。二者均不拥有完整帧。
+- OffscreenTargetComponent 在普通相机实体上保存输出描述/Viewport 意图；RenderAssetInput 单独提供资产版本。二者均不拥有完整帧。
   Scene 在 Requester 正在构建的 carrier 中直接写 K 项变化；UI 使用同一 carrier，应用提交一次。
 - ProjectScenes 通过 EditorUiScene 建立 UI token 到 sampled Offscreen Target 的冷态关系。
   移除图像后等待该 token 的 removeTargetImage Sender，再移除原 Target；没有应用级图像邮箱。
@@ -714,7 +702,7 @@ stdexec 执行 Scope。读取端点接受 ExecutionRuntime 和可选项目停止
 
 应用循环执行完成领取、Object 通知、帧载体准入、UI 数据产生、Scene 推进与统一发布；项目/尺寸等
 采用由实际完成与变化触发。未取得载体时调用 MAINTENANCE，图形 Scene 继续采用/退休而不产生新
-呈现模拟步；不要求 FrameInput 的 Headless Scene 仍按自己的时钟推进，不受窗口状态限制。
+呈现模拟步；不要求 FrameStorage 的 Headless Scene 仍按自己的时钟推进，不受窗口状态限制。
 维护帧只清偿已有控制命令，不增加第二份领先帧计数。
 
 RenderSystem 直接拥有实际 Scene 关联，构造时借用 Requester、ExecutionRuntime、RenderAssets 和视图输入。
@@ -734,22 +722,27 @@ Surface 输出不能被其它实例采样，轮转只更新实际图像/View/Bar
 共享 Offscreen 输出更换仍更新跨实例依赖。UI 唯一图片列表由 DrawData::textures() 显式查询，
 正常捕获不再为了 UpdateStatistics 做额外排序；顶点/索引的一次冻结仍由完整帧载体保活。
 
-### CameraMan 与尺寸采用
+### 相机输出与尺寸采用
 
-CameraTargetsComponent 的输出项只保存借用 Target、实际回复的描述/epoch 与参数；RenderSystem 在私有
-RenderViewComponent 中拥有对应逻辑绑定的清偿责任，不再维护第二张活动观察表。组件不会序列化进作者世界。
+Camera/WorldTransform 是作者数据；OffscreenTargetComponent 是一个实体的唯一输出意图。
+RenderTargetComponent 保存实际 Target/尺寸/epoch，RenderViewComponent 保存 View/Attachment，
+二者不拥有 Effect。Reaction/Collector 由 Scene 级 RenderSystem 逆序拥有，没有局部 Scope。
+CameraCollector 直接读取当前参数和实际尺寸，不保存第二份 adopted 参数。
 
-Resize 成功暂停目标。Client 用回复尺寸生成下一完整帧的相机/UI 数据，并在同一帧中按该 epoch 启用目标。
-旧帧的启用请求因 epoch 不匹配而拒绝，沿 FrameCompletion 的既有重同步处理，不增加帧队列。
-CPU 回复不表示新图像已有像素；producer→consumer 的实际 Graph 依赖保证 UI 首次采样发生在生产之后。
+OffscreenTargetReaction 采用成功后更新影子组件；CameraCollector 使用实际尺寸生成下一帧数据。
+旧 epoch 不能重新激活过期输出。Resize 复用 View/Attachment/Effect，最小化保留旧图像。
+CPU 回复不表示已有像素；真实 producer→consumer Graph 依赖决定 UI 首次采样顺序。
+
+关闭由现有参与者声明 UI 撤采样先于 View，再先于 Target；候选/退出失败必须保留真实句柄。
+普通 Scene 根停止不替代已接受 IPC、Producer 尾栈或唯一 cleanup_scope_ 的 GPU 清偿。
 
 ### 响应式接线
 
-运行中的 LuxEngine::project() 是已加载项目引用。初次选择在未发布的启动过程完成，复用同一窗口、
+运行中的 EditorApplication::project() 是已加载项目引用。初次选择在未发布的启动过程完成，复用同一窗口、
 ExecutionRuntime、RenderExecution 和 UI Scene；CloseProjectRequest 结束会话。窗口 metrics、
 ProjectAssets 几何结果、Camera 选择变化与 UI 静态刷新在各自实际变化点交付。ProjectScenes 使用
 SceneRuntime::editInstanceAsync 在安全点采用，不能把 whenEditable 通知误作跨回调的编辑许可。
 
-EditorUiScene 负责帧内 UI 绘制数据与单项采样关系完成；LuxEngine 不再有 captureUi、setUiImages、
+EditorUiScene 负责帧内 UI 绘制数据与单项采样关系完成；EditorApplication 不再有 captureUi、setUiImages、
 uiImagesApplied 或待项目变化邮箱。正常循环不轮询 ProjectScenes/RenderAssets 的业务进度。
 RenderSystem 的活动模拟、GPU 完成推进、输入取消和真正的 Scene 退休仍由已有执行阶段处理。

@@ -33,7 +33,7 @@ Root 不知道 Project、Session 或业务分组；应用只保存自己的非�
 
 私有 detail::Context 保存 ImGuiContext、字体/主题、输入积累和 EventId 对照，并执行后端构帧及捕获。
 Root 保存窗口、焦点、捕获、模态、停靠和内容树编排，不公开 ImGui ABI。
-update() 只维护；update(FrameInfo, DrawData&, optional<Capture>) 执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
+update() 只维护；update(FrameInfo, DrawView&, optional<Capture>) 执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
 回调不跨帧保存，Root 不认识 Renderer。空输出时仍维护和处理失焦，不重放控件交互。隐藏窗口仍维护。
 父先子后遍历 Pane→Element 子链，没有全局 Element 登记或逐帧目标快照。
 
@@ -58,9 +58,9 @@ Button、Label、TextEdit、CheckBox、NumericEdit、Choice 是 Element。setVal
 用户交互报告 EditResult，finishEdit 支持无新帧提交/取消，文本 Undo 优先由控件处理。
 Pane 没有 draw/drawContent 覆写口；closeRequested 只表达意图，不自动隐藏或销毁。
 
-## DrawData、资源和菜单
+## DrawView、资源和菜单
 
-DrawData 拥有顶点、索引、命令和图像 ID，复用缓冲，不传 CPU Context/Pane 借用到渲染线程。
+DrawView 拥有顶点、索引、命令和图像 ID，复用缓冲，不传 CPU Context/Pane 借用到渲染线程。
 字体 atlas 是拥有型像素副本。ImageElement 只显示非拥有 TextureHandle，不读资产或 retain/release GPU。
 业务 owner 和发布 owner 分别保证资源需求与已捕获帧使用责任，退休仍由原渲染链处理。
 

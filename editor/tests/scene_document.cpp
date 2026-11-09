@@ -1,12 +1,13 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include "support/ContextFixture.hpp"
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
-#include <lux/engine/simulation/ecs/HierarchySchema.hpp>
-#include <lux/engine/simulation/ecs/Parent.hpp>
-#include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/ecs/HierarchySchema.hpp>
+#include <lux/engine/ecs/Parent.hpp>
+#include <lux/engine/ecs/Transform.hpp>
+#include <lux/engine/ecs/TransformSchema.hpp>
 
 #include <cassert>
 #include <chrono>
@@ -14,7 +15,7 @@
 
 using namespace lux;
 using namespace lux::editor;
-namespace ecs = simulation::ecs;
+namespace ecs = ecs;
 
 namespace
 {
@@ -25,13 +26,13 @@ namespace
     }
 
     template <class T>
-    SceneComponentData encode(
+    scene::SceneComponentData encode(
         const ecs::ComponentSchemaSet& schemas,
         const ecs::WorldEntityMap& identities,
         const T& value
     )
     {
-        const auto& schema = *schemas.find(cxx::typeToken<T>());
+        const auto& schema = *schemas.find(cxx::make_basic_type_info<T>());
         auto captured = schema.capture_value(&value, schema.code_lifetime);
         return {schema.id, schema.version, take(captured.encode(identities, 4096))};
     }
@@ -60,7 +61,8 @@ namespace
 int main()
 {
     static_cast<void>(object::ObjectRuntime::instance());
-    auto engine = take(engine::EngineContext::create({2, 64, {64}}, 64));
+    auto engine = take(engine::Engine::create({2, 64, {64}}, 64));
+    cxx::scope_exit close_engine([&]() noexcept { assert(engine->close()); });
     uuids::uuid_name_generator ids{*uuids::uuid::from_string("861ca828-f86d-437a-b73d-de88a164bac4")};
     ProjectManifest manifest{1, ids("project"), "Author document"};
     auto context = take(fixture::createContext(
@@ -71,7 +73,7 @@ int main()
         {
             return composition.registerComponentEditor(
                 {{},
-                 cxx::typeToken<ecs::Transform3D>(),
+                 cxx::make_basic_type_info<ecs::Transform3D>(),
                  +[](void* value) noexcept { static_cast<ecs::Transform3D*>(value)->translation.x() += 3; }}
             );
         }
@@ -109,19 +111,18 @@ int main()
     scene::WorldLoadingServices services{source, context->tasks()};
     services.initial_partitions = package.partitions;
     auto provider =
-        scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("loading", "lux.world.loading", services);
+        scene::makeSceneDependency<scene::WorldLoadingServices>("loading", "lux.world.loading", services);
     const simulation::SimulationSystemRegistry simulation_systems;
     auto& runtime = engine->sceneRuntime();
-    auto lease = take(runtime.builder()
-                          .setDescription({package.scene, &package.scene->data()})
-                          .setWorld(world)
-                          .setSimulation({package.simulation, &package.simulation->data()})
-                          .setRegistrations(schemas, simulation_systems, std::span(&loading, 1))
-                          .setProviders(std::span(&provider, 1))
-                          .build());
-    const auto instance = take(context->adoptScene(std::move(lease)));
+    auto builder = runtime.builder();
+    builder.setDescription({package.scene, &package.scene->data()})
+        .setWorld(world)
+        .setSimulation({package.simulation, &package.simulation->data()})
+        .setRegistrations(schemas, simulation_systems, std::span(&loading, 1))
+        .setProviders(std::span(&provider, 1));
+    const auto instance = take(context->createScene(builder));
     assert(runtime.pauseSimulation(instance));
-    auto owned = std::make_unique<SceneDocument>(runtime, instance, schemas, package);
+    auto owned = take(SceneDocument::create(runtime, instance, schemas, package));
     auto* document = owned.get();
     assert(!document->dirty());
     auto& registry = take(runtime.borrowInstance(instance)).get();
@@ -222,7 +223,7 @@ int main()
     {
         assert(std::chrono::steady_clock::now() < deadline);
         assert(engine->execution().dispatchMainCompletions());
-        assert(runtime.driveFrame(scene::ESceneDriveMode::MAINTENANCE));
+        assert(runtime.driveFrame(scene::ESceneDriveMode::ADVANCE));
     }
     owned.reset();
     assert(runtime.instanceCount() == 0);
@@ -230,7 +231,7 @@ int main()
     while (!context->finishClose())
     {
         assert(engine->execution().dispatchMainCompletions());
-        assert(runtime.driveFrame(scene::ESceneDriveMode::MAINTENANCE));
+        assert(runtime.driveFrame(scene::ESceneDriveMode::ADVANCE));
         assert(std::chrono::steady_clock::now() < deadline);
     }
     context.reset();

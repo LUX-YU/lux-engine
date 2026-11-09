@@ -76,6 +76,22 @@ namespace lux::ui
         {
             return cxx::unexpected(EDockError::DISABLED);
         }
+        auto prepared = prepareDockTree(std::move(tree));
+        if (!prepared)
+        {
+            return cxx::unexpected(prepared.error());
+        }
+        impl_->dock_state.pending = std::move(*prepared);
+        return {};
+    }
+
+    cxx::expected<std::unique_ptr<DockData>, EDockError> Root::prepareDockTree(
+        DockTree tree,
+        std::span<Pane* const> removed,
+        std::span<Pane* const> added,
+        std::span<const AddedPanePlacement> placement
+    ) noexcept
+    {
         auto invalid = [] { return cxx::unexpected(EDockError::INVALID_DATA); };
         if (tree.nodes.size() > impl_->pane_capacity || tree.surfaces.size() > impl_->pane_capacity)
         {
@@ -88,6 +104,7 @@ namespace lux::ui
         std::vector<std::uint32_t> pending;
         pending.reserve(tree.nodes.size());
         std::unordered_set<Pane*> panes;
+        const std::unordered_set<Pane*> removed_panes(removed.begin(), removed.end());
         unsigned main_surfaces{};
         for (const auto& surface : tree.surfaces)
         {
@@ -120,7 +137,8 @@ namespace lux::ui
                     for (const auto handle : node.panes)
                     {
                         auto* pane = resolvePane(handle);
-                        if (!pane || pane->root_ != this || pane->modal_ || !panes.insert(pane).second)
+                        if (!pane || pane->root_ != this || pane->modal_ || removed_panes.contains(pane) ||
+                            !panes.insert(pane).second)
                         {
                             return invalid();
                         }
@@ -144,20 +162,36 @@ namespace lux::ui
         {
             return invalid();
         }
+        std::vector<std::size_t> additions(tree.nodes.size());
+        for (const auto& item : placement)
+        {
+            const bool valid_indices = item.node < tree.nodes.size() && item.added_pane < added.size();
+            if (!valid_indices)
+            {
+                return invalid();
+            }
+            auto* pane = added[item.added_pane];
+            const bool invalid_pane =
+                tree.nodes[item.node].split != EDockSplit::LEAF || pane->modal_ || !panes.insert(pane).second;
+            if (invalid_pane)
+            {
+                return invalid();
+            }
+            ++additions[item.node];
+        }
         prepared->nodes.reserve(tree.nodes.size());
         for (const auto& node : tree.nodes)
         {
             auto& retained =
                 prepared->nodes.emplace_back(DockData::Node{node.split, node.first, node.second, node.ratio});
-            retained.panes.reserve(node.panes.size());
+            retained.panes.reserve(node.panes.size() + additions[prepared->nodes.size() - 1]);
             for (const auto handle : node.panes)
             {
                 retained.panes.push_back(handle.pane_);
             }
         }
         prepared->surfaces = std::move(tree.surfaces);
-        impl_->dock_state.pending = std::move(prepared);
-        return {};
+        return prepared;
     }
 
     DockTree Root::captureDockTree() const

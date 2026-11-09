@@ -2,7 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/simulation/HookPoint.hpp>
-#include <lux/engine/simulation/ecs/Entity.hpp>
+#include <lux/engine/ecs/Entity.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -264,9 +264,54 @@ namespace lux::simulation
             return lanes_.size() + (capacity_.owner_occurrences != 0U ? 1U : 0U);
         }
 
-        [[nodiscard]] bool scriptConsumptionAllowed() const noexcept
+        // One consumer of the sealed batch. It borrows this channel and disconnects before
+        // destruction; both registration operations reject an active dispatch or writer.
+        [[nodiscard]] EEndpointMutationError connectConsumer(void* context, void (*consume)(void*) noexcept) noexcept
         {
-            return !composition_ || script_consumption_;
+            const auto busy = mutationError();
+            if (busy != EEndpointMutationError::NONE)
+            {
+                return busy;
+            }
+            if (!context || !consume)
+            {
+                return EEndpointMutationError::INVALID_CALLBACK;
+            }
+            if (consumer_)
+            {
+                return EEndpointMutationError::CAPACITY_EXCEEDED;
+            }
+            consumer_context_ = context;
+            consumer_ = consume;
+            return EEndpointMutationError::NONE;
+        }
+
+        [[nodiscard]] EEndpointMutationError disconnectConsumer(void* context) noexcept
+        {
+            const auto busy = mutationError();
+            if (busy != EEndpointMutationError::NONE)
+            {
+                return busy;
+            }
+            if (!consumer_ || consumer_context_ != context)
+            {
+                return EEndpointMutationError::INVALID_TOKEN;
+            }
+            consumer_ = nullptr;
+            consumer_context_ = nullptr;
+            return EEndpointMutationError::NONE;
+        }
+
+        // Standalone channels can be sealed/dispatched explicitly. Composed channels are
+        // dispatched exclusively by their qualified task-graph stage.
+        [[nodiscard]] bool dispatch() noexcept
+        {
+            if (composition_ || !sealed_ || consuming_)
+            {
+                return false;
+            }
+            dispatchConsumer();
+            return true;
         }
 
         [[nodiscard]] std::span<const Occurrence> lane(std::size_t index) const noexcept
@@ -400,7 +445,19 @@ namespace lux::simulation
         const HookChannelCapacity capacity_;
         bool sealed_{};
         const OwnedCopy copy_;
-        bool script_consumption_{};
+        void* consumer_context_{};
+        void (*consumer_)(void*) noexcept = nullptr;
+        bool consuming_{};
+
+        void dispatchConsumer() noexcept
+        {
+            if (consumer_ && !consuming_)
+            {
+                consuming_ = true;
+                consumer_(consumer_context_);
+                consuming_ = false;
+            }
+        }
         std::optional<Composition> composition_;
         friend class SimulationSystemInstaller;
     };

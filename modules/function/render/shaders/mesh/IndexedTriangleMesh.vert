@@ -19,10 +19,10 @@ layout(location=3) in vec4 tangent;
 layout(location=5) out vec4 vWorldTangent;
 layout(location=6) out vec3 vWorldBitangent;
 #endif
-layout(location=4) out flat uint vMatIndex;
+layout(location=4) out flat uvec2 vMaterial;
 #endif
 struct Transform { mat4 model; };
-struct Property { uint mesh_index; uint material_index; uint section_index; };
+struct Property { uint mesh_index; uint material_buffer; uint material_record; uint section_index; uint render_flags; };
 struct Word { uint value; };
 #ifdef PAGED_INSTANCES
 struct Address { uvec2 value; };
@@ -43,7 +43,7 @@ layout(set=2,binding=6,std430) readonly buffer Members { Word words[]; } members
 layout(push_constant) uniform Camera { mat4 view; mat4 projection; } camera;
 void main()
 {
-    uint slot = members.words[5 + gl_InstanceIndex].value;
+    uint slot = members.words[5u + uint(gl_InstanceIndex)].value;
 #ifdef PAGED_INSTANCES
     uint root = slot >> 23;
     uint leaf = (slot >> 14) & 511;
@@ -64,7 +64,13 @@ void main()
 #endif
     // The all-candidate path uses the same two raster orientations without a CPU transform scan.
     // GPU visibility already supplies a matching stream; discarded instances produce no primitives.
-    gl_Position = present != 0 && selected ? camera.projection * camera.view * model * vec4(position, 1)
+#ifdef SHADOW_PASS
+    const uint required = 3u;
+#else
+    const uint required = 1u;
+#endif
+    bool permitted = (property.render_flags & required) == required;
+    gl_Position = present != 0 && selected && permitted ? camera.projection * camera.view * model * vec4(position, 1)
                                          : vec4(2, 2, 2, 1);
 #ifndef DEPTH_ONLY
 #ifndef VERTEX_NO_UV
@@ -80,12 +86,23 @@ void main()
     vWorldNormal = n;
 #ifdef VERTEX_TANGENTS
     vec3 t = linear * tangent.xyz;
-    t = normalize(t - n * dot(n, t));
-    float tangent_orientation = tangent.w * handedness;
+    float tangent_length_squared = dot(t, t);
+    t -= n * dot(n, t);
+    if (dot(t, t) <= tangent_length_squared * 1e-12)
+    {
+        // Missing/degenerate UV tangents use a stable local basis, transformed like an ordinary tangent.
+        // Relative tolerance catches cancellation residue from nearly parallel finite vectors.
+        // Non-finite transforms remain invalid; this fallback only handles finite zero-length tangents.
+        vec3 axis = abs(normal.z) < 0.9 ? vec3(0, 0, 1) : vec3(0, 1, 0);
+        t = linear * cross(axis, normal);
+        t -= n * dot(n, t);
+    }
+    t = normalize(t);
+    float tangent_orientation = (tangent.w == 0 ? 1 : tangent.w) * handedness;
     vWorldTangent = vec4(t, tangent_orientation);
     vWorldBitangent = cross(n, t) * tangent_orientation;
 #endif
 #endif
-    vMatIndex = property.material_index;
+    vMaterial = uvec2(property.material_buffer, property.material_record);
 #endif
 }

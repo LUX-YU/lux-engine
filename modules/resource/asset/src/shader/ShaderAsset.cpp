@@ -127,25 +127,35 @@ namespace lux::asset
         const AssetEncodeLimits& limits
     ) noexcept
     {
-        if (asset.id().isNull() || asset.type() != ShaderAsset::asset_type || !validSpirv(asset.data().shader))
+        return encode(asset.info(), asset.data(), asset.auxiliaryPayloads(), limits);
+    }
+
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<ShaderAsset>::encode(
+        const AssetInfo& asset_info,
+        const ShaderAsset::data_type& data,
+        std::span<const AssetAuxiliaryPayload> auxiliary,
+        const AssetEncodeLimits& limits
+    ) noexcept
+    {
+        if (asset_info.id.isNull() || asset_info.type != ShaderAsset::asset_type || !validSpirv(data.shader))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         try
         {
-            const auto information = lux::rdesc::ShaderInfo::serialize(asset.data().info);
+            const auto information = lux::rdesc::ShaderInfo::serialize(data.info);
             if (information.empty())
                 return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_PAYLOAD));
             const auto shader = std::span<const std::byte>{
-                static_cast<const std::byte*>(asset.data().shader.data()),
-                asset.data().shader.size()
+                static_cast<const std::byte*>(data.shader.data()),
+                data.shader.size()
             };
             return detail::encodeCookedAssetImage(
                 detail::CookedAssetWriteRequest{
                     ShaderAsset::primary_magic,
                     ShaderAsset::legacy_type_tag,
-                    asset.info(),
+                    asset_info,
                     information,
                     shader,
-                    asset.auxiliaryPayloads()
+                    auxiliary
                 },
                 limits
             );

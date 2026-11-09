@@ -343,6 +343,21 @@ namespace lux::asset
         }
     }
 
+    cxx::expected<ProviderEntry, EAssetStorageError> PakAssetProvider::describe(AssetId id) const
+    {
+        const auto found = d_->findEntry(id);
+        if (!found)
+        {
+            return cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
+        }
+        if (!*found)
+        {
+            return cxx::unexpected(EAssetStorageError::NOT_FOUND);
+        }
+        const auto& entry = **found;
+        return ProviderEntry{entry.id, entry.asset_magic, entry.vpath, entry.tombstone()};
+    }
+
     std::optional<std::string> PakAssetProvider::pathOf(const AssetId& id) const
     {
         const auto found = d_->findEntry(id);

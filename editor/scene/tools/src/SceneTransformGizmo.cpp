@@ -26,7 +26,7 @@ namespace lux::editor
     void SceneTransformGizmo::prepare(
         world::WorldObjectId object,
         std::uint64_t revision,
-        const simulation::ecs::Transform3D& local,
+        const ecs::Transform3D& local,
         const Eigen::Affine3d& world,
         const Eigen::Matrix3d& inverse_parent,
         const Eigen::Matrix4d& projection,

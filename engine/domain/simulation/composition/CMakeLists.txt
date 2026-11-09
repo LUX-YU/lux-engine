@@ -11,6 +11,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_composition
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Simulation.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TickGroup.cpp
 )
 add_library(lux::engine::simulation::composition ALIAS simulation_composition)
 
@@ -26,20 +27,11 @@ target_compile_definitions(simulation_composition PRIVATE LUX_ENGINE_SIMULATION_
 target_link_libraries(
     simulation_composition
     PUBLIC
-        lux::engine::simulation::description
         lux::engine::simulation::system
-        lux::engine::simulation::ecs::core
-        lux::engine::simulation::ecs::task
-        lux::engine::core::task
-        lux::engine::simulation::simulation_scripting_core
 )
 component_add_transitive_commands(
     simulation_composition
-    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core ecs_task)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS task)"
-    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_scripting_core)"
     "add_library(lux::engine::simulation::composition INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::simulation::composition PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_composition)"
 )

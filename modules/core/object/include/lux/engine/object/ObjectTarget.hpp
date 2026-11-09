@@ -12,13 +12,13 @@ namespace lux::object
     enum class EObjectPostStatus : std::uint8_t
     {
         POSTED,
-        CLOSED,
-        FULL
+        CLOSED
     };
 
     class ObjectTarget;
     // POSTED guarantees one owner-thread invocation: a borrowed live target, or nullptr after revocation.
-    // Rejection does not invoke the callable. No waiting/retry; shutdown cancels accepted envelopes on owner.
+    // Rejection does not invoke the callable. Shutdown completes accepted callbacks with nullptr
+    // on the application thread; callers do not wait or retry inside publication.
     // A plugin supplies its code lifetime through callable destruction, including rejected delivery.
     [[nodiscard]] LUX_CORE_PUBLIC EObjectPostStatus post(
         const ObjectTarget& target,

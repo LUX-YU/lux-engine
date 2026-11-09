@@ -2,7 +2,7 @@ add_component(
     STATIC
     COMPONENT_NAME platform_file
     NAMESPACE lux::engine::platform
-    SOURCE_FILES src/FileIo.cpp src/AtomicFileWriter.cpp
+    SOURCE_FILES src/FileIo.cpp src/AtomicFileWriter.cpp src/FileHandle.cpp
 )
 
 component_include_directories(

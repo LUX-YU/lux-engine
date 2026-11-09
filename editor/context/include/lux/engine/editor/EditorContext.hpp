@@ -1,32 +1,33 @@
 #pragma once
 #include <exec/task.hpp>
-#include <lux/engine/ContextExtensions.hpp>
+#include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/editor/EditorFacilities.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/editor/ValueEditors.hpp>
-#include <lux/engine/process/asset_loading/AssetRead.hpp>
+#include <lux/engine/process/assets/AssetRepository.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
-#include <lux/engine/scene/SceneInstanceLease.hpp>
+#include <lux/engine/scene/SceneRuntime.hpp>
 
-namespace lux::process::asset_loading
+namespace lux::process::assets
 {
-    class VfsAssetReadEndpoint;
+    class AssetRepository;
 }
 
 namespace lux::engine
 {
-    class EngineContext;
+    class Engine;
 }
 
-namespace lux::project
+namespace lux::plugins
 {
     class PluginManager;
     struct SceneRegistrations;
-} // namespace lux::project
+} // namespace lux::plugins
 
 namespace lux::editor
 {
@@ -37,24 +38,28 @@ namespace lux::editor
     {
         struct PreparedProject;
         [[nodiscard]] FrameworkResult<std::unique_ptr<EditorContext>>
-        createEditorContext(engine::EngineContext&, PreparedProject, EditorComposition&&) noexcept;
+        createEditorContext(engine::Engine&, PreparedProject, EditorComposition&&) noexcept;
     } // namespace detail
 
-    class EditorContext final
+    class EditorContext final : public object::LuxObject
     {
     public:
+        // A fully initialized Scene has entered this project's membership. Engine Scene creation
+        // alone does not establish that relationship and must not drive project-scoped subscriptions.
+        object::TSignal<scene::SceneInstanceId> sceneAdded{*this};
+
         ~EditorContext() noexcept;
         EditorContext(const EditorContext&) = delete;
         EditorContext& operator=(const EditorContext&) = delete;
         EditorContext(EditorContext&&) = delete;
         EditorContext& operator=(EditorContext&&) = delete;
 
-        [[nodiscard]] engine::EngineContext& engine() noexcept
+        [[nodiscard]] engine::Engine& engine() noexcept
         {
             return engine_;
         }
 
-        [[nodiscard]] const engine::EngineContext& engine() const noexcept
+        [[nodiscard]] const engine::Engine& engine() const noexcept
         {
             return engine_;
         }
@@ -77,12 +82,12 @@ namespace lux::editor
             std::optional<asset::AssetId> startup
         ) noexcept;
 
-        [[nodiscard]] const project::PluginManager& plugins() const noexcept
+        [[nodiscard]] const plugins::PluginManager& plugins() const noexcept
         {
             return *plugins_;
         }
 
-        [[nodiscard]] const project::SceneRegistrations& sceneRegistrations() const noexcept
+        [[nodiscard]] const plugins::SceneRegistrations& sceneRegistrations() const noexcept
         {
             return *registrations_;
         }
@@ -112,34 +117,42 @@ namespace lux::editor
             return scene_profiles_;
         }
 
-        [[nodiscard]] engine::ContextExtensions& extensions() noexcept
+        [[nodiscard]] EditorFacilities& extensions() noexcept
         {
             return extensions_;
         }
 
-        [[nodiscard]] const engine::ContextExtensions& extensions() const noexcept
+        [[nodiscard]] const EditorFacilities& extensions() const noexcept
         {
             return extensions_;
         }
 
         [[nodiscard]] execution::TaskScope& tasks() noexcept;
         // Immutable function declarations; returned borrows remain valid through this Context's pane lifetime.
-        [[nodiscard]] const ComponentEditor* componentEditor(cxx::TypeToken) const noexcept;
-        [[nodiscard]] const SceneConfigurationEditor* sceneConfigurationEditor(cxx::TypeToken) const noexcept;
-        // Main-only lazy project VFS endpoint. IO uses the Engine's bounded blocking resource.
-        // Copied ports close with this Context; accepted reads retain their source snapshot and code.
-        [[nodiscard]] FrameworkResult<process::asset_loading::AssetReadPort> prepareAssetReads() noexcept;
-        // Adopt a Scene built with this project's service borrows. The existing SceneRuntime owns
-        // its systems; this Context owns only the retirement responsibility. No second Scene table.
-        [[nodiscard]] FrameworkResult<scene::SceneInstanceId> adoptScene(scene::SceneInstanceLease&&) noexcept;
+        [[nodiscard]] const ComponentEditor* componentEditor(cxx::type_info) const noexcept;
+        [[nodiscard]] const SceneConfigurationEditor* sceneConfigurationEditor(cxx::type_info) const noexcept;
+        // Construct after project mounts are published. Consumers borrow this fixed-source repository.
+        [[nodiscard]] FrameworkResult<process::assets::AssetRepository*> prepareAssets() noexcept;
+        // Create and associate at one uninterrupted publication point. The Context
+        // records membership IDs only; Runtime uniquely owns instances and close operations.
+        [[nodiscard]] FrameworkResult<scene::SceneInstanceId> createScene(scene::SceneRuntime::Builder&) noexcept;
+        [[nodiscard]] exec::task<FrameworkResult<scene::SceneInstanceId>>
+        createSceneAsync(scene::SceneRuntime::Builder&) noexcept;
+
+        [[nodiscard]] std::span<const scene::SceneInstanceId> scenes() const noexcept
+        {
+            return scenes_;
+        }
+
         // Revoke this Context's adopted instance, retaining the receipt through project close.
-        [[nodiscard]] FrameworkResult<scene::InstanceRetirement> retireScene(scene::SceneInstanceId) noexcept;
+        [[nodiscard]] FrameworkResult<scene::SceneCloseReceipt> retireScene(scene::SceneInstanceId) noexcept;
         // Main-only, nonblocking: revoke Scene production first. Continue SceneRuntime driving and
         // maintenance frames, then call finishClose until providers can be destroyed.
         void close() noexcept;
         [[nodiscard]] bool finishClose() noexcept;
         // Await outside this Context's TaskScope. The caller retains the Context until completion.
-        [[nodiscard]] exec::task<void> closeAsync() noexcept;
+        [[nodiscard]] exec::task<FrameworkResult<void>> closeAsync() noexcept;
+        [[nodiscard]] exec::task<FrameworkResult<void>> recoverClose() noexcept;
 
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
@@ -147,32 +160,34 @@ namespace lux::editor
         }
 
     private:
-        friend FrameworkResult<std::unique_ptr<EditorContext>> detail::
-            createEditorContext(engine::EngineContext&, detail::PreparedProject, EditorComposition&&) noexcept;
+        friend FrameworkResult<std::unique_ptr<EditorContext>>
+        detail::createEditorContext(engine::Engine&, detail::PreparedProject, EditorComposition&&) noexcept;
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorContext>>
-        create(engine::EngineContext&, detail::PreparedProject, EditorComposition&&) noexcept;
-        EditorContext(engine::EngineContext&, detail::PreparedProject, EditorComposition&&) noexcept;
-        engine::EngineContext& engine_;
+        create(engine::Engine&, detail::PreparedProject, EditorComposition&&) noexcept;
+        EditorContext(engine::Engine&, detail::PreparedProject, EditorComposition&&) noexcept;
+        [[nodiscard]] FrameworkResult<void> retireScenes() noexcept;
+        engine::Engine& engine_;
         ProjectDescription project_;
         ProjectManifest manifest_;
-        std::unique_ptr<project::PluginManager> plugins_;
-        std::shared_ptr<const project::SceneRegistrations> registrations_;
+        std::unique_ptr<plugins::PluginManager> plugins_;
+        std::shared_ptr<const plugins::SceneRegistrations> registrations_;
         asset::AssetVfs assets_;
         EditorUiRegistry ui_;
         SceneProfileRegistry scene_profiles_;
         std::vector<ComponentEditor> component_editors_;
         std::vector<SceneConfigurationEditor> scene_configuration_editors_;
-        engine::ContextExtensions extensions_;
+        EditorFacilities extensions_;
         // Instances die before factory captures, project paths, VFS and plugin registrations.
+        std::unique_ptr<process::assets::AssetRepository> loaded_assets_;
         EditorServices services_;
         // Destruction requests cancellation only; accepted tasks own their inputs and code.
         execution::TaskScope tasks_;
-        std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> asset_reads_;
-        std::vector<scene::SceneInstanceLease> scenes_;
-        std::vector<scene::InstanceRetirement> scene_retirements_;
+        std::vector<scene::SceneInstanceId> scenes_;
+        std::vector<scene::SceneCloseReceipt> scene_retirements_;
         enum class ECloseStage : std::uint8_t
         {
             OPEN,
+            SERVICES,
             SCENES,
             TASKS
         };

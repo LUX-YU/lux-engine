@@ -1,5 +1,3 @@
-add_subdirectory(identity)
 add_subdirectory(partition)
 add_subdirectory(description)
-add_subdirectory(storage)
-add_subdirectory(asset)
+add_subdirectory(composition)

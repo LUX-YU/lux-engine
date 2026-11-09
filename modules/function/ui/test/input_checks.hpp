@@ -60,7 +60,7 @@ namespace input_checks
         auto& modal = ui_test::makePane<Window>(root, "modal");
         modal.setModal(true);
         modal.setVisible(false);
-        ui::DrawData data;
+        ui::DrawView data;
         const auto turn = [&] { assert(root.update({{640, 480}, 0.016F}, data)); };
         for (int i = 0; i < 3; ++i)
         {

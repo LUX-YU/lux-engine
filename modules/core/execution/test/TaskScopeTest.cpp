@@ -23,7 +23,7 @@ namespace
             {"Monitored capacity", "test"},
             [&](TaskReporter) noexcept
             {
-                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                return stdexec::schedule(runtime->cpuScheduler()) | stdexec::then(
                                                                [&]() noexcept
                                                                {
                                                                    entered.release();
@@ -34,7 +34,7 @@ namespace
         ));
         entered.acquire();
         unsigned completed = 0;
-        assert(runtime->spawn(stdexec::just() | stdexec::then([&]() noexcept { ++completed; })));
+        assert(monitored.spawn(stdexec::just() | stdexec::then([&]() noexcept { ++completed; })));
         assert(completed == 1 && runtime->taskInfos().size() == 1);
         assert(
             runtime->spawn(stdexec::schedule(runtime->mainScheduler()) | stdexec::then([&]() noexcept { ++completed; }))
@@ -68,7 +68,7 @@ namespace
                      [&](TaskReporter reporter) noexcept
                  {
                      return stdexec::then(
-                         stdexec::schedule(runtime->cpu()),
+                         stdexec::schedule(runtime->cpuScheduler()),
                          [&, reporter, pin]() noexcept -> Value
                          {
                              entered.release();
@@ -81,7 +81,7 @@ namespace
                      );
                  },
                  consume_result =
-                     [&, pin](TTaskResult<int, EExecutionError>&& value) noexcept
+                     [&, pin](ExecutionResult<int, EExecutionError>&& value) noexcept
                  {
                      assert(std::this_thread::get_id() == owner_thread);
                      assert(value && *value == *pin);
@@ -89,7 +89,7 @@ namespace
                  }](lux::execution::TaskReporter reporter) mutable noexcept
                 {
                     auto ready = stdexec::continues_on(
-                        lux::execution::taskResult(make_work(reporter)),
+                        lux::execution::asResult(make_work(reporter)),
                         runtime->mainScheduler()
                     );
                     return stdexec::then(
@@ -167,7 +167,7 @@ namespace
                  [&](TaskReporter) noexcept
              {
                  return stdexec::then(
-                     stdexec::schedule(runtime->cpu()),
+                     stdexec::schedule(runtime->cpuScheduler()),
                      [&]() noexcept -> Value
                      {
                          entered.release();
@@ -177,7 +177,7 @@ namespace
                  );
              },
              consume_result =
-                 [&](TTaskResult<int, EExecutionError>&& value) noexcept
+                 [&](ExecutionResult<int, EExecutionError>&& value) noexcept
              {
                  assert(value && *value == 7);
                  delivered = true;
@@ -185,7 +185,7 @@ namespace
              }](lux::execution::TaskReporter reporter) mutable noexcept
             {
                 auto ready =
-                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime->mainScheduler());
+                    stdexec::continues_on(lux::execution::asResult(make_work(reporter)), runtime->mainScheduler());
                 return stdexec::then(
                     std::move(ready),
                     [consume_result = std::move(consume_result)](auto result) mutable noexcept
@@ -268,7 +268,7 @@ namespace
                 {},
                 [&](TaskReporter) noexcept
                 {
-                    return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                    return stdexec::schedule(runtime->cpuScheduler()) | stdexec::then(
                                                                    [&]() noexcept
                                                                    {
                                                                        entered.release();
@@ -329,7 +329,7 @@ namespace
             {},
             [&](TaskReporter) noexcept
             {
-                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                return stdexec::schedule(runtime->cpuScheduler()) | stdexec::then(
                                                                [&]() noexcept
                                                                {
                                                                    entered.release();
@@ -374,7 +374,7 @@ namespace
             {"Occupy task capacity", "test"},
             [&](TaskReporter) noexcept
             {
-                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                return stdexec::schedule(runtime->cpuScheduler()) | stdexec::then(
                                                                [&]() noexcept
                                                                {
                                                                    entered.release();
@@ -415,7 +415,7 @@ namespace
             {"Capacity remains occupied", "test"},
             [&](TaskReporter) noexcept
             {
-                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                return stdexec::schedule(runtime->cpuScheduler()) | stdexec::then(
                                                                [&]() noexcept
                                                                {
                                                                    entered.release();
@@ -456,7 +456,7 @@ namespace
                 {"Finite CPU work", "test"},
                 [&](TaskReporter) noexcept
                 {
-                    return stdexec::schedule(runtime->cpu()) |
+                    return stdexec::schedule(runtime->cpuScheduler()) |
                            stdexec::then([&]() noexcept { completed.fetch_add(1, std::memory_order_release); });
                 }
             );

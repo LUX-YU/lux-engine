@@ -1,0 +1,759 @@
+#include <algorithm>
+#include <limits>
+#include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/Shader.hpp>
+#include <map>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <spirv-tools/libspirv.h>
+
+namespace lux::render::detail
+{
+    RenderResult<nri::PipelineLayout*> createPipelineLayout(
+        nri::Device& device,
+        const nri::CoreInterface& core,
+        const PassBindings& program,
+        const EnabledDeviceFeatures& enabled,
+        const std::array<std::uint32_t, 3>& capacities,
+        std::uint32_t color_count
+    ) noexcept
+    {
+        const auto shared = DescriptorTable::layoutRanges(capacities, enabled.variable_descriptor_count);
+        const auto local = descriptorRanges(program.private_bindings);
+        std::vector<nri::DescriptorSetDesc> sets;
+        for (std::size_t kind = 0; kind < program.shared_sets.size(); ++kind)
+        {
+            const auto set = program.shared_sets[kind];
+            if (set == kGraphInvalidIndex) continue;
+            if (capacities[kind] == 0)
+            {
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
+            }
+            sets.push_back({set, &shared[kind], 1, nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET});
+        }
+        if (!local.empty())
+        {
+            sets.push_back({program.private_set, local.data(), static_cast<std::uint32_t>(local.size())});
+        }
+        const auto& limits = core.GetDeviceDesc(device);
+        if (sets.size() > limits.pipelineLayout.descriptorSetMaxNum)
+        {
+            return cxx::unexpected(
+                RenderError{kDeviceCapacity, {sets.size(), limits.pipelineLayout.descriptorSetMaxNum}}
+            );
+        }
+        // Sampler, uniform buffer, storage buffer, sampled image/texel, storage image/texel.
+        // The UAB limits include both UAB and ordinary sets; ordinary limits count only ordinary sets.
+        const auto ordinary_sets = std::array{
+            limits.descriptorSet.samplerMaxNum, limits.descriptorSet.constantBufferMaxNum,
+            limits.descriptorSet.storageBufferMaxNum, limits.descriptorSet.textureMaxNum,
+            limits.descriptorSet.storageTextureMaxNum
+        };
+        const auto indexed_sets = std::array{
+            limits.descriptorSet.updateAfterSet.samplerMaxNum, limits.descriptorSet.updateAfterSet.constantBufferMaxNum,
+            limits.descriptorSet.updateAfterSet.storageBufferMaxNum, limits.descriptorSet.updateAfterSet.textureMaxNum,
+            limits.descriptorSet.updateAfterSet.storageTextureMaxNum
+        };
+        const auto ordinary_stages = std::array{
+            limits.shaderStage.descriptorSamplerMaxNum, limits.shaderStage.descriptorConstantBufferMaxNum,
+            limits.shaderStage.descriptorStorageBufferMaxNum, limits.shaderStage.descriptorTextureMaxNum,
+            limits.shaderStage.descriptorStorageTextureMaxNum
+        };
+        const auto indexed_stages = std::array{
+            limits.shaderStage.updateAfterSet.descriptorSamplerMaxNum,
+            limits.shaderStage.updateAfterSet.descriptorConstantBufferMaxNum,
+            limits.shaderStage.updateAfterSet.descriptorStorageBufferMaxNum,
+            limits.shaderStage.updateAfterSet.descriptorTextureMaxNum,
+            limits.shaderStage.updateAfterSet.descriptorStorageTextureMaxNum
+        };
+        constexpr auto stages = std::array{
+            nri::StageBits::VERTEX_SHADER, nri::StageBits::FRAGMENT_SHADER, nri::StageBits::COMPUTE_SHADER
+        };
+        for (unsigned subset = 0; subset < 2; ++subset)
+        {
+            std::array<std::uint64_t, 5> totals{};
+            std::array<std::array<std::uint64_t, 5>, 3> per_stage{};
+            for (const auto& set : sets)
+            {
+                if (subset == 0 && (set.flags & nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET) != 0) continue;
+                for (const auto& range : std::span(set.ranges, set.rangeNum))
+                {
+                    const auto kind = range.descriptorType == nri::DescriptorType::SAMPLER ? 0u
+                        : range.descriptorType == nri::DescriptorType::CONSTANT_BUFFER ? 1u
+                        : range.descriptorType == nri::DescriptorType::STRUCTURED_BUFFER ||
+                          range.descriptorType == nri::DescriptorType::STORAGE_STRUCTURED_BUFFER ? 2u
+                        : range.descriptorType == nri::DescriptorType::TEXTURE ||
+                          range.descriptorType == nri::DescriptorType::BUFFER ? 3u : 4u;
+                    totals[kind] += range.descriptorNum;
+                    for (std::size_t stage = 0; stage < stages.size(); ++stage)
+                    {
+                        if ((range.shaderStages & stages[stage]) != 0) per_stage[stage][kind] += range.descriptorNum;
+                    }
+                }
+            }
+            for (std::size_t kind = 0; kind < totals.size(); ++kind)
+            {
+                const auto limit = subset == 0 ? ordinary_sets[kind]
+                    : std::max(ordinary_sets[kind], indexed_sets[kind]);
+                if (totals[kind] > limit)
+                {
+                    return cxx::unexpected(RenderError{kDeviceCapacity, {totals[kind], limit, kind}});
+                }
+            }
+            for (std::size_t stage = 0; stage < stages.size(); ++stage)
+            {
+                std::uint64_t resources = stage == 1 ? color_count : 0;
+                for (std::size_t kind = 0; kind < totals.size(); ++kind)
+                {
+                    const auto count = per_stage[stage][kind];
+                    const auto limit = subset == 0 ? ordinary_stages[kind]
+                        : std::max(ordinary_stages[kind], indexed_stages[kind]);
+                    if (count > limit)
+                    {
+                        return cxx::unexpected(RenderError{kDeviceCapacity, {count, limit, kind}});
+                    }
+                    if (kind != 0) resources += count;
+                }
+                const auto limit = subset == 0 ? limits.shaderStage.resourceMaxNum
+                    : std::max(limits.shaderStage.resourceMaxNum, limits.shaderStage.updateAfterSet.resourceMaxNum);
+                if (resources > limit)
+                {
+                    return cxx::unexpected(RenderError{kDeviceCapacity, {resources, limit, stage}});
+                }
+            }
+        }
+        const nri::RootConstantDesc parameters{0, program.parameter_bytes, program.parameter_stages};
+        nri::PipelineLayoutDesc description{};
+        description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
+        description.shaderStages =
+            nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+        description.descriptorSets = sets.data();
+        description.descriptorSetNum = static_cast<std::uint32_t>(sets.size());
+        description.rootConstants = program.parameter_bytes ? &parameters : nullptr;
+        description.rootConstantNum = unsigned(program.parameter_bytes != 0);
+        nri::PipelineLayout* layout = nullptr;
+        const auto created = core.CreatePipelineLayout(device, description, layout);
+        if (created != nri::Result::SUCCESS)
+        {
+            return cxx::unexpected(nativeError(created));
+        }
+        return layout;
+    }
+
+    RenderResult<PassBindings> planProgramLayout(
+        const nri::DeviceDesc& limits,
+        const rdesc::ShaderInfo& shader,
+        const PassInterface& input,
+        std::span<const GraphResource> graph_resources
+    ) noexcept
+    {
+        auto reflected = shaderInterface(shader);
+        if (!reflected)
+        {
+            return cxx::unexpected(reflected.error());
+        }
+        PassBindings output;
+        const auto& parameters = reflected->parameters;
+        const bool invalid_parameters = input.parameters.values.size() != parameters.size ||
+                                        parameters.runtime_records || parameters.size % 4 != 0 ||
+                                        parameters.size > limits.pipelineLayout.rootConstantMaxSize;
+        if (invalid_parameters)
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        output.parameter_bytes = parameters.size;
+        output.parameter_stages = shaderStages(reflected->parameter_stages);
+        output.initial_parameters = input.parameters.values;
+        for (const auto& field : input.parameters.fields)
+        {
+            const auto destination =
+                std::ranges::find(parameters.fields, field.shader_field, &rdesc::ShaderMember::path);
+            const bool missing = destination == parameters.fields.end() || field.source_field.empty();
+            const bool duplicate = std::ranges::any_of(
+                output.parameters,
+                [&](const auto& old) { return old.destination.path == field.shader_field; }
+            );
+            if (missing || duplicate)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            output.parameters.push_back({field.resource.index, field.source_field, *destination});
+        }
+        output.bindings = std::move(reflected->bindings);
+        if (output.bindings.size() != input.resources.size() + input.samplers.size())
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        std::vector<std::size_t> private_fields;
+        std::vector<const ResourceParameter*> resources(output.bindings.size());
+        std::vector<const SamplerParameter*> samplers(output.bindings.size());
+        for (const auto& resource : input.resources)
+        {
+            resources[resource.field] = &resource;
+        }
+        for (const auto& sampler : input.samplers)
+        {
+            samplers[sampler.field] = &sampler;
+        }
+        for (std::size_t field = 0; field < output.bindings.size(); ++field)
+        {
+            const auto* resource = resources[field];
+            const auto& binding = output.bindings[field];
+            const bool shared = binding.count == 0 && (!resource || resource->descriptor_count == 0);
+            if (shared)
+            {
+                const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0u
+                    : binding.kind == EDescriptorKind::SAMPLER ? 1u : 2u;
+                output.shared_sets[kind] = 0;
+            }
+        }
+        for (auto& set : output.shared_sets)
+        {
+            if (set != kGraphInvalidIndex) set = output.private_set++;
+        }
+        for (std::size_t field = 0; field < output.bindings.size(); ++field)
+        {
+            auto& binding = output.bindings[field];
+            if (binding.kind == EDescriptorKind::SAMPLER && binding.count != 0)
+            {
+                const auto* selected = samplers[field];
+                if (!selected || selected->inputs.size() != binding.count)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                for (std::uint32_t element = 0; element < binding.count; ++element)
+                {
+                    if (selected->inputs[element] == kGraphInvalidIndex)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                    output.uses.push_back(
+                        {kGraphInvalidIndex,
+                         output.private_set,
+                         0,
+                         binding.kind,
+                         {},
+                         static_cast<std::uint32_t>(field),
+                         element,
+                         selected->inputs[element]}
+                    );
+                    output.uses.back().comparison_sampler = selected->comparison;
+                }
+                private_fields.push_back(field);
+                continue;
+            }
+            const auto* selected = resources[field];
+            const bool invalid = !selected || binding.name.empty() || !binding.stages;
+            if (invalid)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            if (selected->descriptor_count)
+            {
+                const bool invalid_array = binding.count != 0 || binding.kind != EDescriptorKind::SAMPLED_IMAGE ||
+                                           selected->descriptor_count != selected->elements.size() + 1;
+                if (invalid_array)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                binding.count = selected->descriptor_count;
+            }
+            const bool buffer =
+                binding.kind == EDescriptorKind::STORAGE_BUFFER || binding.kind == EDescriptorKind::UNIFORM_BUFFER;
+            const bool shared_kind =
+                binding.kind == EDescriptorKind::SAMPLED_IMAGE || binding.kind == EDescriptorKind::SAMPLER ||
+                (binding.kind == EDescriptorKind::STORAGE_BUFFER && binding.access == EShaderAccess::READ_ONLY);
+            const bool wrong_count =
+                binding.count == 0 ? !selected->elements.empty() : selected->elements.size() + 1 != binding.count;
+            if (wrong_count || (binding.count == 0 && !shared_kind))
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            for (std::uint32_t element = 0; element <= selected->elements.size(); ++element)
+            {
+                const auto& access = element == 0 ? selected->access : selected->elements[element - 1];
+                const auto index = access.version.resource.index;
+                const bool image = std::holds_alternative<GraphImageDesc>(graph_resources[index].description);
+                const bool wrong_kind = image == buffer;
+                const bool access_mismatch =
+                    (binding.access != EShaderAccess::READ_ONLY && access.access == EGraphAccess::READ) ||
+                    (binding.access == EShaderAccess::READ_ONLY && access.access != EGraphAccess::READ);
+                const bool invalid_shared =
+                    binding.count == 0 && graph_resources[index].origin != EGraphOrigin::IMPORTED;
+                if (wrong_kind || access_mismatch || invalid_shared)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                if (image && binding.kind != EDescriptorKind::SAMPLER)
+                {
+                    const auto& range = std::get<GraphImageRange>(access.range);
+                    const bool invalid_shape = !binding.image_arrayed && range.layer_count != 1;
+                    const bool invalid_depth = binding.image_depth && range.aspects != 2;
+                    if (invalid_shape || invalid_depth)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                }
+                output.uses.push_back(
+                    {index,
+                     output.private_set,
+                     0,
+                     binding.kind,
+                     access.range,
+                     static_cast<std::uint32_t>(field),
+                     element,
+                     kGraphInvalidIndex,
+                     access.whole_resource,
+                     access.access == EGraphAccess::READ && access.fallback ? access.fallback->resource.index
+                                                                            : kGraphInvalidIndex}
+                );
+            }
+            if (binding.count == 0)
+            {
+                const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0u
+                    : binding.kind == EDescriptorKind::SAMPLER ? 1u : 2u;
+                binding.set = output.shared_sets[kind];
+                binding.binding = 0;
+                output.uses.back().set = binding.set;
+                output.uses.back().binding = binding.binding;
+            }
+            else
+            {
+                private_fields.push_back(field);
+            }
+        }
+        // Legacy LayoutAllocator: private identity belongs to this program, shared identity
+        // uses the complete device table. Equal provisional binding numbers never merge programs.
+        std::ranges::sort(
+            private_fields,
+            [&](auto a, auto b) { return output.bindings[a].name < output.bindings[b].name; }
+        );
+        for (auto field : private_fields)
+        {
+            auto& binding = output.bindings[field];
+            binding.set = output.private_set;
+            binding.binding = static_cast<std::uint32_t>(output.private_bindings.size());
+            for (auto& use : output.uses)
+            {
+                if (use.field == field)
+                {
+                    use.set = binding.set;
+                    use.binding = binding.binding;
+                }
+            }
+            output.private_bindings.push_back(binding);
+        }
+        return output;
+    }
+
+    RenderResult<PassBindings> planRasterLayout(
+        const nri::DeviceDesc& limits,
+        const rdesc::ShaderInfo& shader,
+        const RasterPassTemplate& stage
+    ) noexcept
+    {
+        auto reflected = shaderInterface(shader);
+        if (!reflected)
+        {
+            return cxx::unexpected(reflected.error());
+        }
+        PassInterface input;
+        input.parameters = stage.parameters;
+        std::vector<GraphResource> resources(stage.inputs.size());
+        for (std::uint32_t field = 0; field < reflected->bindings.size(); ++field)
+        {
+            const auto& binding = reflected->bindings[field];
+            const auto slot = std::ranges::find(stage.inputs, binding.name, &RasterPassTemplate::Input::name);
+            const bool undeclared = slot == stage.inputs.end() || !slot->kind;
+            const bool writable = binding.access != EShaderAccess::READ_ONLY;
+            const bool wrong_stages = !undeclared && (binding.stages & ~slot->stages) != 0;
+            if (undeclared || writable || wrong_stages)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            const auto kind = [&]() noexcept
+            {
+                switch (binding.kind)
+                {
+                case EDescriptorKind::SAMPLED_IMAGE:
+                    return rdesc::EDescriptorType::SAMPLED_IMAGE;
+                case EDescriptorKind::SAMPLER:
+                    return rdesc::EDescriptorType::SAMPLER;
+                case EDescriptorKind::UNIFORM_BUFFER:
+                    return rdesc::EDescriptorType::UNIFORM_BUFFER;
+                default:
+                    return rdesc::EDescriptorType::STORAGE_BUFFER;
+                }
+            }();
+            if (kind != *slot->kind || binding.kind == EDescriptorKind::STORAGE_IMAGE)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            const auto index = static_cast<std::uint32_t>(slot - stage.inputs.begin());
+            auto& resource = resources[index];
+            resource.key = slot->name;
+            resource.origin = EGraphOrigin::IMPORTED;
+            const bool image =
+                binding.kind == EDescriptorKind::SAMPLED_IMAGE || binding.kind == EDescriptorKind::SAMPLER;
+            const VGraphRange range =
+                image ? VGraphRange{GraphImageRange{binding.image_depth ? 2u : 1u, 0, 1, 0, 1}}
+                      : VGraphRange{GraphBufferRange{0, std::max<std::uint32_t>(binding.block.size, 4)}};
+            resource.description = image ? VGraphResourceDesc{GraphImageDesc{}}
+                                         : VGraphResourceDesc{GraphBufferDesc{std::get<GraphBufferRange>(range).size}};
+            ResourceAccess access{{GraphResourceId{index}, 0}, range};
+            access.usage = slot->usage;
+            access.whole_resource = true;
+            if (binding.kind == EDescriptorKind::SAMPLER && binding.count != 0)
+            {
+                SamplerParameter sampler{binding.name};
+                sampler.field = field;
+                sampler.inputs.assign(binding.count, index);
+                input.samplers.push_back(std::move(sampler));
+            }
+            else
+            {
+                ResourceParameter parameter{binding.name, access};
+                parameter.field = field;
+                if (binding.count > 1)
+                {
+                    parameter.elements.assign(binding.count - 1, access);
+                }
+                input.resources.push_back(std::move(parameter));
+            }
+        }
+        // Only slot shapes are projected above. Placement, shared arrays, parameter ABI and
+        // relocation continue through the very same algorithm as fixed Graph programs.
+        return planProgramLayout(limits, shader, input, resources);
+    }
+
+    RenderResult<ShaderBindingPlan> planLayouts(
+        const nri::DeviceDesc& limits,
+        const RenderGraph& graph,
+        const RenderGraphAnalysis& analysis,
+        std::span<const std::uint32_t> parameter_groups
+    ) noexcept
+    {
+        ShaderBindingPlan plan;
+        plan.passes.resize(graph.passes().size());
+        for (const auto id : analysis.execution_order)
+        {
+            const auto& pass = graph.passes()[id.index];
+            const PassInterface* input = nullptr;
+            if (const auto* raster = std::get_if<RasterWork>(&pass.work))
+            {
+                const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
+                input = fixed ? &fixed->interface : nullptr;
+            }
+            else if (const auto* compute = std::get_if<ComputeWork>(&pass.work))
+            {
+                input = &compute->interface;
+            }
+            else
+            {
+                auto& output = plan.passes[id.index];
+                const auto& transfer = std::get<TransferWork>(pass.work);
+                for (const auto& operation : transfer.operations)
+                {
+                    if (const auto* fill = std::get_if<FillBuffer>(&operation))
+                    {
+                        if (!fill->value)
+                        {
+                            continue;
+                        }
+                        const auto binding = static_cast<std::uint32_t>(output.bindings.size());
+                        output.bindings.push_back(
+                            {0, binding, EDescriptorKind::TYPED_STORAGE_BUFFER, 1, {}, {}, 4, EShaderAccess::WRITE_ONLY}
+                        );
+                        output.uses.push_back(
+                            {fill->destination.version.resource.index,
+                             0,
+                             binding,
+                             EDescriptorKind::TYPED_STORAGE_BUFFER,
+                             fill->destination.range,
+                             binding}
+                        );
+                    }
+                }
+                output.private_bindings = output.bindings;
+                continue;
+            }
+            const auto* raster = std::get_if<RasterWork>(&pass.work);
+            const auto& parameters =
+                input ? input->parameters : std::get<RasterPassTemplate>(raster->program).parameters;
+            const auto group = parameter_groups.empty() ? 0u : parameter_groups[id.index];
+            auto found = std::ranges::find(plan.parameter_regions, group, &ShaderBindingPlan::ParameterRegion::group);
+            const auto region = static_cast<std::uint32_t>(found - plan.parameter_regions.begin());
+            if (found == plan.parameter_regions.end())
+            {
+                plan.parameter_regions.push_back({{}, group});
+            }
+            const auto& instance = parameters.instance_layout;
+            auto& region_layout = plan.parameter_regions[region].layout;
+            if (instance.size != 0)
+            {
+                if (region_layout.size != 0 && region_layout != instance)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                region_layout = instance;
+            }
+            plan.passes[id.index].instance_region = region;
+            if (!input)
+            {
+                // Dynamic programs receive layouts when prepared; the pass retains only instance input data.
+                plan.passes[id.index].initial_parameters = parameters.values;
+                continue;
+            }
+            auto program =
+                planProgramLayout(limits, graph.programs()[input->program].interface, *input, graph.resources());
+            if (!program)
+            {
+                return cxx::unexpected(program.error());
+            }
+            program->instance_region = region;
+            plan.passes[id.index] = std::move(*program);
+        }
+        for (auto& region : plan.parameter_regions)
+        {
+            region.offset = plan.instance_parameter_bytes;
+            const auto extent = (std::uint64_t(region.layout.size) + 15u) & ~std::uint64_t{15};
+            if (extent > UINT32_MAX - plan.instance_parameter_bytes)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            plan.instance_parameter_bytes += static_cast<std::uint32_t>(extent);
+        }
+        for (auto& program : plan.passes)
+        {
+            for (auto& mapping : program.parameters)
+            {
+                if (mapping.resource != kGraphInvalidIndex) continue;
+                const auto& region = plan.parameter_regions[program.instance_region];
+                const auto& fields = region.layout.fields;
+                const auto field = std::ranges::find(fields, mapping.source_field, &rdesc::ShaderMember::path);
+                if (field == fields.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                const auto& destination = mapping.destination;
+                const bool mismatch = field->scalar != destination.scalar || field->rows != destination.rows ||
+                    field->columns != destination.columns || field->matrix_stride != destination.matrix_stride ||
+                    field->array_stride != destination.array_stride;
+                const auto bytes = std::uint64_t(field->rows) * 4 +
+                    (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
+                const bool invalid = !bytes || bytes > UINT32_MAX ||
+                    std::uint64_t(field->offset) + bytes > region.layout.size ||
+                    std::uint64_t(destination.offset) + bytes > program.parameter_bytes;
+                if (mismatch || invalid) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                mapping.source_offset = region.offset + field->offset;
+            }
+        }
+        std::map<std::uint32_t, bool> sampler_contracts;
+        for (const auto& program : plan.passes)
+        {
+            for (const auto& use : program.uses)
+            {
+                if (use.sampler == kGraphInvalidIndex)
+                {
+                    continue;
+                }
+                auto [entry, inserted] = sampler_contracts.emplace(use.sampler, use.comparison_sampler);
+                if (!inserted && entry->second != use.comparison_sampler)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+            }
+        }
+        // Dead passes can leave holes in the declared sampler inputs. Runtime validates the
+        // declarations at assembly; a standalone instance binds the remaining original slots.
+        return plan;
+    }
+
+    RenderResult<rdesc::SpirvArtifact>
+    relocateShader(const rdesc::SpirvArtifact& original, std::span<const ShaderBinding> locations) noexcept
+    {
+        std::vector<const rdesc::EDescriptorBindingInfo*> bindings;
+        for (const auto& set : original.interface.sets)
+        {
+            for (const auto& binding : set.bindings)
+            {
+                bindings.push_back(&binding);
+            }
+        }
+        if (locations.size() != bindings.size())
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        auto result = original;
+        result.interface.sets.clear();
+        std::size_t index = 0;
+        for (const auto& group : original.interface.sets)
+        {
+            for (auto binding : group.bindings)
+            {
+                binding.set = locations[index].set;
+                binding.binding = locations[index++].binding;
+                auto destination =
+                    std::ranges::find(result.interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
+                if (destination == result.interface.sets.end())
+                {
+                    result.interface.sets.emplace_back(binding.set);
+                    destination = std::prev(result.interface.sets.end());
+                }
+                destination->bindings.push_back(std::move(binding));
+            }
+        }
+        // The compiler derived these locations from the validated field list. Only positions change.
+        const bool unchanged = std::ranges::equal(
+            bindings,
+            locations,
+            [](const auto* a, const auto& b) { return a->set == b.set && a->binding == b.binding; }
+        );
+        if (unchanged)
+        {
+            return result;
+        }
+        for (auto& stage : result.stages)
+        {
+            const auto words = std::span<const std::uint32_t>(stage.words);
+            const bool invalid_header = words.size() < 5 || words[0] != 0x07230203 || words[1] < 0x00010000 ||
+                                        words[1] > 0x00010600 || words[3] == 0 || words[3] > words.size() ||
+                                        words[4] != 0;
+            if (invalid_header)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+
+            struct Decoration final
+            {
+                std::size_t set = 0, binding = 0;
+                bool variable = false;
+            };
+
+            std::vector<Decoration> decorations(words[3]);
+            // Extracted from the audited SpirvRelocation.cpp boundary. Gather original word positions
+            // before modifying any word, so cycles/swaps cannot rematch a previously patched location.
+            for (std::size_t cursor = 5; cursor < words.size();)
+            {
+                const auto length = words[cursor] >> 16;
+                const auto opcode = words[cursor] & 0xffff;
+                const bool invalid_length = length == 0 || length > words.size() - cursor;
+                if (invalid_length)
+                {
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                }
+                const bool unsupported_decoration =
+                    opcode == 73 || opcode == 74 || opcode == 75 || opcode == 332 || opcode == 5632 || opcode == 5633;
+                if (unsupported_decoration)
+                {
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
+                }
+                if (opcode == 59) // OpVariable
+                {
+                    if (length < 4 || words[cursor + 2] >= decorations.size())
+                    {
+                        return cxx::unexpected(RenderError{kDeviceArgument});
+                    }
+                    decorations[words[cursor + 2]].variable = true;
+                }
+                if (opcode == 71) // OpDecorate
+                {
+                    if (length < 3 || words[cursor + 1] >= decorations.size())
+                    {
+                        return cxx::unexpected(RenderError{kDeviceArgument});
+                    }
+                    const auto kind = words[cursor + 2];
+                    if (kind == 20)
+                    {
+                        return cxx::unexpected(RenderError{kDeviceUnsupported}); // Aliased
+                    }
+                    if (kind == 33 || kind == 34)
+                    {
+                        if (length != 4)
+                        {
+                            return cxx::unexpected(RenderError{kDeviceArgument});
+                        }
+                        auto& record = decorations[words[cursor + 1]];
+                        auto& position = kind == 33 ? record.binding : record.set;
+                        if (position)
+                        {
+                            return cxx::unexpected(RenderError{kDeviceArgument});
+                        }
+                        position = cursor + 3;
+                    }
+                }
+                cursor += length;
+            }
+            const auto validator = spvContextCreate(SPV_ENV_VULKAN_1_3);
+            if (!validator)
+            {
+                std::terminate();
+            }
+            const auto valid = spvValidateBinary(validator, words.data(), words.size(), nullptr);
+            spvContextDestroy(validator);
+            if (valid == SPV_ERROR_OUT_OF_MEMORY)
+            {
+                std::terminate();
+            }
+            if (valid != SPV_SUCCESS)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            const auto stage_bit = stage.stage == rdesc::EShaderType::VERTEX     ? 1u
+                                   : stage.stage == rdesc::EShaderType::FRAGMENT ? 2u
+                                   : stage.stage == rdesc::EShaderType::COMPUTE  ? 4u
+                                                                                 : 0u;
+            std::vector<bool> seen(locations.size(), false);
+
+            struct Patch final
+            {
+                std::size_t set_word, binding_word, field;
+            };
+
+            std::vector<Patch> patches;
+            for (const auto& record : decorations)
+            {
+                if (!record.set && !record.binding)
+                {
+                    continue;
+                }
+                const bool invalid_pair = !record.variable || !record.set || !record.binding;
+                if (invalid_pair)
+                {
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                }
+                const auto found = std::ranges::find_if(
+                    bindings,
+                    [&](const auto* value)
+                    {
+                        return value->set == words[record.set] && value->binding == words[record.binding] &&
+                               (value->stages & stage_bit) != 0;
+                    }
+                );
+                if (found == bindings.end())
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                const auto field = static_cast<std::size_t>(found - bindings.begin());
+                if (seen[field])
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                seen[field] = true;
+                patches.push_back({record.set, record.binding, field});
+            }
+            for (std::size_t field = 0; field < seen.size(); ++field)
+            {
+                if (!seen[field] && (bindings[field]->stages & stage_bit) != 0)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+            }
+            for (const auto& patch : patches)
+            {
+                stage.words[patch.set_word] = locations[patch.field].set;
+                stage.words[patch.binding_word] = locations[patch.field].binding;
+            }
+            // The pipeline boundary validates the relocated binary and complete declared ABI once.
+        }
+        return result;
+    }
+} // namespace lux::render::detail

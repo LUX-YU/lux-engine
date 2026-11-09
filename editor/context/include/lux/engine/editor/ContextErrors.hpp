@@ -110,5 +110,42 @@ namespace lux::editor
             {}
         };
         inline constexpr error::ErrorId ValueEditorDuplicate = error::errorId(ValueEditorDuplicateDescriptor.name);
+        inline constexpr error::ErrorDescriptor EditorIncompleteServiceLifecycleDescriptor{
+            "lux.editor.incomplete_service_lifecycle",
+            "Asynchronous service cleanup requires a fallible recovery entry",
+            error::ERecovery::PERMANENT
+        };
+        inline constexpr error::ErrorId EditorIncompleteServiceLifecycle =
+            error::errorId(EditorIncompleteServiceLifecycleDescriptor.name);
+        inline constexpr error::ErrorDescriptor EditorInitializationDependencyDescriptor{
+            "lux.editor.initialization_dependency",
+            "Project initialization requires a dependency prepared by its factory",
+            error::ERecovery::PERMANENT
+        };
+        inline constexpr error::ErrorId EditorInitializationDependency =
+            error::errorId(EditorInitializationDependencyDescriptor.name);
+        inline constexpr error::ErrorDescriptor EditorStartupSceneFailureDescriptor{
+            "lux.editor.startup_scene_failure",
+            "Cannot initialize startup Scene: category {0}, code {1}, ordinal {2}",
+            error::ERecovery::PERMANENT,
+            {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+        };
+        inline constexpr error::ErrorId EditorStartupSceneFailure =
+            error::errorId(EditorStartupSceneFailureDescriptor.name);
+        inline constexpr error::ErrorDescriptor EditorRenderBindingsDescriptor{
+            "lux.editor.render_bindings",
+            "Cannot register project Render bindings: code {0}",
+            error::ERecovery::PERMANENT,
+            {error::EArgument::UNSIGNED}
+        };
+        inline constexpr error::ErrorId EditorRenderBindings = error::errorId(EditorRenderBindingsDescriptor.name);
+        inline constexpr error::ErrorDescriptor EditorRenderAssetObservationDescriptor{
+            "lux.editor.render_asset_observation",
+            "Cannot observe project asset changes for rendering: code {0}",
+            error::ERecovery::PERMANENT,
+            {error::EArgument::UNSIGNED}
+        };
+        inline constexpr error::ErrorId EditorRenderAssetObservation =
+            error::errorId(EditorRenderAssetObservationDescriptor.name);
     } // namespace Errors
 } // namespace lux::editor

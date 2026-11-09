@@ -3,10 +3,9 @@
 #include <memory>
 #include <utility>
 
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/core/visibility.h>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/object/detail/MessageEnvelope.hpp>
 
 namespace lux::object
 {
@@ -16,17 +15,19 @@ namespace lux::object
     {
     public:
         template <class Event>
-        explicit EventView(Event& event) noexcept : type_(lux::cxx::typeToken<Event>()), data_(std::addressof(event))
-        {}
+        explicit EventView(Event& event) noexcept
+            : type_(lux::cxx::make_basic_type_info<Event>()), data_(std::addressof(event))
+        {
+        }
 
-        [[nodiscard]] lux::cxx::TypeToken type() const noexcept
+        [[nodiscard]] lux::cxx::type_info type() const noexcept
         {
             return type_;
         }
 
         template <class Event> [[nodiscard]] Event* getIf() const noexcept
         {
-            return type_ == lux::cxx::typeToken<Event>() ? static_cast<Event*>(data_) : nullptr;
+            return type_ == lux::cxx::make_basic_type_info<Event>() ? static_cast<Event*>(data_) : nullptr;
         }
 
         void accept() noexcept
@@ -39,7 +40,7 @@ namespace lux::object
         }
 
     private:
-        lux::cxx::TypeToken type_;
+        lux::cxx::type_info type_;
         void* data_{nullptr};
         bool accepted_{false};
     };

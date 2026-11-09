@@ -41,7 +41,7 @@ for config in model['configurations']:
         if name == 'lux_editor_project':
             assert 'lux_editor_context' not in closure, (name, 'Project depends on Context')
         if name in ('lux_editor_project', 'scene_asset', 'platform_file'):
-            for forbidden in ('core_execution', 'engine_context', 'scene_runtime', 'scene_render', 'ui'):
+            for forbidden in ('core_execution', 'engine_runtime', 'scene_runtime', 'scene_render', 'ui'):
                 assert forbidden not in closure, (name, forbidden)
         if name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app', 'scene_asset', 'platform_file'):
             assert 'lux_editor_scene_profiles' not in closure, (name, 'product profile in framework')

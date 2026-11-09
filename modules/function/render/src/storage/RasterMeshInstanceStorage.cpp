@@ -10,11 +10,16 @@
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
+#include <lux/engine/render/storage/RasterMaterialStorage.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
 
 namespace lux::render::detail
 {
+    static_assert(offsetof(MeshInstanceGpuProperty, material_buffer) == 4);
+    static_assert(offsetof(MeshInstanceGpuProperty, material_record) == 8);
+    static_assert(offsetof(MeshInstanceGpuProperty, section_index) == 12);
+    static_assert(offsetof(MeshInstanceGpuProperty, render_flags) == 16);
+
     struct RasterMeshInstanceStorage::GpuPage final
     {
         nri::Buffer *transforms = nullptr, *properties = nullptr, *alive = nullptr;
@@ -29,6 +34,8 @@ namespace lux::render::detail
     {
         std::array<TransformMatrix, kMeshInstancePageSlots> transforms{};
         std::array<MeshInstanceGpuProperty, kMeshInstancePageSlots> properties{};
+        // Sole CPU authority for resource identities; GPU property addresses are projected per FIF.
+        std::array<Selection, kMeshInstancePageSlots> selections{};
         std::array<std::uint32_t, kMeshInstancePageSlots> alive{};
         std::array<GpuPage, 3> gpu;
     };
@@ -58,6 +65,8 @@ namespace lux::render::detail
             GpuPage pending_flat;
             std::unique_ptr<PageTable> table;
             std::uint32_t known_pages = 0;
+            std::array<std::vector<nri::Buffer*>, 3> addressed_buffers;
+            std::uint64_t addressed_revision = 0;
             std::array<DirtyRanges, 3> dirty;
             std::array<std::vector<DirtyWordMask>, 3> accepted;
             std::vector<DirtyWordMask> selected;
@@ -268,11 +277,8 @@ namespace lux::render::detail
         return {};
     }
 
-    nri::Buffer* RasterMeshInstanceStorage::fieldBuffer(
-        std::uint32_t frame,
-        std::uint32_t page,
-        std::size_t field
-    ) noexcept
+    nri::Buffer*
+    RasterMeshInstanceStorage::fieldBuffer(std::uint32_t frame, std::uint32_t page, std::size_t field) noexcept
     {
         auto& slice = frames_->slices[frame];
         return paged_ ? pages_[page]->gpu[frame].field(field)
@@ -287,13 +293,38 @@ namespace lux::render::detail
     void RasterMeshInstanceStorage::publishBuffers(std::uint32_t frame) noexcept
     {
         auto& slice = frames_->slices[frame];
+        if (paged_ && slice.addressed_buffers[0].size() != slice.table->leaves.size() + slice.known_pages)
+        {
+            for (std::size_t field = 0; field < bindings_.size(); ++field)
+            {
+                auto& buffers = slice.addressed_buffers[field];
+                buffers.clear();
+                for (const auto& leaf : slice.table->leaves)
+                {
+                    buffers.push_back(leaf.buffer);
+                }
+                for (std::uint32_t page = 0; page < slice.known_pages; ++page)
+                {
+                    buffers.push_back(pages_[page]->gpu[frame].field(field));
+                }
+            }
+            ++slice.addressed_revision;
+        }
         for (std::size_t field = 0; field < bindings_.size(); ++field)
         {
             auto& buffer = paged_ ? slice.table->root : slice.flat.field(field);
             StorageSubscription::publish(
                 bindings_[field],
                 frame,
-                {buffer, 0, session_.nriCore().GetBufferDesc(*buffer).size}
+                {buffer,
+                 0,
+                 session_.nriCore().GetBufferDesc(*buffer).size,
+                 {},
+                 nullptr,
+                 0,
+                 nullptr,
+                 slice.addressed_buffers[field],
+                 slice.addressed_revision}
             );
         }
     }
@@ -459,12 +490,12 @@ namespace lux::render::detail
 
     RasterMeshInstanceStorage::Selection RasterMeshInstanceStorage::selection(const Entry& entry) const noexcept
     {
-        return {entry.mesh, entry.material, entry.submesh};
+        const auto index = entry.key.index;
+        return pages_[index / kMeshInstancePageSlots]->selections[index % kMeshInstancePageSlots];
     }
 
-    RenderResult<MeshInstanceGpuProperty> RasterMeshInstanceStorage::resolveReferences(
-        const MeshInstanceDescription& input
-    ) const noexcept
+    RenderResult<MeshInstanceGpuProperty>
+    RasterMeshInstanceStorage::resolveReferences(const MeshInstanceData& input, std::uint32_t frame) const noexcept
     {
         auto& registry = resources_;
         for (auto source :
@@ -480,7 +511,7 @@ namespace lux::render::detail
         auto mesh =
             registry.borrow<detail::IndexedTriangleMeshStorage>(extension_detail::ResourceIdentity::storage(input.mesh)
             );
-        auto material = registry.borrow<detail::RasterMaterialTableStorage>(
+        auto material = registry.borrow<detail::RasterMaterialStorage>(
             extension_detail::ResourceIdentity::storage(input.material)
         );
         if (!mesh || !material)
@@ -488,42 +519,42 @@ namespace lux::render::detail
             return cxx::unexpected(!mesh ? mesh.error() : material.error());
         }
         const auto* description = (*mesh)->find(input.mesh);
-        const auto material_slot = (*material)->gpuIndex(input.material);
+        const auto material_slot = (*material)->gpuReference(input.material, frame);
         if (!description || !material_slot || input.submesh >= description->submeshes.size())
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         return MeshInstanceGpuProperty{
             extension_detail::ResourceIdentity::local(input.mesh).index,
-            *material_slot,
-            input.submesh
+            material_slot->buffer_index,
+            material_slot->record_index,
+            input.submesh,
+            (input.render_enabled ? 1u : 0u) | (input.cast_shadow ? 2u : 0u)
         };
     }
 
-    exec::task<RenderResult<MeshInstanceId>> RasterMeshInstanceStorage::create(MeshInstanceDescription input) noexcept
+    exec::task<RenderResult<MeshInstanceId>> RasterMeshInstanceStorage::create(MeshInstanceData input) noexcept
     {
         return createBatch(std::move(input));
     }
 
-    exec::task<RenderResult<std::vector<MeshInstanceId>>> RasterMeshInstanceStorage::create(
-        std::span<const MeshInstanceDescription> input
-    ) noexcept
+    exec::task<RenderResult<std::vector<MeshInstanceId>>>
+    RasterMeshInstanceStorage::create(std::span<const MeshInstanceData> input) noexcept
     {
         return createBatch(std::move(input));
     }
 
     template <class Input>
-    exec::task<RenderResult<RasterMeshInstanceStorage::CreateValue<Input>>> RasterMeshInstanceStorage::createBatch(
-        Input input
-    ) noexcept
+    exec::task<RenderResult<RasterMeshInstanceStorage::CreateValue<Input>>>
+    RasterMeshInstanceStorage::createBatch(Input input) noexcept
     {
         if (updating_)
         {
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        const auto descriptions = [&]() noexcept -> std::span<const MeshInstanceDescription>
+        const auto descriptions = [&]() noexcept -> std::span<const MeshInstanceData>
         {
-            if constexpr (std::same_as<Input, MeshInstanceDescription>)
+            if constexpr (std::same_as<Input, MeshInstanceData>)
             {
                 return {&input, 1};
             }
@@ -539,21 +570,12 @@ namespace lux::render::detail
         auto& data = *frames_;
         data.properties.clear();
         data.properties.reserve(descriptions.size());
-        for (const auto& description : descriptions)
-        {
-            auto property = resolveReferences(description);
-            if (!property)
-            {
-                co_return cxx::unexpected(property.error());
-            }
-            data.properties.push_back(*property);
-        }
         using Ids = std::conditional_t<
-            std::same_as<Input, MeshInstanceDescription>,
+            std::same_as<Input, MeshInstanceData>,
             std::array<MeshInstanceId, 1>,
             std::vector<MeshInstanceId>>;
         Ids ids;
-        if constexpr (!std::same_as<Input, MeshInstanceDescription>)
+        if constexpr (!std::same_as<Input, MeshInstanceData>)
         {
             ids.resize(descriptions.size());
         }
@@ -645,8 +667,7 @@ namespace lux::render::detail
         );
         for (std::size_t i = 0; i < descriptions.size(); ++i)
         {
-            const auto& description = descriptions[i];
-            const auto key = entries_.emplace(Entry{description.mesh, description.material, description.submesh});
+            const auto key = entries_.emplace();
             ids[i] = extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, key);
             ++reserved;
             while (pages_.size() <= key.index / kMeshInstancePageSlots)
@@ -677,6 +698,15 @@ namespace lux::render::detail
         }
         SubmissionFrontiers progress;
         cxx::scope_exit finish([&]() noexcept { frame_execution_.finishWrite(frame, progress); });
+        for (const auto& description : descriptions)
+        {
+            auto property = resolveReferences(description, frame);
+            if (!property)
+            {
+                co_return cxx::unexpected(property.error());
+            }
+            data.properties.push_back(*property);
+        }
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -717,6 +747,7 @@ namespace lux::render::detail
             const auto local = record % kMeshInstancePageSlots;
             page.transforms[local] = descriptions[i].transform;
             page.properties[local] = data.properties[i];
+            page.selections[local] = {descriptions[i].mesh, descriptions[i].material, descriptions[i].submesh};
             page.alive[local] = 1;
             entries_.find(extension_detail::ResourceIdentity::local(ids[i]))->key =
                 extension_detail::ResourceIdentity::local(ids[i]);
@@ -740,7 +771,7 @@ namespace lux::render::detail
         data.clearOrder();
         updating_ = false;
         rollback.release();
-        if constexpr (std::same_as<Input, MeshInstanceDescription>)
+        if constexpr (std::same_as<Input, MeshInstanceData>)
         {
             co_return ids[0];
         }
@@ -750,289 +781,108 @@ namespace lux::render::detail
         }
     }
 
-    exec::task<RenderResult<TransformApplied>> RasterMeshInstanceStorage::update(TransformBatch input) noexcept
+    RenderResult<TransformApplied> RasterMeshInstanceStorage::update(TransformData input) noexcept
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kDeviceBusy});
+            return cxx::unexpected(RenderError{kDeviceBusy});
         }
         const bool invalid_input =
             input.instances.size() != input.transforms.size() || input.instances.size() > UINT32_MAX;
         if (invalid_input)
         {
-            co_return cxx::unexpected(RenderError{kStorageContract});
+            return cxx::unexpected(RenderError{kStorageContract});
         }
-        const auto count = input.instances.size();
-        const auto first_record = count ? extension_detail::ResourceIdentity::local(input.instances.front()).index : 0u;
-        std::uint64_t next_record = first_record;
-        bool contiguous = true;
         for (const auto identity : input.instances)
         {
-            const auto key = extension_detail::ResourceIdentity::local(identity);
-            const auto* entry = entries_.find(key);
-            if (extension_detail::ResourceIdentity::storage(identity) != id_ || !entry || entry->key.isNull())
+            const auto* entry = extension_detail::ResourceIdentity::storage(identity) == id_
+                ? entries_.find(extension_detail::ResourceIdentity::local(identity)) : nullptr;
+            if (!entry || entry->key.isNull())
             {
-                co_return cxx::unexpected(RenderError{kStorageIdentity});
-            }
-            contiguous &= key.index == next_record;
-            ++next_record;
-        }
-        if (count == 0)
-        {
-            co_return TransformApplied{input.sequence, 0};
-        }
-        updating_ = true;
-        ++preparation_revision_;
-        auto& data = *frames_;
-        cxx::scope_exit cleanup(
-            [&]() noexcept
-            {
-                data.clearOrder();
-                updating_ = false;
-            }
-        );
-        const auto range_count =
-            contiguous
-                ? (first_record % kMeshInstancePageSlots + count + kMeshInstancePageSlots - 1) / kMeshInstancePageSlots
-                : count;
-        data.writes.reserve(range_count);
-        for (std::uint32_t slot = 0; slot < frame_execution_.frameCount(); ++slot)
-        {
-            data.slices[slot].dirty[0].grow(capacity());
-        }
-        std::uint32_t frame = 0;
-        while (!frame_execution_.tryBeginWrite(frame))
-        {
-            auto ready = co_await frame_execution_.whenWritable(count * sizeof(TransformMatrix));
-            if (!ready)
-            {
-                co_return cxx::unexpected(ready.error());
+                return cxx::unexpected(RenderError{kStorageIdentity});
             }
         }
-        SubmissionFrontiers progress;
-        cxx::scope_exit finish([&]() noexcept { frame_execution_.finishWrite(frame, progress); });
-        if (auto prepared = ensureFrame(frame); !prepared)
+        bool changed = false;
+        for (std::size_t i = 0; i < input.instances.size(); ++i)
         {
-            co_return cxx::unexpected(prepared.error());
+            const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
+            auto& previous = pages_[record / kMeshInstancePageSlots]->transforms[record % kMeshInstancePageSlots];
+            if (previous == input.transforms[i])
+            {
+                continue;
+            }
+            previous = input.transforms[i];
+            for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+            {
+                mark(frame, record, 1);
+            }
+            changed = true;
         }
-        auto& changed = data.slices[frame].selected;
-        changed.clear();
-        if (contiguous)
-        {
-            for (std::size_t i = 0; i < count;)
-            {
-                const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
-                const auto length =
-                    std::min<std::size_t>(count - i, kMeshInstancePageSlots - record % kMeshInstancePageSlots);
-                data.writes.push_back(
-                    {fieldBuffer(frame, record / kMeshInstancePageSlots, 0),
-                     fieldOffset(record, kStride[0]),
-                     std::as_bytes(input.transforms.subspan(i, length))}
-                );
-                i += length;
-            }
-        }
-        else
-        {
-            data.order(
-                count,
-                capacity(),
-                [&](std::size_t i) noexcept
-                { return extension_detail::ResourceIdentity::local(input.instances[i]).index; }
-            );
-            data.forEachOrdered(
-                [&](std::size_t i) noexcept
-                { return extension_detail::ResourceIdentity::local(input.instances[i]).index; },
-                [&](std::uint32_t record, std::size_t i) noexcept
-                {
-                    data.writes.push_back(
-                        {fieldBuffer(frame, record / kMeshInstancePageSlots, 0),
-                         fieldOffset(record, kStride[0]),
-                         std::as_bytes(input.transforms.subspan(i, 1))}
-                    );
-                },
-                &changed
-            );
-        }
-        const auto mark_changed = [&](DirtyRanges& dirty) noexcept
-        {
-            if (contiguous)
-            {
-                dirty.markRange(first_record, count);
-            }
-            else
-            {
-                for (auto mask : changed)
-                {
-                    dirty.mark(mask);
-                }
-            }
-        };
-        auto accepted = co_await uploads_.writeBuffers(data.writes, {}, frame, &progress);
-        if (!accepted)
-        {
-            // The adopted CPU page is unchanged. Repair all affected records before this slice can Draw.
-            mark_changed(data.slices[frame].dirty[0]);
-            co_return cxx::unexpected(accepted.error());
-        }
-        if (contiguous)
-        {
-            for (std::size_t i = 0; i < count;)
-            {
-                const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
-                const auto local = record % kMeshInstancePageSlots;
-                const auto length = std::min<std::size_t>(count - i, kMeshInstancePageSlots - local);
-                std::memcpy(
-                    pages_[record / kMeshInstancePageSlots]->transforms.data() + local,
-                    input.transforms.data() + i,
-                    length * sizeof(TransformMatrix)
-                );
-                i += length;
-            }
-        }
-        else
-        {
-            for (std::size_t i = 0; i < count; ++i)
-            {
-                const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
-                pages_[record / kMeshInstancePageSlots]->transforms[record % kMeshInstancePageSlots] =
-                    input.transforms[i];
-            }
-        }
-        for (std::uint32_t other = 0; other < frame_execution_.frameCount(); ++other)
-        {
-            auto& dirty = data.slices[other].dirty[0];
-            if (other != frame)
-            {
-                mark_changed(dirty);
-            }
-            else if (contiguous)
-            {
-                dirty.acknowledgeRange(first_record, count);
-            }
-            else
-            {
-                dirty.acknowledge(changed);
-            }
-        }
-        co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(count)};
+        preparation_revision_ += changed;
+        return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.instances.size())};
     }
 
-    exec::task<RenderResult<TransformApplied>> RasterMeshInstanceStorage::update(MeshInstanceBatch input) noexcept
+    RenderResult<TransformApplied> RasterMeshInstanceStorage::update(MeshInstanceUpdates input) noexcept
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kDeviceBusy});
+            return cxx::unexpected(RenderError{kDeviceBusy});
         }
         if (input.updates.size() > UINT32_MAX)
         {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
+            return cxx::unexpected(RenderError{kStorageIdentity});
         }
         auto& data = *frames_;
         data.properties.clear();
         data.properties.reserve(input.updates.size());
+        // Validate the whole input before changing authoritative records. The physical material
+        // address is rebuilt by prepareFrame for each FIF slice; this lookup validates its identity.
         for (const auto& value : input.updates)
         {
             const auto* entry = extension_detail::ResourceIdentity::storage(value.instance) == id_
-                                    ? entries_.find(extension_detail::ResourceIdentity::local(value.instance))
-                                    : nullptr;
+                ? entries_.find(extension_detail::ResourceIdentity::local(value.instance)) : nullptr;
             if (!entry || entry->key.isNull())
             {
-                co_return cxx::unexpected(RenderError{kStorageIdentity});
+                return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            auto property = resolveReferences(value.description);
+            auto property = resolveReferences(value.description, 0);
             if (!property)
             {
-                co_return cxx::unexpected(property.error());
+                return cxx::unexpected(property.error());
             }
             data.properties.push_back(*property);
         }
-        if (input.updates.empty())
-        {
-            co_return TransformApplied{input.sequence, 0};
-        }
-        updating_ = true;
-        ++preparation_revision_;
-        cxx::scope_exit cleanup(
-            [&]() noexcept
-            {
-                data.clearOrder();
-                updating_ = false;
-            }
-        );
-        std::uint32_t frame = 0;
-        while (!frame_execution_.tryBeginWrite(frame))
-        {
-            auto ready = co_await frame_execution_.whenWritable(
-                input.updates.size() * (sizeof(TransformMatrix) + sizeof(MeshInstanceGpuProperty))
-            );
-            if (!ready)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
-        }
-        SubmissionFrontiers progress;
-        cxx::scope_exit finish([&]() noexcept { frame_execution_.finishWrite(frame, progress); });
-        if (auto prepared = ensureFrame(frame); !prepared)
-        {
-            co_return cxx::unexpected(prepared.error());
-        }
-        data.order(
-            input.updates.size(),
-            capacity(),
-            [&](std::size_t i) noexcept
-            { return extension_detail::ResourceIdentity::local(input.updates[i].instance).index; }
-        );
-        for (std::size_t field = 0; field < 2; ++field)
-        {
-            data.forEachOrdered(
-                [&](std::size_t i) noexcept
-                { return extension_detail::ResourceIdentity::local(input.updates[i].instance).index; },
-                [&](std::uint32_t record, std::size_t i) noexcept
-                {
-                    const auto bytes = field == 0 ? std::as_bytes(std::span(input.updates[i].description.transform))
-                                                  : std::as_bytes(std::span(&data.properties[i], 1));
-                    data.writes.push_back(
-                        {fieldBuffer(frame, record / kMeshInstancePageSlots, field),
-                         fieldOffset(record, kStride[field]),
-                         bytes}
-                    );
-                }
-            );
-        }
-        if (auto accepted = co_await uploads_.writeBuffers(data.writes, {}, frame, &progress); !accepted)
-        {
-            for (const auto& value : input.updates)
-            {
-                mark(frame, extension_detail::ResourceIdentity::local(value.instance).index, 3);
-            }
-            co_return cxx::unexpected(accepted.error());
-        }
+        bool changed = false;
         for (std::size_t i = 0; i < input.updates.size(); ++i)
         {
             const auto& value = input.updates[i];
             auto& entry = *entries_.find(extension_detail::ResourceIdentity::local(value.instance));
-            entry.mesh = value.description.mesh;
-            entry.material = value.description.material;
-            entry.submesh = value.description.submesh;
+            const auto previous = selection(entry);
+            const bool group_changed = previous.mesh != value.description.mesh ||
+                previous.material != value.description.material || previous.submesh != value.description.submesh;
             const auto record = extension_detail::ResourceIdentity::local(value.instance).index;
             auto& page = *pages_[record / kMeshInstancePageSlots];
-            page.transforms[record % kMeshInstancePageSlots] = value.description.transform;
-            page.properties[record % kMeshInstancePageSlots] = data.properties[i];
-            for (std::uint32_t other = 0; other < frame_execution_.frameCount(); ++other)
+            const auto slot = record % kMeshInstancePageSlots;
+            const bool transform_changed = page.transforms[slot] != value.description.transform;
+            const auto& new_property = data.properties[i];
+            const bool property_changed =
+                group_changed || page.properties[slot].render_flags != new_property.render_flags;
+            const auto fields = static_cast<std::uint8_t>((transform_changed ? 1 : 0) | (property_changed ? 2 : 0));
+            page.selections[slot] = {value.description.mesh, value.description.material, value.description.submesh};
+            page.transforms[slot] = value.description.transform;
+            page.properties[slot] = new_property;
+            for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
             {
-                if (other != frame)
-                {
-                    mark(other, record, 3);
-                }
+                mark(frame, record, fields);
             }
-            for (std::size_t field = 0; field < 2; ++field)
+            changed |= fields != 0;
+            if (group_changed)
             {
-                data.slices[frame].dirty[field].acknowledge({record / 64, std::uint64_t{1} << (record % 64)});
+                notify(entry, false);
             }
-            notify(entry, false);
         }
-        co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
+        preparation_revision_ += changed;
+        return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
     }
 
     exec::task<RenderResult<Ack>> RasterMeshInstanceStorage::release(MeshInstanceId input) noexcept
@@ -1129,7 +979,13 @@ namespace lux::render::detail
                 {
                     while (count)
                     {
-                        auto [write, unit] = source(first, count);
+                        auto prepared = source(first, count);
+                        if (!prepared)
+                        {
+                            result = cxx::unexpected(prepared.error());
+                            return false;
+                        }
+                        auto [write, unit] = *prepared;
                         auto copied = uploads.stageBuffer(write, unit);
                         if (!copied)
                         {
@@ -1184,6 +1040,7 @@ namespace lux::render::detail
                 sizeof(std::uint64_t),
                 static_cast<std::uint32_t>(table.addresses.size()),
                 [&](std::uint32_t first, std::uint32_t count) noexcept
+                    -> RenderResult<std::pair<BufferWrite, std::size_t>>
                 {
                     return std::pair{
                         BufferWrite{
@@ -1206,6 +1063,7 @@ namespace lux::render::detail
                 sizeof(MeshInstancePageGpu),
                 kMeshInstanceTableAxis,
                 [&](std::uint32_t first, std::uint32_t count) noexcept
+                    -> RenderResult<std::pair<BufferWrite, std::size_t>>
                 {
                     auto& leaf = table.leaves[first / kMeshInstanceTableAxis];
                     const auto local = first % kMeshInstanceTableAxis;
@@ -1225,16 +1083,44 @@ namespace lux::render::detail
             }
             ready &= *pages;
         }
+        std::array<MeshInstanceGpuProperty, kMeshInstanceDirtySlots> property_values;
         for (std::size_t field = 0; field < kStride.size(); ++field)
         {
             auto fields = stage(
                 slice.dirty[field],
                 slice.accepted[field],
                 kStride[field],
-                kMeshInstancePageSlots,
+                field == 1 ? kMeshInstanceDirtySlots : kMeshInstancePageSlots,
                 [&](std::uint32_t first, std::uint32_t count) noexcept
+                    -> RenderResult<std::pair<BufferWrite, std::size_t>>
                 {
                     const auto local = first % kMeshInstancePageSlots;
+                    if (field == 1 && !pages_.empty())
+                    {
+                        const auto& page = *pages_[first / kMeshInstancePageSlots];
+                        std::copy_n(page.properties.begin() + local, count, property_values.begin());
+                        for (std::uint32_t i = 0; i < count; ++i)
+                        {
+                            if (page.alive[local + i] == 0) continue;
+                            const auto material = page.selections[local + i].material;
+                            auto storage = resources_.borrow<RasterMaterialStorage>(
+                                extension_detail::ResourceIdentity::storage(material)
+                            );
+                            if (!storage) return cxx::unexpected(storage.error());
+                            auto reference = (*storage)->gpuReference(material, frame);
+                            if (!reference) return cxx::unexpected(reference.error());
+                            property_values[i].material_buffer = reference->buffer_index;
+                            property_values[i].material_record = reference->record_index;
+                        }
+                        return std::pair{
+                            BufferWrite{
+                                fieldBuffer(frame, first / kMeshInstancePageSlots, field),
+                                fieldOffset(first, kStride[field]),
+                                std::as_bytes(std::span(property_values).first(count))
+                            },
+                            kStride[field]
+                        };
+                    }
                     const auto source = [&]() noexcept -> std::span<const std::byte>
                     {
                         if (pages_.empty())
@@ -1339,7 +1225,17 @@ namespace lux::render::detail
         {
             auto& slice = frames_->slices[frame];
             const auto handle = paged_ ? (slice.table ? slice.table->root : nullptr) : slice.flat.field(field);
-            output[frame] = {handle, 0, handle ? session_.nriCore().GetBufferDesc(*handle).size : bytes};
+            output[frame] = {
+                handle,
+                0,
+                handle ? session_.nriCore().GetBufferDesc(*handle).size : bytes,
+                {},
+                nullptr,
+                0,
+                nullptr,
+                slice.addressed_buffers[field],
+                slice.addressed_revision
+            };
         }
         return {};
     }

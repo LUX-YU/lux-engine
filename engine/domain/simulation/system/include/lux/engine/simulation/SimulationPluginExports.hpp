@@ -1,10 +1,11 @@
 #pragma once
 
-#include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <cstdint>
 
 namespace lux::simulation
 {
+    struct SimulationSystemRegistration;
+
     struct SimulationPluginExports final
     {
         std::uint32_t structure_size{sizeof(SimulationPluginExports)};

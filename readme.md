@@ -50,8 +50,8 @@ For a CPU-only player, set `LUX_BUILD_RENDER=OFF`, `LUX_BUILD_WINDOW=OFF` and
 it does not install an empty renderer. The Editor requires these three features
 for its own UI even when the edited game's Scene has no RenderSystem.
 
-Headless applications use `find_package(lux-engine-context CONFIG REQUIRED COMPONENTS engine_context)`
-and link `lux::engine::engine_context`. See the
+Headless applications use `find_package(lux-engine-runtime CONFIG REQUIRED COMPONENTS engine_runtime)`
+and link `lux::engine::engine_runtime`. See the
 [installed Headless consumer](cmake/installed-consumers/headless-engine/CMakeLists.txt).
 Game compilation, rendering/program optimization and release packaging remain separate product work.
 

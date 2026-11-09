@@ -1,0 +1,177 @@
+#pragma once
+
+#include <lux/engine/serialization/BinaryWriter.hpp>
+#include <lux/engine/ecs/ComponentOperations.hpp>
+#include <lux/engine/ecs/ComponentSchemaId.hpp>
+#include <lux/engine/ecs/DecodedComponent.hpp>
+#include <lux/engine/ecs/Registry.hpp>
+#include <lux/engine/world/WorldObjectId.hpp>
+
+#include <lux/cxx/compile_time/type_info.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <span>
+#include <utility>
+#include <vector>
+
+namespace lux::ecs
+{
+    class WorldEntityMap;
+    enum class EComponentSnapshotPolicy : std::uint8_t
+    {
+        COPY,
+        REBUILD,
+    };
+
+    enum class EComponentSemanticKind : std::uint8_t
+    {
+        FOUNDATION,
+        DOMAIN_CONTRACT,
+        IMPLEMENTATION_EXTENSION,
+        RUNTIME_DERIVED,
+    };
+
+    enum class EComponentDecodeError : std::uint8_t
+    {
+        INVALID_ENTITY,
+        UNSUPPORTED_VERSION,
+        MALFORMED_PAYLOAD,
+        UNSUPPORTED_TYPE,
+        COMPONENT_CONSTRUCTION_FAILURE,
+        ALLOCATION_FAILURE,
+        UNRESOLVED_REFERENCE,
+    };
+
+    struct ComponentDecodeFailure final
+    {
+        EComponentDecodeError code{EComponentDecodeError::MALFORMED_PAYLOAD};
+        std::size_t offset{};
+        world::WorldObjectId reference;
+    };
+
+    using DecodeEmplaceComponentFn = lux::cxx::expected<void, ComponentDecodeFailure> (*)(
+        Registry& registry,
+        const WorldEntityMap& identities,
+        Entity entity,
+        std::uint32_t encoded_schema_version,
+        std::span<const std::byte> encoded_payload
+    ) noexcept;
+
+    using ComponentEncodeResult = lux::cxx::expected<std::vector<std::byte>, serialization::SerializationFailure>;
+
+    // Owns copied values, not a historical identity map. Encode references at the author's Registry safe point.
+    class ComponentCapture final
+    {
+    public:
+        using EncodeFn = ComponentEncodeResult (*)(const void*, const Registry&, std::size_t);
+
+        ComponentCapture(std::shared_ptr<const void> value, EncodeFn encode) : value_(std::move(value)), encode_(encode)
+        {
+        }
+
+        [[nodiscard]] ComponentEncodeResult encode(const Registry& registry, std::size_t limit) const
+        {
+            return encode_(value_.get(), registry, limit);
+        }
+
+    private:
+        std::shared_ptr<const void> value_;
+        EncodeFn encode_;
+    };
+
+    struct ComponentEntityResolver final
+    {
+        const void* state;
+        lux::cxx::expected<Entity, ComponentDecodeFailure> (*resolve)(const void*, world::WorldObjectId) noexcept;
+    };
+
+    using ComponentDecodeResult = lux::cxx::expected<DecodedComponent, ComponentDecodeFailure>;
+    using DecodeComponentValueFn =
+        ComponentDecodeResult (*)(std::uint32_t, std::span<const std::byte>, ComponentEntityResolver, std::shared_ptr<const void>);
+
+    using CaptureComponentFn = lux::cxx::
+        expected<ComponentCapture, ComponentDecodeFailure> (*)(const Registry&, Entity, std::shared_ptr<const void>);
+    using CaptureComponentValueFn = ComponentCapture (*)(const void*, std::shared_ptr<const void>);
+    // Opt-in construction of a valid author value. Decoding existing bytes does not imply this capability.
+    using CreateComponentFn =
+        lux::cxx::expected<ComponentCapture, ComponentDecodeFailure> (*)(std::shared_ptr<const void>) noexcept;
+
+    struct ComponentEntityVisitor final
+    {
+        void* state;
+        void (*visit)(void*, Entity) noexcept;
+    };
+
+    // Read-only traversal through the component's author codec; no byte buffer or copy.
+    // Missing/failed traversal means reference safety cannot be established.
+    using VisitComponentReferencesFn =
+        serialization::SerializationResult (*)(const Registry&, Entity, ComponentEntityVisitor) noexcept;
+
+    struct ComponentSchema final
+    {
+        lux::cxx::type_info cpp_type;
+        ComponentSchemaId id;
+        std::uint32_t version{1};
+        ComponentOperations operations;
+        DecodeEmplaceComponentFn decode_emplace{};
+        EComponentSnapshotPolicy snapshot{EComponentSnapshotPolicy::COPY};
+        EComponentSemanticKind semantic_kind{EComponentSemanticKind::DOMAIN_CONTRACT};
+        std::shared_ptr<const void> code_lifetime;
+        CaptureComponentFn capture{};
+        DecodeComponentValueFn decode_value{};
+        CaptureComponentValueFn capture_value{};
+        VisitComponentReferencesFn visit_references{};
+        CreateComponentFn create{};
+        // Persistence is an explicit domain projection, independent of in-memory snapshot policy.
+        bool persistent{};
+        void (*visit_instances)(const Registry&, void*, void (*)(void*, Entity) noexcept) noexcept {};
+        serialization::SerializationResult (*encode)(
+            const Registry&, Entity, std::vector<std::byte>&,
+            const serialization::SerializationBudget&
+        ) noexcept {};
+
+    };
+
+    template <class Component>
+    [[nodiscard]] ComponentSchema makeComponentSchema(
+        ComponentSchemaId id,
+        std::uint32_t version,
+        EComponentSnapshotPolicy snapshot,
+        std::shared_ptr<const void> code_lifetime,
+        DecodeEmplaceComponentFn decode_emplace,
+        EComponentSemanticKind semantic_kind,
+        CaptureComponentFn capture = nullptr,
+        DecodeComponentValueFn decode_value = nullptr,
+        CaptureComponentValueFn capture_value = nullptr,
+        VisitComponentReferencesFn visit_references = nullptr,
+        CreateComponentFn create = nullptr
+    )
+    {
+        return ComponentSchema{
+            lux::cxx::make_basic_type_info<Component>(),
+            std::move(id),
+            version,
+            componentOperations<Component>(),
+            decode_emplace,
+            snapshot,
+            semantic_kind,
+            std::move(code_lifetime),
+            capture,
+            decode_value,
+            capture_value,
+            visit_references,
+            create,
+            false,
+            +[](const Registry& registry, void* data, void (*visit)(void*, Entity) noexcept) noexcept
+            {
+                for (const auto entity : registry.view<const Component>())
+                {
+                    visit(data, entity);
+                }
+            }
+        };
+    }
+} // namespace lux::ecs

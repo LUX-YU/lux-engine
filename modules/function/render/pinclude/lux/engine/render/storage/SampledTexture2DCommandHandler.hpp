@@ -1,24 +1,29 @@
 #pragma once
+#include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/commands/ImageCommands.hpp>
 
 #include <exec/task.hpp>
-#include <lux/engine/render/extensions/CommandMethod.hpp>
 
 #include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
 #include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+
+namespace lux::render
+{
+    class ResourceRegistry;
+}
 
 namespace lux::render::detail
 {
     class DeviceSession;
     class SampledTexture2DStorage;
 
-    // One resource-directory borrower for all Texture Commands. Storage remains separately scope-owned.
+    // Texture operations receive a qualified Storage; they do not resolve routing or own the Storage.
     class SampledTexture2DCommandHandler final
     {
     private:
         static constexpr auto create_texture_response_ = [](RenderResult<TextureId> result
-                                                         ) noexcept -> CreateTexture::Response
+                                                         ) noexcept -> ImageCommands::Upload::Response
         {
             if (!result)
             {
@@ -28,7 +33,7 @@ namespace lux::render::detail
         };
 
         static constexpr auto create_patched_texture_response_ = [](RenderResult<TextureId> result
-                                                                 ) noexcept -> CreatePatchedTexture::Response
+                                                                 ) noexcept -> ImageCommands::CloneRegion::Response
         {
             if (!result)
             {
@@ -38,45 +43,38 @@ namespace lux::render::detail
         };
 
     public:
-        // Factory registration does not construct an object. Activation borrows the one resource directory.
-        static SampledTexture2DCommandHandler* create(ResourceRegistry& resources) noexcept
+        // Stateless typed methods; the Server supplies the selected Storage at dispatch.
+        static SampledTexture2DCommandHandler* create(ResourceRegistry&) noexcept
         {
-            return new SampledTexture2DCommandHandler(resources);
+            return new SampledTexture2DCommandHandler;
         }
 
-        using CreateTextureSender =
+        using UploadSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<TextureId>>>(), create_texture_response_));
 
-        using CreatePatchedTextureSender = decltype(stdexec::then(
+        using CloneRegionSender = decltype(stdexec::then(
             std::declval<exec::task<RenderResult<TextureId>>>(),
             create_patched_texture_response_
         ));
 
         static constexpr std::string_view name = "lux.render.storage.SampledTexture2DCommandHandler";
 
-        explicit SampledTexture2DCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
-
-        CreateTextureSender createTexture(CreateTexture::Request&& input) noexcept
+        UploadSender createTexture(SampledTexture2DStorage& storage, ImageCommands::Upload::Request&& input) noexcept
         {
-            return uploadTexture(std::move(input)) | stdexec::then(create_texture_response_);
+            return render::upload(storage, std::move(input.data)) | stdexec::then(create_texture_response_);
         }
 
-        CreatePatchedTextureSender createPatchedTexture(CreatePatchedTexture::Request&& input) noexcept
+        CloneRegionSender
+        createPatchedTexture(SampledTexture2DStorage& storage, ImageCommands::CloneRegion::Request&& input) noexcept
         {
-            return uploadPatchedTexture(std::move(input)) | stdexec::then(create_patched_texture_response_);
+            return render::upload(storage, std::move(input.data)) | stdexec::then(create_patched_texture_response_);
         }
 
-        void releaseTexture(const ReleaseTexture::Request&, ReleaseTexture::Response&) noexcept;
-        using Bindings = std::tuple<
-            CommandMethod<CreateTexture, &SampledTexture2DCommandHandler::createTexture>,
-            CommandMethod<CreatePatchedTexture, &SampledTexture2DCommandHandler::createPatchedTexture>,
-            CommandMethod<ReleaseTexture, &SampledTexture2DCommandHandler::releaseTexture>>;
-
-    private:
-        exec::task<RenderResult<TextureId>> uploadTexture(CreateTexture::Request&&) noexcept;
-        exec::task<RenderResult<TextureId>> uploadPatchedTexture(CreatePatchedTexture::Request&&) noexcept;
-
-        ResourceRegistry& resources_;
+        void releaseTexture(
+            SampledTexture2DStorage& storage,
+            const ImageCommands::Release::Request& input,
+            ImageCommands::Release::Response& response
+        ) noexcept;
     };
 
 } // namespace lux::render::detail

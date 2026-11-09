@@ -1,9 +1,9 @@
 #pragma once
 #include <atomic>
-#include <lux/engine/context/render/RenderAssets.hpp>
-#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
-#include <lux/engine/scene/render/RenderBindingPlan.hpp>
+#include <lux/engine/render/frame/RenderFrame.hpp>
+#include <lux/engine/systems/render/RenderAssets.hpp>
 
 namespace fixture
 {
@@ -20,7 +20,9 @@ namespace fixture
         using Descriptor = RoleStorageDescriptor;
         inline static std::atomic<unsigned> live = 0;
 
-        RoleStorage() noexcept
+        lux::render::StorageId id;
+
+        explicit RoleStorage(lux::render::StorageId id) noexcept : id(id)
         {
             ++live;
         }
@@ -30,12 +32,10 @@ namespace fixture
             --live;
         }
 
-        static lux::render::RenderResult<std::unique_ptr<RoleStorage>> create(
-            lux::render::StorageCreateContext&,
-            lux::render::StorageId
-        ) noexcept
+        static lux::render::RenderResult<std::unique_ptr<RoleStorage>>
+        create(lux::render::StorageCreateContext&, lux::render::StorageId id) noexcept
         {
-            return std::make_unique<RoleStorage>();
+            return std::make_unique<RoleStorage>(id);
         }
 
         static lux::render::StorageFactory factory() noexcept
@@ -47,61 +47,86 @@ namespace fixture
         }
     };
 
+    template <unsigned Role> struct RoleCommand
+    {
+        static constexpr std::string_view name = Role == 0   ? "test.role.first"
+                                                 : Role == 1 ? "test.role.second"
+                                                             : "test.role.view";
+        static constexpr bool requires_frame_boundary = false;
+        using Data = unsigned;
+
+        struct Request
+        {
+            lux::render::CommandDestination destination;
+            unsigned value = 0;
+        };
+
+        struct Response
+        {
+            lux::render::RenderError error;
+            lux::render::StorageId storage;
+        };
+    };
+
+    struct RoleCapability
+    {
+        using PrerequisiteCapabilities = std::tuple<>;
+        using Commands = std::tuple<RoleCommand<0>, RoleCommand<1>, RoleCommand<2>>;
+        using PerFrameData = std::tuple<>;
+    };
+
+    struct RoleHandler
+    {
+        static constexpr std::string_view name = "test.role.handler";
+
+        static RoleHandler* create(lux::render::ResourceRegistry&) noexcept
+        {
+            return new RoleHandler;
+        }
+
+        template <unsigned Role>
+        void inspect(
+            RoleStorage& storage,
+            const typename RoleCommand<Role>::Request&,
+            typename RoleCommand<Role>::Response& out
+        ) noexcept
+        {
+            out.storage = storage.id;
+        }
+    };
+
     struct RoleFeature
     {
+        using Capability = RoleCapability;
+        using Features = std::tuple<>;
+        using FrameBindings = std::tuple<>;
         using Config = void;
         using Storages = std::tuple<RoleStorage>;
-        using Commands = std::tuple<>;
+        using Bindings = std::tuple<
+            lux::render::CommandMethod<RoleCommand<0>, &RoleHandler::inspect<0>, 0>,
+            lux::render::CommandMethod<RoleCommand<1>, &RoleHandler::inspect<1>, 1>,
+            lux::render::CommandMethod<RoleCommand<2>, &RoleHandler::inspect<2>, 2>>;
         static constexpr lux::render::FeatureName name{"test.editor.role_inputs"};
 
-        static const lux::render::FeatureGraphOps& graph(bool) noexcept
+        static lux::render::CapabilityImplementation implementation() noexcept
         {
             using namespace lux::render;
             static const std::array inputs{
-                CapabilityStorageInput{
-                    "test.role",
-                    1,
-                    ECapabilityInputScope::GLOBAL,
-                    RoleStorageDescriptor::descriptor.type,
-                    "a"
-                },
-                CapabilityStorageInput{
-                    "test.role",
-                    1,
-                    ECapabilityInputScope::GLOBAL,
-                    RoleStorageDescriptor::descriptor.type,
-                    "b"
-                },
-                CapabilityStorageInput{
-                    "test.role",
-                    1,
-                    ECapabilityInputScope::VIEW,
-                    RoleStorageDescriptor::descriptor.type,
-                    "view"
-                }
+                CapabilityStorageDependency{EStorageScope::GLOBAL, RoleStorageDescriptor::descriptor.type, "a"},
+                CapabilityStorageDependency{EStorageScope::GLOBAL, RoleStorageDescriptor::descriptor.type, "b"},
+                CapabilityStorageDependency{EStorageScope::VIEW, RoleStorageDescriptor::descriptor.type, "view"}
             };
-            static const FeatureGraphOps value{.storage_inputs = inputs};
-            return value;
-        }
 
-        static const lux::render::CapabilitySupport& capabilities() noexcept
-        {
             static const auto value = []
             {
                 using namespace lux::render;
-                CapabilitySupport result;
+                CapabilityImplementation result;
                 result.implementation = name.name();
-                RenderCapability capability;
-                capability.name = name.name();
-                RenderPayloadContract input;
-                input.schema = "test.role";
-                input.use = ERenderPayloadUse::RESOURCE_INPUT;
-                input.setCppType(lux::cxx::typeToken<unsigned>());
-                capability.inputs.push_back(input);
-                result.capabilities.push_back(std::move(capability));
                 return result;
             }();
-            return value;
+            auto definition = value;
+            definition.storage_dependencies = inputs;
+            return definition;
         }
     };
 

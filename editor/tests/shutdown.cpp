@@ -1,21 +1,38 @@
+#include "support/ProjectRequests.hpp"
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <exec/task.hpp>
-#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/Engine.hpp>
 #include <lux/engine/editor/AppErrors.hpp>
+#include <lux/engine/editor/EditorApplication.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/systems/render/RenderExecution.hpp>
 #include <thread>
 
 namespace
 {
+    struct ApplicationScene final
+    {
+        ::lux::engine::render::RenderExecution& rendering;
+        bool completed = false;
+
+        exec::task<lux::scene::SceneCloseResult> close() noexcept
+        {
+            assert(!rendering.mainClient().closed());
+            co_await stdexec::schedule(rendering.execution().mainScheduler());
+            assert(!rendering.mainClient().closed());
+            completed = true;
+            co_return lux::scene::SceneCloseResult{};
+        }
+    };
+
     exec::task<lux::editor::FrameworkResult<void>> stopAfterPresentation(
-        lux::editor::LuxEngine& application,
+        lux::editor::EditorApplication& application,
         bool& rejected_recursive_drive,
         bool& acknowledged
     ) noexcept
@@ -59,7 +76,7 @@ int main(int argc, char** argv)
     assert(editor::writeProjectManifestAtomic(file, manifest, editor::EProjectWrite::REPLACE));
     editor::EditorConfig config{"Posted shutdown", 200, 160};
     config.project_file = file;
-    auto host = editor::LuxEngine::create(std::move(config));
+    auto host = fixture::createLoadedEditor(std::move(config));
     assert(host);
     editor::OpenProjectRequest request{file};
     assert(object::sendEvent(**host, request) && !request.rejection.type);
@@ -69,14 +86,40 @@ int main(int argc, char** argv)
         assert(std::chrono::steady_clock::now() < deadline);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    std::puts("real MainScheduler completion ready; destroying host");
+    // An application Scene is not an Editor project member. Engine must retire it
+    // while Render still accepts its cleanup, before closing the shared transport.
+    ApplicationScene application_scene{(*host)->rendering()};
+    scene::SceneDescriptionBuilder description;
+    auto resolved = std::move(description).buildResolved();
+    assert(resolved);
+    ecs::ComponentSchemaSet schemas;
+    simulation::SimulationSystemRegistry systems;
+    auto builder = (*host)->engine().sceneRuntime().builder();
+    builder.setDescription(std::make_shared<const scene::SceneDescription>(std::move(*resolved)))
+        .setWorld(std::make_shared<const world::WorldDescription>())
+        .setSimulation(std::make_shared<const simulation::SimulationDescription>())
+        .setRegistrations(schemas, systems, {});
+    auto application_instance = builder.build();
+    assert(application_instance);
+    assert((*host)->engine().sceneRuntime().addCloseParticipant(
+        *application_instance,
+        {{},
+         "test.application.transport",
+         {},
+         &application_scene,
+         +[](void* object, scene::SceneInstanceId) noexcept { return static_cast<ApplicationScene*>(object)->close(); }}
+    ));
+    std::puts("real MainScheduler completion ready; closing through the explicit application driver");
     std::fflush(stdout);
+    (*host)->engine().requestClose();
+    assert((*host)->run());
     host->reset();
+    assert(application_scene.completed);
     assert(!object::ObjectRuntime::instance().statistics().pending);
     std::puts("host destruction returned; accepted completion settled");
     editor::EditorConfig failure_config{"Execution failure close", 200, 160};
     failure_config.project_file = file;
-    host = editor::LuxEngine::create(std::move(failure_config));
+    host = fixture::createLoadedEditor(std::move(failure_config));
     assert(host);
     auto& rendering = (*host)->rendering();
     auto& client = rendering.mainClient();
@@ -86,10 +129,12 @@ int main(int argc, char** argv)
         stopAfterPresentation(**host, rejected_recursive_drive, acknowledged)
     );
     assert(rendering.execution().spawn(
-        stdexec::then(execution::taskResult(std::move(work)), [](auto&& result) noexcept { assert(result); })
+        stdexec::then(execution::asResult(std::move(work)), [](auto&& result) noexcept { assert(result); })
     ));
     const auto stopped = (*host)->run();
-    assert(!stopped && stopped.error().type == lux::render::kCommandCancelled && acknowledged && rejected_recursive_drive);
+    assert(
+        !stopped && stopped.error().type == lux::render::kCommandCancelled && acknowledged && rejected_recursive_drive
+    );
     assert(client.pendingRequests() == 0 && rendering.stats().validation_errors == 0);
     host->reset();
     std::puts("execution failure reported after UI/Clients/Server cleanup; destructor completed");

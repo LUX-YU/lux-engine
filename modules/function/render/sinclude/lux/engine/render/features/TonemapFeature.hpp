@@ -1,17 +1,14 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
+
 #include <lux/engine/description/ShaderBlock.hpp>
+#include <lux/engine/render/capabilities/ColorEncoding.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 
 namespace lux::render
 {
-    enum class EColorEncoding : std::uint8_t
-    {
-        LINEAR,
-        SRGB
-    };
-
     struct TonemapParameters final
     {
         float exposure = 0;
@@ -29,7 +26,7 @@ namespace lux::render
 
     struct TonemapFeatureConfig final
     {
-        TargetDesc target;
+        EffectOutputDesc output;
         EColorEncoding encoding = EColorEncoding::SRGB;
         rdesc::ShaderBlock input_layout = tonemapParameterBlock();
         bool operator==(const TonemapFeatureConfig&) const noexcept = default;

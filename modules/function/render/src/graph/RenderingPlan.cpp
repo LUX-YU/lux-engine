@@ -101,6 +101,11 @@ namespace lux::render::detail
             bool same_attachments = previous && pass.condition_region == recording.passes[p - 1].condition_region &&
                                     previous->colors.size() == raster->colors.size() &&
                                     bool(previous->depth) == bool(raster->depth);
+            // Dynamic lists delimit their actual attachment sections during recording.
+            same_attachments = same_attachments && !std::holds_alternative<RasterListCommands>(raster->draw) &&
+                               !std::holds_alternative<RasterListCommands>(previous->draw) &&
+                               !std::holds_alternative<IndexedListCommands>(raster->draw) &&
+                               !std::holds_alternative<IndexedListCommands>(previous->draw);
             if (same_attachments)
             {
                 for (std::size_t i = 0; i < raster->colors.size(); ++i)
@@ -249,15 +254,6 @@ namespace lux::render::detail
                         transfer->operations[i]
                     );
                 }
-            }
-            const auto& batch = pass.before;
-            for (std::uint32_t i = 0; i < batch.images.size(); ++i)
-            {
-                resources[batch.images[i].resource].barrier_uses.emplace_back(p, i);
-            }
-            for (std::uint32_t i = 0; i < batch.buffers.size(); ++i)
-            {
-                resources[batch.buffers[i].resource].barrier_uses.emplace_back(p, i);
             }
         }
         return {};

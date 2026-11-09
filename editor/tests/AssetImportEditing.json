@@ -1,0 +1,1 @@
+{"types":{"fixture::TriangleImportConfiguration":{"label":"Triangle","fields":{"scale":{"label":"Scale","minimum":1,"maximum":32}}}}}

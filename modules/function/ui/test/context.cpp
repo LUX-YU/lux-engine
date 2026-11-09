@@ -36,7 +36,7 @@ int main()
     assert(first_font && second_font && first_font->pixels == second_font->pixels);
     assert((*first)->feedInput(ui::Key{ui::EKey::A, true}, 100));
     assert((*second)->feedInput(ui::Key{ui::EKey::B, true}, 200));
-    ui::DrawData slot;
+    ui::DrawView slot;
     {
         auto draw_first = [] { ImGui::TextUnformatted("First root"); };
         auto& one = ui_test::makePane<TUiDrawPane<decltype(draw_first)>>(**first, draw_first);
@@ -78,9 +78,10 @@ int main()
             assert((*scaled)->update({{640, 480}, 0.016F}, slot));
         }
     }
+    slot = {}; // DrawView borrows the Context; release it before destroying that Context.
     first->reset();
     second->reset();
-    assert(slot.valid() && ImGui::GetCurrentContext() == original);
+    assert(!slot.valid() && ImGui::GetCurrentContext() == original);
     assert(first_font->pixels == second_font->pixels); // The owning font copy outlives both backends.
     ImGui::DestroyContext(original);
 }

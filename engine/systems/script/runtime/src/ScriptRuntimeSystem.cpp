@@ -1,0 +1,938 @@
+#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/scene/ScriptRuntimeSystem.hpp>
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
+
+#include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
+
+#include <stdexec/execution.hpp>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <exception>
+#include <mutex>
+#include <optional>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace lux::scene
+{
+    namespace
+    {
+        namespace Errors
+        {
+            constexpr error::ErrorDescriptor SceneScriptStopDescriptor{
+                "lux.scene.script.stop",
+                "Script stop code {0}",
+                error::ERecovery::BUG,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneScriptStop = error::errorId(SceneScriptStopDescriptor.name);
+        } // namespace Errors
+
+        constexpr error::ErrorDescriptor ErrorDescriptors[]{Errors::SceneScriptStopDescriptor};
+    } // namespace
+
+    struct ScriptRealDelayProvider::Impl final
+    {
+        enum class ETerminal : std::uint8_t
+        {
+            PENDING,
+            READY,
+            FAILED,
+            STOPPED,
+        };
+
+        struct Request final
+        {
+            lux::script::TScriptAbilityCompletion<void> completion;
+            std::atomic<ETerminal> terminal{ETerminal::PENDING};
+            std::atomic<std::int32_t> status{};
+        };
+
+        Impl(
+            execution::ExecutionRuntime& execution,
+            execution::TimerClient timer_value,
+            std::size_t capacity_value
+        ) noexcept
+            : timer(std::move(timer_value)), capacity(capacity_value), tasks(execution)
+        {
+        }
+
+        execution::TimerClient timer;
+        std::mutex mutex;
+        std::vector<std::shared_ptr<Request>> requests;
+        std::size_t capacity{};
+        bool delivering{};
+        execution::TaskScope tasks;
+    };
+
+    namespace
+    {
+        [[nodiscard]] std::int32_t timerStatus(execution::ETimerError error) noexcept
+        {
+            using simulation::script::EScriptDelayStatus;
+            switch (error)
+            {
+            case execution::ETimerError::INVALID_ARGUMENT:
+                return static_cast<std::int32_t>(EScriptDelayStatus::INVALID_DURATION);
+            case execution::ETimerError::CAPACITY_EXCEEDED:
+                return static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED);
+            case execution::ETimerError::STOPPING:
+                return static_cast<std::int32_t>(EScriptDelayStatus::STOPPING);
+            case execution::ETimerError::ALLOCATION_FAILURE:
+                return static_cast<std::int32_t>(EScriptDelayStatus::ALLOCATION_FAILURE);
+            case execution::ETimerError::WORKER_CREATION_FAILURE:
+            case execution::ETimerError::BACKEND_FAILURE:
+                return static_cast<std::int32_t>(EScriptDelayStatus::TIMER_FAILURE);
+            }
+            return static_cast<std::int32_t>(EScriptDelayStatus::TIMER_FAILURE);
+        }
+
+        constexpr std::array Requirements{
+            SceneDependencyRequirement{
+                .name = "script_runtime_host",
+                .role = "lux.script.runtime.host",
+                .expected_type = lux::cxx::make_basic_type_info<ScriptRuntimeHost>(),
+                .optional = false
+            },
+            SceneDependencyRequirement{
+                .name = "timer",
+                .role = "lux.process.timer",
+                .expected_type = lux::cxx::make_basic_type_info<execution::TimerClient>(),
+                .optional = false
+            }
+        };
+
+        [[nodiscard]] SceneSystemBuildFailure failure(
+            ESceneSystemBuildError code,
+            system::SystemInstanceId system,
+            std::uint64_t subject = 0U
+        ) noexcept
+        {
+            return {code, system, {}, subject};
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, SceneSystemBuildFailure> installScriptRuntimeSystem(
+            SceneSystemInstaller& builder,
+            SceneSystemDescription description
+        ) noexcept
+        {
+            if (auto registered = error::ErrorRegistry::instance().registerTypes(ErrorDescriptors); !registered)
+            {
+                return cxx::unexpected(SceneSystemBuildFailure{
+                    .code = ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                    .system = description.instanceId(),
+                    .cause = registered.error()
+                });
+            }
+            auto* host = builder.require<ScriptRuntimeHost>(description.instanceId(), "script_runtime_host");
+            if (host == nullptr)
+            {
+                return lux::cxx::unexpected(
+                    failure(ESceneSystemBuildError::MISSING_REQUIREMENT, description.instanceId())
+                );
+            }
+            auto* timer = builder.require<execution::TimerClient>(description.instanceId(), "timer");
+            if (timer == nullptr)
+            {
+                return lux::cxx::unexpected(
+                    failure(ESceneSystemBuildError::MISSING_REQUIREMENT, description.instanceId())
+                );
+            }
+
+            const auto data = builder.simulation().description().findData(scene::script::scriptSystemDataSchemaId());
+            if (!data)
+            {
+                return lux::cxx::unexpected(failure(
+                    ESceneSystemBuildError::INVALID_DESCRIPTION,
+                    description.instanceId(),
+                    scene::script::scriptSystemDataSchemaId().hash
+                ));
+            }
+
+            auto decoded = scene::script::decodeScriptSystemDescription(
+                data.payload(),
+                builder.simulation().description(),
+                host->codec_limits
+            );
+            if (!decoded)
+            {
+                return lux::cxx::unexpected(failure(
+                    ESceneSystemBuildError::INVALID_DESCRIPTION,
+                    description.instanceId(),
+                    static_cast<std::uint64_t>(decoded.error())
+                ));
+            }
+
+            {
+                auto real_delay = ScriptRealDelayProvider::create(host->execution, *timer, host->real_delay_capacity);
+                if (!real_delay)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                        description.instanceId(),
+                        static_cast<std::uint64_t>(real_delay.error())
+                    ));
+                }
+                auto owned_description = std::make_unique<scene::script::ScriptSystemDescription>(std::move(*decoded));
+                auto capacity = script::planScriptRuntimeCapacity(*owned_description);
+                auto resolved = script::resolveScriptRuntimeMounts(*owned_description, host->world, builder.registry());
+                if (!capacity || !resolved)
+                {
+                    return lux::cxx::unexpected(
+                        failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE, description.instanceId())
+                    );
+                }
+                std::unique_ptr<ecs::EcsCommandBuffer> commands;
+                std::unique_ptr<simulation::script::DeferredScriptHost> deferred_host;
+                const bool has_entity_mount = std::ranges::any_of(
+                    owned_description->mounts(),
+                    [](const auto& mount)
+                    { return mount.enabled && std::holds_alternative<script::EntityScriptMount>(mount.scope); }
+                );
+                if (has_entity_mount)
+                {
+                    commands = std::make_unique<ecs::EcsCommandBuffer>();
+                    if (!commands->prepare(std::span{&host->command_capacity, 1U}))
+                    {
+                        return lux::cxx::unexpected(
+                            failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE, description.instanceId())
+                        );
+                    }
+                    deferred_host =
+                        std::make_unique<simulation::script::DeferredScriptHost>(builder.registry(), host->components);
+                }
+                std::unique_ptr<script::ScriptAssetAccess> assets;
+                ScriptSimulationInputs simulation_inputs;
+                for (std::size_t i = 0; i < host->simulation_bindings.size(); ++i)
+                {
+                    const auto& bind = host->simulation_bindings[i];
+                    if (!bind || !bind(builder.simulation(), simulation_inputs))
+                    {
+                        return cxx::unexpected(failure(
+                            ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), i
+                        ));
+                    }
+                }
+                auto& capabilities = simulation_inputs.capabilities;
+                const bool has_unbound_asset_capabilities = !host->assets && !host->asset_capabilities.empty();
+                if (has_unbound_asset_capabilities)
+                {
+                    return lux::cxx::unexpected(
+                        failure(ESceneSystemBuildError::MISSING_REQUIREMENT, description.instanceId())
+                    );
+                }
+                if (host->assets)
+                {
+                    auto prepared_assets =
+                        script::ScriptAssetAccess::create(host->execution, *host->assets, host->asset_source, host->asset_limits);
+                    if (!prepared_assets)
+                    {
+                        return lux::cxx::unexpected(failure(
+                            ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                            description.instanceId(),
+                            static_cast<std::uint64_t>(prepared_assets.error())
+                        ));
+                    }
+                    assets = std::move(*prepared_assets);
+                    capabilities.push_back(script::publishAssetAbility(*assets));
+                    for (const auto factory : host->asset_capabilities)
+                    {
+                        if (factory == nullptr)
+                        {
+                            return lux::cxx::unexpected(
+                                failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId())
+                            );
+                        }
+                        capabilities.push_back(factory(*assets));
+                    }
+                }
+                auto created = simulation::script::ScriptSystem::create(
+                    builder.simulation().description(),
+                    *capacity,
+                    *resolved,
+                    builder.registry(),
+                    builder.simulation().time(),
+                    host->limits,
+                    host->artifacts,
+                    capabilities,
+                    host->backends,
+                    simulation_inputs.hooks,
+                    simulation_inputs.events,
+                    deferred_host ? deferred_host->api() : simulation::script::ScriptHostApi{},
+                    (*real_delay)->endpoint()
+                );
+                if (!created)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                        description.instanceId(),
+                        static_cast<std::uint64_t>(created.error())
+                    ));
+                }
+                // Initial lifecycle has the same owned command surface. Commands wait for the first
+                // named Hook barrier, after the initial initialize/BeginPlay/publish/activate batch.
+                auto prepared = [&]() noexcept -> lux::cxx::expected<void, simulation::script::EScriptSystemError>
+                {
+                    if (!commands)
+                    {
+                        return created->prepare();
+                    }
+                    auto writer = commands->begin(0U, ecs::EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET);
+                    if (!writer)
+                    {
+                        return lux::cxx::unexpected(simulation::script::EScriptSystemError::CAPACITY_EXCEEDED);
+                    }
+                    auto batch = deferred_host->begin(*writer);
+                    if (!batch)
+                    {
+                        return lux::cxx::unexpected(simulation::script::EScriptSystemError::ENDPOINT_BUSY);
+                    }
+                    return created->prepare();
+                }();
+                if (!prepared)
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                        description.instanceId(),
+                        static_cast<std::uint64_t>(prepared.error())
+                    ));
+                }
+
+                auto installed = builder.emplaceSystem<ScriptRuntimeSystem>(
+                    description.instanceId(),
+                    std::move(*real_delay),
+                    std::move(owned_description),
+                    std::move(*created),
+                    host->world,
+                    builder.registry(),
+                    std::move(commands),
+                    std::move(deferred_host),
+                    std::move(assets)
+                );
+                if (!installed)
+                {
+                    return lux::cxx::unexpected(installed.error());
+                }
+
+                if (!(*installed)->bindSimulation(builder.simulation()))
+                {
+                    return lux::cxx::unexpected(
+                        failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE, description.instanceId())
+                    );
+                }
+                return builder.addMaintenanceTask<ScriptRuntimeSystem>(
+                    description.instanceId(),
+                    [](ScriptRuntimeSystem& runtime, SceneStageContext& context) noexcept
+                    { return runtime.maintain(context); }
+                );
+            }
+        }
+    } // namespace
+
+    ScriptRealDelayProvider::ScriptRealDelayProvider(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+
+    ScriptRealDelayProvider::CreateResult ScriptRealDelayProvider::create(
+        execution::ExecutionRuntime& execution,
+        execution::TimerClient timer,
+        std::size_t capacity
+    ) noexcept
+    {
+        const bool is_invalid_input = !timer || capacity == 0U;
+        if (is_invalid_input)
+        {
+            return lux::cxx::unexpected(EScriptRealDelayProviderError::INVALID_ARGUMENT);
+        }
+        auto impl = std::make_shared<Impl>(execution, std::move(timer), capacity);
+        impl->requests.reserve(capacity);
+        return std::unique_ptr<ScriptRealDelayProvider>(new ScriptRealDelayProvider(std::move(impl)));
+    }
+
+    ScriptRealDelayProvider::~ScriptRealDelayProvider() noexcept
+    {
+        impl_->tasks.requestStop();
+        std::vector<std::shared_ptr<Impl::Request>> removed;
+        {
+            std::lock_guard lock{impl_->mutex};
+            removed.swap(impl_->requests);
+        }
+    }
+
+    lux::script::ScriptAbilityStartResult ScriptRealDelayProvider::start(
+        std::chrono::nanoseconds duration,
+        lux::script::TScriptAbilityCompletion<void> completion
+    ) noexcept
+    {
+        const auto impl = impl_;
+        using simulation::script::EScriptDelayStatus;
+        const bool is_valid_duration = duration > std::chrono::nanoseconds::zero();
+        const bool has_active_completion = is_valid_duration && completion.active();
+        if (!has_active_completion)
+        {
+            return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                static_cast<std::int32_t>(EScriptDelayStatus::INVALID_DURATION)
+            });
+        }
+
+        auto request = std::make_shared<Impl::Request>();
+        request->completion = std::move(completion);
+
+        {
+            std::lock_guard lock{impl->mutex};
+            if (impl->requests.size() >= impl->capacity)
+            {
+                return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
+                    static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED)
+                });
+            }
+            impl->requests.push_back(request);
+        }
+
+        using TimerResult = lux::cxx::expected<void, execution::ETimerError>;
+        const auto started = impl->tasks.submit(
+            {"Script delay", "script"},
+            [timer = impl->timer, duration, request](execution::TaskReporter) noexcept
+            {
+                auto elapsed = stdexec::then(timer.after(duration), []() noexcept { return TimerResult{}; });
+                auto result = stdexec::upon_error(
+                    std::move(elapsed),
+                    [](execution::ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
+                );
+                return stdexec::then(
+                    execution::asResult(std::move(result)),
+                    [request](execution::ExecutionResult<void, execution::ETimerError> result) noexcept
+                    {
+                        const auto outcome = execution::taskState(result);
+                        if (result)
+                        {
+                            request->terminal.store(Impl::ETerminal::READY, std::memory_order_release);
+                            return outcome;
+                        }
+                        if (const auto* error = result.error().domainFailure())
+                        {
+                            request->status.store(timerStatus(*error), std::memory_order_release);
+                            request->terminal.store(Impl::ETerminal::FAILED, std::memory_order_release);
+                            return outcome;
+                        }
+                        const bool stopped = result.error().isCancelled();
+                        request->status.store(
+                            static_cast<std::int32_t>(
+                                stopped ? EScriptDelayStatus::STOPPING : EScriptDelayStatus::TIMER_FAILURE
+                            ),
+                            std::memory_order_release
+                        );
+                        request->terminal.store(
+                            stopped ? Impl::ETerminal::STOPPED : Impl::ETerminal::FAILED,
+                            std::memory_order_release
+                        );
+                        return outcome;
+                    }
+                );
+            }
+        );
+        if (started)
+        {
+            return {};
+        }
+
+        std::lock_guard lock{impl->mutex};
+        std::erase(impl->requests, request);
+        const auto status = started.error() == execution::EExecutionError::STOPPING
+                                ? EScriptDelayStatus::STOPPING
+                                : EScriptDelayStatus::CAPACITY_EXCEEDED;
+        return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{static_cast<std::int32_t>(status)});
+    }
+
+    simulation::script::ScriptRealDelayEndpoint ScriptRealDelayProvider::endpoint() noexcept
+    {
+        return {
+            this,
+            +[](void* context, std::chrono::nanoseconds duration, lux::script::TScriptAbilityCompletion<void> completion
+             ) noexcept
+            { return static_cast<ScriptRealDelayProvider*>(context)->start(duration, std::move(completion)); }
+        };
+    }
+
+    bool ScriptRealDelayProvider::drainCompletions() noexcept
+    {
+        const auto impl = impl_;
+        {
+            std::lock_guard lock{impl->mutex};
+            if (impl->delivering)
+            {
+                return true;
+            }
+            impl->delivering = true;
+        }
+
+        struct Delivery final
+        {
+            Impl& impl;
+
+            ~Delivery() noexcept
+            {
+                std::lock_guard lock{impl.mutex};
+                impl.delivering = false;
+            }
+        } delivery{*impl};
+
+        for (;;)
+        {
+            std::shared_ptr<Impl::Request> request;
+            Impl::ETerminal terminal{Impl::ETerminal::PENDING};
+            {
+                std::lock_guard lock{impl->mutex};
+                const auto found = std::find_if(
+                    impl->requests.begin(),
+                    impl->requests.end(),
+                    [](const auto& value)
+                    { return value->terminal.load(std::memory_order_acquire) != Impl::ETerminal::PENDING; }
+                );
+                if (found == impl->requests.end())
+                {
+                    return true;
+                }
+                request = *found;
+                terminal = request->terminal.load(std::memory_order_acquire);
+            }
+
+            const auto completed = terminal == Impl::ETerminal::READY
+                                       ? request->completion.success()
+                                       : request->completion.fail({request->status.load(std::memory_order_acquire)});
+            const bool is_backpressure =
+                !completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE;
+            if (is_backpressure)
+            {
+                return true;
+            }
+
+            {
+                std::lock_guard lock{impl->mutex};
+                std::erase(impl->requests, request);
+            }
+            const bool is_unexpected_failure =
+                !completed && completed.error() != lux::script::EScriptAbilityCompletionError::STALE &&
+                completed.error() != lux::script::EScriptAbilityCompletionError::STOPPING &&
+                completed.error() != lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
+            if (is_unexpected_failure)
+            {
+                return false;
+            }
+        }
+    }
+
+    struct ScriptRuntimeSystem::Loader final
+    {
+        std::vector<simulation::script::ScriptRuntimeMount> inputs;
+        std::vector<std::uint32_t> pending;
+        std::vector<std::uint8_t> present;
+        std::vector<std::uint32_t> processing;
+        std::vector<simulation::script::ScriptRuntimeMount> batch;
+        std::vector<std::uint32_t> batch_slots;
+        std::vector<simulation::script::ScriptMountStatus> changes;
+        std::vector<std::pair<std::uint64_t, std::uint32_t>> index;
+
+        void enqueue(std::uint32_t slot) noexcept
+        {
+            if (present[slot] == 0U)
+            {
+                present[slot] = 1U;
+                pending.push_back(slot);
+            }
+        }
+    };
+
+    bool ScriptRuntimeSystem::prepareLoader() noexcept
+    {
+        {
+            auto loader = std::make_unique<Loader>();
+            const auto mounts = description_->mounts();
+            loader->inputs.resize(mounts.size());
+            loader->present.resize(mounts.size());
+            loader->pending.reserve(mounts.size());
+            loader->processing.reserve(mounts.size());
+            loader->batch.reserve(mounts.size());
+            loader->batch_slots.reserve(mounts.size());
+            loader->changes.resize(mounts.size());
+            loader->index.reserve(mounts.size());
+            for (std::size_t slot{}; slot < mounts.size(); ++slot)
+            {
+                const auto& mount = mounts[slot];
+                if (!mount.enabled)
+                {
+                    continue;
+                }
+                loader->inputs[slot] = {
+                    mount.id,
+                    mount.asset,
+                    simulation::script::SimulationScriptScope{},
+                    mount.bindings,
+                    static_cast<std::uint32_t>(slot)
+                };
+                loader->index.push_back({mount.id.value, static_cast<std::uint32_t>(slot)});
+                const auto status = system_.queryMountStatus(mount.id);
+                if (!status)
+                {
+                    return false;
+                }
+                if (!*status)
+                {
+                    loader->enqueue(static_cast<std::uint32_t>(slot));
+                }
+            }
+            std::sort(loader->index.begin(), loader->index.end());
+            loader_ = std::move(loader);
+            return true;
+        }
+    }
+
+    bool ScriptRuntimeSystem::submitResolved() noexcept
+    {
+        using namespace simulation::script;
+        auto& loader = *loader_;
+        const auto collected = system_.collectMountStatusChanges(loader.changes);
+        if (!collected)
+        {
+            return false;
+        }
+        for (std::size_t index{}; index < collected->written; ++index)
+        {
+            const auto& status = loader.changes[index];
+            const auto entry = std::lower_bound(
+                loader.index.begin(),
+                loader.index.end(),
+                status.id.value,
+                [](const auto& item, std::uint64_t id) noexcept { return item.first < id; }
+            );
+            if (entry == loader.index.end() || entry->first != status.id.value)
+            {
+                return false;
+            }
+            const bool awaiting_resolution =
+                status.state == EScriptMountState::RETIRING || status.state == EScriptMountState::INACTIVE;
+            if (awaiting_resolution && status.submission_state != EScriptMountSubmissionState::ACCEPTED)
+            {
+                loader.enqueue(entry->second);
+            }
+        }
+        loader.processing.clear();
+        loader.processing.swap(loader.pending);
+        loader.batch.clear();
+        loader.batch_slots.clear();
+        for (const auto slot : loader.processing)
+        {
+            loader.present[slot] = 0U;
+            const auto& authored = description_->mounts()[slot];
+            const auto status = system_.queryMountStatus(authored.id);
+            if (!status)
+            {
+                return false;
+            }
+            if (*status)
+            {
+                const auto& current = **status;
+                if (current.state == EScriptMountState::FAULTED || current.state == EScriptMountState::ACTIVE ||
+                    current.submission_state == EScriptMountSubmissionState::ACCEPTED)
+                {
+                    continue;
+                }
+            }
+            if (const auto* object = std::get_if<script::EntityScriptMount>(&authored.scope))
+            {
+                ecs::Entity entity{ecs::NullEntity};
+                const bool resolved =
+                    world_.resolve != nullptr && world_.resolve(world_.context, object->object, entity);
+                if (!resolved || entity == ecs::NullEntity || !registry_->valid(entity))
+                {
+                    loader.enqueue(slot);
+                    continue;
+                }
+                loader.inputs[slot].scope = EntityScriptScope{entity};
+            }
+            else if (*status)
+            {
+                continue;
+            }
+            loader.batch_slots.push_back(slot);
+            loader.batch.push_back(std::move(loader.inputs[slot]));
+        }
+        const auto accepted = system_.mountResolvedBatch(loader.batch);
+        for (std::size_t index{}; index < loader.batch.size(); ++index)
+        {
+            const auto slot = loader.batch_slots[index];
+            loader.inputs[slot] = std::move(loader.batch[index]);
+            if (!accepted)
+            {
+                loader.enqueue(slot);
+            }
+        }
+        loader.batch.clear();
+        return static_cast<bool>(accepted);
+    }
+
+    ScriptRuntimeSystem::ScriptRuntimeSystem(
+        std::unique_ptr<ScriptRealDelayProvider> real_delay,
+        std::unique_ptr<scene::script::ScriptSystemDescription> description,
+        simulation::script::ScriptSystem system,
+        script::WorldObjectResolver world,
+        ecs::Registry& registry,
+        std::unique_ptr<ecs::EcsCommandBuffer> commands,
+        std::unique_ptr<simulation::script::DeferredScriptHost> host,
+        std::unique_ptr<script::ScriptAssetAccess> assets
+    ) noexcept
+        : world_(world), registry_(&registry), real_delay_(std::move(real_delay)), description_(std::move(description)),
+          commands_(std::move(commands)), host_(std::move(host)), assets_(std::move(assets)), system_(std::move(system))
+    {
+    }
+
+    ScriptRuntimeSystem::~ScriptRuntimeSystem() noexcept
+    {
+        hook_connection_.reset();
+        if (!beginCommands())
+        {
+            std::terminate();
+        }
+        if (!system_.shutdown())
+        {
+            std::terminate();
+        }
+        endCommands();
+        if (!commitCommands())
+        {
+            std::terminate();
+        }
+    }
+
+    bool ScriptRuntimeSystem::beginCommands() noexcept
+    {
+        if (!commands_)
+        {
+            return true;
+        }
+        auto writer = commands_->begin(0U, ecs::EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET);
+        if (!writer)
+        {
+            return false;
+        }
+        command_writer_.emplace(std::move(*writer));
+        auto batch = host_->begin(*command_writer_);
+        if (!batch)
+        {
+            command_writer_.reset();
+            return false;
+        }
+        command_batch_.emplace(std::move(*batch));
+        return true;
+    }
+
+    SceneStageResult ScriptRuntimeSystem::maintain(SceneStageContext& context) noexcept
+    {
+        if (context.stop.stop_requested())
+        {
+            // Record stop now; destruction at the original retirement point completes shutdown.
+            const auto stopped = system_.requestStop();
+            if (!stopped)
+            {
+                return lux::cxx::unexpected(SceneExecutionFailure{
+                    ESceneExecutionError::SYSTEM_FAILURE,
+                    {},
+                    error::Error{Errors::SceneScriptStop, {static_cast<std::uint64_t>(stopped.error())}}
+                });
+            }
+        }
+        if (assets_)
+        {
+            assets_->deliverCompletions();
+        }
+        return ESceneProgress::COMPLETE;
+    }
+
+    void ScriptRuntimeSystem::endCommands() noexcept
+    {
+        command_batch_.reset();
+        command_writer_.reset();
+    }
+
+    bool ScriptRuntimeSystem::commitCommands() noexcept
+    {
+        // Same caller-thread Hook barrier, after native producers and before lifecycle reconciliation.
+        // Signals may enqueue native follow-up work; it belongs to the next barrier, never this apply.
+        return !commands_ || static_cast<bool>(ecs::applyEcsCommands(*registry_, *commands_));
+    }
+
+    bool ScriptRuntimeSystem::bindSimulation(simulation::Simulation& simulation) noexcept
+    {
+        if (!prepareLoader())
+        {
+            return false;
+        }
+        auto connection = simulation.bindHookCallbacks(
+            {this,
+             [](void* context, const simulation::SimulationTime&, bool stable) noexcept
+             {
+                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                 auto& system = runtime.system_;
+                 if (system.isShutdown())
+                 {
+                     return true;
+                 }
+                 if (!runtime.beginCommands())
+                 {
+                     return false;
+                 }
+                 if (stable)
+                 {
+                     if (runtime.assets_)
+                     {
+                         runtime.assets_->deliverCompletions();
+                     }
+                     if (!runtime.real_delay_->drainCompletions())
+                     {
+                         return false;
+                     }
+                     system.beginStableAdmission();
+                 }
+                 if (!runtime.submitResolved())
+                 {
+                     return false;
+                 }
+                 const auto result = system.processLifecycle();
+                 if (!result && result.error() != simulation::script::EScriptSystemError::INVOCATION_FAILURE)
+                 {
+                     return false;
+                 }
+                 if (system.isShutdown())
+                 {
+                     return true;
+                 }
+                 auto region = system.beginExecutionRegion();
+                 if (!region)
+                 {
+                     return false;
+                 }
+                 runtime.execution_region_.emplace(std::move(*region));
+                 return true;
+             },
+             [](void* context, const simulation::SimulationTime&, bool stable_resume) noexcept
+             {
+                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                 if (!runtime.execution_region_)
+                 {
+                     runtime.endCommands();
+                     return runtime.system_.isShutdown();
+                 }
+                 const auto resumed = stable_resume ? runtime.system_.executeStablePoint()
+                                                    : lux::cxx::expected<
+                                                          simulation::script::ScriptStablePointReport,
+                                                          simulation::script::EScriptSystemError>{};
+                 if (!runtime.execution_region_ || !runtime.execution_region_->finish())
+                 {
+                     return false;
+                 }
+                 runtime.execution_region_.reset();
+                 runtime.endCommands();
+                 return static_cast<bool>(resumed);
+             },
+             [](void* context, const simulation::SimulationTime&) noexcept
+             {
+                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                 if (!runtime.commitCommands())
+                 {
+                     return false;
+                 }
+                 if (runtime.system_.isShutdown())
+                 {
+                     return true;
+                 }
+                 if (!runtime.beginCommands())
+                 {
+                     return false;
+                 }
+                 if (!runtime.submitResolved())
+                 {
+                     runtime.endCommands();
+                     return false;
+                 }
+                 const auto result = runtime.system_.processLifecycle();
+                 runtime.endCommands();
+                 runtime.stats_exchange_.write() = runtime.system_.stats();
+                 runtime.stats_exchange_.publish();
+                 return result || result.error() == simulation::script::EScriptSystemError::INVOCATION_FAILURE;
+             },
+             [](void* context, const simulation::SimulationTime&) noexcept
+             {
+                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                 if (runtime.execution_region_)
+                 {
+                     if (!runtime.execution_region_->finish())
+                     {
+                         std::terminate();
+                     }
+                     runtime.execution_region_.reset();
+                 }
+                 runtime.endCommands();
+                 if (!runtime.commitCommands() || !runtime.beginCommands())
+                 {
+                     std::terminate();
+                 }
+                 static_cast<void>(
+                     runtime.system_.processLifecycle(simulation::script::EScriptLifecycleAdmission::RETIRE_ONLY)
+                 );
+                 runtime.endCommands();
+                 runtime.stats_exchange_.write() = runtime.system_.stats();
+                 runtime.stats_exchange_.publish();
+             }}
+        );
+        if (!connection)
+        {
+            return false;
+        }
+        hook_connection_ = std::move(*connection);
+        return static_cast<bool>(simulation.seal());
+    }
+
+    const simulation::script::ScriptSystem& ScriptRuntimeSystem::scriptSystem() const noexcept
+    {
+        return system_;
+    }
+
+    ScriptRuntimeCommandStats ScriptRuntimeSystem::commandStats() const noexcept
+    {
+        return host_ ? ScriptRuntimeCommandStats{host_->accepted(), host_->rejected(),
+            commands_->rejectedAtCommit(), commands_->discarded(), commands_->lastRejection()} :
+            ScriptRuntimeCommandStats{};
+    }
+
+    bool ScriptRuntimeSystem::acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept
+    {
+        const bool updated = stats_exchange_.acquireLatest();
+        output = stats_exchange_.read();
+        return updated;
+    }
+
+    SceneSystemRegistration builtinScriptRuntimeSystemRegistration() noexcept
+    {
+        return SceneSystemRegistration{
+            .type = system::systemTypeId(ScriptRuntimeSystem::Description.canonical_name),
+            .cpp_type = lux::cxx::make_basic_type_info<ScriptRuntimeSystem>(),
+            .description = &ScriptRuntimeSystem::Description,
+            .configuration = {},
+            .observations = {},
+            .requirements = Requirements,
+
+            .install = &installScriptRuntimeSystem
+        };
+    }
+
+    std::span<const SceneSystemRegistration> builtinScriptRuntimeSystemRegistrations() noexcept
+    {
+        static const std::array registrations{builtinScriptRuntimeSystemRegistration()};
+        return registrations;
+    }
+} // namespace lux::scene

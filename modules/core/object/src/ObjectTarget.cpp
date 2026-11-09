@@ -1,29 +1,9 @@
 #include <lux/engine/object/ObjectTarget.hpp>
-#include <lux/engine/object/detail/MessageEnvelope.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/object/detail/ObjectState.hpp>
 
 namespace lux::object
 {
-    namespace
-    {
-        struct TargetMessage final
-        {
-            cxx::intrusive_ptr<detail::ObjectState> state;
-            cxx::move_only_function<void(LuxObject*) noexcept> callback;
-
-            void operator()() noexcept
-            {
-                state->deliver(callback);
-            }
-
-            void cancel() noexcept
-            {
-                // Runtime shutdown never invokes target business code; completion must still settle.
-                callback(nullptr);
-            }
-        };
-    } // namespace
-
     ObjectTarget::ObjectTarget(cxx::intrusive_ptr<detail::ObjectState> state) noexcept : state_(std::move(state)) {}
 
     ObjectTarget::operator bool() const noexcept
@@ -47,21 +27,28 @@ namespace lux::object
         {
             detail::failObjectContract();
         }
-        auto message =
-            detail::makeCompletionMessage(TargetMessage{target.state_, std::move(callback)}, std::move(code_lifetime));
         if (!target.state_)
         {
             return EObjectPostStatus::CLOSED;
         }
-        switch (detail::post(std::move(message)))
-        {
-        case detail::EPostStatus::POSTED:
-            return EObjectPostStatus::POSTED;
-        case detail::EPostStatus::CLOSED:
-            return EObjectPostStatus::CLOSED;
-        case detail::EPostStatus::FULL:
-            return EObjectPostStatus::FULL;
-        }
-        detail::failObjectContract();
+        auto& execution = execution::ExecutionRuntime::instance();
+        auto delivery = stdexec::schedule(execution.mainScheduler()) | stdexec::then(
+            [state = target.state_, callback = std::move(callback)]() mutable noexcept
+            {
+                if (execution::ExecutionRuntime::instance().isStopping())
+                {
+                    callback(nullptr);
+                }
+                else
+                {
+                    state->deliver(callback);
+                }
+            }
+        );
+        auto accepted = execution.spawn(stdexec::write_env(
+            std::move(delivery),
+            stdexec::prop{execution::detail::getCompletionCode, code_lifetime}
+        ));
+        return accepted ? EObjectPostStatus::POSTED : EObjectPostStatus::CLOSED;
     }
 } // namespace lux::object

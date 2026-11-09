@@ -9,7 +9,7 @@
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/systems/render/RenderExecution.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <map>
@@ -107,8 +107,8 @@ namespace
     concept PublicStatistics = requires(T& value) { value.statistics(); };
     template <class T>
     concept PublicResizeSlot = requires(T& value) { value.on_resize; };
-    static_assert(!PublicFrame<LuxEngine> && !PublicExec<LuxEngine> && !PublicPump<LuxEngine>);
-    static_assert(!PublicStatistics<LuxEngine> && !PublicResizeSlot<EditorWindow>);
+    static_assert(!PublicFrame<EditorApplication> && !PublicExec<EditorApplication> && !PublicPump<EditorApplication>);
+    static_assert(!PublicStatistics<EditorApplication> && !PublicResizeSlot<EditorWindow>);
 } // namespace
 
 int main(int argc, char** argv)
@@ -128,8 +128,8 @@ int main(int argc, char** argv)
     EditorConfig config{"Public SDK host", 640, 480};
     config.project_file = a;
     config.enable_validation = true;
-    config.layout = {{"probe", "project", "Project"}};
-    auto made = LuxEngine::create(
+    config.layout = defaultProjectLayout({{"probe", "project", "Project"}});
+    auto made = fixture::createLoadedEditor(
         std::move(config),
         [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
         {
@@ -181,14 +181,14 @@ int main(int argc, char** argv)
              },
              consume_result =
                  [callback =
-                      std::move(callback)](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
+                      std::move(callback)](execution::ExecutionResult<void, execution::ETimerError>&& result) noexcept
              {
                  assert(result);
                  callback();
              }](lux::execution::TaskReporter reporter) mutable noexcept
             {
                 auto ready = stdexec::continues_on(
-                    lux::execution::taskResult(make_work(reporter)),
+                    lux::execution::asResult(make_work(reporter)),
                     engine_identity->execution().mainScheduler()
                 );
                 return stdexec::then(
@@ -232,7 +232,7 @@ int main(int argc, char** argv)
             assert(project->project().manifest_file == std::filesystem::canonical(a));
             assert(engine_identity->sceneRuntime().instanceCount() == 0);
             {
-                const auto scheduler = project->tasks().execution().blocking();
+                const auto scheduler = project->tasks().execution().blockingIoScheduler();
                 assert(scheduler);
                 assert(project->tasks().submit(
                     {"Held project task", "test"},
@@ -251,14 +251,14 @@ int main(int argc, char** argv)
                                                                );
                      },
                      consume_result =
-                         [&](execution::TTaskResult<void, error::Error>&& result) noexcept
+                         [&](execution::ExecutionResult<void, error::Error>&& result) noexcept
                      {
                          assert(result && counts["A"].services == 1 && counts["A"].panes == 1);
                          delivered = true;
                      }](lux::execution::TaskReporter reporter) mutable noexcept
                     {
                         auto ready = stdexec::continues_on(
-                            lux::execution::taskResult(make_work(reporter)),
+                            lux::execution::asResult(make_work(reporter)),
                             engine_identity->execution().mainScheduler()
                         );
                         return stdexec::then(

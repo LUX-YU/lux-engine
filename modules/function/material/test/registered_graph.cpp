@@ -36,7 +36,7 @@ namespace
     {
         MaterialNodeRegistration result;
         result.identity = {graph::nodeTypeId("external.multiple.v1"), "external.multiple.v1", 1};
-        result.payload_type = cxx::typeToken<Outputs>();
+        result.payload_type = cxx::make_basic_type_info<Outputs>();
         result.create = [](const object::CodeLease& code) noexcept
         { return MaterialNodePayload::make<Outputs, &clone>(code); };
         result.validate = [](const MaterialNodePayload&) noexcept -> MaterialNodeResult<void> { return {}; };

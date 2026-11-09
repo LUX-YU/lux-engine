@@ -39,8 +39,8 @@ namespace lux::render
             },
             error::ErrorDescriptor{
                 "lux.render.device.busy",
-                "Native work or recording still active",
-                error::ERecovery::PERMANENT,
+                "Native work still active or presentation image temporarily unavailable",
+                error::ERecovery::RETRYABLE,
                 {}
             },
             error::ErrorDescriptor{

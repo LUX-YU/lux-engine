@@ -11,10 +11,17 @@ namespace lux::render::detail
         bool active = false;
     };
 
+    struct ShadowProjectionInput final
+    {
+        ShadowMapShape shape;
+        std::span<const ShadowLightSelection> casters;
+        std::uint32_t pcf_radius = 1;
+    };
+
     // Pure projection math. Storage/Runtime/GPU ownership stays outside this calculation.
-    [[nodiscard]] RenderResult<void> validateShadowConfiguration(const ShadowMapFeatureConfig&) noexcept;
+    [[nodiscard]] RenderResult<void> validateShadowConfiguration(const ShadowProjectionInput&) noexcept;
     [[nodiscard]] RenderResult<void> projectShadows(
-        const ShadowMapFeatureConfig&,
+        const ShadowProjectionInput&,
         const ShadowCamera&,
         std::span<const ShadowLightInput>,
         std::span<MeshVisibilityView>,

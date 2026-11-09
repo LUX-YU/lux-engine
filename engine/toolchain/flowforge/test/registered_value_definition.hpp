@@ -25,7 +25,7 @@ namespace flow_test
         FlowNodeRegistration result;
         result.code = std::move(code);
         result.identity = {graph::nodeTypeId("external.polynomial"), "external.polynomial", 1};
-        result.payload_type = cxx::typeToken<Polynomial>();
+        result.payload_type = cxx::make_basic_type_info<Polynomial>();
         result.create = [](const object::CodeLease& code) noexcept
         { return FlowNodePayload::make<Polynomial, clone>(code); };
         result.describe_pins = [](const FlowNodePayload&) noexcept -> FlowNodeRegistration::PinResult

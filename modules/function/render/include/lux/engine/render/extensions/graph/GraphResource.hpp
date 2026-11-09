@@ -46,6 +46,9 @@ namespace lux::render
         rdesc::ETextureFormat format = rdesc::ETextureFormat::RGBA8_UNORM;
         std::uint32_t samples = 1;
         ImageExtent extent;
+        // A Feature prepares the actual array layer count in the acquired FIF slot.
+        // Such images use whole-resource accesses and never share transient alias allocations.
+        bool runtime_layers = false;
         bool operator==(const GraphImageDesc&) const noexcept = default;
     };
 

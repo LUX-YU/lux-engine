@@ -216,24 +216,6 @@ namespace lux::task
                 });
             }
 
-            // Pin by ownership identity, not raw pointer value.
-            const std::owner_less<std::shared_ptr<const void>> owner_less;
-            for (auto& task : tasks_)
-            {
-                for (auto& pin : task.pins)
-                {
-                    if (!pin)
-                        continue;
-                    const bool already_pinned = std::any_of(
-                        graph.lifetime_pins_.begin(),
-                        graph.lifetime_pins_.end(),
-                        [&](const auto& existing) { return !owner_less(existing, pin) && !owner_less(pin, existing); }
-                    );
-                    if (!already_pinned)
-                        graph.lifetime_pins_.push_back(std::move(pin));
-                }
-            }
-
             id_ = {};
             tasks_.clear();
             return graph;

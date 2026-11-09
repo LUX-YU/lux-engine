@@ -1,6 +1,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <lux/engine/editor/EditorLayout.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 
 using namespace lux::editor;
@@ -22,6 +23,33 @@ int main(int argc, char** argv)
     assert(*readProjectManifest(file) == *decoded);
     auto duplicate_file = writeProjectManifestAtomic(file, manifest, EProjectWrite::CREATE);
     assert(!duplicate_file && duplicate_file.error().code == EProjectError::DESTINATION_EXISTS);
+
+    auto content_project = manifest;
+    content_project.format_version = 2;
+    content_project.content =
+        lux::scene::SceneContentAllowance{{{"lux.geometry.mesh3d", 1}}, {{"lux.spatial.builtin.single", 1}}};
+    auto content_bytes = encodeProjectManifest(content_project);
+    assert(content_bytes && decodeProjectManifest(*content_bytes).value() == content_project);
+    content_project.content->geometries.push_back(content_project.content->geometries.front());
+    assert(!validateProjectManifest(content_project));
+
+    auto layout = defaultProjectLayout(
+        {{"tools.scene", "scene", "Scene"}, {"tools.inspector", "inspector", "Inspector", EPaneRegion::RIGHT}}
+    );
+    auto layout_bytes = encodeProjectLayout(layout);
+    assert(layout_bytes);
+    auto layout_roundtrip = decodeProjectLayout(*layout_bytes);
+    assert(layout_roundtrip && layout_roundtrip->panes.size() == 2 && layout_roundtrip->nodes.size() == 7);
+    assert(writeProjectLayout(root / "layout.json", layout));
+    assert(readProjectLayout(root / "layout.json"));
+    layout.nodes[0].first = 0;
+    assert(!validateProjectLayout(layout));
+    assert(!decodeProjectLayout(R"({"version":1,"version":1,"panes":[],"nodes":[],"surfaces":[]})"));
+    auto with_layout = manifest;
+    with_layout.editor_layout = "layout.json";
+    assert(decodeProjectManifest(*encodeProjectManifest(with_layout))->editor_layout == with_layout.editor_layout);
+    with_layout.editor_layout = "../layout.json";
+    assert(!validateProjectManifest(with_layout));
 
     const auto a = lux::asset::AssetId{ids("a")};
     const auto b = lux::asset::AssetId{ids("b")};
@@ -45,7 +73,7 @@ int main(int argc, char** argv)
         assert(!result && result.error().code == code);
         assert(!encodeProjectManifest(invalid));
     };
-    expect(EProjectError::UNSUPPORTED_VERSION, [](auto& m) { m.format_version = 2; });
+    expect(EProjectError::UNSUPPORTED_VERSION, [](auto& m) { m.format_version = 3; });
     expect(EProjectError::INVALID_IDENTITY, [](auto& m) { m.id = {}; });
     expect(EProjectError::INVALID_NAME, [](auto& m) { m.name.clear(); });
     expect(EProjectError::DUPLICATE_IDENTITY, [](auto& m) { m.scenes[1].id = m.scenes[0].id; });
@@ -65,7 +93,7 @@ int main(int argc, char** argv)
     {
         assert(!decodeProjectManifest(text));
     }
-    auto future = decodeProjectManifest("{\"format\":\"lux.editor.project\",\"format_version\":2}");
+    auto future = decodeProjectManifest("{\"format\":\"lux.editor.project\",\"format_version\":3}");
     assert(!future && future.error().code == EProjectError::UNSUPPORTED_VERSION);
     const auto valid_json = encodeProjectManifest(manifest).value();
     assert(valid_json.find("lux.editor.project") != valid_json.npos);

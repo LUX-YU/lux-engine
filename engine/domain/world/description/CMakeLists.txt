@@ -13,9 +13,6 @@ add_component(
     OUTPUT_NAME    lux_engine_world_description
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDataSchemaId.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescription.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescriptionBuilder.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescriptionFailureInjection.cpp
 )
 add_library(lux::engine::world::description ALIAS world_description)
 component_include_directories(
@@ -28,12 +25,15 @@ target_compile_definitions(world_description PRIVATE LUX_ENGINE_WORLD_DESCRIPTIO
 target_link_libraries(
     world_description
     PUBLIC
+        lux::engine::core::math
+        lux::engine::core::type_info
         lux::engine::world::partition
         lux::engine::world::identity
         lux::cxx::compile_time
 )
 component_add_transitive_commands(
     world_description
+    "find_package(lux-engine-core REQUIRED COMPONENTS math type_info)"
     "find_package(lux-engine-world-partition REQUIRED COMPONENTS world_partition)"
     "find_package(lux-engine-world-identity REQUIRED COMPONENTS world_identity)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"

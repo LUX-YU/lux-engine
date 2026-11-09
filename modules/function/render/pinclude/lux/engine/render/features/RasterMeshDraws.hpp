@@ -1,54 +1,95 @@
 #pragma once
 
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
-#include <lux/engine/render/features/RasterMeshParameters.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
+#include <lux/engine/render/features/MeshDrawGroups.hpp>
+#include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {
+    struct RasterDrawList;
+
     struct MeshDrawConfiguration final
     {
-        GraphResourceId instances;
-        MeshInstanceDrawGroup selection;
-        GraphResourceId members;
-        std::uint32_t capacity = UINT32_MAX;
+        GraphPassId pass;
+        // Source ports: groups, transforms, properties, alive, visible, commands.
+        std::array<GraphResourceId, 6> inputs;
+        rdesc::EMaterialPurpose purpose = rdesc::EMaterialPurpose::GBUFFER;
+        bool paged = false;
+        bool front_counter_clockwise = true;
+        GraphResourceId views, raster_states, depth;
     };
 
-    // One Attachment's derived selection and indirect commands. RasterMeshInstanceStorage only reports
-    // identity changes; selection, grouping, allocation and recording belong to this Native Feature.
+    // Actual per-Attachment draw preparation. Immutable native programs are borrowed from the
+    // Device cache; Instance owns private bindings and packets for the selected physical FIF slice.
     class RasterMeshDraws final
     {
     public:
         [[nodiscard]] static RenderResult<FeatureBinding>
-        create(DeviceSession&, FrameExecution&, ResourceRegistry&, std::span<const StorageId>, const void*) noexcept;
+        create(
+            DeviceSession&,
+            FrameExecution&,
+            ResourceRegistry&,
+            RenderGraphInstance&,
+            CompiledPrograms&,
+            std::span<const StorageId>,
+            const void*
+        ) noexcept;
         ~RasterMeshDraws() noexcept;
 
     private:
-        RasterMeshDraws(DeviceSession&, FrameExecution&, ResourceRegistry&, MeshInstanceDrawGroup) noexcept;
-        [[nodiscard]] RenderResult<FeatureBinding::Preparation> prepare(std::uint32_t, ResourceUploader&) noexcept;
-        void update(MeshInstanceId, const RasterMeshInstanceStorage::Selection*) noexcept;
-        [[nodiscard]] bool selected(const RasterMeshInstanceStorage::Selection&) const noexcept;
-        DeviceSession& session_;
-        FrameExecution& frames_;
-        ResourceRegistry& resources_;
-        ResourceInput sections_;
-        MeshInstanceDrawGroup selection_;
-        RasterMeshInstanceStorage::Observer observer_;
-
-        struct GpuSlice final
+        struct Program final
         {
-            nri::Buffer* buffer = nullptr;
-            std::array<ResourceUploader::BufferCopy, 3> copies;
-            bool binding_changed = false;
-            std::uint64_t uploaded_revision = 0, pending_revision = 0;
-            std::size_t uploaded_bytes = 0, pending_bytes = 0;
+            PassBindings bindings;
+            nri::Pipeline* pipeline = nullptr;
         };
 
-        std::array<GpuSlice, 3> gpu_;
-        std::uint64_t revision_ = 1;
-        std::vector<std::uint32_t> words_, positions_;
-        bool available_ = true;
-        ResourceUpdate update_;
-        std::uint32_t capacity_ = UINT32_MAX;
+        struct Group final
+        {
+            std::uint64_t generation = 0;
+            std::array<std::uint32_t, 2> programs{};
+            IndexedTriangleMeshStorage::BufferViews buffers;
+        };
+
+        struct Slice final
+        {
+            std::uint32_t view_count = 0;
+            std::uint64_t draw_revision = 0;
+        };
+
+        RasterMeshDraws(
+            DeviceSession&,
+            ResourceRegistry&,
+            RenderGraphInstance&,
+            CompiledPrograms&,
+            MeshDrawConfiguration
+        ) noexcept;
+        [[nodiscard]] const MeshDrawGroupSource& source() const noexcept;
+        [[nodiscard]] bool requiresPrograms() const noexcept;
+        void rebuildDrawOrder() noexcept;
+        [[nodiscard]] exec::task<RenderResult<void>> preparePrograms(execution::CpuScheduler) noexcept;
+        [[nodiscard]] RenderResult<FeatureBinding::Preparation>
+        prepare(const FeatureFrameInput&, ResourceUploader&) noexcept;
+        // Refreshes current FIF bindings; true means the packet structure was rebuilt and needs merging.
+        [[nodiscard]] RenderResult<bool>
+        refreshDrawPackets(const FeatureFrameInput&, Slice&, RasterDrawList&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        resolveFrameResources(const FeatureFrameInput&, RasterDrawList&) noexcept;
+        void mergeDrawPackets(RasterDrawList&) noexcept;
+        void updateViewParameters(const FeatureFrameInput&, RasterDrawList&) noexcept;
+        DeviceSession& device_;
+        ResourceRegistry& resources_;
+        RenderGraphInstance& instance_;
+        CompiledPrograms& programs_;
+        MeshDrawConfiguration configuration_;
+        std::vector<Group> groups_;
+        std::vector<std::unique_ptr<Program>> program_bindings_;
+        std::vector<std::uint32_t> draw_order_;
+        std::vector<MaterialId> material_sources_;
+        std::vector<ResourceInput> read_buffers_;
+        std::vector<const nri::Texture*> read_images_;
+        std::array<std::uint32_t, 2> camera_offsets_{};
+        std::array<Slice, 3> slices_;
+        std::uint64_t prepared_revision_ = 0, draw_layout_revision_ = 1;
     };
 } // namespace lux::render::detail

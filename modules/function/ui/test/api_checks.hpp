@@ -95,7 +95,7 @@ namespace api_checks
             }
         );
         worker.join();
-        ui::DrawData draw;
+        ui::DrawView draw;
         const auto frame = [&] { assert(root.update({{640, 480}, .016F}, draw)); };
         for (unsigned i{}; i < 3; ++i)
         {

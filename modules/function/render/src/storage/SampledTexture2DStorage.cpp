@@ -1,3 +1,4 @@
+#include <lux/engine/render/storage/SampledTexture2DCommandHandler.hpp>
 #include <NRI.h>
 
 #include <Extensions/NRIHelper.h>
@@ -209,17 +210,17 @@ namespace lux::render::detail
         return ImagePreparation{image, {patch}};
     }
 
-    SampledTexture2DStorage::SampledTexture2DStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), frames_(*dependencies.frames), id_(id)
+    SampledTexture2DStorage::SampledTexture2DStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), id_(id)
     {
     }
 
     RenderResult<std::unique_ptr<SampledTexture2DStorage>> SampledTexture2DStorage::create(
-        StorageCreateContext& dependencies,
-        StorageId id
+        ResourceCreateContext& dependencies,
+        ResourceInstanceId id
     ) noexcept
     {
-        if (!dependencies.uploads || !dependencies.frames)
+        if (!dependencies.uploads || dependencies.frame_count == 0 || dependencies.frame_count > 3)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -366,7 +367,7 @@ namespace lux::render::detail
 
     RenderResult<void> SampledTexture2DStorage::release(TextureId id) noexcept
     {
-        if (frames_.submitting())
+        if (uploads_.resourcesFrozen())
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
@@ -428,8 +429,14 @@ namespace lux::render::detail
         };
     }
 
-    StorageFactory SampledTexture2DStorage::factory() noexcept
+    ResourceRegistration SampledTexture2DStorage::factory() noexcept
     {
+
+        static const std::array commands{
+            CommandBinding::declare<ImageCommands::Upload, &SampledTexture2DCommandHandler::createTexture>(),
+            CommandBinding::declare<ImageCommands::CloneRegion, &SampledTexture2DCommandHandler::createPatchedTexture>(),
+            CommandBinding::declare<ImageCommands::Release, &SampledTexture2DCommandHandler::releaseTexture>()
+        };
         static const StorageBindingOps bindings{
             [](void* storage,
                const VGraphResourceDesc& plan,
@@ -447,11 +454,10 @@ namespace lux::render::detail
                 return {};
             }
         };
-        static const auto factory = makeStorageFactory<
-            render::SampledTexture2DStorageDescriptor,
+        static const auto factory = makeResourceRegistration<
+            render::TextureResource,
             SampledTexture2DStorage,
-            StorageCreateContext,
-            &SampledTexture2DStorage::create>(nullptr, &bindings);
+            &SampledTexture2DStorage::create>(nullptr, &bindings, commands);
         return factory;
     }
 } // namespace lux::render::detail

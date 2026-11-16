@@ -5,8 +5,8 @@
 
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 
 namespace lux::render
 {
@@ -37,18 +37,12 @@ namespace lux::render::detail
         };
 
     public:
-        // Stateless typed methods; the Server supplies the selected Storage at dispatch.
-        static IndexedTriangleMeshCommandHandler* create(ResourceRegistry&) noexcept
-        {
-            return new IndexedTriangleMeshCommandHandler;
-        }
-
         using UploadMeshSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<MeshId>>>(), create_mesh_response_));
 
         static constexpr std::string_view name = "lux.render.storage.IndexedTriangleMeshCommandHandler";
 
-        UploadMeshSender
+        static UploadMeshSender
         createMesh(IndexedTriangleMeshStorage& storage, Mesh3dCommands::UploadMesh::Request&& input) noexcept
         {
             if (!input.mesh)
@@ -58,7 +52,7 @@ namespace lux::render::detail
             return render::upload(storage, *input.mesh) | stdexec::then(create_mesh_response_);
         }
 
-        void releaseMesh(
+        static void releaseMesh(
             IndexedTriangleMeshStorage& storage,
             const Mesh3dCommands::ReleaseMesh::Request& input,
             Mesh3dCommands::ReleaseMesh::Response& response

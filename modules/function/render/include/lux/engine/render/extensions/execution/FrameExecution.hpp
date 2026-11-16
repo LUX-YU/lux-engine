@@ -1,8 +1,9 @@
 #pragma once
 
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
@@ -13,76 +14,7 @@ namespace lux::render::detail
 
     class LUX_RENDER_PUBLIC FrameExecution final
     {
-        struct WriteWaiter final
-        {
-            WriteWaiter* next = nullptr;
-            void* operation = nullptr;
-            bool (*stopping)(void*) noexcept = nullptr;
-            void (*complete)(void*) noexcept = nullptr;
-        };
-
     public:
-        class WriteAdmissionSender final
-        {
-        public:
-            using sender_concept = stdexec::sender_t;
-            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(RenderResult<void>)>;
-
-            WriteAdmissionSender(FrameExecution& frames, std::size_t bytes) noexcept : frames_(frames), bytes_(bytes) {}
-
-            template <class Receiver> struct Operation final
-            {
-                using operation_state_concept = stdexec::operation_state_t;
-                FrameExecution& frames;
-                Receiver receiver;
-                WriteWaiter node;
-                std::size_t bytes;
-                std::size_t reserved_bytes = 0;
-
-                ~Operation() noexcept
-                {
-                    frames.uploads_->releaseSourceBytes(reserved_bytes);
-                }
-
-                void start() & noexcept
-                {
-                    if (!frames.uploads_->reserveSourceBytes(bytes))
-                    {
-                        stdexec::set_value(
-                            std::move(receiver),
-                            RenderResult<void>{cxx::unexpected(RenderError{kDeviceCapacity})}
-                        );
-                        return;
-                    }
-                    reserved_bytes = bytes;
-                    node.operation = this;
-                    node.stopping = [](void* value) noexcept
-                    {
-                        auto& self = *static_cast<Operation*>(value);
-                        return stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested();
-                    };
-                    node.complete = [](void* value) noexcept
-                    {
-                        auto& self = *static_cast<Operation*>(value);
-                        const bool stopped = self.node.stopping(value);
-                        auto result = stopped ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
-                                              : RenderResult<void>{};
-                        stdexec::set_value(std::move(self.receiver), std::move(result));
-                    };
-                    frames.enqueueWrite(node);
-                }
-            };
-
-            template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
-            {
-                return Operation<Receiver>{frames_, std::move(receiver), {}, bytes_};
-            }
-
-        private:
-            FrameExecution& frames_;
-            std::size_t bytes_;
-        };
-
         [[nodiscard]] static RenderResult<std::unique_ptr<FrameExecution>>
         create(DeviceSession&, ResourceUploader*, std::uint32_t frame_count) noexcept;
         ~FrameExecution() noexcept;
@@ -94,9 +26,6 @@ namespace lux::render::detail
             return frame_count_;
         }
 
-        [[nodiscard]] bool tryBeginWrite(std::uint32_t& slot) noexcept;
-        void finishWrite(std::uint32_t slot, const SubmissionFrontiers&) noexcept;
-
         // Reserve a reusable physical slice before applying a sealed frame's visible mutations.
         // No waiting or GPU submission. Standalone writers can still acquire a slice themselves.
         [[nodiscard]] bool beginFrame(std::uint32_t& slot) noexcept;
@@ -105,18 +34,6 @@ namespace lux::render::detail
         [[nodiscard]] bool inputConsumed(std::uint32_t slot) const noexcept;
         [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
 
-        [[nodiscard]] WriteAdmissionSender whenWritable(std::size_t source_bytes) noexcept
-        {
-            return WriteAdmissionSender{*this, source_bytes};
-        }
-
-        void dispatchWrites() noexcept;
-        // Register one preparation-submission result. Success means its copies were accepted;
-        // failure reports the preparation error. Neither means GPU completion.
-        void onPreparationSubmitted(
-            void* receiver,
-            void (*complete)(void*, std::uint32_t slot, RenderResult<void>) noexcept
-        ) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> render(
             std::span<RenderGraphInstance* const>,
             std::span<const StorageFrameUse>,
@@ -155,7 +72,7 @@ namespace lux::render::detail
             std::uint32_t predecessor_count = 0, pending_predecessors = 0;
             std::uint32_t first_successor = 0, successor_count = 0;
             SubmissionFrontiers waits;
-            std::array<nri::StageBits, 3> stages{};
+            std::vector<nri::StageBits> stages;
             std::uint64_t serial = 0;
         };
 
@@ -179,24 +96,24 @@ namespace lux::render::detail
         {
             struct PreparedStorage final
             {
-                StorageId identity;
+                ResourceInstanceId identity;
                 const void* storage = nullptr;
                 std::uint64_t revision = 0;
             };
 
             EFramePhase phase = EFramePhase::FREE;
             SubmissionFrontiers accepted;
-            std::array<SubmissionCallback, 3> completions;
-            std::uint32_t pending_writes = 0;
+            std::unique_ptr<SubmissionCallback[]> completions;
+            FrameExecution* execution = nullptr;
             std::uint32_t submitted_batches = 0;
-            std::uint8_t pending_queues = 0;
+            std::size_t pending_queues = 0;
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
             std::uint64_t preparation_serial = 0;
             std::vector<InstanceExecution> instances;
             std::vector<BatchExecution> batches;
             std::vector<BatchDependency> dependencies;
-            std::array<std::vector<std::uint32_t>, 3> ready_batches;
+            std::vector<std::vector<std::uint32_t>> ready_batches;
             std::vector<ImportedUse> imported_uses;
             std::vector<std::uint32_t> recording_batches;
             nri::CommandAllocator* preparation_allocator = nullptr;
@@ -210,7 +127,6 @@ namespace lux::render::detail
         };
 
         FrameExecution(DeviceSession&, ResourceUploader*, std::uint32_t) noexcept;
-        void enqueueWrite(WriteWaiter&) noexcept;
         void sealFrame(FrameSlot&) noexcept;
         void updateUploadAdmission() noexcept;
         void acceptSubmission(std::uint32_t slot, const SubmissionQueue&) noexcept;
@@ -237,14 +153,11 @@ namespace lux::render::detail
 
         DeviceSession& device_;
         ResourceUploader* uploads_;
+        bool owns_write_window_ = false;
         std::array<FrameSlot, 3> frames_;
         std::uint32_t frame_count_;
         std::uint32_t next_frame_ = 0;
-        std::uint8_t submit_queue_cursor_ = 0;
-        std::uint8_t wait_queue_cursor_ = 0;
-        using PreparationCallback = void (*)(void*, std::uint32_t, RenderResult<void>) noexcept;
-        std::vector<std::pair<void*, PreparationCallback>> preparation_receivers_;
-        WriteWaiter* frame_waiters_ = nullptr;
-        WriteWaiter* frame_waiters_tail_ = nullptr;
+        std::size_t submit_queue_cursor_ = 0;
+        std::size_t wait_queue_cursor_ = 0;
     };
 } // namespace lux::render::detail

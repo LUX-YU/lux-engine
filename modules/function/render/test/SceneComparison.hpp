@@ -30,11 +30,7 @@ struct SceneComparison
         const lux::render::detail::EnabledDeviceFeatures&
     ) noexcept
     {
-        rdesc::SpirvArtifact shader;
-        shader.stages.push_back(
-            {rdesc::EShaderType::COMPUTE, "main", {std::begin(kClusterCompare), std::end(kClusterCompare)}}
-        );
-        CHECK(rdesc::ShaderInfo::deserialize(kClusterCompareReflection, shader.interface));
+        auto shader = kClusterCompare.load(rdesc::EShaderTarget::SPIRV);
         ComputeWork work;
         work.interface.program = take(context.graph.addProgram(std::move(shader)));
         work.interface.resources = {

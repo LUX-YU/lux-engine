@@ -1,0 +1,149 @@
+#include <algorithm>
+#include <lux/engine/render/upload/Preparation.hpp>
+
+namespace lux::render::detail
+{
+    Preparation::Preparation(std::size_t resource_capacity) noexcept : capacity_(resource_capacity)
+    {
+        selected_.reserve(resource_capacity);
+        frozen_.reserve(resource_capacity);
+    }
+
+    Preparation::~Preparation() noexcept
+    {
+        cancel();
+    }
+
+    RenderResult<void>
+    Preparation::freeze(
+        std::span<const ResourceBinding> resources,
+        std::uint32_t slot,
+        PreparationBudget available
+    ) noexcept
+    {
+        if (quarantined())
+        {
+            return cxx::unexpected(RenderError{kOutcomeUnknown});
+        }
+        if (state_ != EState::IDLE)
+        {
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        }
+        state_ = EState::PREPARING;
+        const auto fail = [&](RenderError error) noexcept -> RenderResult<void>
+        {
+            frozen_.clear(); // Only known pre-native failures can reach this rollback.
+            selected_.clear();
+            state_ = EState::IDLE;
+            return cxx::unexpected(error);
+        };
+        for (const auto& resource : resources)
+        {
+            if (!resource.valid())
+            {
+                return fail(RenderError{kStorageContract});
+            }
+            const auto previous = std::ranges::find(selected_, resource.identity, &ResourceBinding::identity);
+            if (previous != selected_.end())
+            {
+                if (!previous->sameResource(resource))
+                {
+                    return fail(RenderError{kStorageMismatch});
+                }
+                continue;
+            }
+            if (selected_.size() == capacity_)
+            {
+                return fail(RenderError{kStorageCapacity});
+            }
+            selected_.push_back(resource);
+        }
+        // Qualify the entire destination/upload/range budget before freezing any Resource.
+        for (auto& resource : selected_)
+        {
+            auto required = resource.ops->requirements(resource.resource, slot);
+            if (!required)
+            {
+                return fail(required.error());
+            }
+            if (!resource.capacity.covers(*required))
+            {
+                return fail(RenderError{kStorageCapacity});
+            }
+            const bool is_round_full =
+                required->upload_bytes > available.upload_bytes || required->copy_ranges > available.copy_ranges;
+            if (is_round_full)
+            {
+                return fail(RenderError{kStorageCapacity});
+            }
+            available.upload_bytes -= required->upload_bytes;
+            available.copy_ranges -= required->copy_ranges;
+            resource.capacity = *required; // Freeze may consume only this already reserved quota.
+        }
+        for (const auto& resource : selected_)
+        {
+            auto& frozen = frozen_.emplace_back();
+            auto result = resource.ops->freeze(resource.resource, slot, resource.capacity, frozen);
+            if (!result)
+            {
+                return fail(result.error());
+            }
+            const bool is_invalid_snapshot = !frozen.active() || !frozen.fits(resource.capacity);
+            if (is_invalid_snapshot)
+            {
+                return fail(RenderError{kStorageContract});
+            }
+        }
+        state_ = EState::FROZEN;
+        return {};
+    }
+
+    RenderResult<void> Preparation::beginSubmit() noexcept
+    {
+        if (state_ != EState::FROZEN)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
+        for (auto& frozen : frozen_)
+        {
+            frozen.beginSubmit();
+        }
+        state_ = EState::SUBMITTING;
+        return {};
+    }
+
+    RenderResult<void> Preparation::submitted(RenderResult<void> result) noexcept
+    {
+        if (state_ != EState::SUBMITTING)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
+        const auto outcome = result                                   ? EPreparationOutcome::ACCEPTED
+                             : result.error().type == kOutcomeUnknown ? EPreparationOutcome::UNKNOWN
+                                                                      : EPreparationOutcome::REJECTED;
+        for (auto& frozen : frozen_)
+        {
+            frozen.settle(outcome);
+        }
+        frozen_.clear();
+        selected_.clear();
+        state_ = outcome == EPreparationOutcome::UNKNOWN ? EState::QUARANTINED : EState::IDLE;
+        return result;
+    }
+
+    void Preparation::cancel() noexcept
+    {
+        const bool has_operation = state_ == EState::PREPARING || state_ == EState::SUBMITTING;
+        if (has_operation)
+        {
+            std::terminate();
+        }
+        if (state_ != EState::FROZEN)
+        {
+            return;
+        }
+        frozen_.clear();
+        selected_.clear();
+        state_ = EState::IDLE;
+    }
+} // namespace lux::render::detail

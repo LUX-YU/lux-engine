@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
+#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
 
 namespace lux::render
 {
@@ -23,11 +23,11 @@ namespace lux::render
         }
     } // namespace
 
-    static std::size_t shaderBytes(const rdesc::SpirvArtifact& value) noexcept
+    static std::size_t shaderBytes(const rdesc::ShaderProgramArtifact& value) noexcept
     {
         // These are actual, distinct C++ allocations, not externally supplied lengths or borrowed assets.
         const auto& info = value.interface;
-        std::size_t bytes = value.stages.capacity() * sizeof(rdesc::SpirvStage) +
+        std::size_t bytes = value.stages.capacity() * sizeof(rdesc::ShaderStageArtifact) +
                             info.entry_points.capacity() * sizeof(rdesc::EntryPointInfo) +
                             info.sets.capacity() * sizeof(rdesc::DescriptorSetLayoutInfo) +
                             info.push_constants.capacity() * sizeof(rdesc::PushConstantRangeInfo) +

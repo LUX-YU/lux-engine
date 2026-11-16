@@ -66,7 +66,10 @@ target_link_libraries(
 component_add_transitive_commands(
     system_render
     "find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS log error)"
     "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
+    "find_package(lux-engine-assets REQUIRED COMPONENTS engine_assets)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_visual ecs_transform)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-view REQUIRED COMPONENTS scene_view)"
     "find_package(lux-engine-context REQUIRED COMPONENTS engine_context)"
@@ -164,6 +167,9 @@ if(BUILD_TESTING)
     )
     add_test(NAME engine.render_transport COMMAND engine_render_transport_test)
     set_tests_properties(engine.render_transport PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+
+    add_test(NAME engine.render_lifecycle COMMAND engine_render_transport_test --lifecycle)
+    set_tests_properties(engine.render_lifecycle PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
     if(WIN32 AND TARGET window)
         set(surface_shader_headers)

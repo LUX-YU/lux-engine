@@ -1,6 +1,6 @@
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
-#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>

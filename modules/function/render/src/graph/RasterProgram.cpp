@@ -1,12 +1,13 @@
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
-#include <lux/engine/render/device/Error.hpp>
 
 #include <algorithm>
 
 namespace lux::render::detail
 {
-    RenderResult<nri::Pipeline*> compileRasterProgram(
+    RenderResult<nri::Pipeline*>
+    compileRasterProgram(
         nri::Device& device,
         const nri::CoreInterface& nri_core,
         const EnabledDeviceFeatures& enabled,
@@ -74,8 +75,22 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
+            const auto reflected = std::ranges::find(
+                program.shader.interface.vertex_inputs,
+                field.location,
+                &rdesc::ShaderIoVariable::location
+            );
+            const bool is_dxil = program.shader.target == rdesc::EShaderTarget::DXIL;
+            if (is_dxil && (reflected == program.shader.interface.vertex_inputs.end() || reflected->semantic.empty()))
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            const nri::VertexAttributeD3D semantic{
+                is_dxil ? reflected->semantic.c_str() : nullptr,
+                is_dxil ? reflected->semantic_index : 0
+            };
             attributes.push_back(
-                {{},
+                {semantic,
                  {field.location},
                  field.offset,
                  format.native,

@@ -1,15 +1,14 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
-#include <lux/engine/render/extensions/storage/Upload.hpp>
+#include <lux/engine/render/extensions/resource/SampledTexture2D.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/extensions/resource/Upload.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
@@ -18,8 +17,8 @@ namespace lux::render::detail
     class SampledTexture2DStorage final
     {
     public:
-        using Descriptor = SampledTexture2DStorageDescriptor;
-        [[nodiscard]] static StorageFactory factory() noexcept;
+        using Descriptor = TextureResource;
+        [[nodiscard]] static ResourceRegistration factory() noexcept;
 
         // Stable SlotMap values: actual GPU objects and shader input, no asset layout or parent control.
         class SampledImage final
@@ -50,14 +49,14 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] static RenderResult<std::unique_ptr<SampledTexture2DStorage>> create(
-            StorageCreateContext&,
-            StorageId
+            ResourceCreateContext&,
+            ResourceInstanceId
         ) noexcept;
         ~SampledTexture2DStorage() noexcept;
         SampledTexture2DStorage(const SampledTexture2DStorage&) = delete;
         SampledTexture2DStorage& operator=(const SampledTexture2DStorage&) = delete;
 
-        [[nodiscard]] StorageId id() const noexcept
+        [[nodiscard]] ResourceInstanceId id() const noexcept
         {
             return id_;
         }
@@ -69,7 +68,7 @@ namespace lux::render::detail
         friend struct lux::render::StorageTraits<SampledTexture2DStorage>;
         using UploadResult = exec::task<RenderResult<TextureId>>;
         using ImagePreparation = std::pair<nri::Texture*, std::vector<ImageTransferRegion>>;
-        SampledTexture2DStorage(StorageCreateContext&, StorageId) noexcept;
+        SampledTexture2DStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] UploadResult upload(TextureData) noexcept;
         [[nodiscard]] UploadResult upload(TexturePatchData) noexcept;
@@ -84,9 +83,9 @@ namespace lux::render::detail
         void retire(SampledImage&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
-        FrameExecution& frames_;
 
-        StorageId id_;
+
+        ResourceInstanceId id_;
         DescriptorTable* descriptors_ = nullptr;
         cxx::StableSlotMap<SampledImage, TextureTag> textures_;
     };

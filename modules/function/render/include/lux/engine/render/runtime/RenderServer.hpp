@@ -26,7 +26,7 @@ namespace lux::platform::ipc
 
 namespace lux::render
 {
-    struct StorageFactory;
+    struct ResourceRegistration;
     struct CapabilityImplementation;
     struct CapabilityDescription;
     class CapabilityRegistry;
@@ -90,29 +90,29 @@ namespace lux::render
 
         // Thread-safe descriptor lookup; synchronizes internally with publication and shutdown clearing.
         // Returns an ID value, never a borrowed registry entry. The Server must outlive the call.
-        template <RenderCommand C> [[nodiscard]] RenderResult<CommandId> 
+        template <RenderCommand C> [[nodiscard]] RenderResult<CommandId>
         commandId() const noexcept
         {
             return findCommand(commandDescriptor<C>());
         }
 
-        [[nodiscard]] RenderResult<CommandId> 
+        [[nodiscard]] RenderResult<CommandId>
         commandId(const CommandDescriptor& descriptor) const noexcept
         {
             return findCommand(descriptor);
         }
 
         // Graph-author cold lookup. Ordinary applications use ListCapabilities instead.
-        [[nodiscard]] RenderResult<FeatureId> 
+        [[nodiscard]] RenderResult<FeatureId>
         featureId(std::string_view implementation) const noexcept;
 
         // Extension authors include extensions/Registration.hpp for these template definitions.
         // Metadata and callback code must outlive the Server and all accepted work. Register before
         // run() or at a frame-boundary RenderThread safe point. Validation failure changes no directory.
-        template <class Feature> [[nodiscard]] RenderResult<FeatureId> 
+        template <class Feature> [[nodiscard]] RenderResult<FeatureId>
         registerFeature() noexcept;
 
-        template <class Implementation> [[nodiscard]] RenderResult<CapabilityImplementationId> 
+        template <class Implementation> [[nodiscard]] RenderResult<CapabilityImplementationId>
         registerCapabilityImplementation() noexcept;
 
         // Catalog changes are permitted before run(), or after run() has returned and joined all work.
@@ -122,45 +122,48 @@ namespace lux::render
             return registerCapability(describeCapability<C>());
         }
 
-        [[nodiscard]] RenderResult<CapabilityId> 
+        [[nodiscard]] RenderResult<CapabilityId>
         registerCapability(const CapabilityDescription&) noexcept;
-        
-        [[nodiscard]] const CapabilityRegistry& 
+
+        [[nodiscard]] const CapabilityRegistry&
         capabilities() const noexcept;
 
         [[nodiscard]] RenderResult<CapabilityImplementationId>
         addCapabilityImplementation(CapabilityId capability, const CapabilityImplementation& declaration) noexcept;
-        
-        [[nodiscard]] RenderResult<CapabilityImplementationId> 
+
+        [[nodiscard]] RenderResult<CapabilityImplementationId>
         replaceCapabilityImplementation(CapabilityImplementationId previous, const CapabilityImplementation& declaration) noexcept;
-        
-        [[nodiscard]] RenderResult<void> 
+
+        [[nodiscard]] RenderResult<void>
         removeCapabilityImplementation(CapabilityImplementationId id) noexcept;
-        
-        [[nodiscard]] RenderResult<void> 
+
+        [[nodiscard]] RenderResult<void>
         removeCapability(CapabilityId id) noexcept;
 
-        // Installs only the Storage factory/default. Capability implementations declare command methods.
-        template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>) 
-        [[nodiscard]] RenderResult<StorageTypeId>
-        registerStorage(const typename Storage::Descriptor::Config& config = {}) noexcept;
+        // Resource declaration and shared implementation metadata remain distinct at registration.
+        [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}) noexcept;
+
+        // Installs the Resource definition, creation policy and its declaration-owned static command thunks.
+        template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>)
+        [[nodiscard]] RenderResult<ResourceTypeId>
+        registerResource(const typename Storage::Descriptor::Config& config = {}) noexcept;
 
         template <class Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
-        [[nodiscard]] RenderResult<StorageTypeId> 
-        registerStorage() noexcept;
+        [[nodiscard]] RenderResult<ResourceTypeId>
+        registerResource() noexcept;
 
         // Registers a Handler factory and its typed methods, without constructing the Handler.
         // Repeating a compatible (type, key) reuses the identity and preserves selected bindings.
-        template <class Handler, class Bindings> [[nodiscard]] RenderResult<HandlerId> 
+        template <class Handler, class Bindings> [[nodiscard]] RenderResult<HandlerId>
         registerHandler(std::string_view key = {}) noexcept;
 
         // Runs once, blocking the calling thread. Drains accepted work and replies before returning.
-        [[nodiscard]] RenderResult<void> 
+        [[nodiscard]] RenderResult<void>
         run() noexcept;
 
         // Cold, before run(). Only this physical IPC Link may submit frames. Other Clients may
         // query and prepare unreferenced assets, but cannot mutate visible state outside a frame.
-        [[nodiscard]] RenderResult<void> 
+        [[nodiscard]] RenderResult<void>
         setFrameSource(platform::ipc::RequesterId requester) noexcept;
 
         // Thread-safe stop request. It does not join the rendering thread or cancel accepted GPU work.
@@ -170,20 +173,25 @@ namespace lux::render
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
     private:
-        [[nodiscard]] RenderResult<FeatureId> 
+        [[nodiscard]] RenderResult<FeatureId>
         registerFeature(runtime_detail::FeatureEntry) noexcept;
-        
-        [[nodiscard]] RenderResult<CapabilityImplementationId>
-        registerCapabilityImplementation(CapabilityDescription, CapabilityImplementation, std::span<runtime_detail::FeatureEntry>, std::span<const StorageFactory>, std::span<runtime_detail::HandlerRecord>, std::span<const CommandBinding>) noexcept;
 
-        [[nodiscard]] RenderResult<StorageTypeId> 
-        registerStorage(StorageFactory, ConfigValue) noexcept;
-        
+        [[nodiscard]] RenderResult<CapabilityImplementationId>
+        registerCapabilityImplementation(
+            CapabilityDescription,
+            CapabilityImplementation,
+            std::span<runtime_detail::FeatureEntry>,
+            std::span<const ResourceRegistration>,
+            std::span<runtime_detail::HandlerRecord>,
+            std::span<const CommandBinding>
+        ) noexcept;
+
         [[nodiscard]] RenderResult<HandlerId>
         registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] bool pagedInstances() const noexcept;
         [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
+
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;
         std::unique_ptr<Impl> impl_;

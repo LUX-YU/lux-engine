@@ -1,3 +1,4 @@
+#include <lux/engine/render/storage/RasterMeshInstanceCommandHandler.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -8,7 +9,7 @@
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
-#include <lux/engine/render/resource/StorageSet.hpp>
+#include <lux/engine/render/resource/ResourceSet.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/storage/RasterMaterialStorage.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
@@ -170,8 +171,8 @@ namespace lux::render::detail
 
     } // namespace
 
-    RasterMeshInstanceStorage::RasterMeshInstanceStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), frame_execution_(*dependencies.frames),
+    RasterMeshInstanceStorage::RasterMeshInstanceStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), frame_count_(dependencies.frame_count),
           resources_(dependencies.resources), id_(id), paged_(dependencies.paged_instances),
           frames_(std::make_unique<FrameData>())
     {
@@ -255,7 +256,7 @@ namespace lux::render::detail
                 }
             }
         );
-        const auto usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+        const auto usage = (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE);
         for (std::size_t field = 0; field < kStride.size(); ++field)
         {
             const auto bytes = slots * kStride[field];
@@ -384,7 +385,7 @@ namespace lux::render::detail
                 slice.table = std::make_unique<PageTable>();
             }
             auto& table = *slice.table;
-            const auto usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+            const auto usage = (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE);
             if (!table.root)
             {
                 const nri::BufferDesc description{sizeof(table.addresses), 4, usage};
@@ -502,8 +503,7 @@ namespace lux::render::detail
              {extension_detail::ResourceIdentity::storage(input.mesh),
               extension_detail::ResourceIdentity::storage(input.material)})
         {
-            const auto* storage_set = registry.storageSet(source);
-            if (!storage_set || (storage_set != registry.storageSet(id_) && !storage_set->isGlobal()))
+            if (!registry.canReference(id_, source))
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
@@ -594,7 +594,7 @@ namespace lux::render::detail
                 {
                     entries_.erase(extension_detail::ResourceIdentity::local(ids[i]));
                 }
-                for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+                for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
                 {
                     auto& slice = data.slices[frame];
                     // Unpublished slots remain dead in the CPU authority. Any accepted partial writes
@@ -677,7 +677,7 @@ namespace lux::render::detail
         }
         // Allocate logical-bit storage before any fallible native preparation so rollback can
         // acknowledge a partially prepared tail without inspecting a stale GPU object.
-        for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+        for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
         {
             for (auto& dirty : data.slices[frame].dirty)
             {
@@ -685,9 +685,9 @@ namespace lux::render::detail
             }
         }
         std::uint32_t frame = 0;
-        while (!frame_execution_.tryBeginWrite(frame))
+        while (!uploads_.tryBeginWrite(frame))
         {
-            auto ready = co_await frame_execution_.whenWritable(
+            auto ready = co_await uploads_.whenWritable(
                 descriptions.size() *
                 (sizeof(TransformMatrix) + sizeof(MeshInstanceGpuProperty) + sizeof(std::uint32_t))
             );
@@ -696,8 +696,8 @@ namespace lux::render::detail
                 co_return cxx::unexpected(ready.error());
             }
         }
-        SubmissionFrontiers progress;
-        cxx::scope_exit finish([&]() noexcept { frame_execution_.finishWrite(frame, progress); });
+        auto progress = session_.makeFrontiers();
+        cxx::scope_exit finish([&]() noexcept { uploads_.finishWrite(frame, progress); });
         for (const auto& description : descriptions)
         {
             auto property = resolveReferences(description, frame);
@@ -751,7 +751,7 @@ namespace lux::render::detail
             page.alive[local] = 1;
             entries_.find(extension_detail::ResourceIdentity::local(ids[i]))->key =
                 extension_detail::ResourceIdentity::local(ids[i]);
-            for (std::uint32_t other = 0; other < frame_execution_.frameCount(); ++other)
+            for (std::uint32_t other = 0; other < frame_count_; ++other)
             {
                 if (other != frame)
                 {
@@ -812,7 +812,7 @@ namespace lux::render::detail
                 continue;
             }
             previous = input.transforms[i];
-            for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+            for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
             {
                 mark(frame, record, 1);
             }
@@ -871,7 +871,7 @@ namespace lux::render::detail
             page.selections[slot] = {value.description.mesh, value.description.material, value.description.submesh};
             page.transforms[slot] = value.description.transform;
             page.properties[slot] = new_property;
-            for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+            for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
             {
                 mark(frame, record, fields);
             }
@@ -902,16 +902,16 @@ namespace lux::render::detail
         ++preparation_revision_;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
         std::uint32_t frame = 0;
-        while (!frame_execution_.tryBeginWrite(frame))
+        while (!uploads_.tryBeginWrite(frame))
         {
-            auto ready = co_await frame_execution_.whenWritable(sizeof(std::uint32_t));
+            auto ready = co_await uploads_.whenWritable(sizeof(std::uint32_t));
             if (!ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
         }
-        SubmissionFrontiers progress;
-        cxx::scope_exit finish([&]() noexcept { frame_execution_.finishWrite(frame, progress); });
+        auto progress = session_.makeFrontiers();
+        cxx::scope_exit finish([&]() noexcept { uploads_.finishWrite(frame, progress); });
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -930,7 +930,7 @@ namespace lux::render::detail
         }
         notify(*entry, true);
         pages_[record / kMeshInstancePageSlots]->alive[record % kMeshInstancePageSlots] = 0;
-        for (std::uint32_t other = 0; other < frame_execution_.frameCount(); ++other)
+        for (std::uint32_t other = 0; other < frame_count_; ++other)
         {
             if (other != frame)
             {
@@ -1021,7 +1021,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                frame_execution_.onPreparationSubmitted(
+                uploads_.onPreparationSubmitted(
                     this,
                     [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
                     {
@@ -1240,8 +1240,14 @@ namespace lux::render::detail
         return {};
     }
 
-    StorageFactory RasterMeshInstanceStorage::factory() noexcept
+    ResourceRegistration RasterMeshInstanceStorage::factory() noexcept
     {
+
+        static const std::array commands{
+            CommandBinding::declare<Mesh3dCommands::CreateInstance, &RasterMeshInstanceCommandHandler::createInstance>(),
+            CommandBinding::declare<Mesh3dCommands::CreateInstances, &RasterMeshInstanceCommandHandler::createInstances>(),
+            CommandBinding::declare<Mesh3dCommands::ReleaseInstance, &RasterMeshInstanceCommandHandler::releaseInstance>()
+        };
         static const StorageBindingOps binding{
             [](void* value,
                const VGraphResourceDesc& plan,
@@ -1257,19 +1263,20 @@ namespace lux::render::detail
             [](const void* value) noexcept
             { return &static_cast<const RasterMeshInstanceStorage*>(value)->preparation_revision_; }
         };
-        static const auto create = +[](StorageCreateContext& dependencies, StorageId id
+        static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMeshInstanceStorage>>
         {
-            if (!dependencies.uploads || !dependencies.frames)
+            if (!dependencies.uploads || dependencies.frame_count == 0 || dependencies.frame_count > 3)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
             return std::make_unique<RasterMeshInstanceStorage>(dependencies, id);
         };
-        return makeStorageFactory<
-            render::RasterMeshInstanceStorageDescriptor,
+        return makeResourceRegistration<
+            render::InstanceResource,
             RasterMeshInstanceStorage,
-            StorageCreateContext,
-            create>(nullptr, &binding);
+            create>(nullptr, &binding,
+            commands
+        );
     }
 } // namespace lux::render::detail

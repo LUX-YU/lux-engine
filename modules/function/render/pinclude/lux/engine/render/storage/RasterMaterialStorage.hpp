@@ -1,16 +1,15 @@
 #pragma once
 #include <lux/engine/render/commands/Command.hpp>
 
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 
 #include <exec/task.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
-#include <lux/engine/render/extensions/storage/Upload.hpp>
+#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/Upload.hpp>
 
 namespace lux::render::detail
 {
@@ -29,15 +28,15 @@ namespace lux::render::detail
         };
 
     public:
-        using Descriptor = RasterMaterialStorageDescriptor;
-        [[nodiscard]] static StorageFactory factory() noexcept;
+        using Descriptor = MaterialResource;
+        [[nodiscard]] static ResourceRegistration factory() noexcept;
 
-        RasterMaterialStorage(StorageCreateContext&, StorageId) noexcept;
+        RasterMaterialStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~RasterMaterialStorage() noexcept;
         RasterMaterialStorage(const RasterMaterialStorage&) = delete;
         RasterMaterialStorage& operator=(const RasterMaterialStorage&) = delete;
 
-        [[nodiscard]] StorageId id() const noexcept
+        [[nodiscard]] ResourceInstanceId id() const noexcept
         {
             return id_;
         }
@@ -97,10 +96,10 @@ namespace lux::render::detail
         static void removeImageUses(Table&, std::span<const nri::Texture* const>) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
-        FrameExecution& frame_execution_;
+        std::uint32_t frame_count_;
         ResourceRegistry& resources_;
 
-        StorageId id_;
+        ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
         std::vector<std::unique_ptr<Table>> tables_;

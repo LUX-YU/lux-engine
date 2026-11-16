@@ -1,6 +1,8 @@
 #include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <utility>
+#include <lux/engine/render/device/NativeResult.hpp>
+#include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/graph/CompiledPrograms.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
@@ -51,18 +53,20 @@ namespace lux::render::detail
     exec::task<RenderResult<void>>
     RenderPlan::preparePrograms(DeviceSession& session, const RenderGraph& graph, execution::CpuScheduler cpu) noexcept
     {
+        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         program_cache_ = &session.programs();
         for (auto& pass : recording_.passes)
         {
             const auto& work = graph.passes()[pass.source_pass].work;
             auto& bindings = descriptor_plan_->passes[pass.source_pass];
-            const auto* raster = std::get_if<RasterWork>(&work);
+            const auto* raster = work.getIf<RasterWork>();
             const auto* fixed = raster ? std::get_if<RasterWork::FixedProgram>(&raster->program) : nullptr;
-            const auto* compute = std::get_if<ComputeWork>(&work);
+            const auto* compute = work.getIf<ComputeWork>();
             const auto* input = fixed ? &fixed->interface : compute ? &compute->interface : nullptr;
             if (!input)
             {
-                if (std::holds_alternative<TransferWork>(work) && !bindings.private_bindings.empty())
+                if (work.getIf<TransferWork>() != nullptr && !bindings.private_bindings.empty())
                 {
                     auto acquired = program_cache_->acquireLayout(bindings);
                     if (!acquired) co_return cxx::unexpected(acquired.error());
@@ -72,7 +76,14 @@ namespace lux::render::detail
                 }
                 continue;
             }
-            auto relocated = relocateShader(graph.programs()[input->program], bindings.bindings);
+            auto relocated = co_await (
+                stdexec::schedule(cpu) | stdexec::then([&]() noexcept
+                { return relocateShader(graph.programs()[input->program], bindings.bindings); }) |
+                stdexec::upon_stopped([]() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
+                { return cxx::unexpected(RenderError{kCpuStopped}); }) |
+                stdexec::continues_on(owner_scheduler) |
+                stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
+            );
             if (!relocated) co_return cxx::unexpected(relocated.error());
             RasterProgramKey key;
             key.shader = std::move(*relocated);
@@ -104,15 +115,30 @@ namespace lux::render::detail
                 auto layout = program_cache_->acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
                 if (!layout) co_return cxx::unexpected(layout.error());
                 cxx::scope_exit release_layout([&]() noexcept { program_cache_->releaseLayout(*layout); });
-                auto compiled = co_await (stdexec::schedule(cpu) | stdexec::then([&]() noexcept
-                {
-                    return fixed ? compileRasterProgram(session.device(), session.nriCore(), session.enabledFeatures(),
-                        session.formatSupport(), {session.vertexStrideLimit(), session.vertexOffsetLimit()},
-                        **layout, key)
-                        : compileCompute(session.device(), session.nriCore(), session.enabledFeatures(),
-                            **layout, key.shader);
-                }) | stdexec::upon_stopped([]() noexcept -> RenderResult<nri::Pipeline*>
-                { return cxx::unexpected(RenderError{kCpuStopped}); }));
+                if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
+                // key/layout belong to this coroutine operation and are frozen until native return.
+                // The worker sees native facts only; cache/Plan publication stays on the control owner.
+                auto compiled = co_await (
+                    stdexec::schedule(session.nativeScheduler()) |
+                    stdexec::then([
+                        &key, layout = *layout, raster = fixed != nullptr,
+                        device = &session.device(), core = &session.nriCore(), enabled = session.enabledFeatures(),
+                        formats = session.formatSupport(),
+                        vertex_limits = std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}
+                    ]() noexcept
+                    {
+                        if (raster)
+                        {
+                            return compileRasterProgram(*device, *core, enabled, formats, vertex_limits, *layout, key);
+                        }
+                        return compileCompute(*device, *core, enabled, *layout, key.shader);
+                    }) |
+                    stdexec::upon_error(NativeScheduleFailure<nri::Pipeline*>{}) |
+                    stdexec::upon_stopped([]() noexcept -> RenderResult<nri::Pipeline*>
+                    { return cxx::unexpected(RenderError{kCommandCancelled}); }) |
+                    stdexec::continues_on(owner_scheduler) |
+                    stdexec::upon_error(NativeDeliveryFailure<nri::Pipeline*>{})
+                );
                 if (!compiled) co_return cxx::unexpected(compiled.error());
                 pipeline = fixed ? program_cache_->publishRaster(std::move(key), *layout, *compiled)
                     : program_cache_->publishCompute(std::move(key.shader), *layout, *compiled);

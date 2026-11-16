@@ -1,15 +1,14 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 
 #include <exec/task.hpp>
 
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 
 namespace lux::render::detail
 {
@@ -27,8 +26,8 @@ namespace lux::render::detail
         };
 
     public:
-        using Descriptor = RasterMeshInstanceStorageDescriptor;
-        [[nodiscard]] static StorageFactory factory() noexcept;
+        using Descriptor = InstanceResource;
+        [[nodiscard]] static ResourceRegistration factory() noexcept;
 
         struct Selection final
         {
@@ -56,7 +55,7 @@ namespace lux::render::detail
             std::size_t position_ = 0;
         };
 
-        RasterMeshInstanceStorage(StorageCreateContext&, StorageId) noexcept;
+        RasterMeshInstanceStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~RasterMeshInstanceStorage() noexcept;
         RasterMeshInstanceStorage(const RasterMeshInstanceStorage&) = delete;
         RasterMeshInstanceStorage& operator=(const RasterMeshInstanceStorage&) = delete;
@@ -116,10 +115,10 @@ namespace lux::render::detail
         [[nodiscard]] std::uint64_t fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
-        FrameExecution& frame_execution_;
+        std::uint32_t frame_count_;
         ResourceRegistry& resources_;
 
-        StorageId id_;
+        ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
         const bool paged_;
         bool updating_ = false;

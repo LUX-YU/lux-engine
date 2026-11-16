@@ -1,5 +1,6 @@
 #pragma once
 
+#include <NRI.h>
 #include <cstdint>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
@@ -37,7 +38,35 @@ namespace lux::render::detail
         std::uint32_t stages = 2; // Existing PassContract stage bits: Vertex=1, Fragment=2, Compute=4.
         EShaderAccess access = EShaderAccess::READ_ONLY;
         bool image_arrayed = false, image_depth = false;
+        // Binary register identity survives compact descriptor placement. DXIL is never patched.
+        std::uint32_t shader_space = 0, shader_register = 0;
         bool operator==(const ShaderBinding&) const noexcept = default;
+
+        [[nodiscard]] nri::BufferViewDesc
+        bufferView(const nri::Buffer* buffer, std::uint64_t offset, std::uint64_t size) const noexcept
+        {
+            const bool is_read_only = access == EShaderAccess::READ_ONLY;
+            auto type = block.size ? (is_read_only ? nri::BufferView::STRUCTURED_BUFFER
+                                                   : nri::BufferView::STORAGE_STRUCTURED_BUFFER)
+                                   : (is_read_only ? nri::BufferView::BYTE_ADDRESS_BUFFER
+                                                   : nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER);
+            if (kind == EDescriptorKind::UNIFORM_BUFFER)
+            {
+                type = nri::BufferView::CONSTANT_BUFFER;
+            }
+            if (kind == EDescriptorKind::TYPED_STORAGE_BUFFER)
+            {
+                type = nri::BufferView::STORAGE_BUFFER;
+            }
+            return {
+                buffer,
+                type,
+                offset,
+                size,
+                kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::Format::R32_UINT : nri::Format::UNKNOWN,
+                block.size
+            };
+        }
     };
 
     struct ShaderInterface final

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/device/NativeExecution.hpp>
 #include <lux/engine/render/graph/CompiledPrograms.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
@@ -43,8 +44,36 @@ namespace lux::render::detail
         {
             return cxx::unexpected(initialized.error());
         }
+        auto native = NativeExecution::create();
+        if (!native) return cxx::unexpected(native.error());
+        result->native_execution_ = std::move(*native);
         result->programs_ = std::make_unique<CompiledPrograms>(*result, options.cached_unused_programs);
         return result;
+    }
+
+    cxx::execution::ManualContext::Scheduler DeviceSession::nativeScheduler() noexcept
+    {
+        return native_execution_->scheduler();
+    }
+
+    void DeviceSession::adoptNativeOwner() noexcept
+    {
+        native_execution_->adoptOwner();
+    }
+
+    exec::task<RenderResult<void>> DeviceSession::waitFrontiers(SubmissionFrontiers frontiers) noexcept
+    {
+        if (!frontiers.belongsTo(this, queueCount()))
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
+        RenderError failure{};
+        for (std::size_t q = 0; q < queueCount(); ++q)
+        {
+            if (frontiers.serials()[q] == 0) continue;
+            auto result = co_await physicalQueue(q).whenSubmissionCompletes(frontiers.serials()[q]);
+            if (!result && failure.type == 0) failure = result.error();
+        }
+        if (failure.type) co_return cxx::unexpected(failure);
+        co_return RenderResult<void>{};
     }
 
     std::size_t DeviceSession::queueIndex(const SubmissionQueue& queue) const noexcept
@@ -90,6 +119,9 @@ namespace lux::render::detail
         {
             requireCleanupComplete(drain());
         } while (!joined);
+        // Domain scopes have settled and passive GPU cleanup has drained. Join the native
+        // consumer stack before destroying Device/Queue/descriptor facts borrowed by it.
+        if (native_execution_) native_execution_->closeAndJoin();
         programs_.reset();
         descriptor_table_.clear();
         physical_queues_.clear();
@@ -99,6 +131,13 @@ namespace lux::render::detail
         }
         releaseBackendData();
         closed_ = true;
+    }
+
+    std::uint32_t DeviceSession::resourceCapabilities() const noexcept
+    {
+        return (descriptors().capacity(nri::DescriptorType::TEXTURE) ? 1u : 0u) |
+            (enabledFeatures().texture_compression_bc ? 2u : 0u) |
+            (descriptors().capacity(nri::DescriptorType::STRUCTURED_BUFFER) ? 4u : 0u);
     }
 
     RenderResult<void> DeviceSession::drain() noexcept
@@ -119,8 +158,7 @@ namespace lux::render::detail
                 }
             }
         }
-        auto collected = pollQueues();
-        dispatchQueueCompletions();
+        auto collected = progressCompletions();
         return failure ? RenderResult<void>{cxx::unexpected(*failure)} : collected;
     }
 
@@ -141,7 +179,7 @@ namespace lux::render::detail
         return std::ranges::any_of(physical_queues_, [](const auto& queue) { return !queue->idle(); });
     }
 
-    RenderResult<void> DeviceSession::pollQueues() noexcept
+    RenderResult<void> DeviceSession::progressCompletions() noexcept
     {
         std::optional<RenderError> failure;
         for (auto& queue : physical_queues_)
@@ -151,19 +189,15 @@ namespace lux::render::detail
                 failure = result.error();
             }
         }
+        for (auto& queue : physical_queues_)
+        {
+            queue->dispatchCompleted();
+        }
         if (failure)
         {
             return cxx::unexpected(*failure);
         }
         return {};
-    }
-
-    void DeviceSession::dispatchQueueCompletions() noexcept
-    {
-        for (auto& queue : physical_queues_)
-        {
-            queue->dispatchCompleted();
-        }
     }
 
 } // namespace lux::render::detail

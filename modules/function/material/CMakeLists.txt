@@ -1,3 +1,5 @@
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/MaterialIR.cmake")
+
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_MATERIAL_GRAPH_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_MATERIAL_GRAPH_PUBLIC
@@ -21,7 +23,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinMaterialCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialValidation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodePayload.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodeCatalog.cpp
 )
@@ -49,6 +50,7 @@ target_include_directories(
 target_link_libraries(
     material_graph
     PUBLIC
+        lux::engine::function::material_ir
         lux::engine::function::graph
         lux::engine::resource::description_types
         lux::engine::resource::identity
@@ -57,10 +59,14 @@ target_link_libraries(
 
 component_add_transitive_commands(
     material_graph
-    "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS graph material_ir)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description_types)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
+
+if(TARGET shader_compiler)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/MaterialCompiler.cmake")
+endif()
 
 if(BUILD_TESTING)
     add_executable(material_registered_graph_test test/registered_graph.cpp)

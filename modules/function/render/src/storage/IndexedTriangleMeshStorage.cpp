@@ -1,3 +1,4 @@
+#include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -14,11 +15,11 @@
 
 namespace lux::render::detail
 {
-    IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), frames_(*dependencies.frames), id_(id),
-          vertices_(dependencies.device, nri::BufferUsageBits::VERTEX_BUFFER),
-          indices_(dependencies.device, nri::BufferUsageBits::INDEX_BUFFER),
-          sections_(dependencies.device, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE, 65536)
+    IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), id_(id),
+          vertices_(dependencies.device, nri::BufferUsageBits::VERTEX),
+          indices_(dependencies.device, nri::BufferUsageBits::INDEX),
+          sections_(dependencies.device, (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE), 65536)
     {
     }
 
@@ -196,7 +197,7 @@ namespace lux::render::detail
 
     RenderResult<void> IndexedTriangleMeshStorage::release(MeshId id) noexcept
     {
-        if (frames_.submitting())
+        if (uploads_.resourcesFrozen())
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
@@ -264,8 +265,13 @@ namespace lux::render::detail
         sections_.release(geometry.sections);
     }
 
-    StorageFactory IndexedTriangleMeshStorage::factory() noexcept
+    ResourceRegistration IndexedTriangleMeshStorage::factory() noexcept
     {
+
+        static const std::array commands{
+            CommandBinding::declare<Mesh3dCommands::UploadMesh, &IndexedTriangleMeshCommandHandler::createMesh>(),
+            CommandBinding::declare<Mesh3dCommands::ReleaseMesh, &IndexedTriangleMeshCommandHandler::releaseMesh>()
+        };
         static const StorageBindingOps binding{
             [](void* object,
                const VGraphResourceDesc& plan,
@@ -283,20 +289,21 @@ namespace lux::render::detail
                 return {};
             }
         };
-        static const auto create = +[](StorageCreateContext& dependencies, StorageId id
+        static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<IndexedTriangleMeshStorage>>
         {
-            if (!dependencies.uploads || !dependencies.frames)
+            if (!dependencies.uploads || dependencies.frame_count == 0 || dependencies.frame_count > 3)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
             return std::make_unique<IndexedTriangleMeshStorage>(dependencies, id);
         };
-        return makeStorageFactory<
-            render::IndexedTriangleMeshStorageDescriptor,
+        return makeResourceRegistration<
+            render::MeshResource,
             IndexedTriangleMeshStorage,
-            StorageCreateContext,
-            create>(nullptr, &binding);
+            create>(nullptr, &binding,
+            commands
+        );
     }
 } // namespace lux::render::detail
 

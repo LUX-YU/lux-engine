@@ -1,0 +1,22 @@
+{
+    "slang": {
+        "version": "2025.24",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2025.24/slang-2025.24-windows-x86_64.zip",
+        "sha256": "0ea8b4e1e02065d456f1595eb07e412172036acc63c881aa7c49a92e66069872"
+    },
+    "dxc": {
+        "version": "1.8.2505.1",
+        "url": "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2505.1/dxc_2025_07_14.zip",
+        "sha256": "9ad895a6b039e3a8f8c22a1009f866800b840a74b50db9218d13319e215ea8a4"
+    },
+    "spirv_tools": {
+        "version": "2024.1",
+        "url": "https://github.com/KhronosGroup/SPIRV-Tools/archive/04896c462d9f3f504c99a4698605b6524af813c1.tar.gz",
+        "sha256": "c0d01e758a543b3a358cb97af02c6817ebd3f5ff13a2edf9fb220646a3d67999"
+    },
+    "spirv_headers": {
+        "version": "1.3.280",
+        "url": "https://github.com/KhronosGroup/SPIRV-Headers/archive/8b246ff75c6615ba4532fe4fde20f1be090c3764.tar.gz",
+        "sha256": "cfeed5f9a97d12a9761a26e7f5bd10fedb1a8ce92033075151ae3bc7206fc229"
+    }
+}

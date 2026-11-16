@@ -1,4 +1,4 @@
-#include "../../material/test/MaterialTest.hpp"
+#include "MaterialFixture.hpp"
 #include "FullscreenVertex.hpp"
 #include "GraphShadowSampler.hpp"
 #include "SceneCapture.hpp"
@@ -6,11 +6,10 @@
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/render/commands/Lighting3dCommands.hpp>
 #include <lux/engine/render/commands/MaterialCommands.hpp>
 #include <lux/engine/render/commands/Mesh3dCommands.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -62,13 +61,10 @@ struct SamplerProbe
             }
             depth = cleared->written.front();
         }
-        rdesc::SpirvArtifact shader;
-        shader.stages = {
-            {rdesc::EShaderType::VERTEX, "main", {std::begin(kFullscreenVertex), std::end(kFullscreenVertex)}},
-            {rdesc::EShaderType::FRAGMENT, "main", {std::begin(kGraphShadowSampler), std::end(kGraphShadowSampler)}}
-        };
-        CHECK(rdesc::ShaderInfo::deserialize(kGraphShadowSamplerReflection, shader.interface));
-        shader.interface.entry_points.push_back({"main", rdesc::EShaderType::VERTEX});
+        auto shader = kGraphShadowSampler.load(rdesc::EShaderTarget::SPIRV);
+        auto vertex = kFullscreenVertex.load(rdesc::EShaderTarget::SPIRV);
+        shader.stages.insert(shader.stages.begin(), std::move(vertex.stages.front()));
+        shader.interface.entry_points.push_back(std::move(vertex.interface.entry_points.front()));
         RasterWork work;
         auto& fixed_work = work.fixed();
         fixed_work.interface.program = take(context.graph.addProgram(std::move(shader)));
@@ -118,7 +114,7 @@ static RenderResult<CapabilityGraphContribution> lowerSamplerProbe(const Capabil
 static void verifySamplers(RenderServer& server, const RenderServerConfig& config)
 {
     const auto probe = take(server.registerFeature<SamplerProbe>());
-    take(server.registerStorage<CaptureBuffer>({}));
+    take(server.registerResource<CaptureBuffer>());
     const auto capture = take(server.registerFeature<CaptureFeature>());
     const auto sampler_probe = registerRenderProbe<CaptureConfig>(
         server, "test.samplers", {probe, capture}, probePorts({"color"}, {"pixels"}), {}, lowerSamplerProbe
@@ -146,6 +142,7 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
         std::this_thread::yield();
     }
     detach(*client, commands, attachment);
+    call<RemoveView>(*client, commands, {scene, view});
     while (!pixels.ready.load(std::memory_order_acquire))
     {
         CHECK(Clock::now() < deadline);
@@ -228,9 +225,9 @@ static rdesc::MaterialProgramSet material(bool masked = false, bool unlit = fals
         CHECK(material_test::connect(graph, alpha, 0, output, 1));
     }
     constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
-    auto result = compileMaterial(graph, purposes);
+    auto result = deriveFixtureMaterial(graph, purposes);
     CHECK(result);
-    return std::move(result->programs);
+    return std::move(result->material.programs);
 }
 
 static std::array<double, 3> project(const MeshVisibilityView& view, std::array<double, 3> point)
@@ -447,7 +444,7 @@ int main(int argc, char** argv)
     const auto projection = take(server->featureId("lux.render.feature.ShadowMapFeature"));
     const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
     const auto shadow = take(server->featureId("lux.render.feature.MeshShadowFeature"));
-    take(server->registerStorage<CaptureBuffer>({}));
+    take(server->registerResource<CaptureBuffer>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
     const auto cluster_feature = take(server->featureId("lux.render.feature.ClusteredLightingFeature"));
     const auto comparison = take(server->registerFeature<SceneComparison>());
@@ -859,6 +856,8 @@ int main(int argc, char** argv)
         }
         detach(*client, commands, attachment);
         detach(*client, commands, second);
+        call<RemoveView>(*client, commands, {scene, view});
+        call<RemoveView>(*client, commands, {scene, second_view});
         while (pixels.ready.load(std::memory_order_acquire) != 2 ||
                view_bytes.ready.load(std::memory_order_acquire) != 2 ||
                activity_commands.ready.load(std::memory_order_acquire) != 2 ||
@@ -1069,8 +1068,6 @@ int main(int argc, char** argv)
             CHECK(observed_empty);
         }
         call<RemoveEffect>(*client, commands, {effect});
-        call<RemoveView>(*client, commands, {scene, view});
-        call<RemoveView>(*client, commands, {scene, second_view});
         for (std::size_t i = 1; i < lights.size(); ++i)
         {
             call<Lighting3dCommands::ReleaseLight>(

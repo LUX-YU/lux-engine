@@ -44,14 +44,14 @@ namespace lux::render
             const void* value,
             std::string_view key,
             FeatureBuildContext& context,
-            const lux::render::detail::EnabledDeviceFeatures&
+            const lux::render::detail::EnabledDeviceFeatures& enabled
         ) noexcept
         {
             const auto& config = *static_cast<const TonemapFeatureConfig*>(value);
             const bool encode =
                 config.encoding == EColorEncoding::SRGB && !rdesc::isSrgbTextureFormat(config.output.format);
-            auto work = encode ? detail::fullscreenRaster(context, kTonemapSrgb, kTonemapSrgbReflection)
-                               : detail::fullscreenRaster(context, kTonemapLinear, kTonemapLinearReflection);
+            auto work = encode ? detail::fullscreenRaster(context, kTonemapSrgb.load(enabled.shader_target))
+                               : detail::fullscreenRaster(context, kTonemapLinear.load(enabled.shader_target));
             if (!work)
             {
                 return cxx::unexpected(work.error());

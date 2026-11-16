@@ -2,7 +2,7 @@
 
 #include <NRI.h>
 #include <array>
-#include <lux/engine/description/SpirvArtifact.hpp>
+#include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
 #include <span>
 
@@ -14,7 +14,7 @@ namespace lux::render::detail
     // Device/table capacities are fixed by the Device; resource IDs/addresses are not PSO identity.
     struct RasterProgramKey final
     {
-        rdesc::SpirvArtifact shader;
+        rdesc::ShaderProgramArtifact shader;
         GraphicsState state;
         std::vector<nri::Format> colors;
         nri::Format depth = nri::Format::UNKNOWN;

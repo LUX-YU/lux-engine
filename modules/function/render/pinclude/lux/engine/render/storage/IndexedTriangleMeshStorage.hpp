@@ -1,14 +1,13 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
-#include <lux/engine/render/extensions/storage/Upload.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/extensions/resource/Upload.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/memory/BufferArena.hpp>
 
@@ -29,15 +28,15 @@ namespace lux::render::detail
         };
 
     public:
-        using Descriptor = IndexedTriangleMeshStorageDescriptor;
-        [[nodiscard]] static StorageFactory factory() noexcept;
+        using Descriptor = MeshResource;
+        [[nodiscard]] static ResourceRegistration factory() noexcept;
 
-        IndexedTriangleMeshStorage(StorageCreateContext&, StorageId) noexcept;
+        IndexedTriangleMeshStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~IndexedTriangleMeshStorage() noexcept;
         IndexedTriangleMeshStorage(const IndexedTriangleMeshStorage&) = delete;
         IndexedTriangleMeshStorage& operator=(const IndexedTriangleMeshStorage&) = delete;
 
-        [[nodiscard]] StorageId id() const noexcept
+        [[nodiscard]] ResourceInstanceId id() const noexcept
         {
             return id_;
         }
@@ -65,9 +64,9 @@ namespace lux::render::detail
         void retire(Geometry&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
-        FrameExecution& frames_;
 
-        StorageId id_;
+
+        ResourceInstanceId id_;
         cxx::StableSlotMap<Entry, MeshTag> entries_;
         BufferArena vertices_, indices_, sections_;
     };

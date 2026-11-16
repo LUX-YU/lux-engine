@@ -304,7 +304,7 @@ namespace lux::render::detail
                 const nri::BufferDesc description{
                     capacity,
                     4,
-                    nri::BufferUsageBits::SHADER_RESOURCE_STORAGE | nri::BufferUsageBits::ARGUMENT_BUFFER
+                    (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE) | nri::BufferUsageBits::ARGUMENT
                 };
                 const auto created =
                     device_.nriCore().CreatePlacedBuffer(device_.device(), NriDeviceHeap, description, candidate);
@@ -333,7 +333,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                frames_.onPreparationSubmitted(
+                uploader.onPreparationSubmitted(
                     &slice,
                     [](void* data, std::uint32_t, RenderResult<void> accepted) noexcept
                     {
@@ -384,7 +384,7 @@ namespace lux::render::detail
         ResourceRegistry& registry,
         RenderGraphInstance&,
         CompiledPrograms&,
-        std::span<const StorageId> storages,
+        std::span<const ResourceInstanceId> storages,
         const void* input
     ) noexcept
     {

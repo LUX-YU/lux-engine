@@ -10,9 +10,11 @@ namespace lux::render
         std::string key;
         EGraphPassKind kind = EGraphPassKind::COMPUTE;
         std::vector<ResourceAccess> uses;
-        VPassWork work;
+        PassWork work;
         bool side_effect = false;
         std::optional<PassCondition> condition;
+        std::optional<PassInterface> encoding_interface;
+        nri::StageBits encoding_stages = nri::StageBits::NONE;
     };
 
     class RenderGraphBuilder;
@@ -40,7 +42,7 @@ namespace lux::render
             return outputs_;
         }
 
-        [[nodiscard]] std::span<const rdesc::SpirvArtifact> programs() const noexcept
+        [[nodiscard]] std::span<const rdesc::ShaderProgramArtifact> programs() const noexcept
         {
             return programs_;
         }
@@ -57,7 +59,7 @@ namespace lux::render
 
     private:
         friend class RenderGraphBuilder;
-        std::vector<rdesc::SpirvArtifact> programs_;
+        std::vector<rdesc::ShaderProgramArtifact> programs_;
         std::vector<GraphResource> resources_;
         std::vector<GraphPass> passes_;
         std::vector<GraphDependency> dependencies_;

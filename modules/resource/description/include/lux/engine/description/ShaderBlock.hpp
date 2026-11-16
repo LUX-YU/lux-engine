@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/description/DataLayout.hpp>
+#include <bit>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,14 @@ namespace lux::rdesc
         std::vector<ShaderMember> fields;
         bool runtime_records = false; // One zero-offset runtime record array; size is its reflected ArrayStride.
         bool operator==(const ShaderBlock&) const noexcept = default;
+
+        // Structural qualification. Matching actual binary offsets remains a backend reflection check.
+        [[nodiscard]] bool hasStructuredLayout() const noexcept
+        {
+            const bool has_storage_layout = storage == EDataLayout::STD140 || storage == EDataLayout::STD430 ||
+                storage == EDataLayout::TARGET_REFLECTED;
+            return size != 0 && std::has_single_bit(alignment) && !fields.empty() && has_storage_layout;
+        }
 
         // A cold copy, not a second Schema registry or validator. Native reflection checks the ABI boundary.
         [[nodiscard]] static ShaderBlock from(const DataGpuLayout& layout, bool records = false) noexcept

@@ -47,7 +47,7 @@ namespace lux::render::detail
     CapabilityImplementation UiScene::implementation() noexcept
     {
         static const std::array dependencies{
-            CapabilityStorageDependency{EStorageScope::GLOBAL, kTextureStorageType, "ui"}
+            CapabilityResourceDependency{EStorageScope::GLOBAL, kTextureResourceName}
         };
         static const CapabilityImplementation support = []
         {
@@ -75,7 +75,7 @@ namespace lux::render::detail
             return result;
         }();
         auto implementation = support;
-        implementation.storage_dependencies = dependencies;
+        implementation.resource_dependencies = dependencies;
         implementation.decode_configuration = decodeConfiguration;
         implementation.build_graph = lowerUi;
         return implementation;

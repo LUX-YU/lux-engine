@@ -1,6 +1,6 @@
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/material/BuiltinMaterialNodes.hpp>
-#include <lux/engine/material/MaterialIR.hpp>
+#include <lux/engine/material/MaterialLowering.hpp>
 #include <lux/engine/material/MaterialNodeCatalog.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 

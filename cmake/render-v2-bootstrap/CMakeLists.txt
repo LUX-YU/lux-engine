@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.30)
 
 project(lux-render-v2-bootstrap VERSION 0.0.1 LANGUAGES CXX)
 
@@ -14,8 +14,9 @@ else()
     add_compile_options(-fno-rtti)
 endif()
 
-include(CTest)
+option(BUILD_TESTING "Build optional module tests" OFF)
 
+include(CTest)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 
@@ -26,11 +27,9 @@ find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ValueTypes.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error/cmake/Values.cmake")
 
-
-
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
 
-set(platform_components platform_ipc gapi platform_process)
+set(platform_components platform_ipc gapi platform_process platform_file)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/process" platform-process)
 
@@ -56,24 +55,7 @@ if(BUILD_TESTING)
 
 endif()
 
-# Existing authoring/lowering algorithms are only build-time asset dependencies.
-if(BUILD_TESTING)
-    include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ValueTypes.cmake")
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/object" core-object)
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/identity" resource-identity)
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/graph" function-graph)
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/material" material-graph)
-
-    # Build the real Cooked material compiler once; it is a tool/test dependency, never a Render dependency.
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/shader" shader-toolchain)
-    set(LUX_MATERIAL_BUILD_COOKER OFF)
-    set(LUX_EDITOR_BUILD_TOOLCHAIN_TESTS ON)
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/material" material-toolchain)
-endif()
-
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
-
-# Real application asset transport consumers, with their source dependency closure.
+# Module dependencies are configured before Render so source targets cannot fall back to an old SDK.
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/math" core-math)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/type_info" core-type-info)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/serialization" core-serialization)
@@ -88,19 +70,25 @@ if(NOT TARGET identity)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/identity" resource-identity)
 endif()
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description" resource-description)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/shader_metadata" shader-compiler)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/file" platform-file)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/asset" resource-asset)
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/services/assets" process-asset-loading)
 if(BUILD_TESTING AND WIN32)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/window" platform-window)
     list(APPEND platform_components window)
 endif()
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/rendering" engine-rendering)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
 
-set(resource_components description_types shader_metadata description asset identity)
+# Authoring/lowering remains independent from the optional target compiler and Render runtime.
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/object" core-object)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/graph" function-graph)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/material" material-graph)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
+
+set(resource_components description_types shader_metadata shader_compiler description asset identity)
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-resource
@@ -116,10 +104,7 @@ lux_engine_install_components(
     COMPONENTS ${platform_components}
 )
 
-set(core_components async_port error error_values log task math type_info serialization semantic)
-if(BUILD_TESTING)
-    list(APPEND core_components object)
-endif()
+set(core_components async_port error error_values log task math type_info serialization semantic object)
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-core
@@ -128,10 +113,7 @@ lux_engine_install_components(
     COMPONENTS ${core_components}
 )
 
-set(function_components script_core)
-if(BUILD_TESTING)
-    list(APPEND function_components graph material_graph)
-endif()
+set(function_components script_core graph material_ir material_graph material_compiler)
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-function

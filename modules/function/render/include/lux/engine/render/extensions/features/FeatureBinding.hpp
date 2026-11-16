@@ -4,7 +4,7 @@
 
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 
 namespace lux::render
@@ -88,7 +88,7 @@ namespace lux::render::detail
             ResourceRegistry&,
             RenderGraphInstance&,
             CompiledPrograms&,
-            std::span<const StorageId>,
+            std::span<const ResourceInstanceId>,
             const void*
         ) noexcept;
 

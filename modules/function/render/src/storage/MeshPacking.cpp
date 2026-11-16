@@ -1,7 +1,7 @@
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
 #include <lux/engine/render/storage/MeshPacking.hpp>
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/extensions/storage/StorageDescriptor.hpp>
+#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <cstring>

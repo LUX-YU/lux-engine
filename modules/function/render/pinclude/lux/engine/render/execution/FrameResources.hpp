@@ -42,6 +42,8 @@ namespace lux::render::detail
         std::vector<std::array<nri::CommandBuffer*, 2>> command_buffers;
         std::vector<std::uint64_t> recording_revisions, recorded_revisions;
         std::uint64_t shared_binding_revision = 0;
+        std::array<nri::DescriptorSet*, 3> shared_descriptors{};
+        std::array<std::uint32_t, 3> shared_descriptor_counts{};
 
         std::vector<DrawListResources> draw_lists;
         std::vector<RasterDrawList> raster_draws;

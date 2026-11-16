@@ -17,7 +17,7 @@ namespace lux::render
             const auto& contract = implementation.configuration;
             const bool is_wrong_schema =
                 serialized_input->schema != contract.schema || serialized_input->version != contract.version;
-            const bool exceeds_size = serialized_input->bytes.size() > config.max_config_bytes;
+            const bool exceeds_size = serialized_input->bytes.size() > config_.max_config_bytes;
             if (is_wrong_schema || exceeds_size)
             {
                 return cxx::unexpected(RenderError{kInvalidConfig});
@@ -59,7 +59,7 @@ namespace lux::render
             value = &decoded;
         }
         const bool invalid_type = implementation.config_type != value->type();
-        const bool invalid_size = value->retainedBytes() > config.max_config_bytes;
+        const bool invalid_size = value->retainedBytes() > config_.max_config_bytes;
         if (invalid_type || invalid_size)
         {
             return cxx::unexpected(RenderError{kInvalidConfig});
@@ -128,9 +128,12 @@ namespace lux::render
                     published.outputs.push_back(port.key);
                 }
             }
-            for (const auto& declaration : implementation.storage_dependencies)
+            for (const auto& declaration : implementation.resource_dependencies)
             {
-                if (!resources->factory(declaration.storage_type))
+                const auto* factory = resources_->factory(declaration.storage_type);
+                const bool is_unsupported = !factory ||
+                    (factory->descriptor->required_capabilities & ~device_->resourceCapabilities()) != 0;
+                if (is_unsupported)
                 {
                     published.unavailable = RenderError{kStorageCapability};
                     break;
@@ -145,7 +148,7 @@ namespace lux::render
             }
             for (auto dependency : implementation.features)
             {
-                if (!features.find(dependency))
+                if (!features_.find(dependency))
                 {
                     published.unavailable = RenderError{kFeatureMissingProvider};
                     break;
@@ -174,7 +177,7 @@ namespace lux::render
             result.error = configuration.error();
             return;
         }
-        auto dependencies = resolveCapabilityStorage(implementation, **configuration);
+        auto dependencies = resolveCapabilityStorage(implementation);
         result.error = dependencies ? RenderError{} : dependencies.error();
     }
 

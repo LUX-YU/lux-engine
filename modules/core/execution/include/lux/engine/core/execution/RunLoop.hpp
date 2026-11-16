@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/core/execution/CompletionCode.hpp>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -11,28 +12,6 @@
 
 namespace lux::execution
 {
-    namespace detail
-    {
-        // Execution libraries do not know when a dynamically loaded completion callback returns.
-        // A driving loop borrows this environment value before entering that callback's module.
-        struct GetCompletionCode final : stdexec::forwarding_query_t
-        {
-            template <class Env> [[nodiscard]] std::shared_ptr<const void> operator()(const Env& env) const noexcept
-            {
-                if constexpr (requires { env.query(*this); })
-                {
-                    return env.query(*this);
-                }
-                else
-                {
-                    return {};
-                }
-            }
-        };
-
-        inline constexpr GetCompletionCode getCompletionCode{};
-    } // namespace detail
-
     // A scheduler driven by one existing thread. Producers schedule through stdexec; the driver
     // interleaves ready continuations with its other events. Join producers before destroying it.
     class LUX_CORE_EXECUTION_PUBLIC RunLoop final

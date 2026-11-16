@@ -30,6 +30,7 @@ namespace lux::render::detail
         layoutRanges(const std::array<std::uint32_t, 3>& capacities, bool variable_count) noexcept;
 
         explicit DescriptorTable(DeviceSession& session) noexcept : session_(session) {}
+
         ~DescriptorTable() noexcept;
         DescriptorTable(const DescriptorTable&) = delete;
         DescriptorTable& operator=(const DescriptorTable&) = delete;
@@ -45,10 +46,21 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<nri::Descriptor*> sampler(const SamplerDescription&) noexcept;
 
         // The physical table generation changes only after a replacement Set is published.
-        [[nodiscard]] std::uint64_t bindingRevision() const noexcept { return binding_revision_; }
+        [[nodiscard]] std::uint64_t bindingRevision() const noexcept
+        {
+            return binding_revision_;
+        }
+
         // Recorded commands may retain this Set only while observing bindingRevision on reuse.
         [[nodiscard]] nri::DescriptorSet* descriptors(nri::DescriptorType) const noexcept;
         [[nodiscard]] std::uint32_t capacity(nri::DescriptorType) const noexcept;
+
+        // D3D12 binds one resource/sampler heap pair. Copy shared tables into the writable frame's pool.
+        using Snapshot = std::array<nri::DescriptorSet*, 3>;
+        [[nodiscard]] std::array<std::uint32_t, 3> snapshotCounts() const noexcept;
+        [[nodiscard]] RenderResult<void> addSnapshotDescriptors(nri::DescriptorPoolDesc&) const noexcept;
+        [[nodiscard]] RenderResult<Snapshot> createSnapshot(nri::DescriptorPool&) const noexcept;
+        void updateSnapshot(const Snapshot&) const noexcept;
 
     private:
         struct Entry final

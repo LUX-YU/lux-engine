@@ -14,15 +14,15 @@ namespace lux::render::Mesh3dCommands
 
         struct Request final
         {
-            CapabilityImplementationId implementation;
+            ResourceInstanceId resource_id;
             // Keep the Mesh and all its arrays immutable until the terminal Response.
             // Abandon does not end this borrow; Host shutdown must settle all producers.
             const Data* mesh = nullptr;
         };
 
-        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
         {
-            return request.implementation;
+            return request.resource_id;
         }
 
         struct Response final
@@ -59,19 +59,13 @@ namespace lux::render::Mesh3dCommands
 
         struct Request final
         {
-            CapabilityImplementationId implementation;
-            SceneId scene;
+            ResourceInstanceId resource_id;
             Data data;
         };
 
-        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
         {
-            return request.implementation;
-        }
-
-        [[nodiscard]] static SceneId sceneId(const Request& request) noexcept
-        {
-            return request.scene;
+            return request.resource_id;
         }
 
         struct Response final
@@ -89,19 +83,13 @@ namespace lux::render::Mesh3dCommands
 
         struct Request final
         {
-            CapabilityImplementationId implementation;
-            SceneId scene;
+            ResourceInstanceId resource_id;
             Data data;
         };
 
-        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
         {
-            return request.implementation;
-        }
-
-        [[nodiscard]] static SceneId sceneId(const Request& request) noexcept
-        {
-            return request.scene;
+            return request.resource_id;
         }
 
         struct Response final

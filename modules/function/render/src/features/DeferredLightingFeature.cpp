@@ -4,7 +4,7 @@
 #include "DeferredLightingShadow.hpp"
 #include <cstring>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
@@ -55,7 +55,7 @@ namespace lux::render
                          GraphBufferDesc{strides[i]},
                          EGraphOrigin::IMPORTED,
                          {GraphBufferRange{0, strides[i]}},
-                         StorageRequirement{StorageName(kDirectLightingStorageType.name()), config.lights}}
+                         ResourceRequirement{ResourceName(config.lights)}}
                     );
                 }
             }
@@ -105,28 +105,25 @@ namespace lux::render
             const void* value,
             std::string_view key,
             FeatureBuildContext& context,
-            const lux::render::detail::EnabledDeviceFeatures&
+            const lux::render::detail::EnabledDeviceFeatures& enabled
         ) noexcept
         {
             const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
             auto work = config.clusters
                             ? (config.shadows ? detail::fullscreenRaster(
                                                     context,
-                                                    kDeferredLightingClusteredShadow,
-                                                    kDeferredLightingClusteredShadowReflection
+                                                    kDeferredLightingClusteredShadow.load(enabled.shader_target)
                                                 )
                                               : detail::fullscreenRaster(
                                                     context,
-                                                    kDeferredLightingClustered,
-                                                    kDeferredLightingClusteredReflection
+                                                    kDeferredLightingClustered.load(enabled.shader_target)
                                                 ))
                             : (config.shadows
                                    ? detail::fullscreenRaster(
                                          context,
-                                         kDeferredLightingShadow,
-                                         kDeferredLightingShadowReflection
+                                         kDeferredLightingShadow.load(enabled.shader_target)
                                      )
-                                   : detail::fullscreenRaster(context, kDeferredLighting, kDeferredLightingReflection));
+                                   : detail::fullscreenRaster(context, kDeferredLighting.load(enabled.shader_target)));
             if (!work)
             {
                 return cxx::unexpected(work.error());

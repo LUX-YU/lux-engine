@@ -12,12 +12,12 @@
 #include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
-#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
-#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/SampledTexture2D.hpp>
+#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
 #include <lux/engine/render/frame/FrameStorage.hpp>
 #include <lux/engine/render/inputs/DirectLightInputs.hpp>
 #include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
@@ -498,16 +498,16 @@ inline void endCallCapture() noexcept
 
 
 inline constexpr std::array kRasterProbeDependencies{
-    CapabilityStorageDependency{EStorageScope::GLOBAL, kMeshStorageType, "assets"},
-    CapabilityStorageDependency{EStorageScope::GLOBAL, kTextureStorageType, "assets"},
-    CapabilityStorageDependency{EStorageScope::GLOBAL, kMaterialStorageType, "assets"},
-    CapabilityStorageDependency{EStorageScope::SCENE, kMeshInstanceStorageType, "instances"}
+    CapabilityResourceDependency{EStorageScope::GLOBAL, kMeshResourceName},
+    CapabilityResourceDependency{EStorageScope::GLOBAL, kTextureResourceName},
+    CapabilityResourceDependency{EStorageScope::GLOBAL, kMaterialResourceName},
+    CapabilityResourceDependency{EStorageScope::SCENE, kInstanceResourceName}
 };
 
 inline constexpr std::array kLitProbeDependencies{
     kRasterProbeDependencies[0], kRasterProbeDependencies[1], kRasterProbeDependencies[2],
     kRasterProbeDependencies[3],
-    CapabilityStorageDependency{EStorageScope::SCENE, kDirectLightingStorageType, "direct_lights"}
+    CapabilityResourceDependency{EStorageScope::SCENE, kLightResourceName}
 };
 
 inline std::vector<CapabilityPort>
@@ -526,7 +526,7 @@ probePorts(std::initializer_list<std::string_view> images, std::initializer_list
 template <class Configuration>
 CapabilityImplementationId registerRenderProbe(
     RenderServer& server, std::string name, std::vector<FeatureId> features, std::vector<CapabilityPort> ports,
-    std::span<const CapabilityStorageDependency> dependencies,
+    std::span<const CapabilityResourceDependency> dependencies,
     RenderResult<CapabilityGraphContribution> (*build)(const CapabilityBuildInput&) noexcept
 )
 {
@@ -534,7 +534,7 @@ CapabilityImplementationId registerRenderProbe(
     implementation.implementation = std::move(name);
     implementation.features = std::move(features);
     implementation.config_type = lux::cxx::make_basic_type_info<Configuration>();
-    implementation.storage_dependencies = dependencies;
+    implementation.resource_dependencies = dependencies;
     implementation.build_graph = build;
     implementation.graph.ports = std::move(ports);
     implementation.graph.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA16_SFLOAT};
@@ -586,114 +586,104 @@ struct CaptureConfig
 
 struct CaptureDescriptor
 {
-    using Config = CaptureConfig;
+    using Config = void;
     using Ops = void;
-    static inline const StorageDescriptor
-        descriptor{StorageNameView{"test.deferred.Capture"}, 0, 0, {}, "Test-owned terminal copy buffer."};
+    static inline const ResourceDefinition descriptor{
+        ResourceNameView{"test.deferred.Capture"}, 0, 0, lux::cxx::make_basic_type_info<CaptureConfig>(),
+        "View-owned terminal copy collection.", EResourceDomain::VIEW
+    };
 };
 
 class CaptureBuffer
 {
+    struct Allocation
+    {
+        CaptureConfig config;
+        std::vector<nri::Buffer*> buffers;
+        std::uint32_t pitch;
+        std::uint64_t bytes;
+    };
+
 public:
     using Descriptor = CaptureDescriptor;
 
-    static StorageFactory factory() noexcept
+    static ResourceRegistration factory() noexcept
     {
         static const StorageBindingOps bindings{resolve};
-        return makeStorageFactory<
-            CaptureDescriptor,
-            CaptureBuffer,
-            StorageCreateContext,
-            &CaptureBuffer::create,
-            &CaptureBuffer::compatible>(nullptr, &bindings);
+        return makeResourceRegistration<CaptureDescriptor, CaptureBuffer, &CaptureBuffer::create>(nullptr, &bindings);
     }
 
-    explicit CaptureBuffer(StorageCreateContext& context, CaptureConfig config) noexcept
-        : device_(context.device), result_(config.result), buffers_(context.frames->frameCount())
-    {
-    }
+    explicit CaptureBuffer(ResourceCreateContext& context) noexcept
+        : device_(context.device), frame_count_(context.frame_count) {}
 
     ~CaptureBuffer() noexcept
     {
         auto* device = &device_;
-        device_.deferRelease(
-            [device, result = result_, buffers = std::move(buffers_), pitch = pitch_, bytes = bytes_]() noexcept
+        for (auto& allocation : allocations_)
+        {
+            device_.deferRelease([device, allocation = std::move(allocation)]() noexcept
             {
-                result->pitch = pitch;
-                for (auto* buffer : buffers)
+                auto* result = allocation.config.result;
+                result->pitch = allocation.pitch;
+                for (auto* buffer : allocation.buffers)
                 {
-                    if (!buffer)
-                    {
-                        continue;
-                    }
-                    const auto* mapped = static_cast<const std::byte*>(device->nriCore().MapBuffer(*buffer, 0, bytes));
+                    const auto* mapped = static_cast<const std::byte*>(
+                        device->nriCore().MapBuffer(*buffer, 0, allocation.bytes));
                     CHECK(mapped);
-                    CHECK(device->invalidateMappedRange(*buffer, 0, bytes) == nri::Result::SUCCESS);
-                    result->frames.emplace_back(mapped, mapped + bytes);
+                    CHECK(device->invalidateMappedRange(*buffer, 0, allocation.bytes) == nri::Result::SUCCESS);
+                    result->frames.emplace_back(mapped, mapped + allocation.bytes);
                     device->nriCore().UnmapBuffer(*buffer);
                     device->nriCore().DestroyBuffer(buffer);
                 }
                 result->ready.fetch_add(1, std::memory_order_release);
-            }
-        );
+            });
+        }
     }
 
     static RenderResult<std::unique_ptr<CaptureBuffer>>
-    create(StorageCreateContext& context, StorageId, const CaptureConfig& config) noexcept
+    create(ResourceCreateContext& context, ResourceInstanceId) noexcept
     {
         beginCallCapture(context.device.nriCore());
         call_capture_first_instance = context.device.enabledFeatures().indirect_first_instance;
-        auto value = std::make_unique<CaptureBuffer>(context, config);
-        const auto alignment = context.device.description().memoryAlignment.uploadBufferTextureRow;
-        value->pitch_ = (256 + alignment - 1) / alignment * alignment;
-        value->bytes_ = std::max<std::uint64_t>(value->pitch_ * 64u, config.bytes);
-        for (auto*& buffer : value->buffers_)
-        {
-            auto status = context.device.nriCore().CreatePlacedBuffer(
-                context.device.device(),
-                NriHostReadbackHeap,
-                {value->bytes_, 0, nri::BufferUsageBits::NONE},
-                buffer
-            );
-            CHECK(status == nri::Result::SUCCESS);
-            // A short scene need not visit every available FIF slot. Define the unused-slot marker
-            // explicitly; newly allocated host memory is not required to contain zeroes.
-            auto* mapped = context.device.nriCore().MapBuffer(*buffer, 0, value->bytes_);
-            CHECK(mapped);
-            std::memset(mapped, 0, value->bytes_);
-            CHECK(context.device.flushMappedRange(*buffer, 0, value->bytes_) == nri::Result::SUCCESS);
-            context.device.nriCore().UnmapBuffer(*buffer);
-        }
-        return value;
-    }
-
-    static bool compatible(const CaptureBuffer& value, const CaptureConfig& config) noexcept
-    {
-        return value.result_ == config.result;
+        return std::make_unique<CaptureBuffer>(context);
     }
 
     static RenderResult<void> resolve(
-        void* object,
-        const VGraphResourceDesc&,
-        const void*,
-        StorageSubscription&,
+        void* object, const VGraphResourceDesc&, const void* argument, StorageSubscription&,
         std::span<ResourceInput> output
     ) noexcept
     {
         auto& value = *static_cast<CaptureBuffer*>(object);
-        for (std::size_t i = 0; i < output.size(); ++i)
+        const auto& config = *static_cast<const CaptureConfig*>(argument);
+        if (!config.result || output.size() != value.frame_count_) return lux::cxx::unexpected(RenderError{kStorageContract});
+        auto found = std::ranges::find(value.allocations_, config, &Allocation::config);
+        if (found == value.allocations_.end())
         {
-            output[i] = {value.buffers_[i], 0, value.bytes_};
+            const auto alignment = value.device_.description().memoryAlignment.uploadBufferTextureRow;
+            const auto pitch = (256 + alignment - 1) / alignment * alignment;
+            const auto bytes = std::max<std::uint64_t>(pitch * 64u, config.bytes);
+            Allocation allocation{config, std::vector<nri::Buffer*>(value.frame_count_), pitch, bytes};
+            for (auto*& buffer : allocation.buffers)
+            {
+                CHECK(value.device_.nriCore().CreatePlacedBuffer(value.device_.device(), NriHostReadbackHeap,
+                    {bytes, 0, nri::BufferUsageBits::NONE}, buffer) == nri::Result::SUCCESS);
+                auto* mapped = value.device_.nriCore().MapBuffer(*buffer, 0, bytes);
+                CHECK(mapped);
+                std::memset(mapped, 0, bytes);
+                CHECK(value.device_.flushMappedRange(*buffer, 0, bytes) == nri::Result::SUCCESS);
+                value.device_.nriCore().UnmapBuffer(*buffer);
+            }
+            value.allocations_.push_back(std::move(allocation));
+            found = std::prev(value.allocations_.end());
         }
+        for (std::size_t i = 0; i < output.size(); ++i) output[i] = {found->buffers[i], 0, found->bytes};
         return {};
     }
 
 private:
     DeviceSession& device_;
-    CapturedPixels* result_;
-    std::vector<nri::Buffer*> buffers_;
-    std::uint32_t pitch_ = 0;
-    std::uint64_t bytes_ = 0;
+    std::uint32_t frame_count_;
+    std::vector<Allocation> allocations_;
 };
 
 struct CaptureFeature
@@ -716,17 +706,13 @@ struct CaptureFeature
              EFeaturePort::INPUT,
              config.bytes ? VGraphResourceDesc{GraphBufferDesc{config.bytes}} : VGraphResourceDesc{image}}
         );
-        ports.storage.attachment.push_back(
+        ports.storage.view.push_back(
             {"pixels",
              EFeaturePort::OUTPUT,
              GraphBufferDesc{std::max(64u * 256, config.bytes)},
              EGraphOrigin::IMPORTED,
              {},
-             StorageRequirement{
-                 StorageName(CaptureDescriptor::descriptor.type.name()),
-                 "capture:" + std::string(key),
-                 take(ConfigValue::make(*static_cast<const CaptureConfig*>(value)))
-             }}
+             ResourceRequirement{ResourceName(CaptureDescriptor::descriptor.type.name())}}
         );
         return {};
     }
@@ -739,6 +725,8 @@ struct CaptureFeature
         const lux::render::detail::EnabledDeviceFeatures&
     ) noexcept
     {
+        context.arguments.push_back(StorageArgument::make(context.resource("pixels").resource,
+            *static_cast<const CaptureConfig*>(value)));
         auto initialized = context.graph.addTransferPass(
             featureKey(FeatureName{"test.deferred.Copy"}, key, "initialize"),
             TransferWork{{FillBuffer{{context.resource("pixels")}, 0}}}

@@ -152,6 +152,8 @@ namespace lux::rdesc
         uint32_t vec_size = 1;
         uint32_t columns = 1;
         uint32_t array_size = 1;
+        std::string semantic;
+        std::uint32_t semantic_index = 0;
         bool operator==(const ShaderIoVariable&) const noexcept = default;
     };
 

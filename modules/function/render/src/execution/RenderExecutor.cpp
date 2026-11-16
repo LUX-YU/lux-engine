@@ -33,12 +33,17 @@ namespace lux::render::detail
             constexpr auto kinds = std::array{
                 nri::DescriptorType::TEXTURE,
                 nri::DescriptorType::SAMPLER,
-                nri::DescriptorType::STORAGE_STRUCTURED_BUFFER
+                nri::DescriptorType::STRUCTURED_BUFFER
             };
             for (std::size_t kind = 0; kind < kinds.size(); ++kind)
             {
                 const auto set = bindings.shared_sets[kind];
-                if (set != kGraphInvalidIndex) bind(set, session.descriptors().descriptors(kinds[kind]));
+                if (set != kGraphInvalidIndex)
+                {
+                    auto* descriptors = session.description().graphicsAPI == nri::GraphicsAPI::D3D12 ?
+                        state.shared_descriptors[kind] : session.descriptors().descriptors(kinds[kind]);
+                    bind(set, descriptors);
+                }
             }
             for (std::uint32_t i = 0; i < private_sets.size(); ++i) bind(bindings.private_set + i, private_sets[i]);
         }
@@ -303,7 +308,7 @@ namespace lux::render::detail
                     }
                     transition.after = {
                         nri::AccessBits::COPY_DESTINATION,
-                        nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE
+                        zeroBufferStages(instance.session_->description().graphicsAPI)
                     };
                     const nri::BarrierDesc barrier{nullptr, 0, &transition, 1, nullptr, 0};
                     core.CmdBarrier(command, barrier);
@@ -389,6 +394,7 @@ namespace lux::render::detail
             binding_state.descriptor_pool = frame.descriptor_pool;
             binding_state.descriptors = {};
         }
+        binding_state.shared_descriptors = frame.shared_descriptors;
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
             const auto& range = std::get<GraphImageRange>(access.range);

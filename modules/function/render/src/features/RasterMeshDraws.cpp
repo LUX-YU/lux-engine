@@ -1,3 +1,5 @@
+#include <lux/engine/render/device/NativeResult.hpp>
+#include <lux/engine/render/commands/Error.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/CompiledPrograms.hpp>
 #include <bit>
@@ -45,7 +47,7 @@ namespace lux::render::detail
             std::uint32_t samples
         ) noexcept
         {
-            using ShaderPlacement = std::pair<rdesc::SpirvArtifact, PassBindings>;
+            using ShaderPlacement = std::pair<rdesc::ShaderProgramArtifact, PassBindings>;
             std::vector<std::array<ShaderPlacement, kMeshWindingCount>> shaders(materials.size());
             for (std::size_t index = 0; index < materials.size(); ++index)
             {
@@ -129,6 +131,8 @@ namespace lux::render::detail
 
     exec::task<RenderResult<void>> RasterMeshDraws::preparePrograms(execution::CpuScheduler cpu) noexcept
     {
+        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         const auto& compiled = *instance_.compiledPass(configuration_.pass);
         const auto& raster = std::get<RasterCommands>(compiled.work);
         const auto& stage = std::get<RasterListCommands>(raster.draw).description;
@@ -243,7 +247,7 @@ namespace lux::render::detail
                     ) |
                     stdexec::upon_stopped(
                         []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
-                    )
+                    ) | stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<void>{})
                 );
                 if (!prepared)
                 {
@@ -267,7 +271,8 @@ namespace lux::render::detail
                 }
                 if (!missing.empty())
                 {
-                    auto compiled_programs = co_await (stdexec::schedule(cpu) | stdexec::then(
+                    if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
+                    auto compiled_programs = co_await (stdexec::schedule(device_.nativeScheduler()) | stdexec::then(
                         [&missing, device = &device_.device(), core = &device_.nriCore(),
                          enabled = device_.enabledFeatures(), formats = device_.formatSupport(),
                          vertex_limits = std::array{device_.vertexStrideLimit(), device_.vertexOffsetLimit()}
@@ -275,15 +280,19 @@ namespace lux::render::detail
                         {
                             for (auto* program : missing)
                             {
-                                auto pipeline = compileRasterProgram(*device, *core, enabled, formats, vertex_limits,
-                                    *program->placement.layout, program->key);
+                                auto pipeline = compileRasterProgram(
+                                    *device, *core, enabled, formats, vertex_limits,
+                                    *program->placement.layout, program->key
+                                );
                                 if (!pipeline) return cxx::unexpected(pipeline.error());
                                 program->pipeline = *pipeline;
                             }
                             return {};
                         }
-                    ) | stdexec::upon_stopped([]() noexcept -> RenderResult<void>
-                    { return cxx::unexpected(RenderError{kCpuStopped}); }));
+                    ) | stdexec::upon_error(NativeScheduleFailure<void>{}) |
+                    stdexec::upon_stopped([]() noexcept -> RenderResult<void>
+                    { return cxx::unexpected(RenderError{kCommandCancelled}); }) |
+                    stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<void>{}));
                     if (!compiled_programs) co_return compiled_programs;
                 }
             }
@@ -745,7 +754,7 @@ namespace lux::render::detail
             }
             ++read_count;
         };
-        StorageId mesh_storage_id;
+        ResourceInstanceId mesh_storage_id;
         IndexedTriangleMeshStorage* mesh_storage = nullptr;
         for (std::uint32_t index = 0; index < groups_.size(); ++index)
         {
@@ -871,7 +880,7 @@ namespace lux::render::detail
         ResourceRegistry& resources,
         RenderGraphInstance& instance,
         CompiledPrograms& programs,
-        std::span<const StorageId>,
+        std::span<const ResourceInstanceId>,
         const void* input
     ) noexcept
     {

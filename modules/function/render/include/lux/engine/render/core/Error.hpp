@@ -17,6 +17,9 @@ namespace lux::render
     inline constexpr auto kDeviceArgument = error::errorId("lux.render.device.invalid_argument");
     inline constexpr auto kDeviceUnsupported = error::errorId("lux.render.device.unsupported");
     inline constexpr auto kDeviceCapacity = error::errorId("lux.render.device.capacity");
+    inline constexpr auto kNativeThreadStart = error::errorId("lux.render.native.thread_start");
+    inline constexpr auto kNativeExecutionClosed = error::errorId("lux.render.native.closed");
+
     inline constexpr auto kDeviceBusy = error::errorId("lux.render.device.busy");
     inline constexpr auto kUploadStopped = error::errorId("lux.render.device.work_stopped");
 

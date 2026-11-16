@@ -261,9 +261,9 @@ namespace lux::render
         return index;
     }
 
-    RenderResult<std::uint32_t> RenderGraphBuilder::addProgram(rdesc::SpirvArtifact program) noexcept
+    RenderResult<std::uint32_t> RenderGraphBuilder::addProgram(rdesc::ShaderProgramArtifact program) noexcept
     {
-        if (candidate_.programs_.size() >= kGraphInvalidIndex)
+        if (program.stages.empty() || candidate_.programs_.size() >= kGraphInvalidIndex)
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         }
@@ -291,9 +291,25 @@ namespace lux::render
     }
 
     RenderResult<PassResult>
-    RenderGraphBuilder::addWork(std::string key, VPassWork work, EGraphPassKind kind, GraphPassOptions options) noexcept
+    RenderGraphBuilder::addEncodedPass(
+        std::string key, PassDeclaration declaration, PassWork operation, GraphPassOptions options
+    ) noexcept
     {
-        GraphPass pass{std::move(key), kind, {}, std::move(work), options.side_effect, options.condition};
+        const bool is_invalid_operation = !operation.valid() || operation.builtin();
+        const bool is_invalid_declaration = declaration.kind > EGraphPassKind::TRANSFER ||
+            declaration.stages == nri::StageBits::NONE;
+        const bool has_no_declared_effect = declaration.accesses.empty() &&
+            declaration.interface.resources.empty() && !options.side_effect;
+        const bool is_invalid_pass = is_invalid_operation || is_invalid_declaration || has_no_declared_effect;
+        if (is_invalid_pass) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        const auto kind = declaration.kind;
+        return addWork(std::move(key), DeclaredWork{std::move(declaration), std::move(operation)}, kind, options);
+    }
+
+    RenderResult<PassResult>
+    RenderGraphBuilder::addWork(std::string key, VAuthorWork work, EGraphPassKind kind, GraphPassOptions options) noexcept
+    {
+        GraphPass pass{std::move(key), kind, {}, {}, options.side_effect, options.condition};
         PassResult result;
         RenderError failure{};
         const auto append = [&](ResourceAccess& access, EGraphUse usage, bool record = true) noexcept
@@ -595,7 +611,7 @@ namespace lux::render
                         read(indirect->buffer, EGraphUse::INDIRECT, GraphBufferRange{indirect->offset, 12});
                     }
                 }
-                else
+                else if constexpr (std::is_same_v<Work, TransferWork>)
                 {
                     for (auto& operation : value.operations)
                     {
@@ -718,8 +734,36 @@ namespace lux::render
                         );
                     }
                 }
+                else
+                {
+                    auto& declaration = value.declaration;
+                    if (declaration.interface.program != kGraphInvalidIndex)
+                    {
+                        interface(declaration.interface);
+                    }
+                    else
+                    {
+                        const auto& input = declaration.interface;
+                        const bool has_unbound_interface = !input.resources.empty() || !input.samplers.empty() ||
+                            !input.parameters.fields.empty() || input.parameters.instance_layout.size != 0;
+                        if (has_unbound_interface) failure = graphError(kGraphInvalidDescriptor);
+                    }
+                    for (auto& access : declaration.accesses)
+                    {
+                        if (access.usage == EGraphUse::UNSPECIFIED)
+                            failure = graphError(kGraphInvalidDescriptor, {}, access.version.resource);
+                        append(access, access.usage);
+                    }
+                    pass.encoding_interface = std::move(declaration.interface);
+                    pass.encoding_stages = declaration.stages;
+                    pass.work = std::move(value.operation);
+                }
+                if constexpr (!std::is_same_v<Work, DeclaredWork>)
+                {
+                    pass.work = PassWork::store(std::move(value));
+                }
             },
-            pass.work
+            work
         );
         if (failure.type != 0)
         {

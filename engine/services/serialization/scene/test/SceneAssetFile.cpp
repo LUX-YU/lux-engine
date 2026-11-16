@@ -500,48 +500,17 @@ namespace
         assert(!wait(execution, engine::toolchain::buildSceneStreaming(
             assets, {}, cross_owner, invalid_updates, metadata, limit
         )));
-        using LoadingConfiguration = std::tuple<
-            std::array<std::uint8_t, 16>, std::optional<std::string>, bool, std::array<std::size_t, 6>
-        >;
-        const auto loading_codec = serialization::makePortableValueCodec<LoadingConfiguration>();
-        assert(metadata.addSceneSystem({
-            "fixture.loader", 1, loading_codec,
-            +[](engine::EngineContext& context, world::World& world, simulation::Simulation&,
-                const ecs::ComponentSchemaSet& schemas, std::span<const std::byte> bytes) noexcept
-                -> cxx::expected<std::unique_ptr<scene::SceneSystem>, error::Error>
-            {
-                LoadingConfiguration configuration;
-                const auto codec = serialization::makePortableValueCodec<LoadingConfiguration>();
-                if (!codec.decode(bytes, &configuration))
-                    return cxx::unexpected(execution::toError(execution::EExecutionError::INVALID_ARGUMENT));
-                const auto& [identity, name, load_all, limits] = configuration;
-                std::optional<std::uint32_t> geometry;
-                if (name)
-                {
-                    const auto& supported = world.description().supported_geometries;
-                    auto found = std::ranges::find(supported, *name, &world::WorldGeometryDescription::name);
-                    if (found == supported.end())
-                        return cxx::unexpected(execution::toError(execution::EExecutionError::INVALID_ARGUMENT));
-                    geometry = static_cast<std::uint32_t>(found - supported.begin());
-                }
-                auto result = scene::WorldLoadingSystem::create(
-                    context, world, schemas, asset::AssetId{uuids::uuid{identity}}, geometry, load_all,
-                    {limits[0], limits[1], limits[2], limits[3], limits[4], limits[5]}
-                );
-                if (!result) return cxx::unexpected(result.error());
-                return std::unique_ptr<scene::SceneSystem>{std::move(*result)};
-            }
-        }));
-        LoadingConfiguration loading;
-        const auto identity_bytes = copy_info.id.uuid().as_bytes();
-        for (std::size_t i = 0; i < 16; ++i)
-            std::get<0>(loading)[i] = std::to_integer<std::uint8_t>(identity_bytes[i]);
-        std::get<1>(loading) = "fixture.mesh";
-        std::get<3>(loading) = {4, 64, 100000, limit, limit, limit};
-        std::vector<std::byte> loading_bytes;
-        assert(loading_codec.encode(&loading, loading_bytes));
+        auto registration = scene::worldLoadingSystemRegistration();
+        const auto loader_name = registration.name;
+        const auto loader_version = registration.configuration_version;
+        assert(metadata.addSceneSystem(std::move(registration)));
+        const scene::WorldLoadingLimits loading_limits{4, 64, 100000, limit, limit, limit};
+        auto loading_bytes = scene::makeWorldLoadingSystemConfiguration(
+            copy_info.id, "fixture.mesh", false, loading_limits
+        );
+        assert(loading_bytes);
         auto runtime_description = description;
-        runtime_description.systems.push_back({"fixture.loader", "world", 1, loading_bytes});
+        runtime_description.systems.push_back({loader_name, "world", loader_version, std::move(*loading_bytes)});
         {
             engine::Engine engine{*context};
             engine::Engine::SceneBuilder builder{engine, metadata};
@@ -559,6 +528,15 @@ namespace
             assert(!builder.build(invalid));
             invalid = runtime_description;
             ++invalid.systems[0].configuration_version;
+            assert(!builder.build(invalid));
+            invalid = runtime_description;
+            invalid.systems[0].configuration.pop_back();
+            assert(!builder.build(invalid));
+            auto unknown_geometry = scene::makeWorldLoadingSystemConfiguration(
+                copy_info.id, "missing.geometry", false, loading_limits
+            );
+            assert(unknown_geometry);
+            invalid.systems[0].configuration = std::move(*unknown_geometry);
             assert(!builder.build(invalid));
         }
         {
@@ -578,15 +556,11 @@ namespace
                 assets, "/Scenes/unindexed", unindexed_info, unindexed, unindexed_updates, *unindexed_directory
             ));
             assert(unindexed_asset);
-            auto unindexed_configuration = loading;
-            const auto identity = unindexed_info.id.uuid().as_bytes();
-            for (std::size_t i = 0; i < 16; ++i)
-                std::get<0>(unindexed_configuration)[i] = std::to_integer<std::uint8_t>(identity[i]);
-            std::get<1>(unindexed_configuration).reset();
-            std::get<2>(unindexed_configuration) = true;
-            std::vector<std::byte> configuration;
-            assert(loading_codec.encode(&unindexed_configuration, configuration));
-            unindexed.systems.push_back({"fixture.loader", "world", 1, std::move(configuration)});
+            auto configuration = scene::makeWorldLoadingSystemConfiguration(
+                unindexed_info.id, std::nullopt, true, loading_limits
+            );
+            assert(configuration);
+            unindexed.systems.push_back({loader_name, "world", loader_version, std::move(*configuration)});
             engine::Engine engine{*context};
             engine::Engine::SceneBuilder builder{engine, metadata};
             auto built = builder.build(unindexed);

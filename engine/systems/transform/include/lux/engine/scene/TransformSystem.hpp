@@ -1,11 +1,11 @@
 #pragma once
 
-#include <lux/engine/meta/MetaAnnotations.hpp>
+#include <lux/engine/scene/TransformSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/transform/visibility.h>
 #include <lux/engine/ecs/EcsCommandBuffer.hpp>
 
-#include <array>
+#include <string_view>
 #include <memory>
 #include <vector>
 
@@ -21,49 +21,19 @@ namespace lux::scene
         CONFIGURATION_ENCODE_FAILURE,
     };
 
-    struct LUX_TYPE_INFO(both) TransformSystemConfiguration final
-    {
-        std::uint64_t entity_capacity{};
-        std::uint64_t max_commands{};
-        std::uint64_t max_payload_bytes{};
-    };
-
-    class LUX_ENGINE_SCENE_TRANSFORM_PUBLIC TransformSystem final
+    class LUX_ENGINE_SCENE_TRANSFORM_PUBLIC TransformSystem final : public SceneSystem
     {
     public:
-        inline static constexpr std::array Capabilities{
-            std::string_view{"transform.2d"},
-            std::string_view{"transform.3d"}
-        };
-        inline static constexpr system::SystemDataContract DataOutputs[]{
-            {"lux.ecs.WorldTransform2D", 1, system::ESystemDataKind::SCHEMA},
-            {"lux.ecs.WorldTransform3D", 1, system::ESystemDataKind::SCHEMA},
-            {"lux.transform.world2d.ready",
-             1,
-             system::ESystemDataKind::PREPARED_DATA,
-             system::ESystemDataPhase::SYNCHRONIZATION},
-            {"lux.transform.world3d.ready",
-             1,
-             system::ESystemDataKind::PREPARED_DATA,
-             system::ESystemDataPhase::SYNCHRONIZATION}
-        };
-        inline static constexpr system::SystemTypeDescription Description{
-            .canonical_name = "lux.scene.transform",
-            .version = 1,
-            .configuration_schema_name = "lux.scene.transform.Configuration",
-            .configuration_schema_version = 1,
-            .capabilities = Capabilities,
-            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .data_outputs = DataOutputs
-        };
+        inline static constexpr std::string_view Name = "lux.scene.transform";
 
         explicit TransformSystem(ecs::Registry& registry);
         ~TransformSystem() noexcept;
         TransformSystem(const TransformSystem&) = delete;
         TransformSystem& operator=(const TransformSystem&) = delete;
 
-        [[nodiscard]] SceneStageResult prepare(const TransformSystemConfiguration& configuration) noexcept;
-        [[nodiscard]] SceneStageResult synchronize(SceneStageContext& context) noexcept;
+        [[nodiscard]] Result prepare(const TransformSystemConfiguration& configuration) noexcept;
+        [[nodiscard]] Result execute() noexcept override;
+        [[nodiscard]] ecs::EcsCommandProducerCapacity commandCapacity() const noexcept override;
 
     private:
         struct Impl;

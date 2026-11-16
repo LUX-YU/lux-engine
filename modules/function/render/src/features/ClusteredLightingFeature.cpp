@@ -7,7 +7,7 @@
 #include "ClusterScan.hpp"
 #include <cstring>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 
 namespace lux::render
@@ -42,7 +42,7 @@ namespace lux::render
                          GraphBufferDesc{light_strides[i]},
                          EGraphOrigin::IMPORTED,
                          {GraphBufferRange{0, light_strides[i]}},
-                         StorageRequirement{StorageName(kDirectLightingStorageType.name()), config.lights}}
+                         ResourceRequirement{ResourceName(config.lights)}}
                     );
                 }
             }
@@ -62,18 +62,8 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<std::uint32_t> program(
-            FeatureBuildContext& context,
-            std::span<const std::uint32_t> code,
-            std::span<const std::byte> reflection
-        ) noexcept
+        RenderResult<std::uint32_t> program(FeatureBuildContext& context, rdesc::ShaderProgramArtifact shader) noexcept
         {
-            rdesc::SpirvArtifact shader;
-            shader.stages.push_back({rdesc::EShaderType::COMPUTE, "main", {code.begin(), code.end()}});
-            if (!rdesc::ShaderInfo::deserialize(reflection, shader.interface))
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
             return context.graph.addProgram(std::move(shader));
         }
 
@@ -82,7 +72,7 @@ namespace lux::render
             const void* value,
             std::string_view key,
             FeatureBuildContext& context,
-            const lux::render::detail::EnabledDeviceFeatures&
+            const lux::render::detail::EnabledDeviceFeatures& enabled
         ) noexcept
         {
             const auto& config = *static_cast<const ClusteredLightingFeatureConfig*>(value);
@@ -95,10 +85,10 @@ namespace lux::render
                     DirectLightingBinding{static_cast<EDirectLightingBuffer>(i)}
                 ));
             }
-            auto build_program = program(context, kClusterBuild, kClusterBuildReflection);
-            auto count_program = program(context, kClusterCount, kClusterCountReflection);
-            auto scan_program = program(context, kClusterScan, kClusterScanReflection);
-            auto fill_program = program(context, kClusterFill, kClusterFillReflection);
+            auto build_program = program(context, kClusterBuild.load(enabled.shader_target));
+            auto count_program = program(context, kClusterCount.load(enabled.shader_target));
+            auto scan_program = program(context, kClusterScan.load(enabled.shader_target));
+            auto fill_program = program(context, kClusterFill.load(enabled.shader_target));
             if (!build_program || !count_program || !scan_program || !fill_program)
             {
                 return cxx::unexpected(

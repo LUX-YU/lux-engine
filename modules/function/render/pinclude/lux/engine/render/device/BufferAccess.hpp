@@ -4,22 +4,29 @@
 
 namespace lux::render::detail
 {
+    inline nri::StageBits zeroBufferStages(nri::GraphicsAPI backend) noexcept
+    {
+        // NRI uses CopyBufferRegion on D3D12 and vkCmdFillBuffer on Vulkan.
+        return backend == nri::GraphicsAPI::D3D12 ? nri::StageBits::COPY
+                                                  : nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
+    }
+
     inline nri::AccessBits bufferAccess(nri::BufferUsageBits usage) noexcept
     {
         auto access = nri::AccessBits::COPY_SOURCE | nri::AccessBits::COPY_DESTINATION;
-        if ((usage & nri::BufferUsageBits::VERTEX_BUFFER) != 0)
+        if ((usage & nri::BufferUsageBits::VERTEX) != 0)
         {
             access |= nri::AccessBits::VERTEX_BUFFER;
         }
-        if ((usage & nri::BufferUsageBits::INDEX_BUFFER) != 0)
+        if ((usage & nri::BufferUsageBits::INDEX) != 0)
         {
             access |= nri::AccessBits::INDEX_BUFFER;
         }
-        if ((usage & nri::BufferUsageBits::CONSTANT_BUFFER) != 0)
+        if ((usage & nri::BufferUsageBits::CONSTANT) != 0)
         {
             access |= nri::AccessBits::CONSTANT_BUFFER;
         }
-        if ((usage & nri::BufferUsageBits::ARGUMENT_BUFFER) != 0)
+        if ((usage & nri::BufferUsageBits::ARGUMENT) != 0)
         {
             access |= nri::AccessBits::ARGUMENT_BUFFER;
         }

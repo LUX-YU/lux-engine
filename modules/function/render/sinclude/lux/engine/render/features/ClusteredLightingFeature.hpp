@@ -11,7 +11,7 @@ namespace lux::render
     {
         ClusterGrid grid;
         rdesc::ShaderBlock input_layout = clusteredLightingParameterBlock();
-        std::string lights = "direct_lights";
+        std::string lights = "lux.render.resource.lights";
         // Explicit port source, e.g. the same light snapshot feeding shadow projection and shading.
         bool external_lights = false;
         bool operator==(const ClusteredLightingFeatureConfig&) const noexcept = default;

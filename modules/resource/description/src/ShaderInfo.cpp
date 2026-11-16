@@ -244,6 +244,8 @@ namespace lux::rdesc
                     pb.put(variable.vec_size);
                     pb.put(variable.columns);
                     pb.put(variable.array_size);
+                    pb.putStr(variable.semantic);
+                    pb.put(variable.semantic_index);
                     pb.flush(out, operation);
                 }
             };
@@ -339,6 +341,8 @@ namespace lux::rdesc
             pb.put<uint32_t>(vi.vec_size);
             pb.put<uint32_t>(vi.columns);
             pb.put<uint32_t>(vi.array_size);
+            pb.putStr(vi.semantic);
+            pb.put(vi.semantic_index);
             pb.flush(out, EShaderInfoOp::VERTEX_INPUT);
         }
 
@@ -438,6 +442,7 @@ namespace lux::rdesc
                 {
                     return fail("entry interface");
                 }
+                if (left() && (!rdStr(variable.semantic) || !rdU32(variable.semantic_index))) return fail("entry semantic");
                 variable.base = static_cast<EVertexScalarBase>(base);
                 auto& target = op == static_cast<std::uint8_t>(EShaderInfoOp::ENTRY_INPUT)
                                    ? out.entry_points[entry].inputs
@@ -700,6 +705,7 @@ namespace lux::rdesc
                 {
                     return fail("vi.array_size");
                 }
+                if (left() && (!rdStr(vi.semantic) || !rdU32(vi.semantic_index))) return fail("vertex semantic");
                 out.vertex_inputs.push_back(std::move(vi));
             }
             break;

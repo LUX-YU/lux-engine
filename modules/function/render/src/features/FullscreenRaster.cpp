@@ -4,22 +4,21 @@
 
 namespace lux::render::detail
 {
-    RenderResult<RasterWork> fullscreenRaster(
-        FeatureBuildContext& context,
-        std::span<const std::uint32_t> fragment,
-        std::span<const std::byte> reflection
-    ) noexcept
+    RenderResult<RasterWork>
+    fullscreenRaster(FeatureBuildContext& context, rdesc::ShaderProgramArtifact shader) noexcept
     {
-        rdesc::SpirvArtifact shader;
-        shader.stages.push_back(
-            {rdesc::EShaderType::VERTEX, "main", {std::begin(kFullscreenVertex), std::end(kFullscreenVertex)}}
-        );
-        shader.stages.push_back({rdesc::EShaderType::FRAGMENT, "main", {fragment.begin(), fragment.end()}});
-        if (!rdesc::ShaderInfo::deserialize(reflection, shader.interface))
+        auto vertex = kFullscreenVertex.load(shader.target);
+        if (shader.stages.empty() || vertex.stages.empty())
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
-        shader.interface.entry_points.push_back({"main", rdesc::EShaderType::VERTEX});
+        shader.stages.insert(shader.stages.begin(), vertex.stages.begin(), vertex.stages.end());
+        shader.interface.entry_points.insert(
+            shader.interface.entry_points.end(),
+            vertex.interface.entry_points.begin(),
+            vertex.interface.entry_points.end()
+        );
+        shader.interface.vertex_inputs = std::move(vertex.interface.vertex_inputs);
         RasterWork work;
         auto& fixed_work = work.fixed();
         if (!shader.interface.push_constants.empty())

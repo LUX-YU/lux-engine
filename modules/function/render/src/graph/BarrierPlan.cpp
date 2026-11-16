@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <tuple>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/BarrierPlan.hpp>
 #include <lux/engine/render/graph/ShaderBindingPlan.hpp>
@@ -87,8 +88,12 @@ namespace lux::render::detail
                         }
                         else
                         {
-                            result.access |= use.usage == EGraphUse::SAMPLED ? nri::AccessBits::SHADER_RESOURCE
-                                                                             : nri::AccessBits::SHADER_RESOURCE_STORAGE;
+                            const auto& binding = program.bindings[program.uses[field].field];
+                            const bool is_read_only_buffer = binding.kind == EDescriptorKind::STORAGE_BUFFER &&
+                                binding.access == EShaderAccess::READ_ONLY;
+                            const bool is_shader_resource = use.usage == EGraphUse::SAMPLED || is_read_only_buffer;
+                            result.access |= is_shader_resource ? nri::AccessBits::SHADER_RESOURCE :
+                                nri::AccessBits::SHADER_RESOURCE_STORAGE;
                         }
                     }
                 }
@@ -103,13 +108,14 @@ namespace lux::render::detail
             const PassBindings& program,
             const GraphPass& pass,
             const VGraphResourceDesc& description,
-            std::uint32_t resource
+            std::uint32_t resource,
+            nri::GraphicsAPI backend
         ) noexcept
         {
             auto current = accessFor(use, program);
             if (const auto* image = std::get_if<GraphImageDesc>(&description))
             {
-                if (const auto* transfer = std::get_if<TransferWork>(&pass.work))
+                if (const auto* transfer = pass.work.getIf<TransferWork>())
                 {
                     for (const auto& operation : transfer->operations)
                     {
@@ -129,16 +135,14 @@ namespace lux::render::detail
             }
             else
             {
-                if (const auto* transfer = std::get_if<TransferWork>(&pass.work))
+                if (const auto* transfer = pass.work.getIf<TransferWork>())
                 {
                     for (const auto& operation : transfer->operations)
                     {
                         const auto* fill = std::get_if<FillBuffer>(&operation);
                         if (fill && fill->destination.version.resource.index == resource)
                         {
-                            // NRI v180 implements ZeroBuffer with vkCmdFillBuffer on Vulkan.
-                            // Cover both the API's copy operation and its native clear stage.
-                            current.stages = nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
+                            current.stages = zeroBufferStages(backend);
                             if (fill->value)
                             {
                                 current.access = nri::AccessBits::CLEAR_STORAGE;
@@ -182,10 +186,10 @@ namespace lux::render::detail
                         resource.buffer_usage |= usage;
                     }
                 };
-                include(nri::AccessBits::VERTEX_BUFFER, nri::BufferUsageBits::VERTEX_BUFFER);
-                include(nri::AccessBits::INDEX_BUFFER, nri::BufferUsageBits::INDEX_BUFFER);
-                include(nri::AccessBits::ARGUMENT_BUFFER, nri::BufferUsageBits::ARGUMENT_BUFFER);
-                include(nri::AccessBits::CONSTANT_BUFFER, nri::BufferUsageBits::CONSTANT_BUFFER);
+                include(nri::AccessBits::VERTEX_BUFFER, nri::BufferUsageBits::VERTEX);
+                include(nri::AccessBits::INDEX_BUFFER, nri::BufferUsageBits::INDEX);
+                include(nri::AccessBits::ARGUMENT_BUFFER, nri::BufferUsageBits::ARGUMENT);
+                include(nri::AccessBits::CONSTANT_BUFFER, nri::BufferUsageBits::CONSTANT);
                 include(nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE);
                 include(nri::AccessBits::SHADER_RESOURCE, nri::BufferUsageBits::SHADER_RESOURCE);
                 include(nri::AccessBits::CLEAR_STORAGE, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE);
@@ -205,7 +209,7 @@ namespace lux::render::detail
     } // namespace
 
     std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>
-    collectUseStages(const RenderGraph& graph, const ShaderBindingPlan& layouts) noexcept
+    collectUseStages(const RenderGraph& graph, const ShaderBindingPlan& layouts, nri::GraphicsAPI backend) noexcept
     {
         std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>> result(graph.passes().size());
         for (std::uint32_t p = 0; p < graph.passes().size(); ++p)
@@ -222,7 +226,7 @@ namespace lux::render::detail
                     if (resource != kGraphInvalidIndex)
                     {
                         const auto access = accessForUse(
-                            use, layouts.passes[p], pass, graph.resources()[resource].description, resource
+                            use, layouts.passes[p], pass, graph.resources()[resource].description, resource, backend
                         );
                         uses.emplace_back(resource, access.stages);
                     }
@@ -328,6 +332,7 @@ namespace lux::render::detail
         std::span<CompiledResource> resources,
         RecordingProgram& recording,
         const EffectOutputDesc& target,
+        nri::GraphicsAPI backend,
         const PhysicalResourcePlan* physical
     ) noexcept
     {
@@ -489,7 +494,7 @@ namespace lux::render::detail
                     {
                         continue;
                     }
-                    auto current = accessForUse(use, layout, declared, resource.description, index);
+                    auto current = accessForUse(use, layout, declared, resource.description, index, backend);
                     current.queue = pass.queue;
                     current.pass = analysis.execution_order[p];
                     includeUsage(resource, current);

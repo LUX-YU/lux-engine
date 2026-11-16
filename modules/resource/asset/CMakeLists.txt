@@ -1,3 +1,5 @@
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../function/material/cmake/MaterialIR.cmake")
+
 find_package(
     lux-cxx
     CONFIG
@@ -64,6 +66,7 @@ target_compile_definitions(asset PRIVATE LUX_ASSET_LIBRARY)
 target_link_libraries(
     asset
     PUBLIC
+        lux::engine::function::material_ir
         lux::cxx::algorithm
         lux::cxx::compile_time
         lux::cxx::memory
@@ -77,6 +80,7 @@ target_link_libraries(
 
 component_add_transitive_commands(
     asset
+    "find_package(lux-engine-function REQUIRED COMPONENTS material_ir)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"

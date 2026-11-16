@@ -10,15 +10,10 @@ namespace lux::render
 {
     namespace
     {
-        bool sameFactory(const StorageFactory& left, const StorageFactory& right) noexcept
+        bool sameFactory(const ResourceRegistration& left, const ResourceRegistration& right) noexcept
         {
-            return  left.implementation_type == right.implementation_type && 
-                    left.config_type == right.config_type &&
-                    left.ops_type == right.ops_type && 
-                    left.create == right.create && 
-                    left.ops == right.ops &&
-                    left.binding_ops == right.binding_ops && 
-                    left.compatible_config == right.compatible_config;
+            return *left.storage == *right.storage && std::ranges::equal(left.commands, right.commands,
+                [](const auto& a, const auto& b) noexcept { return a.hasSameImplementation(b); });
         }
 
     } // namespace
@@ -27,11 +22,11 @@ namespace lux::render
 
     RenderServer::~RenderServer() noexcept
     {
-        if (impl_->running.load())
+        if (impl_->running_.load())
         {
             std::terminate(); // the application must stop and join its rendering thread
         }
-        if (impl_->device)
+        if (impl_->device_)
         {
             impl_->shutdown();
         }
@@ -43,33 +38,41 @@ namespace lux::render
         DeviceOptions device_options
     ) noexcept
     {
-        const bool invalid = config.frames_in_flight == 0 || config.frames_in_flight > 3 ||
-                             config.max_frames_ahead == UINT32_MAX || config.max_config_bytes == 0 ||
-                             config.gpu_wait_ns > 1'000'000;
+        const bool invalid =
+            config.frames_in_flight == 0 ||
+            config.frames_in_flight > 3 ||
+            config.max_frames_ahead == UINT32_MAX ||
+            config.max_config_bytes == 0 ||
+            config.gpu_wait_ns > 1'000'000;
+
         if (invalid)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
+
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
         if (!responder)
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
+
         auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), execution.cpuScheduler());
         if (auto initialized = state->initialize(device_options); !initialized)
         {
             return cxx::unexpected(initialized.error());
         }
+
         if (auto registered = state->registerBuiltinFeatures(); !registered)
         {
             return cxx::unexpected(registered.error());
         }
+
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
     }
 
     RenderResult<void> RenderServer::setFrameSource(ipc::RequesterId requester) noexcept
     {
-        if (impl_->started.load() || requester.isNull())
+        if (impl_->has_started_.load() || requester.isNull())
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
@@ -105,27 +108,25 @@ namespace lux::render
         {
             return declarations;
         }
-        // Built-in declarations are trusted. Device support decides factory availability;
-        // no unsupported Storage or Handler is installed, and no rollback owner is needed.
+        // Register declarations independently of the first device. Actual Resource creation
+        // checks the owning DeviceSession; trusted built-in metadata needs no rollback owner.
         const auto register_dependencies =
-            [&]<class Declaration>() noexcept -> std::optional<std::vector<CapabilityCommandBinding>>
+            [&]<class Declaration>() noexcept -> std::vector<CapabilityCommandBinding>
         {
             using StorageTypes = decltype(uniqueTypes(static_cast<typename Declaration::Storages*>(nullptr)));
-            const auto required = []<class... Types>(std::tuple<Types...>*) noexcept
-            {
-                return (0u | ... | Types::type::Descriptor::descriptor.required_capabilities);
-            }(static_cast<StorageTypes*>(nullptr));
-            if ((required & ~resources->capabilities()) != 0)
-            {
-                return std::nullopt;
-            }
             cxx::tuple_traits::for_each_type<StorageTypes>(
                 [&]<class Type, std::size_t>() noexcept
                 {
                     using Storage = typename Type::type;
-                    if (resources->typeId(Storage::Descriptor::descriptor.type).isNull())
+                    if (resources_->typeId(Storage::Descriptor::descriptor.type).isNull())
                     {
-                        resources->publishFactory(Storage::factory());
+                        const auto factory = Storage::factory();
+                        const auto type = resources_->publishFactory(factory);
+                        for (const auto& command : factory.commands)
+                        {
+                            const auto location = command_registry_.publishResourceBinding(command);
+                            if (!resources_->bindCommand(type, location)) std::terminate();
+                        }
                     }
                 }
             );
@@ -150,8 +151,7 @@ namespace lux::render
             for (const auto& method : methods)
             {
                 locations.push_back(
-                    {command_registry_.publishBinding(command_registry_.handlerId(method.handlerType(), {}), method),
-                     method.storageDependency()}
+                    {command_registry_.publishBinding(command_registry_.handlerId(method.handlerType(), {}), method)}
                 );
             }
             return locations;
@@ -160,7 +160,7 @@ namespace lux::render
             [&]<class Feature, std::size_t>() noexcept
             {
                 publishFeature(
-                    FeatureEntry{Feature::name, configurationType<Feature>(), Feature::graph(paged_instances)}
+                    FeatureEntry{Feature::name, configurationType<Feature>(), Feature::graph(paged_instances_)}
                 );
             }
         );
@@ -168,18 +168,14 @@ namespace lux::render
             [&]<class Implementation, std::size_t>() noexcept
             {
                 auto command_bindings = register_dependencies.template operator()<Implementation>();
-                if (!command_bindings)
-                {
-                    return;
-                }
                 std::vector<FeatureId> required_features;
                 cxx::tuple_traits::for_each_type<typename Implementation::Features>(
                     [&]<class Feature, std::size_t>() noexcept
-                    { required_features.push_back(features_by_name.find(Feature::name.name())->second); }
+                    { required_features.push_back(features_by_name_.find(Feature::name.name())->second); }
                 );
                 auto value = makeImplementation<Implementation>();
                 value.features = std::move(required_features);
-                value.command_bindings = std::move(*command_bindings);
+                value.command_bindings = std::move(command_bindings);
                 for (auto& call : value.frame_calls)
                 {
                     call.handler = command_registry_.findHandler(command_registry_.handlerId(call.handler_type, {}));
@@ -195,15 +191,15 @@ namespace lux::render
 
     FeatureId RenderServer::Impl::publishFeature(FeatureEntry entry) noexcept
     {
-        const auto found = features_by_name.find(entry.name);
-        if (found != features_by_name.end())
+        const auto found = features_by_name_.find(entry.name);
+        if (found != features_by_name_.end())
         {
             return found->second;
         }
-        const auto id = features.emplace(std::move(entry));
-        auto& stored = *features.find(id);
+        const auto id = features_.emplace(std::move(entry));
+        auto& stored = *features_.find(id);
         stored.id = id;
-        features_by_name.emplace(stored.name, id);
+        features_by_name_.emplace(stored.name, id);
         return id;
     }
 
@@ -267,10 +263,10 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kCapabilityDeclaration});
             }
         }
-        for (const auto& dependency : implementation.storage_dependencies)
+        for (const auto& dependency : implementation.resource_dependencies)
         {
-            const bool is_invalid_scope = dependency.scope > EStorageScope::ATTACHMENT;
-            const bool is_invalid_storage = dependency.storage_type.name().empty() || dependency.storage_key.empty();
+            const bool is_invalid_scope = dependency.scope > EStorageScope::VIEW;
+            const bool is_invalid_storage = dependency.storage_type.name().empty();
             if (is_invalid_scope || is_invalid_storage)
             {
                 return cxx::unexpected(RenderError{kStorageFactory});
@@ -286,10 +282,10 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
-        const auto found = features_by_name.find(entry.name);
-        if (found != features_by_name.end())
+        const auto found = features_by_name_.find(entry.name);
+        if (found != features_by_name_.end())
         {
-            const auto& previous = *features.find(found->second);
+            const auto& previous = *features_.find(found->second);
             if (previous.config_type != entry.config_type || previous.graph != entry.graph)
             {
                 return cxx::unexpected(RenderError{kFeatureDuplicate});
@@ -299,7 +295,7 @@ namespace lux::render
     }
 
     RenderResult<void> RenderServer::Impl::validateRegistration(
-        std::span<const StorageFactory> factories,
+        std::span<const ResourceRegistration> factories,
         std::span<const HandlerRecord> handlers,
         std::span<const CommandBinding> bindings,
         std::span<const FrameDataCall> frame_calls
@@ -308,12 +304,24 @@ namespace lux::render
         for (std::size_t i = 0; i < factories.size(); ++i)
         {
             const auto& factory = factories[i];
-            if (auto valid = resources->validateFactory(factory); !valid)
+            if (auto valid = resources_->validateFactory(factory); !valid)
             {
                 return valid;
             }
+            if (auto valid = command_registry_.validateResourceBindings(factory.commands); !valid) return valid;
+            const bool needs_creation_policy = factory.storage->config_type.isValid() &&
+                resources_->typeId(factory.descriptor->type).isNull();
+            if (needs_creation_policy) return cxx::unexpected(RenderError{kStorageContract});
             for (std::size_t j = 0; j < i; ++j)
             {
+                for (const auto& left : factories[j].commands)
+                {
+                    for (const auto& right : factory.commands)
+                    {
+                        if (left.descriptor()->name != right.descriptor()->name) continue;
+                        if (auto valid = compatibleCommands(*left.descriptor(), *right.descriptor()); !valid) return valid;
+                    }
+                }
                 if (factories[j].descriptor->type != factory.descriptor->type)
                 {
                     continue;
@@ -339,7 +347,7 @@ namespace lux::render
     }
 
     void RenderServer::Impl::publishRegistration(
-        std::span<const StorageFactory> factories,
+        std::span<const ResourceRegistration> factories,
         std::span<HandlerRecord> handlers,
         std::span<const CommandBinding> bindings
     ) noexcept
@@ -349,7 +357,12 @@ namespace lux::render
         command_registry_.reserve(bindings.size(), handlers.size());
         for (const auto& factory : factories)
         {
-            resources->publishFactory(factory);
+            const auto type = resources_->publishFactory(factory);
+            for (const auto& command : factory.commands)
+            {
+                const auto location = command_registry_.publishResourceBinding(command);
+                if (!resources_->bindCommand(type, location)) std::terminate();
+            }
         }
         for (auto& handler : handlers)
         {
@@ -368,7 +381,7 @@ namespace lux::render
     RenderResult<FeatureId> RenderServer::registerFeature(FeatureEntry entry) noexcept
     {
         auto& state = *impl_;
-        if (state.started.load() && state.device)
+        if (state.has_started_.load() && state.device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
@@ -383,13 +396,13 @@ namespace lux::render
         CapabilityDescription capability,
         CapabilityImplementation implementation,
         std::span<FeatureEntry> graph_features,
-        std::span<const StorageFactory> factories,
+        std::span<const ResourceRegistration> factories,
         std::span<HandlerRecord> handlers,
         std::span<const CommandBinding> bindings
     ) noexcept
     {
         auto& state = *impl_;
-        if (state.started.load() && state.device)
+        if (state.has_started_.load() && state.device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
@@ -425,55 +438,32 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
-        if (bindings.size() != capability.commands.size())
-        {
-            return cxx::unexpected(RenderError{kCapabilityDeclaration});
-        }
         for (const auto* command : capability.commands)
         {
-            const auto matches = std::ranges::count_if(
-                bindings,
-                [&](const auto& binding) noexcept
-                { return compatibleCommands(*command, *binding.descriptor()).has_value(); }
-            );
-            if (matches != 1)
-            {
+            const auto matches = std::ranges::count_if(bindings, [&](const auto& binding) noexcept
+                { return compatibleCommands(*command, *binding.descriptor()).has_value(); });
+            const bool has_resource_route = std::ranges::any_of(implementation.resource_dependencies,
+                [&](const auto& dependency) noexcept
+                {
+                    const auto* factory = state.resources_->factory(dependency.storage_type);
+                    if (!factory)
+                    {
+                        const auto found = std::ranges::find_if(factories, [&](const auto& entry) noexcept
+                            { return entry.descriptor->type == dependency.storage_type; });
+                        if (found != factories.end()) factory = &*found;
+                    }
+                    return factory && std::ranges::any_of(factory->descriptor->commands,
+                        [&](const auto* candidate) noexcept { return compatibleCommands(*command, *candidate).has_value(); });
+                });
+            if (matches > 1 || (matches == 0 && !has_resource_route))
                 return cxx::unexpected(RenderError{kCapabilityDeclaration});
-            }
         }
         for (const auto& binding : bindings)
-        {
-            const auto dependency = binding.storageDependency();
-            if (dependency != UINT32_MAX && dependency >= implementation.storage_dependencies.size())
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-            if (binding.storageType().isValid())
-            {
-                if (dependency == UINT32_MAX)
-                {
-                    return cxx::unexpected(RenderError{kStorageContract});
-                }
-                const auto type = implementation.storage_dependencies[dependency].storage_type;
-                const auto* factory = state.resources->factory(type);
-                if (!factory)
-                {
-                    const auto found = std::ranges::find_if(
-                        factories,
-                        [&](const auto& entry) noexcept { return entry.descriptor->type == type; }
-                    );
-                    factory = found == factories.end() ? nullptr : &*found;
-                }
-                if (!factory || factory->implementation_type != binding.storageType())
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
-            }
-        }
+            if (binding.isResourceCommand()) return cxx::unexpected(RenderError{kCommandContract});
         for (const auto& call : implementation.frame_calls)
         {
             const bool is_invalid_storage = call.target == EFrameDataTarget::STORAGE &&
-                                            call.storage_dependency >= implementation.storage_dependencies.size();
+                                            call.resource_dependency >= implementation.resource_dependencies.size();
             const bool is_invalid_draw =
                 call.target == EFrameDataTarget::DRAW_LIST &&
                 (call.graph_feature >= graph_features.size() || call.contribution_key.empty() || call.pass_key.empty());
@@ -482,10 +472,10 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
         }
-        for (const auto& input : implementation.storage_dependencies)
+        for (const auto& input : implementation.resource_dependencies)
         {
             const bool has_factory =
-                state.resources->factory(input.storage_type) ||
+                state.resources_->factory(input.storage_type) ||
                 std::ranges::any_of(
                     factories,
                     [&](const auto& factory) noexcept { return factory.descriptor->type == input.storage_type; }
@@ -502,7 +492,7 @@ namespace lux::render
             const auto handler = state.command_registry_.handlerId(method.handlerType(), {});
             const auto location = state.command_registry_.findBinding(*method.descriptor(), handler);
             implementation.command_bindings.push_back(
-                {location ? *location : CommandBindingLocation{}, method.storageDependency()}
+                {location ? *location : CommandBindingLocation{}}
             );
         }
         // Resolve candidate identities without publishing. Missing Features remain null until
@@ -511,8 +501,8 @@ namespace lux::render
         implementation.features.reserve(graph_features.size());
         for (const auto& feature : graph_features)
         {
-            const auto found = state.features_by_name.find(feature.name);
-            implementation.features.push_back(found == state.features_by_name.end() ? FeatureId{} : found->second);
+            const auto found = state.features_by_name_.find(feature.name);
+            implementation.features.push_back(found == state.features_by_name_.end() ? FeatureId{} : found->second);
         }
         for (const auto id : state.capability_registry_.implementations())
         {
@@ -542,6 +532,7 @@ namespace lux::render
             const auto handler = state.command_registry_.handlerId(method.handlerType(), {});
             implementation.command_bindings[i].location =
                 *state.command_registry_.findBinding(*method.descriptor(), handler);
+
         }
         for (auto& call : implementation.frame_calls)
         {
@@ -564,7 +555,7 @@ namespace lux::render
 
     RenderResult<CapabilityId> RenderServer::registerCapability(const CapabilityDescription& description) noexcept
     {
-        if (impl_->started.load() && impl_->device)
+        if (impl_->has_started_.load() && impl_->device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
@@ -581,36 +572,12 @@ namespace lux::render
             return valid;
         }
         const auto commands = capability.commands;
-        if (implementation.command_bindings.size() != commands.size())
-        {
-            return cxx::unexpected(RenderError{kCapabilityDeclaration});
-        }
         for (const auto& binding : implementation.command_bindings)
         {
-            const bool is_invalid_dependency = binding.storage_dependency != UINT32_MAX &&
-                                               binding.storage_dependency >= implementation.storage_dependencies.size();
-            if (is_invalid_dependency)
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
             const auto* method = command_registry_.binding(binding.location);
-            if (!method || method->handler.isNull() || !method->call.invoke)
-            {
-                return cxx::unexpected(RenderError{kCommandContract});
-            }
-            if (method->storage_type.isValid())
-            {
-                if (binding.storage_dependency == UINT32_MAX)
-                {
-                    return cxx::unexpected(RenderError{kStorageContract});
-                }
-                const auto& dependency = implementation.storage_dependencies[binding.storage_dependency];
-                const auto* factory = resources->factory(dependency.storage_type);
-                if (!factory || factory->implementation_type != method->storage_type)
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
-            }
+            const bool invalid_call = !method || !method->call.invoke;
+            const bool is_resource_route = method && method->storage_type.isValid();
+            if (invalid_call || is_resource_route) return cxx::unexpected(RenderError{kCommandContract});
         }
         for (const auto* command : commands)
         {
@@ -620,7 +587,10 @@ namespace lux::render
                           implementation.command_bindings,
                           [&](const auto& binding) noexcept { return binding.location.command == *id; }
                       ) == 1;
-            if (!has_exact_call)
+            const bool has_resource_call = id && std::ranges::any_of(implementation.resource_dependencies,
+                [&](const auto& dependency) noexcept
+                { return resources_->commandBinding(resources_->typeId(dependency.storage_type), *id) != nullptr; });
+            if (!has_exact_call && !has_resource_call)
             {
                 return cxx::unexpected(RenderError{kCapabilityDeclaration});
             }
@@ -628,13 +598,14 @@ namespace lux::render
         for (const auto& call : implementation.frame_calls)
         {
             const auto* registered = command_registry_.findHandler(command_registry_.handlerId(call.handler_type, {}));
-            const bool invalid_handler = !registered || registered != call.handler || !call.invoke;
+            const bool invalid_handler = !call.invoke ||
+                (call.handler_type.isValid() && (!registered || registered != call.handler));
             const bool invalid_alignment =
                 call.root_alignment == 0 || (call.root_alignment & (call.root_alignment - 1)) != 0;
             const bool invalid_root = call.root_size == 0 || invalid_alignment || !call.method_type.isValid();
             const bool invalid_storage =
                 call.target == EFrameDataTarget::STORAGE &&
-                (!call.resolve_storage || call.storage_dependency >= implementation.storage_dependencies.size());
+                (!call.resolve_storage || call.resource_dependency >= implementation.resource_dependencies.size());
             const bool invalid_draw =
                 call.target == EFrameDataTarget::DRAW_LIST && (call.graph_feature >= implementation.features.size() ||
                                                                call.contribution_key.empty() || call.pass_key.empty());
@@ -648,7 +619,7 @@ namespace lux::render
         std::set<std::pair<std::uint32_t, std::uint32_t>> unique_features;
         for (const auto feature : implementation.features)
         {
-            const auto* entry = features.find(feature);
+            const auto* entry = features_.find(feature);
             if (!entry || !unique_features.emplace(feature.index, feature.gen).second)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
@@ -661,7 +632,7 @@ namespace lux::render
         if (!implementation.build_graph && !implementation.graph.ports.empty())
         {
             const bool is_single_feature = implementation.features.size() == 1;
-            const auto* entry = is_single_feature ? features.find(implementation.features.front()) : nullptr;
+            const auto* entry = is_single_feature ? features_.find(implementation.features.front()) : nullptr;
             if (!entry || !entry->graph.describe_ports || entry->config_type != implementation.config_type)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
@@ -676,7 +647,7 @@ namespace lux::render
     ) noexcept
     {
         auto& state = *impl_;
-        if (state.started.load() && state.device)
+        if (state.has_started_.load() && state.device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
@@ -698,7 +669,7 @@ namespace lux::render
     ) noexcept
     {
         auto& state = *impl_;
-        if (state.started.load() && state.device)
+        if (state.has_started_.load() && state.device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
@@ -717,7 +688,7 @@ namespace lux::render
 
     RenderResult<void> RenderServer::removeCapabilityImplementation(CapabilityImplementationId id) noexcept
     {
-        if (impl_->started.load() && impl_->device)
+        if (impl_->has_started_.load() && impl_->device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
@@ -726,28 +697,39 @@ namespace lux::render
 
     RenderResult<void> RenderServer::removeCapability(CapabilityId id) noexcept
     {
-        if (impl_->started.load() && impl_->device)
+        if (impl_->has_started_.load() && impl_->device_)
         {
             return cxx::unexpected(RenderError{kCapabilityInUse});
         }
         return impl_->capability_registry_.remove(id);
     }
 
-    RenderResult<StorageTypeId>
-    RenderServer::registerStorage(StorageFactory factory, ConfigValue configuration) noexcept
+    RenderResult<ResourceTypeId>
+    RenderServer::registerResource(ResourceRegistration factory, ConfigValue configuration) noexcept
     {
-        if (impl_->stop_requested.load())
+        if (impl_->stop_requested_.load())
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        return impl_->resources->installFactory(std::move(factory), std::move(configuration));
+        if (impl_->has_started_.load()) return cxx::unexpected(RenderError{kCapabilityInUse});
+        if (auto valid = impl_->resources_->validateFactory(factory, configuration); !valid)
+            return cxx::unexpected(valid.error());
+        if (auto valid = impl_->command_registry_.validateResourceBindings(factory.commands); !valid)
+            return cxx::unexpected(valid.error());
+        const auto type = impl_->resources_->publishFactory(factory, std::move(configuration));
+        for (const auto& command : factory.commands)
+        {
+            const auto location = impl_->command_registry_.publishResourceBinding(command);
+            if (!impl_->resources_->bindCommand(type, location)) std::terminate();
+        }
+        return type;
     }
 
     RenderResult<HandlerId>
     RenderServer::registerHandler(HandlerRecord handler, std::span<const CommandBinding> bindings) noexcept
     {
         auto& state = *impl_;
-        if (state.stop_requested.load())
+        if (state.stop_requested_.load())
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
@@ -760,22 +742,22 @@ namespace lux::render
         {
             state.command_registry_.publishBinding(id, binding);
         }
-        if (state.running.load())
+        if (state.running_.load())
         {
-            state.command_registry_.activateHandlers(*state.resources);
+            state.command_registry_.activateHandlers(*state.resources_);
         }
         return id;
     }
 
     bool RenderServer::pagedInstances() const noexcept
     {
-        return impl_->paged_instances;
+        return impl_->paged_instances_;
     }
 
     RenderResult<FeatureId> RenderServer::featureId(std::string_view implementation) const noexcept
     {
-        const auto found = impl_->features_by_name.find(implementation);
-        if (found == impl_->features_by_name.end())
+        const auto found = impl_->features_by_name_.find(implementation);
+        if (found == impl_->features_by_name_.end())
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }

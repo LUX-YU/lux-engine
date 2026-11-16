@@ -75,7 +75,7 @@ namespace lux::render::detail
         for (auto& pass : recording.passes)
         {
             const auto& source = graph.passes()[pass.source_pass];
-            const auto* compute = std::get_if<ComputeWork>(&source.work);
+            const auto* compute = source.work.getIf<ComputeWork>();
             if (!compute || !compute->allow_async_compute || queues[0] == queues[1])
             {
                 continue;

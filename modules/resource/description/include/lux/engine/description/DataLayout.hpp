@@ -10,7 +10,8 @@ namespace lux::rdesc
     enum class EDataLayout
     {
         STD140,
-        STD430
+        STD430,
+        TARGET_REFLECTED
     };
     enum class EDataScalar
     {
@@ -24,7 +25,12 @@ namespace lux::rdesc
     {
         std::string_view path;
         EDataScalar scalar;
-        std::uint32_t offset, rows, columns, array_stride, matrix_stride;
+        std::uint32_t offset;
+        std::uint32_t rows;
+        std::uint32_t columns;
+        std::uint32_t array_stride;
+        std::uint32_t matrix_stride;
+
         bool operator==(const DataGpuField&) const noexcept = default;
     };
 

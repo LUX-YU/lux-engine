@@ -4,9 +4,6 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] RenderResult<RasterWork> fullscreenRaster(
-        FeatureBuildContext&,
-        std::span<const std::uint32_t> fragment,
-        std::span<const std::byte> reflection
-    ) noexcept;
+    [[nodiscard]] RenderResult<RasterWork>
+    fullscreenRaster(FeatureBuildContext&, rdesc::ShaderProgramArtifact fragment) noexcept;
 } // namespace lux::render::detail

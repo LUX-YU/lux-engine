@@ -4,7 +4,7 @@
 #include <NRI.h>
 
 #include <exec/create.hpp>
-#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
 #include <memory>
 #include <vector>
@@ -92,6 +92,7 @@ namespace lux::render::detail
         std::vector<TargetFrame> frames_;
         PresentationSync presentation_;
         std::uint32_t acquired_image_ = UINT32_MAX;
+        std::uint64_t next_present_id_ = 1;
         RenderError failure_;
     };
 } // namespace lux::render::detail

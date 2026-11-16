@@ -130,7 +130,7 @@ namespace lux::render::detail
             }
             output->views_.push_back(view);
             nri::Fence* released = nullptr;
-            status = core.CreateFence(session.device(), nri::SWAPCHAIN_SEMAPHORE, released);
+            status = core.CreateFence(session.device(), nri::FenceDesc{nri::SWAPCHAIN_SEMAPHORE}, released);
             if (status != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(status));
@@ -140,7 +140,7 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frame_count; ++slot)
         {
             nri::Fence* acquired = nullptr;
-            status = core.CreateFence(session.device(), nri::SWAPCHAIN_SEMAPHORE, acquired);
+            status = core.CreateFence(session.device(), nri::FenceDesc{nri::SWAPCHAIN_SEMAPHORE}, acquired);
             if (status != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(status));
@@ -216,7 +216,7 @@ namespace lux::render::detail
         {
             return false;
         }
-        const auto status = swap_chain_operations_.QueuePresent(*swap_chain_, *presentation_.rendered);
+        const auto status = swap_chain_operations_.QueuePresent(*swap_chain_, *presentation_.rendered, next_present_id_);
         if (status == nri::Result::NOT_READY)
         {
             return false; // The native call has not enqueued Present; preserve both semaphore identities.
@@ -226,6 +226,7 @@ namespace lux::render::detail
             failure_ = nativeError(status);
             return cxx::unexpected(failure_);
         }
+        ++next_present_id_;
         acquired_image_ = UINT32_MAX;
         presentation_ = {};
         return true;

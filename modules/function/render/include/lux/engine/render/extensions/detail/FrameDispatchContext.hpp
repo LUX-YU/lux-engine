@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/core/execution/RunLoop.hpp>
+#include <lux/cxx/execution/ManualContext.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
@@ -14,7 +14,7 @@ namespace nri
 namespace lux::render::detail
 {
     class RenderGraphInstance;
-    class FrameExecution;
+    class ResourceUploader;
 } // namespace lux::render::detail
 
 namespace lux::render
@@ -36,7 +36,7 @@ namespace lux::render
     {
         detail::RenderGraphInstance& instance;
         GraphPassId pass;
-        detail::FrameExecution& execution;
+        detail::ResourceUploader& uploads;
         void* target_context = nullptr;
         RenderResult<FrameSampledImage> (*resolve_target)(void*, TargetId, std::uint32_t) noexcept = nullptr;
     };
@@ -58,7 +58,7 @@ namespace lux::render::runtime_detail
         FrameRecord& frame;
         std::uint32_t entry;
         stdexec::counting_scope& scope;
-        execution::RunLoop& render_loop;
+        cxx::execution::ManualContext::Scheduler server_delivery;
     };
 
     LUX_RENDER_PUBLIC void completeFrameData(FrameRecord&, std::uint32_t entry, RenderError) noexcept;

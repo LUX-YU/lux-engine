@@ -1,0 +1,9 @@
+#pragma once
+
+#include <string_view>
+
+namespace lux::material::detail
+{
+    inline constexpr std::string_view kMaterialTypesSource = R"lux_shader(@material_types_source@)lux_shader";
+    inline constexpr std::string_view kGBufferSource = R"lux_shader(@gbuffer_source@)lux_shader";
+}

@@ -10,9 +10,10 @@ namespace lux::scene
 {
     SceneInstance::SceneInstance(
         std::unique_ptr<world::World> world,
-        std::unique_ptr<simulation::Simulation> simulation
+        std::unique_ptr<simulation::Simulation> simulation,
+        std::shared_ptr<const ecs::ComponentSchemaSet> schemas
     ) noexcept
-        : world_(std::move(world)), simulation_(std::move(simulation))
+        : schemas_(std::move(schemas)), world_(std::move(world)), simulation_(std::move(simulation))
     {
     }
 

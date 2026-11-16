@@ -4,7 +4,7 @@
 #include <array>
 #include <lux/engine/description/MaterialEnums.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
-#include <lux/engine/description/SpirvArtifact.hpp>
+#include <lux/engine/description/ShaderProgramArtifact.hpp>
 
 namespace lux::rdesc
 {
@@ -19,11 +19,11 @@ namespace lux::rdesc
     {
         EMaterialPurpose purpose;
         std::string output_semantic;
-        SpirvArtifact shader;
+        ShaderProgramArtifact shader;
         bool operator==(const MaterialShader&) const noexcept = default;
     };
 
-    // Cooked values only. Layout and defaults are common to every use; no author graph or native Pipeline.
+    // One target per set. Layout/default projection belongs to this target, never to the generic source IR.
     struct MaterialProgramSet final
     {
         ShaderBlock parameters;
@@ -33,6 +33,7 @@ namespace lux::rdesc
         EAlphaMode alpha_mode = EAlphaMode::OPAQUE_SURFACE;
         bool double_sided = false;
         std::vector<MaterialShader> programs;
+        EShaderTarget target = EShaderTarget::SPIRV;
 
         [[nodiscard]] const MaterialShader* find(EMaterialPurpose purpose) const noexcept
         {

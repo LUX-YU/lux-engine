@@ -4,6 +4,13 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <map>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <utility>
+#include <vector>
 #include <exec/task.hpp>
 #include <lux/cxx/container/BasicSparseSet.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
@@ -17,13 +24,13 @@
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
-#include <lux/engine/render/runtime/CommandRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
+#include <lux/engine/render/commands/CommandRegistry.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <lux/engine/render/runtime/FrameSubmission.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/runtime/ResponseOutbox.hpp>
+#include <lux/engine/render/commands/ResponseOutbox.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
 #include <thread>
 
@@ -43,77 +50,75 @@ namespace lux::render
         validateCapabilityImplementation(const CapabilityDescription&, const CapabilityImplementation&) const noexcept;
         RenderResult<void> validateFeature(const FeatureEntry&) const noexcept;
         RenderResult<void> validateRegistration(
-            std::span<const StorageFactory>,
+            std::span<const ResourceRegistration>,
             std::span<const HandlerRecord>,
             std::span<const CommandBinding>,
             std::span<const FrameDataCall> = {}
         ) const noexcept;
-        void
-            publishRegistration(
-                std::span<const StorageFactory>,
-                std::span<HandlerRecord>,
-                std::span<const CommandBinding>
-            ) noexcept;
+        void publishRegistration(
+            std::span<const ResourceRegistration>,
+            std::span<HandlerRecord>,
+            std::span<const CommandBinding>
+        ) noexcept;
 
         [[nodiscard]] RenderResult<void> run() noexcept;
 
         void stop() noexcept
         {
-            stop_requested.store(true);
+            stop_requested_.store(true);
             ipc::IpcCore::instance().notifyWork();
         }
 
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
-        RenderServerConfig config;
-        execution::CpuScheduler cpu_scheduler; // Borrowed from the application's ExecutionRuntime.
-        ipc::IpcResponder responder;
-        cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
-        std::map<std::string_view, FeatureId, std::less<>> features_by_name;
+        RenderServerConfig config_;
+        execution::CpuScheduler cpu_scheduler_; // Borrowed from the application's ExecutionRuntime.
+        ipc::IpcResponder responder_;
+        cxx::StableSlotMap<FeatureEntry, FeatureTag> features_;
+        std::map<std::string_view, FeatureId, std::less<>> features_by_name_;
         CommandRegistry command_registry_;
         CapabilityRegistry capability_registry_;
-        cxx::StableSlotMap<RenderScene, SceneTag> scenes;
-        cxx::StableSlotMap<RenderTarget, TargetTag> targets;
-        cxx::StableSlotMap<RenderEffect, EffectTag> effects;
-        cxx::SlotMap<EffectAttachment, AttachmentTag> attachments;
-        cxx::SlotKeySparseSet<TargetId, std::monostate> active_targets;
-        std::unique_ptr<detail::DeviceSession> device;
-        std::unique_ptr<detail::ResourceUploader> uploads;
-        std::unique_ptr<detail::FrameExecution> frames;
-        std::optional<ResourceRegistry> resources;
-        std::optional<StorageSet> global_storages;
-        std::optional<ipc::ReceivedRequest> deferred_request_;
+        cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
+        cxx::StableSlotMap<RenderTarget, TargetTag> targets_;
+        cxx::StableSlotMap<RenderEffect, EffectTag> effects_;
+        cxx::SlotMap<EffectAttachment, AttachmentTag> attachments_;
+        cxx::SlotKeySparseSet<TargetId, std::monostate> active_targets_;
+        std::unique_ptr<detail::DeviceSession> device_;
+        std::unique_ptr<detail::ResourceUploader> uploads_;
+        std::unique_ptr<detail::FrameExecution> frames_;
+        std::optional<ResourceRegistry> resources_;
+        std::optional<ResourceSet> global_storages_;
+        ipc::ReceivedRequest deferred_request_;
         bool structural_command_running_ = false;
-        bool paged_instances = false;
+        bool paged_instances_ = false;
 
-        [[nodiscard]] StorageCreateContext storageContext() noexcept
+        [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept
         {
-            return {*device, uploads.get(), frames.get(), *resources, paged_instances};
+            return {*device_, uploads_.get(), config_.frames_in_flight, *resources_, paged_instances_};
         }
 
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
-        execution::RunLoop render_loop_;
+        cxx::execution::ManualContext server_context_;
         ipc::RequesterId frame_source_;
         CommandId submit_frame_command_;
-        CommandId stop_command_;
         CommandId select_binding_command_;
         std::vector<FrameRecord> frame_inputs_;
         std::size_t first_frame_ = 0;
         std::size_t frame_count_ = 0;
         std::uint64_t last_frame_sequence_ = 0;
         bool frame_resynchronization_ = false;
-        std::vector<detail::RenderGraphInstance*> frame_instances;
-        std::vector<detail::SurfaceTarget*> frame_surfaces;
-        std::vector<detail::StorageFrameUse> frame_storages;
-        std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features;
-        bool active_frame_inputs_dirty = true;
-        std::atomic<bool> stop_requested{false}, started{false}, running{false};
-        RenderError execution_error;
-        std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
-        std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
-        std::atomic<std::uint64_t> storages_created{0};
-        std::atomic<std::uint64_t> presentations{0};
+        std::vector<detail::RenderGraphInstance*> frame_instances_;
+        std::vector<detail::SurfaceTarget*> frame_surfaces_;
+        std::vector<detail::StorageFrameUse> frame_storages_;
+        std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features_;
+        bool active_frame_inputs_dirty_ = true;
+        std::atomic<bool> stop_requested_{false}, has_started_{false}, running_{false};
+        RenderError execution_error_;
+        std::atomic<std::uint64_t> ticks_{0}, commands_{0}, compiled_graphs_{0}, submissions_{0};
+        std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
+        std::atomic<std::uint64_t> storages_created_{0};
+        std::atomic<std::uint64_t> presentations_{0};
 
         Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler);
 
@@ -128,9 +133,8 @@ namespace lux::render
         RenderResult<runtime_detail::EffectAttachment> prepareAttachment(
             runtime_detail::RenderEffect&,
             detail::TargetOutput,
-            StorageSet& scene,
-            StorageSet& view,
-            StorageSet& attachment,
+            ResourceSet& scene,
+            ResourceSet& view,
             const AttachmentRequest& input
         ) noexcept;
 
@@ -166,6 +170,10 @@ namespace lux::render
         static void NRI_CALL
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;
 
+        void queryResource(const ResourceRequest&, ResourceResponse&) noexcept;
+        void getOrCreateResource(const ResourceRequest&, ResourceResponse&) noexcept;
+        [[nodiscard]] RenderResult<ResourceSet*> resourceScope(const VRenderScope&, ResourceTypeId) noexcept;
+
         void createScene(const CreateScene::Request&, CreateScene::Response&) noexcept;
 
         void removeScene(const RemoveScene::Request&, RemoveScene::Response&) noexcept;
@@ -182,18 +190,24 @@ namespace lux::render
         exec::task<AckResponse> removeTarget(RemoveTarget::Request&&) noexcept;
         void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
+        using EffectCompileResult = RenderResult<std::pair<RenderEffect, RenderGraph>>;
+        [[nodiscard]] exec::task<EffectCreated> adoptCompiledEffect(
+            EffectCompileResult,
+            std::vector<RenderEffect::Implementation>
+        ) noexcept;
+
         auto compileGraphEffect(
             GraphEffectRequest&&,
             RenderError = {},
             std::vector<RenderEffect::Implementation> = {},
-            std::vector<RenderEffect::StorageDependency> = {}
+            std::vector<RenderEffect::ResourceDependency> = {}
         ) noexcept;
         auto createCapabilityEffect(CreateEffect::Request&&) noexcept;
         [[nodiscard]] RenderResult<void>
         buildCapabilityGraph(
             CreateEffectRequest&,
             GraphEffectRequest&,
-            std::vector<RenderEffect::StorageDependency>&
+            std::vector<RenderEffect::ResourceDependency>&
         ) noexcept;
         [[nodiscard]] RenderResult<const ConfigValue*>
         qualifyConfiguration(const VCapabilityConfiguration&, const CapabilityImplementation&, ConfigValue& decoded)
@@ -204,30 +218,26 @@ namespace lux::render
         [[nodiscard]] const CapabilityGraphDescription* capabilityGraph(CapabilityImplementationId) const noexcept;
         [[nodiscard]] static RenderError
         capabilityOutputError(const CapabilityGraphDescription&, const EffectOutputDesc&) noexcept;
-        [[nodiscard]] RenderResult<std::vector<RenderEffect::StorageDependency>>
-        resolveCapabilityStorage(const CapabilityImplementation&, const ConfigValue&) const noexcept;
+        [[nodiscard]] RenderResult<std::vector<RenderEffect::ResourceDependency>>
+        resolveCapabilityStorage(const CapabilityImplementation&) const noexcept;
 
         void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
-        void
-        validateCapabilityConfiguration(
+        void validateCapabilityConfiguration(
             const ValidateCapabilityConfiguration::Request&,
             ValidateCapabilityConfiguration::Response&
         ) noexcept;
-        [[nodiscard]] RenderResult<StorageId>
-        resolveEffectStorage(
+
+        [[nodiscard]] RenderResult<ResourceInstanceId>
+        resolveEffectResource(
             const RenderEffect&,
             std::uint32_t capability,
             std::uint32_t dependency,
             const VRenderScope&
         ) noexcept;
-        [[nodiscard]] RenderResult<StorageSet*> findScope(const VRenderScope&) noexcept;
-        [[nodiscard]] RenderResult<StorageId> ensureStorage(
-            StorageSet&,
-            StorageTypeId,
-            std::string_view,
-            const ConfigValue&,
-            std::vector<std::pair<StorageSet*, StorageId>>& created
-        ) noexcept;
+
+        [[nodiscard]] RenderResult<ResourceSet*> findScope(const VRenderScope&) noexcept;
+
+        [[nodiscard]] RenderResult<ResourceInstanceId> ensureResource(ResourceSet&, ResourceTypeId) noexcept;
 
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
@@ -245,7 +255,7 @@ namespace lux::render
 
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
         [[nodiscard]] RenderResult<HandlerCall>
-        resolveCommandCall(CommandId, const CommandRecord&, const ipc::IpcMessage&, void*& storage) noexcept;
+        resolveCommandCall(CommandId, const CommandRecord&, const ipc::IpcMessage&, ResourceCommandUse& resource) noexcept;
         void failExecution(RenderError error) noexcept;
 
         std::size_t publishResponses(std::size_t limit) noexcept;

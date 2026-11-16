@@ -11,7 +11,8 @@ namespace lux::engine
 {
     class EngineMetaFunctionRegistry;
 
-    // Cold synchronous assembly. Context and metadata outlive the builder and all constructed Systems.
+    // Cold synchronous assembly. Metadata is borrowed by the builder; the Scene owns its component schemas.
+    // Context and registered operations must outlive all constructed Systems.
     // Build never reads assets, starts tasks or adopts the candidate into Engine.
     class Engine::SceneBuilder final
     {

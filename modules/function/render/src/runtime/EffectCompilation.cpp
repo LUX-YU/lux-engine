@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <map>
@@ -12,11 +12,11 @@ namespace lux::render::runtime_detail
         const nri::CoreInterface& nri_core,
         const detail::EnabledDeviceFeatures& enabled,
         std::array<const detail::QueueProperties*, 3> queues,
-        std::span<const StorageNameView> storage_types,
+        std::span<const ResourceDeclaration> declarations,
         const GraphEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
         std::size_t max_config_bytes,
-        std::vector<RenderEffect::StorageDependency> storage_dependencies
+        std::vector<RenderEffect::ResourceDependency> resource_dependencies
     ) noexcept
     {
         const auto* input = &request;
@@ -94,7 +94,7 @@ namespace lux::render::runtime_detail
             }
             arguments[index] = &argument;
         }
-        const auto public_count = storage_dependencies.size();
+        const auto public_count = resource_dependencies.size();
         std::vector<bool> used_types(public_count);
         const auto resolve = [&](auto& group, EStorageScope scope) noexcept -> RenderResult<void>
         {
@@ -105,44 +105,34 @@ namespace lux::render::runtime_detail
                     continue;
                 }
                 auto& requirement = binding.storage;
-                if (requirement.key.empty())
-                {
-                    requirement.key = assembly->definition.resources()[binding.resource.index].key;
-                }
                 const auto name = requirement.type.name();
                 const auto factory = std::lower_bound(
-                    storage_types.begin(),
-                    storage_types.end(),
+                    declarations.begin(),
+                    declarations.end(),
                     name,
-                    [](StorageNameView type, std::string_view name) { return type.name() < name; }
+                    [](const ResourceDeclaration& type, std::string_view name) { return type.name.name() < name; }
                 );
-                if (factory == storage_types.end() || factory->name() != name)
+                if (factory == declarations.end() || factory->name.name() != name)
                 {
                     return cxx::unexpected(RenderError{kStorageFactory});
                 }
+                if (static_cast<unsigned>(scope) != static_cast<unsigned>(factory->domain))
+                    return cxx::unexpected(RenderError{kStorageMismatch});
                 for (std::size_t i = 0; i < public_count; ++i)
                 {
-                    used_types[i] = used_types[i] || storage_dependencies[i].requirement.type == requirement.type;
+                    used_types[i] = used_types[i] || resource_dependencies[i].declaration == factory->id;
                 }
                 auto dependency = std::ranges::find_if(
-                    storage_dependencies,
+                    resource_dependencies,
                     [&](const auto& value) noexcept
                     {
-                        return value.scope == scope && value.requirement.type == requirement.type &&
-                               value.requirement.key == requirement.key;
+                        return value.declaration == factory->id;
                     }
                 );
-                if (dependency == storage_dependencies.end())
+                if (dependency == resource_dependencies.end())
                 {
-                    storage_dependencies.push_back({scope, std::move(requirement), {}, {}});
-                    dependency = std::prev(storage_dependencies.end());
-                }
-                else
-                {
-                    if (dependency->requirement.config != requirement.config)
-                    {
-                        return cxx::unexpected(RenderError{kStorageMismatch});
-                    }
+                    resource_dependencies.push_back({scope, factory->id, {}, {}});
+                    dependency = std::prev(resource_dependencies.end());
                 }
                 StorageArgument argument;
                 argument.resource = binding.resource;
@@ -152,7 +142,7 @@ namespace lux::render::runtime_detail
             return {};
         };
         auto& external = assembly->external_bindings;
-        const std::array groups{&external.global, &external.scene, &external.view, &external.attachment};
+        const std::array groups{&external.global, &external.scene, &external.view};
         for (std::size_t i = 0; i < groups.size(); ++i)
         {
             if (auto resolved = resolve(*groups[i], static_cast<EStorageScope>(i)); !resolved)
@@ -164,7 +154,7 @@ namespace lux::render::runtime_detail
         {
             // An upload-only input may legitimately be unused in an empty Effect. If its Storage
             // type is consumed, however, the public destination must be one of those actual bindings.
-            if (used_types[i] && storage_dependencies[i].bindings.empty())
+            if (used_types[i] && resource_dependencies[i].bindings.empty())
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
@@ -223,7 +213,7 @@ namespace lux::render::runtime_detail
         }
         RenderEffect result{
             std::make_unique<detail::RenderPlan>(std::move(*compiled)),
-            std::move(storage_dependencies),
+            std::move(resource_dependencies),
             std::move(assembly->bindings),
             std::move(assembly->samplers)
         };

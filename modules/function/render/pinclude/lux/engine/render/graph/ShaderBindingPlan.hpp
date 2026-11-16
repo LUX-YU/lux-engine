@@ -101,6 +101,6 @@ namespace lux::render::detail
         std::span<const std::uint32_t> parameter_groups = {}
     ) noexcept;
 
-    [[nodiscard]] RenderResult<rdesc::SpirvArtifact>
-    relocateShader(const rdesc::SpirvArtifact& original, std::span<const ShaderBinding> locations) noexcept;
+    [[nodiscard]] RenderResult<rdesc::ShaderProgramArtifact>
+    relocateShader(const rdesc::ShaderProgramArtifact& original, std::span<const ShaderBinding> locations) noexcept;
 } // namespace lux::render::detail

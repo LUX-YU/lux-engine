@@ -38,18 +38,11 @@ namespace lux::render
             const void* value,
             std::string_view key,
             FeatureBuildContext& context,
-            const lux::render::detail::EnabledDeviceFeatures&
+            const lux::render::detail::EnabledDeviceFeatures& enabled
         ) noexcept
         {
             const auto& config = *static_cast<const HzbFeatureConfig*>(value);
-            rdesc::SpirvArtifact shader;
-            shader.stages.push_back(
-                {rdesc::EShaderType::COMPUTE, "main", {std::begin(kHzbDownsample), std::end(kHzbDownsample)}}
-            );
-            if (!rdesc::ShaderInfo::deserialize(kHzbDownsampleReflection, shader.interface))
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
+            auto shader = kHzbDownsample.load(enabled.shader_target);
             const auto program = context.graph.addProgram(std::move(shader));
             if (!program)
             {

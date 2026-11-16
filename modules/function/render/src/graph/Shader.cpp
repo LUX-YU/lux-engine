@@ -9,7 +9,7 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <memory>
 #include <spirv-tools/libspirv.h>
-#include <spirv_cross/spirv_cross_c.h>
+#include <spirv_cross_c.h>
 
 namespace lux::render::detail
 {
@@ -80,15 +80,43 @@ namespace lux::render::detail
                    spvc_type_get_columns(type) == 1 && spvc_type_get_num_array_dimensions(type) == 0;
         }
 
+        bool matchesMatrixStorage(spvc_compiler compiler, spvc_type type, const rdesc::ShaderMember& field) noexcept
+        {
+            if (spvc_type_get_num_member_types(type) != 1)
+            {
+                return false;
+            }
+            const auto columns = spvc_compiler_get_type_handle(compiler, spvc_type_get_member_type(type, 0));
+            const bool has_columns =
+                spvc_type_get_num_array_dimensions(columns) == 1 && spvc_type_array_dimension_is_literal(columns, 0);
+            if (!has_columns)
+            {
+                return false;
+            }
+            unsigned offset = 0, stride = 0;
+            const bool has_layout = check(spvc_compiler_type_struct_member_offset(compiler, type, 0, &offset)) &&
+                                    check(spvc_compiler_type_struct_member_array_stride(compiler, type, 0, &stride));
+            const bool is_float_matrix = field.scalar == rdesc::EDataScalar::FLOAT &&
+                                         spvc_type_get_basetype(columns) == SPVC_BASETYPE_FP32 &&
+                                         spvc_type_get_bit_width(columns) == 32;
+            const bool has_matching_columns = spvc_type_get_array_dimension(columns, 0) == field.columns &&
+                                              spvc_type_get_vector_size(columns) == field.rows &&
+                                              spvc_type_get_columns(columns) == 1;
+            return has_layout && is_float_matrix && has_matching_columns && offset == 0 &&
+                   stride == field.matrix_stride;
+        }
+
         // Adapted from existing DataValidation.cpp: walk SPIRV-Cross types, not SPIR-V instructions.
-        bool validateFields(
+        bool
+        validateFields(
             spvc_compiler compiler,
             spvc_type type,
             std::string path,
             std::uint64_t base,
             std::uint32_t inherited_stride,
             const rdesc::ShaderBlock& expected,
-            std::size_t& cursor
+            std::size_t& cursor,
+            bool array_wrapper = false
         ) noexcept
         {
             const auto structure_id = spvc_type_get_base_type_id(type);
@@ -108,7 +136,8 @@ namespace lux::render::detail
                 {
                     return false;
                 }
-                const auto name = path + spvc_compiler_get_member_name(compiler, structure_id, member_index);
+                const auto name =
+                    array_wrapper ? path : path + spvc_compiler_get_member_name(compiler, structure_id, member_index);
                 const auto dimensions = spvc_type_get_num_array_dimensions(member);
                 unsigned count = 1, stride = inherited_stride;
                 if (dimensions)
@@ -138,8 +167,38 @@ namespace lux::render::detail
                     const auto scalar = spvc_type_get_basetype(member);
                     if (scalar == SPVC_BASETYPE_STRUCT)
                     {
-                        const bool valid =
-                            validateFields(compiler, member, item_name + ".", at, stride, expected, cursor);
+                        const bool has_expected_field = cursor < expected.fields.size();
+                        const bool is_matrix = has_expected_field && expected.fields[cursor].path == item_name &&
+                                               expected.fields[cursor].columns > 1;
+                        if (is_matrix)
+                        {
+                            const auto& field = expected.fields[cursor++];
+                            const bool has_matching_position = field.offset == at && field.array_stride == stride;
+                            if (!has_matching_position || !matchesMatrixStorage(compiler, member, field))
+                            {
+                                return false;
+                            }
+                            continue;
+                        }
+                        // Slang represents a fixed array as a one-member struct containing its data array.
+                        // Only unwrap when the target metadata describes that exact array path and zero offset.
+                        unsigned wrapper_offset = 0;
+                        const bool has_array_path =
+                            has_expected_field && expected.fields[cursor].path.starts_with(item_name + "[");
+                        const bool is_array_wrapper =
+                            has_array_path && spvc_type_get_num_member_types(member) == 1 &&
+                            check(spvc_compiler_type_struct_member_offset(compiler, member, 0, &wrapper_offset)) &&
+                            wrapper_offset == 0;
+                        const bool valid = validateFields(
+                            compiler,
+                            member,
+                            item_name + (is_array_wrapper ? "" : "."),
+                            at,
+                            stride,
+                            expected,
+                            cursor,
+                            is_array_wrapper
+                        );
                         if (!valid)
                         {
                             return false;
@@ -178,11 +237,16 @@ namespace lux::render::detail
                                              : scalar == SPVC_BASETYPE_INT32 ? rdesc::EDataScalar::SINT
                                                                              : rdesc::EDataScalar::UINT;
                     const auto& field = expected.fields[cursor++];
-                    const bool mismatch = field.path != item_name || field.scalar != scalar_kind ||
-                                          field.offset != at || field.rows != spvc_type_get_vector_size(member) ||
-                                          field.columns != spvc_type_get_columns(member) ||
-                                          field.array_stride != stride || field.matrix_stride != matrix_stride;
-                    if (mismatch)
+                    const rdesc::ShaderMember actual{
+                        item_name,
+                        scalar_kind,
+                        static_cast<std::uint32_t>(at),
+                        spvc_type_get_vector_size(member),
+                        spvc_type_get_columns(member),
+                        stride,
+                        matrix_stride
+                    };
+                    if (field != actual)
                     {
                         return false;
                     }
@@ -193,10 +257,7 @@ namespace lux::render::detail
 
         bool validateBlock(spvc_compiler compiler, spvc_type block, const rdesc::ShaderBlock& expected) noexcept
         {
-            const bool invalid =
-                !expected.size || !std::has_single_bit(expected.alignment) || expected.fields.empty() ||
-                (expected.storage != rdesc::EDataLayout::STD140 && expected.storage != rdesc::EDataLayout::STD430);
-            if (invalid)
+            if (!expected.hasStructuredLayout())
             {
                 return false;
             }
@@ -261,13 +322,18 @@ namespace lux::render::detail
                 (std::uint64_t(size) + expected.alignment - 1) / expected.alignment * expected.alignment;
             // ArrayStride was checked against SPIR-V above. A runtime record can have trailing
             // padding that is absent from its declared member extent; do not infer that ABI again.
-            const bool size_matches = expected.runtime_records ? size <= expected.size : rounded == expected.size;
+            const bool size_matches =
+                expected.runtime_records
+                    ? size <= expected.size
+                    : (rounded == expected.size ||
+                       (expected.storage == rdesc::EDataLayout::TARGET_REFLECTED && size == expected.size));
             return size_matches && validateFields(compiler, record, "", 0, 0, expected, cursor) &&
                    cursor == expected.fields.size();
         }
 
-        bool validateStage(
-            const rdesc::SpirvStage& input,
+        bool
+        validateStage(
+            const rdesc::ShaderStageArtifact& input,
             SpvExecutionModel stage,
             const ShaderInterface& interface,
             const nri::DeviceDesc& limits,
@@ -343,16 +409,20 @@ namespace lux::render::detail
                      capability == SpvCapabilitySampledImageArrayNonUniformIndexing ||
                      capability == SpvCapabilitySampledImageArrayDynamicIndexing ||
                      capability == SpvCapabilityImageQuery);
-                const bool storage_array = std::ranges::any_of(
-                    interface.bindings,
-                    [](const auto& value) noexcept
-                    { return value.kind == EDescriptorKind::STORAGE_BUFFER && value.count == 0; }
-                ) && (capability == SpvCapabilityRuntimeDescriptorArray ||
-                      capability == SpvCapabilityShaderNonUniform ||
-                      capability == SpvCapabilityStorageBufferArrayNonUniformIndexing ||
-                      capability == SpvCapabilityStorageBufferArrayDynamicIndexing);
+                const bool storage_array =
+                    std::ranges::any_of(
+                        interface.bindings,
+                        [](const auto& value) noexcept
+                        { return value.kind == EDescriptorKind::STORAGE_BUFFER && value.count == 0; }
+                    ) &&
+                    (capability == SpvCapabilityRuntimeDescriptorArray || capability == SpvCapabilityShaderNonUniform ||
+                     capability == SpvCapabilityStorageBufferArrayNonUniformIndexing ||
+                     capability == SpvCapabilityStorageBufferArrayDynamicIndexing);
                 const bool physical_addresses =
                     device_address && capability == SpvCapabilityPhysicalStorageBufferAddresses;
+                const bool integer64 = limits.shaderFeatures.nativeI64 && capability == SpvCapabilityInt64;
+                const bool draw_parameters =
+                    limits.shaderFeatures.drawParameters && capability == SpvCapabilityDrawParameters;
                 const bool image_query =
                     capability == SpvCapabilityImageQuery &&
                     std::ranges::any_of(
@@ -364,7 +434,8 @@ namespace lux::render::detail
                         }
                     );
                 const bool is_unsupported_capability = capability != SpvCapabilityShader && !sampled &&
-                    !storage_array && !physical_addresses && !image_query;
+                                                       !storage_array && !physical_addresses && !image_query &&
+                                                       !integer64 && !draw_parameters;
                 if (is_unsupported_capability)
                 {
                     return false;
@@ -675,24 +746,30 @@ namespace lux::render::detail
         return result;
     }
 
-    std::vector<nri::DescriptorRangeDesc> descriptorRanges(
-        std::span<const ShaderBinding> contract
-    ) noexcept
+    std::vector<nri::DescriptorRangeDesc>
+    descriptorRanges(std::span<const ShaderBinding> contract, bool preserve_registers) noexcept
     {
         std::vector<nri::DescriptorRangeDesc> ranges;
         ranges.reserve(contract.size());
         for (const auto& binding : contract)
         {
-            const auto type = binding.kind == EDescriptorKind::SAMPLED_IMAGE    ? nri::DescriptorType::TEXTURE
-                              : binding.kind == EDescriptorKind::SAMPLER        ? nri::DescriptorType::SAMPLER
-                              : binding.kind == EDescriptorKind::UNIFORM_BUFFER ? nri::DescriptorType::CONSTANT_BUFFER
-                              : binding.kind == EDescriptorKind::STORAGE_IMAGE  ? nri::DescriptorType::STORAGE_TEXTURE
-                              : binding.kind == EDescriptorKind::TYPED_STORAGE_BUFFER
-                                  ? nri::DescriptorType::STORAGE_BUFFER
-                                  : nri::DescriptorType::STORAGE_STRUCTURED_BUFFER;
+            const auto type =
+                binding.kind == EDescriptorKind::SAMPLED_IMAGE          ? nri::DescriptorType::TEXTURE
+                : binding.kind == EDescriptorKind::SAMPLER              ? nri::DescriptorType::SAMPLER
+                : binding.kind == EDescriptorKind::UNIFORM_BUFFER       ? nri::DescriptorType::CONSTANT_BUFFER
+                : binding.kind == EDescriptorKind::STORAGE_IMAGE        ? nri::DescriptorType::STORAGE_TEXTURE
+                : binding.kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::DescriptorType::STORAGE_BUFFER
+                : binding.access == EShaderAccess::READ_ONLY            ? nri::DescriptorType::STRUCTURED_BUFFER
+                                                             : nri::DescriptorType::STORAGE_STRUCTURED_BUFFER;
             const auto flags = binding.count > 1 ? nri::DescriptorRangeBits::ARRAY : nri::DescriptorRangeBits::NONE;
             ranges.push_back(
-                {binding.binding, binding.count, type, shaderStages(binding.stages), flags}
+                {binding.binding,
+                 binding.count,
+                 type,
+                 shaderStages(binding.stages),
+                 flags,
+                 preserve_registers ? binding.shader_space + 1 : 0,
+                 binding.shader_register}
             );
         }
         return ranges;
@@ -704,24 +781,35 @@ namespace lux::render::detail
         {
             for (const auto& binding : shader.bindings)
             {
-                if (binding.count != 0) continue;
+                if (binding.count != 0)
+                {
+                    continue;
+                }
                 const bool buffer = binding.kind == EDescriptorKind::STORAGE_BUFFER;
                 const bool supported = buffer ? enabled.buffer_descriptors : enabled.texture_descriptors;
-                if (!supported) return false;
+                if (!supported)
+                {
+                    return false;
+                }
             }
             return true;
         }
     } // namespace
 
-    RenderResult<nri::Pipeline*> compileCompute(
+    RenderResult<nri::Pipeline*>
+    compileCompute(
         nri::Device& device,
         const nri::CoreInterface& nri_core,
         const EnabledDeviceFeatures& enabled,
         nri::PipelineLayout& layout,
-        const rdesc::SpirvArtifact& shader
+        const rdesc::ShaderProgramArtifact& shader
     ) noexcept
     {
         const bool wrong_stage = shader.stages.size() != 1 || shader.stages[0].stage != rdesc::EShaderType::COMPUTE;
+        if (shader.target != enabled.shader_target)
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
         if (wrong_stage)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -736,16 +824,20 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        if (!validateStage(
-                code,
-                SpvExecutionModelGLCompute,
-                *projected,
-                nri_core.GetDeviceDesc(device),
-                nullptr,
-                {},
-                0,
-                enabled.buffer_device_address
-            ))
+        if (shader.target == rdesc::EShaderTarget::SPIRV && !validateStage(
+                                                                code,
+                                                                SpvExecutionModelGLCompute,
+                                                                *projected,
+                                                                nri_core.GetDeviceDesc(device),
+                                                                nullptr,
+                                                                {},
+                                                                0,
+                                                                enabled.buffer_device_address
+                                                            ))
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        if (!rdesc::validShaderContainer(shader.target, code.words))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -766,8 +858,9 @@ namespace lux::render::detail
         return pipeline;
     }
 
-    RenderResult<std::array<const rdesc::SpirvStage*, 2>> rasterShaderStages(
-        const rdesc::SpirvArtifact& shader,
+    RenderResult<std::array<const rdesc::ShaderStageArtifact*, 2>>
+    rasterShaderStages(
+        const rdesc::ShaderProgramArtifact& shader,
         const GraphicsState& graphics,
         const nri::DeviceDesc& limits,
         const EnabledDeviceFeatures& enabled,
@@ -775,6 +868,10 @@ namespace lux::render::detail
         nri::Format depth
     ) noexcept
     {
+        if (shader.target != enabled.shader_target)
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
         auto projected = shaderInterface(shader.interface);
         if (!projected)
         {
@@ -795,8 +892,8 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const rdesc::SpirvStage* vertex_stage = nullptr;
-        const rdesc::SpirvStage* fragment_stage = nullptr;
+        const rdesc::ShaderStageArtifact* vertex_stage = nullptr;
+        const rdesc::ShaderStageArtifact* fragment_stage = nullptr;
         for (const auto& stage : shader.stages)
         {
             if (stage.stage == rdesc::EShaderType::VERTEX && !vertex_stage)
@@ -815,6 +912,45 @@ namespace lux::render::detail
         if (!vertex_stage || (color_count != 0 && !fragment_stage))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        if (shader.target == rdesc::EShaderTarget::DXIL)
+        {
+            for (const auto& stage : shader.stages)
+            {
+                if (!rdesc::validShaderContainer(shader.target, stage.words))
+                {
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                }
+            }
+            const auto vertex = std::ranges::find(
+                shader.interface.entry_points,
+                rdesc::EShaderType::VERTEX,
+                &rdesc::EntryPointInfo::stage
+            );
+            if (vertex == shader.interface.entry_points.end() ||
+                vertex->inputs.size() != graphics.vertex_attributes.size())
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            for (const auto& attribute : graphics.vertex_attributes)
+            {
+                const auto input =
+                    std::ranges::find(vertex->inputs, attribute.location, &rdesc::ShaderIoVariable::location);
+                const auto format = vertexFormat(attribute.format);
+                const auto scalar = format.scalar == rdesc::EDataScalar::FLOAT
+                                        ? rdesc::EVertexScalarBase::FLOAT
+                                        : (format.scalar == rdesc::EDataScalar::UINT ? rdesc::EVertexScalarBase::UINT
+                                                                                     : rdesc::EVertexScalarBase::INT);
+                const bool has_input = input != vertex->inputs.end();
+                const bool is_matching = has_input && input->base == scalar && input->vec_size == format.components &&
+                                         input->columns == 1 && input->array_size == 1;
+                if (!is_matching)
+                {
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                }
+            }
+            // The D3D12 PSO compiler validates the actual DXIL stage signatures and root signature together.
+            return std::array{vertex_stage, fragment_stage};
         }
         StageIo vertex_io, fragment_io;
         const bool valid_vertex = validateStage(

@@ -13,7 +13,8 @@ endif()
 add_subdirectory(graph)
 add_subdirectory(flowforge)
 if(
-    (LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT) AND
+    (LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT OR
+        LUX_BUILD_MATERIAL_COMPILER) AND
     NOT TARGET material_graph
 )
     add_subdirectory(material)
@@ -78,6 +79,14 @@ else()
     if(TARGET ui)
         list(APPEND LUX_FUNCTION_COMPONENTS ui ui_input)
     endif()
+endif()
+
+if(TARGET material_ir)
+    list(APPEND LUX_FUNCTION_COMPONENTS material_ir)
+endif()
+
+if(TARGET material_compiler)
+    list(APPEND LUX_FUNCTION_COMPONENTS material_compiler)
 endif()
 
 if(TARGET material_graph)

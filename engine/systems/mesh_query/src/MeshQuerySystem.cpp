@@ -1,7 +1,7 @@
 #include <lux/engine/scene/MeshQuerySystem.hpp>
-#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/Visual.hpp>
+#include <lux/engine/world/World.hpp>
 #include <entt/signal/sigh.hpp>
 
 namespace lux::scene
@@ -49,47 +49,32 @@ namespace lux::scene
     };
 
     MeshQuerySystem::MeshQuerySystem(Registry& registry) : impl_(std::make_unique<Impl>(registry)) {}
+
     MeshQuerySystem::~MeshQuerySystem() noexcept = default;
-    void MeshQuerySystem::updateStablePoint()
+
+    SceneSystem::Result MeshQuerySystem::execute() noexcept
     {
-        impl_->update();
-    }
-    bool MeshQuerySystem::hasPendingChanges() const noexcept
-    {
-        return impl_->hasPendingChanges();
+        if (impl_->hasPendingChanges())
+        {
+            impl_->update();
+        }
+        return {};
     }
 
     SceneSystemRegistration builtinMeshQuerySystemRegistration() noexcept
     {
         return {
-            .type = system::systemTypeId(MeshQuerySystem::Description.canonical_name),
-            .cpp_type = lux::cxx::make_basic_type_info<MeshQuerySystem>(),
-            .description = &MeshQuerySystem::Description,
-            .install = +[](SceneSystemInstaller& builder, SceneSystemDescription description
-                        ) noexcept -> lux::cxx::expected<void, SceneSystemBuildFailure> {
-                auto instance = builder.emplaceSystem<MeshQuerySystem>(description.instanceId(), builder.registry());
-                if (!instance)
+            .name = std::string{MeshQuerySystem::Name},
+            .create = +[](engine::EngineContext&, world::World& world, simulation::Simulation&,
+                          const ecs::ComponentSchemaSet&, std::span<const std::byte> bytes
+            ) noexcept -> cxx::expected<std::unique_ptr<SceneSystem>, error::Error>
+            {
+                const bool invalid_configuration = !bytes.empty() || world.registry().ctx().contains<MeshQuery>();
+                if (invalid_configuration)
                 {
-                    return lux::cxx::unexpected(instance.error());
+                    return cxx::unexpected(execution::toError(execution::EExecutionError::INVALID_ARGUMENT));
                 }
-                const auto maintenance = builder.addMaintenanceTask<MeshQuerySystem>(
-                    description.instanceId(),
-                    [](MeshQuerySystem& query, SceneStageContext& context) noexcept -> SceneStageResult {
-                        context.publication_needed |= query.hasPendingChanges();
-                        return ESceneProgress::COMPLETE;
-                    }
-                );
-                if (!maintenance)
-                {
-                    return maintenance;
-                }
-                return builder.addStablePointTask<MeshQuerySystem>(
-                    description.instanceId(),
-                    [](MeshQuerySystem& query) noexcept -> SceneStageResult {
-                        query.updateStablePoint();
-                        return ESceneProgress::COMPLETE;
-                    }
-                );
+                return std::unique_ptr<SceneSystem>{std::make_unique<MeshQuerySystem>(world.registry())};
             }
         };
     }

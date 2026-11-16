@@ -2,7 +2,7 @@
 #include <lux/engine/render/features/ShadowMapFeature.hpp>
 
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/ShadowProjectionBinding.hpp>
 
@@ -59,7 +59,7 @@ namespace lux::render
                      GraphBufferDesc{sizes[i]},
                      EGraphOrigin::IMPORTED,
                      {GraphBufferRange{0, sizes[i]}},
-                     StorageRequirement{StorageName(kDirectLightingStorageType.name()), config.lights}}
+                     ResourceRequirement{ResourceName(config.lights)}}
                 );
             }
             return {};

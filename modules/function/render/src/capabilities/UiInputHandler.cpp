@@ -7,7 +7,7 @@
 #include <lux/engine/render/execution/DrawListResources.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
 namespace lux::render::detail
@@ -56,12 +56,12 @@ namespace lux::render::detail
             index_bytes += padded_indices;
         }
         std::uint32_t slot = 0;
-        if (!target.execution.tryBeginWrite(slot))
+        if (!target.uploads.tryBeginWrite(slot))
         {
             return cxx::unexpected(RenderError{kFrameContract});
         }
         SubmissionFrontiers progress;
-        cxx::scope_exit finished([&]() noexcept { target.execution.finishWrite(slot, progress); });
+        cxx::scope_exit finished([&]() noexcept { target.uploads.finishWrite(slot, progress); });
         auto prepared = target.instance.prepareDrawList(target.pass, slot, vertex_bytes, index_bytes);
         if (!prepared)
         {

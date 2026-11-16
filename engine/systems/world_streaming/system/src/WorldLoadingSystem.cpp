@@ -1,4 +1,5 @@
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/SceneSystemRegistration.hpp>
 #include <lux/engine/assets/AssetRepository.hpp>
 #include <entt/container/dense_set.hpp>
 #include <entt/signal/sigh.hpp>
@@ -16,6 +17,8 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <tuple>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include <cmath>
@@ -33,7 +36,110 @@ namespace lux::scene
         constexpr auto kCapacity = error::errorId("lux.scene.content.capacity");
         constexpr auto kSchema = error::errorId("lux.scene.content.schema");
         constexpr auto kRestore = error::errorId("lux.scene.content.restore");
+
+        using LoadingConfiguration = std::tuple<
+            std::array<std::uint8_t, 16>, std::optional<std::string>, bool, std::array<std::uint64_t, 6>
+        >;
+
+        [[nodiscard]] bool validLimits(const WorldLoadingLimits& limits) noexcept
+        {
+            return  limits.in_flight && 
+                    limits.max_block_bytes && 
+                    limits.max_in_flight_encoded_bytes &&
+                    limits.entities && 
+                    limits.groups && 
+                    limits.component_bytes;
+        }
+
+        cxx::expected<std::unique_ptr<SceneSystem>, error::Error>
+        createWorldLoading(
+            engine::EngineContext& context, world::World& world, simulation::Simulation&,
+            const ecs::ComponentSchemaSet& schemas, std::span<const std::byte> bytes
+        ) noexcept
+        {
+            LoadingConfiguration configuration;
+            const auto codec = serialization::makePortableValueCodec<LoadingConfiguration>();
+            if (!codec.decode(bytes, &configuration))
+            {
+                return cxx::unexpected(error::Error{kInvalid});
+            }
+            const auto& [identity, name, load_all, limits] = configuration;
+            if (std::ranges::any_of(limits, [](auto limit) { return !std::in_range<std::size_t>(limit); }))
+            {
+                return cxx::unexpected(error::Error{kCapacity});
+            }
+            std::optional<std::uint32_t> geometry;
+            if (name)
+            {
+                const auto& supported = world.description().supported_geometries;
+                const auto found = std::ranges::find(supported, *name, &world::WorldGeometryDescription::name);
+                if (found == supported.end() || !std::in_range<std::uint32_t>(found - supported.begin()))
+                {
+                    return cxx::unexpected(error::Error{kInvalid});
+                }
+                geometry = static_cast<std::uint32_t>(found - supported.begin());
+            }
+            auto result = WorldLoadingSystem::create(
+                context,
+                world,
+                schemas,
+                asset::AssetId{uuids::uuid{identity}},
+                geometry,
+                load_all,
+                {
+                    static_cast<std::size_t>(limits[0]), static_cast<std::size_t>(limits[1]),
+                    static_cast<std::size_t>(limits[2]), static_cast<std::size_t>(limits[3]),
+                    static_cast<std::size_t>(limits[4]), static_cast<std::size_t>(limits[5])
+                }
+            );
+            if (!result)
+            {
+                return cxx::unexpected(result.error());
+            }
+            return std::unique_ptr<SceneSystem>{std::move(*result)};
+        }
     } // namespace
+
+    SceneSystemRegistration worldLoadingSystemRegistration() noexcept
+    {
+        return {
+            .name = "lux.scene.world_loading",
+            .configuration_version = 1,
+            .configuration = serialization::makePortableValueCodec<LoadingConfiguration>(),
+            .create = &createWorldLoading
+        };
+    }
+
+    cxx::expected<std::vector<std::byte>, error::Error>
+    makeWorldLoadingSystemConfiguration(
+        asset::AssetId source, std::optional<std::string> geometry, bool load_all, WorldLoadingLimits limits
+    ) noexcept
+    {
+        const bool invalid_geometry = geometry ? geometry->empty() : !load_all;
+        if (source.isNull() || invalid_geometry || !validLimits(limits))
+        {
+            return cxx::unexpected(error::Error{kInvalid});
+        }
+        std::array<std::uint8_t, 16> identity{};
+        std::ranges::transform(source.uuid().as_bytes(), identity.begin(), [](std::byte value)
+        {
+            return std::to_integer<std::uint8_t>(value);
+        });
+        const LoadingConfiguration configuration{
+            identity,
+            std::move(geometry),
+            load_all,
+            {limits.in_flight, limits.groups, limits.entities, limits.component_bytes,
+             limits.max_block_bytes, limits.max_in_flight_encoded_bytes}
+        };
+        const auto codec = serialization::makePortableValueCodec<LoadingConfiguration>();
+        std::vector<std::byte> bytes;
+        if (!codec.encode(&configuration, bytes))
+        {
+            return cxx::unexpected(error::Error{kInvalid});
+        }
+        return bytes;
+    }
 
     struct WorldLoadingSystem::Impl final
     {
@@ -152,11 +258,9 @@ namespace lux::scene
         asset::AssetId source, std::optional<std::uint32_t> geometry, bool load_all, WorldLoadingLimits limits
     ) noexcept
     {
-        const bool invalid_limits = !limits.in_flight || !limits.max_block_bytes ||
-            !limits.max_in_flight_encoded_bytes || !limits.entities || !limits.groups || !limits.component_bytes;
         const bool invalid_geometry = geometry
             ? *geometry >= world.description().supported_geometries.size() : !load_all;
-        if (source.isNull() || invalid_limits || invalid_geometry)
+        if (source.isNull() || !validLimits(limits) || invalid_geometry)
             return cxx::unexpected(error::Error{kInvalid});
         return std::unique_ptr<WorldLoadingSystem>(new WorldLoadingSystem(
             std::make_unique<Impl>(context, world, schemas, source, geometry, load_all, limits)

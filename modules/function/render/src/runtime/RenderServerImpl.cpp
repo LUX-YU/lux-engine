@@ -2,7 +2,7 @@
 #include <exception>
 #include <lux/engine/render/execution/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <map>
 #include <ranges>
@@ -10,12 +10,17 @@
 
 namespace lux::render
 {
-    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler)
-        : config(std::move(value)), cpu_scheduler(std::move(cpu_scheduler)), responder(std::move(input)),
-          render_loop_([](void*) noexcept { ipc::IpcCore::instance().notifyWork(); })
+    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler scheduler)
+        : config_(std::move(value)), cpu_scheduler_(std::move(scheduler)), responder_(std::move(input)),
+          server_context_(
+              cxx::execution::default_manual_context_config(),
+              {nullptr, [](void*) noexcept { ipc::IpcCore::instance().notifyWork(); }}
+          )
     {
         const auto query = bindFrameworkCommand<QueryCommandIds, &Impl::queryCommandIds>();
         if (query != QueryCommandIds::id) std::terminate(); // Fixed bootstrap identity is a protocol invariant.
+        bindFrameworkCommand<QueryResource, &Impl::queryResource>();
+        bindFrameworkCommand<GetOrCreateResource, &Impl::getOrCreateResource>();
         bindFrameworkCommand<CreateScene, &Impl::createScene>();
         bindFrameworkCommand<RemoveScene, &Impl::removeScene>();
         bindFrameworkCommand<CreateView, &Impl::createView>();
@@ -39,9 +44,8 @@ namespace lux::render
         bindFrameworkCommand<ListCommandBindings, &Impl::listCommandBindings>();
         bindFrameworkCommand<SelectCommandBinding, &Impl::selectCommandBinding>();
         bindSubmitFrameCommand();
-        frame_inputs_.resize(static_cast<std::size_t>(config.max_frames_ahead) + 1);
+        frame_inputs_.resize(static_cast<std::size_t>(config_.max_frames_ahead) + 1);
         submit_frame_command_ = *command_registry_.findCommand(commandDescriptor<SubmitFrame>());
-        stop_command_ = *command_registry_.findCommand(commandDescriptor<Stop>());
         select_binding_command_ = *command_registry_.findCommand(commandDescriptor<SelectCommandBinding>());
     }
 
@@ -56,13 +60,13 @@ namespace lux::render
         auto& state = *static_cast<Impl*>(user);
         if (severity == nri::Message::ERROR)
         {
-            ++state.validation_errors;
+            state.validation_errors_.fetch_add(1, std::memory_order_relaxed);
         }
         if (severity == nri::Message::WARNING)
         {
-            ++state.validation_warnings;
+            state.validation_warnings_.fetch_add(1, std::memory_order_relaxed);
         }
-        const auto& sink = state.config.diagnostics;
+        const auto& sink = state.config_.diagnostics;
         if (sink.report)
         {
             const auto level = severity == nri::Message::ERROR     ? ERenderDiagnosticSeverity::ERROR_MESSAGE
@@ -81,45 +85,111 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::initialize(DeviceOptions device_options) noexcept
     {
-        auto& s = *this;
-        const nri::CallbackInterface diagnostic{Impl::diagnostic, [](void*) noexcept {}, &s};
-        auto device = detail::DeviceSession::create(device_options, diagnostic, s.config.validation, 3);
-        if (!device)
+        const nri::CallbackInterface callbacks{Impl::diagnostic, [](void*) noexcept {}, this};
+        auto created_device = detail::DeviceSession::create(device_options, callbacks, config_.validation, 3);
+        if (!created_device)
         {
-            return cxx::unexpected(device.error());
+            return cxx::unexpected(created_device.error());
         }
-        s.device = std::move(*device);
-        if (s.config.uploads)
+        device_ = std::move(*created_device);
+        if (config_.uploads)
         {
-            auto uploads = detail::ResourceUploader::create(*s.device, *s.config.uploads, s.cpu_scheduler);
-            if (!uploads)
+            auto created_uploads = detail::ResourceUploader::create(*device_, *config_.uploads, cpu_scheduler_);
+            if (!created_uploads)
             {
-                return cxx::unexpected(uploads.error());
+                return cxx::unexpected(created_uploads.error());
             }
-            s.uploads = std::move(*uploads);
+            uploads_ = std::move(*created_uploads);
         }
-        auto frames = detail::FrameExecution::create(*s.device, s.uploads.get(), s.config.frames_in_flight);
-        if (!frames)
+        auto created_frames = detail::FrameExecution::create(*device_, uploads_.get(), config_.frames_in_flight);
+        if (!created_frames)
         {
-            return cxx::unexpected(frames.error());
+            return cxx::unexpected(created_frames.error());
         }
-        s.frames = std::move(*frames);
-        const auto& enabled = s.device->enabledFeatures();
-        s.resources.emplace(
-            (s.device->descriptors().capacity(nri::DescriptorType::TEXTURE) ? 1u : 0u) |
-            (enabled.texture_compression_bc ? 2u : 0u) |
-            (s.device->descriptors().capacity(nri::DescriptorType::STORAGE_STRUCTURED_BUFFER) ? 4u : 0u)
-        );
-        s.global_storages.emplace(*s.resources, true);
-        s.paged_instances = device_options.buffer_device_address;
+        frames_ = std::move(*created_frames);
+        resources_.emplace();
+        global_storages_.emplace(*resources_, EResourceDomain::DEVICE);
+        paged_instances_ = device_options.buffer_device_address;
         return {};
+    }
+
+    namespace
+    {
+        // One operation owns the input data moved to the CPU scheduler. Device and
+        // registered feature declarations are borrowed: the Server's command scope
+        // must be settled before either owner is destroyed.
+        struct EffectCompileWork final
+        {
+            nri::Device& device;
+            const nri::CoreInterface& core;
+            detail::EnabledDeviceFeatures features;
+            std::array<const detail::QueueProperties*, 3> queues;
+            std::vector<ResourceDeclaration> resource_declarations;
+            GraphEffectRequest request;
+            std::vector<const FeatureEntry*> entries;
+            std::size_t config_limit;
+            std::vector<RenderEffect::ResourceDependency> resource_dependencies;
+
+            [[nodiscard]] RenderResult<std::pair<RenderEffect, RenderGraph>> compile() && noexcept
+            {
+                return compileEffect(
+                    device,
+                    core,
+                    features,
+                    queues,
+                    resource_declarations,
+                    request,
+                    entries,
+                    config_limit,
+                    std::move(resource_dependencies)
+                );
+            }
+        };
+    } // namespace
+
+    exec::task<EffectCreated> RenderServer::Impl::adoptCompiledEffect(
+        EffectCompileResult candidate,
+        std::vector<RenderEffect::Implementation> implementations
+    ) noexcept
+    {
+        if (!candidate)
+        {
+            co_return EffectCreated{candidate.error()};
+        }
+
+        auto [compiled_effect, graph] = std::move(*candidate);
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested())
+        {
+            co_return EffectCreated{RenderError{kCommandCancelled}};
+        }
+
+        auto programs = co_await compiled_effect.plan->preparePrograms(*device_, graph, cpu_scheduler_);
+        if (!programs)
+        {
+            co_return EffectCreated{programs.error()};
+        }
+        if (stop.stop_requested())
+        {
+            co_return EffectCreated{RenderError{kCommandCancelled}};
+        }
+
+        compiled_effect.implementations = std::move(implementations);
+        if (auto bindings = resolveFrameBindings(compiled_effect, graph); !bindings)
+        {
+            co_return EffectCreated{bindings.error()};
+        }
+
+        const auto effect = effects_.emplace(std::move(compiled_effect));
+        compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
+        co_return EffectCreated{{}, effect};
     }
 
     auto RenderServer::Impl::compileGraphEffect(
         GraphEffectRequest&& input,
         RenderError initial_error,
         std::vector<RenderEffect::Implementation> implementations,
-        std::vector<RenderEffect::StorageDependency> storage_dependencies
+        std::vector<RenderEffect::ResourceDependency> resource_dependencies
     ) noexcept
     {
         std::vector<const FeatureEntry*> registrations;
@@ -134,7 +204,7 @@ namespace lux::render
             {
                 break;
             }
-            const auto* found = features.find(selection.feature);
+            const auto* found = features_.find(selection.feature);
             if (!found)
             {
                 initial_error = {kRuntimeIdentity};
@@ -143,78 +213,44 @@ namespace lux::render
             registrations.push_back(found);
         }
 
-        std::vector<StorageNameView> storage_types;
-        resources->forEachType(
-            [&](StorageTypeId id, const StorageDescriptor& type, std::uint32_t) noexcept
+        std::vector<ResourceDeclaration> resource_declarations;
+        resources_->forEachType(
+            [&](ResourceTypeId id, const ResourceDefinition& type) noexcept
             {
-                const auto* factory = resources->factory(id);
-                if (factory && factory->binding_ops &&
-                    static_cast<const detail::StorageBindingOps*>(factory->binding_ops)->resolve)
+                const auto* factory = resources_->factory(id);
+                if (factory && factory->storage->binding_ops &&
+                    static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops)->resolve)
                 {
-                    storage_types.push_back(type.type);
+                    resource_declarations.push_back({id, type.type, type.domain});
                 }
             }
         );
-        std::ranges::sort(storage_types, {}, [](StorageNameView type) { return type.name(); });
-        // Workers receive only immutable feature entries, the request and actual device facts.
-        // The final continuation is the sole place that adopts a candidate into the Effect table.
+        std::ranges::sort(resource_declarations, {}, [](const ResourceDeclaration& type) { return type.name.name(); });
+        EffectCompileWork work{
+            device_->device(),
+            device_->nriCore(),
+            device_->enabledFeatures(),
+            {
+                &device_->queue(detail::EQueueRole::GRAPHICS).properties(),
+                &device_->queue(detail::EQueueRole::COMPUTE).properties(),
+                &device_->queue(detail::EQueueRole::TRANSFER).properties()
+            },
+            std::move(resource_declarations),
+            std::move(input),
+            std::move(registrations),
+            config_.max_config_bytes,
+            std::move(resource_dependencies)
+        };
+
+        // The CPU operation owns its request. Only the RenderThread adopts a compiled effect.
         auto compiled =
-            stdexec::schedule(cpu_scheduler) |
-            stdexec::then(
-                [native = &device->device(),
-                 nri_core = &device->nriCore(),
-                 enabled = device->enabledFeatures(),
-                 queues =
-                     std::array{
-                         &device->queue(detail::EQueueRole::GRAPHICS).properties(),
-                         &device->queue(detail::EQueueRole::COMPUTE).properties(),
-                         &device->queue(detail::EQueueRole::TRANSFER).properties()
-                     },
-                 storage_types = std::move(storage_types),
-                 request = std::move(input),
-                 entries = std::move(registrations),
-                 limit = config.max_config_bytes,
-                 storage_dependencies = std::move(storage_dependencies)]() mutable noexcept
-                {
-                    return compileEffect(
-                        *native,
-                        *nri_core,
-                        enabled,
-                        queues,
-                        storage_types,
-                        request,
-                        entries,
-                        limit,
-                        std::move(storage_dependencies)
-                    );
-                }
-            ) |
-            stdexec::continues_on(render_loop_.scheduler()) |
+            stdexec::schedule(cpu_scheduler_) |
+            stdexec::then([work = std::move(work)]() mutable noexcept { return std::move(work).compile(); }) |
+            stdexec::continues_on(server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery)) |
             stdexec::let_value(
-                [server = this, implementations = std::move(implementations)](
-                    RenderResult<std::pair<RenderEffect, RenderGraph>>& candidate
-                ) mutable noexcept
+                [this, implementations = std::move(implementations)](EffectCompileResult& candidate) mutable noexcept
                 {
-                    return [](Impl* server, RenderResult<std::pair<RenderEffect, RenderGraph>> candidate,
-                              std::vector<RenderEffect::Implementation> implementations
-                    ) noexcept -> exec::task<EffectCreated>
-                    {
-                        if (!candidate) co_return EffectCreated{candidate.error()};
-                        auto [compiled_effect, graph] = std::move(*candidate);
-                        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-                        if (stop.stop_requested()) co_return EffectCreated{RenderError{kCommandCancelled}};
-                        auto programs = co_await compiled_effect.plan->preparePrograms(
-                            *server->device, graph, server->cpu_scheduler
-                        );
-                        if (!programs) co_return EffectCreated{programs.error()};
-                        if (stop.stop_requested()) co_return EffectCreated{RenderError{kCommandCancelled}};
-                        compiled_effect.implementations = std::move(implementations);
-                        auto bindings = server->resolveFrameBindings(compiled_effect, graph);
-                        if (!bindings) co_return EffectCreated{bindings.error()};
-                        const auto effect = server->effects.emplace(std::move(compiled_effect));
-                        ++server->compiled_graphs;
-                        co_return EffectCreated{{}, effect};
-                    }(server, std::move(candidate), std::move(implementations));
+                    return adoptCompiledEffect(std::move(candidate), std::move(implementations));
                 }
             );
         auto invalid = stdexec::just(EffectCreated{initial_error});
@@ -225,8 +261,8 @@ namespace lux::render
     auto RenderServer::Impl::createCapabilityEffect(CreateEffect::Request&& input) noexcept
     {
         GraphEffectRequest graph{input.output};
-        std::vector<RenderEffect::StorageDependency> storage_dependencies;
-        auto built = buildCapabilityGraph(input, graph, storage_dependencies);
+        std::vector<RenderEffect::ResourceDependency> resource_dependencies;
+        auto built = buildCapabilityGraph(input, graph, resource_dependencies);
         std::vector<RenderEffect::Implementation> implementations;
         for (const auto& contribution : input.composition.contributions)
         {
@@ -236,7 +272,7 @@ namespace lux::render
             std::move(graph),
             built ? RenderError{} : built.error(),
             std::move(implementations),
-            std::move(storage_dependencies)
+            std::move(resource_dependencies)
         );
     }
 
@@ -251,7 +287,7 @@ namespace lux::render
     ) noexcept
     {
         const auto* input = &_request;
-        auto* effect = effects.find(input->effect);
+        auto* effect = effects_.find(input->effect);
         if (!effect)
         {
             output_response.error = RenderError{kRuntimeIdentity};
@@ -264,44 +300,29 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeState};
             return;
         }
-        effects.erase(input->effect);
+        effects_.erase(input->effect);
         output_response = {};
     }
 
     RenderResult<EffectAttachment> RenderServer::Impl::prepareAttachment(
         RenderEffect& effect,
         detail::TargetOutput output,
-        StorageSet& scene,
-        StorageSet& view,
-        StorageSet& attachment,
+        ResourceSet& scene,
+        ResourceSet& view,
         const AttachmentRequest& input
     ) noexcept
     {
         const auto target_images = std::span(input.target_images);
         const auto& plan = *effect.plan;
-        auto dependencies = storageContext();
-        std::vector<std::pair<StorageSet*, StorageId>> created_storages;
-        cxx::scope_exit rollback(
-            [&]() noexcept
-            {
-                for (const auto& [set, id] : created_storages | std::views::reverse)
-                {
-                    (void)set->remove(id);
-                }
-            }
-        );
-        const std::array scope_sets{&*global_storages, &scene, &view, &attachment};
-        std::vector<StorageId> dependency_storages;
-        dependency_storages.reserve(effect.storage_dependencies.size());
-        for (const auto& dependency : effect.storage_dependencies)
+        auto dependencies = resourceCreateContext();
+        const std::array scope_sets{&*global_storages_, &scene, &view};
+        std::vector<ResourceInstanceId> dependency_storages;
+        dependency_storages.reserve(effect.resource_dependencies.size());
+        for (const auto& dependency : effect.resource_dependencies)
         {
-            const auto& requirement = dependency.requirement;
-            auto instance = ensureStorage(
+            auto instance = ensureResource(
                 *scope_sets[static_cast<std::size_t>(dependency.scope)],
-                resources->typeId(requirement.type.view()),
-                requirement.key,
-                requirement.config,
-                created_storages
+                dependency.declaration
             );
             if (!instance)
             {
@@ -311,12 +332,11 @@ namespace lux::render
         }
         EffectAttachment candidate;
         candidate.instance =
-            std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), plan, output);
+            std::make_unique<detail::RenderGraphInstance>(*device_, frames_->frameCount(), plan, output);
         candidate.target_images.reserve(target_images.size());
-        std::vector<GraphResourceId> image_resources;
         for (const auto& input : target_images)
         {
-            const auto* source = targets.find(input.target);
+            const auto* source = targets_.find(input.target);
             if (!source || !source->description.sampled || source->surface())
             {
                 return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -329,41 +349,48 @@ namespace lux::render
             }
             const auto index = static_cast<std::uint32_t>(resource - plan.resources().begin());
             const GraphResourceId id{index};
-            const bool duplicate = std::ranges::find(image_resources, id) != image_resources.end();
             const auto* image = std::get_if<GraphImageDesc>(&resource->description);
-            const bool invalid_resource = duplicate || !image || !resource->memory_used ||
-                                          resource->origin != EGraphOrigin::IMPORTED ||
-                                          !resource->sampled_target_input;
-            if (invalid_resource)
+            const bool duplicate = std::ranges::any_of(
+                candidate.target_images,
+                [id](const auto& imported) noexcept { return imported.resource == id; }
+            );
+            if (duplicate || !image || !resource->memory_used ||
+                resource->origin != EGraphOrigin::IMPORTED || !resource->sampled_target_input)
             {
                 return cxx::unexpected(RenderError{kCommandContract});
+            }
+            // Static imported-resource structure. This belongs in Graph compilation
+            // once the compiled import contract is available to Attachment creation.
+            if (image->layers != 1 || image->mips != 1)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             if (source->resizing)
             {
                 return cxx::unexpected(RenderError{kDeviceBusy});
             }
-            candidate.target_images.push_back({input.target, id});
+
             const auto images = source->output();
-            const bool incompatible = !images.description.sampled || images.description.samples != image->samples ||
-                                      images.description.format != image->format || image->layers != 1 ||
-                                      image->mips != 1;
-            if (incompatible)
+            // Dynamic properties can change when a Target is resized. Target::description
+            // is already validated as sampled above, so do not test it a second time.
+            if (images.description.samples != image->samples || images.description.format != image->format)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            image_resources.push_back(id);
-            for (std::uint32_t slot = 0; slot < frames->frameCount(); ++slot)
+
+            candidate.target_images.push_back({input.target, id});
+            for (std::uint32_t slot = 0; slot < frames_->frameCount(); ++slot)
             {
                 candidate.instance->bindImage(id, slot, *images.frames[slot].image);
             }
         }
         candidate.storage_inputs.reserve(plan.resources().size());
-        std::vector<StorageId> resolved(plan.resources().size());
-        for (std::size_t dependency_index = 0; dependency_index < effect.storage_dependencies.size();
+        std::vector<ResourceInstanceId> resolved(plan.resources().size());
+        for (std::size_t dependency_index = 0; dependency_index < effect.resource_dependencies.size();
              ++dependency_index)
         {
-            const auto& dependency = effect.storage_dependencies[dependency_index];
-            const auto* factory = resources->factory(dependency.requirement.type.view());
+            const auto& dependency = effect.resource_dependencies[dependency_index];
+            const auto* factory = resources_->factory(dependency.declaration);
             const auto id = dependency_storages[dependency_index];
             for (const auto& argument : dependency.bindings)
             {
@@ -374,11 +401,11 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
                 const auto* value = argument.data();
-                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->binding_ops);
+                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
                 resolved[index] = id;
                 if (auto bound =
                         candidate
-                            .bindStorage(index, *ops, resources->storageInstance(id), value, frames->frameCount());
+                            .bindStorage(index, *ops, resources_->storageInstance(id), value, frames_->frameCount());
                     !bound)
                 {
                     return cxx::unexpected(bound.error());
@@ -388,11 +415,11 @@ namespace lux::render
         for (const auto& binding : effect.bindings)
         {
             auto created = binding.create(
-                *device,
-                *frames,
-                *resources,
+                *device_,
+                *frames_,
+                *resources_,
                 *candidate.instance,
-                device->programs(),
+                device_->programs(),
                 resolved,
                 binding.configuration.data()
             );
@@ -402,7 +429,7 @@ namespace lux::render
             }
             created->definition = &binding;
             created->resolved_inputs.resize(binding.inputs.size());
-            for (std::uint32_t slot = 0; slot < frames->frameCount(); ++slot)
+            for (std::uint32_t slot = 0; slot < frames_->frameCount(); ++slot)
             {
                 for (const auto& update : created->initial_resources)
                 {
@@ -418,7 +445,7 @@ namespace lux::render
             {
                 continue;
             }
-            auto sampler = device->descriptors().sampler(effect.samplers[input]);
+            auto sampler = device_->descriptors().sampler(effect.samplers[input]);
             if (!sampler)
             {
                 return cxx::unexpected(sampler.error());
@@ -442,7 +469,6 @@ namespace lux::render
             return cxx::unexpected(values.error());
         }
         candidate.instance->setViewport(input.viewport);
-        rollback.release();
         return candidate;
     }
 
@@ -452,42 +478,42 @@ namespace lux::render
             ids,
             [&](auto id)
             {
-                const auto& attachment = *attachments.find(id);
+                const auto& attachment = *attachments_.find(id);
                 auto* instance = attachment.instance.get();
-                const bool target_resizing = targets.find(attachment.target)->resizing ||
+                const bool target_resizing = targets_.find(attachment.target)->resizing ||
                                              std::ranges::any_of(
                                                  attachment.target_images,
-                                                 [&](const auto& input) { return targets.find(input.target)->resizing; }
+                                                 [&](const auto& input) { return targets_.find(input.target)->resizing; }
                                              );
-                return !target_resizing && frames->canChangeResources({&instance, 1});
+                return !target_resizing && frames_->canChangeResources({&instance, 1});
             }
         );
     }
 
     void RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
     {
-        auto& attachment = *attachments.find(id);
+        auto& attachment = *attachments_.find(id);
 
-        auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
-        auto& effect = *effects.find(attachment.effect);
-        auto& target = *targets.find(attachment.target);
+        auto& view = *scenes_.find(attachment.scene)->views.find(attachment.view);
+        auto& effect = *effects_.find(attachment.effect);
+        auto& target = *targets_.find(attachment.target);
         const auto last_view = view.attachments.back();
         view.attachments[attachment.view_position] = last_view;
-        attachments.find(last_view)->view_position = attachment.view_position;
+        attachments_.find(last_view)->view_position = attachment.view_position;
         view.attachments.pop_back();
 
         const auto last_effect = effect.attachments.back();
         effect.attachments[attachment.effect_position] = last_effect;
-        attachments.find(last_effect)->effect_position = attachment.effect_position;
+        attachments_.find(last_effect)->effect_position = attachment.effect_position;
         effect.attachments.pop_back();
         for (const auto& input : attachment.target_images)
         {
-            std::erase(targets.find(input.target)->consumers, id);
+            std::erase(targets_.find(input.target)->consumers, id);
         }
         target.attachment = {};
-        active_targets.erase(attachment.target);
-        active_frame_inputs_dirty = true;
-        attachments.erase(id);
+        active_targets_.erase(attachment.target);
+        active_frame_inputs_dirty_ = true;
+        attachments_.erase(id);
     }
 
     void RenderServer::Impl::attachEffect(const Attach::Request& _request, Attach::Response& output_response) noexcept
@@ -497,10 +523,10 @@ namespace lux::render
         const auto& view_id = _request.view;
         const auto& target_id = _request.target;
         const auto& effect_id = _request.effect;
-        auto* scene = scenes.find(scene_id);
+        auto* scene = scenes_.find(scene_id);
         auto* view = scene ? scene->views.find(view_id) : nullptr;
-        auto* target = targets.find(target_id);
-        auto* effect = effects.find(effect_id);
+        auto* target = targets_.find(target_id);
+        auto* effect = effects_.find(effect_id);
         const bool invalid = !view || !target || !effect;
         if (invalid)
         {
@@ -530,7 +556,7 @@ namespace lux::render
         }
         if (!_request.replaces.isNull())
         {
-            const auto* previous = attachments.find(_request.replaces);
+            const auto* previous = attachments_.find(_request.replaces);
             if (!previous)
             {
                 output_response.error = RenderError{kRuntimeIdentity};
@@ -553,26 +579,23 @@ namespace lux::render
             output_response.error = RenderError{kCommandContract};
             return;
         }
-        auto local_storages = std::make_unique<StorageSet>(*resources);
         auto prepared =
-            prepareAttachment(*effect, target->output(), scene->storages, view->storages, *local_storages, _request);
+            prepareAttachment(*effect, target->output(), scene->storages, view->storages, _request);
         if (!prepared)
         {
             output_response.error = prepared.error();
             return;
         }
-        output_response = {};
         prepared->effect = effect_id;
         prepared->scene = scene_id;
         prepared->view = view_id;
         prepared->target = target_id;
-        prepared->storages = std::move(local_storages);
         if (!_request.replaces.isNull())
         {
             detachAttachment(_request.replaces);
         }
-        const auto id = attachments.emplace(std::move(*prepared));
-        auto& attachment = *attachments.find(id);
+        const auto id = attachments_.emplace(std::move(*prepared));
+        auto& attachment = *attachments_.find(id);
         attachment.view_position = view->attachments.size();
         attachment.effect_position = effect->attachments.size();
         view->attachments.push_back(id);
@@ -580,19 +603,20 @@ namespace lux::render
         target->attachment = id;
         for (const auto& input : attachment.target_images)
         {
-            auto& consumers = targets.find(input.target)->consumers;
+            auto& consumers = targets_.find(input.target)->consumers;
             if (std::ranges::find(consumers, id) == consumers.end())
             {
                 consumers.push_back(id);
             }
         }
+        output_response = {};
         output_response.attachment = id;
         if (target->enabled)
         {
-            active_targets.emplace(target_id);
+            active_targets_.emplace(target_id);
         }
-        active_frame_inputs_dirty = true;
-        storages_created.store(resources->creations());
+        active_frame_inputs_dirty_ = true;
+        storages_created_.store(resources_->creations(), std::memory_order_relaxed);
         return;
     }
 
@@ -620,9 +644,9 @@ namespace lux::render
                 continue;
             }
             visited.push_back(id);
-            const auto* target = targets.find(id);
+            const auto* target = targets_.find(id);
             const auto* attachment =
-                target && target->attachment != replaced ? attachments.find(target->attachment) : nullptr;
+                target && target->attachment != replaced ? attachments_.find(target->attachment) : nullptr;
             if (attachment)
             {
                 for (const auto& input : attachment->target_images)
@@ -639,7 +663,7 @@ namespace lux::render
         CreateScene::Response& output_response
     ) noexcept
     {
-        output_response = SceneCreated{{}, scenes.emplace(*resources)};
+        output_response = SceneCreated{{}, scenes_.emplace(*resources_, *global_storages_)};
     }
 
     void RenderServer::Impl::removeScene(
@@ -649,15 +673,20 @@ namespace lux::render
     {
         const auto* input = &_request;
         const auto scene_id = input->scene;
-        auto* scene = scenes.find(scene_id);
+        auto* scene = scenes_.find(scene_id);
         if (!scene)
         {
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        if (scene->storages.hasCommands())
+        {
+            output_response.error = RenderError{kDeviceBusy};
+            return;
+        }
         for (auto& view : scene->views)
         {
-            if (!canChangeAttachments(view.attachments))
+            if (view.storages.hasCommands() || !canChangeAttachments(view.attachments))
             {
                 output_response.error = RenderError{kDeviceBusy};
                 return;
@@ -670,7 +699,7 @@ namespace lux::render
                 detachAttachment(view.attachments.back());
             }
         }
-        scenes.erase(scene_id);
+        scenes_.erase(scene_id);
         output_response = {};
     }
 
@@ -678,13 +707,13 @@ namespace lux::render
     RenderServer::Impl::createView(const CreateView::Request& _request, CreateView::Response& output_response) noexcept
     {
         const auto* input = &_request;
-        auto* scene = scenes.find(input->scene);
+        auto* scene = scenes_.find(input->scene);
         if (!scene)
         {
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = ViewCreated{{}, scene->views.emplace(*resources)};
+        output_response = ViewCreated{{}, scene->views.emplace(*resources_, scene->storages)};
     }
 
     void RenderServer::Impl::updateAttachmentInputs(
@@ -692,7 +721,7 @@ namespace lux::render
         UpdateAttachmentInputs::Response& output_response
     ) noexcept
     {
-        auto* attachment = attachments.find(input.attachment);
+        auto* attachment = attachments_.find(input.attachment);
         if (!attachment)
         {
             output_response.error = RenderError{kRuntimeIdentity};
@@ -704,7 +733,7 @@ namespace lux::render
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
-        const auto& effect = *effects.find(attachment->effect);
+        const auto& effect = *effects_.find(attachment->effect);
         if (auto applied =
                 attachment->instance
                     ->setInputs(input.parameters, input.conditions, input.parameter_type, effect.parameter_projections);
@@ -722,7 +751,7 @@ namespace lux::render
         InvalidateHistory::Response& output
     ) noexcept
     {
-        auto* attachment = attachments.find(input.attachment);
+        auto* attachment = attachments_.find(input.attachment);
         if (!attachment)
         {
             output.error = RenderError{kRuntimeIdentity};
@@ -740,14 +769,14 @@ namespace lux::render
     RenderServer::Impl::removeView(const RemoveView::Request& _request, RemoveView::Response& output_response) noexcept
     {
         const auto* input = &_request;
-        auto* scene = scenes.find(input->scene);
+        auto* scene = scenes_.find(input->scene);
         auto* view = scene ? scene->views.find(input->view) : nullptr;
         if (!view)
         {
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (!canChangeAttachments(view->attachments))
+        if (view->storages.hasCommands() || !canChangeAttachments(view->attachments))
         {
             output_response.error = RenderError{kDeviceBusy};
             return;
@@ -777,25 +806,25 @@ namespace lux::render
         if (is_surface)
         {
             auto physical =
-                detail::SurfaceTarget::create(*device, input.description, *input.surface, frames->frameCount());
+                detail::SurfaceTarget::create(*device_, input.description, *input.surface, frames_->frameCount());
             if (!physical)
             {
                 response.error = physical.error();
                 return;
             }
-            id = targets.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
+            id = targets_.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
         }
         else
         {
-            auto physical = detail::OffscreenTarget::create(*device, input.description, frames->frameCount());
+            auto physical = detail::OffscreenTarget::create(*device_, input.description, frames_->frameCount());
             if (!physical)
             {
                 response.error = physical.error();
                 return;
             }
-            id = targets.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
+            id = targets_.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
         }
-        response = TargetCreated{{}, id, 1, targets.find(id)->description, true};
+        response = TargetCreated{{}, id, 1, targets_.find(id)->description, true};
     }
 
     RenderResult<RenderServer::Impl::ResizeCandidates> RenderServer::Impl::prepareTargetResize(
@@ -808,7 +837,7 @@ namespace lux::render
         candidates.reserve(affected.size());
         for (auto id : affected)
         {
-            auto& attachment = *attachments.find(id);
+            auto& attachment = *attachments_.find(id);
             std::vector<detail::RenderGraphInstance::ImageReplacement> inputs;
             for (const auto& image : attachment.target_images)
             {
@@ -818,7 +847,7 @@ namespace lux::render
                 }
             }
             auto changed = attachment.instance->prepareResize(
-                attachment.target == target ? output : targets.find(attachment.target)->output(),
+                attachment.target == target ? output : targets_.find(attachment.target)->output(),
                 inputs
             );
             if (!changed)
@@ -835,7 +864,7 @@ namespace lux::render
         const auto input = std::move(request);
         const auto response = [this, id = input.target](RenderError error = {}) noexcept
         {
-            const auto* current = targets.find(id);
+            const auto* current = targets_.find(id);
             if (!current)
             {
                 return TargetCreated{error};
@@ -847,13 +876,13 @@ namespace lux::render
         {
             co_return response(valid.error());
         }
-        auto* target = targets.find(input.target);
+        auto* target = targets_.find(input.target);
         if (!target)
         {
             co_return response(RenderError{kRuntimeIdentity});
         }
         const bool different_kind = input.description.kind != target->description.kind;
-        const auto maximum = device->description().dimensions.attachmentMaxDim;
+        const auto maximum = device_->description().dimensions.attachmentMaxDim;
         const bool oversized = input.description.width > maximum || input.description.height > maximum;
         const bool removes_sampling = !input.description.sampled && !target->consumers.empty();
         if (different_kind || oversized || removes_sampling)
@@ -869,8 +898,8 @@ namespace lux::render
         if (!target->attachment.isNull())
         {
             affected.push_back(target->attachment);
-            const auto& attachment = *attachments.find(target->attachment);
-            if (!effects.find(attachment.effect)->plan->compatible(input.description))
+            const auto& attachment = *attachments_.find(target->attachment);
+            if (!effects_.find(attachment.effect)->plan->compatible(input.description))
             {
                 co_return response(RenderError{kDeviceArgument});
             }
@@ -887,36 +916,36 @@ namespace lux::render
         std::vector<TargetId> paused;
         for (auto id : affected)
         {
-            const auto& attachment = *attachments.find(id);
+            const auto& attachment = *attachments_.find(id);
             instances.push_back(attachment.instance.get());
             paused.push_back(attachment.target);
-            active_targets.erase(attachment.target);
+            active_targets_.erase(attachment.target);
         }
         target->resizing = true;
-        active_frame_inputs_dirty = true;
+        active_frame_inputs_dirty_ = true;
         cxx::scope_exit finish(
             [&]() noexcept
             {
-                targets.find(input.target)->resizing = false;
+                targets_.find(input.target)->resizing = false;
                 for (auto id : paused)
                 {
-                    const auto& output = *targets.find(id);
+                    const auto& output = *targets_.find(id);
                     const bool available = !output.surface() || output.surface()->available();
                     if (output.enabled && !output.attachment.isNull() && available)
                     {
-                        active_targets.emplace(id);
+                        active_targets_.emplace(id);
                     }
                 }
-                active_frame_inputs_dirty = true;
+                active_frame_inputs_dirty_ = true;
             }
         );
-        const auto accepted = frames->acceptedUses(instances);
+        const auto accepted = frames_->acceptedUses(instances);
         RenderTarget::VPhysicalTarget physical;
         ResizeCandidates candidates;
         const bool surface = target->surface() != nullptr;
         if (!surface)
         {
-            auto created = detail::OffscreenTarget::create(*device, input.description, frames->frameCount());
+            auto created = detail::OffscreenTarget::create(*device_, input.description, frames_->frameCount());
             if (!created)
             {
                 co_return response(created.error());
@@ -933,57 +962,26 @@ namespace lux::render
             }
             candidates = std::move(*prepared);
         }
-        // Register all physical-queue frontiers before suspension; no device idle or per-pass wait.
-        RenderError wait_error;
-        const auto wait = [&](std::size_t q)
-        { return device->physicalQueue(q).whenSubmissionCompletes(accepted.serials[q]); };
-        const auto recordWaitFailure = [&](const RenderResult<void>& completed)
+        // The captured values retain all accepted uses, independently of queue role aliases.
+        if (auto waited = co_await device_->waitFrontiers(accepted); !waited)
         {
-            if (!completed && wait_error.type == 0)
-            {
-                wait_error = completed.error();
-            }
-        };
-        switch (device->queueCount())
-        {
-        case 1:
-            recordWaitFailure(co_await wait(0));
-            break;
-        case 2:
-        {
-            auto [first, second] = co_await stdexec::when_all(wait(0), wait(1));
-            recordWaitFailure(first);
-            recordWaitFailure(second);
-            break;
+            co_return response(waited.error());
         }
-        case 3:
-        {
-            auto [first, second, third] = co_await stdexec::when_all(wait(0), wait(1), wait(2));
-            recordWaitFailure(first);
-            recordWaitFailure(second);
-            recordWaitFailure(third);
-            break;
-        }
-        }
-        if (wait_error.type != 0)
-        {
-            co_return response(wait_error);
-        }
-        target = targets.find(input.target);
+        target = targets_.find(input.target);
         if (surface)
         {
             const auto window = target->surface()->surface();
             if (!target->attachment.isNull())
             {
-                attachments.find(target->attachment)->instance->releaseOutputReferences();
+                attachments_.find(target->attachment)->instance->releaseOutputReferences();
             }
             auto closed = co_await target->surface()->close(accepted);
             if (!closed)
             {
                 co_return response(closed.error());
             }
-            target = targets.find(input.target);
-            auto created = detail::SurfaceTarget::create(*device, input.description, window, frames->frameCount());
+            target = targets_.find(input.target);
+            auto created = detail::SurfaceTarget::create(*device_, input.description, window, frames_->frameCount());
             if (!created)
             {
                 co_return response(created.error());
@@ -1003,16 +1001,16 @@ namespace lux::render
         // Every fallible GPU creation is finished. Publish all producer/consumer references without suspension.
         for (auto& [id, candidate] : candidates)
         {
-            if (auto ready = attachments.find(id)->instance->prepareResizeAdoption(candidate); !ready)
+            if (auto ready = attachments_.find(id)->instance->prepareResizeAdoption(candidate); !ready)
             {
                 co_return response(ready.error());
             }
         }
         for (auto& [id, candidate] : candidates)
         {
-            attachments.find(id)->instance->commitResize(std::move(candidate));
+            attachments_.find(id)->instance->commitResize(std::move(candidate));
         }
-        target = targets.find(input.target);
+        target = targets_.find(input.target);
         target->physical = std::move(physical);
         target->description = target->output().description;
         ++target->epoch;
@@ -1023,7 +1021,7 @@ namespace lux::render
 
     exec::task<AckResponse> RenderServer::Impl::removeTarget(RemoveTarget::Request&& input) noexcept
     {
-        auto* target = targets.find(input);
+        auto* target = targets_.find(input);
         if (!target)
         {
             co_return AckResponse{RenderError{kRuntimeIdentity}};
@@ -1036,12 +1034,12 @@ namespace lux::render
         {
             co_return AckResponse{RenderError{kRuntimeState}};
         }
-        detail::SubmissionFrontiers accepted;
+        auto accepted = device_->makeFrontiers();
         // A detached target no longer has its instance in the active binding table. Keep the
         // conservative snapshot for that path; attached owners can identify their exact uses.
-        for (std::size_t q = 0; q < device->queueCount(); ++q)
+        for (std::size_t q = 0; q < device_->queueCount(); ++q)
         {
-            accepted.serials[q] = device->physicalQueue(q).submitted();
+            accepted.accept(device_->submissionPoint(q, device_->physicalQueue(q).submitted()));
         }
         if (!target->attachment.isNull())
         {
@@ -1049,12 +1047,12 @@ namespace lux::render
             {
                 co_return AckResponse{RenderError{kDeviceBusy}};
             }
-            auto* instance = attachments.find(target->attachment)->instance.get();
-            accepted = frames->acceptedUses({&instance, 1});
+            auto* instance = attachments_.find(target->attachment)->instance.get();
+            accepted = frames_->acceptedUses({&instance, 1});
             detachAttachment(target->attachment);
         }
         auto physical = std::move(target->physical);
-        targets.erase(input);
+        targets_.erase(input);
         if (auto* surface = std::get_if<std::unique_ptr<detail::SurfaceTarget>>(&physical))
         {
             auto closed = co_await (*surface)->close(accepted);
@@ -1073,7 +1071,7 @@ namespace lux::render
         SetTargetActive::Response& response
     ) noexcept
     {
-        auto* target = targets.find(input.target);
+        auto* target = targets_.find(input.target);
         if (!target)
         {
             response.error = RenderError{kRuntimeIdentity};
@@ -1097,19 +1095,19 @@ namespace lux::render
         target->enabled = input.active;
         if (input.active && !target->attachment.isNull())
         {
-            active_targets.emplace(input.target);
+            active_targets_.emplace(input.target);
         }
         else
         {
-            active_targets.erase(input.target);
+            active_targets_.erase(input.target);
         }
-        active_frame_inputs_dirty = true;
+        active_frame_inputs_dirty_ = true;
         response = {};
     }
 
     void RenderServer::Impl::detachEffect(const Detach::Request& _request, Detach::Response& output_response) noexcept
     {
-        const auto* attachment = attachments.find(_request);
+        const auto* attachment = attachments_.find(_request);
         if (!attachment)
         {
             output_response.error = RenderError{kRuntimeIdentity};
@@ -1152,24 +1150,19 @@ namespace lux::render
         SelectCommandBinding::Response& response
     ) noexcept
     {
-        command_registry_.selectHandler(input, response, *resources);
+        command_registry_.selectHandler(input, response, *resources_);
     }
 
     RenderResult<void> RenderServer::Impl::progressGpuCompletions() noexcept
     {
-        if (auto observed = device->pollQueues(); !observed)
-        {
-            return observed;
-        }
-        device->dispatchQueueCompletions();
-        return {};
+        return device_->progressCompletions();
     }
 
     void RenderServer::Impl::progressUploads() noexcept
     {
-        if (uploads)
+        if (uploads_)
         {
-            uploads->submitReadyTransfers();
+            uploads_->submitReadyTransfers();
         }
     }
 
@@ -1177,7 +1170,7 @@ namespace lux::render
     {
         // Semantic conflict order is stable. Fairness rotates ready physical queues, not
         // the order of writers of one imported resource.
-        const auto keys = active_targets.keys();
+        const auto keys = active_targets_.keys();
         std::vector<TargetId> active(keys.begin(), keys.end());
         std::ranges::sort(active, {}, &TargetId::index);
         std::map<std::uint32_t, std::size_t> positions;
@@ -1190,7 +1183,7 @@ namespace lux::render
         }
         for (std::size_t i = 0; i < active.size(); ++i)
         {
-            const auto& attachment = *attachments.find(targets.find(active[i])->attachment);
+            const auto& attachment = *attachments_.find(targets_.find(active[i])->attachment);
             for (const auto& input : attachment.target_images)
             {
                 const auto producer = positions.find(input.target.index);
@@ -1231,52 +1224,52 @@ namespace lux::render
             }
         }
         active = std::move(ordered);
-        frame_instances.clear();
-        frame_surfaces.clear();
-        frame_storages.clear();
-        frame_features.clear();
+        frame_instances_.clear();
+        frame_surfaces_.clear();
+        frame_storages_.clear();
+        frame_features_.clear();
         for (auto id : active)
         {
-            auto& target = *targets.find(id);
+            auto& target = *targets_.find(id);
             if (auto* surface = target.surface())
             {
-                frame_surfaces.push_back(surface);
+                frame_surfaces_.push_back(surface);
             }
-            auto& attachment = *attachments.find(target.attachment);
-            frame_instances.push_back(attachment.instance.get());
-            const auto& effect = *effects.find(attachment.effect);
-            auto& scene = *scenes.find(attachment.scene);
+            auto& attachment = *attachments_.find(target.attachment);
+            frame_instances_.push_back(attachment.instance.get());
+            const auto& effect = *effects_.find(attachment.effect);
+            auto& scene = *scenes_.find(attachment.scene);
             auto& view = *scene.views.find(attachment.view);
-            const std::array scopes{&*global_storages, &scene.storages, &view.storages, attachment.storages.get()};
-            for (const auto& dependency : effect.storage_dependencies)
+            const std::array scopes{&*global_storages_, &scene.storages, &view.storages};
+            for (const auto& dependency : effect.resource_dependencies)
             {
-                const auto* factory = resources->factory(dependency.requirement.type.view());
-                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->binding_ops);
+                const auto* factory = resources_->factory(dependency.declaration);
+                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
                 if (!ops || !ops->prepareFrame)
                 {
                     continue;
                 }
                 const auto storage = scopes[static_cast<std::size_t>(dependency.scope)]->find(
-                    resources->typeId(dependency.requirement.type.view()),
-                    dependency.requirement.key
+                    dependency.declaration
                 );
                 if (!storage.isNull())
                 {
-                    auto* native = resources->storageInstance(storage);
-                    frame_storages.push_back(
+                    auto* native = resources_->storageInstance(storage);
+                    frame_storages_.push_back(
                         {native, ops, storage, ops->preparationRevision ? ops->preparationRevision(native) : nullptr}
                     );
                 }
             }
             for (auto& feature : attachment.feature_bindings)
             {
-                frame_features.emplace_back(attachment.instance.get(), &feature);
+                frame_features_.emplace_back(attachment.instance.get(), &feature);
             }
         }
-        std::ranges::sort(frame_storages, {}, &detail::StorageFrameUse::storage);
-        const auto duplicate = std::ranges::unique(frame_storages, {}, &detail::StorageFrameUse::storage);
-        frame_storages.erase(duplicate.begin(), duplicate.end());
-        active_frame_inputs_dirty = false;
+        std::ranges::sort(frame_storages_, {}, [](const auto& use) noexcept
+            { return std::pair{use.identity.index, use.identity.gen}; });
+        const auto duplicate = std::ranges::unique(frame_storages_, {}, &detail::StorageFrameUse::identity);
+        frame_storages_.erase(duplicate.begin(), duplicate.end());
+        active_frame_inputs_dirty_ = false;
     }
 
     RenderResult<bool> RenderServer::Impl::acquireFrameOutputs(std::uint32_t slot) noexcept
@@ -1285,7 +1278,7 @@ namespace lux::render
         {
             return cxx::unexpected(presented.error());
         }
-        for (auto* surface : frame_surfaces)
+        for (auto* surface : frame_surfaces_)
         {
             const auto acquired = surface->acquire(slot);
             if (!acquired || !*acquired)
@@ -1298,13 +1291,13 @@ namespace lux::render
 
     RenderResult<std::uint32_t> RenderServer::Impl::presentFrameOutputs() noexcept
     {
-        if (active_frame_inputs_dirty)
+        if (active_frame_inputs_dirty_)
         {
             rebuildActiveFrameInputs();
         }
         std::uint32_t count = 0;
         RenderError failure;
-        for (auto* surface : frame_surfaces)
+        for (auto* surface : frame_surfaces_)
         {
             const auto presented = surface->present();
             if (presented)
@@ -1316,7 +1309,7 @@ namespace lux::render
                 failure = presented.error();
             }
         }
-        presentations += count;
+        presentations_.fetch_add(count, std::memory_order_relaxed);
         if (failure.type != 0)
         {
             return cxx::unexpected(failure);
@@ -1326,18 +1319,18 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::submitCurrentFrame(std::uint32_t slot) noexcept
     {
-        const auto accepted = frames->render(frame_instances, frame_storages, frame_features);
+        const auto accepted = frames_->render(frame_instances_, frame_storages_, frame_features_);
         const auto presented = presentFrameOutputs();
         if (!accepted)
         {
             return cxx::unexpected(accepted.error());
         }
-        submissions += *accepted;
+        submissions_.fetch_add(*accepted, std::memory_order_relaxed);
         if (!presented)
         {
-            if (!frames->inputConsumed(slot))
+            if (!frames_->inputConsumed(slot))
             {
-                frames->cancelSubmissions(presented.error());
+                frames_->cancelSubmissions(presented.error());
             }
             return cxx::unexpected(presented.error());
         }
@@ -1349,7 +1342,7 @@ namespace lux::render
         QueryExecutionProgress::Response& output_response
     ) noexcept
     {
-        const auto* attachment = attachments.find(_request);
+        const auto* attachment = attachments_.find(_request);
         if (!attachment)
         {
             output_response.error = RenderError{kRuntimeIdentity};
@@ -1363,23 +1356,30 @@ namespace lux::render
         QueryRenderStats::Response& output_response
     ) noexcept
     {
-        output_response =
-            RenderStatsSnapshot{{}, ticks.load(), commands.load(), compiled_graphs.load(), submissions.load()};
+        output_response = RenderStatsSnapshot{
+            {},
+            ticks_.load(std::memory_order_relaxed),
+            commands_.load(std::memory_order_relaxed),
+            compiled_graphs_.load(std::memory_order_relaxed),
+            submissions_.load(std::memory_order_relaxed)
+        };
     }
 
-    void RenderServer::Impl::stopCommand(const Stop::Request& _request, Stop::Response& output_response) noexcept
+    void RenderServer::Impl::stopCommand(const Stop::Request&, Stop::Response& response) noexcept
     {
-        failExecution(RenderError{kCommandCancelled});
-        output_response = {};
+        // Stop admission and drain accepted work. Cancellation during shutdown is
+        // not itself an execution fault and should not emit execution_failed.
+        stop();
+        response = {};
     }
 
     void RenderServer::Impl::failExecution(RenderError error) noexcept
     {
-        if (execution_error.type != 0)
+        if (execution_error_.type != 0)
         {
             return;
         }
-        execution_error = error;
+        execution_error_ = error;
         for (std::size_t i = 0; i < frame_count_; ++i)
         {
             auto& frame = frame_inputs_[(first_frame_ + i) % frame_inputs_.size()];
@@ -1388,10 +1388,10 @@ namespace lux::render
                 frame.error = error;
             }
         }
-        frames->cancelSubmissions(error);
-        if (config.execution_failed)
+        frames_->cancelSubmissions(error);
+        if (config_.execution_failed)
         {
-            config.execution_failed(config.failure_context, error);
+            config_.execution_failed(config_.failure_context, error);
         }
     }
 
@@ -1399,35 +1399,20 @@ namespace lux::render
         CommandId command,
         const CommandRecord& entry,
         const ipc::IpcMessage& request,
-        void*& storage
+        ResourceCommandUse& resource
     ) noexcept
     {
         if (entry.storage)
         {
             const auto id = entry.storage(request);
-            const HandlerBinding* selected = nullptr;
-            for (const auto& binding : entry.bindings)
-            {
-                if (!binding.storage_type.isValid())
-                {
-                    continue;
-                }
-                auto borrowed = resources->borrow(id, binding.storage_type);
-                if (!borrowed)
-                {
-                    continue;
-                }
-                if (selected)
-                {
-                    return cxx::unexpected(RenderError{kCommandContract});
-                }
-                storage = *borrowed;
-                selected = &binding;
-            }
-            if (!selected)
-            {
-                return cxx::unexpected(RenderError{kStorageIdentity});
-            }
+            const auto declaration = resources_->declarationOf(id);
+            if (declaration.isNull()) return cxx::unexpected(RenderError{kStorageIdentity});
+            const auto* location = resources_->commandBinding(declaration, command);
+            const auto* selected = location ? command_registry_.binding(*location) : nullptr;
+            if (!selected || !selected->call.invoke) return cxx::unexpected(RenderError{kCommandContract});
+            auto borrowed = resources_->acquireCommand(id, selected->storage_type);
+            if (!borrowed) return cxx::unexpected(borrowed.error());
+            resource = std::move(*borrowed);
             return selected->call;
         }
         if (!entry.implementation)
@@ -1457,67 +1442,8 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        if (binding->storage_type.isValid())
-        {
-            if (method->storage_dependency >= implementation->storage_dependencies.size())
-            {
-                return cxx::unexpected(RenderError{kCommandContract});
-            }
-            const auto& dependency = implementation->storage_dependencies[method->storage_dependency];
-            VRenderScope scope = GlobalRenderScope{};
-            if (entry.scene)
-            {
-                scope = entry.scene(request);
-            }
-            if (scope.index() != static_cast<std::size_t>(dependency.scope))
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
-            auto owner = findScope(scope);
-            if (!owner)
-            {
-                return cxx::unexpected(owner.error());
-            }
-            ConfigValue configuration;
-            if (dependency.configuration)
-            {
-                if (!implementation->make_default_configuration)
-                {
-                    return cxx::unexpected(RenderError{kStorageContract});
-                }
-                auto defaults = implementation->make_default_configuration();
-                if (!defaults)
-                {
-                    return cxx::unexpected(defaults.error());
-                }
-                auto projected = dependency.configuration(defaults->data());
-                if (!projected)
-                {
-                    return cxx::unexpected(projected.error());
-                }
-                configuration = std::move(*projected);
-            }
-            auto context = storageContext();
-            const auto previous_size = (*owner)->size();
-            auto id = (*owner)->getOrCreate(
-                context, resources->typeId(dependency.storage_type), dependency.storage_key, configuration
-            );
-            if (!id)
-            {
-                return cxx::unexpected(id.error());
-            }
-            if ((*owner)->size() != previous_size)
-            {
-                active_frame_inputs_dirty = true;
-                storages_created.store(resources->creations());
-            }
-            auto qualified = resources->borrow(*id, binding->storage_type);
-            if (!qualified)
-            {
-                return cxx::unexpected(qualified.error());
-            }
-            storage = *qualified;
-        }
+        // Resource operations require their own instance identity and never use Effect selection.
+        if (binding->storage_type.isValid()) return cxx::unexpected(RenderError{kCommandContract});
         return binding->call;
     }
 
@@ -1533,7 +1459,7 @@ namespace lux::render
         {
             // Retain the already received head message, not another command queue. Later IPC
             // messages cannot overtake it; GPU/completion progress continues until older frames settle.
-            deferred_request_.emplace(std::move(received));
+            deferred_request_ = std::move(received);
             return;
         }
         if (!entry || route.request_id.isNull())
@@ -1548,14 +1474,14 @@ namespace lux::render
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kFrameSource});
         }
-        else if (execution_error.type != 0 && !entry->description->failure_safe && id != submit_frame_command_)
+        else if (execution_error_.type != 0 && !entry->description->failure_safe && id != submit_frame_command_)
         {
-            entry->make_error(response_outbox_.prepare(route), execution_error);
+            entry->make_error(response_outbox_.prepare(route), execution_error_);
         }
         else
         {
-            void* storage = nullptr;
-            auto call = resolveCommandCall(id, *entry, received.message(), storage);
+            ResourceCommandUse resource;
+            auto call = resolveCommandCall(id, *entry, received.message(), resource);
             if (!call)
             {
                 entry->make_error(response_outbox_.prepare(route), call.error());
@@ -1568,38 +1494,38 @@ namespace lux::render
                     route,
                     response_outbox_,
                     command_scope_,
-                    render_loop_,
+                    server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery),
                     requires_frame_boundary ? &structural_command_running_ : nullptr,
-                    storage
+                    std::move(resource)
                 };
                 // Async Handler construction consumes this exact call now; completion never
                 // re-reads the capability directory or a selected Handler.
                 call->invoke(call->object, context);
             }
         }
-        ++commands;
+        commands_.fetch_add(1, std::memory_order_relaxed);
     }
 
     void RenderServer::Impl::shutdown(RenderError cause) noexcept
     {
-        stop_requested.store(true);
+        stop_requested_.store(true);
         if (frame_count_ != 0 && frame_inputs_[first_frame_].error.type == 0)
         {
             // A device/queue failure must reach the active frame; shutdown is not proof of cancellation.
             frame_inputs_[first_frame_].error = cause;
         }
-        if (deferred_request_)
+        if (deferred_request_.active())
         {
-            const ResponseRoute route{deferred_request_->requesterId(), RequestId{deferred_request_->correlation()}};
-            const auto* entry = command_registry_.findCommand(commandIdFromTag(deferred_request_->tag()));
+            const ResponseRoute route{deferred_request_.requesterId(), RequestId{deferred_request_.correlation()}};
+            const auto* entry = command_registry_.findCommand(commandIdFromTag(deferred_request_.tag()));
             entry->make_error(response_outbox_.prepare(route), cause);
             deferred_request_.reset();
         }
         command_scope_.close();
         command_scope_.request_stop();
-        if (frames)
+        if (frames_)
         {
-            frames->cancelSubmissions(RenderError{kUploadStopped});
+            frames_->cancelSubmissions(RenderError{kUploadStopped});
         }
         std::atomic<bool> joined{false};
 
@@ -1623,38 +1549,37 @@ namespace lux::render
         stdexec::start(join);
         publishResponses(32);
         // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
-        while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
+        while (!joined.load(std::memory_order_acquire) || !server_context_.is_idle())
         {
             // Adopt published CPU results while the Scope is draining.
-            render_loop_.executeReady(128);
+            (void)server_context_.run_ready(128);
             publishResponses(32);
-            if (device)
+            if (device_)
             {
-                auto collected = device->pollQueues();
-                device->dispatchQueueCompletions();
-                if (frames)
+                auto collected = device_->progressCompletions();
+                if (frames_)
                 {
-                    frames->dispatchWrites();
-                    frames->cancelSubmissions(RenderError{kUploadStopped});
+                    if (uploads_) uploads_->dispatchWrites();
+                    frames_->cancelSubmissions(RenderError{kUploadStopped});
                 }
                 // Stopped upload continuations must run after GPU/write-admission callbacks.
-                render_loop_.executeReady(128);
+                (void)server_context_.run_ready(128);
                 progressUploads();
-                if (!collected && !device->deviceLost())
+                if (!collected && !device_->deviceLost())
                 {
                     std::terminate();
                 }
                 progressFrame();
             }
             // Settle frame terminals before testing Scope completion again.
-            render_loop_.executeReady(128);
+            (void)server_context_.run_ready(128);
             publishResponses(32);
             if (!joined.load(std::memory_order_acquire))
             {
                 std::this_thread::yield();
             }
         }
-        while (render_loop_.activePublishers() != 0)
+        while (!server_context_.is_idle())
         {
             std::this_thread::yield();
         }
@@ -1669,144 +1594,150 @@ namespace lux::render
                 );
             }
         }
-        responder.reset();
+        responder_.reset();
         ipc::IpcCore::instance().notifyWork(); // Wake bootstrap/reply waiters after CLOSED is published.
-        while (!active_targets.empty())
+        // The active set is an execution index, not the attachment owner table.
+        // Inactive targets retain attachments and must be detached too.
+        // detachAttachment updates relationships but never erases a RenderTarget.
+        for (auto& target : targets_)
         {
-            auto& target = *targets.find(active_targets.keys().back());
-            detachAttachment(target.attachment);
+            if (!target.attachment.isNull())
+            {
+                detachAttachment(target.attachment);
+            }
         }
         // End plan owners while physical cleanup is still admitted. The Session closes only
         // after Scene/Global Storage and every other producer have transferred their resources.
-        effects.clear();
-        targets.clear();
-        scenes.clear();
+        effects_.clear();
+        targets_.clear();
+        scenes_.clear();
         command_registry_.clear(); // All operations ended; the borrowed resource directory is still alive.
-        if (global_storages)
+        if (global_storages_)
         {
-            global_storages->clear();
+            global_storages_->clear();
         }
-        global_storages.reset();
-        resources.reset();
+        global_storages_.reset();
+        resources_.reset();
         // Frame callback nodes and Staging outlive all accepted GPU submissions.
-        if (auto settled = device->drain(); !settled && !device->deviceLost())
+        if (auto settled = device_->drain(); !settled && !device_->deviceLost())
         {
             std::terminate();
         }
-        frames.reset();
-        uploads.reset();
-        device.reset();
-        running.store(false);
+        frames_.reset();
+        uploads_.reset();
+        device_.reset();
+        (void)server_context_.close();
+        running_.store(false);
     }
 
     std::size_t RenderServer::Impl::publishResponses(std::size_t limit) noexcept
     {
-        const auto result = response_outbox_.flushTo(responder, limit);
-        if (result.published != 0 && config.responses_available)
+        const auto result = response_outbox_.flushTo(responder_, limit);
+        if (result.published != 0 && config_.responses_available)
         {
-            config.responses_available(config.response_context);
+            config_.responses_available(config_.response_context);
         }
         return result.settled;
     }
 
     RenderResult<void> RenderServer::Impl::run() noexcept
     {
-        auto& s = *this;
-        if (s.started.exchange(true))
+        if (has_started_.exchange(true))
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        if (s.stop_requested.load())
+        device_->adoptNativeOwner();
+        if (stop_requested_.load())
         {
-            s.shutdown();
+            shutdown();
             return {};
         }
-        s.command_registry_.activateHandlers(*s.resources);
-        s.running.store(true);
+        command_registry_.activateHandlers(*resources_);
+        running_.store(true);
         RenderResult<void> result;
         auto& notifications = ipc::IpcCore::instance();
-        while (!s.stop_requested.load())
+        while (!stop_requested_.load())
         {
             // Snapshot precedes every readiness check. A publication in the check/wait gap
             // changes the epoch, so WaitOnAddress/futex cannot sleep through that publication.
             const auto observed = notifications.workEpoch();
-            const auto submitted_before = s.submissions.load();
+            const auto submitted_before = submissions_.load(std::memory_order_relaxed);
             // Safe point 1: adopt already-published CPU results before accepting more commands.
-            bool progressed = s.render_loop_.executeReady(128) != 0;
+            bool progressed = server_context_.run_ready(128) != 0;
             // A structural request is admitted between complete frames. Its asynchronous terminal
             // opens the boundary again; this does not block GPU or stdexec completion progress.
-            if (s.deferred_request_ && s.frame_count_ == 0 && !s.structural_command_running_)
+            if (deferred_request_.active() && frame_count_ == 0 && !structural_command_running_)
             {
-                auto request = std::move(*s.deferred_request_);
-                s.deferred_request_.reset();
-                s.dispatchRequest(std::move(request));
+                auto request = std::move(deferred_request_);
+                deferred_request_.reset();
+                dispatchRequest(std::move(request));
                 progressed = true;
             }
             for (std::uint32_t i = 0; i < 32; ++i)
             {
-                const bool can_receive =
-                    !s.stop_requested.load() && !s.deferred_request_ && !s.structural_command_running_;
+                const bool can_receive = !stop_requested_.load() && !deferred_request_.active() &&
+                                         !structural_command_running_;
                 if (!can_receive)
                 {
                     break;
                 }
                 ipc::ReceivedRequest request;
-                if (s.responder.tryReceive(request) == ipc::EIpcReceive::RECEIVED)
+                if (responder_.tryReceive(request) == ipc::EIpcReceive::RECEIVED)
                 {
-                    s.dispatchRequest(std::move(request));
+                    dispatchRequest(std::move(request));
                     progressed = true;
                 }
             }
-            if (s.stop_requested.load())
+            if (stop_requested_.load())
             {
                 break;
             }
-            progressed |= s.publishResponses(32) != 0;
-            if (auto observed_gpu = s.progressGpuCompletions(); !observed_gpu)
+            progressed |= publishResponses(32) != 0;
+            if (auto observed_gpu = progressGpuCompletions(); !observed_gpu)
             {
-                s.failExecution(observed_gpu.error());
+                failExecution(observed_gpu.error());
             }
-            s.frames->dispatchWrites();
+            if (uploads_) uploads_->dispatchWrites();
             // Safe point 2: GPU callbacks/write admission can schedule continuations required
             // by this frame. Count their progress before deciding whether the loop may wait.
-            progressed |= s.render_loop_.executeReady(128) != 0;
-            s.progressUploads();
+            progressed |= server_context_.run_ready(128) != 0;
+            progressUploads();
             // Staging availability resumes a Task through the same scheduler. Let that continuation
             // consume its admitted range before frame preparation closes background staging again;
             // otherwise continuously submitted frames can wake and immediately requeue it forever.
-            progressed |= s.render_loop_.executeReady(128) != 0;
-            s.progressFrame();
+            progressed |= server_context_.run_ready(128) != 0;
+            progressFrame();
             // A submitted frame may have returned its CPU input before a present-fence slot
             // becomes reusable. Continue presentation even when no new input frame is queued.
-            if (s.frame_count_ == 0)
+            if (frame_count_ == 0)
             {
-                if (auto presented = s.presentFrameOutputs(); presented)
+                if (auto presented = presentFrameOutputs(); presented)
                 {
                     progressed |= *presented != 0;
                 }
                 else
                 {
-                    s.failExecution(presented.error());
+                    failExecution(presented.error());
                 }
             }
             // Safe point 3: publish terminal frame/command results produced by this iteration.
-            progressed |= s.render_loop_.executeReady(128) != 0;
-            progressed |= s.publishResponses(32) != 0;
-            progressed |= s.submissions.load() != submitted_before;
-            ++s.ticks;
-            if (!progressed && !s.stop_requested.load())
+            progressed |= server_context_.run_ready(128) != 0;
+            progressed |= publishResponses(32) != 0;
+            progressed |= submissions_.load(std::memory_order_relaxed) != submitted_before;
+            ticks_.fetch_add(1, std::memory_order_relaxed);
+            if (!progressed && !stop_requested_.load())
             {
                 // A publisher may be counted before its node is visible. Its eventual wakeup
-                // changes this epoch; spinning on RunLoop::size() would delay other producers.
+                // changes this epoch; spinning on ManualContext::pending() would delay other producers.
                 if (notifications.workEpoch() != observed)
                 {
                     continue;
                 }
-                if (s.device->pendingGpuWork() && s.execution_error.type == 0)
+                if (device_->pendingGpuWork() && execution_error_.type == 0)
                 {
-                    if (auto advanced = s.frames->waitForProgress(s.config.gpu_wait_ns); !advanced)
+                    if (auto advanced = frames_->waitForProgress(config_.gpu_wait_ns); !advanced)
                     {
-                        s.failExecution(advanced.error());
+                        failExecution(advanced.error());
                     }
                 }
                 else
@@ -1816,26 +1747,25 @@ namespace lux::render
                 }
             }
         }
-        if (s.execution_error.type != 0)
+        if (execution_error_.type != 0)
         {
-            result = cxx::unexpected(s.execution_error);
+            result = cxx::unexpected(execution_error_);
         }
-        s.shutdown(result ? RenderError{kCommandCancelled} : result.error());
+        shutdown(result ? RenderError{kCommandCancelled} : result.error());
         return result;
     }
 
     RenderServerStats RenderServer::Impl::stats() const noexcept
     {
-        const auto& s = *this;
         return {
-            s.ticks.load(),
-            s.commands.load(),
-            s.compiled_graphs.load(),
-            s.submissions.load(),
-            s.validation_errors.load(),
-            s.validation_warnings.load(),
-            s.storages_created.load(),
-            s.presentations.load()
+            ticks_.load(std::memory_order_relaxed),
+            commands_.load(std::memory_order_relaxed),
+            compiled_graphs_.load(std::memory_order_relaxed),
+            submissions_.load(std::memory_order_relaxed),
+            validation_errors_.load(std::memory_order_relaxed),
+            validation_warnings_.load(std::memory_order_relaxed),
+            storages_created_.load(std::memory_order_relaxed),
+            presentations_.load(std::memory_order_relaxed)
         };
     }
 

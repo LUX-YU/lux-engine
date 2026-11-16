@@ -26,7 +26,13 @@
         {
             "name": "imgui",
             "url": "https://github.com/LUX-YU/imgui.git",
-            "revision": "",
+            "revision": "ad75bbcb15ba47f921dca082b1377cca9907ae98",
+            "platforms": ["host"]
+        },
+        {
+            "name": "NRI",
+            "url": "https://github.com/LUX-YU/NRI.git",
+            "revision": "4c5cb282a5b0318117dcdabd47d48c0d35ce6bb3",
             "platforms": ["host"]
         },
         {

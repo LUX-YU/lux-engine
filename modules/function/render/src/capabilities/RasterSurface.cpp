@@ -85,7 +85,7 @@ namespace lux::render
                     );
                 }
                 auto support = describeImplementation(name.name(), kRasterSurfaceConfigurationSchema, std::move(ports));
-                support.storage_dependencies = rasterStorageDependencies;
+                support.resource_dependencies = rasterStorageDependencies;
                 support.project_parameters = projectCameraInput;
                 support.decode_configuration =
                     decodeConfigurationValue<RasterSurfaceConfiguration, decodeRasterSurfaceConfiguration>;

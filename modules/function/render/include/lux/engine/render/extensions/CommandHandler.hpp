@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/core/execution/RunLoop.hpp>
+#include <lux/cxx/execution/ManualContext.hpp>
 #include <lux/engine/render/extensions/CommandMethod.hpp>
 #include <stdexec/execution.hpp>
 
@@ -17,7 +17,7 @@ namespace lux::render
         std::same_as<
             stdexec::value_types_of_t<
                 typename extension_detail::CommandInvocation<C, Method>::Result,
-                stdexec::env<stdexec::prop<stdexec::get_scheduler_t, execution::RunLoop::Scheduler>>,
+                stdexec::env<stdexec::prop<stdexec::get_scheduler_t, cxx::execution::ManualContext::Scheduler>>,
                 std::tuple,
                 std::variant>,
             std::variant<std::tuple<typename C::Response>>>;

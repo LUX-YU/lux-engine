@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/core/execution/RunLoop.hpp>
+#include <lux/engine/core/execution/CompletionCode.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -27,6 +27,8 @@ namespace lux::render
         };
 
         using CommonCommands = std::tuple<
+            QueryResource,
+            GetOrCreateResource,
             CreateScene,
             RemoveScene,
             CreateView,
@@ -170,7 +172,7 @@ namespace lux::render
         // The existing host reply notification may enqueue work; it must not dereference this Client
         // inline. Failure returns no Client; the host still owns service stop/join.
         [[nodiscard]] static CreateResult create(lux::platform::ipc::IpcRequester client) noexcept;
-        
+
         ~RenderClient() noexcept;
         RenderClient(const RenderClient&) = delete;
         RenderClient& operator=(const RenderClient&) = delete;

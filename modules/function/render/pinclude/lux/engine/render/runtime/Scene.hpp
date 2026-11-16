@@ -10,8 +10,8 @@
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
-#include <lux/engine/render/extensions/storage/Binding.hpp>
-#include <lux/engine/render/resource/StorageSet.hpp>
+#include <lux/engine/render/extensions/resource/Binding.hpp>
+#include <lux/engine/render/resource/ResourceSet.hpp>
 #include <memory>
 #include <vector>
 
@@ -25,18 +25,20 @@ namespace lux::render::runtime_detail
 {
     struct RenderView final
     {
-        StorageSet storages;
+        ResourceSet storages;
         std::vector<AttachmentId> attachments;
 
-        explicit RenderView(ResourceRegistry& registry) noexcept : storages(registry) {}
+        explicit RenderView(ResourceRegistry& registry, ResourceSet& parent) noexcept
+            : storages(registry, EResourceDomain::VIEW, &parent) {}
     };
 
     struct RenderScene final
     {
-        StorageSet storages;
+        ResourceSet storages;
         cxx::StableSlotMap<RenderView, ViewTag> views;
 
-        explicit RenderScene(ResourceRegistry& registry) noexcept : storages(registry) {}
+        explicit RenderScene(ResourceRegistry& registry, ResourceSet& parent) noexcept
+            : storages(registry, EResourceDomain::SCENE, &parent) {}
     };
 
     struct RenderTarget final
@@ -68,11 +70,11 @@ namespace lux::render::runtime_detail
         std::unique_ptr<detail::RenderPlan> plan;
 
         // One cold-resolved dependency used by both public upload inputs and Graph resource bindings.
-        // These records own creation values only; the actual instances remain in the business StorageSets.
-        struct StorageDependency final
+        // These records identify declarations and graph bindings only; the actual instances remain in the owning ResourceSets.
+        struct ResourceDependency final
         {
             EStorageScope scope;
-            StorageRequirement requirement;
+            ResourceTypeId declaration;
             std::vector<StorageArgument> bindings;
 
             struct Input final
@@ -84,7 +86,7 @@ namespace lux::render::runtime_detail
             std::vector<Input> inputs;
         };
 
-        std::vector<StorageDependency> storage_dependencies;
+        std::vector<ResourceDependency> resource_dependencies;
         std::vector<detail::FeatureFrameContribution> bindings;
         std::vector<SamplerDescription> samplers;
         std::vector<AttachmentId> attachments;
@@ -104,7 +106,7 @@ namespace lux::render::runtime_detail
             };
 
             std::vector<FrameCall> frame_calls;
-            std::vector<std::uint32_t> storage_dependencies;
+            std::vector<std::uint32_t> resource_dependencies;
         };
 
         std::vector<Implementation> implementations;
@@ -121,7 +123,6 @@ namespace lux::render::runtime_detail
         SceneId scene;
         ViewId view;
         TargetId target;
-        std::unique_ptr<StorageSet> storages;
         std::unique_ptr<detail::RenderGraphInstance> instance;
 
         struct StorageInput final
@@ -131,7 +132,7 @@ namespace lux::render::runtime_detail
             detail::StorageSubscription subscription;
         };
 
-        // Destruction disconnects professional data and inputs before the graph instance and local StorageSet.
+        // Destruction disconnects professional data and inputs before the graph instance.
         std::vector<StorageInput> storage_inputs;
         std::vector<detail::FeatureBinding> feature_bindings;
 

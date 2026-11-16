@@ -1,7 +1,8 @@
 #pragma once
 
-#include <lux/engine/core/execution/RunLoop.hpp>
+#include <lux/cxx/execution/ManualContext.hpp>
 #include <lux/engine/render/extensions/detail/ResponseRoute.hpp>
+#include <lux/engine/render/extensions/resource/ResourceCommandUse.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render::runtime_detail
@@ -16,12 +17,12 @@ namespace lux::render::runtime_detail
         ResponseRoute response_route;
         ResponseOutbox& outbox;
         stdexec::counting_scope& scope;
-        execution::RunLoop& render_loop;
+        cxx::execution::ManualContext::Scheduler server_delivery;
         // Only an admitted structural command receives this completion flag. RenderThread clears
         // it at the actual terminal boundary before accepting the next control/frame message.
         bool* structural_command_running = nullptr;
         // Qualified by the Server before invoking a typed professional method. Never captured as context.
-        void* storage = nullptr;
+        ResourceCommandUse resource;
     };
 
     LUX_RENDER_PUBLIC platform::ipc::IpcMessage& prepareResponse(ResponseOutbox&, ResponseRoute) noexcept;

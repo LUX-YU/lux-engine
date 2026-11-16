@@ -1,15 +1,14 @@
-#include "../../material/test/MaterialTest.hpp"
+#include "MaterialFixture.hpp"
 #include "ClusterScan.hpp"
 #include "SceneComparison.hpp"
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/render/commands/Lighting3dCommands.hpp>
 #include <lux/engine/render/commands/MaterialCommands.hpp>
 #include <lux/engine/render/commands/Mesh3dCommands.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -51,17 +50,13 @@ struct ClusterCapture
         }
         CaptureConfig capture{config.pixels};
         capture.bytes = bytes;
-        ports.storage.attachment.push_back(
+        ports.storage.view.push_back(
             {"pixels",
              EFeaturePort::OUTPUT,
              GraphBufferDesc{bytes},
              EGraphOrigin::IMPORTED,
              {},
-             StorageRequirement{
-                 StorageName(CaptureDescriptor::descriptor.type.name()),
-                 std::string(key),
-                 take(ConfigValue::make(capture))
-             }}
+             ResourceRequirement{ResourceName(CaptureDescriptor::descriptor.type.name())}}
         );
         return {};
     }
@@ -74,7 +69,11 @@ struct ClusterCapture
         const lux::render::detail::EnabledDeviceFeatures&
     ) noexcept
     {
-        const auto lengths = sizes(static_cast<const ClusterCaptureConfig*>(data)->grid);
+        const auto& config = *static_cast<const ClusterCaptureConfig*>(data);
+        const auto lengths = sizes(config.grid);
+        CaptureConfig capture{config.pixels};
+        for (auto bytes : lengths) capture.bytes += bytes;
+        context.arguments.push_back(StorageArgument::make(context.resource("pixels").resource, capture));
         TransferWork work;
         std::uint64_t offset = 0;
         for (std::size_t i = 0; i < outputs.size(); ++i)
@@ -127,11 +126,7 @@ struct ScanProbe
                 {FillBuffer{{context.resource("counts")}, UINT32_MAX}, FillBuffer{{context.resource("status")}, 0}}
             }
         ));
-        rdesc::SpirvArtifact shader;
-        shader.stages.push_back(
-            {rdesc::EShaderType::COMPUTE, "main", {std::begin(kClusterScan), std::end(kClusterScan)}}
-        );
-        CHECK(rdesc::ShaderInfo::deserialize(kClusterScanReflection, shader.interface));
+        auto shader = kClusterScan.load(rdesc::EShaderTarget::SPIRV);
         ComputeWork work;
         work.interface.program = take(context.graph.addProgram(std::move(shader)));
         work.interface.resources = {
@@ -446,7 +441,7 @@ int main(int argc, char** argv)
     auto cluster_capture = take(server->registerFeature<ClusterCapture>());
     auto compare = take(server->registerFeature<SceneComparison>());
     auto scan_probe = take(server->registerFeature<ScanProbe>());
-    take(server->registerStorage<CaptureBuffer>({}));
+    take(server->registerResource<CaptureBuffer>());
     const auto cluster_probe = registerRenderProbe<ClusterProbeConfiguration>(
         *server, "test.clustered", {gbuffer, lighting, cluster, compare, capture, cluster_capture, visibility},
         probePorts({}, {"differences", "lists"}), kLitProbeDependencies, lowerClusterProbe
@@ -497,12 +492,12 @@ int main(int argc, char** argv)
     const auto albedo = material_test::add(author, MaterialParameter{0, EValueType::VEC4});
     CHECK(material_test::connect(author, albedo, 0, output, 0));
     constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER};
-    auto compiled = compileMaterial(author, purposes);
+    auto compiled = deriveFixtureMaterial(author, purposes);
     CHECK(compiled);
     const auto material = call<MaterialCommands::Create>(
                               *client,
                               commands,
-                              {materials, {compiled->programs, MaterialParameters{{.5F, .6F, .7F, 1}}}}
+                              {materials, {compiled->material.programs, MaterialParameters{{.5F, .6F, .7F, 1}}}}
     ).material;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN};
     const auto block = layout();
@@ -599,6 +594,7 @@ int main(int argc, char** argv)
             }
             detach(*client, commands, attachment);
         }
+        call<RemoveScene>(*client, commands, {scene});
         while (differences.ready.load() != 2 || lists.ready.load() != 2)
         {
             CHECK(Clock::now() < deadline);
@@ -607,7 +603,6 @@ int main(int argc, char** argv)
         verifyEqualPixels(differences);
         verifyLists(lists, grid, lights, perspective);
         call<RemoveEffect>(*client, commands, {effect});
-        call<RemoveScene>(*client, commands, {scene});
     }
     // Inject unrepresentable count sums into the actual production Scan shader, not a CPU imitation.
     CapturedPixels offsets, status;
@@ -632,6 +627,7 @@ int main(int argc, char** argv)
         std::this_thread::yield();
     }
     detach(*client, commands, attachment);
+    call<RemoveScene>(*client, commands, {scan_scene});
     while (!offsets.ready.load() || !status.ready.load())
     {
         CHECK(Clock::now() < deadline);
@@ -662,7 +658,6 @@ int main(int argc, char** argv)
         CHECK(value.required_indices == UINT32_MAX && value.flags == 5);
     }
     call<RemoveEffect>(*client, commands, {scan_effect});
-    call<RemoveScene>(*client, commands, {scan_scene});
     call<MaterialCommands::Release>(
         *client,
         commands,

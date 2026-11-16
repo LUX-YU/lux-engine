@@ -1,33 +1,21 @@
 #pragma once
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/SceneSystemRegistration.hpp>
+#include <lux/engine/scene/SceneSystem.hpp>
 
 namespace lux::scene
 {
-    class LUX_ENGINE_SCENE_MESH_QUERY_PUBLIC MeshQuerySystem final
+    class LUX_ENGINE_SCENE_MESH_QUERY_PUBLIC MeshQuerySystem final : public SceneSystem
     {
     public:
-        inline static constexpr std::array Capabilities{std::string_view{"lux.scene.mesh_query.3d"}};
-        inline static constexpr system::SystemDataContract DataInputs[]{
-            {"lux.ecs.Transform3D"},
-            {"lux.ecs.Mesh3D", 2},
-            {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
-        };
-        inline static constexpr system::SystemTypeDescription Description{
-            .canonical_name = "lux.builtin.system.mesh_query.3d",
-            .version = 1U,
-            .capabilities = Capabilities,
-            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .data_inputs = DataInputs
-        };
+        inline static constexpr std::string_view Name = "lux.builtin.system.mesh_query.3d";
 
         explicit MeshQuerySystem(ecs::Registry& registry);
         ~MeshQuerySystem() noexcept;
         MeshQuerySystem(const MeshQuerySystem&) = delete;
         MeshQuerySystem& operator=(const MeshQuerySystem&) = delete;
 
-        void updateStablePoint();
-        [[nodiscard]] bool hasPendingChanges() const noexcept;
+        [[nodiscard]] Result execute() noexcept override;
 
     private:
         struct Impl;

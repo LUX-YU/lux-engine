@@ -33,7 +33,7 @@ namespace lux::render::detail
             new SubmissionQueue(session, queue, properties, temporary_capacity)
         );
         const auto& nri_core = session.nriCore();
-        auto result = nri_core.CreateFence(session.device(), 0, result_queue->fence_);
+        auto result = nri_core.CreateFence(session.device(), nri::FenceDesc{}, result_queue->fence_);
         if (result != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(result));

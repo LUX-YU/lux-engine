@@ -19,7 +19,7 @@ namespace lux::render::runtime_detail
     EffectAttachment::~EffectAttachment() noexcept
     {
         // Feature data follows Graph dependency order at construction. Consumers disconnect
-        // before their producing data, and all of them precede the instance and local Storage.
+        // before their producing data, and all of them precede the instance.
         while (!feature_bindings.empty())
         {
             feature_bindings.pop_back();
@@ -38,7 +38,6 @@ namespace lux::render::runtime_detail
             }
             storage_inputs.clear();
             instance.reset();
-            storages = std::move(other.storages);
             instance = std::move(other.instance);
             storage_inputs = std::move(other.storage_inputs);
             feature_bindings = std::move(other.feature_bindings);

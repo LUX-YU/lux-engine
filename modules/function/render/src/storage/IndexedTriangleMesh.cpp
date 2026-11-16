@@ -1,7 +1,7 @@
 #include <lux/engine/render/storage/MeshPacking.hpp>
 #include <cmath>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
 
 namespace lux::render
 {

@@ -120,10 +120,98 @@ namespace lux::render::detail
     ) noexcept
         : device_(device), options_(settings), cpu_scheduler_(std::move(cpu_scheduler))
     {
+        preparation_receivers_.reserve(options_.window_regions);
+        for (auto& write : writes_) write.accepted = device_.makeFrontiers();
+    }
+
+    void ResourceUploader::setWriteWindow(std::uint32_t slot, bool writable, bool frozen) noexcept
+    {
+        if (slot >= writes_.size() || (slot != write_slot_ && writes_[write_slot_].pending)) std::terminate();
+        write_slot_ = slot;
+        writes_allowed_ = writable;
+        resources_frozen_ = frozen;
+    }
+
+    bool ResourceUploader::tryBeginWrite(std::uint32_t& slot) noexcept
+    {
+        if (!writes_allowed_) return false;
+        slot = write_slot_;
+        auto& write = writes_[slot];
+        if (write.pending == UINT32_MAX) std::terminate();
+        ++write.pending;
+        write.touched = true;
+        background_allowed_ = false;
+        return true;
+    }
+
+    void ResourceUploader::finishWrite(std::uint32_t slot, const SubmissionFrontiers& accepted) noexcept
+    {
+        if (slot != write_slot_ || !writes_[slot].pending) std::terminate();
+        auto& write = writes_[slot];
+        write.accepted.merge(accepted);
+        --write.pending;
+        background_allowed_ = background_window_ && write.pending == 0;
+    }
+
+    void ResourceUploader::finishWrites(std::uint32_t slot, SubmissionFrontiers& accepted) noexcept
+    {
+        if (writes_[slot].pending) std::terminate();
+        accepted.merge(writes_[slot].accepted);
+        writes_[slot].accepted.clear();
+        writes_[slot].touched = false;
+    }
+
+    void ResourceUploader::enqueueWrite(WriteWaiter& node) noexcept
+    {
+        node.next = nullptr;
+        if (frame_waiters_tail_)
+        {
+            frame_waiters_tail_->next = &node;
+        }
+        else
+        {
+            frame_waiters_ = &node;
+        }
+        frame_waiters_tail_ = &node;
+    }
+
+    void ResourceUploader::dispatchWrites() noexcept
+    {
+        auto* frame_boundary = frame_waiters_tail_;
+        while (frame_waiters_ && frame_boundary)
+        {
+            auto* node = frame_waiters_;
+            if (!writes_allowed_ && !node->stopping(node->operation))
+            {
+                break;
+            }
+            frame_waiters_ = node->next;
+            if (!frame_waiters_)
+            {
+                frame_waiters_tail_ = nullptr;
+            }
+            if (node == frame_boundary)
+            {
+                frame_boundary = nullptr;
+            }
+            const auto complete = node->complete;
+            auto* operation = node->operation;
+            complete(operation);
+        }
+    }
+
+    void ResourceUploader::onPreparationSubmitted(
+        void* receiver,
+        void (*complete)(void*, std::uint32_t, RenderResult<void>) noexcept
+    ) noexcept
+    {
+        preparation_receivers_.emplace_back(receiver, complete);
     }
 
     ResourceUploader::~ResourceUploader() noexcept
     {
+        if (frame_waiters_ || !preparation_receivers_.empty()) std::terminate();
+        for (const auto& write : writes_) if (write.pending) std::terminate();
         for (auto& copy : frame_copies_)
         {
             staging_arena_->cancel(copy.staging);
@@ -498,7 +586,7 @@ namespace lux::render::detail
         }
     }
 
-    void ResourceUploader::finishFrameCopySubmission(RenderResult<void> result) noexcept
+    void ResourceUploader::finishFrameCopySubmission(RenderResult<void> result, std::uint32_t frame_slot) noexcept
     {
         for (auto& copy : frame_copies_)
         {
@@ -513,6 +601,16 @@ namespace lux::render::detail
             }
         }
         frame_copies_.clear();
+        const auto boundary = preparation_receivers_.size();
+        const auto slot = frame_slot;
+        for (std::size_t i = 0; i < boundary; ++i)
+        {
+            // Remove this borrow before delivery. A callback may append work for the next
+            // submission and grow the vector; no iterator or record reference crosses it.
+            const auto [receiver, complete] = std::exchange(preparation_receivers_[i], {});
+            complete(receiver, slot, result);
+        }
+        preparation_receivers_.erase(preparation_receivers_.begin(), preparation_receivers_.begin() + boundary);
     }
 
     bool ResourceUploader::canStage(std::uint32_t frame_slot) const noexcept
@@ -771,8 +869,7 @@ namespace lux::render::detail
                     if (entry->progress)
                     {
                         const auto index = device_.queueIndex(queue);
-                        auto& serial = entry->progress->serials[index];
-                        serial = std::max(serial, queue.submitted());
+                        entry->progress->accept(device_.submissionPoint(index, queue.submitted()));
                     }
                 }
                 const auto observe_measurement = [&](Measurement& measurement) noexcept

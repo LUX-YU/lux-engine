@@ -16,8 +16,7 @@ namespace lux::render
                 &ports.resources,
                 &ports.storage.global,
                 &ports.storage.scene,
-                &ports.storage.view,
-                &ports.storage.attachment
+                &ports.storage.view
             };
             for (const auto* group : groups)
             {
@@ -59,8 +58,8 @@ namespace lux::render
         }
 
         RenderResult<void> mergeDependencies(
-            std::vector<RenderEffect::StorageDependency>& result,
-            std::vector<RenderEffect::StorageDependency> dependencies,
+            std::vector<RenderEffect::ResourceDependency>& result,
+            std::vector<RenderEffect::ResourceDependency> dependencies,
             std::uint32_t capability
         ) noexcept
         {
@@ -74,8 +73,7 @@ namespace lux::render
                     result,
                     [&](const auto& old) noexcept
                     {
-                        return old.scope == dependency.scope && old.requirement.type == dependency.requirement.type &&
-                               old.requirement.key == dependency.requirement.key;
+                        return old.declaration == dependency.declaration;
                     }
                 );
                 if (found == result.end())
@@ -84,10 +82,6 @@ namespace lux::render
                 }
                 else
                 {
-                    if (found->requirement.config != dependency.requirement.config)
-                    {
-                        return cxx::unexpected(RenderError{kStorageMismatch});
-                    }
                     found->inputs.insert(found->inputs.end(), dependency.inputs.begin(), dependency.inputs.end());
                 }
             }
@@ -125,18 +119,18 @@ namespace lux::render
         {
             auto& use = effect.implementations[occurrence];
             const auto& implementation = *capability_registry_.find(use.id);
-            use.storage_dependencies.assign(implementation.storage_dependencies.size(), UINT32_MAX);
-            for (std::uint32_t index = 0; index < effect.storage_dependencies.size(); ++index)
+            use.resource_dependencies.assign(implementation.resource_dependencies.size(), UINT32_MAX);
+            for (std::uint32_t index = 0; index < effect.resource_dependencies.size(); ++index)
             {
-                for (const auto& input : effect.storage_dependencies[index].inputs)
+                for (const auto& input : effect.resource_dependencies[index].inputs)
                 {
                     if (input.capability == occurrence)
                     {
-                        use.storage_dependencies[input.index] = index;
+                        use.resource_dependencies[input.index] = index;
                     }
                 }
             }
-            if (std::ranges::find(use.storage_dependencies, UINT32_MAX) != use.storage_dependencies.end())
+            if (std::ranges::find(use.resource_dependencies, UINT32_MAX) != use.resource_dependencies.end())
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
@@ -160,7 +154,7 @@ namespace lux::render
                 {
                     continue;
                 }
-                const auto* feature = features.find(implementation.features[input.graph_feature]);
+                const auto* feature = features_.find(implementation.features[input.graph_feature]);
                 const auto key = featureKey(
                     FeatureName{feature->name},
                     use.contribution + "/" + std::string(input.contribution_key),
@@ -194,7 +188,7 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::buildCapabilityGraph(
         CreateEffectRequest& request,
         GraphEffectRequest& graph,
-        std::vector<RenderEffect::StorageDependency>& storage_dependencies
+        std::vector<RenderEffect::ResourceDependency>& resource_dependencies
     ) noexcept
     {
         auto& composition = request.composition;
@@ -261,12 +255,12 @@ namespace lux::render
             {
                 return cxx::unexpected(configuration.error());
             }
-            auto dependencies = resolveCapabilityStorage(entry, **configuration);
+            auto dependencies = resolveCapabilityStorage(entry);
             if (!dependencies)
             {
                 return cxx::unexpected(dependencies.error());
             }
-            if (auto merged = mergeDependencies(storage_dependencies, std::move(*dependencies), index); !merged)
+            if (auto merged = mergeDependencies(resource_dependencies, std::move(*dependencies), index); !merged)
             {
                 return merged;
             }
@@ -327,7 +321,7 @@ namespace lux::render
             for (std::size_t i = 0; i < actual.size(); ++i)
             {
                 const auto& feature = built->definition.features[i];
-                const auto* registration = features.find(feature.feature);
+                const auto* registration = features_.find(feature.feature);
                 const bool invalid_feature = !registration || !registration->graph.describe_ports ||
                                              registration->config_type != feature.config.type();
                 if (invalid_feature)
@@ -411,47 +405,37 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<std::vector<RenderEffect::StorageDependency>> RenderServer::Impl::resolveCapabilityStorage(
-        const CapabilityImplementation& implementation,
-        const ConfigValue& configuration
+    RenderResult<std::vector<RenderEffect::ResourceDependency>> RenderServer::Impl::resolveCapabilityStorage(
+        const CapabilityImplementation& implementation
     ) const noexcept
     {
-        std::vector<RenderEffect::StorageDependency> result;
-        for (std::uint32_t index = 0; index < implementation.storage_dependencies.size(); ++index)
+        std::vector<RenderEffect::ResourceDependency> result;
+        for (std::uint32_t index = 0; index < implementation.resource_dependencies.size(); ++index)
         {
-            const auto& declaration = implementation.storage_dependencies[index];
-            auto config = declaration.configuration ? declaration.configuration(configuration.data())
-                                                    : RenderResult<ConfigValue>{ConfigValue{}};
-            if (!config)
-            {
-                return cxx::unexpected(config.error());
-            }
+            const auto& declaration = implementation.resource_dependencies[index];
+            const auto type = resources_->typeId(declaration.storage_type);
+            const auto* factory = resources_->factory(type);
+            if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
+            if (static_cast<unsigned>(declaration.scope) != static_cast<unsigned>(factory->descriptor->domain))
+                return cxx::unexpected(RenderError{kStorageMismatch});
             const auto found = std::ranges::find_if(
                 result,
                 [&](const auto& dependency) noexcept
                 {
-                    return dependency.scope == declaration.scope &&
-                           dependency.requirement.type.view() == declaration.storage_type &&
-                           dependency.requirement.key == declaration.storage_key;
+                    return dependency.declaration == type;
                 }
             );
             if (found == result.end())
             {
                 result.push_back(
                     {declaration.scope,
-                     {StorageName{declaration.storage_type.name()},
-                      std::string(declaration.storage_key),
-                      std::move(*config)},
+                     type,
                      {},
                      {{0, index}}}
                 );
             }
             else
             {
-                if (found->requirement.config != *config)
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
                 found->inputs.push_back({{}, index});
             }
         }

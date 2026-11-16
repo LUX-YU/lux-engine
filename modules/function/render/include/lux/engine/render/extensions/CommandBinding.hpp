@@ -2,12 +2,13 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <lux/engine/core/execution/RunLoop.hpp>
+#include <lux/cxx/execution/ManualContext.hpp>
 #include <lux/engine/platform/ipc/IpcMessage.hpp>
+#include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/extensions/CommandHandler.hpp>
-#include <lux/engine/render/extensions/storage/ResourceIdentity.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
+#include <lux/engine/render/extensions/resource/ResourceIdentity.hpp>
 #include <stdexec/execution.hpp>
 
 namespace lux::render::runtime_detail
@@ -17,15 +18,6 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
-    // An address in the existing Command table, not a new identity or Handler owner.
-    // Binding indices never move after publication; the CommandId qualifies the table generation.
-    struct CommandBindingLocation final
-    {
-        CommandId command;
-        std::uint32_t binding = 0;
-        bool operator==(const CommandBindingLocation&) const noexcept = default;
-    };
-
     struct HandlerCall final
     {
         void (*invoke)(void*, runtime_detail::CommandDispatchContext&) noexcept = nullptr;
@@ -63,9 +55,15 @@ namespace lux::render
             return storage_type_;
         }
 
-        [[nodiscard]] std::uint32_t storageDependency() const noexcept
+        [[nodiscard]] bool hasSameImplementation(const CommandBinding& other) const noexcept
         {
-            return storage_dependency_;
+            return method_type_ == other.method_type_ && storage_type_ == other.storage_type_ &&
+                   handler_type_ == other.handler_type_ && descriptor_->name == other.descriptor_->name;
+        }
+
+        [[nodiscard]] bool isResourceCommand() const noexcept
+        {
+            return storage_ != nullptr;
         }
 
         [[nodiscard]] bool valid() const noexcept
@@ -78,20 +76,25 @@ namespace lux::render
             make_error_(output, error);
         }
 
-        template <RenderCommand C, auto Method, class H, std::uint32_t StorageDependency = UINT32_MAX>
+        template <
+            RenderCommand C,
+            auto Method,
+            class H = typename extension_detail::CommandInvocation<C, Method>::Handler>
             requires(SyncCommandHandlerFor<C, H, Method> || AsyncCommandHandlerFor<C, H, Method>)
         [[nodiscard]] static CommandBinding declare() noexcept
         {
             CommandBinding result;
             result.descriptor_ = &commandDescriptor<C>();
-            result.handler_type_ = cxx::make_basic_type_info<H>();
+            if constexpr (!std::is_void_v<H>)
+            {
+                result.handler_type_ = cxx::make_basic_type_info<H>();
+            }
             result.method_type_ = cxx::make_basic_type_info<CommandMethod<C, Method>>();
-            result.storage_dependency_ = StorageDependency;
             using Invocation = extension_detail::CommandInvocation<C, Method>;
             using Storage = typename Invocation::Storage;
             if constexpr (!std::is_void_v<Storage>)
             {
-                static_assert(CapabilityCommand<C> && StorageDependency != UINT32_MAX);
+                static_assert(CapabilityCommand<C>);
                 result.storage_type_ = cxx::make_basic_type_info<std::remove_const_t<Storage>>();
             }
             result.make_error_ = [](platform::ipc::IpcMessage& output, RenderError error) noexcept
@@ -116,8 +119,10 @@ namespace lux::render
             }
             if constexpr (!std::is_void_v<Storage>)
             {
-                static_assert(requires(const typename C::Request& request) { C::implementationId(request); } ||
-                    requires(const typename C::Request& request) { C::resourceId(request); });
+                static_assert(
+                    requires(const typename C::Request& request) { C::implementationId(request); } ||
+                    requires(const typename C::Request& request) { C::resourceId(request); }
+                );
             }
             result.call_ = {
                 [](void* object, runtime_detail::CommandDispatchContext& context) noexcept
@@ -128,7 +133,14 @@ namespace lux::render
                         auto& output = runtime_detail::prepareResponse(context.outbox, context.response_route);
                         auto& response = output.emplace<typename C::Response>();
                         response.error = RenderError{kRuntimeState};
-                        Invocation::invoke(*static_cast<H*>(object), context.storage, input, response);
+                        if constexpr (std::is_void_v<H>)
+                        {
+                            Invocation::invoke(context.resource.get(), input, response);
+                        }
+                        else
+                        {
+                            Invocation::invoke(*static_cast<H*>(object), context.resource.get(), input, response);
+                        }
                         if (context.structural_command_running)
                         {
                             *context.structural_command_running = false;
@@ -139,27 +151,45 @@ namespace lux::render
                         // Admission is serialized with scope close on the RenderThread.
                         const auto route = context.response_route;
                         auto& outbox = context.outbox;
-                        const auto render_scheduler = context.render_loop.scheduler();
-                        auto sender = Invocation::invoke(*static_cast<H*>(object), context.storage, std::move(input));
-                        auto normalized = std::move(sender) | stdexec::upon_error(ResponseError<C>{}) |
-                                          stdexec::upon_stopped(
-                                              []() noexcept -> typename C::Response
-                                              { return ResponseError<C>{}(RenderError{kCommandCancelled}); }
-                                          ) |
-                                          stdexec::continues_on(render_scheduler) |
-                                          stdexec::then(
-                                              [route, &outbox, structural = context.structural_command_running](
-                                                  typename C::Response response
-                                              ) noexcept
-                                              {
-                                                  runtime_detail::prepareResponse(outbox, route)
-                                                      .emplace<typename C::Response>(std::move(response));
-                                                  if (structural)
-                                                  {
-                                                      *structural = false;
-                                                  }
-                                              }
-                                          );
+                        const auto render_scheduler =
+                            context.server_delivery;
+                        // Keep the request in operation state: a lazy Handler may borrow its fields
+                        // after dispatchRequest has released the IPC message.
+                        auto sender = stdexec::just(std::move(input)) | stdexec::let_value(
+                            [object, storage = context.resource.get()](typename C::Request& request) noexcept
+                            {
+                                if constexpr (std::is_void_v<H>)
+                                {
+                                    return Invocation::invoke(storage, std::move(request));
+                                }
+                                else
+                                {
+                                    return Invocation::invoke(*static_cast<H*>(object), storage, std::move(request));
+                                }
+                            }
+                        );
+                        auto normalized =
+                            std::move(sender) | stdexec::upon_error(ResponseError<C>{}) |
+                            stdexec::upon_stopped(
+                                []() noexcept -> typename C::Response
+                                { return ResponseError<C>{}(RenderError{kCommandCancelled}); }
+                            ) |
+                            stdexec::continues_on(render_scheduler) | stdexec::upon_error(ResponseError<C>{}) |
+                            stdexec::then(
+                                [route,
+                                 &outbox,
+                                 structural = context.structural_command_running,
+                                 resource = std::move(context.resource)](typename C::Response response) mutable noexcept
+                                {
+                                    resource.reset();
+                                    runtime_detail::prepareResponse(outbox, route)
+                                        .emplace<typename C::Response>(std::move(response));
+                                    if (structural)
+                                    {
+                                        *structural = false;
+                                    }
+                                }
+                            );
                         stdexec::spawn(
                             std::move(normalized),
                             context.scope.get_token(),
@@ -195,6 +225,12 @@ namespace lux::render
                 return response;
             }
 
+            [[noreturn]] typename C::Response operator()(cxx::execution::ScheduleError) const noexcept
+            {
+                // A necessary delivery was rejected: shutdown closed the Context too early.
+                std::terminate();
+            }
+
             [[noreturn]] typename C::Response operator()(std::exception_ptr) const noexcept
             {
                 std::terminate();
@@ -205,11 +241,10 @@ namespace lux::render
         cxx::type_info handler_type_;
         cxx::type_info storage_type_;
         cxx::type_info method_type_;
-        std::uint32_t storage_dependency_ = UINT32_MAX;
         HandlerCall call_;
         void (*make_error_)(platform::ipc::IpcMessage&, RenderError) noexcept = nullptr;
         CapabilityImplementationId (*implementation_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         SceneId (*scene_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
-        StorageId (*storage_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
+        ResourceInstanceId (*storage_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
     };
 } // namespace lux::render

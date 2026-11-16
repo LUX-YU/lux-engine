@@ -71,7 +71,7 @@ ExecutionRuntime::create（应用已有）
       → DeviceSession::create → DeviceBackend::initialize
       → ResourceUploader::create（配置 uploads 时）
       → FrameExecution::create（1～3 个实际帧槽）
-      → ResourceRegistry + Global StorageSet
+      → ResourceRegistry + Global ResourceSet
   → Impl::registerBuiltinFeatures
     → 私有 Storages / Commands tuple → 直接登记构造入口与调用入口
   → 可选外部 registerFeature / registerStorage / registerHandler
@@ -101,7 +101,7 @@ ExecutionRuntime::create（应用已有）
 `run()` 创建当前选中的 Handler；首次切换到其他实现时在控制安全点创建。外部目录改动仅允许在启动前或完整停止清偿后进行；能力请求使用装配得到的准确方法，不按全局 active 重选。
 
 Feature 的 Storage 依赖与 Effect 的资源端口连接是两件事：前者登记实现，后者决定同一张图的数据依赖。
-专业 Command 或 Attach 在实际作用域准备 Storage；StorageSet 唯一拥有实例。构建函数依据已启用的分页路径冷态选定，
+GetOrCreateResource 或 Attach 在实际作用域准备 Resource；ResourceSet 唯一拥有实例。构建函数依据已启用的分页路径冷态选定，
 编译任务借用稳定 FeatureEntry，热帧不重选。新增 Handler 不抢占当前绑定，旧实例保留到异步工作清偿之后。
 
 Command、配置和绑定选择的 C++ 身份直接使用 `cxx::type_info`。Token 比较完整类型名及 hash，
@@ -174,11 +174,12 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 
 ### 5.1 实例归属
 
-[StorageSet](../../modules/function/render/sinclude/lux/engine/render/resource/StorageSet.hpp) 独占实际 Storage；
-[ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/storage/ResourceRegistry.hpp) 拥有类型目录、
-生成式 StorageId 和非拥有实例定位。Global StorageSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
+[ResourceSet](../../modules/function/render/sinclude/lux/engine/render/resource/ResourceSet.hpp) 独占实际 Storage；
+[ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/resource/ResourceRegistry.hpp) 拥有类型目录、
+生成式 ResourceInstanceId 和非拥有实例定位。Global ResourceSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
 普通客户端先 CreateEffect，随后以 EffectId、能力项序号和作用域调用公开 Command／帧数据；Attach 只返回关联身份。
-StorageId、类型目录与创建算法只用于扩展作者和 Render 内部，普通用户不准备或释放 Storage。
+普通 Client 通过 QueryResource/GetOrCreateResource 取得 ResourceInstanceId；上传创建使用该实例身份，
+已有条目操作使用父 Resource 身份与本地代际。具体 Storage 和创建算法仍属于扩展及模块内部。
 
 `StorageCreateContext` 只同步借用设备、上传、帧执行和 Registry 等构造依赖。
 业务资源 ID 是不透明值；仅 Render 内部解析 Storage 和本地代际键。名称用于冷发现，不在稳定绘制中重复查询。
@@ -194,7 +195,7 @@ StorageId、类型目录与创建算法只用于扩展作者和 Render 内部，
 | `RasterMaterialTableStorage` | Cooked 程序布局、连续参数表、稳定槽及各 FIF 脏范围；`upload/prepareFrame` | 光照求值、自动修复 Texture 业务关系 |
 | `SampledTexture2DStorage` | Image/view/descriptor 索引、Mip/BC1/Region Clone+patch；`upload/release/resolve` | 追踪所有使用它的 Material |
 | `DirectLightingStorage` | 灯光 GPU 记录和增量/FIF 数据；给 Feature 提供资源输入 | 生成阴影图或执行 Cluster 算法 |
-| 各 `...CommandHandler` | 从 Request 的 StorageId 定位正确专业实例，调用其同步函数或上传 Sender，生成显式 Response | 另建资源状态机 |
+| 各 `...CommandHandler` | 从 Request 的 ResourceInstanceId 定位正确专业实例，调用其同步函数或上传 Sender，生成显式 Response | 另建资源状态机 |
 
 入口示例：[Instance 实现](../../modules/function/render/src/storage/RasterMeshInstanceStorage.cpp)、
 [Material 实现](../../modules/function/render/src/storage/RasterMaterialTableStorage.cpp)、
@@ -337,11 +338,11 @@ Transform 运行期变号不依赖 CPU 符号缓存。奇异变换不产生有�
 
 | 类型 | 拥有 | 借用/关系 |
 |---|---|---|
-| `RenderScene` | Scene StorageSet、View 集合 | 非 Engine ECS Scene |
-| `RenderView` | View StorageSet、AttachmentId 索引 | 没有通用 Camera 类型 |
+| `RenderScene` | Scene ResourceSet、View 集合 | 非 Engine ECS Scene |
+| `RenderView` | View ResourceSet、AttachmentId 索引 | 没有通用 Camera 类型 |
 | `RenderEffect` | RenderPlan、原 Graph/Analysis、Storage 要求、冷绑定数据 | 可被多个 Attachment 使用 |
 | `RenderTarget` | OffscreenTarget、描述和 epoch | 当前只允许一个 Attachment 写入 |
-| `EffectAttachment` | Attachment StorageSet、RenderGraphInstance、FeatureBinding、Storage 输入订阅节点 | Scene/View/Effect/Target ID |
+| `EffectAttachment` | Attachment ResourceSet、RenderGraphInstance、FeatureBinding、Storage 输入订阅节点 | Scene/View/Effect/Target ID |
 | `RenderGraphInstance` | 每 FIF FrameResources、Descriptor/参数/条件/History 与动态绑定 | 不可变 RenderPlan、输出 Target、外部专业输入 |
 
 ```text
@@ -349,7 +350,7 @@ Attach Request
   → Impl::attachEffect：查身份/Target 兼容性
   → prepareAttachment
     → 从活图和 Feature 准备依赖求必要输入闭包
-    → 按 global/scene/view/attachment 分组 StorageSet::getOrCreate
+    → 按 global/scene/view/attachment 分组 ResourceSet::getOrCreate
     → StorageBindingOps::resolve → 普通 ResourceInput → Instance::setResource
     → 创建 FeatureBinding（RasterMeshDraws/ShadowProjection 等实际派生数据）
     → 安装 Sampler → RenderGraphInstance::initialize

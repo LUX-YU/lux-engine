@@ -4,7 +4,7 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
-#include <lux/engine/render/extensions/storage/StorageDescriptor.hpp>
+#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 
 namespace lux::render
 {

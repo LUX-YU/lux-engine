@@ -12,11 +12,16 @@ include(description/cmake/ValueTypes.cmake)
 add_subdirectory(description)
 add_subdirectory(asset)
 
+option(LUX_BUILD_MATERIAL_COMPILER "Build optional IR-only target compiler and tools" OFF)
+set(resource_components identity description_types shader_metadata description asset)
+if(LUX_BUILD_MATERIAL_COMPILER OR LUX_BUILD_RENDER)
+    add_subdirectory(shader_metadata)
+    list(APPEND resource_components shader_compiler)
+endif()
+
 lux_engine_install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
-	COMPONENTS		identity description_types shader_metadata
-                    description
-                    asset
+    COMPONENTS ${resource_components}
 )

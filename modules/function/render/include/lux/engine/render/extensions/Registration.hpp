@@ -7,7 +7,7 @@
 #include <lux/engine/render/extensions/detail/FeatureEntry.hpp>
 #include <lux/engine/render/extensions/detail/HandlerRecord.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 
 namespace lux::render::runtime_detail
@@ -51,7 +51,29 @@ namespace lux::render::runtime_detail
 
     template <class... Methods> constexpr auto handlerTypes(std::tuple<Methods...>*) noexcept
     {
-        return uniqueTypes(static_cast<std::tuple<typename Methods::Handler...>*>(nullptr));
+        if constexpr (sizeof...(Methods) == 0)
+        {
+            return std::tuple<>{};
+        }
+        else
+        {
+            return []<class... Types>(std::tuple<Types...>) noexcept
+            {
+                return std::tuple_cat(
+                    []<class H>(std::type_identity<H>) noexcept
+                    {
+                        if constexpr (std::is_void_v<H>)
+                        {
+                            return std::tuple<>{};
+                        }
+                        else
+                        {
+                            return std::tuple{std::type_identity<H>{}};
+                        }
+                    }(Types{})...
+                );
+            }(typename cxx::remove_repeated_types<std::type_identity<typename Methods::Handler>...>::tuple_type{});
+        }
     }
 
     template <class... Methods> auto commandBindings(std::tuple<Methods...>*) noexcept
@@ -60,11 +82,10 @@ namespace lux::render::runtime_detail
         // belongs to CommandBinding::declare; no second Handler::Bindings list is consulted.
         return []<class... Types>(std::tuple<Types...>) noexcept
         {
-            return std::array<CommandBinding, sizeof...(Types)>{CommandBinding::declare<
-                typename Types::type::Command,
-                Types::type::method,
-                typename Types::type::Handler,
-                Types::type::storage_dependency>()...};
+            return std::array<CommandBinding, sizeof...(Types)>{
+                CommandBinding::
+                    declare<typename Types::type::Command, Types::type::method, typename Types::type::Handler>()...
+            };
         }(uniqueTypes(static_cast<std::tuple<Methods...>*>(nullptr)));
     }
 
@@ -73,7 +94,7 @@ namespace lux::render::runtime_detail
         auto call = FrameDataCall::declare<typename Method::Data, Method::method>();
         if constexpr (std::is_lvalue_reference_v<typename Method::Target>)
         {
-            call.storage_dependency = Method::dependency;
+            call.resource_dependency = Method::dependency;
         }
         else if constexpr (std::same_as<typename Method::Target, FrameDrawTarget>)
         {
@@ -126,7 +147,7 @@ namespace lux::render::runtime_detail
 
     template <class... Types> auto storageFactories(std::tuple<Types...>) noexcept
     {
-        return std::array<StorageFactory, sizeof...(Types)>{Types::type::factory()...};
+        return std::array<ResourceRegistration, sizeof...(Types)>{Types::type::factory()...};
     }
 } // namespace lux::render::runtime_detail
 
@@ -177,22 +198,22 @@ namespace lux::render
 
     template <class Storage>
         requires(!std::is_void_v<typename Storage::Descriptor::Config>)
-    RenderResult<StorageTypeId>
-    RenderServer::registerStorage(const typename Storage::Descriptor::Config& config) noexcept
+    RenderResult<ResourceTypeId>
+    RenderServer::registerResource(const typename Storage::Descriptor::Config& config) noexcept
     {
         auto value = ConfigValue::make(config);
         if (!value)
         {
             return cxx::unexpected(value.error());
         }
-        return registerStorage(Storage::factory(), std::move(*value));
+        return registerResource(Storage::factory(), std::move(*value));
     }
 
     template <class Storage>
         requires std::is_void_v<typename Storage::Descriptor::Config>
-    RenderResult<StorageTypeId> RenderServer::registerStorage() noexcept
+    RenderResult<ResourceTypeId> RenderServer::registerResource() noexcept
     {
-        return registerStorage(Storage::factory(), {});
+        return registerResource(Storage::factory(), {});
     }
 
     template <class Handler, class Bindings>

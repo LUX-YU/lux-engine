@@ -1,6 +1,6 @@
 find_package(imgui REQUIRED COMPONENTS core)
 
-find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution)
 
 find_package(stdexec CONFIG REQUIRED GLOBAL)
 
@@ -20,7 +20,6 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../resource/description/cmake/ValueTypes.cmake")
 include(cmake/ShaderTools.cmake)
 include(cmake/Nri.cmake)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/toolchain/shader/cmake/MetadataCompiler.cmake")
 
 generate_visibility_header(
     ENABLE_MACRO_NAME LUX_RENDER_LIBRARY
@@ -44,10 +43,10 @@ set(render_sources
     src/capabilities/DeferredLighting.cpp
     src/capabilities/MeshShadows.cpp
     src/capabilities/RenderPresets.cpp
-    src/resource/StorageDescriptor.cpp
-    src/resource/StorageFactory.cpp
+    src/resource/ResourceDefinition.cpp
+    src/resource/StorageMeta.cpp
     src/resource/ResourceRegistry.cpp
-    src/resource/StorageSet.cpp
+    src/resource/ResourceSet.cpp
     src/storage/MeshPacking.cpp
     src/storage/IndexedTriangleMesh.cpp
     src/storage/RasterMaterial.cpp
@@ -79,9 +78,11 @@ set(render_sources
     src/features/RasterMeshDraws.cpp
     src/features/MeshDrawGroups.cpp
     src/device/Error.cpp
+    src/device/NativeExecution.cpp
     src/device/DeviceSession.cpp
     src/device/DescriptorTable.cpp
-    src/device/vulkan/DeviceBackend.cpp
+    src/device/DeviceBackend.cpp
+    src/device/d3d12/DeviceBackend.cpp
     src/device/SubmissionQueue.cpp
     src/execution/FrameExecution.cpp
     src/execution/FrameResources.cpp
@@ -104,6 +105,7 @@ set(render_sources
     src/graph/Shader.cpp
     src/graph/RasterProgram.cpp
     src/graph/ShaderInterface.cpp
+    src/upload/Preparation.cpp
     src/upload/ResourceUploader.cpp
     src/memory/StagingArena.cpp
     src/memory/BufferArena.cpp
@@ -117,15 +119,20 @@ set(render_sources
     src/runtime/RenderServer.cpp
     src/runtime/CapabilityRegistry.cpp
     src/runtime/CapabilityCompilation.cpp
-    src/runtime/CommandRegistry.cpp
+    src/commands/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
     src/runtime/CapabilityCatalog.cpp
-    src/runtime/StorageScopes.cpp
+    src/runtime/ResourceScopes.cpp
+    src/runtime/JobOutput.cpp
+    src/target/SwapchainFlight.cpp
+    src/runtime/FrameProgress.cpp
+    src/runtime/JobControl.cpp
+    src/runtime/JobRelations.cpp
     src/runtime/Scene.cpp
     src/runtime/EffectCompilation.cpp
-    src/runtime/CommandDispatchContext.cpp
+    src/commands/CommandDispatchContext.cpp
     src/runtime/FrameSubmission.cpp
-    src/runtime/ResponseOutbox.cpp
+    src/commands/ResponseOutbox.cpp
 )
 
 set(mesh_shader_headers)
@@ -167,16 +174,12 @@ foreach(shader
                 string(APPEND variant "Reflected")
             endif()
             set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${variant}Vertex.hpp")
-            set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${variant}Vertex.spv")
-            add_custom_command(
-                OUTPUT "${header}"
-                BYPRODUCTS "${binary}"
-                COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
-                COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
-                    ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/mesh/IndexedTriangleMesh.vert" -o "${binary}"
-                COMMAND lux_shader_metadata "${binary}" "${header}" k${variant}Vertex
-                DEPENDS shaders/mesh/IndexedTriangleMesh.vert lux_shader_metadata
-                VERBATIM
+            set(target_options)
+            if(shader MATCHES "Paged$")
+                list(APPEND target_options --physical-pointers)
+            endif()
+            lux_render_shader("${header}" shaders/mesh/IndexedTriangleMeshVertex.slang vertex
+                k${variant}Vertex ${defines} ${target_options}
             )
             list(APPEND mesh_shader_headers "${header}")
         endforeach()
@@ -184,17 +187,7 @@ foreach(shader
 endforeach()
 
 set(hzb_header "${CMAKE_CURRENT_BINARY_DIR}/shaders/HzbDownsample.hpp")
-set(hzb_binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/HzbDownsample.spv")
-add_custom_command(
-    OUTPUT "${hzb_header}"
-    BYPRODUCTS "${hzb_binary}"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
-    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
-        "${CMAKE_CURRENT_SOURCE_DIR}/shaders/hzb/Downsample.comp" -o "${hzb_binary}"
-    COMMAND lux_shader_metadata "${hzb_binary}" "${hzb_header}" kHzbDownsample
-    DEPENDS shaders/hzb/Downsample.comp lux_shader_metadata
-    VERBATIM
-)
+lux_render_shader("${hzb_header}" shaders/hzb/Downsample.slang compute kHzbDownsample)
 
 set(material_shader_root "${CMAKE_CURRENT_SOURCE_DIR}/../material/shaders")
 set(feature_shader_headers)
@@ -207,18 +200,18 @@ foreach(shader
 )
     set(defines)
     if(shader STREQUAL "FullscreenVertex")
-        set(source shaders/deferred/Fullscreen.vert)
+        set(source shaders/deferred/FullscreenVertex.slang)
     elseif(shader STREQUAL "UiRasterVertex")
-        set(source shaders/ui/UiRaster.vert)
+        set(source shaders/ui/UiRasterVertex.slang)
     elseif(shader STREQUAL "UiRasterFragment")
-        set(source shaders/ui/UiRaster.frag)
+        set(source shaders/ui/UiRasterFragment.slang)
     elseif(shader MATCHES "^UiOutput")
-        set(source shaders/ui/UiOutput.frag)
+        set(source shaders/ui/UiOutputFragment.slang)
         if(shader STREQUAL "UiOutputSrgb")
             list(APPEND defines -DOUTPUT_SRGB=1)
         endif()
     elseif(shader MATCHES "^DeferredLighting")
-        set(source shaders/deferred/DeferredLighting.frag)
+        set(source shaders/deferred/DeferredLightingFragment.slang)
         if(shader MATCHES "Shadow$")
             list(APPEND defines -DSHADOWS=1)
         endif()
@@ -226,50 +219,34 @@ foreach(shader
             list(APPEND defines -DCLUSTERED=1)
         endif()
     else()
-        set(source shaders/postprocess/Tonemap.frag)
+        set(source shaders/postprocess/TonemapFragment.slang)
         if(shader STREQUAL "TonemapSrgb")
             list(APPEND defines -DOUTPUT_SRGB=1)
         endif()
     endif()
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
-    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv")
-    add_custom_command(
-        OUTPUT "${header}"
-        BYPRODUCTS "${binary}"
-        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
-            "-I${material_shader_root}" ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
-        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
-        DEPENDS "${source}" lux_shader_metadata
-            shaders/shadow/ShadowPcf.glsl
-            shaders/deferred/ClusterLookup.glsl
-            "${material_shader_root}/gbuffer_encode.glsl"
-            "${material_shader_root}/brdf/brdf_common.glsl"
-            "${material_shader_root}/brdf/brdf_ggx.glsl"
-            "${material_shader_root}/brdf/direct_lighting.glsl"
-        VERBATIM
-    )
+    set(shader_stage fragment)
+    if(shader MATCHES "Vertex$")
+        set(shader_stage vertex)
+    endif()
+    lux_render_shader("${header}" "${source}" ${shader_stage} k${shader} ${defines})
     list(APPEND feature_shader_headers "${header}")
 endforeach()
 
 foreach(shader MeshFrustumCull MeshFrustumCullPaged MeshCompact MeshReset MeshView)
     set(defines)
     if(shader STREQUAL "MeshFrustumCullPaged")
-        set(source shaders/mesh/MeshFrustumCull.comp)
+        set(source shaders/mesh/MeshFrustumCull.slang)
         list(APPEND defines -DPAGED_INSTANCES=1)
     else()
-        set(source "shaders/mesh/${shader}.comp")
+        set(source "shaders/mesh/${shader}.slang")
     endif()
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
-    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv")
-    add_custom_command(
-        OUTPUT "${header}"
-        BYPRODUCTS "${binary}"
-        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
-            ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
-        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
-        DEPENDS "${source}" lux_shader_metadata
-        VERBATIM
-    )
+    set(target_options)
+    if(shader MATCHES "Paged$")
+        list(APPEND target_options --physical-pointers)
+    endif()
+    lux_render_shader("${header}" "${source}" compute k${shader} ${defines} ${target_options})
     list(APPEND feature_shader_headers "${header}")
 endforeach()
 
@@ -278,18 +255,9 @@ foreach(stage build count scan fill)
     string(TOUPPER "${first}" first)
     string(SUBSTRING "${stage}" 1 -1 rest)
     set(shader "Cluster${first}${rest}")
-    set(source "shaders/deferred/cluster_${stage}.comp")
+    set(source "shaders/deferred/cluster_${stage}.slang")
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
-    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv")
-    add_custom_command(
-        OUTPUT "${header}"
-        BYPRODUCTS "${binary}"
-        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
-            "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
-        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
-        DEPENDS "${source}" shaders/deferred/ClusterIntersection.glsl lux_shader_metadata
-        VERBATIM
-    )
+    lux_render_shader("${header}" "${source}" compute k${shader})
     list(APPEND feature_shader_headers "${header}")
 endforeach()
 
@@ -320,7 +288,7 @@ component_include_directories(
 )
 
 # Authors borrow the existing runtime/backend. This target compiles no Render implementation.
-target_link_libraries(render_extensions INTERFACE render STDEXEC::stdexec lux::engine::core::core_execution)
+target_link_libraries(render_extensions INTERFACE render STDEXEC::stdexec lux::cxx::execution lux::engine::core::core_execution)
 
 target_include_directories(render PRIVATE
     "${LUX_NRI_SOURCE_DIR}/Include"
@@ -336,35 +304,40 @@ install(DIRECTORY "${LUX_NRI_SOURCE_DIR}/Include/"
     FILES_MATCHING PATTERN "*.h"
 )
 
+if(WIN32)
+    set(agility_runtime "${LUX_RENDER_DEPENDENCY_CACHE}/nri-v192-content/agilitysdk-src/build/native/bin/x64")
+    set(agility_libraries "${agility_runtime}/D3D12Core.dll" "${agility_runtime}/d3d12SDKLayers.dll")
+    add_custom_command(
+        TARGET render POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:render>/AgilitySDK"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${agility_libraries} "$<TARGET_FILE_DIR:render>/AgilitySDK"
+        VERBATIM
+    )
+    install(FILES ${agility_libraries} DESTINATION bin/AgilitySDK COMPONENT lux_engine_render)
+    install(FILES
+        "${LUX_RENDER_DEPENDENCY_CACHE}/nri-v192-content/agilitysdk-src/LICENSE.txt"
+        "${LUX_RENDER_DEPENDENCY_CACHE}/nri-v192-content/agilitysdk-src/LICENSE-CODE.txt"
+        DESTINATION share/lux-engine-render/licenses/AgilitySDK
+    )
+endif()
+
 target_compile_definitions(render PRIVATE LUX_RENDER_LIBRARY)
 target_compile_features(render PUBLIC cxx_std_20)
 target_link_libraries(render
     PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
-        STDEXEC::stdexec lux::engine::core::core_execution
+        STDEXEC::stdexec lux::cxx::execution lux::engine::core::core_execution
     PRIVATE NRI imgui::core Eigen3::Eigen lux::engine::core::math
         lux::engine::core::serialization
-        lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
+        spirv-cross-c SPIRV-Tools-static
         lux::engine::platform::platform_process
 )
-
-if(WIN32)
-    # Build-tree consumers use the same real compiler DLLs as the install; no SDK PATH fallback.
-    add_custom_command(
-        TARGET render POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "$<TARGET_FILE:lux_render_spirv_cross_c_shared>"
-            "$<TARGET_FILE:lux_render_SPIRV_Tools_shared>"
-            "$<TARGET_FILE_DIR:render>"
-        VERBATIM
-    )
-endif()
 
 component_add_transitive_commands(render
     "find_package(stdexec CONFIG REQUIRED GLOBAL)"
     "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
-    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)"
+    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution)"
     "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
     "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types shader_metadata)"
     "find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)"

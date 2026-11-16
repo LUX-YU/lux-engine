@@ -15,7 +15,7 @@ namespace lux::render::detail
             &nri::DescriptorPoolDesc::descriptorSetMaxNum, &nri::DescriptorPoolDesc::samplerMaxNum,
             &nri::DescriptorPoolDesc::constantBufferMaxNum, &nri::DescriptorPoolDesc::storageStructuredBufferMaxNum,
             &nri::DescriptorPoolDesc::storageBufferMaxNum, &nri::DescriptorPoolDesc::textureMaxNum,
-            &nri::DescriptorPoolDesc::storageTextureMaxNum
+            &nri::DescriptorPoolDesc::storageTextureMaxNum, &nri::DescriptorPoolDesc::structuredBufferMaxNum
         };
     }
 
@@ -35,7 +35,8 @@ namespace lux::render::detail
                 switch (binding.kind)
                 {
                 case EDescriptorKind::TYPED_STORAGE_BUFFER: return &pool.storageBufferMaxNum;
-                case EDescriptorKind::STORAGE_BUFFER: return &pool.storageStructuredBufferMaxNum;
+                case EDescriptorKind::STORAGE_BUFFER: return binding.access == EShaderAccess::READ_ONLY ?
+                    &pool.structuredBufferMaxNum : &pool.storageStructuredBufferMaxNum;
                 case EDescriptorKind::UNIFORM_BUFFER: return &pool.constantBufferMaxNum;
                 case EDescriptorKind::STORAGE_IMAGE: return &pool.storageTextureMaxNum;
                 case EDescriptorKind::SAMPLED_IMAGE: return &pool.textureMaxNum;
@@ -114,12 +115,7 @@ namespace lux::render::detail
                 previous.size == source.size;
             if (unchanged) continue;
             nri::Descriptor* descriptor = nullptr;
-            const nri::BufferViewDesc view{
-                source.buffer,
-                use.kind == EDescriptorKind::UNIFORM_BUFFER ? nri::BufferView::CONSTANT_BUFFER
-                                                            : nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER,
-                source.offset, source.size
-            };
+            const auto view = bindings.bindings[use.field].bufferView(source.buffer, source.offset, source.size);
             const auto status = core.CreateBufferView(view, descriptor);
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             core.DestroyDescriptor(std::exchange(record.views[i], descriptor));
@@ -136,6 +132,7 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         const auto& core = session_->nriCore();
         nri::DescriptorPoolDesc required{};
+        if (auto counted = session_->descriptors().addSnapshotDescriptors(required); !counted) return counted;
         for (const auto& pass : frame.passes)
         {
             auto counted = FrameResources::addDescriptors(
@@ -149,6 +146,7 @@ namespace lux::render::detail
                 return cxx::unexpected(counted.error());
         }
         auto capacity = frame.descriptor_capacity;
+        capacity.flags |= required.flags;
         for (auto field : descriptor_counts)
         {
             if (required.*field > capacity.*field)
@@ -161,6 +159,8 @@ namespace lux::render::detail
         auto status = core.CreateDescriptorPool(session_->device(), capacity, pool);
         if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
         cxx::scope_exit rollback([&]() noexcept { core.DestroyDescriptorPool(pool); });
+        auto shared = session_->descriptors().createSnapshot(*pool);
+        if (!shared) return cxx::unexpected(shared.error());
         std::vector<std::pair<nri::DescriptorSet**, nri::DescriptorSet*>> replacements;
         const auto allocate = [&](const PassBindings& program, nri::DescriptorSet*& destination,
                                   const auto& view) noexcept -> RenderResult<void>
@@ -224,6 +224,8 @@ namespace lux::render::detail
         auto* old_pool = std::exchange(frame.descriptor_pool, pool);
         frame.descriptor_capacity = capacity;
         frame.descriptor_reserved = required;
+        frame.shared_descriptors = *shared;
+        frame.shared_descriptor_counts = session_->descriptors().snapshotCounts();
         rollback.release();
         if (old_pool)
         {

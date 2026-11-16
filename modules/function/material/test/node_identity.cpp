@@ -1,5 +1,5 @@
 #include "MaterialTest.hpp"
-#include <lux/engine/material/MaterialIR.hpp>
+#include <lux/engine/material/MaterialLowering.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 
 #include <array>

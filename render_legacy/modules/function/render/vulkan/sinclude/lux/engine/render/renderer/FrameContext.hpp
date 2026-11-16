@@ -107,9 +107,4 @@ namespace lux::render
         uint32_t sort_key = 0;
         bool enabled = true;
     };
-
-    // (ComposeSource / ComposePlan / FramePlan 已删除 —— 它们描述的是一个不再存在的
-    //  FrameExecutor 合成阶段,全仓无任何构造/消费点。合成链现由 RenderServer::tick
-    //  的目标遍历承担,见分层设计 §12.7。)
-
 } // namespace lux::render

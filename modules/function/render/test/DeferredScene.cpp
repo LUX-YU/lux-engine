@@ -1,11 +1,10 @@
-#include "../../material/test/MaterialTest.hpp"
+#include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/ImageCommands.hpp>
@@ -14,9 +13,9 @@
 #include <lux/engine/render/commands/Mesh3dCommands.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
@@ -109,16 +108,16 @@ cook(
     }
     constexpr std::array available{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
     const auto purposes = std::span(available).subspan(shadow_only ? 1 : 0);
-    auto cooked = compileMaterial(graph, purposes);
+    auto cooked = deriveFixtureMaterial(graph, purposes);
     if (!cooked)
     {
-        std::fprintf(stderr, "Cook: %s\n", cooked.error().message.c_str());
+        std::fprintf(stderr, "Cook: %s\n", cooked.error().diagnostic.c_str());
     }
     CHECK(cooked);
-    CHECK(cooked->programs.programs.size() == purposes.size());
-    CHECK(cooked->programs.find(rdesc::EMaterialPurpose::SHADOW)->shader.interface.entry_points.front().outputs.empty()
+    CHECK(cooked->material.programs.programs.size() == purposes.size());
+    CHECK(cooked->material.programs.find(rdesc::EMaterialPurpose::SHADOW)->shader.interface.entry_points.front().outputs.empty()
     );
-    const auto& shadow_use = cooked->programs.find(rdesc::EMaterialPurpose::SHADOW)->shader;
+    const auto& shadow_use = cooked->material.programs.find(rdesc::EMaterialPurpose::SHADOW)->shader;
     for (const auto& input : shadow_use.interface.entry_points.front().inputs)
     {
         CHECK(input.location == 4);
@@ -128,8 +127,8 @@ cook(
         CHECK(shadow_use.interface.sets.empty());
     }
     graph.render_state.alpha_mode = rdesc::EAlphaMode::BLEND;
-    CHECK(!compileMaterial(graph, purposes));
-    return std::move(cooked->programs);
+    CHECK(!deriveFixtureMaterial(graph, purposes));
+    return std::move(cooked->material.programs);
 }
 
 static float tonemap(float input, float exposure)
@@ -384,7 +383,7 @@ static void descriptorTables()
     auto& table = session->descriptors();
     auto* first = table.descriptors(nri::DescriptorType::TEXTURE);
     const auto ranges = DescriptorTable::layoutRanges({32, 16, 16}, enabled.variable_descriptor_count);
-    const nri::DescriptorSetDesc image_set{0, &ranges[0], 1, nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET};
+    const nri::DescriptorSetDesc image_set{0, &ranges[0], 1};
     nri::PipelineLayoutDesc layout_desc{};
     layout_desc.descriptorSets = &image_set;
     layout_desc.descriptorSetNum = 1;
@@ -583,7 +582,7 @@ int main(int argc, char** argv)
     const auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
     const auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
     const auto tone = take(server->featureId("lux.render.feature.TonemapFeature"));
-    take(server->registerStorage<CaptureBuffer>({}));
+    take(server->registerResource<CaptureBuffer>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
     const auto shadow = take(server->featureId("lux.render.feature.MeshDepthRaster"));
     const auto deferred_probe = registerRenderProbe<DeferredProbeConfiguration>(
@@ -868,6 +867,8 @@ int main(int argc, char** argv)
         }
         detach(*client, commands, attached);
         detach(*client, commands, second);
+        call<RemoveView>(*client, commands, {scene, view});
+        call<RemoveView>(*client, commands, {scene, second_view});
         while (pixels.ready.load(std::memory_order_acquire) != 2 ||
                (gpu_visibility && visible_commands.ready.load(std::memory_order_acquire) != 2))
         {
@@ -907,8 +908,6 @@ int main(int argc, char** argv)
             CHECK(observed != 0 && empty_views != 0);
         }
         call<RemoveEffect>(*client, commands, {effect});
-        call<RemoveView>(*client, commands, {scene, view});
-        call<RemoveView>(*client, commands, {scene, second_view});
         for (const auto& frame : pixels.frames)
         {
             if (frame[32 * pixels.pitch + (mixed_winding ? 48 : 16) * 4 + (mixed_winding ? 0 : 3)] != std::byte{})
@@ -1291,6 +1290,7 @@ int main(int argc, char** argv)
             std::this_thread::sleep_for(1ms);
         }
         detach(*client, commands, attachment);
+        call<RemoveView>(*client, commands, {scene, view});
         while (!pixels.ready.load(std::memory_order_acquire))
         {
             CHECK(Clock::now() < deadline);
@@ -1311,7 +1311,6 @@ int main(int argc, char** argv)
         }
         CHECK(rendered);
         call<RemoveEffect>(*client, commands, {effect});
-        call<RemoveView>(*client, commands, {scene, view});
     };
     check_shadow(1);
     masked_values[2][0] = 1;

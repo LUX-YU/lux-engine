@@ -1,5 +1,8 @@
 #pragma once
 
+#include <lux/engine/render/commands/ResourceCommands.hpp>
+#include <lux/engine/render/commands/JobCommands.hpp>
+
 #include <lux/engine/render/capabilities/CapabilityComposition.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -384,8 +387,8 @@ namespace lux::render
         using Response = AckResponse;
     };
 
-    // Request that the host end the rendering session. Ack does not close the IPC endpoint:
-    // typed failures and logical cleanup remain available until the host closes its Clients.
+    // Cancel frame work and close business admission without reporting an execution failure.
+    // Typed failures and logical cleanup remain available until the host stops the Server.
     struct Stop final
     {
         static constexpr bool failure_safe = true;

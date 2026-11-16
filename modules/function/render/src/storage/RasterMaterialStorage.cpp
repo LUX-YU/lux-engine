@@ -1,3 +1,4 @@
+#include <lux/engine/render/storage/RasterMaterialCommandHandler.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstring>
@@ -7,7 +8,7 @@
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
-#include <lux/engine/render/resource/StorageSet.hpp>
+#include <lux/engine/render/resource/ResourceSet.hpp>
 #include <lux/engine/render/storage/RasterMaterialStorage.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 #include <map>
@@ -48,8 +49,8 @@ namespace lux::render::detail
         bool updating = false;
     };
 
-    RasterMaterialStorage::RasterMaterialStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), frame_execution_(*dependencies.frames),
+    RasterMaterialStorage::RasterMaterialStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), frame_count_(dependencies.frame_count),
           resources_(dependencies.resources), id_(id)
     {
     }
@@ -74,6 +75,10 @@ namespace lux::render::detail
     RenderResult<RasterMaterialStorage::Table*>
     RasterMaterialStorage::table(rdesc::MaterialProgramSet& program) noexcept
     {
+        if (program.target != session_.enabledFeatures().shader_target)
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
         for (auto& current : tables_)
         {
             const auto& existing = current->program;
@@ -97,10 +102,10 @@ namespace lux::render::detail
                 [&](const auto& use)
                 {
                     const auto& stages = use.shader.stages;
-                    const bool invalid_code = stages.size() != 1 ||
+                    const bool invalid_code = use.shader.target != program.target || stages.size() != 1 ||
                                               stages.front().stage != rdesc::EShaderType::FRAGMENT ||
-                                              stages.front().entry.empty() || stages.front().words.size() < 5 ||
-                                              stages.front().words.front() != 0x07230203;
+                                              stages.front().entry.empty() ||
+                                              !rdesc::validShaderContainer(use.shader.target, stages.front().words);
                     if (invalid_code)
                     {
                         return true;
@@ -186,8 +191,7 @@ namespace lux::render::detail
     RasterMaterialStorage::TextureInput RasterMaterialStorage::resolveTexture(TextureId id) const noexcept
     {
         auto& registry = resources_;
-        const auto* storage_set = registry.storageSet(extension_detail::ResourceIdentity::storage(id));
-        if (!storage_set || (storage_set != registry.storageSet(id_) && !storage_set->isGlobal()))
+        if (!registry.canReference(id_, extension_detail::ResourceIdentity::storage(id)))
         {
             return {};
         }
@@ -245,26 +249,26 @@ namespace lux::render::detail
         for (auto i = capacity; i != 0; --i) page->free_slots.push_back(i - 1);
         cxx::scope_exit rollback([&]() noexcept { releasePage(*page); });
         const auto& core = session_.nriCore();
-        for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+        for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
         {
             auto& slice = page->gpu[frame];
             slice.dirty.grow(capacity);
             // Constant-only programs have no material-buffer consumer or GPU page.
             if (!table.program.parameterLayout()) continue;
             const nri::BufferDesc description{
-                page->records.size(), table.stride, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE
+                page->records.size(), table.stride, (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE)
             };
             auto status = core.CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, slice.parameters);
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             const nri::BufferViewDesc view{
-                slice.parameters, nri::BufferView::STORAGE_STRUCTURED_BUFFER, 0, page->records.size()
+                slice.parameters, nri::BufferView::STRUCTURED_BUFFER, 0, page->records.size()
             };
             status = core.CreateBufferView(view, slice.descriptor);
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
-            auto slot = session_.descriptors().allocate(nri::DescriptorType::STORAGE_STRUCTURED_BUFFER);
+            auto slot = session_.descriptors().allocate(nri::DescriptorType::STRUCTURED_BUFFER);
             if (!slot) return cxx::unexpected(slot.error());
             slice.slot = *slot;
-            session_.descriptors().write(nri::DescriptorType::STORAGE_STRUCTURED_BUFFER, *slot, slice.descriptor);
+            session_.descriptors().write(nri::DescriptorType::STRUCTURED_BUFFER, *slot, slice.descriptor);
         }
         auto* result = page.get();
         rollback.release();
@@ -297,7 +301,7 @@ namespace lux::render::detail
 
     void RasterMaterialStorage::releasePage(Page& page) noexcept
     {
-        for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+        for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
         {
             removeDirty(page, frame);
             auto& slice = page.gpu[frame];
@@ -309,7 +313,7 @@ namespace lux::render::detail
             {
                 if (!slot.isNull())
                 {
-                    session->descriptors().release(nri::DescriptorType::STORAGE_STRUCTURED_BUFFER, slot);
+                    session->descriptors().release(nri::DescriptorType::STRUCTURED_BUFFER, slot);
                 }
                 session->nriCore().DestroyDescriptor(view);
                 session->nriCore().DestroyBuffer(buffer);
@@ -394,17 +398,17 @@ namespace lux::render::detail
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         std::uint32_t frame_slot = 0;
-        SubmissionFrontiers progress;
+        auto progress = session_.makeFrontiers();
         bool write_acquired = false;
         cxx::scope_exit finish_frame([&]() noexcept
         {
-            if (write_acquired) frame_execution_.finishWrite(frame_slot, progress);
+            if (write_acquired) uploads_.finishWrite(frame_slot, progress);
         });
         if (table.program.parameterLayout())
         {
-            while (!frame_execution_.tryBeginWrite(frame_slot))
+            while (!uploads_.tryBeginWrite(frame_slot))
             {
-                if (auto ready = co_await frame_execution_.whenWritable(values.size()); !ready)
+                if (auto ready = co_await uploads_.whenWritable(values.size()); !ready)
                     co_return cxx::unexpected(ready.error());
             }
             write_acquired = true;
@@ -414,7 +418,7 @@ namespace lux::render::detail
             if (auto uploaded = co_await uploads_.writeBuffers({&write, 1}, {}, frame_slot, &progress); !uploaded)
                 co_return cxx::unexpected(uploaded.error());
             std::memcpy(page.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
-            for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+            for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
                 if (frame != frame_slot) markDirty(page, frame, slot);
             slice.dirty.acknowledge({slot / 64, std::uint64_t{1} << (slot % 64)});
             if (slice.partial_record == slot)
@@ -491,7 +495,7 @@ namespace lux::render::detail
 
     RenderResult<void> RasterMaterialStorage::release(MaterialId id) noexcept
     {
-        if (frame_execution_.submitting())
+        if (uploads_.resourcesFrozen())
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
@@ -577,7 +581,7 @@ namespace lux::render::detail
             {
                 if (copied_any)
                 {
-                    frame_execution_.onPreparationSubmitted(
+                    uploads_.onPreparationSubmitted(
                         this,
                         [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
                         {
@@ -707,8 +711,14 @@ namespace lux::render::detail
         }
     }
 
-    StorageFactory RasterMaterialStorage::factory() noexcept
+    ResourceRegistration RasterMaterialStorage::factory() noexcept
     {
+
+        static const std::array commands{
+            CommandBinding::declare<MaterialCommands::Create, &RasterMaterialCommandHandler::createMaterial>(),
+            CommandBinding::declare<MaterialCommands::Update, &RasterMaterialCommandHandler::updateMaterial>(),
+            CommandBinding::declare<MaterialCommands::Release, &RasterMaterialCommandHandler::releaseMaterial>()
+        };
         static const StorageBindingOps binding{
             [](void* object,
                const VGraphResourceDesc& plan,
@@ -724,20 +734,21 @@ namespace lux::render::detail
             [](const void* value) noexcept
             { return &static_cast<const RasterMaterialStorage*>(value)->preparation_revision_; }
         };
-        static const auto create = +[](StorageCreateContext& dependencies, StorageId id
+        static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMaterialStorage>>
         {
-            if (!dependencies.uploads || !dependencies.frames)
+            if (!dependencies.uploads || dependencies.frame_count == 0 || dependencies.frame_count > 3)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
             return std::make_unique<RasterMaterialStorage>(dependencies, id);
         };
-        return makeStorageFactory<
-            render::RasterMaterialStorageDescriptor,
+        return makeResourceRegistration<
+            render::MaterialResource,
             RasterMaterialStorage,
-            StorageCreateContext,
-            create>(nullptr, &binding);
+            create>(nullptr, &binding,
+            commands
+        );
     }
 } // namespace lux::render::detail
 

@@ -28,7 +28,8 @@ target_link_libraries(
     lux::engine::scene::scene_composition
     lux::engine::world::world_storage
     lux::engine::assets::engine_assets
-    lux::engine::engine_context
+        lux::engine::engine_context
+        lux::engine::engine_metadata
     lux::engine::scene::scene_asset
     lux::engine::ecs::ecs_transform
 )
@@ -40,6 +41,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-assets REQUIRED COMPONENTS engine_assets)"
     "find_package(lux-engine-context REQUIRED COMPONENTS engine_context)"
+    "find_package(lux-engine-runtime-metadata REQUIRED COMPONENTS engine_metadata)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_transform)"
 )
 

@@ -4,7 +4,7 @@
 #include <lux/engine/render/extensions/features/FeaturePorts.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
-#include <lux/engine/render/extensions/storage/Binding.hpp>
+#include <lux/engine/render/extensions/resource/Binding.hpp>
 
 namespace lux::render::detail
 {

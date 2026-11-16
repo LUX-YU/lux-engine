@@ -26,20 +26,17 @@
 using namespace foundation_test;
 namespace rdesc = lux::rdesc;
 
-static rdesc::SpirvArtifact
-program(rdesc::EShaderType type, std::span<const std::uint32_t> words, std::span<const std::byte> reflection)
+static rdesc::ShaderProgramArtifact program(const rdesc::EmbeddedShader& shader)
 {
-    rdesc::SpirvArtifact result;
-    result.stages.push_back({type, "main", {words.begin(), words.end()}});
-    CHECK(rdesc::ShaderInfo::deserialize(reflection, result.interface));
+    auto result = shader.load(rdesc::EShaderTarget::SPIRV);
+    CHECK(!result.stages.empty());
     return result;
 }
 
-static rdesc::SpirvArtifact
-rasterProgram(std::span<const std::uint32_t> fragment, std::span<const std::byte> reflection)
+static rdesc::ShaderProgramArtifact rasterProgram(const rdesc::EmbeddedShader& fragment)
 {
-    auto result = program(rdesc::EShaderType::FRAGMENT, fragment, reflection);
-    auto vertex = program(rdesc::EShaderType::VERTEX, kGraphTriangle, kGraphTriangleReflection);
+    auto result = program(fragment);
+    auto vertex = program(kGraphTriangle);
     result.stages.insert(result.stages.begin(), std::move(vertex.stages.front()));
     result.interface.entry_points.insert(
         result.interface.entry_points.begin(),
@@ -91,8 +88,7 @@ static std::uint32_t finishSubmissions(DeviceSession& session, FrameExecution& f
     // Poll counts depend on CPU speed and do not bound actual GPU progress.
     while (frames.submitting() && std::chrono::steady_clock::now() < deadline)
     {
-        CHECK(session.pollQueues());
-        session.dispatchQueueCompletions();
+        CHECK(session.progressCompletions());
         submitted += take(frames.render({}, {})); // Continue the frozen window, not a fresh preparation.
         if (frames.submitting())
         {
@@ -209,13 +205,13 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     ComputeWork compute;
     compute.allow_async_compute = async_compute;
     compute.interface.program =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphFill, kGraphFillReflection)));
+        take(builder.addProgram(program(kGraphFill)));
     compute.interface.resources = {{"generated", {{seed, 0}, GraphImageRange{1, 1, 1}, EGraphAccess::WRITE}}};
     compute.dispatch = DispatchArguments{{8, 8, 1}};
     const auto generated = take(builder.addComputePass("generate mip 1", std::move(compute)));
     RasterWork mrt;
     auto& fixed_mrt = mrt.fixed();
-    fixed_mrt.interface.program = take(builder.addProgram(rasterProgram(kGraphMrt, kGraphMrtReflection)));
+    fixed_mrt.interface.program = take(builder.addProgram(rasterProgram(kGraphMrt)));
     fixed_mrt.interface.resources = {
         {"source_image", {generated.written.front(), GraphImageRange{1, 1, 1}}},
         {"tint", {tint_pass.written.front()}}
@@ -227,7 +223,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     const auto raster = take(builder.addRasterPass("MRT and depth", std::move(mrt)));
     RasterWork present;
     auto& fixed_present = present.fixed();
-    fixed_present.interface.program = take(builder.addProgram(rasterProgram(kGraphPresent, kGraphPresentReflection)));
+    fixed_present.interface.program = take(builder.addProgram(rasterProgram(kGraphPresent)));
     fixed_present.interface.resources = {
         {"colors", {written(raster, first)}, {{written(raster, second)}}},
         {"depth_image", {written(raster, depth), GraphImageRange{2}}}
@@ -359,7 +355,7 @@ static void indirectCounts(Validation& validation)
     ));
     ComputeWork compute;
     compute.interface.program =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphCount, kGraphCountReflection)));
+        take(builder.addProgram(program(kGraphCount)));
     compute.interface.resources = {
         {"commands", {{commands, 0}, GraphBufferRange{32, 60}, EGraphAccess::WRITE}},
         {"count", {{count, 0}, GraphBufferRange{64, 4}, EGraphAccess::WRITE}},
@@ -371,7 +367,7 @@ static void indirectCounts(Validation& validation)
     const auto generated = take(builder.addComputePass("GPU commands and count", std::move(compute)));
     RasterWork draw;
     auto& fixed_draw = draw.fixed();
-    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
+    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed)));
     draw.colors = {{{{color, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 0, 1}}};
     fixed_draw.draw = DrawIndexedIndirect{
         written(generated, indices),
@@ -449,7 +445,7 @@ static void resolveAndCopy(Validation& validation)
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{4352}}));
     RasterWork draw;
     auto& fixed_draw = draw.fixed();
-    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
+    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed)));
     RasterAttachment attachment{{{source, 0}}};
     attachment.resolve = ResourceAccess{{resolved, 0}};
     draw.colors.push_back(attachment);
@@ -552,7 +548,7 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
         take(builder.addTransferPass("clear current", TransferWork{{FillBuffer{{{history.current, 0}}}}}));
     ComputeWork work;
     work.interface.program =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+        take(builder.addProgram(program(kGraphHistory)));
     work.interface.resources = {
         {"previous_sample", {{history.previous, 0}, {}, EGraphAccess::READ, 0, shader_fallback}},
         {"current_sample", {cleared.written.front(), {}, EGraphAccess::WRITE, 0, cleared.written.front()}}
@@ -563,7 +559,7 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     CHECK(builder.publishHistory(incremented.written.front()));
     ComputeWork advancing;
     advancing.interface.program =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+        take(builder.addProgram(program(kGraphHistory)));
     advancing.interface.resources = {
         {"previous_sample", {{independent.previous, 0}}},
         {"current_sample", {{independent.current, 0}, {}, EGraphAccess::WRITE}}
@@ -685,12 +681,12 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     const auto color = take(builder.declareResource({"target", color_description}));
     ComputeWork seed;
     seed.interface.program =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphDepthField, kGraphDepthFieldReflection)));
+        take(builder.addProgram(program(kGraphDepthField)));
     seed.interface.resources = {{"generated", {{source, 0}, {}, EGraphAccess::WRITE}}};
     seed.dispatch = ImageDispatchArguments{source};
     const auto generated = take(builder.addComputePass("generate depth field", std::move(seed)));
     const auto reduce =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kHzbDownsample, kHzbDownsampleReflection)));
+        take(builder.addProgram(program(kHzbDownsample)));
     ResourceVersion current{history.current, 0};
     for (std::uint32_t mip = 0; mip < 4; ++mip)
     {
@@ -863,7 +859,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
     ComputeWork work;
     work.allow_async_compute = true;
     work.interface.program =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+        take(builder.addProgram(program(kGraphHistory)));
     work.interface.resources = {
         {"previous_sample", {{input, 0}}},
         {"current_sample", {{current, 0}, {}, EGraphAccess::WRITE}}
@@ -919,7 +915,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
     const auto seeded = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{initial, 0}}, 1}}}));
     const auto shader =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+        take(builder.addProgram(program(kGraphHistory)));
     ResourceVersion current{history.current, 0};
     ResourceVersion scratch{temporary, 0};
     for (std::uint32_t i = 0; i < 3; ++i)
@@ -1111,7 +1107,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     const auto output_a = take(builder.declareResource({"first result", GraphBufferDesc{16}}));
     const auto output_b = take(builder.declareResource({"second result", GraphBufferDesc{16}}));
     const auto shader =
-        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+        take(builder.addProgram(program(kGraphHistory)));
     const auto seed_a = take(builder.addTransferPass("seed first", TransferWork{{FillBuffer{{{a, 0}}, 3}}}));
     const auto increment = [&](std::string name, ResourceVersion input, GraphResourceId output)
     {
@@ -1196,8 +1192,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
                std::chrono::steady_clock::now() < deadline)
         {
             take(frames->render(instances, {}));
-            CHECK(session->pollQueues());
-            session->dispatchQueueCompletions();
+            CHECK(session->progressCompletions());
             if (instance->progress().count(EExecutionOutcome::EXECUTED) <= frame)
             {
                 take(frames->waitForProgress(1'000'000));

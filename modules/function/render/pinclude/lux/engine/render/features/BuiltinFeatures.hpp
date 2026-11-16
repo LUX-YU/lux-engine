@@ -103,5 +103,6 @@ namespace lux::render::detail
         MeshVisibilityFeature,
         MeshShadowFeature,
         TonemapFeature,
-        UiRasterFeature>;
+        UiRasterFeature
+    >;
 } // namespace lux::render::detail

@@ -10,6 +10,7 @@
 #include <lux/engine/world/World.hpp>
 
 #include <chrono>
+#include <string_view>
 #include <thread>
 
 using namespace integration_test;
@@ -143,10 +144,87 @@ namespace
             check(bool(initialized));
         }
     }
+
+    void shutdownContracts(RenderServerConfig config)
+    {
+        // Stop cancels business admission while the host can still issue cleanup requests.
+        config.channel_name = "engine.render.cleanup";
+        auto cleanup_execution = take(execution::ExecutionRuntime::create({2, 32, {8}}));
+        std::unique_ptr<RenderClient> cleanup;
+        execution::CompletionWork responses(*cleanup_execution, &cleanup, [](void* state) noexcept
+        {
+            auto& endpoint = *static_cast<std::unique_ptr<RenderClient>*>(state)->get();
+            check(bool(endpoint.dispatchResponses(std::numeric_limits<std::size_t>::max())));
+        });
+        config.response_context = &responses;
+        config.responses_available = [](void* state) noexcept
+        { static_cast<execution::CompletionWork*>(state)->request(); };
+        bool execution_failed = false;
+        config.failure_context = &execution_failed;
+        config.execution_failed = [](void* state, RenderError) noexcept { *static_cast<bool*>(state) = true; };
+        auto cleanup_server = take(RenderServer::create(config, *cleanup_execution, {}));
+        check(bool(registerNoGeometryCapabilities(nullptr, *cleanup_server)));
+        auto client = take(platform::ipc::IpcCore::instance().createRequester(config.channel_name));
+        check(bool(cleanup_server->setFrameSource(client.id())));
+        RenderResult<void> stopped;
+        std::thread render_thread([&]() noexcept { stopped = cleanup_server->run(); });
+        cleanup = take(RenderClient::create(std::move(client)));
+        const auto cleanup_scene = call<CreateScene>(*cleanup, {}).scene;
+        const auto inactive_scene = call<CreateScene>(*cleanup, {}).scene;
+        const auto inactive_view = call<CreateView>(*cleanup, {inactive_scene}).view;
+        const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
+        const EffectOutputDesc effect_output{target.format, target.samples, target.kind, target.sampled};
+        const auto capability = noGeometryCapabilityType(false);
+        const auto choices = call<ListCapabilities>(
+            *cleanup, {std::string(capability.name()), "test.scene.no_geometry.a", effect_output}
+        );
+        check(choices.implementations.size() == 1);
+        CreateEffectRequest effect_request{effect_output};
+        effect_request.composition.contributions.push_back(
+            {"color", capability, choices.implementations.front().implementation_id, {}}
+        );
+        effect_request.composition.outputs.push_back({"color", "color"});
+        const auto effect = call<CreateEffect>(*cleanup, std::move(effect_request)).effect;
+        const auto output = call<CreateTarget>(*cleanup, {target}).target;
+        const auto attached = call<Attach>(*cleanup, {inactive_scene, inactive_view, output, effect});
+        check(!attached.attachment.isNull());
+        call<SetTargetActive>(*cleanup, {output, false});
+        call<Stop>(*cleanup, {});
+        call<Stop>(*cleanup, {}); // Cancellation is idempotent.
+        const auto refused = call<CreateScene>(*cleanup, {}, kCommandCancelled);
+        check(refused.scene.isNull());
+        call<RemoveScene>(*cleanup, {cleanup_scene});
+        RenderFrame cancelled_frame{1};
+        const auto cancelled = call<SubmitFrame>(*cleanup, cancelled_frame, kCommandCancelled);
+        check(cancelled.outcome == EFrameOutcome::REJECTED);
+        check(cleanup_server->stats().validation_errors == 0);
+        cleanup_server->stop();
+        render_thread.join();
+        check(bool(stopped) && !execution_failed); // Also retires the inactive Attachment.
+        responses.cancel();
+        cleanup->serverStopped(RenderError{kCommandCancelled});
+        CreateEffectRequest unpublished;
+        unpublished.composition.outputs.push_back({"unpublished", "color"});
+        const auto* original_data = unpublished.composition.outputs.data();
+        CreateEffect::Response unpublished_response;
+        bool unpublished_completed = false;
+        receive(cleanup->request<CreateEffect>(unpublished), unpublished_response, unpublished_completed);
+        check(unpublished_completed && unpublished_response.error.type == kCommandCancelled);
+        check(unpublished.composition.outputs.size() == 1 && unpublished.composition.outputs.data() == original_data);
+
+        cleanup.reset();
+        cleanup_server.reset();
+    }
 }
 
 int main(int argc, char** argv)
 {
+    if (argc > 1 && std::string_view{argv[1]} == "--lifecycle")
+    {
+        shutdownContracts({});
+        std::puts("PASS Stop, typed cleanup and inactive Attachment shutdown");
+        return 0;
+    }
     const auto lead = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1u;
     // A bootstrap rejection/malformed reply must not publish a partially initialized Client.
     for (const auto expected : {kRuntimeUnsupported, kCommandContract, kOutcomeUnknown})
@@ -405,49 +483,6 @@ int main(int argc, char** argv)
     check(observation.count == observed_before_close + 1);
     check(observation.completion.outcome == EFrameOutcome::NOT_SUBMITTED);
 
-    // The protocol can deliver typed cleanup after Stop. Test that contract with an explicit Server owner;
-    // Context intentionally treats a failed Server run as fatal rather than a recoverable shutdown result.
-    config.channel_name = "engine.render.cleanup";
-    auto cleanup_execution = take(execution::ExecutionRuntime::create({2, 32, {8}}));
-    std::unique_ptr<RenderClient> cleanup;
-    execution::CompletionWork responses(*cleanup_execution, &cleanup, [](void* state) noexcept
-    {
-        auto& endpoint = *static_cast<std::unique_ptr<RenderClient>*>(state)->get();
-        check(bool(endpoint.dispatchResponses(std::numeric_limits<std::size_t>::max())));
-    });
-    config.response_context = &responses;
-    config.responses_available = [](void* state) noexcept
-    { static_cast<execution::CompletionWork*>(state)->request(); };
-    auto cleanup_server = take(RenderServer::create(config, *cleanup_execution, {}));
-    auto client = take(platform::ipc::IpcCore::instance().createRequester(config.channel_name));
-    check(bool(cleanup_server->setFrameSource(client.id())));
-    RenderResult<void> stopped;
-    std::thread render_thread([&]() noexcept { stopped = cleanup_server->run(); });
-    cleanup = take(RenderClient::create(std::move(client)));
-    const auto cleanup_scene = call<CreateScene>(*cleanup, {}).scene;
-    call<Stop>(*cleanup, {});
-    const auto refused = call<CreateScene>(*cleanup, {}, kCommandCancelled);
-    check(refused.scene.isNull());
-    call<RemoveScene>(*cleanup, {cleanup_scene});
-    RenderFrame cancelled_frame{1};
-    const auto cancelled = call<SubmitFrame>(*cleanup, cancelled_frame, kCommandCancelled);
-    check(cancelled.outcome == EFrameOutcome::REJECTED);
-    check(cleanup_server->stats().validation_errors == 0);
-    cleanup_server->stop();
-    render_thread.join();
-    check(!stopped && stopped.error().type == kCommandCancelled);
-    responses.cancel();
-    cleanup->serverStopped(stopped.error());
-    CreateEffectRequest unpublished;
-    unpublished.composition.outputs.push_back({"unpublished", "color"});
-    const auto* original_data = unpublished.composition.outputs.data();
-    CreateEffect::Response unpublished_response;
-    bool unpublished_completed = false;
-    receive(cleanup->request<CreateEffect>(unpublished), unpublished_response, unpublished_completed);
-    check(unpublished_completed && unpublished_response.error.type == stopped.error().type);
-    check(unpublished.composition.outputs.size() == 1 && unpublished.composition.outputs.data() == original_data);
-
-    cleanup.reset();
-    cleanup_server.reset();
+    shutdownContracts(config);
     std::puts("PASS discrete bursts, main delivery, frame borrows/lead, rejection recovery and RAII shutdown");
 }

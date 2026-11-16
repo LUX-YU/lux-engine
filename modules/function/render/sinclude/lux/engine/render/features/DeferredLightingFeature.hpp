@@ -46,7 +46,7 @@ namespace lux::render
     struct DeferredLightingFeatureConfig final
     {
         GraphImageDesc extent{1, 1, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        std::string lights = "direct_lights";
+        std::string lights = "lux.render.resource.lights";
         rdesc::ShaderBlock input_layout = deferredLightingParameterBlock();
         std::optional<ShadowMapShape> shadows;
         std::optional<ClusterLightListShape> clusters;

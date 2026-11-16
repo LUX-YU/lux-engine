@@ -20,6 +20,8 @@ namespace lux::render
         bool operator==(const GraphResourceId&) const noexcept = default;
     };
 
+    struct RenderJobTag;
+    struct DeviceSessionTag;
     struct SceneTag;
     struct ViewTag;
     struct TargetTag;
@@ -28,9 +30,11 @@ namespace lux::render
     struct FeatureTag;
     struct CapabilityTag;
     struct CapabilityImplementationTag;
-    struct StorageTypeTag;
-    struct StorageTag;
+    struct ResourceTypeTag;
+    struct ResourceInstanceTag;
 
+    using RenderJobId = cxx::SlotKey<RenderJobTag>;
+    using DeviceSessionId = cxx::SlotKey<DeviceSessionTag>;
     using SceneId = cxx::SlotKey<SceneTag>;
     using ViewId = cxx::SlotKey<ViewTag>;
     using TargetId = cxx::SlotKey<TargetTag>;
@@ -39,8 +43,8 @@ namespace lux::render
     using FeatureId = cxx::SlotKey<FeatureTag>;
     using CapabilityId = cxx::SlotKey<CapabilityTag>;
     using CapabilityImplementationId = cxx::SlotKey<CapabilityImplementationTag>;
-    using StorageTypeId = cxx::SlotKey<StorageTypeTag>;
-    using StorageId = cxx::SlotKey<StorageTag>;
+    using ResourceTypeId = cxx::SlotKey<ResourceTypeTag>;
+    using ResourceInstanceId = cxx::SlotKey<ResourceInstanceTag>;
 
     // Keys are local to their SlotMap. isValid() only checks the null sentinel; lookup must
     // validate generation in the owning SlotMap. View lookup also needs SceneId.

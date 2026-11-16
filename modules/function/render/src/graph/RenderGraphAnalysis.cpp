@@ -571,7 +571,7 @@ namespace lux::render
         for (auto id : result.execution_order)
         {
             const ParameterBinding* parameters_input = nullptr;
-            if (const auto* raster = std::get_if<RasterWork>(&passes[id.index].work))
+            if (const auto* raster = passes[id.index].work.getIf<RasterWork>())
             {
                 const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
                 parameters_input =
@@ -581,9 +581,13 @@ namespace lux::render
                     parameters[raster->state_input->resource.index] = true;
                 }
             }
-            if (const auto* compute = std::get_if<ComputeWork>(&passes[id.index].work))
+            if (const auto* compute = passes[id.index].work.getIf<ComputeWork>())
             {
                 parameters_input = &compute->interface.parameters;
+            }
+            if (passes[id.index].encoding_interface)
+            {
+                parameters_input = &passes[id.index].encoding_interface->parameters;
             }
             if (!parameters_input)
             {

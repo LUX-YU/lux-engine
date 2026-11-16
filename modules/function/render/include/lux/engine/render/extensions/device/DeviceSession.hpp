@@ -1,5 +1,8 @@
 #pragma once
 
+#include <exec/task.hpp>
+#include <lux/cxx/execution/ManualContext.hpp>
+
 #include <NRI.h>
 
 #include <Extensions/NRIDeviceCreation.h>
@@ -10,14 +13,17 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
-#include <lux/engine/render/extensions/storage/Binding.hpp>
+#include <lux/engine/render/extensions/resource/Binding.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
+#include <lux/engine/description/ShaderProgramArtifact.hpp>
 
 namespace lux::render::detail
 {
     struct DeviceBackend;
     class CompiledPrograms;
+    class NativeExecution;
     struct StorageBindingOps;
     struct StorageFrameUse;
 
@@ -33,6 +39,17 @@ namespace lux::render::detail
         bool indirect_first_instance = false;
         bool buffer_descriptors = false;
         bool variable_descriptor_count = false;
+        rdesc::EShaderTarget shader_target = rdesc::EShaderTarget::SPIRV;
+
+        [[nodiscard]] bool supports(const DeviceOptions& options) const noexcept
+        {
+            const bool has_descriptors = !options.texture_descriptors || texture_descriptors;
+            const bool has_compression = !options.texture_compression_bc || texture_compression_bc;
+            const bool has_addressing = !options.buffer_device_address || buffer_device_address;
+            const bool has_views = !options.multiview || multiview;
+            const bool has_local_read = !options.local_read || local_read;
+            return has_descriptors && has_compression && has_addressing && has_views && has_local_read;
+        }
     };
 
     // NRI owns the sole native Instance, Device and physical allocator. Aliased roles share
@@ -50,75 +67,74 @@ namespace lux::render::detail
         DeviceSession(const DeviceSession&) = delete;
         DeviceSession& operator=(const DeviceSession&) = delete;
 
+        [[nodiscard]] std::uint32_t resourceCapabilities() const noexcept;
         [[nodiscard]] RenderResult<void> drain() noexcept;
+        // Shared by all logical queue roles in this Session's native host domain. Start only
+        // from the control owner; CPU workers must first deliver back to that owner.
+        [[nodiscard]] cxx::execution::ManualContext::Scheduler nativeScheduler() noexcept;
+        void adoptNativeOwner() noexcept;
         // External Context/Storage owners and upload producers must be settled before final close.
         void close() noexcept;
 
-        // Start on the device thread. Every queue wait is registered now; cleanup executes inline
-        // in the last ordered completion callback. No resource is retained by the queue itself.
+        // Start on the device thread. Capture all accepted frontiers now and settle every queue before release.
+        // No resource is retained by the queue itself.
         template <class Release> void deferRelease(Release release) noexcept
         {
-            SubmissionFrontiers frontiers;
+            auto frontiers = makeFrontiers();
             for (std::size_t q = 0; q < physical_queues_.size(); ++q)
             {
-                frontiers.serials[q] = physical_queues_[q]->submitted();
+                frontiers.accept(submissionPoint(q, physical_queues_[q]->submitted()));
             }
             deferRelease(frontiers, std::move(release));
         }
 
         template <class Release> void deferRelease(SubmissionQueue& queue, Release release) noexcept
         {
-            SubmissionFrontiers frontiers;
-            frontiers.serials[queueIndex(queue)] = queue.submitted();
+            auto frontiers = makeFrontiers();
+            frontiers.accept(submissionPoint(queueIndex(queue), queue.submitted()));
             deferRelease(frontiers, std::move(release));
         }
 
         // Explicit accepted values, indexed by physical queue. Zero means no dependency.
         template <class Release> void deferRelease(SubmissionFrontiers frontiers, Release release) noexcept
         {
-            std::array<std::size_t, 3> pending;
-            std::size_t count = 0;
-            for (std::size_t q = 0; q < physical_queues_.size(); ++q)
+            auto complete = [release = std::move(release)](RenderResult<void> result) mutable noexcept
             {
-                if (frontiers.serials[q] != 0)
-                {
-                    pending[count++] = q;
-                }
-            }
-            const auto wait = [&](std::size_t index)
-            {
-                const auto q = pending[index];
-                return physical_queues_[q]->whenSubmissionCompletes(frontiers.serials[q]);
-            };
-            auto complete = [release = std::move(release)](auto... results) mutable noexcept
-            {
-                (requireCleanupComplete(results), ...);
+                requireCleanupComplete(result);
                 std::invoke(release);
             };
-            switch (count)
-            {
-            case 1:
-                stdexec::spawn(wait(0) | stdexec::then(std::move(complete)), cleanup_scope_.get_token());
-                break;
-            case 2:
-                stdexec::spawn(
-                    stdexec::when_all(wait(0), wait(1)) | stdexec::then(std::move(complete)),
-                    cleanup_scope_.get_token()
-                );
-                break;
-            case 3:
-                stdexec::spawn(
-                    stdexec::when_all(wait(0), wait(1), wait(2)) | stdexec::then(std::move(complete)),
-                    cleanup_scope_.get_token()
-                );
-                break;
-            default:
-                stdexec::spawn(stdexec::just() | stdexec::then(std::move(complete)), cleanup_scope_.get_token());
-            }
+            stdexec::spawn(
+                stdexec::starts_on(stdexec::inline_scheduler{}, waitFrontiers(std::move(frontiers))) |
+                    stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
+                    stdexec::upon_stopped([]() noexcept -> RenderResult<void> { std::terminate(); }) |
+                    stdexec::then(std::move(complete)),
+                cleanup_scope_.get_token()
+            );
         }
 
-        [[nodiscard]] RenderResult<void> pollQueues() noexcept;
-        void dispatchQueueCompletions() noexcept;
+        [[nodiscard]] SubmissionFrontiers makeFrontiers() const noexcept
+        {
+            return {this, queueCount()};
+        }
+
+        [[nodiscard]] SubmissionPoint submissionPoint(std::size_t queue, std::uint64_t serial) const noexcept
+        {
+            if (queue >= queueCount()) std::terminate();
+            return {this, queue, serial};
+        }
+
+        [[nodiscard]] bool reached(const SubmissionFrontiers& frontiers) const noexcept
+        {
+            if (!frontiers.belongsTo(this, queueCount())) return false;
+            for (std::size_t q = 0; q < queueCount(); ++q)
+                if (frontiers.serials()[q] > physicalQueue(q).completed()) return false;
+            return true;
+        }
+
+        [[nodiscard]] exec::task<RenderResult<void>> waitFrontiers(SubmissionFrontiers frontiers) noexcept;
+
+        // Render safe point: publish completed and terminal work even when polling fails.
+        [[nodiscard]] RenderResult<void> progressCompletions() noexcept;
 
         [[nodiscard]] std::size_t queueCount() const noexcept
         {
@@ -237,6 +253,7 @@ namespace lux::render::detail
         void releaseBackendData() noexcept;
         struct BackendData;
 
+        std::unique_ptr<NativeExecution> native_execution_;
         // Declared before all dependent members, destroyed after their complete cleanup.
         nri::Device* device_ = nullptr;
         nri::CoreInterface nri_core_{};

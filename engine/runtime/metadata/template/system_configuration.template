@@ -12,9 +12,7 @@
             lux::world::World& world,
 {% if registration_kind == "scene" %}            lux::simulation::Simulation& simulation,
             const lux::ecs::ComponentSchemaSet& schemas,
-{% endif %}            std::span<const std::byte> bytes{% if registration_kind == "scene" %},
-            const lux::engine::assets::AssetDataRef<lux::scene::SceneData>& source,
-            const lux::scene::SceneStreamingData& streaming{% endif %}
+{% endif %}            std::span<const std::byte> bytes
         ) noexcept -> lux::cxx::expected<
             std::unique_ptr<{% if registration_kind == "scene" %}lux::scene::SceneSystem{% else %}lux::simulation::SimulationSystem{% endif %}>, lux::error::Error>
         {

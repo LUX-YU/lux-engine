@@ -6,6 +6,12 @@
 
 namespace lux::render
 {
+    enum class EGraphicsBackend : std::uint8_t
+    {
+        VULKAN,
+        D3D12
+    };
+
     struct DeviceOptions
     {
         // Explicit enumeration index, or prefer a discrete eligible device.
@@ -25,5 +31,6 @@ namespace lux::render
         std::array<std::uint32_t, 3> private_descriptor_reserve{0, 0, 4};
         // Number of zero-user native programs retained; active programs are not constrained by this budget.
         std::uint32_t cached_unused_programs = 256;
+        EGraphicsBackend backend = EGraphicsBackend::VULKAN;
     };
 } // namespace lux::render

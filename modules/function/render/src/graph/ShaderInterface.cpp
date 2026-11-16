@@ -37,7 +37,9 @@ namespace lux::render::detail
                      source.stages,
                      access,
                      source.image_arrayed,
-                     source.image_depth}
+                     source.image_depth,
+                     source.set,
+                     source.binding}
                 );
             }
         }

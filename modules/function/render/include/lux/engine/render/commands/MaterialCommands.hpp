@@ -13,13 +13,13 @@ namespace lux::render::MaterialCommands
 
         struct Request final
         {
-            CapabilityImplementationId implementation;
+            ResourceInstanceId resource_id;
             Data data;
         };
 
-        [[nodiscard]] static CapabilityImplementationId implementationId(const Request& request) noexcept
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
         {
-            return request.implementation;
+            return request.resource_id;
         }
 
         // Published material identity. Referenced textures remain the Client's responsibility.

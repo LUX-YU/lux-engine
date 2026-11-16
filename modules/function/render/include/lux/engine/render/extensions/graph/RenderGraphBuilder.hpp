@@ -42,22 +42,20 @@ namespace lux::render
         ) noexcept;
         [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> declareCondition(std::string key) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> addProgram(rdesc::SpirvArtifact program) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> addProgram(rdesc::ShaderProgramArtifact program) noexcept;
         // Pass resource accesses use declared ranges/versions. Writes return new versions in PassResult;
         // callers connect consumers to those versions instead of inventing execution ordering.
-        [[nodiscard]] RenderResult<PassResult> addRasterPass(
+        [[nodiscard]] RenderResult<PassResult>
+        addRasterPass(std::string key, RasterWork work, GraphPassOptions = {}) noexcept;
+        [[nodiscard]] RenderResult<PassResult>
+        addComputePass(std::string key, ComputeWork work, GraphPassOptions = {}) noexcept;
+        [[nodiscard]] RenderResult<PassResult>
+        addTransferPass(std::string key, TransferWork work, GraphPassOptions = {}) noexcept;
+        [[nodiscard]] RenderResult<PassResult>
+        addEncodedPass(
             std::string key,
-            RasterWork work,
-            GraphPassOptions = {}
-        ) noexcept;
-        [[nodiscard]] RenderResult<PassResult> addComputePass(
-            std::string key,
-            ComputeWork work,
-            GraphPassOptions = {}
-        ) noexcept;
-        [[nodiscard]] RenderResult<PassResult> addTransferPass(
-            std::string key,
-            TransferWork work,
+            PassDeclaration declaration,
+            PassWork operation,
             GraphPassOptions = {}
         ) noexcept;
         // Duplicate identical edges are canonicalized. Self edges are errors.
@@ -67,12 +65,16 @@ namespace lux::render
         [[nodiscard]] RenderResult<RenderGraph> finish() && noexcept;
 
     private:
-        [[nodiscard]] RenderResult<PassResult> addWork(
-            std::string,
-            VPassWork,
-            EGraphPassKind,
-            GraphPassOptions
-        ) noexcept;
+        struct DeclaredWork final
+        {
+            PassDeclaration declaration;
+            PassWork operation;
+        };
+
+        // Only normalization of convenience frontends; arbitrary operations use the one declared alternative.
+        using VAuthorWork = std::variant<RasterWork, ComputeWork, TransferWork, DeclaredWork>;
+        [[nodiscard]] RenderResult<PassResult>
+        addWork(std::string, VAuthorWork, EGraphPassKind, GraphPassOptions) noexcept;
         [[nodiscard]] RenderResult<GraphPassId> addPass(GraphPass pass) noexcept;
         RenderGraph candidate_;
         std::vector<std::uint32_t> versions_;

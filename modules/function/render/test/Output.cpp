@@ -10,10 +10,11 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <optional>
 #include <string>
+#include <string_view>
 using namespace foundation_test;
 
 static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer& output, std::uint64_t bytes)
@@ -236,9 +237,9 @@ static void importedIdentityReuse(Validation& validation)
     std::puts("IMPORTED IDENTITY PASS: same address rebuilt; unchanged inputs reused dependencies");
 }
 
-static void deviceLostDelivery(Validation& validation)
+static void deviceLostDelivery(Validation& validation, bool enable_validation = true)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 2));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), enable_validation, 2));
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     nri::Buffer* buffer = nullptr;
     const nri::BufferDesc description{16, 0, nri::BufferUsageBits::NONE};
@@ -267,8 +268,8 @@ static void deviceLostDelivery(Validation& validation)
         core.DestroyBuffer(buffer);
         released = true;
     });
-    const auto drained = session->drain();
-    CHECK(!drained && drained.error() == rejected.error());
+    const auto progressed = session->progressCompletions();
+    CHECK(!progressed && progressed.error() == rejected.error());
     CHECK(delivered == rejected.error() && released && !callback.armed());
     session.reset();
     std::puts(
@@ -363,11 +364,17 @@ static void importedExtentContracts(Validation& validation)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     Validation validation;
+    if (argc > 1 && std::string_view{argv[1]} == "--device-lost")
+    {
+        deviceLostDelivery(validation, false);
+        CHECK(validation.errors == 0);
+        return 0;
+    }
     {
         graphOutput(validation);
         importedExtentContracts(validation);

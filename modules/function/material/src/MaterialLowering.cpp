@@ -1,4 +1,4 @@
-#include <lux/engine/material/MaterialIR.hpp>
+#include <lux/engine/material/MaterialLowering.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 
@@ -295,19 +295,7 @@ namespace lux::material
         result.alpha_cutoff = graph.render_state.alpha_cutoff;
         result.double_sided = graph.render_state.double_sided;
         result.shader.fingerprint = shadergen::computeFingerprint(result.shader);
-        auto fingerprint = result.shader.fingerprint;
-        const auto mix = [&](std::uint64_t value) noexcept
-        {
-            fingerprint ^= value;
-            fingerprint *= 1099511628211ULL;
-        };
-        mix(static_cast<std::uint32_t>(result.shading_model));
-        mix(static_cast<std::uint8_t>(result.alpha_mode));
-        if (result.alpha_mode == rdesc::EAlphaMode::MASK)
-        {
-            mix(std::bit_cast<std::uint32_t>(result.alpha_cutoff));
-        }
-        result.combined_fingerprint = fingerprint;
+        result.combined_fingerprint = computeFingerprint(result);
         return result;
     }
 } // namespace lux::material

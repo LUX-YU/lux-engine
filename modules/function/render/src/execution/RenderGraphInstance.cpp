@@ -224,7 +224,7 @@ namespace lux::render::detail
             auto status = core.CreatePlacedBuffer(
                 session_->device(),
                 NriDeviceHeap,
-                {physical.vertex_capacity, 0, nri::BufferUsageBits::VERTEX_BUFFER},
+                {physical.vertex_capacity, 0, nri::BufferUsageBits::VERTEX},
                 physical.vertices
             );
             if (status == nri::Result::SUCCESS)
@@ -232,7 +232,7 @@ namespace lux::render::detail
                 status = core.CreatePlacedBuffer(
                     session_->device(),
                     NriDeviceHeap,
-                    {physical.index_capacity, 0, nri::BufferUsageBits::INDEX_BUFFER},
+                    {physical.index_capacity, 0, nri::BufferUsageBits::INDEX},
                     physical.indices
                 );
             }
@@ -297,13 +297,13 @@ namespace lux::render::detail
         physical.draws.packets.clear();
         physical.draws.parameters.resize(pass->parameter_size);
         auto vertices =
-            grow(physical.vertices, physical.vertex_capacity, vertex_bytes, nri::BufferUsageBits::VERTEX_BUFFER);
+            grow(physical.vertices, physical.vertex_capacity, vertex_bytes, nri::BufferUsageBits::VERTEX);
         if (!vertices)
         {
             return cxx::unexpected(vertices.error());
         }
         setResource(vertex.resource.index, slot, {physical.vertices, 0, physical.vertex_capacity});
-        auto indices = grow(physical.indices, physical.index_capacity, index_bytes, nri::BufferUsageBits::INDEX_BUFFER);
+        auto indices = grow(physical.indices, physical.index_capacity, index_bytes, nri::BufferUsageBits::INDEX);
         if (!indices)
         {
             return cxx::unexpected(indices.error());
@@ -1002,6 +1002,7 @@ namespace lux::render::detail
             history.slots.resize(frames_.size() + 1);
             for (auto& slot : history.slots)
             {
+                slot.last_use = session_->makeFrontiers();
                 Binding candidate;
                 if (auto created = createResource(history.plan->description.current.index, candidate); !created)
                 {
@@ -1076,15 +1077,9 @@ namespace lux::render::detail
                 else
                 {
                     const auto& selected = std::get<GraphBufferRange>(range);
-                    const nri::BufferViewDesc input{
-                        slot.buffer,
-                        kind == EDescriptorKind::UNIFORM_BUFFER         ? nri::BufferView::CONSTANT_BUFFER
-                        : kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::BufferView::STORAGE_BUFFER
-                                                                        : nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER,
-                        selected.offset,
-                        selected.size,
-                        kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::Format::R32_UINT : nri::Format::UNKNOWN
-                    };
+                    const auto& plan = plan_->descriptor_plan_->passes[plan_->passes()[pass].source_pass];
+                    const auto& shader = plan.bindings[plan.uses[index].field];
+                    const auto input = shader.bufferView(slot.buffer, selected.offset, selected.size);
                     result = core.CreateBufferView(input, view);
                 }
                 if (result != nri::Result::SUCCESS)
@@ -1620,6 +1615,7 @@ namespace lux::render::detail
             }
         }
         nri::DescriptorPoolDesc pool{};
+        if (auto counted = session_->descriptors().addSnapshotDescriptors(pool); !counted) return counted;
         for (const auto& pass : plan_->passes())
         {
             if (auto counted = FrameResources::addDescriptors(pool, layout.passes[pass.source_pass]); !counted)
@@ -1637,6 +1633,13 @@ namespace lux::render::detail
                 }
             }
             frame.descriptor_capacity = frame.descriptor_reserved = pool;
+            if (frame.descriptor_pool)
+            {
+                auto shared = session_->descriptors().createSnapshot(*frame.descriptor_pool);
+                if (!shared) return cxx::unexpected(shared.error());
+                frame.shared_descriptors = *shared;
+                frame.shared_descriptor_counts = session_->descriptors().snapshotCounts();
+            }
             for (auto& pass : frame.passes)
             {
                 const auto& program = layout.passes[pass.compiled_pass->source_pass];
@@ -1796,7 +1799,7 @@ namespace lux::render::detail
                     {
                         output += ',';
                     }
-                    output += std::to_string(slot.last_use.serials[q]);
+                    output += std::to_string(slot.last_use.serials()[q]);
                 }
                 output += "]}";
             }
@@ -1990,16 +1993,9 @@ namespace lux::render::detail
                     {
                         return cxx::unexpected(RenderError{kDeviceArgument});
                     }
-                    const nri::BufferViewDesc description{
-                        source.buffer,
-                        use.kind == EDescriptorKind::UNIFORM_BUFFER ? nri::BufferView::CONSTANT_BUFFER
-                        : use.kind == EDescriptorKind::TYPED_STORAGE_BUFFER
-                            ? nri::BufferView::STORAGE_BUFFER
-                            : nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER,
-                        source.buffer_offset + range.offset,
-                        size,
-                        use.kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::Format::R32_UINT : nri::Format::UNKNOWN
-                    };
+                    const auto description = program.bindings[use.field].bufferView(
+                        source.buffer, source.buffer_offset + range.offset, size
+                    );
                     status = core.CreateBufferView(description, candidate);
                 }
                 if (status != nri::Result::SUCCESS)
@@ -2179,6 +2175,11 @@ namespace lux::render::detail
         const auto shared_revision = session_->descriptors().bindingRevision();
         if (frame.shared_binding_revision != shared_revision)
         {
+            if (frame.shared_descriptor_counts != session_->descriptors().snapshotCounts())
+            {
+                if (auto grown = growRasterDescriptorPool(slot); !grown) return cxx::unexpected(grown.error());
+            }
+            session_->descriptors().updateSnapshot(frame.shared_descriptors);
             invalidateRecordings(slot);
             frame.shared_binding_revision = shared_revision;
         }
@@ -2291,7 +2292,7 @@ namespace lux::render::detail
     {
         const auto mark = [&](HistoryState::HistorySlot& slot)
         {
-            slot.last_use.serials[queue] = std::max(slot.last_use.serials[queue], serial);
+            slot.last_use.accept(session_->submissionPoint(queue, serial));
             slot.initialized = true;
         };
         if (batch == 0)

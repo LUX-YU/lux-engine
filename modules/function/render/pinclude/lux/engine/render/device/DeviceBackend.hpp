@@ -14,5 +14,10 @@ namespace lux::render::detail
             bool validation,
             std::uint32_t slots
         ) noexcept;
+
+        [[nodiscard]] static RenderResult<void> initializeD3D12(
+            DeviceSession&, const DeviceOptions&, const nri::CallbackInterface&, bool, std::uint32_t
+        ) noexcept;
+        [[nodiscard]] static RenderResult<void> validateTextureD3D12(const DeviceSession&, const nri::TextureDesc&) noexcept;
     };
 } // namespace lux::render::detail

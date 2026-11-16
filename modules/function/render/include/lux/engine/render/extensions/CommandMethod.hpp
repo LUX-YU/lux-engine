@@ -50,7 +50,8 @@ namespace lux::render
             using Result = void;
             static constexpr bool synchronous = true;
 
-            static void invoke(
+            static void
+            invoke(
                 H& handler,
                 void* storage,
                 const typename C::Request& request,
@@ -74,6 +75,35 @@ namespace lux::render
                 return (handler.*Method)(*static_cast<S*>(storage), std::move(request));
             }
         };
+
+        template <class C, class S, void (*Method)(S&, const typename C::Request&, typename C::Response&) noexcept>
+        struct CommandInvocation<C, Method> final
+        {
+            using Handler = void;
+            using Storage = S;
+            using Result = void;
+            static constexpr bool synchronous = true;
+
+            static void
+            invoke(void* storage, const typename C::Request& request, typename C::Response& response) noexcept
+            {
+                Method(*static_cast<S*>(storage), request, response);
+            }
+        };
+
+        template <class C, class S, class R, R (*Method)(S&, typename C::Request&&) noexcept>
+        struct CommandInvocation<C, Method> final
+        {
+            using Handler = void;
+            using Storage = S;
+            using Result = R;
+            static constexpr bool synchronous = false;
+
+            static R invoke(void* storage, typename C::Request&& request) noexcept
+            {
+                return Method(*static_cast<S*>(storage), std::move(request));
+            }
+        };
     } // namespace extension_detail
 
     template <class C, class H, auto Method>
@@ -83,15 +113,10 @@ namespace lux::render
         extension_detail::CommandInvocation<C, Method>::synchronous;
 
     // Compile-time association only. Runtime installation creates the actual call thunk.
-    template <RenderCommand C, auto Method, std::uint32_t StorageDependency = UINT32_MAX> struct CommandMethod final
+    template <RenderCommand C, auto Method> struct CommandMethod final
     {
-    private:
-        template <class Result, class H, class... Args> static H* handlerType(Result (H::*)(Args...) noexcept);
-
-    public:
         using Command = C;
-        using Handler = std::remove_pointer_t<decltype(handlerType(Method))>;
+        using Handler = typename extension_detail::CommandInvocation<C, Method>::Handler;
         static constexpr auto method = Method;
-        static constexpr auto storage_dependency = StorageDependency;
     };
 } // namespace lux::render

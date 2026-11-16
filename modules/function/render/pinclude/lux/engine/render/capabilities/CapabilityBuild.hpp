@@ -98,14 +98,14 @@ namespace lux::render::detail
     // Professional resource requirements shared by the corresponding raster algorithms.
     // These are static dependency declarations, not a second registry or owner.
     inline constexpr std::array rasterStorageDependencies{
-        CapabilityStorageDependency{EStorageScope::GLOBAL, kMeshStorageType, "assets"},
-        CapabilityStorageDependency{EStorageScope::GLOBAL, kTextureStorageType, "assets"},
-        CapabilityStorageDependency{EStorageScope::GLOBAL, kMaterialStorageType, "assets"},
-        CapabilityStorageDependency{EStorageScope::SCENE, kMeshInstanceStorageType, "instances"}
+        CapabilityResourceDependency{EStorageScope::GLOBAL, kMeshResourceName},
+        CapabilityResourceDependency{EStorageScope::GLOBAL, kTextureResourceName},
+        CapabilityResourceDependency{EStorageScope::GLOBAL, kMaterialResourceName},
+        CapabilityResourceDependency{EStorageScope::SCENE, kInstanceResourceName}
     };
 
     inline constexpr std::array lightStorageDependencies{
-        CapabilityStorageDependency{EStorageScope::SCENE, kDirectLightingStorageType, "direct_lights"}
+        CapabilityResourceDependency{EStorageScope::SCENE, kLightResourceName}
     };
 
     [[nodiscard]] RenderResult<EffectDefinition> buildShadowFeatures(const CapabilityBuildInput&) noexcept;

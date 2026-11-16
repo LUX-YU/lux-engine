@@ -2,10 +2,9 @@
 
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
-#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 
@@ -14,10 +13,10 @@ namespace lux::render::detail
     class DirectLightingStorage final
     {
     public:
-        using Descriptor = DirectLightingStorageDescriptor;
-        [[nodiscard]] static StorageFactory factory() noexcept;
+        using Descriptor = LightResource;
+        [[nodiscard]] static ResourceRegistration factory() noexcept;
 
-        DirectLightingStorage(StorageCreateContext&, StorageId) noexcept;
+        DirectLightingStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~DirectLightingStorage() noexcept;
         [[nodiscard]] exec::task<RenderResult<std::vector<LightId>>> create(LightData) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> update(LightUpdates) noexcept;
@@ -90,8 +89,8 @@ namespace lux::render::detail
         void publish(std::uint32_t kind, std::uint32_t frame) noexcept;
         DeviceSession& device_;
         ResourceUploader& uploads_;
-        FrameExecution& frames_;
-        StorageId id_;
+        std::uint32_t frame_count_;
+        ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, DirectLightTag> entries_;
         std::array<LightArray, 4> arrays_;

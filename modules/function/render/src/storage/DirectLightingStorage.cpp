@@ -1,3 +1,4 @@
+#include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
 #include <lux/engine/render/storage/DirectLightingStorage.hpp>
 
 #include <bit>
@@ -109,8 +110,8 @@ namespace lux::render::detail
         }
     } // namespace
 
-    DirectLightingStorage::DirectLightingStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : device_(dependencies.device), uploads_(*dependencies.uploads), frames_(*dependencies.frames), id_(id)
+    DirectLightingStorage::DirectLightingStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
+        : device_(dependencies.device), uploads_(*dependencies.uploads), frame_count_(dependencies.frame_count), id_(id)
     {
         for (std::size_t kind = 0; kind < arrays_.size(); ++kind)
         {
@@ -262,7 +263,7 @@ namespace lux::render::detail
             if (std::memcmp(destination, source.data(), source.size()) != 0)
             {
                 std::memcpy(destination, source.data(), source.size());
-                for (std::uint32_t frame = 0; frame < frames_.frameCount(); ++frame)
+                for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
                 {
                     array.frames[frame].dirty.mark(entry->position);
                 }
@@ -382,15 +383,15 @@ namespace lux::render::detail
             arrays_[k].records.reserve(std::max(size, arrays_[k].records.size()));
         }
         std::uint32_t frame = 0;
-        while (!frames_.tryBeginWrite(frame))
+        while (!uploads_.tryBeginWrite(frame))
         {
-            if (auto ready = co_await frames_.whenWritable(changes.size() * 64 + sizeof(header)); !ready)
+            if (auto ready = co_await uploads_.whenWritable(changes.size() * 64 + sizeof(header)); !ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
         }
-        SubmissionFrontiers progress;
-        cxx::scope_exit finish([&]() noexcept { frames_.finishWrite(frame, progress); });
+        auto progress = device_.makeFrontiers();
+        cxx::scope_exit finish([&]() noexcept { uploads_.finishWrite(frame, progress); });
         std::array<nri::Buffer*, 4> candidates{};
         std::array<std::size_t, 4> capacities{};
         cxx::scope_exit rollback(
@@ -424,7 +425,7 @@ namespace lux::render::detail
                 const nri::BufferDesc description{
                     capacities[k] * strides[k],
                     4,
-                    nri::BufferUsageBits::SHADER_RESOURCE_STORAGE
+                    (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE)
                 };
                 const auto status =
                     device_.nriCore().CreatePlacedBuffer(device_.device(), NriDeviceHeap, description, candidates[k]);
@@ -483,7 +484,7 @@ namespace lux::render::detail
                 change.bytes.data(),
                 change.bytes.size()
             );
-            for (std::uint32_t f = 0; f < frames_.frameCount(); ++f)
+            for (std::uint32_t f = 0; f < frame_count_; ++f)
             {
                 if (f == frame)
                 {
@@ -498,7 +499,7 @@ namespace lux::render::detail
         if (count_changed)
         {
             std::memcpy(arrays_[3].records.data(), header.data(), sizeof(header));
-            for (std::uint32_t f = 0; f < frames_.frameCount(); ++f)
+            for (std::uint32_t f = 0; f < frame_count_; ++f)
             {
                 if (f == frame)
                 {
@@ -565,7 +566,7 @@ namespace lux::render::detail
             {
                 if (progress)
                 {
-                    frames_.onPreparationSubmitted(
+                    uploads_.onPreparationSubmitted(
                         this,
                         [](void* value, std::uint32_t f, RenderResult<void> result) noexcept
                         { static_cast<DirectLightingStorage*>(value)->finishPreparation(f, result); }
@@ -590,7 +591,7 @@ namespace lux::render::detail
                 const nri::BufferDesc description{
                     capacity * strides[k],
                     4,
-                    nri::BufferUsageBits::SHADER_RESOURCE_STORAGE
+                    (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE)
                 };
                 const auto status =
                     device_.nriCore().CreatePlacedBuffer(device_.device(), NriDeviceHeap, description, candidate);
@@ -662,8 +663,13 @@ namespace lux::render::detail
         }
     }
 
-    StorageFactory DirectLightingStorage::factory() noexcept
+    ResourceRegistration DirectLightingStorage::factory() noexcept
     {
+
+        static const std::array commands{
+            CommandBinding::declare<Lighting3dCommands::CreateLights, &DirectLightingCommandHandler::createLights>(),
+            CommandBinding::declare<Lighting3dCommands::ReleaseLight, &DirectLightingCommandHandler::removeLight>()
+        };
         static const StorageBindingOps binding{
             [](void* value,
                const VGraphResourceDesc& resource,
@@ -679,18 +685,19 @@ namespace lux::render::detail
             [](const void* value) noexcept
             { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; }
         };
-        static const auto create = +[](StorageCreateContext& dependencies,
-                                       StorageId id) noexcept -> RenderResult<std::unique_ptr<DirectLightingStorage>>
+        static const auto create = +[](ResourceCreateContext& dependencies,
+                                       ResourceInstanceId id) noexcept -> RenderResult<std::unique_ptr<DirectLightingStorage>>
         {
-            if (!dependencies.frames || !dependencies.uploads)
+            if (dependencies.frame_count == 0 || dependencies.frame_count > 3 || !dependencies.uploads)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
             return std::make_unique<DirectLightingStorage>(dependencies, id);
         };
-        return makeStorageFactory<DirectLightingStorageDescriptor, DirectLightingStorage, StorageCreateContext, create>(
+        return makeResourceRegistration<LightResource, DirectLightingStorage, create>(
             nullptr,
-            &binding
+            &binding,
+            commands
         );
     }
 } // namespace lux::render::detail

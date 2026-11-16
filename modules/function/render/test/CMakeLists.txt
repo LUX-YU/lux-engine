@@ -3,7 +3,8 @@ target_link_libraries(render_output_test PRIVATE render_extensions)
 add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 
-find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
+add_test(NAME render.native.device_lost_completion COMMAND render_output_test --device-lost)
+set_tests_properties(render.native.device_lost_completion PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
 # Explicit project GPU diagnostic surface, never inherited by an installed application.
 target_include_directories(render_output_test PRIVATE
@@ -18,17 +19,15 @@ foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag G
 )
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
-    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${spec}.spv")
-    add_custom_command(
-        OUTPUT "${header}"
-        BYPRODUCTS "${binary}"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
-        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
-            "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${spec}" -o "${binary}"
-        COMMAND lux_shader_metadata "${binary}" "${header}" "k${shader_name}"
-        DEPENDS "shaders/${spec}" lux_shader_metadata
-        VERBATIM
-    )
+    get_filename_component(extension "${spec}" EXT)
+    if(extension STREQUAL ".comp")
+        set(stage compute)
+    elseif(extension STREQUAL ".vert")
+        set(stage vertex)
+    else()
+        set(stage fragment)
+    endif()
+    lux_render_shader("${header}" "shaders/${shader_name}.slang" ${stage} "k${shader_name}")
     list(APPEND graph_shader_headers "${header}")
 endforeach()
 
@@ -47,7 +46,7 @@ set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180)
 add_executable(render_deferred_scene DeferredScene.cpp)
 target_include_directories(render_deferred_scene PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
 target_link_libraries(render_deferred_scene PRIVATE render NRI lux::engine::core::core_execution
-    lux::engine::toolchain::toolchain_material_compiler)
+    lux::engine::function::material_compiler lux::engine::function::material_graph)
 target_link_libraries(render_deferred_scene PRIVATE render_extensions)
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
@@ -61,7 +60,7 @@ target_include_directories(render_shadow_scene PRIVATE
 
 target_link_libraries(render_shadow_scene PRIVATE
     render NRI lux::engine::core::core_execution
-    lux::engine::toolchain::toolchain_material_compiler
+    lux::engine::function::material_compiler lux::engine::function::material_graph
 )
 
 add_test(NAME render.sample.shadow COMMAND render_shadow_scene)
@@ -80,7 +79,7 @@ target_include_directories(render_clustered_scene PRIVATE
 
 target_link_libraries(render_clustered_scene PRIVATE
     render NRI lux::engine::core::core_execution
-    lux::engine::toolchain::toolchain_material_compiler
+    lux::engine::function::material_compiler lux::engine::function::material_graph
 )
 
 add_test(NAME render.sample.clustered COMMAND render_clustered_scene)

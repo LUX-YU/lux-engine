@@ -243,6 +243,12 @@ namespace lux::render::detail
         std::span<const std::uint32_t> parameter_groups
     ) noexcept
     {
+        // R3-20/21 replaces the native plan/recording pair together. Never silently lower an
+        // open encoding into an empty Transfer pass while only the authoring contract is installed.
+        for (const auto& pass : graph.passes())
+        {
+            if (!pass.work.builtin()) return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
         if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
@@ -418,7 +424,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             const PassInterface* input = nullptr;
-            if (const auto* raster = std::get_if<RasterWork>(&source.work))
+            if (const auto* raster = source.work.getIf<RasterWork>())
             {
                 const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
                 input = fixed ? &fixed->interface : nullptr;
@@ -555,7 +561,7 @@ namespace lux::render::detail
                         RasterListCommands{raster_list_count++, std::get<RasterPassTemplate>(raster->program)};
                 }
             }
-            else if (const auto* compute = std::get_if<ComputeWork>(&source.work))
+            else if (const auto* compute = source.work.getIf<ComputeWork>())
             {
                 input = &compute->interface;
                 pass.work = ComputeCommands{compute->dispatch};
@@ -596,10 +602,10 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (std::holds_alternative<TransferWork>(source.work))
+            if (source.work.getIf<TransferWork>() != nullptr)
             {
-                pass.work = std::get<TransferWork>(source.work);
-                if (auto valid = validateTransfer(std::get<TransferWork>(source.work), graph); !valid)
+                pass.work = source.work.get<TransferWork>();
+                if (auto valid = validateTransfer(source.work.get<TransferWork>(), graph); !valid)
                 {
                     return cxx::unexpected(valid.error());
                 }
@@ -664,7 +670,8 @@ namespace lux::render::detail
         // Logical transitions establish the original batch dependency graph before choosing storage.
         auto barriers =
             planBarriers(
-                graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_
+                graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
+                limits.graphicsAPI
             );
         if (!barriers)
         {
@@ -703,7 +710,7 @@ namespace lux::render::detail
                 }
             }
         }
-        const auto use_stages = collectUseStages(graph, *plan.descriptor_plan_);
+        const auto use_stages = collectUseStages(graph, *plan.descriptor_plan_, limits.graphicsAPI);
         planSubmissions(
             graph,
             analysis,
@@ -736,6 +743,7 @@ namespace lux::render::detail
                 plan.resources_,
                 plan.recording_,
                 plan.output_description_,
+                limits.graphicsAPI,
                 &plan.physical_resources_
             );
             if (!barriers)

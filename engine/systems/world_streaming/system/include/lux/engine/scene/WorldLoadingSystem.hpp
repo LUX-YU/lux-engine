@@ -5,6 +5,7 @@
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace lux::ecs { class ComponentSchemaSet; }
@@ -18,6 +19,8 @@ namespace lux::engine
 
 namespace lux::scene
 {
+    struct SceneSystemRegistration;
+
     struct WorldLoadingLimits final
     {
         std::size_t in_flight{4};
@@ -72,4 +75,12 @@ namespace lux::scene
         std::unique_ptr<Impl> impl_;
     };
 
+    [[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC SceneSystemRegistration
+    worldLoadingSystemRegistration() noexcept;
+
+    // Persists a geometry name; construction resolves it against the selected World's order.
+    [[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC cxx::expected<std::vector<std::byte>, error::Error>
+    makeWorldLoadingSystemConfiguration(
+        asset::AssetId source, std::optional<std::string> geometry, bool load_all, WorldLoadingLimits limits
+    ) noexcept;
 } // namespace lux::scene

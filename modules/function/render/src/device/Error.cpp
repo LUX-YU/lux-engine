@@ -8,6 +8,11 @@ namespace lux::render
     {
         static constexpr std::array descriptors{
             error::ErrorDescriptor{
+                "lux.render.native.thread_start", "Native worker creation failed, system code {0}",
+                error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
+            },
+            error::ErrorDescriptor{"lux.render.native.closed", "Native context closed before operation admission"},
+            error::ErrorDescriptor{
                 "lux.render.device.diagnostic",
                 "Backend diagnostic severity {0}, source line {1}; text is borrowed by RenderErrorSink",
                 error::ERecovery::PERMANENT,

@@ -1,8 +1,9 @@
-#include <lux/engine/scene/SceneSystemInstaller.hpp>
+#include <lux/engine/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
-#include <lux/engine/scene/TransformSystem.type_static_info.hpp>
+#include <lux/engine/scene/TransformSystemConfiguration.type_static_info.hpp>
 #include <lux/engine/ecs/TransformEvaluation.hpp>
 #include <lux/engine/ecs/hierarchy/detail/HierarchyMaintenance.hpp>
+#include <lux/engine/world/World.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -416,19 +417,17 @@ namespace lux::scene
     struct TransformSystem::Impl final
     {
         explicit Impl(Registry& value)
-            : registry(value), maintenance(value, hierarchy, deltas), transform2d(value, hierarchy, deltas),
+            : maintenance(value, hierarchy, deltas), transform2d(value, hierarchy, deltas),
               transform3d(value, hierarchy, deltas)
         {
         }
 
-        template <class Error> [[nodiscard]] static SceneStageResult failure(Error error) noexcept
+        template <class Error> [[nodiscard]] static Result failure(Error error) noexcept
         {
-            return lux::cxx::unexpected(
-                SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, transformError(error)}
-            );
+            return cxx::unexpected(transformError(error));
         }
 
-        [[nodiscard]] SceneStageResult prepare(const TransformSystemConfiguration& configuration) noexcept
+        [[nodiscard]] Result prepare(const TransformSystemConfiguration& configuration) noexcept
         {
             const bool has_zero_capacity = configuration.entity_capacity == 0 || configuration.max_commands == 0 ||
                                            configuration.max_payload_bytes == 0;
@@ -458,114 +457,98 @@ namespace lux::scene
             {
                 return failure(result.error());
             }
-            const EcsCommandProducerCapacity producer{
+            producer = EcsCommandProducerCapacity{
                 static_cast<std::size_t>(configuration.max_commands),
                 static_cast<std::size_t>(configuration.max_payload_bytes)
             };
-            if (const auto result = commands.prepare(std::span{&producer, 1U}); !result)
-            {
-                return failure(result.error());
-            }
-            return ESceneProgress::COMPLETE;
+            return {};
         }
 
-        [[nodiscard]] SceneStageResult synchronize(SceneStageContext& context) noexcept
+        [[nodiscard]] bool hasPendingChanges() const noexcept
         {
-            const bool has_pending =
-                maintenance.hasPendingChanges() || transform2d.hasPendingChanges() || transform3d.hasPendingChanges();
-            if (!has_pending || context.stop.stop_requested())
-            {
-                return ESceneProgress::COMPLETE;
-            }
-            {
-                auto writer = commands.begin(0);
-                if (!writer)
-                {
-                    return failure(writer.error());
-                }
-                if (const auto result = maintenance.update(*writer); !result)
-                {
-                    return failure(result.error());
-                }
-                transform2d.beginUpdate();
-                transform3d.beginUpdate();
-                if (const auto result = transform2d.update(*writer); !result)
-                {
-                    return failure(result.error());
-                }
-                if (const auto result = transform3d.update(*writer); !result)
-                {
-                    return failure(result.error());
-                }
-            }
-            if (const auto result = applyEcsCommands(registry, commands); !result)
+            return maintenance.hasPendingChanges() || transform2d.hasPendingChanges() || transform3d.hasPendingChanges();
+        }
+
+        [[nodiscard]] Result synchronize(EcsCommandWriter& writer) noexcept
+        {
+            if (const auto result = maintenance.update(writer); !result)
             {
                 return failure(result.error());
             }
-            context.publication_needed = true;
-            return ESceneProgress::COMPLETE;
+            transform2d.beginUpdate();
+            transform3d.beginUpdate();
+            if (const auto result = transform2d.update(writer); !result)
+            {
+                return failure(result.error());
+            }
+            if (const auto result = transform3d.update(writer); !result)
+            {
+                return failure(result.error());
+            }
+            return {};
         }
 
-        Registry& registry;
         HierarchyIndex hierarchy;
         HierarchyDeltaBatch deltas;
-        EcsCommandBuffer commands;
+        EcsCommandProducerCapacity producer{};
         ecs::detail::HierarchyMaintenance maintenance;
         TTransformState<Transform2D, WorldTransform2D, Eigen::Affine2d> transform2d;
         TTransformState<Transform3D, WorldTransform3D, Eigen::Affine3d> transform3d;
     };
 
     TransformSystem::TransformSystem(Registry& registry) : impl_(std::make_unique<Impl>(registry)) {}
+
     TransformSystem::~TransformSystem() noexcept = default;
-    SceneStageResult TransformSystem::prepare(const TransformSystemConfiguration& configuration) noexcept
+
+    SceneSystem::Result TransformSystem::prepare(const TransformSystemConfiguration& configuration) noexcept
     {
         if (auto registered = error::ErrorRegistry::instance().registerTypes(ErrorDescriptors); !registered)
         {
-            return cxx::unexpected(SceneExecutionFailure{.cause = registered.error()});
+            return cxx::unexpected(registered.error());
         }
         return impl_->prepare(configuration);
     }
-    SceneStageResult TransformSystem::synchronize(SceneStageContext& context) noexcept
+    SceneSystem::Result TransformSystem::execute() noexcept
     {
-        return impl_->synchronize(context);
+        if (!impl_->hasPendingChanges())
+        {
+            return {};
+        }
+        auto writer = beginCommands();
+        return writer ? impl_->synchronize(*writer) : Impl::failure(writer.error());
+    }
+
+    EcsCommandProducerCapacity TransformSystem::commandCapacity() const noexcept
+    {
+        return impl_->producer;
     }
 
     SceneSystemRegistration transformSystemRegistration() noexcept
     {
         return {
-            .type = system::systemTypeId(TransformSystem::Description.canonical_name),
-            .cpp_type = lux::cxx::make_basic_type_info<TransformSystem>(),
-            .description = &TransformSystem::Description,
+            .name = std::string{TransformSystem::Name},
+            .configuration_version = 1,
             .configuration = lux::serialization::makePortableValueCodec<TransformSystemConfiguration>(),
-            .install = +[](SceneSystemInstaller& installer, SceneSystemDescription description
-                        ) noexcept -> lux::cxx::expected<void, SceneSystemBuildFailure>
+            .create = +[](engine::EngineContext&, world::World& world, simulation::Simulation&,
+                          const ecs::ComponentSchemaSet&, std::span<const std::byte> bytes
+            ) noexcept -> cxx::expected<std::unique_ptr<SceneSystem>, error::Error>
             {
-                auto config = installer.decodeConfiguration<TransformSystemConfiguration>(description);
-                if (!config)
+                TransformSystemConfiguration config{};
+                const auto codec = serialization::makePortableValueCodec<TransformSystemConfiguration>();
+                if (!codec.decode(bytes, &config))
                 {
-                    return lux::cxx::unexpected(config.error());
+                    return cxx::unexpected(execution::toError(execution::EExecutionError::INVALID_ARGUMENT));
                 }
-                auto system = installer.emplaceSystem<TransformSystem>(description.instanceId(), installer.registry());
-                if (!system)
+                auto system = std::make_unique<TransformSystem>(world.registry());
+                if (auto prepared = system->prepare(config); !prepared)
                 {
-                    return lux::cxx::unexpected(system.error());
+                    return cxx::unexpected(prepared.error());
                 }
-                if (auto prepared = (*system)->prepare(*config); !prepared)
-                {
-                    return lux::cxx::unexpected(SceneSystemBuildFailure{
-                        .code = ESceneSystemBuildError::CONSTRUCTION_FAILURE,
-                        .system = description.instanceId(),
-                        .cause = std::move(prepared.error().cause)
-                    });
-                }
-                return installer.addSynchronizationTask<TransformSystem>(
-                    description.instanceId(),
-                    [](TransformSystem& system, SceneStageContext& context) noexcept
-                    { return system.synchronize(context); }
-                );
+                return std::unique_ptr<SceneSystem>{std::move(system)};
             }
         };
     }
+
     lux::cxx::expected<std::vector<std::byte>, ETransformUpdateError> makeTransformSystemConfiguration(
         std::size_t entity_capacity,
         EcsCommandProducerCapacity command_capacity

@@ -17,7 +17,13 @@ namespace lux::render::detail
     FrameExecution::FrameExecution(DeviceSession& device, ResourceUploader* uploads, std::uint32_t count) noexcept
         : device_(device), uploads_(uploads), frame_count_(count)
     {
-        preparation_receivers_.reserve(uploads ? uploads->windowRegionLimit() : 0);
+        for (auto& frame : frames_)
+        {
+            frame.execution = this;
+            frame.accepted = device.makeFrontiers();
+            frame.completions = std::make_unique<SubmissionCallback[]>(device.queueCount());
+            frame.ready_batches.resize(device.queueCount());
+        }
     }
 
     RenderResult<std::unique_ptr<FrameExecution>>
@@ -42,40 +48,21 @@ namespace lux::render::detail
                 return cxx::unexpected(nativeError(result));
             }
         }
+        execution->owns_write_window_ = uploads != nullptr;
+        execution->updateUploadAdmission();
         return execution;
     }
 
     FrameExecution::~FrameExecution() noexcept
     {
-        if (frame_waiters_)
-        {
-            std::terminate();
-        }
         for (std::uint32_t slot = 0; slot < frame_count_; ++slot)
         {
+            if (owns_write_window_ && uploads_->pendingWrites(slot)) std::terminate();
             auto& frame = frames_[slot];
             if (frame.preparation_command) device_.nriCore().DestroyCommandBuffer(frame.preparation_command);
             if (frame.preparation_allocator) device_.nriCore().DestroyCommandAllocator(frame.preparation_allocator);
         }
-    }
-
-    bool FrameExecution::tryBeginWrite(std::uint32_t& slot) noexcept
-    {
-        slot = next_frame_;
-        auto& frame = frames_[slot];
-        if (frame.phase == EFramePhase::FREE)
-        {
-            frame.accepted.serials.fill(0);
-            frame.submitted_batches = 0;
-            frame.phase = EFramePhase::COLLECTING;
-        }
-        if (frame.phase != EFramePhase::COLLECTING)
-        {
-            return false;
-        }
-        ++frame.pending_writes;
-        updateUploadAdmission();
-        return true;
+        if (owns_write_window_) uploads_->setWriteWindow(next_frame_, false, true);
     }
 
     bool FrameExecution::beginFrame(std::uint32_t& slot) noexcept
@@ -83,7 +70,7 @@ namespace lux::render::detail
         auto& frame = frames_[next_frame_];
         if (frame.phase == EFramePhase::FREE)
         {
-            frame.accepted.serials.fill(0);
+            frame.accepted.clear();
             frame.submitted_batches = 0;
             frame.phase = EFramePhase::COLLECTING;
         }
@@ -109,74 +96,16 @@ namespace lux::render::detail
         return frames_[slot].submitted_batches;
     }
 
-    void FrameExecution::finishWrite(std::uint32_t slot, const SubmissionFrontiers& accepted) noexcept
-    {
-        auto& frame = frames_[slot];
-        for (std::size_t i = 0; i < device_.queueCount(); ++i)
-        {
-            frame.accepted.serials[i] = std::max(frame.accepted.serials[i], accepted.serials[i]);
-        }
-        --frame.pending_writes;
-        updateUploadAdmission();
-    }
-
-    void FrameExecution::enqueueWrite(WriteWaiter& node) noexcept
-    {
-        node.next = nullptr;
-        if (frame_waiters_tail_)
-        {
-            frame_waiters_tail_->next = &node;
-        }
-        else
-        {
-            frame_waiters_ = &node;
-        }
-        frame_waiters_tail_ = &node;
-    }
-
     void FrameExecution::updateUploadAdmission() noexcept
     {
         if (uploads_)
         {
             const auto& frame = frames_[next_frame_];
             const bool preparing = frame.phase == EFramePhase::PREPARING || frame.phase == EFramePhase::SUBMITTING;
-            uploads_->setBackgroundTransfersAllowed(!preparing && frame.pending_writes == 0);
+            const bool writable = frame.phase == EFramePhase::FREE || frame.phase == EFramePhase::COLLECTING;
+            uploads_->setWriteWindow(next_frame_, writable, frame.phase == EFramePhase::SUBMITTING);
+            uploads_->setBackgroundTransfersAllowed(!preparing);
         }
-    }
-
-    void FrameExecution::dispatchWrites() noexcept
-    {
-        const auto phase = frames_[next_frame_].phase;
-        const bool can_write = phase == EFramePhase::FREE || phase == EFramePhase::COLLECTING;
-        auto* frame_boundary = frame_waiters_tail_;
-        while (frame_waiters_ && frame_boundary)
-        {
-            auto* node = frame_waiters_;
-            if (!can_write && !node->stopping(node->operation))
-            {
-                break;
-            }
-            frame_waiters_ = node->next;
-            if (!frame_waiters_)
-            {
-                frame_waiters_tail_ = nullptr;
-            }
-            if (node == frame_boundary)
-            {
-                frame_boundary = nullptr;
-            }
-            const auto complete = node->complete;
-            auto* operation = node->operation;
-            complete(operation);
-        }
-    }
-
-    void FrameExecution::onPreparationSubmitted(
-        void* receiver,
-        void (*complete)(void*, std::uint32_t, RenderResult<void>) noexcept
-    ) noexcept
-    {
-        preparation_receivers_.emplace_back(receiver, complete);
     }
 
     void FrameExecution::acceptSubmission(std::uint32_t slot, const SubmissionQueue& queue) noexcept
@@ -186,7 +115,7 @@ namespace lux::render::detail
         {
             if (&device_.physicalQueue(i) == &queue)
             {
-                frames_[slot].accepted.serials[i] = std::max(frames_[slot].accepted.serials[i], queue.submitted());
+                frames_[slot].accepted.accept(device_.submissionPoint(i, queue.submitted()));
                 return;
             }
         }
@@ -205,25 +134,16 @@ namespace lux::render::detail
         }
         if (uploads_)
         {
-            uploads_->finishFrameCopySubmission(result);
+            uploads_->finishFrameCopySubmission(result, next_frame_);
         }
-        const auto boundary = preparation_receivers_.size();
-        const auto slot = next_frame_;
-        for (std::size_t i = 0; i < boundary; ++i)
-        {
-            // Remove this borrow before delivery. A callback may append work for the next
-            // submission and grow the vector; no iterator or record reference crosses it.
-            const auto [receiver, complete] = std::exchange(preparation_receivers_[i], {});
-            complete(receiver, slot, result);
-        }
-        preparation_receivers_.erase(preparation_receivers_.begin(), preparation_receivers_.begin() + boundary);
     }
 
     void FrameExecution::sealFrame(FrameSlot& frame) noexcept
     {
+        if (uploads_) uploads_->finishWrites(next_frame_, frame.accepted);
         frame.phase = EFramePhase::SUBMITTED;
         frame.pending_queues = 0;
-        for (auto serial : frame.accepted.serials)
+        for (auto serial : frame.accepted.serials())
         {
             frame.pending_queues += serial != 0;
         }
@@ -234,12 +154,12 @@ namespace lux::render::detail
         }
         for (std::size_t i = 0; i < device_.queueCount(); ++i)
         {
-            if (frame.accepted.serials[i] == 0)
+            if (frame.accepted.serials()[i] == 0)
             {
                 continue;
             }
             device_.physicalQueue(i).arm(
-                frame.accepted.serials[i],
+                frame.accepted.serials()[i],
                 frame.completions[i],
                 [](void* value, RenderResult<void>) noexcept
                 {
@@ -247,6 +167,7 @@ namespace lux::render::detail
                     if (--frame.pending_queues == 0)
                     {
                         frame.phase = EFramePhase::FREE;
+                        frame.execution->updateUploadAdmission();
                     }
                 },
                 &frame
@@ -270,6 +191,12 @@ namespace lux::render::detail
         {
             return advanceSubmissions();
         }
+        if (uploads_ && uploads_->hasWrites(next_frame_) && frame.phase == EFramePhase::FREE)
+        {
+            frame.accepted.clear();
+            frame.submitted_batches = 0;
+            frame.phase = EFramePhase::COLLECTING;
+        }
         if (instances.empty() && frame.phase == EFramePhase::FREE)
         {
             return 0;
@@ -288,11 +215,11 @@ namespace lux::render::detail
         }
         if (frame.phase == EFramePhase::FREE)
         {
-            frame.accepted.serials.fill(0);
+            frame.accepted.clear();
             frame.submitted_batches = 0;
         }
         frame.phase = EFramePhase::PREPARING;
-        if (frame.pending_writes != 0)
+        if (uploads_ && uploads_->pendingWrites(next_frame_) != 0)
         {
             return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
         }
@@ -489,7 +416,7 @@ namespace lux::render::detail
             // settles unprepared sources, including frames with no active output.
             if (!prepared || uploads_->hasFrameCopies())
             {
-                onPreparationSubmitted(
+                uploads_->onPreparationSubmitted(
                     instance,
                     [](void* value, std::uint32_t slot, RenderResult<void> result) noexcept
                     { static_cast<RenderGraphInstance*>(value)->finishDrawListUploads(slot, result); }
@@ -608,7 +535,7 @@ namespace lux::render::detail
 
     SubmissionFrontiers FrameExecution::acceptedUses(std::span<RenderGraphInstance* const> instances) const noexcept
     {
-        SubmissionFrontiers result;
+        auto result = device_.makeFrontiers();
         for (std::uint32_t slot = 0; slot < frame_count_; ++slot)
         {
             const auto& frame = frames_[slot];
@@ -625,26 +552,26 @@ namespace lux::render::detail
             {
                 continue;
             }
-            SubmissionFrontiers graph_frontiers;
+            auto graph_frontiers = device_.makeFrontiers();
             for (const auto& batch : frame.batches)
             {
-                graph_frontiers.serials[batch.queue] = std::max(graph_frontiers.serials[batch.queue], batch.serial);
+                graph_frontiers.accept(device_.submissionPoint(batch.queue, batch.serial));
                 if (std::ranges::find(instances, frame.instances[batch.instance].instance) != instances.end())
                 {
-                    result.serials[batch.queue] = std::max(result.serials[batch.queue], batch.serial);
+                    result.accept(device_.submissionPoint(batch.queue, batch.serial));
                 }
             }
             // The first Graphics submission includes shared preparation copies. Discrete
             // uploads not covered by the graph batch table retain their real queue frontier.
             const auto graphics = queueIndex(device_.queue());
-            result.serials[graphics] = std::max(result.serials[graphics], frame.preparation_serial);
-            for (std::size_t q = 0; q < result.serials.size(); ++q)
+            result.accept(device_.submissionPoint(graphics, frame.preparation_serial));
+            for (std::size_t q = 0; q < result.size(); ++q)
             {
                 const bool unassigned = frame.preparation_serial == 0 ||
-                    frame.accepted.serials[q] > graph_frontiers.serials[q];
+                    frame.accepted.serials()[q] > graph_frontiers.serials()[q];
                 if (unassigned)
                 {
-                    result.serials[q] = std::max(result.serials[q], frame.accepted.serials[q]);
+                    result.accept(device_.submissionPoint(q, frame.accepted.serials()[q]));
                 }
             }
         }
@@ -684,8 +611,8 @@ namespace lux::render::detail
         {
             auto& batch = frame.batches[b];
             batch.serial = 0;
-            batch.waits = {};
-            batch.stages = {};
+            batch.waits.clear();
+            std::ranges::fill(batch.stages, nri::StageBits::NONE);
             batch.pending_predecessors = batch.predecessor_count;
             if (batch.pending_predecessors == 0)
             {
@@ -712,8 +639,12 @@ namespace lux::render::detail
             const auto batches = instances[i]->plan().submissions();
             for (std::uint32_t b = 0; b < batches.size(); ++b)
             {
-                frame.batches.push_back({i, b, static_cast<std::uint32_t>(queueIndex(device_.queue(batches[b].queue)))}
-                );
+                auto& batch = frame.batches.emplace_back();
+                batch.instance = i;
+                batch.local_batch = b;
+                batch.queue = static_cast<std::uint32_t>(queueIndex(device_.queue(batches[b].queue)));
+                batch.waits = device_.makeFrontiers();
+                batch.stages.resize(device_.queueCount());
                 for (const auto& successor : batches[b].successors)
                 {
                     frame.dependencies.push_back(
@@ -942,7 +873,7 @@ namespace lux::render::detail
                 // Accepted uploads retain their existing GPU completion and finishWrite paths.
                 finishPreparation(cxx::unexpected(error));
                 frame.feature_copies.clear();
-                if (frame.pending_writes == 0)
+                if (!uploads_ || uploads_->pendingWrites(next_frame_) == 0)
                 {
                     sealFrame(frame);
                     next_frame_ = (next_frame_ + 1) % frame_count_;
@@ -974,7 +905,7 @@ namespace lux::render::detail
     {
         const auto& left = frame.batches[a];
         const auto& right = frame.batches[b];
-        return std::tie(left.waits.serials, left.stages, a) > std::tie(right.waits.serials, right.stages, b);
+        return std::tie(left.waits.serials(), left.stages, a) > std::tie(right.waits.serials(), right.stages, b);
     }
 
     void FrameExecution::enqueueReadyBatch(FrameSlot& frame, std::uint32_t batch) noexcept
@@ -994,7 +925,7 @@ namespace lux::render::detail
             std::pop_heap(ready.begin(), ready.end(), [&](auto a, auto b) { return laterBatch(frame, a, b); });
             frame.recording_batches.push_back(ready.back());
             ready.pop_back();
-        } while (!ready.empty() && frame.batches[first].waits.serials == frame.batches[ready.front()].waits.serials &&
+        } while (!ready.empty() && frame.batches[first].waits == frame.batches[ready.front()].waits &&
                  frame.batches[first].stages == frame.batches[ready.front()].stages);
     }
 
@@ -1032,12 +963,12 @@ namespace lux::render::detail
             auto& next = frame.batches[edge.consumer];
             if (next.queue != batch.queue)
             {
-                auto& waited = next.waits.serials[batch.queue];
+                const auto waited = next.waits.serials()[batch.queue];
                 auto& stages = next.stages[batch.queue];
                 stages = waited == 0                                                           ? edge.stages
                          : stages == nri::StageBits::ALL || edge.stages == nri::StageBits::ALL ? nri::StageBits::ALL
                                                                                                : stages | edge.stages;
-                waited = std::max(waited, serial);
+                next.waits.accept(device_.submissionPoint(batch.queue, serial));
             }
             if (--next.pending_predecessors == 0)
             {
@@ -1075,11 +1006,11 @@ namespace lux::render::detail
             frame.signal_fences.clear();
             for (std::uint32_t q = 0; q < queue_count; ++q)
             {
-                if (first.waits.serials[q] == 0)
+                if (first.waits.serials()[q] == 0)
                 {
                     continue;
                 }
-                auto dependency = device_.physicalQueue(q).dependency(first.waits.serials[q], first.stages[q]);
+                auto dependency = device_.physicalQueue(q).dependency(first.waits.serials()[q], first.stages[q]);
                 if (!dependency)
                 {
                     cancelSubmissions(dependency.error());
@@ -1170,7 +1101,7 @@ namespace lux::render::detail
                 finishPreparation({});
             }
             ++submissions;
-            submit_queue_cursor_ = static_cast<std::uint8_t>((selected_queue + 1) % queue_count);
+            submit_queue_cursor_ = (selected_queue + 1) % queue_count;
         }
         if (frame.remaining_batches == 0)
         {
@@ -1213,13 +1144,13 @@ namespace lux::render::detail
                       ",\"preparation_serial\":" + std::to_string(frame.preparation_serial) +
                       ",\"instances\":" + std::to_string(frame.recorded_instances) +
                       ",\"passes\":" + std::to_string(frame.recorded_passes) + ",\"accepted_frontiers\":[";
-            for (std::size_t queue = 0; queue < frame.accepted.serials.size(); ++queue)
+            for (std::size_t queue = 0; queue < frame.accepted.size(); ++queue)
             {
                 if (queue)
                 {
                     output += ',';
                 }
-                output += std::to_string(frame.accepted.serials[queue]);
+                output += std::to_string(frame.accepted.serials()[queue]);
             }
             output += "],\"dependency_rebuilds\":" + std::to_string(frame.dependency_rebuilds) +
                       ",\"imported_comparisons\":" + std::to_string(frame.imported_comparisons) +
@@ -1260,10 +1191,10 @@ namespace lux::render::detail
             {
                 const auto index = (wait_queue_cursor_ + offset) % count;
                 auto& queue = device_.physicalQueue(index);
-                const auto serial = frame.accepted.serials[index];
+                const auto serial = frame.accepted.serials()[index];
                 if (serial > queue.completed())
                 {
-                    wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
+                    wait_queue_cursor_ = (index + 1) % count;
                     return queue.wait(serial, timeout_ns);
                 }
             }
@@ -1276,7 +1207,7 @@ namespace lux::render::detail
             auto& queue = device_.physicalQueue(index);
             if (!queue.idle())
             {
-                wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
+                wait_queue_cursor_ = (index + 1) % count;
                 return queue.wait(queue.completed() + 1, timeout_ns);
             }
         }

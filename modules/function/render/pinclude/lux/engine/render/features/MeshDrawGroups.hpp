@@ -55,7 +55,7 @@ namespace lux::render::detail
             ResourceRegistry&,
             RenderGraphInstance&,
             CompiledPrograms&,
-            std::span<const StorageId>,
+            std::span<const ResourceInstanceId>,
             const void*
         ) noexcept;
         ~MeshDrawGroups() noexcept;

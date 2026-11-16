@@ -23,7 +23,7 @@ namespace lux::render::detail
             ResourceRegistry&,
             RenderGraphInstance&,
             CompiledPrograms&,
-            std::span<const StorageId>,
+            std::span<const ResourceInstanceId>,
             const void*
         ) noexcept;
         ~ShadowProjectionBinding() noexcept;
@@ -33,7 +33,7 @@ namespace lux::render::detail
             DeviceSession&,
             FrameExecution&,
             ResourceRegistry&,
-            StorageId,
+            ResourceInstanceId,
             const Description&
         ) noexcept;
         [[nodiscard]] RenderResult<FeatureBinding::Preparation>
@@ -51,7 +51,7 @@ namespace lux::render::detail
         DeviceSession& device_;
         FrameExecution& frames_;
         ResourceRegistry& resources_;
-        StorageId lights_;
+        ResourceInstanceId lights_;
         const Description& description_;
         ShadowCamera camera_{};
         std::uint64_t applied_shadow_revision_ = 0, revision_ = 0;

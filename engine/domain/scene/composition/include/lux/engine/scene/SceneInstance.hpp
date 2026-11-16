@@ -26,6 +26,11 @@ namespace lux::engine
     class Engine;
 }
 
+namespace lux::ecs
+{
+    class ComponentSchemaSet;
+}
+
 namespace lux::scene
 {
     class SceneSystem;
@@ -35,7 +40,12 @@ namespace lux::scene
     {
     public:
         // Both arguments must be non-null and fully constructed.
-        SceneInstance(std::unique_ptr<world::World> world, std::unique_ptr<simulation::Simulation> simulation) noexcept;
+        SceneInstance(
+            std::unique_ptr<world::World> world,
+            std::unique_ptr<simulation::Simulation> simulation,
+            std::shared_ptr<const ecs::ComponentSchemaSet> schemas = {}
+        ) noexcept;
+
         ~SceneInstance() noexcept;
         SceneInstance(const SceneInstance&) = delete;
         SceneInstance& operator=(const SceneInstance&) = delete;
@@ -51,16 +61,19 @@ namespace lux::scene
     private:
         friend class engine::Engine;
         using Result = cxx::expected<void, error::Error>;
-        void
-        bindExecution(
+        
+        void bindExecution(
             execution::TaskScope& tasks,
             ecs::EcsCommandBuffer& commands,
             std::span<const std::size_t> producers
         ) noexcept;
+        
         [[nodiscard]] Result applyCommands(ecs::EcsCommandBuffer& commands) noexcept;
         [[nodiscard]] exec::task<Result> initialize(ecs::EcsCommandBuffer& commands) noexcept;
         [[nodiscard]] exec::task<Result> releaseResources() noexcept;
 
+        // Systems may borrow the schemas supplied by the builder.
+        std::shared_ptr<const ecs::ComponentSchemaSet> schemas_;
         std::unique_ptr<world::World> world_;
         std::unique_ptr<simulation::Simulation> simulation_;
         std::vector<std::unique_ptr<SceneSystem>> systems_;

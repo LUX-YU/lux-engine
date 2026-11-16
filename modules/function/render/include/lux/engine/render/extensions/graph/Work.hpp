@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
-#include <lux/engine/description/SpirvArtifact.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
+#include <lux/engine/render/extensions/graph/PassEncoding.hpp>
+#include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
 
@@ -217,7 +219,96 @@ namespace lux::render
         std::vector<VTransferOperation> operations;
     };
 
-    using VPassWork = std::variant<RasterWork, ComputeWork, TransferWork>;
+    class RenderGraphBuilder;
+
+    // Immutable CPU recipe, shared only when a logical graph is copied. No native handle owner.
+    // New operation types do not extend a central variant or register in a Kernel directory.
+    class PassWork final
+    {
+        using Compile = RenderResult<PassEncoding> (*)(const void*, PassCompileContext&, PassEncodingPolicy) noexcept;
+
+    public:
+        PassWork() noexcept = default;
+
+        template <class Feature, class Config>
+        [[nodiscard]] static RenderResult<PassWork> create(Config config, PassEncodingPolicy policy = {}) noexcept
+        {
+            static_assert(std::is_nothrow_move_constructible_v<Config> && std::is_nothrow_destructible_v<Config>);
+            if (!policy.valid())
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            auto result = store(std::move(config));
+            result.compile_ = [](const void* value, PassCompileContext& context, PassEncodingPolicy policy) noexcept
+            { return compilePass<Feature>(*static_cast<const Config*>(value), context, policy); };
+            result.policy_ = policy;
+            return result;
+        }
+
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return data_ != nullptr;
+        }
+
+        [[nodiscard]] bool builtin() const noexcept
+        {
+            return valid() && compile_ == nullptr;
+        }
+
+        [[nodiscard]] PassEncodingPolicy policy() const noexcept
+        {
+            return policy_;
+        }
+
+        [[nodiscard]] RenderResult<PassEncoding> compile(PassCompileContext& context) const noexcept
+        {
+            if (!data_ || !compile_)
+            {
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
+            }
+            return compile_(data_.get(), context, policy_);
+        }
+
+        template <class T> [[nodiscard]] const T* getIf() const noexcept
+        {
+            return builtin() && type_ == cxx::make_basic_type_info<T>() ? static_cast<const T*>(data_.get()) : nullptr;
+        }
+
+        template <class T> [[nodiscard]] const T& get() const noexcept
+        {
+            const auto* value = getIf<T>();
+            if (!value)
+            {
+                std::terminate();
+            }
+            return *value;
+        }
+
+    private:
+        friend class RenderGraphBuilder;
+
+        template <class T> static PassWork store(T value) noexcept
+        {
+            PassWork result;
+            result.data_ = std::make_shared<const T>(std::move(value));
+            result.type_ = cxx::make_basic_type_info<T>();
+            return result;
+        }
+
+        std::shared_ptr<const void> data_;
+        cxx::type_info type_;
+        Compile compile_ = nullptr;
+        PassEncodingPolicy policy_;
+    };
+
+    struct PassDeclaration final
+    {
+        EGraphPassKind kind = EGraphPassKind::COMPUTE;
+        // Conservative stage union for ALL explicit accesses; none is never a valid custom declaration.
+        nri::StageBits stages = nri::StageBits::NONE;
+        std::vector<ResourceAccess> accesses;
+        PassInterface interface;
+    };
 
     enum class EConditionSource : std::uint8_t
     {

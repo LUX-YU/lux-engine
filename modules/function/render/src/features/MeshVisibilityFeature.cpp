@@ -1,5 +1,5 @@
-#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 
 #include "MeshCompact.hpp"
 #include "MeshFrustumCull.hpp"
@@ -7,9 +7,9 @@
 #include "MeshReset.hpp"
 #include "MeshView.hpp"
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/storage/RasterMaterial.hpp>
-#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/MeshDrawGroups.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
@@ -48,7 +48,7 @@ namespace lux::render
                      GraphBufferDesc{sizes[i]},
                      EGraphOrigin::IMPORTED,
                      {GraphBufferRange{0, sizes[i]}},
-                     StorageRequirement{StorageName(kMeshInstanceStorageType.name()), config.instance_storage}}
+                     ResourceRequirement{ResourceName(config.instance_storage)}}
                 );
             }
             for (std::size_t i = 0; i < group_ports.size(); ++i)
@@ -74,24 +74,14 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<std::uint32_t> computeProgram(
-            FeatureBuildContext& context,
-            std::span<const std::uint32_t> words,
-            std::span<const std::byte> reflection
-        ) noexcept
+        RenderResult<std::uint32_t>
+        computeProgram(FeatureBuildContext& context, rdesc::ShaderProgramArtifact shader) noexcept
         {
-            rdesc::SpirvArtifact artifact;
-            artifact.stages.push_back({rdesc::EShaderType::COMPUTE, "main", {words.begin(), words.end()}});
-            if (!rdesc::ShaderInfo::deserialize(reflection, artifact.interface))
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-            return context.graph.addProgram(std::move(artifact));
+            return context.graph.addProgram(std::move(shader));
         }
 
         template <bool Paged>
-        RenderResult<void>
-        buildVisibility(
+        RenderResult<void> buildVisibility(
             const void* value,
             std::string_view key,
             FeatureBuildContext& context,
@@ -99,9 +89,9 @@ namespace lux::render
         ) noexcept
         {
             const auto& config = *static_cast<const MeshVisibilityFeatureConfig*>(value);
-            auto cull_program = Paged ? computeProgram(context, kMeshFrustumCullPaged, kMeshFrustumCullPagedReflection)
-                                      : computeProgram(context, kMeshFrustumCull, kMeshFrustumCullReflection);
-            auto compact_program = computeProgram(context, kMeshCompact, kMeshCompactReflection);
+            auto cull_program = Paged ? computeProgram(context, kMeshFrustumCullPaged.load(enabled.shader_target))
+                                      : computeProgram(context, kMeshFrustumCull.load(enabled.shader_target));
+            auto compact_program = computeProgram(context, kMeshCompact.load(enabled.shader_target));
             if (!cull_program || !compact_program)
             {
                 return cxx::unexpected(!cull_program ? cull_program.error() : compact_program.error());
@@ -109,7 +99,7 @@ namespace lux::render
             auto views = context.resource("views");
             if (config.view_parameters)
             {
-                auto program = computeProgram(context, kMeshView, kMeshViewReflection);
+                auto program = computeProgram(context, kMeshView.load(enabled.shader_target));
                 if (!program)
                 {
                     return cxx::unexpected(program.error());
@@ -169,7 +159,7 @@ namespace lux::render
             const auto table = context.resource("groups");
             const auto dispatch = context.resource("dispatch");
             auto visible = context.resource("visible");
-            auto reset_program = computeProgram(context, kMeshReset, kMeshResetReflection);
+            auto reset_program = computeProgram(context, kMeshReset.load(enabled.shader_target));
             if (!reset_program)
             {
                 return cxx::unexpected(reset_program.error());

@@ -98,7 +98,6 @@ namespace lux::render
             append(ports.storage.global, &result.external_bindings.global);
             append(ports.storage.scene, &result.external_bindings.scene);
             append(ports.storage.view, &result.external_bindings.view);
-            append(ports.storage.attachment, &result.external_bindings.attachment);
             auto& declarations = work[i].declarations;
             std::ranges::sort(declarations, {}, [](const auto& port) { return port.declaration.key; });
             for (std::size_t p = 0; p < declarations.size(); ++p)
@@ -413,7 +412,6 @@ namespace lux::render
         markStorage(result.external_bindings.global);
         markStorage(result.external_bindings.scene);
         markStorage(result.external_bindings.view);
-        markStorage(result.external_bindings.attachment);
         std::vector<bool> configured(graph->resources().size(), false), constructed(graph->resources().size(), false);
         // Audit only appended contributions, using captured IDs and supplied versions, never names.
         for (const auto& contribution : result.contributions)
@@ -504,7 +502,7 @@ namespace lux::render
                 const auto& pass = graph->passes()[p];
                 const PassInterface* input = nullptr;
                 const ParameterBinding* parameters = nullptr;
-                if (const auto* raster = std::get_if<RasterWork>(&pass.work))
+                if (const auto* raster = pass.work.getIf<RasterWork>())
                 {
                     const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
                     input = fixed ? &fixed->interface : nullptr;
@@ -515,10 +513,15 @@ namespace lux::render
                         return cxx::unexpected(failure(kFeatureOwnership, i, p));
                     }
                 }
-                if (const auto* compute = std::get_if<ComputeWork>(&pass.work))
+                if (const auto* compute = pass.work.getIf<ComputeWork>())
                 {
                     input = &compute->interface;
                     parameters = &compute->interface.parameters;
+                }
+                if (pass.encoding_interface)
+                {
+                    input = &*pass.encoding_interface;
+                    parameters = &input->parameters;
                 }
                 if (input)
                 {

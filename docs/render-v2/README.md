@@ -19,7 +19,7 @@ Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，
 | commands | 中立 Command 声明、请求和结果值 |
 | graph | 唯一逻辑 Graph、Builder、Analysis 和冷态 PassProgram |
 | features | 冷态资源供需解析和单 Graph 装配 |
-| resource | 专业资源合同、StorageSet 所有权与 ResourceRegistry 非拥有索引 |
+| resource | 专业资源合同、ResourceSet 所有权与 ResourceRegistry 非拥有索引 |
 | storage | 用途明确的专业 Storage 描述、数据合同及私有实现 |
 | device / memory / upload / execution | NRI 设备设施、分配、上传、帧资源、录制提交和物理清理 |
 | runtime | Server 对象、Command 路由、关联与请求终态 |
@@ -30,7 +30,7 @@ Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，
 稳定名称用于冷态发现；Command、Handler、Scene、View、Effect、Storage 等运行时身份各有独立身份域。
 Scene 拥有 View，Effect 拥有不可变 RenderPlan 及同源 Graph/Analysis，Attachment 拥有 RenderGraphInstance。
 Target 拥有实际输出图像，同一 Target 只有一个 Attachment。
-StorageSet 独占专业 Storage；Registry 只定位实例。Client 显式管理资源间的业务依赖。
+ResourceSet 独占专业 Storage；Registry 只定位实例。Client 显式管理资源间的业务依赖。
 
 DeviceSession 独占设备设施和物理 Queue 集合。上传保留具体 stdexec Sender，物理清理只进入
 Session 的 `cleanup_scope_`。资源在 Copy/Acquire 接纳、使用顺序成立并完成发布后返回句柄；

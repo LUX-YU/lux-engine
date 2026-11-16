@@ -1,0 +1,28 @@
+--- a/include/exec/any_sender_of.hpp
++++ b/include/exec/any_sender_of.hpp
+@@ -1256,7 +1256,24 @@
+             [](void* __object_pointer) noexcept -> __sender_t
+             {
+               _Scheduler const & __scheduler = *static_cast<_Scheduler const *>(__object_pointer);
+-              return __sender_t{STDEXEC::schedule(__scheduler)};
++              if constexpr (requires { __sender_t{STDEXEC::schedule(__scheduler)}; })
++              {
++                return __sender_t{STDEXEC::schedule(__scheduler)};
++              }
++              else
++              {
++                // A coroutine's exception_ptr-only scheduler erasure must preserve
++                // concrete scheduling errors instead of rejecting the scheduler type.
++                // Keep direct erasure for signatures that already accept the error.
++                auto __normalized = STDEXEC::let_error(
++                  STDEXEC::schedule(__scheduler),
++                  [](auto&& __error) noexcept
++                  {
++                    return STDEXEC::just_error(
++                      std::make_exception_ptr(static_cast<decltype(__error)&&>(__error)));
++                  });
++                return __sender_t{static_cast<decltype(__normalized)&&>(__normalized)};
++              }
+             },
+             [](void const * __self, void const * __other) noexcept -> bool
+             {

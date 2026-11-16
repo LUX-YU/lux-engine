@@ -4,9 +4,9 @@
 // -----------------------------------------------------------------------------
 //  [Architectural invariant] A plain data structure -- not an mlir::Operation,
 //  not tied to any backend. Clients (materials / GBuffer layout / lighting
-//  models) each lower their own declarations into ShaderIR; the backend in
-//  engine/ (lux::shadergen::glsl) consumes ShaderIR to generate GLSL -> SPIR-V.
-//  modules/ has no dependency on shaderc.
+//  models) each lower their own declarations into ShaderIR. The optional
+//  material_compiler target derives SPIR-V or DXIL through Slang. This value
+//  target has no graph, compiler, device or Engine dependency.
 //
 //  [Pure expressions] ShaderIR only carries the data flow of "how to compute
 //  named outputs from inputs" -- math, sampling, inputs/params, construction,
@@ -21,8 +21,6 @@
 //  can be reused across all three clients. See
 //  the implementation for the design and rationale.
 // =============================================================================
-
-#include <lux/engine/material/graph/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -190,6 +188,9 @@ namespace lux::shadergen
     /// end and writes the result back into ir.fingerprint. If you construct
     /// an IR by hand, you must call this too, or fingerprint is left at its
     /// uncomputed 0.
-    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC uint64_t computeFingerprint(const ShaderIR& ir) noexcept;
+    [[nodiscard]] uint64_t computeFingerprint(const ShaderIR& ir) noexcept;
+
+    // Checks serialized or hand-authored SSA before any backend indexes its operands or slots.
+    [[nodiscard]] bool validateShaderIR(const ShaderIR& ir) noexcept;
 
 } // namespace lux::shadergen

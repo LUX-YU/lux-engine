@@ -18,8 +18,8 @@ engine_target_add_static_type_info(
     NAME          system_transform_configuration_codegen
     TARGET        system_transform
     SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformSystem.cpp
-    HEADERS       ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/TransformSystem.hpp
-    LOGICAL_PATHS lux/engine/scene/TransformSystem.hpp
+    HEADERS       ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/TransformSystemConfiguration.hpp
+    LOGICAL_PATHS lux/engine/scene/TransformSystemConfiguration.hpp
 )
 
 component_include_directories(
@@ -45,12 +45,14 @@ target_link_libraries(
         lux::engine::ecs::ecs_core
         lux::engine::ecs::ecs_hierarchy
         lux::engine::ecs::ecs_transform
+    PRIVATE lux::engine::engine_metadata
 )
 
 component_add_transitive_commands(
     system_transform
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_core ecs_hierarchy ecs_transform)"
+    "find_package(lux-engine-runtime-metadata REQUIRED COMPONENTS engine_metadata)"
 )
 
 lux_engine_install_components(

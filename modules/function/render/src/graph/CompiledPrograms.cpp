@@ -20,9 +20,10 @@ namespace lux::render::detail
             seed ^= std::hash<T>{}(value) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
         }
 
-        std::size_t programHash(const rdesc::SpirvArtifact& shader) noexcept
+        std::size_t programHash(const rdesc::ShaderProgramArtifact& shader) noexcept
         {
             std::size_t result = 0;
+            combineHash(result, shader.target);
             for (const auto& stage : shader.stages)
             {
                 combineHash(result, stage.stage);
@@ -71,7 +72,7 @@ namespace lux::render::detail
 
     struct CompiledPrograms::Program final
     {
-        using VKey = std::variant<rdesc::SpirvArtifact, RasterProgramKey>;
+        using VKey = std::variant<rdesc::ShaderProgramArtifact, RasterProgramKey>;
         VKey key;
         nri::Pipeline* pipeline;
         Layout* layout;
@@ -86,6 +87,7 @@ namespace lux::render::detail
         std::uint32_t parameter_bytes;
         nri::StageBits parameter_stages;
         std::array<std::uint32_t, 3> capacities;
+        std::array<std::pair<std::uint32_t, std::uint32_t>, 3> shared_registers{};
         nri::PipelineLayout* native = nullptr;
         std::uint32_t references = 0;
 
@@ -96,9 +98,10 @@ namespace lux::render::detail
             const bool same_ranges = std::ranges::equal(ranges, other.ranges, [](const auto& a, const auto& b) noexcept
             {
                 return a.baseRegisterIndex == b.baseRegisterIndex && a.descriptorNum == b.descriptorNum &&
-                    a.descriptorType == b.descriptorType && a.shaderStages == b.shaderStages && a.flags == b.flags;
+                    a.descriptorType == b.descriptorType && a.shaderStages == b.shaderStages && a.flags == b.flags &&
+                    a.d3dRegisterSpacePlusOne == b.d3dRegisterSpacePlusOne && a.d3dRegisterIndex == b.d3dRegisterIndex;
             });
-            return same_parameters && capacities == other.capacities && same_ranges;
+            return same_parameters && capacities == other.capacities && shared_registers == other.shared_registers && same_ranges;
         }
 
         std::size_t hash() const noexcept
@@ -107,6 +110,11 @@ namespace lux::render::detail
             combineHash(result, parameter_bytes);
             combineHash(result, parameter_stages);
             for (auto capacity : capacities) combineHash(result, capacity);
+            for (const auto& location : shared_registers)
+            {
+                combineHash(result, location.first);
+                combineHash(result, location.second);
+            }
             for (const auto& range : ranges)
             {
                 combineHash(result, range.baseRegisterIndex);
@@ -114,6 +122,8 @@ namespace lux::render::detail
                 combineHash(result, range.descriptorType);
                 combineHash(result, range.shaderStages);
                 combineHash(result, range.flags);
+                combineHash(result, range.d3dRegisterSpacePlusOne);
+                combineHash(result, range.d3dRegisterIndex);
             }
             return result;
         }
@@ -133,12 +143,22 @@ namespace lux::render::detail
     CompiledPrograms::Layout CompiledPrograms::layoutKey(const PassBindings& bindings) const noexcept
     {
         constexpr std::array kinds{nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER,
-            nri::DescriptorType::STORAGE_STRUCTURED_BUFFER};
-        Layout result{descriptorRanges(bindings.private_bindings), bindings.parameter_bytes,
+            nri::DescriptorType::STRUCTURED_BUFFER};
+        Layout result{descriptorRanges(bindings.private_bindings, session_.description().graphicsAPI == nri::GraphicsAPI::D3D12), bindings.parameter_bytes,
             bindings.parameter_stages, {}};
         for (std::size_t kind = 0; kind < kinds.size(); ++kind)
             if (bindings.shared_sets[kind] != kGraphInvalidIndex)
                 result.capacities[kind] = session_.descriptors().capacity(kinds[kind]);
+        if (session_.description().graphicsAPI == nri::GraphicsAPI::D3D12)
+        {
+            for (const auto& binding : bindings.bindings)
+            {
+                if (binding.count != 0) continue;
+                const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0U :
+                    (binding.kind == EDescriptorKind::SAMPLER ? 1U : 2U);
+                result.shared_registers[kind] = {binding.shader_space, binding.shader_register};
+            }
+        }
         return result;
     }
 
@@ -229,7 +249,7 @@ namespace lux::render::detail
         return acquire(key, bindings);
     }
 
-    nri::Pipeline* CompiledPrograms::acquireCompute(const rdesc::SpirvArtifact& key, PassBindings& bindings) noexcept
+    nri::Pipeline* CompiledPrograms::acquireCompute(const rdesc::ShaderProgramArtifact& key, PassBindings& bindings) noexcept
     {
         return acquire(key, bindings);
     }
@@ -256,8 +276,9 @@ namespace lux::render::detail
                 return program->pipeline;
             }
         }
-        auto program = std::make_unique<Program>(Program{std::move(key), pipeline, layout,
-            1, ++acquisition_serial_, {}});
+        auto program = std::make_unique<Program>(Program{
+            std::move(key), pipeline, layout, 1, ++acquisition_serial_, session_.makeFrontiers()
+        });
         bucket.push_back(program.get());
         programs_.push_back(std::move(program));
         trim();
@@ -272,7 +293,7 @@ namespace lux::render::detail
 
     nri::Pipeline*
     CompiledPrograms::publishCompute(
-        rdesc::SpirvArtifact key,
+        rdesc::ShaderProgramArtifact key,
         nri::PipelineLayout* layout,
         nri::Pipeline* pipeline
     ) noexcept
@@ -286,9 +307,9 @@ namespace lux::render::detail
         std::span<nri::PipelineLayout* const> direct_layouts
     ) noexcept
     {
-        SubmissionFrontiers accepted;
+        auto accepted = session_.makeFrontiers();
         for (std::size_t q = 0; q < session_.queueCount(); ++q)
-            accepted.serials[q] = session_.physicalQueue(q).submitted();
+            accepted.accept(session_.submissionPoint(q, session_.physicalQueue(q).submitted()));
         for (auto* native : pipelines)
         {
             const auto found = std::ranges::find_if(programs_, [&](const auto& value) noexcept
@@ -296,8 +317,7 @@ namespace lux::render::detail
             const bool unowned_pipeline = found == programs_.end() || !(*found)->users;
             if (unowned_pipeline) std::terminate();
             auto& program = **found;
-            for (std::size_t q = 0; q < session_.queueCount(); ++q)
-                program.last_uses.serials[q] = std::max(program.last_uses.serials[q], accepted.serials[q]);
+            program.last_uses.merge(accepted);
             --program.users;
         }
         for (auto* native : direct_layouts)

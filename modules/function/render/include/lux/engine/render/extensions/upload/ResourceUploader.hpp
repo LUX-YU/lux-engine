@@ -5,6 +5,7 @@
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <span>
@@ -52,7 +53,79 @@ namespace lux::render::detail
     // owns neither professional candidates nor running tasks. Start with the RenderThread scheduler.
     class LUX_RENDER_PUBLIC ResourceUploader final
     {
+        struct WriteWaiter final
+        {
+            WriteWaiter* next = nullptr;
+            void* operation = nullptr;
+            bool (*stopping)(void*) noexcept = nullptr;
+            void (*complete)(void*) noexcept = nullptr;
+        };
+
     public:
+        class WriteAdmissionSender final
+        {
+        public:
+            using sender_concept = stdexec::sender_t;
+            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(RenderResult<void>)>;
+
+            WriteAdmissionSender(ResourceUploader& uploader, std::size_t bytes) noexcept
+                : uploader_(uploader), bytes_(bytes)
+            {
+            }
+
+            template <class Receiver> struct Operation final
+            {
+                using operation_state_concept = stdexec::operation_state_t;
+                ResourceUploader& uploader;
+                Receiver receiver;
+                WriteWaiter node;
+                std::size_t bytes;
+                std::size_t reserved_bytes = 0;
+
+                ~Operation() noexcept
+                {
+                    uploader.releaseSourceBytes(reserved_bytes);
+                }
+
+                void start() & noexcept
+                {
+                    if (!uploader.reserveSourceBytes(bytes))
+                    {
+                        stdexec::set_value(
+                            std::move(receiver),
+                            RenderResult<void>{cxx::unexpected(RenderError{kDeviceCapacity})}
+                        );
+                        return;
+                    }
+                    reserved_bytes = bytes;
+                    node.operation = this;
+                    node.stopping = [](void* value) noexcept
+                    {
+                        auto& self = *static_cast<Operation*>(value);
+                        return stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested();
+                    };
+                    node.complete = [](void* value) noexcept
+                    {
+                        auto& self = *static_cast<Operation*>(value);
+                        const bool stopped = self.node.stopping(value);
+                        auto result = stopped ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
+                                              : RenderResult<void>{};
+                        stdexec::set_value(std::move(self.receiver), std::move(result));
+                    };
+                    uploader.enqueueWrite(node);
+                }
+            };
+
+            template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
+            {
+                return Operation<Receiver>{uploader_, std::move(receiver), {}, bytes_};
+            }
+
+        private:
+            ResourceUploader& uploader_;
+            std::size_t bytes_;
+        };
+
         struct BufferCopy final
         {
             nri::Buffer* source;
@@ -70,11 +143,8 @@ namespace lux::render::detail
         ResourceUploader& operator=(const ResourceUploader&) = delete;
 
         // Creates staging and timestamp facilities without starting work. The device and CPU execution outlive it.
-        [[nodiscard]] static RenderResult<std::unique_ptr<ResourceUploader>> create(
-            DeviceSession&,
-            const TransferOptions&,
-            execution::CpuScheduler
-        ) noexcept;
+        [[nodiscard]] static RenderResult<std::unique_ptr<ResourceUploader>>
+        create(DeviceSession&, const TransferOptions&, execution::CpuScheduler) noexcept;
 
         // The shared execution context used for professional CPU preparation before staging.
         [[nodiscard]] execution::CpuScheduler cpuScheduler() const noexcept
@@ -87,8 +157,39 @@ namespace lux::render::detail
 
         void setBackgroundTransfersAllowed(bool allowed) noexcept
         {
-            background_allowed_ = allowed;
+            background_window_ = allowed;
+            background_allowed_ = allowed && writes_[write_slot_].pending == 0;
         }
+
+        // The frame owner publishes the sole writable slice; upload operations own only their write borrows.
+        void setWriteWindow(std::uint32_t slot, bool writable, bool frozen) noexcept;
+        [[nodiscard]] bool tryBeginWrite(std::uint32_t& slot) noexcept;
+        void finishWrite(std::uint32_t slot, const SubmissionFrontiers&) noexcept;
+
+        [[nodiscard]] WriteAdmissionSender whenWritable(std::size_t bytes) noexcept
+        {
+            return {*this, bytes};
+        }
+
+        void dispatchWrites() noexcept;
+
+        [[nodiscard]] bool hasWrites(std::uint32_t slot) const noexcept
+        {
+            return writes_[slot].touched;
+        }
+
+        [[nodiscard]] std::uint32_t pendingWrites(std::uint32_t slot) const noexcept
+        {
+            return writes_[slot].pending;
+        }
+
+        [[nodiscard]] bool resourcesFrozen() const noexcept
+        {
+            return resources_frozen_;
+        }
+
+        void finishWrites(std::uint32_t slot, SubmissionFrontiers& accepted) noexcept;
+        void onPreparationSubmitted(void*, void (*)(void*, std::uint32_t, RenderResult<void>) noexcept) noexcept;
 
         void reserveFrameStaging(bool reserve) noexcept
         {
@@ -98,7 +199,7 @@ namespace lux::render::detail
         void submitReadyTransfers() noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
         // Settles staging after the frame submission attempt; this does not observe GPU completion.
-        void finishFrameCopySubmission(RenderResult<void>) noexcept;
+        void finishFrameCopySubmission(RenderResult<void>, std::uint32_t frame_slot) noexcept;
         [[nodiscard]] bool hasFrameCopies() const noexcept;
 
         // Lazy device-thread task. Source ranges and their descriptors stay valid through terminal completion.
@@ -149,6 +250,21 @@ namespace lux::render::detail
         }
 
     private:
+        struct WriteState final
+        {
+            SubmissionFrontiers accepted;
+            std::uint32_t pending = 0;
+            bool touched = false;
+        };
+
+        void enqueueWrite(WriteWaiter&) noexcept;
+        std::array<WriteState, 3> writes_;
+        std::uint32_t write_slot_ = 0;
+        bool writes_allowed_ = false, resources_frozen_ = false, background_window_ = true;
+        WriteWaiter* frame_waiters_ = nullptr;
+        WriteWaiter* frame_waiters_tail_ = nullptr;
+        using PreparationCallback = void (*)(void*, std::uint32_t, RenderResult<void>) noexcept;
+        std::vector<std::pair<void*, PreparationCallback>> preparation_receivers_;
         struct Copy;
         struct BatchEntry;
         class BatchSender;
@@ -171,26 +287,26 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] RenderResult<void> collectUploadTimestamps(std::size_t page, std::uint32_t bits) noexcept;
 
-        std::unique_ptr<StagingArena>   staging_arena_;
-        bool                            background_allowed_ = true;
-        bool                            reserve_frame_staging_ = false;
-        DeviceSession&                  device_;
-        SubmissionQueue*                copy_queue_ = nullptr;
-        TransferOptions                 options_;
-        execution::CpuScheduler         cpu_scheduler_;
-        TransferStats                   statistics_;
-        BatchEntry*                     ready_head_ = nullptr;
-        BatchEntry*                     ready_tail_ = nullptr;
-        BatchEntry*                     range_waiters_ = nullptr;
-        BatchEntry*                     range_waiters_tail_ = nullptr;
-        std::vector<BatchEntry*>        batch_entries_;
-        std::unique_ptr<Measurement[]>  measurements_;
-        std::size_t                     graphics_measurement_base_ = 0;
-        std::uint64_t                   query_result_stride_ = 16;
-        std::array<nri::QueryPool*, 2>  timestamps_{};
-        nri::Buffer*                    timestamp_results_ = nullptr;
-        std::uint64_t*                  mapped_timestamps_ = nullptr;
-        std::uint32_t                   copy_timestamp_bits_ = 0;
-        std::uint32_t                   graphics_timestamp_bits_ = 0;
+        std::unique_ptr<StagingArena> staging_arena_;
+        bool background_allowed_ = true;
+        bool reserve_frame_staging_ = false;
+        DeviceSession& device_;
+        SubmissionQueue* copy_queue_ = nullptr;
+        TransferOptions options_;
+        execution::CpuScheduler cpu_scheduler_;
+        TransferStats statistics_;
+        BatchEntry* ready_head_ = nullptr;
+        BatchEntry* ready_tail_ = nullptr;
+        BatchEntry* range_waiters_ = nullptr;
+        BatchEntry* range_waiters_tail_ = nullptr;
+        std::vector<BatchEntry*> batch_entries_;
+        std::unique_ptr<Measurement[]> measurements_;
+        std::size_t graphics_measurement_base_ = 0;
+        std::uint64_t query_result_stride_ = 16;
+        std::array<nri::QueryPool*, 2> timestamps_{};
+        nri::Buffer* timestamp_results_ = nullptr;
+        std::uint64_t* mapped_timestamps_ = nullptr;
+        std::uint32_t copy_timestamp_bits_ = 0;
+        std::uint32_t graphics_timestamp_bits_ = 0;
     };
 } // namespace lux::render::detail

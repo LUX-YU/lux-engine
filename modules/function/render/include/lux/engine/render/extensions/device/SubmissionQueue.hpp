@@ -14,11 +14,6 @@
 
 namespace lux::render::detail
 {
-    struct SubmissionFrontiers final
-    {
-        std::array<std::uint64_t, 3> serials{};
-    };
-
     class DeviceSession;
     class SubmissionQueue;
     using SubmissionCallbackFn = void (*)(void*, RenderResult<void>) noexcept;

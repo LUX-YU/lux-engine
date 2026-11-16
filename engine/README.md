@@ -20,6 +20,15 @@ RenderSystem borrows its World and Context. Components remain reflected data wit
 The optional Engine `system_render` component is static. Initialization links it only in rendering builds;
 Engine scheduling itself has no Render dependency. The lower Render library retains its own backend boundary.
 
+For in-process assembly from a `SceneDescription`, register component schemas and system declarations in
+[`EngineMetaFunctionRegistry`](runtime/metadata/include/lux/engine/EngineMetaFunctionRegistry.hpp).
+[`Engine::SceneBuilder`](runtime/engine/include/lux/engine/SceneBuilder.hpp) resolves system names and configuration
+versions, then calls each declaration's `create` function. Version zero takes empty configuration bytes. A
+configurable system supplies its own encoding and validates it during construction. The candidate owns the
+World, Simulation, Scene systems and the component schemas they borrow. Construction starts no work; after
+`Engine::addScene` adopts the candidate, `Engine::whenSceneInitialized` reports the initialization result.
+The [installed consumer](../cmake/installed-consumers/headless-engine/main.cpp) assembles and runs Transform this way.
+
 Scene retirement completes before Context destruction. Registered providers outlive repository settlement.
 Context destruction runs outside dispatch on Main and leaves Execution alive until all consumers have settled.
 

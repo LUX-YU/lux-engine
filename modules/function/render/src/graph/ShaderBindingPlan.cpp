@@ -2,15 +2,16 @@
 #include <limits>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
-#include <lux/engine/render/graph/Shader.hpp>
-#include <map>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/Shader.hpp>
+#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
+#include <map>
 #include <spirv-tools/libspirv.h>
 
 namespace lux::render::detail
 {
-    RenderResult<nri::PipelineLayout*> createPipelineLayout(
+    RenderResult<nri::PipelineLayout*>
+    createPipelineLayout(
         nri::Device& device,
         const nri::CoreInterface& core,
         const PassBindings& program,
@@ -19,18 +20,39 @@ namespace lux::render::detail
         std::uint32_t color_count
     ) noexcept
     {
-        const auto shared = DescriptorTable::layoutRanges(capacities, enabled.variable_descriptor_count);
-        const auto local = descriptorRanges(program.private_bindings);
+        auto shared = DescriptorTable::layoutRanges(capacities, enabled.variable_descriptor_count);
+        const bool preserve_registers = core.GetDeviceDesc(device).graphicsAPI == nri::GraphicsAPI::D3D12;
+        const auto local = descriptorRanges(program.private_bindings, preserve_registers);
+        if (preserve_registers)
+        {
+            for (const auto& binding : program.bindings)
+            {
+                if (binding.count != 0)
+                {
+                    continue;
+                }
+                const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE
+                                      ? 0U
+                                      : (binding.kind == EDescriptorKind::SAMPLER ? 1U : 2U);
+                shared[kind].descriptorType =
+                    kind == 2 ? nri::DescriptorType::STRUCTURED_BUFFER : shared[kind].descriptorType;
+                shared[kind].d3dRegisterSpacePlusOne = binding.shader_space + 1;
+                shared[kind].d3dRegisterIndex = binding.shader_register;
+            }
+        }
         std::vector<nri::DescriptorSetDesc> sets;
         for (std::size_t kind = 0; kind < program.shared_sets.size(); ++kind)
         {
             const auto set = program.shared_sets[kind];
-            if (set == kGraphInvalidIndex) continue;
+            if (set == kGraphInvalidIndex)
+            {
+                continue;
+            }
             if (capacities[kind] == 0)
             {
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
-            sets.push_back({set, &shared[kind], 1, nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET});
+            sets.push_back({set, &shared[kind], 1});
         }
         if (!local.empty())
         {
@@ -46,18 +68,24 @@ namespace lux::render::detail
         // Sampler, uniform buffer, storage buffer, sampled image/texel, storage image/texel.
         // The UAB limits include both UAB and ordinary sets; ordinary limits count only ordinary sets.
         const auto ordinary_sets = std::array{
-            limits.descriptorSet.samplerMaxNum, limits.descriptorSet.constantBufferMaxNum,
-            limits.descriptorSet.storageBufferMaxNum, limits.descriptorSet.textureMaxNum,
+            limits.descriptorSet.samplerMaxNum,
+            limits.descriptorSet.constantBufferMaxNum,
+            limits.descriptorSet.storageBufferMaxNum,
+            limits.descriptorSet.textureMaxNum,
             limits.descriptorSet.storageTextureMaxNum
         };
         const auto indexed_sets = std::array{
-            limits.descriptorSet.updateAfterSet.samplerMaxNum, limits.descriptorSet.updateAfterSet.constantBufferMaxNum,
-            limits.descriptorSet.updateAfterSet.storageBufferMaxNum, limits.descriptorSet.updateAfterSet.textureMaxNum,
+            limits.descriptorSet.updateAfterSet.samplerMaxNum,
+            limits.descriptorSet.updateAfterSet.constantBufferMaxNum,
+            limits.descriptorSet.updateAfterSet.storageBufferMaxNum,
+            limits.descriptorSet.updateAfterSet.textureMaxNum,
             limits.descriptorSet.updateAfterSet.storageTextureMaxNum
         };
         const auto ordinary_stages = std::array{
-            limits.shaderStage.descriptorSamplerMaxNum, limits.shaderStage.descriptorConstantBufferMaxNum,
-            limits.shaderStage.descriptorStorageBufferMaxNum, limits.shaderStage.descriptorTextureMaxNum,
+            limits.shaderStage.descriptorSamplerMaxNum,
+            limits.shaderStage.descriptorConstantBufferMaxNum,
+            limits.shaderStage.descriptorStorageBufferMaxNum,
+            limits.shaderStage.descriptorTextureMaxNum,
             limits.shaderStage.descriptorStorageTextureMaxNum
         };
         const auto indexed_stages = std::array{
@@ -67,35 +95,48 @@ namespace lux::render::detail
             limits.shaderStage.updateAfterSet.descriptorTextureMaxNum,
             limits.shaderStage.updateAfterSet.descriptorStorageTextureMaxNum
         };
-        constexpr auto stages = std::array{
-            nri::StageBits::VERTEX_SHADER, nri::StageBits::FRAGMENT_SHADER, nri::StageBits::COMPUTE_SHADER
-        };
+        constexpr auto stages =
+            std::array{nri::StageBits::VERTEX_SHADER, nri::StageBits::FRAGMENT_SHADER, nri::StageBits::COMPUTE_SHADER};
         for (unsigned subset = 0; subset < 2; ++subset)
         {
             std::array<std::uint64_t, 5> totals{};
             std::array<std::array<std::uint64_t, 5>, 3> per_stage{};
             for (const auto& set : sets)
             {
-                if (subset == 0 && (set.flags & nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET) != 0) continue;
+                const bool uses_update_after_set = std::ranges::any_of(
+                    std::span(set.ranges, set.rangeNum),
+                    [](const nri::DescriptorRangeDesc& range) noexcept
+                    { return (range.flags & nri::DescriptorRangeBits::ALLOW_UPDATE_AFTER_SET) != 0; }
+                );
+                if (subset == 0 && uses_update_after_set)
+                {
+                    continue;
+                }
                 for (const auto& range : std::span(set.ranges, set.rangeNum))
                 {
-                    const auto kind = range.descriptorType == nri::DescriptorType::SAMPLER ? 0u
-                        : range.descriptorType == nri::DescriptorType::CONSTANT_BUFFER ? 1u
-                        : range.descriptorType == nri::DescriptorType::STRUCTURED_BUFFER ||
-                          range.descriptorType == nri::DescriptorType::STORAGE_STRUCTURED_BUFFER ? 2u
-                        : range.descriptorType == nri::DescriptorType::TEXTURE ||
-                          range.descriptorType == nri::DescriptorType::BUFFER ? 3u : 4u;
+                    const auto kind = range.descriptorType == nri::DescriptorType::SAMPLER           ? 0u
+                                      : range.descriptorType == nri::DescriptorType::CONSTANT_BUFFER ? 1u
+                                      : range.descriptorType == nri::DescriptorType::STRUCTURED_BUFFER ||
+                                              range.descriptorType == nri::DescriptorType::STORAGE_STRUCTURED_BUFFER
+                                          ? 2u
+                                      : range.descriptorType == nri::DescriptorType::TEXTURE ||
+                                              range.descriptorType == nri::DescriptorType::BUFFER
+                                          ? 3u
+                                          : 4u;
                     totals[kind] += range.descriptorNum;
                     for (std::size_t stage = 0; stage < stages.size(); ++stage)
                     {
-                        if ((range.shaderStages & stages[stage]) != 0) per_stage[stage][kind] += range.descriptorNum;
+                        if ((range.shaderStages & stages[stage]) != 0)
+                        {
+                            per_stage[stage][kind] += range.descriptorNum;
+                        }
                     }
                 }
             }
             for (std::size_t kind = 0; kind < totals.size(); ++kind)
             {
-                const auto limit = subset == 0 ? ordinary_sets[kind]
-                    : std::max(ordinary_sets[kind], indexed_sets[kind]);
+                const auto limit =
+                    subset == 0 ? ordinary_sets[kind] : std::max(ordinary_sets[kind], indexed_sets[kind]);
                 if (totals[kind] > limit)
                 {
                     return cxx::unexpected(RenderError{kDeviceCapacity, {totals[kind], limit, kind}});
@@ -107,16 +148,21 @@ namespace lux::render::detail
                 for (std::size_t kind = 0; kind < totals.size(); ++kind)
                 {
                     const auto count = per_stage[stage][kind];
-                    const auto limit = subset == 0 ? ordinary_stages[kind]
-                        : std::max(ordinary_stages[kind], indexed_stages[kind]);
+                    const auto limit =
+                        subset == 0 ? ordinary_stages[kind] : std::max(ordinary_stages[kind], indexed_stages[kind]);
                     if (count > limit)
                     {
                         return cxx::unexpected(RenderError{kDeviceCapacity, {count, limit, kind}});
                     }
-                    if (kind != 0) resources += count;
+                    if (kind != 0)
+                    {
+                        resources += count;
+                    }
                 }
-                const auto limit = subset == 0 ? limits.shaderStage.resourceMaxNum
-                    : std::max(limits.shaderStage.resourceMaxNum, limits.shaderStage.updateAfterSet.resourceMaxNum);
+                const auto limit =
+                    subset == 0
+                        ? limits.shaderStage.resourceMaxNum
+                        : std::max(limits.shaderStage.resourceMaxNum, limits.shaderStage.updateAfterSet.resourceMaxNum);
                 if (resources > limit)
                 {
                     return cxx::unexpected(RenderError{kDeviceCapacity, {resources, limit, stage}});
@@ -126,6 +172,7 @@ namespace lux::render::detail
         const nri::RootConstantDesc parameters{0, program.parameter_bytes, program.parameter_stages};
         nri::PipelineLayoutDesc description{};
         description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
+        description.rootRegisterSpace = preserve_registers ? 255 : 0;
         description.shaderStages =
             nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
         description.descriptorSets = sets.data();
@@ -141,7 +188,8 @@ namespace lux::render::detail
         return layout;
     }
 
-    RenderResult<PassBindings> planProgramLayout(
+    RenderResult<PassBindings>
+    planProgramLayout(
         const nri::DeviceDesc& limits,
         const rdesc::ShaderInfo& shader,
         const PassInterface& input,
@@ -204,13 +252,17 @@ namespace lux::render::detail
             if (shared)
             {
                 const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0u
-                    : binding.kind == EDescriptorKind::SAMPLER ? 1u : 2u;
+                                  : binding.kind == EDescriptorKind::SAMPLER     ? 1u
+                                                                                 : 2u;
                 output.shared_sets[kind] = 0;
             }
         }
         for (auto& set : output.shared_sets)
         {
-            if (set != kGraphInvalidIndex) set = output.private_set++;
+            if (set != kGraphInvalidIndex)
+            {
+                set = output.private_set++;
+            }
         }
         for (std::size_t field = 0; field < output.bindings.size(); ++field)
         {
@@ -312,7 +364,8 @@ namespace lux::render::detail
             if (binding.count == 0)
             {
                 const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0u
-                    : binding.kind == EDescriptorKind::SAMPLER ? 1u : 2u;
+                                  : binding.kind == EDescriptorKind::SAMPLER     ? 1u
+                                                                                 : 2u;
                 binding.set = output.shared_sets[kind];
                 binding.binding = 0;
                 output.uses.back().set = binding.set;
@@ -347,7 +400,8 @@ namespace lux::render::detail
         return output;
     }
 
-    RenderResult<PassBindings> planRasterLayout(
+    RenderResult<PassBindings>
+    planRasterLayout(
         const nri::DeviceDesc& limits,
         const rdesc::ShaderInfo& shader,
         const RasterPassTemplate& stage
@@ -427,7 +481,8 @@ namespace lux::render::detail
         return planProgramLayout(limits, shader, input, resources);
     }
 
-    RenderResult<ShaderBindingPlan> planLayouts(
+    RenderResult<ShaderBindingPlan>
+    planLayouts(
         const nri::DeviceDesc& limits,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
@@ -439,20 +494,21 @@ namespace lux::render::detail
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
+            if (!pass.work.builtin()) return cxx::unexpected(RenderError{kDeviceUnsupported});
             const PassInterface* input = nullptr;
-            if (const auto* raster = std::get_if<RasterWork>(&pass.work))
+            if (const auto* raster = pass.work.getIf<RasterWork>())
             {
                 const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
                 input = fixed ? &fixed->interface : nullptr;
             }
-            else if (const auto* compute = std::get_if<ComputeWork>(&pass.work))
+            else if (const auto* compute = pass.work.getIf<ComputeWork>())
             {
                 input = &compute->interface;
             }
             else
             {
                 auto& output = plan.passes[id.index];
-                const auto& transfer = std::get<TransferWork>(pass.work);
+                const auto& transfer = pass.work.get<TransferWork>();
                 for (const auto& operation : transfer.operations)
                 {
                     if (const auto* fill = std::get_if<FillBuffer>(&operation))
@@ -478,7 +534,7 @@ namespace lux::render::detail
                 output.private_bindings = output.bindings;
                 continue;
             }
-            const auto* raster = std::get_if<RasterWork>(&pass.work);
+            const auto* raster = pass.work.getIf<RasterWork>();
             const auto& parameters =
                 input ? input->parameters : std::get<RasterPassTemplate>(raster->program).parameters;
             const auto group = parameter_groups.empty() ? 0u : parameter_groups[id.index];
@@ -528,21 +584,31 @@ namespace lux::render::detail
         {
             for (auto& mapping : program.parameters)
             {
-                if (mapping.resource != kGraphInvalidIndex) continue;
+                if (mapping.resource != kGraphInvalidIndex)
+                {
+                    continue;
+                }
                 const auto& region = plan.parameter_regions[program.instance_region];
                 const auto& fields = region.layout.fields;
                 const auto field = std::ranges::find(fields, mapping.source_field, &rdesc::ShaderMember::path);
-                if (field == fields.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                if (field == fields.end())
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
                 const auto& destination = mapping.destination;
                 const bool mismatch = field->scalar != destination.scalar || field->rows != destination.rows ||
-                    field->columns != destination.columns || field->matrix_stride != destination.matrix_stride ||
-                    field->array_stride != destination.array_stride;
+                                      field->columns != destination.columns ||
+                                      field->matrix_stride != destination.matrix_stride ||
+                                      field->array_stride != destination.array_stride;
                 const auto bytes = std::uint64_t(field->rows) * 4 +
-                    (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
+                                   (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
                 const bool invalid = !bytes || bytes > UINT32_MAX ||
-                    std::uint64_t(field->offset) + bytes > region.layout.size ||
-                    std::uint64_t(destination.offset) + bytes > program.parameter_bytes;
-                if (mismatch || invalid) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                                     std::uint64_t(field->offset) + bytes > region.layout.size ||
+                                     std::uint64_t(destination.offset) + bytes > program.parameter_bytes;
+                if (mismatch || invalid)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
                 mapping.source_offset = region.offset + field->offset;
             }
         }
@@ -567,9 +633,15 @@ namespace lux::render::detail
         return plan;
     }
 
-    RenderResult<rdesc::SpirvArtifact>
-    relocateShader(const rdesc::SpirvArtifact& original, std::span<const ShaderBinding> locations) noexcept
+    RenderResult<rdesc::ShaderProgramArtifact>
+    relocateShader(const rdesc::ShaderProgramArtifact& original, std::span<const ShaderBinding> locations) noexcept
     {
+        if (original.target == rdesc::EShaderTarget::DXIL)
+        {
+            // Physical locations are carried by descriptor ranges in the same Pipeline layout.
+            // A DXIL container and its own reflection remain unchanged.
+            return original;
+        }
         std::vector<const rdesc::EDescriptorBindingInfo*> bindings;
         for (const auto& set : original.interface.sets)
         {
@@ -610,6 +682,11 @@ namespace lux::render::detail
         if (unchanged)
         {
             return result;
+        }
+        // DXIL register assignments are fixed by target compilation. Never treat its container as SPIR-V.
+        if (original.target != rdesc::EShaderTarget::SPIRV)
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         for (auto& stage : result.stages)
         {

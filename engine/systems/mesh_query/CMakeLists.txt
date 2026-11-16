@@ -23,6 +23,7 @@ target_compile_definitions(system_mesh_query PRIVATE LUX_ENGINE_SCENE_MESH_QUERY
 target_link_libraries(
     system_mesh_query
     PUBLIC
+        lux::engine::engine_metadata
         lux::engine::scene::scene_composition
         lux::engine::ecs::ecs_transform
         lux::engine::ecs::ecs_visual
@@ -34,6 +35,7 @@ target_link_libraries(
 component_add_transitive_commands(
     system_mesh_query
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
+    "find_package(lux-engine-runtime-metadata REQUIRED COMPONENTS engine_metadata)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS ecs_transform ecs_visual)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"

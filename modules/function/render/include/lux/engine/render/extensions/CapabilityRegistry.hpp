@@ -7,7 +7,7 @@
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
-#include <lux/engine/render/extensions/storage/StorageDescriptor.hpp>
+#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <map>
 
 namespace lux::render
@@ -16,21 +16,16 @@ namespace lux::render
     {
         GLOBAL,
         SCENE,
-        VIEW,
-        ATTACHMENT
+        VIEW
     };
 
     // An implementation's actual professional Storage dependency. It is never an application
-    // payload contract. StorageSet owns the instance; this declaration owns no resource or scope.
-    struct CapabilityStorageDependency final
+    // payload contract. ResourceSet owns the instance; this declaration owns no resource or scope.
+    struct CapabilityResourceDependency final
     {
         EStorageScope scope = EStorageScope::GLOBAL;
-        StorageNameView storage_type;
-        std::string_view storage_key;
-        // Optional cold projection from implementation configuration to this Storage's concrete configuration.
-        // The returned value is adopted as immutable Attach input, never a second Storage owner.
-        RenderResult<ConfigValue> (*configuration)(const void*) noexcept = nullptr;
-        bool operator==(const CapabilityStorageDependency&) const noexcept = default;
+        ResourceNameView storage_type;
+        bool operator==(const CapabilityResourceDependency&) const noexcept = default;
     };
 
     // Actual Command call plus its optional resource destination within this implementation.
@@ -39,7 +34,6 @@ namespace lux::render
     struct CapabilityCommandBinding final
     {
         CommandBindingLocation location;
-        std::uint32_t storage_dependency = UINT32_MAX;
         bool operator==(const CapabilityCommandBinding&) const noexcept = default;
     };
 
@@ -54,7 +48,7 @@ namespace lux::render
         RenderConfigurationFormat configuration;
         cxx::type_info config_type;
         // Composition and configuration belong to the implementation, never to a leaf Feature.
-        std::span<const CapabilityStorageDependency> storage_dependencies;
+        std::span<const CapabilityResourceDependency> resource_dependencies;
         RenderResult<ConfigValue> (*make_default_configuration)() noexcept = nullptr;
         RenderResult<ConfigValue> (*decode_configuration)(std::span<const std::byte>) noexcept = nullptr;
         RenderResult<CapabilityGraphContribution> (*build_graph)(const CapabilityBuildInput&) noexcept = nullptr;
@@ -68,7 +62,7 @@ namespace lux::render
             return features == other.features && implementation == other.implementation &&
                    description == other.description && graph == other.graph && configuration == other.configuration &&
                    config_type == other.config_type &&
-                   std::ranges::equal(storage_dependencies, other.storage_dependencies) &&
+                   std::ranges::equal(resource_dependencies, other.resource_dependencies) &&
                    make_default_configuration == other.make_default_configuration &&
                    decode_configuration == other.decode_configuration && build_graph == other.build_graph &&
                    project_parameters == other.project_parameters && command_bindings == other.command_bindings &&

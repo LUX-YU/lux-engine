@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
-#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 
 namespace lux::render::detail
 {

@@ -7,7 +7,7 @@ namespace lux::render::detail
     struct ShaderBindingPlan;
 
     [[nodiscard]] std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>
-    collectUseStages(const RenderGraph&, const ShaderBindingPlan&) noexcept;
+    collectUseStages(const RenderGraph&, const ShaderBindingPlan&, nri::GraphicsAPI) noexcept;
 
     // Compact only fixed subresource ranges; publish reverse indexes after all planning mutations.
     void compactImageTransitions(std::span<CompiledResource>, RecordingProgram&) noexcept;
@@ -19,6 +19,7 @@ namespace lux::render::detail
         std::span<CompiledResource> resources,
         RecordingProgram& recording,
         const EffectOutputDesc& target,
+        nri::GraphicsAPI backend,
         const PhysicalResourcePlan* physical = nullptr
     ) noexcept;
 } // namespace lux::render::detail

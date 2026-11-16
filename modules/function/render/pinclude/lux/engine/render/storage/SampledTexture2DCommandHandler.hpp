@@ -5,8 +5,8 @@
 
 #include <exec/task.hpp>
 
-#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
-#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/resource/SampledTexture2D.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 
 namespace lux::render
 {
@@ -43,12 +43,6 @@ namespace lux::render::detail
         };
 
     public:
-        // Stateless typed methods; the Server supplies the selected Storage at dispatch.
-        static SampledTexture2DCommandHandler* create(ResourceRegistry&) noexcept
-        {
-            return new SampledTexture2DCommandHandler;
-        }
-
         using UploadSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<TextureId>>>(), create_texture_response_));
 
@@ -59,18 +53,19 @@ namespace lux::render::detail
 
         static constexpr std::string_view name = "lux.render.storage.SampledTexture2DCommandHandler";
 
-        UploadSender createTexture(SampledTexture2DStorage& storage, ImageCommands::Upload::Request&& input) noexcept
+        static UploadSender
+        createTexture(SampledTexture2DStorage& storage, ImageCommands::Upload::Request&& input) noexcept
         {
             return render::upload(storage, std::move(input.data)) | stdexec::then(create_texture_response_);
         }
 
-        CloneRegionSender
+        static CloneRegionSender
         createPatchedTexture(SampledTexture2DStorage& storage, ImageCommands::CloneRegion::Request&& input) noexcept
         {
             return render::upload(storage, std::move(input.data)) | stdexec::then(create_patched_texture_response_);
         }
 
-        void releaseTexture(
+        static void releaseTexture(
             SampledTexture2DStorage& storage,
             const ImageCommands::Release::Request& input,
             ImageCommands::Release::Response& response

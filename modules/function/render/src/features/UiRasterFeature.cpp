@@ -4,6 +4,10 @@
 #include "UiRasterVertex.hpp"
 
 #include <imgui.h>
+
+static_assert(IMGUI_VERSION_NUM == 19188, "Render requires the pinned Lux ImGui fork ABI");
+static_assert(sizeof(ImDrawVert) == 20 && offsetof(ImDrawVert, col) == 16);
+static_assert(sizeof(ImDrawIdx) == 2 && sizeof(ImTextureID) == 8);
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
@@ -54,25 +58,20 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void>
-        buildUi(
+        RenderResult<void> buildUi(
             const void* input,
             std::string_view key,
             FeatureBuildContext& context,
-            const lux::render::detail::EnabledDeviceFeatures&
+            const lux::render::detail::EnabledDeviceFeatures& enabled
         ) noexcept
         {
             const auto& config = *static_cast<const UiRasterFeatureConfig*>(input);
-            rdesc::SpirvArtifact shader;
-            shader.stages.push_back(
-                {rdesc::EShaderType::VERTEX, "main", {std::begin(kUiRasterVertex), std::end(kUiRasterVertex)}}
-            );
-            shader.stages.push_back(
-                {rdesc::EShaderType::FRAGMENT, "main", {std::begin(kUiRasterFragment), std::end(kUiRasterFragment)}}
-            );
-            rdesc::ShaderInfo vertex;
-            const bool valid_vertex = rdesc::ShaderInfo::deserialize(kUiRasterVertexReflection, vertex);
-            const bool valid_fragment = rdesc::ShaderInfo::deserialize(kUiRasterFragmentReflection, shader.interface);
+            auto vertex_program = kUiRasterVertex.load(enabled.shader_target);
+            auto shader = kUiRasterFragment.load(enabled.shader_target);
+            auto& vertex = vertex_program.interface;
+            const bool valid_vertex = !vertex_program.stages.empty();
+            const bool valid_fragment = !shader.stages.empty();
+            shader.stages.insert(shader.stages.begin(), vertex_program.stages.begin(), vertex_program.stages.end());
             if (!valid_vertex || !valid_fragment || vertex.push_constants.size() != 1 ||
                 shader.interface.push_constants.size() != 1 ||
                 vertex.push_constants[0].block != shader.interface.push_constants[0].block ||
@@ -124,8 +123,8 @@ namespace lux::render
                 return published;
             }
             auto output = rdesc::isSrgbTextureFormat(config.output.format)
-                              ? detail::fullscreenRaster(context, kUiOutputLinear, kUiOutputLinearReflection)
-                              : detail::fullscreenRaster(context, kUiOutputSrgb, kUiOutputSrgbReflection);
+                              ? detail::fullscreenRaster(context, kUiOutputLinear.load(enabled.shader_target))
+                              : detail::fullscreenRaster(context, kUiOutputSrgb.load(enabled.shader_target));
             if (!output)
             {
                 return cxx::unexpected(output.error());

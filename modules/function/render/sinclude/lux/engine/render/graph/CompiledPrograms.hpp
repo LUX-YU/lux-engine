@@ -1,7 +1,7 @@
 #pragma once
 
 #include <NRI.h>
-#include <lux/engine/description/SpirvArtifact.hpp>
+#include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
 #include <memory>
@@ -33,12 +33,12 @@ namespace lux::render::detail
         // Only releases an unsubmitted CPU compilation borrow. GPU uses go through release().
         void releaseLayout(nri::PipelineLayout*) noexcept;
         [[nodiscard]] nri::Pipeline* acquireRaster(const RasterProgramKey&, PassBindings&) noexcept;
-        [[nodiscard]] nri::Pipeline* acquireCompute(const rdesc::SpirvArtifact&, PassBindings&) noexcept;
+        [[nodiscard]] nri::Pipeline* acquireCompute(const rdesc::ShaderProgramArtifact&, PassBindings&) noexcept;
         // Takes the candidate Pipeline and one Layout borrow, including duplicate publication.
         [[nodiscard]] nri::Pipeline*
         publishRaster(RasterProgramKey, nri::PipelineLayout*, nri::Pipeline*) noexcept;
         [[nodiscard]] nri::Pipeline*
-        publishCompute(rdesc::SpirvArtifact, nri::PipelineLayout*, nri::Pipeline*) noexcept;
+        publishCompute(rdesc::ShaderProgramArtifact, nri::PipelineLayout*, nri::Pipeline*) noexcept;
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
         void
         release(std::span<nri::Pipeline* const>, std::span<nri::PipelineLayout* const> direct_layouts = {}) noexcept;

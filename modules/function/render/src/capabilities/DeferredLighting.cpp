@@ -214,7 +214,7 @@ namespace lux::render
                 );
                 auto support =
                     describeImplementation(name.name(), kDeferredLightingConfigurationSchema, std::move(ports));
-                support.storage_dependencies = lightStorageDependencies;
+                support.resource_dependencies = lightStorageDependencies;
                 support.project_parameters = projectCameraInput;
                 support.decode_configuration =
                     decodeConfigurationValue<DeferredLightingConfiguration, decodeDeferredLightingConfiguration>;

@@ -10,7 +10,7 @@ namespace lux::render
 {
     struct MeshVisibilityFeatureConfig final
     {
-        std::string instance_storage = "instances";
+        std::string instance_storage = "lux.render.resource.instances";
         std::uint32_t view_count = 1;
         bool frustum_culling = true;
         bool shadow_pass = false;

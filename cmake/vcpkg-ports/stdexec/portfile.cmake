@@ -10,6 +10,7 @@ vcpkg_from_github(
     PATCHES
         task-std-stop-token.patch
         task-variant-lookup.patch
+        task-scheduler-errors.patch
         fix-version.patch
         fix-clangd-helper-file-basedir.patch
         fix-boost-asio-dependency.patch

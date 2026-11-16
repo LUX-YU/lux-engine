@@ -7,6 +7,10 @@
 //  Include this before any specific BRDF module.
 // =========================================================================
 
+// Slang requires storage duration to be explicit for module constants.
+#ifdef __SLANG__
+static
+#endif
 const float PI = 3.14159265359;
 
 // ---------------------------------------------------------------------------

@@ -78,7 +78,12 @@ lux_engine_install_components(
 if(BUILD_TESTING)
     add_executable(engine_assembly_test test/assembly.cpp)
 
-    target_link_libraries(engine_assembly_test PRIVATE lux::engine::engine_runtime)
+    target_link_libraries(
+        engine_assembly_test
+        PRIVATE
+            lux::engine::engine_initialization
+            lux::engine::engine_metadata
+    )
 
     if(MSVC)
         target_compile_options(engine_assembly_test PRIVATE /UNDEBUG)
@@ -87,4 +92,5 @@ if(BUILD_TESTING)
     endif()
 
     add_test(NAME engine.assembly COMMAND engine_assembly_test)
+    set_tests_properties(engine.assembly PROPERTIES TIMEOUT 30)
 endif()

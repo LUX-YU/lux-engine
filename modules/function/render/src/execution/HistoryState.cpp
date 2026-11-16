@@ -24,14 +24,7 @@ namespace lux::render::detail
     {
         const auto reusable = [&](const HistoryState::HistorySlot& slot)
         {
-            for (std::size_t q = 0; q < session.queueCount(); ++q)
-            {
-                if (slot.last_use.serials[q] > session.physicalQueue(q).completed())
-                {
-                    return false;
-                }
-            }
-            return true;
+            return session.reached(slot.last_use);
         };
 
         if (invalidate)

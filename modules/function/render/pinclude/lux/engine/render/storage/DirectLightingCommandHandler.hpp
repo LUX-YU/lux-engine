@@ -5,7 +5,7 @@
 #include <lux/engine/render/commands/Lighting3dCommands.hpp>
 
 #include <exec/task.hpp>
-#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -43,12 +43,6 @@ namespace lux::render::detail
     class DirectLightingCommandHandler final
     {
     public:
-        // Stateless typed methods; the Server supplies the selected Storage at dispatch.
-        static DirectLightingCommandHandler* create(ResourceRegistry&) noexcept
-        {
-            return new DirectLightingCommandHandler;
-        }
-
         using CreateSender = decltype(stdexec::then(
             std::declval<exec::task<RenderResult<std::vector<LightId>>>>(),
             createLightResponse(0)
@@ -58,7 +52,7 @@ namespace lux::render::detail
 
         static constexpr std::string_view name = "lux.render.storage.DirectLightingCommandHandler";
 
-        CreateSender
+        static CreateSender
         createLights(DirectLightingStorage& storage, Lighting3dCommands::CreateLights::Request&& input) noexcept
         {
             const auto sequence = input.data.sequence;
@@ -70,12 +64,12 @@ namespace lux::render::detail
             return result ? RenderResult<void>{} : cxx::unexpected(result.error());
         }
 
-        RenderResult<void> updateLights(DirectLightingStorage& destination, LightUpdates input) noexcept
+        static RenderResult<void> updateLights(DirectLightingStorage& destination, LightUpdates input) noexcept
         {
             return applied(destination.update(input));
         }
 
-        RemoveSender
+        static RemoveSender
         removeLight(DirectLightingStorage& storage, Lighting3dCommands::ReleaseLight::Request&& input) noexcept
         {
             return storage.remove(input.light) | stdexec::then(removeLightResponse(input.sequence));

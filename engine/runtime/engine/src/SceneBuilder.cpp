@@ -14,6 +14,18 @@
 
 namespace lux::engine
 {
+    namespace
+    {
+        template <class Registration, class Description>
+        [[nodiscard]] bool canCreate(const Registration* declaration, const Description& system) noexcept
+        {
+            const bool matches_factory = declaration && declaration->create &&
+                declaration->configuration_version == system.configuration_version;
+            const bool has_unexpected_payload = system.configuration_version == 0 && !system.configuration.empty();
+            return matches_factory && !has_unexpected_payload;
+        }
+    }
+
     cxx::expected<std::unique_ptr<scene::SceneInstance>, error::Error>
     Engine::SceneBuilder::build(const scene::SceneDescription& description) const noexcept
     {
@@ -22,47 +34,74 @@ namespace lux::engine
         {
             const auto* declared = metadata_.findGeometry(geometry.name);
             const auto* partitioner = metadata_.findPartitioner(geometry.partitioner.name);
-            if (!declared || !partitioner ||
-                partitioner->configuration_version != geometry.partitioner.configuration_version)
+            const bool matches_partitioner = partitioner &&
+                partitioner->configuration_version == geometry.partitioner.configuration_version;
+            const bool has_unexpected_payload = geometry.partitioner.configuration_version == 0 &&
+                !geometry.partitioner.configuration.empty();
+            if (!declared || !matches_partitioner || has_unexpected_payload)
+            {
                 return cxx::unexpected(invalid);
+            }
         }
         const auto declarations = metadata_.components();
         auto schemas = ecs::ComponentSchemaSet::build(std::vector<ecs::ComponentSchema>{
             declarations.begin(), declarations.end()
         });
-        if (!schemas) return cxx::unexpected(invalid);
-        auto world = std::make_unique<world::World>(description.world);
-        auto simulation = std::make_unique<simulation::Simulation>();
+        if (!schemas)
+        {
+            return cxx::unexpected(invalid);
+        }
+        auto owned_schemas = std::make_shared<const ecs::ComponentSchemaSet>(std::move(*schemas));
+        auto candidate = std::make_unique<scene::SceneInstance>(
+            std::make_unique<world::World>(description.world),
+            std::make_unique<simulation::Simulation>(),
+            owned_schemas
+        );
         for (const auto& described : description.simulation.groups)
         {
             if (described.fixed_step && *described.fixed_step <= simulation::SimulationDuration::zero())
+            {
                 return cxx::unexpected(invalid);
+            }
             auto group = described.fixed_step ? simulation::TickGroup{*described.fixed_step} : simulation::TickGroup{};
             for (const auto& system : described.systems)
             {
                 const auto* declaration = metadata_.findSimulationSystem(system.type);
-                const bool unavailable = !declaration || !declaration->create ||
-                    declaration->configuration_version != system.configuration_version;
-                if (unavailable) return cxx::unexpected(invalid);
-                auto created = declaration->create(context_, *world, system.configuration);
-                if (!created) return cxx::unexpected(created.error());
-                if (!*created) return cxx::unexpected(invalid);
+                if (!canCreate(declaration, system))
+                {
+                    return cxx::unexpected(invalid);
+                }
+                auto created = declaration->create(context_, candidate->world(), system.configuration);
+                if (!created)
+                {
+                    return cxx::unexpected(created.error());
+                }
+                if (!*created)
+                {
+                    return cxx::unexpected(invalid);
+                }
                 group.add(std::move(*created));
             }
-            simulation->add(std::move(group));
+            candidate->simulation().add(std::move(group));
         }
-        auto candidate = std::make_unique<scene::SceneInstance>(std::move(world), std::move(simulation));
         for (const auto& system : description.systems)
         {
             const auto* declaration = metadata_.findSceneSystem(system.type);
-            const bool unavailable = !declaration || !declaration->create ||
-                declaration->configuration_version != system.configuration_version;
-            if (unavailable) return cxx::unexpected(invalid);
+            if (!canCreate(declaration, system))
+            {
+                return cxx::unexpected(invalid);
+            }
             auto created = declaration->create(
-                context_, candidate->world(), candidate->simulation(), *schemas, system.configuration
+                context_, candidate->world(), candidate->simulation(), *owned_schemas, system.configuration
             );
-            if (!created) return cxx::unexpected(created.error());
-            if (!*created) return cxx::unexpected(invalid);
+            if (!created)
+            {
+                return cxx::unexpected(created.error());
+            }
+            if (!*created)
+            {
+                return cxx::unexpected(invalid);
+            }
             candidate->add(std::move(*created));
         }
         return candidate;

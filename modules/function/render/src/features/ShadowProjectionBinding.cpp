@@ -5,7 +5,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/storage/DirectLightingStorage.hpp>
 
@@ -15,7 +15,7 @@ namespace lux::render::detail
         DeviceSession& device,
         FrameExecution& frames,
         ResourceRegistry& resources,
-        StorageId light_storage,
+        ResourceInstanceId light_storage,
         const Description& description
     ) noexcept
         : device_(device), frames_(frames), resources_(resources), lights_(light_storage), description_(description),
@@ -47,7 +47,7 @@ namespace lux::render::detail
         ResourceRegistry& resources,
         RenderGraphInstance&,
         CompiledPrograms&,
-        std::span<const StorageId> storages,
+        std::span<const ResourceInstanceId> storages,
         const void* value
     ) noexcept
     {
@@ -191,7 +191,7 @@ namespace lux::render::detail
                 const nri::BufferDesc description{
                     std::bit_ceil(sources[i].size()),
                     4,
-                    nri::BufferUsageBits::SHADER_RESOURCE_STORAGE
+                    (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE)
                 };
                 const auto status =
                     device_.nriCore().CreatePlacedBuffer(device_.device(), NriDeviceHeap, description, candidate);
@@ -222,7 +222,7 @@ namespace lux::render::detail
         cxx::scope_exit acknowledge(
             [&]() noexcept
             {
-                frames_.onPreparationSubmitted(
+                uploads.onPreparationSubmitted(
                     &slice,
                     [](void* value, std::uint32_t, RenderResult<void> accepted) noexcept
                     {

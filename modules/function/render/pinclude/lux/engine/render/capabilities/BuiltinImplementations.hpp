@@ -25,35 +25,8 @@
 
 namespace lux::render::detail
 {
-    template <std::uint32_t Dependency> using LightBindings = std::tuple<
-        CommandMethod<Lighting3dCommands::CreateLights, &DirectLightingCommandHandler::createLights, Dependency>,
-        CommandMethod<Lighting3dCommands::ReleaseLight, &DirectLightingCommandHandler::removeLight, Dependency>>;
-
-    using MeshBindings = std::tuple<
-        CommandMethod<Mesh3dCommands::UploadMesh, &IndexedTriangleMeshCommandHandler::createMesh, 0>,
-        CommandMethod<Mesh3dCommands::ReleaseMesh, &IndexedTriangleMeshCommandHandler::releaseMesh, 0>>;
-
-    using MaterialBindings = std::tuple<
-        CommandMethod<MaterialCommands::Create, &RasterMaterialCommandHandler::createMaterial, 2>,
-        CommandMethod<MaterialCommands::Update, &RasterMaterialCommandHandler::updateMaterial, 2>,
-        CommandMethod<MaterialCommands::Release, &RasterMaterialCommandHandler::releaseMaterial, 2>>;
-
-    using InstanceBindings = std::tuple<
-        CommandMethod<Mesh3dCommands::CreateInstance, &RasterMeshInstanceCommandHandler::createInstance, 3>,
-        CommandMethod<Mesh3dCommands::CreateInstances, &RasterMeshInstanceCommandHandler::createInstances, 3>,
-        CommandMethod<Mesh3dCommands::ReleaseInstance, &RasterMeshInstanceCommandHandler::releaseInstance, 3>>;
-
-    template <std::uint32_t Dependency> using ImageBindings = std::tuple<
-        CommandMethod<ImageCommands::Upload, &SampledTexture2DCommandHandler::createTexture, Dependency>,
-        CommandMethod<ImageCommands::CloneRegion, &SampledTexture2DCommandHandler::createPatchedTexture, Dependency>,
-        CommandMethod<ImageCommands::Release, &SampledTexture2DCommandHandler::releaseTexture, Dependency>>;
-
     using RasterStorages = std::tuple<
         SampledTexture2DStorage, IndexedTriangleMeshStorage, RasterMaterialStorage, RasterMeshInstanceStorage>;
-    using RasterBindings = decltype(std::tuple_cat(
-        std::declval<ImageBindings<1>>(), std::declval<MeshBindings>(),
-        std::declval<MaterialBindings>(), std::declval<InstanceBindings>()
-    ));
 
     // Composition declarations, never graph Feature entries or live instances.
     struct RasterSurface final
@@ -67,7 +40,7 @@ namespace lux::render::detail
         using Config = RasterSurfaceConfiguration;
         static constexpr FeatureName name{"lux.render.raster_surface"};
         using Storages = RasterStorages;
-        using Bindings = RasterBindings;
+        using Bindings = std::tuple<>;
         static CapabilityImplementation implementation() noexcept;
     };
 
@@ -83,7 +56,7 @@ namespace lux::render::detail
         using Config = DeferredLightingConfiguration;
         static constexpr FeatureName name{"lux.render.deferred_lighting"};
         using Storages = std::tuple<DirectLightingStorage>;
-        using Bindings = LightBindings<0>;
+        using Bindings = std::tuple<>;
         static CapabilityImplementation implementation() noexcept;
     };
 
@@ -95,7 +68,7 @@ namespace lux::render::detail
         using Config = UiConfiguration;
         static constexpr FeatureName name{"lux.render.scene.ui"};
         using Storages = std::tuple<SampledTexture2DStorage>;
-        using Bindings = ImageBindings<0>;
+        using Bindings = std::tuple<>;
         static CapabilityImplementation implementation() noexcept;
     };
 

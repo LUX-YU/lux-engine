@@ -39,14 +39,14 @@ namespace lux::render
     {
         const auto reject = [&](RenderError error, std::uint32_t entry = UINT32_MAX) noexcept
         { complete(receiver, {error, input.sequence, EFrameOutcome::REJECTED, 0, frame_resynchronization_, entry}); };
-        if (stop_requested.load())
+        if (stop_requested_.load())
         {
             reject(RenderError{kCommandCancelled});
             return;
         }
-        if (execution_error.type != 0)
+        if (const auto rejection = execution_error_; rejection.type != 0)
         {
-            reject(execution_error);
+            reject(rejection);
             return;
         }
         if (input.sequence == 0 || input.sequence <= last_frame_sequence_)
@@ -87,7 +87,8 @@ namespace lux::render
         {
             const auto& entry = input.entries[index];
             const auto binding = resolveFrameData(entry.destination);
-            const bool is_missing_binding = !binding || !binding->call->handler || !binding->call->handler->object;
+            const bool is_missing_binding = !binding ||
+                (binding->call->handler_type.isValid() && (!binding->call->handler || !binding->call->handler->object));
             if (is_missing_binding)
             {
                 reject(RenderError{kRuntimeIdentity}, index);
@@ -118,7 +119,7 @@ namespace lux::render
 
     RenderResult<BoundFrameData> RenderServer::Impl::resolveFrameData(const FrameDataDestination& destination) noexcept
     {
-        const auto* effect = effects.find(destination.effect);
+        const auto* effect = effects_.find(destination.effect);
         if (!effect || destination.capability >= effect->implementations.size())
         {
             return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -133,12 +134,12 @@ namespace lux::render
         if (call.target == EFrameDataTarget::STORAGE)
         {
             auto storage =
-                resolveEffectStorage(*effect, destination.capability, call.storage_dependency, destination.scope);
+                resolveEffectResource(*effect, destination.capability, call.resource_dependency, destination.scope);
             if (!storage)
             {
                 return cxx::unexpected(storage.error());
             }
-            auto target = call.resolve_storage(*resources, *storage);
+            auto target = call.resolve_storage(*resources_, *storage);
             if (!target)
             {
                 return cxx::unexpected(target.error());
@@ -146,7 +147,7 @@ namespace lux::render
             return BoundFrameData{&call, VFrameDataTarget{*target}};
         }
         const auto* id = std::get_if<AttachmentId>(&destination.scope);
-        auto* attachment = id ? attachments.find(*id) : nullptr;
+        auto* attachment = id ? attachments_.find(*id) : nullptr;
         if (!attachment || attachment->effect != destination.effect)
         {
             return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -155,16 +156,17 @@ namespace lux::render
         {
             return BoundFrameData{&call, FrameParameterTarget{*attachment->instance, input.parameters}};
         }
+        if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
         return BoundFrameData{
             &call,
             FrameDrawTarget{
                 *attachment->instance,
                 input.pass,
-                *frames,
+                *uploads_,
                 this,
                 [](void* context, TargetId id, std::uint32_t slot) noexcept -> RenderResult<FrameSampledImage>
                 {
-                    auto* target = static_cast<Impl*>(context)->targets.find(id);
+                    auto* target = static_cast<Impl*>(context)->targets_.find(id);
                     if (!target || !target->description.sampled || target->surface())
                     {
                         return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -189,7 +191,7 @@ namespace lux::render
             {
                 if (const auto* id = std::get_if<AttachmentId>(&frame.input.entries[i].destination.scope))
                 {
-                    attachments.find(*id)->instance->finishDrawListUploads(frame.slot, uploaded);
+                    attachments_.find(*id)->instance->finishDrawListUploads(frame.slot, uploaded);
                 }
             }
         }
@@ -211,14 +213,14 @@ namespace lux::render
         {
             frame.error = RenderError{kFrameResynchronization};
         }
-        if (execution_error.type != 0)
+        if (execution_error_.type != 0)
         {
-            frame.error = execution_error;
-            frame.outcome_unknown |= execution_error.type == kOutcomeUnknown;
+            frame.error = execution_error_;
+            frame.outcome_unknown |= execution_error_.type == kOutcomeUnknown;
         }
         if (frame.error.type == 0)
         {
-            if (!frames->beginFrame(frame.slot))
+            if (!frames_->beginFrame(frame.slot))
             {
                 return; // Keep the input queued until a physical FIF slice becomes reusable.
             }
@@ -238,17 +240,20 @@ namespace lux::render
                 const auto index = phase.first + i;
                 const auto& entry = frame.input.entries[index];
                 ++frame.dispatched;
-                if (execution_error.type != 0)
+                if (execution_error_.type != 0)
                 {
-                    completeFrameData(frame, index, execution_error);
+                    completeFrameData(frame, index, execution_error_);
                     continue;
                 }
                 // Structural commands cannot overtake accepted frames, so admitted binding and block
                 // identities remain valid. There is no per-frame Invocation cache or repeated type lookup.
                 const auto binding = *resolveFrameData(entry.destination);
                 const auto* root = frame.input.blocks[entry.payload.block].data() + entry.payload.offset;
-                FrameDispatchContext context{data, root, binding.target, frame, index, command_scope_, render_loop_};
-                binding.call->invoke(binding.call->handler->object.get(), context);
+                FrameDispatchContext context{
+                    data, root, binding.target, frame, index, command_scope_,
+                    server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery)
+                };
+                binding.call->invoke(binding.call->handler ? binding.call->handler->object.get() : nullptr, context);
             }
             if (frame.pending != 0 || frame.error.type != 0)
             {
@@ -265,12 +270,12 @@ namespace lux::render
 
     exec::task<RenderResult<void>> RenderServer::Impl::prepareRasterPrograms() noexcept
     {
-        for (const auto& [instance, binding] : frame_features)
+        for (const auto& [instance, binding] : frame_features_)
         {
             const auto* raster = std::get_if<detail::FeatureBinding::RasterPreparation>(&binding->preparation);
             if (raster && raster->requires_programs(binding->value.get()))
             {
-                auto prepared = co_await raster->prepare_programs(binding->value.get(), cpu_scheduler);
+                auto prepared = co_await raster->prepare_programs(binding->value.get(), cpu_scheduler_);
                 if (!prepared)
                 {
                     co_return prepared;
@@ -282,12 +287,12 @@ namespace lux::render
 
     void RenderServer::Impl::prepareFramePrograms(FrameRecord& frame) noexcept
     {
-        if (active_frame_inputs_dirty)
+        if (active_frame_inputs_dirty_)
         {
             rebuildActiveFrameInputs();
         }
         const bool requires_programs = std::ranges::any_of(
-            frame_features,
+            frame_features_,
             [](const auto& input) noexcept
             {
                 const auto& binding = *input.second;
@@ -301,7 +306,7 @@ namespace lux::render
             return;
         }
         frame.pending = 1;
-        const auto scheduler = render_loop_.scheduler();
+        const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         auto prepared =
             prepareRasterPrograms() |
             stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<void> { std::terminate(); }) |
@@ -309,6 +314,7 @@ namespace lux::render
                 []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCommandCancelled}); }
             ) |
             stdexec::continues_on(scheduler) |
+            stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<void> { std::terminate(); }) |
             stdexec::then(
                 [&frame](RenderResult<void> result) noexcept
                 {
@@ -335,10 +341,10 @@ namespace lux::render
         std::uint32_t accepted = 0;
         if (frame.slot != UINT32_MAX)
         {
-            accepted = frames->submittedBatches(frame.slot);
-            if (!frames->inputConsumed(frame.slot))
+            accepted = frames_->submittedBatches(frame.slot);
+            if (!frames_->inputConsumed(frame.slot))
             {
-                frames->cancelSubmissions(frame.error);
+                frames_->cancelSubmissions(frame.error);
             }
             frame_resynchronization_ |= applied_inputs;
         }
@@ -363,11 +369,11 @@ namespace lux::render
 
     void RenderServer::Impl::submitFrameRendering(FrameRecord& frame) noexcept
     {
-        if (execution_error.type != 0)
+        if (execution_error_.type != 0)
         {
             // Cleanup is a discrete operation now. An empty data frame cannot hide device failure.
-            frame.error = execution_error;
-            frame.outcome_unknown |= execution_error.type == kOutcomeUnknown;
+            frame.error = execution_error_;
+            frame.outcome_unknown |= execution_error_.type == kOutcomeUnknown;
             failFrame(frame);
             return;
         }
@@ -378,7 +384,7 @@ namespace lux::render
             frame.outcome_unknown |= frame.error.type == kOutcomeUnknown;
             // render() already retires a failed submission. Do not cancel the next physical slot.
             frame_resynchronization_ = true;
-            const auto accepted = frames->submittedBatches(frame.slot);
+            const auto accepted = frames_->submittedBatches(frame.slot);
             finishFrame(
                 frame,
                 FrameCompletion{
@@ -393,9 +399,9 @@ namespace lux::render
             );
             return;
         }
-        if (frames->inputConsumed(frame.slot))
+        if (frames_->inputConsumed(frame.slot))
         {
-            const bool no_draw = active_targets.empty();
+            const bool no_draw = active_targets_.empty();
             frame_resynchronization_ = false;
             finishFrame(
                 frame,
@@ -403,7 +409,7 @@ namespace lux::render
                     {},
                     frame.input.sequence,
                     no_draw ? EFrameOutcome::NO_DRAW : EFrameOutcome::SUBMITTED,
-                    frames->submittedBatches(frame.slot),
+                    frames_->submittedBatches(frame.slot),
                     false
                 }
             );
@@ -417,13 +423,13 @@ namespace lux::render
             return;
         }
         auto& frame = frame_inputs_[first_frame_];
-        if (stop_requested.load() && frame.error.type == 0)
+        if (stop_requested_.load() && frame.error.type == 0)
         {
             frame.error = RenderError{kCommandCancelled};
         }
         // Once output backpressure ended a frame for a structural request, do not apply
         // its stale queued successors before that request reaches the boundary.
-        const bool reject_stale_input = deferred_request_ && frame_resynchronization_ &&
+        const bool reject_stale_input = deferred_request_.active() && frame_resynchronization_ &&
             frame.stage == FrameRecord::EStage::QUEUED && frame.error.type == 0;
         if (reject_stale_input)
         {
@@ -468,7 +474,7 @@ namespace lux::render
             }
             if (!*acquired)
             {
-                if (deferred_request_)
+                if (deferred_request_.active())
                 {
                     // Only an actually unavailable output may interrupt the older frame.
                     // Otherwise accepted frames finish normally before the structural request.

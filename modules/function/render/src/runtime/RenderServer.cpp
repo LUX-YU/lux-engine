@@ -13,7 +13,8 @@ namespace lux::render
         bool sameFactory(const ResourceRegistration& left, const ResourceRegistration& right) noexcept
         {
             return *left.storage == *right.storage && std::ranges::equal(left.commands, right.commands,
-                [](const auto& a, const auto& b) noexcept { return a.hasSameImplementation(b); });
+                [](const auto& a, const auto& b) noexcept { return a.hasSameImplementation(b); }) &&
+                std::ranges::equal(left.frame_calls, right.frame_calls);
         }
 
     } // namespace

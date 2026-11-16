@@ -14,8 +14,8 @@
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 #include <lux/engine/render/features/ShadowInputs.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/storage/RasterMaterialStorage.hpp>
+#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
 
 namespace lux::render::detail
 {
@@ -195,10 +195,10 @@ namespace lux::render::detail
                         continue;
                     }
                     auto meshes = resources_.borrow<IndexedTriangleMeshStorage>(
-                        extension_detail::ResourceIdentity::storage(group.selection.mesh)
+                        extension_detail::ResourceIdentity::parent(group.selection.mesh)
                     );
                     auto material_storage = resources_.borrow<RasterMaterialStorage>(
-                        extension_detail::ResourceIdentity::storage(group.selection.material_source)
+                        extension_detail::ResourceIdentity::parent(group.selection.material_source)
                     );
                     const auto* geometry = meshes ? (*meshes)->find(group.selection.mesh) : nullptr;
                     const auto* material = material_storage
@@ -296,6 +296,7 @@ namespace lux::render::detail
                     if (!compiled_programs) co_return compiled_programs;
                 }
             }
+            if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
             if (revision != source().revision)
             {
                 continue; // Local guards return compilation borrows and discard unpublished candidates.
@@ -375,7 +376,7 @@ namespace lux::render::detail
                 if (group.record.candidate_count == 0) continue;
                 const auto material = group.selection.material_source;
                 auto storage = resources_.borrow<RasterMaterialStorage>(
-                    extension_detail::ResourceIdentity::storage(material)
+                    extension_detail::ResourceIdentity::parent(material)
                 );
                 if (!storage) co_return cxx::unexpected(storage.error());
                 if (definitions.emplace((*storage)->program(material), material).second)
@@ -761,7 +762,7 @@ namespace lux::render::detail
             auto& group = groups_[index];
             if (group.generation == 0) continue;
             const auto mesh = draw_source.groups[index].selection.mesh;
-            const auto storage_id = extension_detail::ResourceIdentity::storage(mesh);
+            const auto storage_id = extension_detail::ResourceIdentity::parent(mesh);
             if (!mesh_storage || mesh_storage_id != storage_id)
             {
                 auto storage = resources_.borrow<IndexedTriangleMeshStorage>(storage_id);
@@ -790,7 +791,7 @@ namespace lux::render::detail
         for (const auto material : material_sources_)
         {
             auto storage = resources_.borrow<RasterMaterialStorage>(
-                extension_detail::ResourceIdentity::storage(material)
+                extension_detail::ResourceIdentity::parent(material)
             );
             if (!storage) return cxx::unexpected(storage.error());
             auto collected = (*storage)->collectReads(material, frame.slot, read_buffers_, read_images_);

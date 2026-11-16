@@ -16,38 +16,32 @@
 
 namespace lux::render::detail
 {
-    RenderResult<void>
-    DeviceBackend::initializeD3D12(
+    RenderResult<void> DeviceBackend::initializeD3D12(
         DeviceSession& session,
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
-        bool validation,
-        std::uint32_t capacity
+        bool validation
     ) noexcept
     {
 #ifndef _WIN32
         return cxx::unexpected(RenderError{kDeviceUnsupported});
 #else
-        if (!capacity || !diagnostic.MessageCallback)
+        if (!diagnostic.MessageCallback)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        std::uint32_t count = 0;
-        auto status = nri::nriEnumerateAdapters(nullptr, count);
-        if (status != nri::Result::SUCCESS)
+        auto enumerated = DeviceSession::enumerateAdapters();
+        if (!enumerated)
         {
-            return cxx::unexpected(nativeError(status));
+            return cxx::unexpected(enumerated.error());
         }
+        auto adapters = std::move(*enumerated);
+        const auto count = static_cast<std::uint32_t>(adapters.size());
         if (!count)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        std::vector<nri::AdapterDesc> adapters(count);
-        status = nri::nriEnumerateAdapters(adapters.data(), count);
-        if (status != nri::Result::SUCCESS)
-        {
-            return cxx::unexpected(nativeError(status));
-        }
+        auto status = nri::Result::SUCCESS;
         const auto selected = options.physical_device_index == UINT32_MAX ? 0U : options.physical_device_index;
         if (selected >= count)
         {
@@ -192,7 +186,7 @@ namespace lux::render::detail
                     types[role] == nri::QueueType::COPY ? desc.features.timestampCopyQueue : desc.features.timestamp;
                 const QueueProperties
                     facts{types[role], static_cast<std::uint32_t>(types[role]), {1, 1, 1}, timestamps ? 64U : 0U};
-                auto queue = SubmissionQueue::create(session, *native, facts, capacity);
+                auto queue = SubmissionQueue::create(session, *native, facts);
                 if (!queue)
                 {
                     return cxx::unexpected(queue.error());

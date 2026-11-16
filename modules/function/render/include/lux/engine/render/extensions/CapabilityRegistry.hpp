@@ -56,6 +56,8 @@ namespace lux::render
         // Exact calls already owned by CommandRegistry, in the implementation's declared method order.
         std::vector<CapabilityCommandBinding> command_bindings;
         std::vector<FrameDataCall> frame_calls;
+        // View data is projected into execution bytes; it is never an Effect-owned input value.
+        cxx::type_info view_parameter_type;
 
         bool operator==(const CapabilityImplementation& other) const noexcept
         {
@@ -66,7 +68,7 @@ namespace lux::render
                    make_default_configuration == other.make_default_configuration &&
                    decode_configuration == other.decode_configuration && build_graph == other.build_graph &&
                    project_parameters == other.project_parameters && command_bindings == other.command_bindings &&
-                   frame_calls == other.frame_calls;
+                   frame_calls == other.frame_calls && view_parameter_type == other.view_parameter_type;
         }
     };
 

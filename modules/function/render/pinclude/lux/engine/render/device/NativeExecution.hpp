@@ -20,8 +20,6 @@ namespace lux::render::detail
         NativeExecution(const NativeExecution&) = delete;
         NativeExecution& operator=(const NativeExecution&) = delete;
         [[nodiscard]] Scheduler scheduler() noexcept;
-        // Startup ownership handoff only, before admitting operations on the new Server thread.
-        void adoptOwner() noexcept;
         // After domain scopes/producers settle, seal, drain and join actual callback-stack tails.
         // Caller still retains Context/scheduler borrowers until their own start calls return.
         void closeAndJoin() noexcept;
@@ -35,6 +33,5 @@ namespace lux::render::detail
         cxx::execution::ManualContext context_;
         cxx::execution::ManualContext::Producer producer_;
         std::thread worker_;
-        std::thread::id owner_;
     };
 } // namespace lux::render::detail

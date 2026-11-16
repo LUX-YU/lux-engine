@@ -24,11 +24,14 @@ namespace lux::render
         bool operator==(const StorageMeta&) const noexcept = default;
     };
 
+    struct FrameDataCall;
+
     struct ResourceRegistration final
     {
         const ResourceDefinition* descriptor;
         const StorageMeta* storage;
         std::span<const CommandBinding> commands;
+        std::span<const FrameDataCall> frame_calls;
     };
 
     template <class Declaration> [[nodiscard]] constexpr cxx::type_info storageOpsType() noexcept
@@ -145,7 +148,8 @@ namespace lux::render
     [[nodiscard]] ResourceRegistration makeResourceRegistration(
         StorageOpsArgument<typename Declaration::Ops> ops,
         const void* binding_ops = nullptr,
-        std::span<const CommandBinding> commands = {}
+        std::span<const CommandBinding> commands = {},
+        std::span<const FrameDataCall> frame_calls = {}
     ) noexcept
     {
         return {
@@ -156,7 +160,8 @@ namespace lux::render
                 Implementation,
                 Create,
                 Compatible>(ops, binding_ops),
-            commands
+            commands,
+            frame_calls
         };
     }
 

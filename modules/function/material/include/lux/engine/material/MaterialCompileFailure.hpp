@@ -13,7 +13,6 @@ namespace lux::material
         CYCLE,
         TYPE_MISMATCH,
         MISSING_REQUIRED_OUTPUT,
-        LOWERING_FAILURE,
         SHADER_EMISSION_FAILURE,
         SHADER_COMPILATION_FAILURE,
         INVALID_RESULT,

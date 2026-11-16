@@ -87,6 +87,7 @@ namespace lux::render
                 auto support = describeImplementation(name.name(), kRasterSurfaceConfigurationSchema, std::move(ports));
                 support.resource_dependencies = rasterStorageDependencies;
                 support.project_parameters = projectCameraInput;
+                support.view_parameter_type = cxx::make_basic_type_info<CameraInput>();
                 support.decode_configuration =
                     decodeConfigurationValue<RasterSurfaceConfiguration, decodeRasterSurfaceConfiguration>;
                 support.build_graph = lowerSurface;

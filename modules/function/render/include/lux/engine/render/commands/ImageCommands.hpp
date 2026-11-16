@@ -5,7 +5,7 @@
 
 namespace lux::render::ImageCommands
 {
-    // Shared by visible capabilities that consume sampled images; no Storage capability is exposed.
+    // Commands select the owning Resource instance; capability implementation selection does not route uploads.
     struct Upload final
     {
         static constexpr std::string_view name = "lux.render.image.upload";
@@ -60,7 +60,7 @@ namespace lux::render::ImageCommands
         static constexpr bool requires_frame_boundary = true;
         static constexpr bool failure_safe = true;
         using Data = TextureId;
-        // Client ends Material/Attachment references first. No implicit cross-Storage updates.
+        // Client ends Material/Attachment references first. Active source clones reject release as busy.
         struct Request final
         {
             Data data;

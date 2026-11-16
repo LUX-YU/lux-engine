@@ -21,4 +21,8 @@ namespace lux::render
         bool operator==(const CameraInput&) const noexcept = default;
     };
 
+    [[nodiscard]] inline FrameDataBinding<CameraInput> viewCameraBinding(ViewRequest view) noexcept
+    {
+        return {ViewFrameDestination{view}};
+    }
 } // namespace lux::render

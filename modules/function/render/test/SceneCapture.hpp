@@ -1,3 +1,5 @@
+#include <lux/engine/render/resources/InstanceResource.hpp>
+#include <lux/engine/render/resources/LightResource.hpp>
 #pragma once
 
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
@@ -845,7 +847,7 @@ static void detach(ipc::IpcRequester& client, const CommandList& commands, Attac
 
 struct SceneInputRoutes final
 {
-    EffectId effect;
+    ResourceInstanceId instances, lights;
     VRenderScope scope;
     std::vector<CapabilityDescription> capabilities;
     std::vector<CapabilityImplementationId> implementations;
@@ -853,17 +855,8 @@ struct SceneInputRoutes final
 
 static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandList& commands, VRenderScope scope)
 {
-    static thread_local std::vector<std::pair<decltype(client.id()), SceneInputRoutes>> cache;
-    if (auto found = std::ranges::find_if(cache, [&](const auto& value) { return value.first == client.id(); });
-        found != cache.end())
-    {
-        auto routes = found->second;
-        routes.scope = scope;
-        return routes;
-    }
     const auto choices = call<ListCapabilities>(client, commands, {});
-    CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
-    SceneInputRoutes routes{{}, scope};
+    SceneInputRoutes routes{{}, {}, scope};
     for (auto name : {kRasterSurfaceCapability, kDeferredLightingCapability})
     {
         const auto found = std::ranges::find_if(
@@ -871,54 +864,37 @@ static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandLi
             [name](const auto& value) { return value.capability.type.name() == name; }
         );
         CHECK(found != choices.implementations.end());
-        const auto key = routes.capabilities.empty() ? "mesh" : "light";
-        request.composition.contributions.push_back(
-            {key,
-             found->capability.type, found->implementation_id,
-             SerializedRenderConfiguration{found->configuration.schema, found->configuration.version, {}}}
-        );
         routes.capabilities.push_back(found->capability);
         routes.implementations.push_back(found->implementation_id);
     }
-    request.composition.outputs.push_back({"light", "color"});
-    routes.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
-    cache.emplace_back(client.id(), routes);
-    return routes;
-}
-
-template <CapabilityCommand C>
-static CapabilityImplementationId
-installCommand(ipc::IpcRequester& client, const CommandList& commands, VRenderScope scope = GlobalRenderScope{})
-{
-    const auto routes = installInputs(client, commands, scope);
-    for (std::uint32_t i = 0; i < routes.capabilities.size(); ++i)
+    if (!std::holds_alternative<GlobalRenderScope>(scope))
     {
-        for (const auto* command : routes.capabilities[i].commands)
-        {
-            if (command->name.name() == C::name)
-            {
-                return routes.implementations[i];
-            }
-        }
+        routes.instances = call<GetOrCreateResource>(client, commands, {scope, kInstanceResourceName}).resource_id;
+        routes.lights = call<GetOrCreateResource>(client, commands, {scope, kLightResourceName}).resource_id;
     }
-    CHECK(false);
-    return {};
+    return routes;
 }
 
 template <class T> static FrameDataBinding<T> frameBinding(const SceneInputRoutes& routes)
 {
-    const auto type = lux::cxx::make_basic_type_info<T>();
-    for (std::uint32_t i = 0; i < routes.capabilities.size(); ++i)
+    if constexpr (std::same_as<T, TransformData> || std::same_as<T, MeshInstanceUpdates>)
     {
-        const auto& types = routes.capabilities[i].per_frame_data;
-        const auto found = std::ranges::find(types, type);
-        if (found != types.end())
-        {
-            return {{routes.effect, i, static_cast<std::uint32_t>(found - types.begin()), routes.scope}};
-        }
+        return resourceFrameDataBinding<InstanceResource, T>(routes.instances);
     }
-    CHECK(false);
-    return {};
+    else if constexpr (std::same_as<T, LightUpdates>)
+    {
+        return resourceFrameDataBinding<LightResource, T>(routes.lights);
+    }
+    else
+    {
+        static_assert(std::same_as<T, CameraInput>);
+        return viewCameraBinding(std::get<ViewRequest>(routes.scope));
+    }
+}
+
+static void writeFrameData(FrameWriter& writer, FrameDataBinding<CameraInput> binding, const CameraInput& input)
+{
+    CHECK(writer.write(binding, input));
 }
 
 static void writeFrameData(FrameWriter& writer, FrameDataBinding<LightUpdates> binding, const LightUpdates& input)

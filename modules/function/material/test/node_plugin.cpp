@@ -45,7 +45,7 @@ namespace
 #define MATERIAL_TEST_EXPORT __attribute__((visibility("default")))
 #endif
 
-extern "C" MATERIAL_TEST_EXPORT void materialNodeRegistration(
+extern "C" MATERIAL_TEST_EXPORT void materialNodeRegistrationV2(
     lux::material::MaterialNodeRegistration& result,
     const lux::object::CodeLease& code,
     NodePluginState& state
@@ -70,14 +70,13 @@ extern "C" MATERIAL_TEST_EXPORT void materialNodeRegistration(
     result.describe_pins =
         [](const MaterialNodePayload&) noexcept -> MaterialNodeResult<std::vector<MaterialPinDeclaration>>
     { return std::vector<MaterialPinDeclaration>{{graph::PinSemanticId{1}, "value", graph::EPinDirection::OUTPUT}}; };
-    result.compile = [](const MaterialNodePayload&, std::span<const std::uint32_t>, shadergen::ShaderIR& candidate
-                     ) noexcept -> MaterialNodeResult<std::vector<std::uint32_t>>
+    result.emit_slang = [](const MaterialNodePayload&,
+                           std::span<const std::string_view>,
+                           std::span<const std::string_view> outputs,
+                           std::string& destination) noexcept -> MaterialNodeResult<void>
     {
-        const auto index = static_cast<std::uint32_t>(candidate.values.size());
-        shadergen::ShaderIRValue value{shadergen::EOp::CONSTANT, shadergen::EValueType::FLOAT};
-        value.constant[0] = 0.625F;
-        candidate.values.push_back(value);
-        return std::vector<std::uint32_t>{index};
+        destination += std::string(outputs[0]) + " = 0.625;\n";
+        return {};
     };
     result.encode = [](const MaterialNodePayload&) noexcept -> MaterialNodeResult<std::string>
     { return std::string{"external-constant-v1"}; };

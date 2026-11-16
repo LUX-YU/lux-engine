@@ -13,8 +13,8 @@ namespace lux::render
 
     ResourceInstanceId ResourceSet::find(ResourceTypeId type) const noexcept
     {
-        const auto found = instances_by_name_.find(NameKey{type.index, type.gen});
-        if (found == instances_by_name_.end())
+        const auto found = instances_by_type_.find(TypeKey{type.index, type.gen});
+        if (found == instances_by_type_.end())
         {
             return {};
         }
@@ -62,10 +62,10 @@ namespace lux::render
         }
         const auto& factory = **qualified;
         const auto& configuration = *registry_.configuration(type);
-        const auto key = NameKey{type.index, type.gen};
-        if (const auto found = instances_by_name_.find(key); found != instances_by_name_.end())
+        const auto key = TypeKey{type.index, type.gen};
+        if (const auto found = instances_by_type_.find(key); found != instances_by_type_.end())
         {
-            auto* instance = registry_.storageInstance(found->second);
+            auto* instance = registry_.resourceInstance(found->second);
             // A recursive request for this still-unpublished declaration is a construction cycle.
             if (!instance)
             {
@@ -79,11 +79,11 @@ namespace lux::render
             return found->second;
         }
         const auto id = registry_.reserve(*this, type);
-        const auto name = instances_by_name_.emplace(key, id).first;
+        const auto type_position = instances_by_type_.emplace(key, id).first;
         cxx::scope_exit rollback(
             [&]() noexcept
             {
-                instances_by_name_.erase(name);
+                instances_by_type_.erase(type_position);
                 registry_.revoke(id);
             }
         );
@@ -94,7 +94,7 @@ namespace lux::render
         {
             return cxx::unexpected(instance ? RenderError{kStorageFactory} : instance.error());
         }
-        records_.push_back(Record{id, name, std::move(*instance)});
+        records_.push_back(Record{id, type_position, std::move(*instance)});
         device_ = &dependencies.device;
         registry_.publish(id, records_.size() - 1, records_.back().instance.get());
         rollback.release();
@@ -152,7 +152,7 @@ namespace lux::render
     void ResourceSet::erase(std::size_t position) noexcept
     {
         const auto& record = records_[position];
-        instances_by_name_.erase(record.name);
+        instances_by_type_.erase(record.type);
         registry_.revoke(record.id);
         auto instance = std::move(records_[position].instance);
         if (position + 1 != records_.size())
@@ -183,7 +183,7 @@ namespace lux::render
         {
             registry_.revoke(record.id);
         }
-        instances_by_name_.clear();
+        instances_by_type_.clear();
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
         while (!records_.empty())
         {

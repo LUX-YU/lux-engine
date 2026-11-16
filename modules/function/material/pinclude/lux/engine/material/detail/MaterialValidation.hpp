@@ -30,9 +30,6 @@ namespace lux::material
             std::unordered_map<graph::PinId, graph::PinId> incoming;
         };
 
-        [[nodiscard]] MaterialNodeResult<MaterialCompileGraph> validateMaterialGraph(
-            const MaterialGraph&,
-            shadergen::ShaderIR& resources
-        ) noexcept;
+        [[nodiscard]] MaterialNodeResult<MaterialCompileGraph> validateMaterialGraph(const MaterialGraph&) noexcept;
     } // namespace detail
 } // namespace lux::material

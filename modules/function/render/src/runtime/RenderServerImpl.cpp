@@ -1,5 +1,6 @@
-#include <exec/variant_sender.hpp>
 #include <exception>
+#include <exec/variant_sender.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/execution/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
@@ -86,7 +87,7 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::initialize(DeviceOptions device_options) noexcept
     {
         const nri::CallbackInterface callbacks{Impl::diagnostic, [](void*) noexcept {}, this};
-        auto created_device = detail::DeviceSession::create(device_options, callbacks, config_.validation, 3);
+        auto created_device = detail::DeviceSession::create(device_options, callbacks, config_.validation);
         if (!created_device)
         {
             return cxx::unexpected(created_device.error());
@@ -308,14 +309,14 @@ namespace lux::render
         RenderEffect& effect,
         detail::TargetOutput output,
         ResourceSet& scene,
-        ResourceSet& view,
+        RenderView& view,
         const AttachmentRequest& input
     ) noexcept
     {
         const auto target_images = std::span(input.target_images);
         const auto& plan = *effect.plan;
         auto dependencies = resourceCreateContext();
-        const std::array scope_sets{&*global_storages_, &scene, &view};
+        const std::array scope_sets{&*global_storages_, &scene, &view.storages};
         std::vector<ResourceInstanceId> dependency_storages;
         dependency_storages.reserve(effect.resource_dependencies.size());
         for (const auto& dependency : effect.resource_dependencies)
@@ -405,7 +406,7 @@ namespace lux::render
                 resolved[index] = id;
                 if (auto bound =
                         candidate
-                            .bindStorage(index, *ops, resources_->storageInstance(id), value, frames_->frameCount());
+                            .bindStorage(index, *ops, resources_->resourceInstance(id), value, frames_->frameCount());
                     !bound)
                 {
                     return cxx::unexpected(bound.error());
@@ -461,14 +462,31 @@ namespace lux::render
         {
             return cxx::unexpected(ready.error());
         }
+        if (input.parameter_type == cxx::make_basic_type_info<CameraInput>())
+        {
+            return cxx::unexpected(RenderError{kCommandContract});
+        }
+        const auto parameters = input.parameters.empty() && !effect.view_projections.empty()
+            ? candidate.instance->instanceParameters() : std::span<const std::byte>{input.parameters};
         if (auto values =
                 candidate.instance
-                    ->setInputs(input.parameters, input.conditions, input.parameter_type, effect.parameter_projections);
+                    ->setInputs(parameters, input.conditions, input.parameter_type, effect.parameter_projections);
             !values)
         {
             return cxx::unexpected(values.error());
         }
         candidate.instance->setViewport(input.viewport);
+        for (const auto& projection : effect.view_projections)
+        {
+            auto applied = candidate.instance->setParameterInput(std::as_bytes(std::span{&view.camera, 1}), projection);
+            if (!applied) return cxx::unexpected(applied.error());
+        }
+        if (!effect.view_projections.empty())
+        {
+            const auto& viewport = view.camera.viewport;
+            candidate.instance->setViewport({viewport[0], viewport[1], viewport[2], viewport[3]});
+        }
+        candidate.camera_revision = view.camera_revision;
         return candidate;
     }
 
@@ -580,7 +598,7 @@ namespace lux::render
             return;
         }
         auto prepared =
-            prepareAttachment(*effect, target->output(), scene->storages, view->storages, _request);
+            prepareAttachment(*effect, target->output(), scene->storages, *view, _request);
         if (!prepared)
         {
             output_response.error = prepared.error();
@@ -722,6 +740,11 @@ namespace lux::render
     ) noexcept
     {
         auto* attachment = attachments_.find(input.attachment);
+        if (input.parameter_type == cxx::make_basic_type_info<CameraInput>())
+        {
+            output_response.error = RenderError{kCommandContract};
+            return;
+        }
         if (!attachment)
         {
             output_response.error = RenderError{kRuntimeIdentity};
@@ -743,6 +766,7 @@ namespace lux::render
             return;
         }
         attachment->instance->setViewport(input.viewport);
+        attachment->camera_revision = 0; // Reproject View-owned bytes before the next preparation.
         output_response = {};
     }
 
@@ -1160,10 +1184,51 @@ namespace lux::render
 
     void RenderServer::Impl::progressUploads() noexcept
     {
-        if (uploads_)
+        if (uploads_ && !upload_progress_pending_ && uploads_->canProgressTransfers())
         {
-            uploads_->submitReadyTransfers();
+            upload_progress_pending_ = true;
+            const auto delivery = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
+            stdexec::spawn(
+                stdexec::starts_on(delivery, uploads_->submitReadyTransfers()) |
+                    stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
+                    stdexec::upon_stopped([]() noexcept -> RenderResult<void> { std::terminate(); }) |
+                    stdexec::then(
+                        [this](RenderResult<void> result) noexcept
+                        {
+                            upload_progress_pending_ = false;
+                            if (!result)
+                            {
+                                failExecution(result.error());
+                            }
+                        }
+                    ),
+                upload_scope_.get_token()
+            );
         }
+    }
+
+    RenderResult<void> RenderServer::Impl::applyViewCameras() noexcept
+    {
+        for (auto id : active_targets_.keys())
+        {
+            auto& attachment = *attachments_.find(targets_.find(id)->attachment);
+            const auto& effect = *effects_.find(attachment.effect);
+            const auto& view = *scenes_.find(attachment.scene)->views.find(attachment.view);
+            if (attachment.camera_revision == view.camera_revision) continue;
+            for (const auto& projection : effect.view_projections)
+            {
+                auto applied =
+                    attachment.instance->setParameterInput(std::as_bytes(std::span{&view.camera, 1}), projection);
+                if (!applied) return applied;
+            }
+            if (!effect.view_projections.empty())
+            {
+                const auto& viewport = view.camera.viewport;
+                attachment.instance->setViewport({viewport[0], viewport[1], viewport[2], viewport[3]});
+            }
+            attachment.camera_revision = view.camera_revision;
+        }
+        return {};
     }
 
     void RenderServer::Impl::rebuildActiveFrameInputs() noexcept
@@ -1254,7 +1319,7 @@ namespace lux::render
                 );
                 if (!storage.isNull())
                 {
-                    auto* native = resources_->storageInstance(storage);
+                    auto* native = resources_->resourceInstance(storage);
                     frame_storages_.push_back(
                         {native, ops, storage, ops->preparationRevision ? ops->preparationRevision(native) : nullptr}
                     );
@@ -1317,13 +1382,13 @@ namespace lux::render
         return count;
     }
 
-    RenderResult<void> RenderServer::Impl::submitCurrentFrame(std::uint32_t slot) noexcept
+    exec::task<RenderResult<void>> RenderServer::Impl::submitCurrentFrame(std::uint32_t slot) noexcept
     {
-        const auto accepted = frames_->render(frame_instances_, frame_storages_, frame_features_);
+        const auto accepted = co_await frames_->render(frame_instances_, frame_storages_, frame_features_);
         const auto presented = presentFrameOutputs();
         if (!accepted)
         {
-            return cxx::unexpected(accepted.error());
+            co_return cxx::unexpected(accepted.error());
         }
         submissions_.fetch_add(*accepted, std::memory_order_relaxed);
         if (!presented)
@@ -1332,9 +1397,9 @@ namespace lux::render
             {
                 frames_->cancelSubmissions(presented.error());
             }
-            return cxx::unexpected(presented.error());
+            co_return cxx::unexpected(presented.error());
         }
-        return {};
+        co_return RenderResult<void>{};
     }
 
     void RenderServer::Impl::queryExecutionProgress(
@@ -1375,11 +1440,10 @@ namespace lux::render
 
     void RenderServer::Impl::failExecution(RenderError error) noexcept
     {
-        if (execution_error_.type != 0)
+        if (stop_requested_.exchange(true))
         {
             return;
         }
-        execution_error_ = error;
         for (std::size_t i = 0; i < frame_count_; ++i)
         {
             auto& frame = frame_inputs_[(first_frame_ + i) % frame_inputs_.size()];
@@ -1474,9 +1538,9 @@ namespace lux::render
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kFrameSource});
         }
-        else if (execution_error_.type != 0 && !entry->description->failure_safe && id != submit_frame_command_)
+        else if (device_->terminalError().type != 0 && !entry->description->failure_safe && id != submit_frame_command_)
         {
-            entry->make_error(response_outbox_.prepare(route), execution_error_);
+            entry->make_error(response_outbox_.prepare(route), device_->terminalError());
         }
         else
         {
@@ -1549,7 +1613,7 @@ namespace lux::render
         stdexec::start(join);
         publishResponses(32);
         // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
-        while (!joined.load(std::memory_order_acquire) || !server_context_.is_idle())
+        while (!joined.load(std::memory_order_acquire) || upload_progress_pending_ || !server_context_.is_idle())
         {
             // Adopt published CPU results while the Scope is draining.
             (void)server_context_.run_ready(128);
@@ -1565,7 +1629,7 @@ namespace lux::render
                 // Stopped upload continuations must run after GPU/write-admission callbacks.
                 (void)server_context_.run_ready(128);
                 progressUploads();
-                if (!collected && !device_->deviceLost())
+                if (!collected && !device_->deviceLost() && collected.error().type != kOutcomeUnknown)
                 {
                     std::terminate();
                 }
@@ -1582,6 +1646,31 @@ namespace lux::render
         while (!server_context_.is_idle())
         {
             std::this_thread::yield();
+        }
+        upload_scope_.close();
+        bool uploads_joined = false;
+
+        struct UploadJoined
+        {
+            using receiver_concept = stdexec::receiver_t;
+            bool* done;
+
+            auto get_env() const noexcept
+            {
+                return stdexec::env{stdexec::prop{stdexec::get_scheduler, stdexec::inline_scheduler{}}};
+            }
+
+            void set_value() && noexcept
+            {
+                *done = true;
+            }
+        };
+
+        auto upload_join = stdexec::connect(upload_scope_.join(), UploadJoined{&uploads_joined});
+        stdexec::start(upload_join);
+        if (!uploads_joined)
+        {
+            std::terminate();
         }
         while (!response_outbox_.empty())
         {
@@ -1619,7 +1708,8 @@ namespace lux::render
         global_storages_.reset();
         resources_.reset();
         // Frame callback nodes and Staging outlive all accepted GPU submissions.
-        if (auto settled = device_->drain(); !settled && !device_->deviceLost())
+        if (auto settled = device_->drain();
+            !settled && !device_->deviceLost() && settled.error().type != kOutcomeUnknown)
         {
             std::terminate();
         }
@@ -1646,7 +1736,6 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        device_->adoptNativeOwner();
         if (stop_requested_.load())
         {
             shutdown();
@@ -1695,6 +1784,7 @@ namespace lux::render
             progressed |= publishResponses(32) != 0;
             if (auto observed_gpu = progressGpuCompletions(); !observed_gpu)
             {
+                result = cxx::unexpected(observed_gpu.error());
                 failExecution(observed_gpu.error());
             }
             if (uploads_) uploads_->dispatchWrites();
@@ -1717,6 +1807,7 @@ namespace lux::render
                 }
                 else
                 {
+                    result = cxx::unexpected(presented.error());
                     failExecution(presented.error());
                 }
             }
@@ -1733,10 +1824,11 @@ namespace lux::render
                 {
                     continue;
                 }
-                if (device_->pendingGpuWork() && execution_error_.type == 0)
+                if (device_->pendingGpuWork() && device_->terminalError().type == 0)
                 {
                     if (auto advanced = frames_->waitForProgress(config_.gpu_wait_ns); !advanced)
                     {
+                        result = cxx::unexpected(advanced.error());
                         failExecution(advanced.error());
                     }
                 }
@@ -1747,9 +1839,9 @@ namespace lux::render
                 }
             }
         }
-        if (execution_error_.type != 0)
+        if (device_->terminalError().type != 0)
         {
-            result = cxx::unexpected(execution_error_);
+            result = cxx::unexpected(device_->terminalError());
         }
         shutdown(result ? RenderError{kCommandCancelled} : result.error());
         return result;

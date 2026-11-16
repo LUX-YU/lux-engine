@@ -30,6 +30,13 @@ namespace lux::render
                 }
             }
         }
+        for (std::size_t i = 0; i < descriptor.frame_inputs.size(); ++i)
+        {
+            const auto type = descriptor.frame_inputs[i];
+            const auto prior = descriptor.frame_inputs.first(i);
+            const bool is_invalid_input = !type.isValid() || std::ranges::find(prior, type) != prior.end();
+            if (is_invalid_input) return cxx::unexpected(RenderError{kStorageContract});
+        }
         return {};
     }
 

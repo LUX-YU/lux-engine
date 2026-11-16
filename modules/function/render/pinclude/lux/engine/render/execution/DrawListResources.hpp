@@ -17,6 +17,5 @@ namespace lux::render::detail
         std::vector<std::pair<std::uint64_t, std::uint32_t>> image_indices;
         std::vector<BufferWrite> upload_writes;
         std::vector<std::array<std::byte, 4>> upload_tails;
-        std::size_t staged_write = 0, staged_bytes = 0;
     };
 } // namespace lux::render::detail

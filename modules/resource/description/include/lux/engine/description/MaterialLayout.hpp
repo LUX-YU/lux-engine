@@ -15,6 +15,18 @@ namespace lux::rdesc
 
     static_assert(sizeof(MaterialGpuReference) == 8 && alignof(MaterialGpuReference) == 4);
 
+    // Texture-record values shared by emitted material layouts and their target-specific consumers.
+    // Placement in a record still comes from the target's reflection.
+    struct MaterialTextureGpuRef final
+    {
+        std::uint32_t representation_index = 0;
+        std::uint32_t resource_index = 0;
+        std::uint32_t sampler_index = 0;
+        std::uint32_t flags = 0;
+    };
+
+    static_assert(sizeof(MaterialTextureGpuRef) == 16 && alignof(MaterialTextureGpuRef) == 4);
+
     inline constexpr std::uint32_t kMaterialShaderAbi = 5;
     inline constexpr std::uint32_t kTextureDefaultWhite = 1u << 0;
 

@@ -119,6 +119,8 @@ namespace lux::render::detail
         using Resolve = RenderResult<
             void> (*)(void*, const VGraphResourceDesc&, const void*, StorageSubscription&, std::span<ResourceInput>) noexcept;
         Resolve resolve;
+        // Freeze all dirty data or return a capacity error. False only awaits acceptance of a complete
+        // replacement before its binding can be published; it never requests another partial copy window.
         RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, ResourceUploader&) noexcept = nullptr;
         // Cold borrow. The producer advances it before any attempt that may dirty a replica,
         // including a failed upload which leaves repair work. No callback is needed to read it.

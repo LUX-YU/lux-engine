@@ -86,13 +86,13 @@ namespace lux::render
 
     private:
         friend class ResourceRegistry;
-        using NameKey = std::pair<std::uint32_t, std::uint32_t>;
-        using NameIndex = std::map<NameKey, ResourceInstanceId, std::less<>>;
+        using TypeKey = std::pair<std::uint32_t, std::uint32_t>;
+        using TypeIndex = std::map<TypeKey, ResourceInstanceId, std::less<>>;
 
         struct Record final
         {
             ResourceInstanceId id;
-            NameIndex::iterator name;
+            TypeIndex::iterator type;
             StorageOwner instance;
         };
 
@@ -104,7 +104,7 @@ namespace lux::render
         EResourceDomain domain_;
         const ResourceSet* parent_;
         std::vector<Record> records_;
-        NameIndex instances_by_name_;
+        TypeIndex instances_by_type_;
         const detail::DeviceSession* device_ = nullptr;
         std::uint32_t constructing_ = 0;
         bool clearing_ = false;

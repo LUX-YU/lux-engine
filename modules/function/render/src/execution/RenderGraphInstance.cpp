@@ -317,23 +317,13 @@ namespace lux::render::detail
     {
         for (auto& list : frames_[slot].draw_lists)
         {
-            while (list.staged_write < list.upload_writes.size())
+            for (const auto& write : list.upload_writes)
             {
-                const auto& write = list.upload_writes[list.staged_write];
-                auto staged = uploads.stageBuffer(
-                    {write.target, write.offset + list.staged_bytes, write.source.subspan(list.staged_bytes)}
-                );
+                auto staged = uploads.stageBuffer(write);
                 if (!staged)
                 {
                     return cxx::unexpected(staged.error());
                 }
-                list.staged_bytes += *staged;
-                if (list.staged_bytes != write.source.size())
-                {
-                    return false;
-                }
-                ++list.staged_write;
-                list.staged_bytes = 0;
             }
         }
         return true;
@@ -343,13 +333,8 @@ namespace lux::render::detail
     {
         for (auto& list : frames_[slot].draw_lists)
         {
-            if (accepted && list.staged_write != list.upload_writes.size())
-            {
-                continue;
-            }
             list.upload_writes.clear();
             list.upload_tails.clear();
-            list.staged_write = list.staged_bytes = 0;
             if (!accepted)
             {
                 list.draws.packets.clear();

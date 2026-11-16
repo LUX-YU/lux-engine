@@ -456,8 +456,12 @@ int main(int argc, char** argv)
     CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
-    const auto meshes = installCommand<Mesh3dCommands::UploadMesh>(*client, commands);
-    const auto materials = installCommand<MaterialCommands::Create>(*client, commands);
+    const auto meshes = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kMeshResourceName}
+    ).resource_id;
+    const auto materials = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kMaterialResourceName}
+    ).resource_id;
 
     struct Vertex
     {
@@ -505,14 +509,14 @@ int main(int argc, char** argv)
     {
         const bool perspective = scenario % 2 != 0;
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
-        auto instances = installCommand<Mesh3dCommands::CreateInstance>(*client, commands, scene);
+        auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
         const std::array descriptions{MeshInstanceData{mesh, material, 0, kIdentityTransform, true}};
         call<Mesh3dCommands::CreateInstances>(
             *client,
             commands,
-            {installCommand<Mesh3dCommands::CreateInstances>(*client, commands, scene), scene, descriptions}
+            {instances, descriptions}
         );
-        auto light_storage = installCommand<Lighting3dCommands::CreateLights>(*client, commands, scene);
+        auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
         std::vector<VDirectLight> lights;
         if (scenario)
         {
@@ -536,7 +540,7 @@ int main(int argc, char** argv)
         }
         if (!lights.empty())
         {
-            call<Lighting3dCommands::CreateLights>(*client, commands, {light_storage, scene, {1, lights}});
+            call<Lighting3dCommands::CreateLights>(*client, commands, {light_storage, {1, lights}});
         }
         ClusterGrid grid{
             scenario < 2 ? std::array<std::uint32_t, 3>{1, 1, 1} : std::array<std::uint32_t, 3>{7, 5, 9},

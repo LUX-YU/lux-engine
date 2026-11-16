@@ -6,10 +6,11 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/memory/StagingArena.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
+#include <lux/engine/render/upload/StagingArena.hpp>
 #include <numeric>
 
 namespace lux::render::detail
@@ -210,11 +211,23 @@ namespace lux::render::detail
 
     ResourceUploader::~ResourceUploader() noexcept
     {
-        if (frame_waiters_ || !preparation_receivers_.empty()) std::terminate();
+        if (progressing_ || ready_head_ || range_waiters_ || frame_waiters_ || !preparation_receivers_.empty())
+        {
+            std::terminate();
+        }
         for (const auto& write : writes_) if (write.pending) std::terminate();
         for (auto& copy : frame_copies_)
         {
             staging_arena_->cancel(copy.staging);
+        }
+        for (std::size_t index = 0; index < command_windows_.size(); ++index)
+        {
+            auto& window = command_windows_[index];
+            const auto& queue = device_.physicalQueue(index / options_.staging_pages);
+            const bool has_live_gpu_use = window.serial > queue.completed() && !queue.idle() && !queue.deviceLost();
+            if (has_live_gpu_use) std::terminate();
+            device_.nriCore().DestroyCommandBuffer(window.command);
+            device_.nriCore().DestroyCommandAllocator(window.allocator);
         }
         if (mapped_timestamps_)
         {
@@ -246,13 +259,31 @@ namespace lux::render::detail
         const auto& granularity = transfer.properties().image_transfer_granularity;
         const bool row_chunks = granularity[0] == 1 && granularity[1] == 1 && granularity[2] == 1;
         state->copy_queue_ = row_chunks ? &transfer : &device_.queue();
+        state->command_windows_.resize(device_.queueCount() * options_.staging_pages);
+        state->next_commands_.resize(device_.queueCount());
+        for (std::size_t q = 0; q < device_.queueCount(); ++q)
+        {
+            for (std::size_t slot = 0; slot < options_.staging_pages; ++slot)
+            {
+                auto& window = state->command_windows_[q * options_.staging_pages + slot];
+                auto result =
+                    device_.nriCore().CreateCommandAllocator(device_.physicalQueue(q).native(), window.allocator);
+                if (result == nri::Result::SUCCESS)
+                {
+                    result = device_.nriCore().CreateCommandBuffer(*window.allocator, window.command);
+                }
+                if (result != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(result));
+                }
+            }
+        }
         state->copy_timestamp_bits_ = state->copy_queue_->properties().timestamp_bits;
         state->graphics_timestamp_bits_ = device_.queue().properties().timestamp_bits;
         if (options_.measure_gpu && (state->copy_timestamp_bits_ || state->graphics_timestamp_bits_))
         {
-            state->graphics_measurement_base_ =
-                state->copy_queue_ == &device_.queue() ? 0 : state->copy_queue_->temporaryCapacity();
-            const auto query_slots = state->graphics_measurement_base_ + device_.queue().temporaryCapacity();
+            state->graphics_measurement_base_ = state->copy_queue_ == &device_.queue() ? 0 : options_.staging_pages;
+            const auto query_slots = state->graphics_measurement_base_ + options_.staging_pages;
             state->measurements_ = std::make_unique<ResourceUploader::Measurement[]>(query_slots);
             for (std::size_t i = 0; i < query_slots; ++i)
             {
@@ -273,7 +304,7 @@ namespace lux::render::detail
                 const auto type = queues[i]->properties().type == nri::QueueType::COPY
                                       ? nri::QueryType::TIMESTAMP_COPY_QUEUE
                                       : nri::QueryType::TIMESTAMP;
-                const nri::QueryPoolDesc query{type, queues[i]->temporaryCapacity() * 2};
+                const nri::QueryPoolDesc query{type, static_cast<std::uint32_t>(options_.staging_pages) * 2};
                 const auto result = device_.nriCore().CreateQueryPool(device_.device(), query, state->timestamps_[i]);
                 if (result != nri::Result::SUCCESS)
                 {
@@ -390,11 +421,14 @@ namespace lux::render::detail
         bool first,
         SubmissionQueue& copy,
         SubmissionQueue& graphics,
+        nri::GraphicsAPI backend,
         bool acquiring,
         bool final
     ) noexcept
     {
         const bool distinct = &copy != &graphics;
+        const bool common_handoff = distinct && backend == nri::GraphicsAPI::D3D12 &&
+            copy.properties().type == nri::QueueType::COPY;
         const auto& description = nri_core.GetTextureDesc(target);
         const bool cross_family = description.sharingMode == nri::SharingMode::EXCLUSIVE &&
                                   copy.properties().family != graphics.properties().family;
@@ -455,14 +489,17 @@ namespace lux::render::detail
         }
         if (final)
         {
+            // D3D12 COPY lists remain in COMMON (NRI GENERAL). The existing fence dependency
+            // orders the Graphics acquire, which alone transitions to SHADER_RESOURCE.
             barrier.before = {
                 acquiring ? nri::AccessBits::NONE : nri::AccessBits::COPY_DESTINATION,
-                acquiring && !cross_family ? nri::Layout::SHADER_RESOURCE : nri::Layout::COPY_DESTINATION,
+                acquiring && common_handoff ? nri::Layout::GENERAL
+                    : acquiring && !cross_family ? nri::Layout::SHADER_RESOURCE : nri::Layout::COPY_DESTINATION,
                 acquiring ? nri::StageBits::NONE : nri::StageBits::COPY
             };
             barrier.after = {
                 !distinct || acquiring ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::NONE,
-                nri::Layout::SHADER_RESOURCE,
+                common_handoff && !acquiring ? nri::Layout::GENERAL : nri::Layout::SHADER_RESOURCE,
                 !distinct || acquiring ? nri::StageBits::ALL : nri::StageBits::NONE
             };
             if (cross_family)
@@ -493,30 +530,92 @@ namespace lux::render::detail
 
     RenderResult<std::size_t> ResourceUploader::stageBuffer(const BufferWrite& write, std::size_t unit) noexcept
     {
-        if (frame_copies_.size() == options_.window_regions)
+        return stage(write, unit, false);
+    }
+
+    RenderResult<std::size_t> ResourceUploader::stageInlineBuffer(const BufferWrite& write, std::size_t unit) noexcept
+    {
+        if (write.source.size() > 16 * 1024)
         {
-            return 0;
+            return cxx::unexpected(RenderError{kDeviceCapacity});
         }
-        auto range = staging_arena_->acquire(std::min(write.source.size(), options_.chunk_bytes), unit);
-        if (!range)
+        return stage(write, unit, true);
+    }
+
+    RenderResult<std::size_t>
+    ResourceUploader::stage(const BufferWrite& write, std::size_t unit, bool copy_now) noexcept
+    {
+        if (!write.target || write.source.empty())
         {
-            return 0;
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const auto bytes = range->bytes.size();
-        std::memcpy(range->bytes.data(), write.source.data(), bytes);
-        if (auto result = staging_arena_->flush(*range); !result)
+        if (!staging_arena_->canAcquireWhole(write.source.size(), unit, options_.window_regions - frame_copies_.size()))
         {
-            staging_arena_->cancel(*range);
-            return cxx::unexpected(result.error());
+            return cxx::unexpected(RenderError{kDeviceCapacity});
         }
-        Copy copy{std::move(*range)};
-        copy.buffer = write.target;
-        copy.offset = write.offset;
-        copy.bytes = bytes;
-        copy.final = true;
-        frame_copies_.push_back(std::move(copy));
-        statistics_.copied_bytes += bytes;
-        return bytes;
+        std::size_t offset = 0;
+        while (offset < write.source.size())
+        {
+            auto range = staging_arena_->acquire(write.source.size() - offset, unit);
+            if (!range)
+            {
+                std::terminate(); // Preflight and consumption are one control-owner segment.
+            }
+            Copy copy{std::move(*range)};
+            copy.buffer = write.target;
+            copy.offset = write.offset + offset;
+            copy.bytes = copy.staging.bytes.size();
+            if (copy_now)
+            {
+                std::memcpy(copy.staging.bytes.data(), write.source.data() + offset, copy.bytes);
+            }
+            else
+            {
+                copy.source = write.source.subspan(offset, copy.bytes);
+            }
+            copy.final = true;
+            offset += copy.bytes;
+            frame_copies_.push_back(std::move(copy));
+        }
+        return offset;
+    }
+
+    ResourceUploader::Task ResourceUploader::prepareFrameCopies() noexcept
+    {
+        const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
+        auto copied = co_await (
+            stdexec::schedule(cpu_scheduler_) |
+            stdexec::then(
+                [this]() noexcept -> RenderResult<void>
+                {
+                    for (auto& copy : frame_copies_)
+                    {
+                        if (!copy.source.empty())
+                        {
+                            std::memcpy(copy.staging.bytes.data(), copy.source.data(), copy.bytes);
+                        }
+                    }
+                    return {};
+                }
+            ) |
+            stdexec::upon_stopped(
+                []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
+            ) |
+            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<void>{})
+        );
+        if (!copied)
+        {
+            co_return copied;
+        }
+        for (auto& copy : frame_copies_)
+        {
+            if (auto flushed = staging_arena_->flush(copy.staging); !flushed)
+            {
+                co_return flushed;
+            }
+            statistics_.copied_bytes += copy.bytes;
+        }
+        co_return RenderResult<void>{};
     }
 
     bool ResourceUploader::hasFrameCopies() const noexcept
@@ -651,8 +750,78 @@ namespace lux::render::detail
         tail = &entry;
     }
 
-    void ResourceUploader::submitReadyTransfers() noexcept
+    RenderResult<nri::CommandBuffer*>
+    ResourceUploader::beginCommands(SubmissionQueue& queue, std::uint32_t& slot) noexcept
     {
+        if (const auto error = queue.terminalError(); error.type)
+        {
+            return cxx::unexpected(error);
+        }
+        if (queue.submitting())
+        {
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        }
+        const auto index = device_.queueIndex(queue);
+        slot = next_commands_[index];
+        auto& window = command_windows_[index * options_.staging_pages + slot];
+        if (window.serial > queue.completed())
+        {
+            return cxx::unexpected(RenderError{kDeviceCapacity});
+        }
+        auto result = device_.resetCommandAllocator(*window.allocator);
+        if (result == nri::Result::SUCCESS)
+        {
+            result = device_.nriCore().BeginCommandBuffer(*window.command, nullptr);
+        }
+        if (result != nri::Result::SUCCESS)
+        {
+            return cxx::unexpected(nativeError(result));
+        }
+        return window.command;
+    }
+
+    void ResourceUploader::acceptCommands(SubmissionQueue& queue, std::uint32_t slot, std::uint64_t serial) noexcept
+    {
+        const auto index = device_.queueIndex(queue);
+        command_windows_[index * options_.staging_pages + slot].serial = serial;
+        next_commands_[index] = (slot + 1) % options_.staging_pages;
+    }
+
+    bool ResourceUploader::canProgressTransfers() const noexcept
+    {
+        if (progressing_)
+        {
+            return false;
+        }
+        if (ready_head_)
+        {
+            auto& queue = ready_head_->acquiring ? device_.queue() : *ready_head_->queue;
+            const auto index = device_.queueIndex(queue);
+            const auto& window = command_windows_[index * options_.staging_pages + next_commands_[index]];
+            const bool has_terminal = queue.terminalError().type != 0;
+            const bool is_window_available = !queue.submitting() && window.serial <= queue.completed();
+            if (has_terminal || is_window_available)
+            {
+                return true;
+            }
+        }
+        if (!range_waiters_) return false;
+        const bool is_stopped = range_waiters_->stopping(range_waiters_->receiver);
+        const bool has_terminal = device_.terminalError().type != 0;
+        if (is_stopped || has_terminal) return true;
+        const bool reserve_frame = range_waiters_->frame_slot == UINT32_MAX && reserve_frame_staging_;
+        return canStage(range_waiters_->frame_slot) &&
+            staging_arena_->canAcquire(range_waiters_->minimum_range, reserve_frame);
+    }
+
+    ResourceUploader::Task ResourceUploader::submitReadyTransfers() noexcept
+    {
+        if (progressing_)
+        {
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
+        }
+        progressing_ = true;
+        cxx::scope_exit release([this]() noexcept { progressing_ = false; });
         // Complete only this bounded prefix. Receiver reentry may append work for the next flush.
         auto* boundary = ready_tail_;
         BatchEntry* blocked_head = nullptr;
@@ -721,122 +890,150 @@ namespace lux::render::detail
             const auto started = options_.measure_cpu ? UploadClock::now() : UploadClock::time_point{};
             if (accepted)
             {
-                accepted = queue.recordAndSubmit(
-                    [&](nri::CommandBuffer& command, std::uint32_t slot) noexcept -> RenderResult<void>
+                std::uint32_t command_slot = 0;
+                auto commands = beginCommands(queue, command_slot);
+                const auto record = [&](nri::CommandBuffer& command, std::uint32_t slot) noexcept -> RenderResult<void>
+                {
+                    const auto& nri_core = device_.nriCore();
+                    query_index = (pool_index ? graphics_measurement_base_ : 0) + slot;
+                    if (timestamp_requested)
                     {
-                        const auto& nri_core = device_.nriCore();
-                        query_index = (pool_index ? graphics_measurement_base_ : 0) + slot;
-                        if (timestamp_requested)
+                        const auto& measurement = measurements_[query_index];
+                        timestamp = !measurement.pending_copy_serial && !measurement.completion.armed();
+                    }
+                    if (timestamp)
+                    {
+                        // The pair's preceding GPU use and CPU read have both ended.
+                        nri_core.ResetQueries(*query_pool, slot * 2, 2);
+                        nri_core.CmdEndQuery(command, *query_pool, slot * 2);
+                    }
+                    for (auto* entry : batch_entries_)
+                    {
+                        for (const auto& fill : entry->fills)
                         {
-                            const auto& measurement = measurements_[query_index];
-                            timestamp = !measurement.pending_copy_serial && !measurement.completion.armed();
+                            const auto access = bufferAccess(nri_core.GetBufferDesc(*fill.target).usage);
+                            bufferBarrier(
+                                nri_core,
+                                command,
+                                *fill.target,
+                                {access, nri::StageBits::ALL},
+                                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+                            );
+                            nri_core.CmdZeroBuffer(command, *fill.target, fill.offset, fill.size);
+                            bufferBarrier(
+                                nri_core,
+                                command,
+                                *fill.target,
+                                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                                {access, nri::StageBits::ALL}
+                            );
                         }
-                        if (timestamp)
+                        for (auto& copy : entry->copies)
                         {
-                            // The pair's preceding GPU use and CPU read have both ended.
-                            nri_core.ResetQueries(*query_pool, slot * 2, 2);
-                            nri_core.CmdEndQuery(command, *query_pool, slot * 2);
-                        }
-                        for (auto* entry : batch_entries_)
-                        {
-                            for (const auto& fill : entry->fills)
+                            if (acquiring && !copy.final)
                             {
-                                const auto access = bufferAccess(nri_core.GetBufferDesc(*fill.target).usage);
-                                bufferBarrier(
+                                continue;
+                            }
+                            if (copy.buffer)
+                            {
+                                recordBuffer(
                                     nri_core,
                                     command,
-                                    *fill.target,
-                                    {access, nri::StageBits::ALL},
-                                    {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+                                    *copy.buffer,
+                                    copy.staging,
+                                    copy.offset,
+                                    copy.bytes,
+                                    acquiring,
+                                    copy.final
                                 );
-                                nri_core.CmdZeroBuffer(command, *fill.target, fill.offset, fill.size);
-                                bufferBarrier(
+                            }
+                            else
+                            {
+                                recordImage(
                                     nri_core,
                                     command,
-                                    *fill.target,
-                                    {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-                                    {access, nri::StageBits::ALL}
+                                    *copy.image,
+                                    copy.staging,
+                                    copy.region,
+                                    copy.clone,
+                                    copy.row,
+                                    copy.rows,
+                                    copy.row_pitch,
+                                    device_.description().memoryAlignment.uploadBufferTextureSlice,
+                                    copy.first,
+                                    source_queue,
+                                    device_.queue(),
+                                    device_.description().graphicsAPI,
+                                    acquiring,
+                                    copy.final
                                 );
                             }
-                            for (auto& copy : entry->copies)
-                            {
-                                if (acquiring && !copy.final)
-                                {
-                                    continue;
-                                }
-                                if (copy.buffer)
-                                {
-                                    recordBuffer(
-                                        nri_core,
-                                        command,
-                                        *copy.buffer,
-                                        copy.staging,
-                                        copy.offset,
-                                        copy.bytes,
-                                        acquiring,
-                                        copy.final
-                                    );
-                                }
-                                else
-                                {
-                                    recordImage(
-                                        nri_core,
-                                        command,
-                                        *copy.image,
-                                        copy.staging,
-                                        copy.region,
-                                        copy.clone,
-                                        copy.row,
-                                        copy.rows,
-                                        copy.row_pitch,
-                                        device_.description().memoryAlignment.uploadBufferTextureSlice,
-                                        copy.first,
-                                        source_queue,
-                                        device_.queue(),
-                                        acquiring,
-                                        copy.final
-                                    );
-                                }
-                            }
                         }
-                        if (timestamp)
+                    }
+                    if (timestamp)
+                    {
+                        nri_core.CmdEndQuery(command, *query_pool, slot * 2 + 1);
+                        if (&queue == &device_.queue())
                         {
-                            nri_core.CmdEndQuery(command, *query_pool, slot * 2 + 1);
-                            if (&queue == &device_.queue())
+                            nri_core.CmdCopyQueries(
+                                command,
+                                *query_pool,
+                                slot * 2,
+                                2,
+                                *timestamp_results_,
+                                query_index * query_result_stride_
+                            );
+                        }
+                    }
+                    if (&queue == &device_.queue())
+                    {
+                        for (std::uint32_t i = 0; i < graphics_measurement_base_; ++i)
+                        {
+                            const auto serial = measurements_[i].pending_copy_serial;
+                            if (serial && serial <= resolve_through)
                             {
                                 nri_core.CmdCopyQueries(
                                     command,
-                                    *query_pool,
-                                    slot * 2,
+                                    *timestamps_[0],
+                                    i * 2,
                                     2,
                                     *timestamp_results_,
-                                    query_index * query_result_stride_
+                                    i * query_result_stride_
                                 );
                             }
                         }
-                        if (&queue == &device_.queue())
+                    }
+                    return {};
+                };
+                if (!commands)
+                {
+                    accepted = cxx::unexpected(commands.error());
+                }
+                else
+                {
+                    accepted = record(**commands, command_slot);
+                    const auto ended = device_.nriCore().EndCommandBuffer(**commands);
+                    if (ended != nri::Result::SUCCESS)
+                    {
+                        accepted = cxx::unexpected(nativeError(ended));
+                    }
+                    if (accepted)
+                    {
+                        auto submitted = co_await queue.submit(
+                            {&*commands, 1},
+                            acquiring ? std::span<const nri::FenceSubmitDesc>(&wait, 1)
+                                      : std::span<const nri::FenceSubmitDesc>{}
+                        );
+                        if (submitted)
                         {
-                            for (std::uint32_t i = 0; i < graphics_measurement_base_; ++i)
-                            {
-                                const auto serial = measurements_[i].pending_copy_serial;
-                                if (serial && serial <= resolve_through)
-                                {
-                                    nri_core.CmdCopyQueries(
-                                        command,
-                                        *timestamps_[0],
-                                        i * 2,
-                                        2,
-                                        *timestamp_results_,
-                                        i * query_result_stride_
-                                    );
-                                }
-                            }
+                            acceptCommands(queue, command_slot, *submitted);
                         }
-                        return {};
-                    },
-                    acquiring ? std::span<const nri::FenceSubmitDesc>(&wait, 1)
-                              : std::span<const nri::FenceSubmitDesc>{}
-                );
+                        else
+                        {
+                            accepted = cxx::unexpected(submitted.error());
+                        }
+                    }
+                }
             }
             if (options_.measure_cpu)
             {
@@ -963,7 +1160,7 @@ namespace lux::render::detail
         {
             auto* entry = range_waiters_;
             const bool stopping = entry->stopping(entry->receiver);
-            if (!stopping && !device_.deviceLost() &&
+            if (!stopping && !device_.terminalError().type &&
                 (!canStage(entry->frame_slot) || !staging_arena_->canAcquire(
                                                      entry->minimum_range,
                                                      entry->frame_slot == UINT32_MAX && reserve_frame_staging_
@@ -985,11 +1182,12 @@ namespace lux::render::detail
             auto* receiver = entry->receiver;
             complete(
                 receiver,
-                device_.deviceLost() ? RenderResult<void>{cxx::unexpected(nativeError(nri::Result::DEVICE_LOST))}
-                : stopping           ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
-                                     : RenderResult<void>{}
+                device_.terminalError().type ? RenderResult<void>{cxx::unexpected(device_.terminalError())}
+                : stopping                   ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
+                                             : RenderResult<void>{}
             );
         }
+        co_return RenderResult<void>{};
     }
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
@@ -1036,6 +1234,7 @@ namespace lux::render::detail
         SubmissionFrontiers* progress
     ) noexcept
     {
+        const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
         const bool strided = element_bytes != 0 || source_stride != 0;
         const bool invalid_layout = strided && (!element_bytes || element_bytes % 4 || source_stride < element_bytes);
         if (invalid_layout)
@@ -1135,8 +1334,7 @@ namespace lux::render::detail
         bool accepted_any = false;
         const auto failure = [&](RenderError error) noexcept
         {
-            const bool lost =
-                error.type == kDeviceFailure && error.args[0] == static_cast<std::uint32_t>(nri::Result::DEVICE_LOST);
+            const bool lost = isNativeFailure(error, nri::Result::DEVICE_LOST);
             return cxx::unexpected(accepted_any && lost ? RenderError{kOutcomeUnknown} : error);
         };
         std::vector<Copy> copies;
@@ -1344,7 +1542,8 @@ namespace lux::render::detail
                         stdexec::upon_stopped(
                             []() noexcept
                             { return RenderResult<std::uint64_t>{cxx::unexpected(RenderError{kCpuStopped})}; }
-                        )
+                        ) |
+                        stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<std::uint64_t>{})
                     );
                 }
                 if (!prepared)

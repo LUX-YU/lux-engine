@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/MeshDrawGroups.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/graph/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail

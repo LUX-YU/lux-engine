@@ -81,9 +81,6 @@ else()
     endif()
 endif()
 
-if(TARGET material_ir)
-    list(APPEND LUX_FUNCTION_COMPONENTS material_ir)
-endif()
 
 if(TARGET material_compiler)
     list(APPEND LUX_FUNCTION_COMPONENTS material_compiler)

@@ -5,7 +5,7 @@
 namespace lux::render::detail
 {
     NativeExecution::NativeExecution(cxx::execution::ManualContextConfig config) noexcept
-        : context_(config, {this, notify}), producer_(context_), owner_(std::this_thread::get_id())
+        : context_(config, {this, notify}), producer_(context_)
     {
     }
 
@@ -42,20 +42,7 @@ namespace lux::render::detail
 
     NativeExecution::Scheduler NativeExecution::scheduler() noexcept
     {
-        if (owner_ != std::this_thread::get_id())
-        {
-            std::terminate();
-        }
         return producer_.get_scheduler(cxx::execution::ScheduleMode::delivery);
-    }
-
-    void NativeExecution::adoptOwner() noexcept
-    {
-        if (!context_.is_idle())
-        {
-            std::terminate();
-        }
-        owner_ = std::this_thread::get_id();
     }
 
     void NativeExecution::run() noexcept

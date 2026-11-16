@@ -257,8 +257,7 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto* use = program.find(purpose);
-        const bool missing_stage = !use && (purpose != rdesc::EMaterialPurpose::SHADOW || !program.programs.empty());
-        if (missing_stage)
+        if (!use)
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
@@ -273,7 +272,7 @@ namespace lux::render::detail
         }
         auto shader =
             buildMeshVertexShader(use, paged, reflected, purpose == rdesc::EMaterialPurpose::SHADOW, program.target);
-        if (!shader || !use)
+        if (!shader)
         {
             return shader;
         }

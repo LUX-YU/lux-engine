@@ -10,18 +10,12 @@
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/extensions/CommandMethod.hpp>
 #include <lux/engine/render/extensions/FrameDataMethod.hpp>
-#include <lux/engine/render/capabilities/CameraInputHandler.hpp>
-#include <lux/engine/render/capabilities/UiInputHandler.hpp>
-#include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
-#include <lux/engine/render/storage/DirectLightingStorage.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/storage/RasterMaterialCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMaterialStorage.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
-#include <lux/engine/render/storage/SampledTexture2DCommandHandler.hpp>
-#include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
+#include <lux/engine/render/resource/ui/UiInputHandler.hpp>
+#include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
+#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
+#include <lux/engine/render/resource/instance/RasterMeshInstanceStorage.hpp>
+#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 
 namespace lux::render::detail
 {
@@ -32,10 +26,7 @@ namespace lux::render::detail
     struct RasterSurface final
     {
         using Capability = Mesh3dCapability;
-        using FrameBindings = std::tuple<
-            FrameDataMethod<TransformData, &RasterMeshInstanceCommandHandler::updateTransforms, 3>,
-            FrameDataMethod<MeshInstanceUpdates, &RasterMeshInstanceCommandHandler::updateInstances, 3>,
-            FrameDataMethod<CameraInput, &CameraInputHandler::apply>>;
+        using FrameBindings = std::tuple<>;
         using Features = std::tuple<GBufferFeature, MeshVisibilityFeature>;
         using Config = RasterSurfaceConfiguration;
         static constexpr FeatureName name{"lux.render.raster_surface"};
@@ -47,9 +38,7 @@ namespace lux::render::detail
     struct DeferredLight final
     {
         using Capability = Lighting3dCapability;
-        using FrameBindings = std::tuple<
-            FrameDataMethod<LightUpdates, &DirectLightingCommandHandler::updateLights, 0>,
-            FrameDataMethod<CameraInput, &CameraInputHandler::apply>>;
+        using FrameBindings = std::tuple<>;
         using Features = std::tuple<
             DeferredLightingFeature, TonemapFeature, ClusteredLightingFeature,
             ShadowMapFeature, MeshShadowFeature, MeshVisibilityFeature>;

@@ -95,8 +95,19 @@ int main(int argc, char** argv)
         return 2;
     }
     source.append(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+    auto compiler = lux::shader::ShaderCompiler::create();
+    if (!compiler)
+    {
+        std::fprintf(stderr, "%s\n", compiler.error().diagnostic.c_str());
+        return 4;
+    }
     const auto compile = [&](EShaderTarget target)
-    { return lux::shader::compile({source, argv[2], stage, target, "sm_6_6", argv[1], includes}); };
+    {
+        lux::shader::ShaderCompileReport report;
+        auto result = (*compiler)->compile({source, argv[2], stage, target, "sm_6_6", argv[1], includes, &report});
+        if (!report.diagnostic.empty()) std::fputs(report.diagnostic.c_str(), stderr);
+        return result;
+    };
     auto first = compile(target_name == "dxil" ? EShaderTarget::DXIL : EShaderTarget::SPIRV);
     if (!first)
     {

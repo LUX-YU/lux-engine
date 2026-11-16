@@ -137,40 +137,33 @@ namespace lux::render::detail
         DeviceSession& session,
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
-        bool validation,
-        std::uint32_t temporary_capacity
+        bool validation
     ) noexcept
     {
         if (options.backend == EGraphicsBackend::D3D12)
         {
-            return initializeD3D12(session, options, diagnostic, validation, temporary_capacity);
+            return initializeD3D12(session, options, diagnostic, validation);
         }
         if (options.backend != EGraphicsBackend::VULKAN)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const bool invalid_capacity = temporary_capacity == 0;
-        if (invalid_capacity || !diagnostic.MessageCallback)
+        if (!diagnostic.MessageCallback)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        std::uint32_t count = 0;
-        auto status = nri::nriEnumerateAdapters(nullptr, count);
-        if (status != nri::Result::SUCCESS)
+        auto enumerated = DeviceSession::enumerateAdapters();
+        if (!enumerated)
         {
-            return cxx::unexpected(nativeError(status));
+            return cxx::unexpected(enumerated.error());
         }
-        if (count == 0)
+        auto adapters = std::move(*enumerated);
+        const auto count = static_cast<std::uint32_t>(adapters.size());
+        if (!count)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        std::vector<nri::AdapterDesc> adapters(count);
-        status = nri::nriEnumerateAdapters(adapters.data(), count);
-        if (status != nri::Result::SUCCESS)
-        {
-            return cxx::unexpected(nativeError(status));
-        }
-        adapters.resize(count);
+        auto status = nri::Result::SUCCESS;
         auto adapter_index = options.physical_device_index;
         if (adapter_index == std::numeric_limits<std::uint32_t>::max())
         {
@@ -332,7 +325,7 @@ namespace lux::render::detail
                     {granularity.width, granularity.height, granularity.depth},
                     properties.timestampValidBits
                 };
-                auto queue = SubmissionQueue::create(*result, *queues[role], facts, temporary_capacity);
+                auto queue = SubmissionQueue::create(*result, *queues[role], facts);
                 if (!queue)
                 {
                     return cxx::unexpected(queue.error());

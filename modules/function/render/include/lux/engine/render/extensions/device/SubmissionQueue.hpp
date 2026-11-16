@@ -2,15 +2,13 @@
 
 #include <NRI.h>
 #include <array>
-#include <functional>
-#include <lux/cxx/core/scope_exit.hpp>
+#include <exec/task.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
 #include <memory>
 #include <optional>
 #include <span>
 #include <stdexec/execution.hpp>
-#include <vector>
 
 namespace lux::render::detail
 {
@@ -63,75 +61,36 @@ namespace lux::render::detail
     public:
         class CompletionSender;
 
-        [[nodiscard]] static RenderResult<std::unique_ptr<SubmissionQueue>> create(
-            DeviceSession&,
-            nri::Queue&,
-            QueueProperties,
-            std::uint32_t temporary_capacity
-        ) noexcept;
+        [[nodiscard]] static RenderResult<std::unique_ptr<SubmissionQueue>>
+        create(DeviceSession&, nri::Queue&, QueueProperties) noexcept;
         ~SubmissionQueue() noexcept;
         SubmissionQueue(const SubmissionQueue&) = delete;
         SubmissionQueue& operator=(const SubmissionQueue&) = delete;
 
-        // The queue keeps recording and submission in one non-suspending device-thread segment.
-        // Record must balance its rendering scopes even when it returns a recoverable error.
-        template <class Record>
-        [[nodiscard]] RenderResult<void> recordAndSubmit(
-            Record&& record,
-            std::span<const nri::FenceSubmitDesc> waits = {},
-            std::span<const nri::FenceSubmitDesc> signals = {}
-        ) noexcept
-        {
-            static_assert(std::is_nothrow_invocable_r_v<
-                          RenderResult<void>,
-                          Record&,
-                          nri::CommandBuffer&,
-                          std::uint32_t>);
-            std::uint32_t temporary_slot = 0;
-            auto commands = begin(temporary_slot);
-            if (!commands)
-            {
-                return cxx::unexpected(commands.error());
-            }
-            cxx::scope_exit release([this]() noexcept { cancelRecording(); });
-            auto recorded = std::invoke(record, **commands, temporary_slot);
-            auto ended = finishRecording();
-            if (!ended)
-            {
-                return ended;
-            }
-            if (!recorded)
-            {
-                return recorded;
-            }
-            auto accepted = submit({&batches_[temporary_slot].command, 1}, waits, signals);
-            if (accepted)
-            {
-                batches_[temporary_slot].serial = submitted_;
-                next_batch_ = (temporary_slot + 1) % temporaryCapacity();
-            }
-            return accepted;
-        }
-
-        // Borrowed commands remain owned by their FIF slice until this queue's accepted frontier completes.
-        [[nodiscard]] RenderResult<void> submit(
+        // Start on the single control owner. The operation freezes descriptor arrays, borrows the
+        // command payloads until its native return, and publishes a serial only after real acceptance.
+        [[nodiscard]] exec::task<RenderResult<std::uint64_t>> submit(
             std::span<nri::CommandBuffer* const> commands,
             std::span<const nri::FenceSubmitDesc> waits = {},
             std::span<const nri::FenceSubmitDesc> signals = {}
         ) noexcept;
 
+        [[nodiscard]] bool submitting() const noexcept
+        {
+            return submitting_;
+        }
+
+        [[nodiscard]] RenderError terminalError() const noexcept
+        {
+            return terminal_.value_or(RenderError{});
+        }
+
+        void dispatchCompleted() noexcept;
         [[nodiscard]] RenderResult<void> poll() noexcept;
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] CompletionSender whenSubmittedWorkCompletes() noexcept;
         // An accepted frontier captured by FrameExecution; excludes later unrelated submissions.
         [[nodiscard]] CompletionSender whenSubmissionCompletes(std::uint64_t serial) noexcept;
-        [[nodiscard]] CompletionSender whenAvailable() noexcept;
-        // Detach the ready prefix before invoking callbacks; a callback may destroy its own node.
-        void dispatchCompleted() noexcept;
-        [[nodiscard]] std::uint32_t temporaryCapacity() const noexcept;
-        // Cached frontier only; preparing a frame never polls or dispatches callbacks.
-        [[nodiscard]] bool hasCapacity() const noexcept;
-        [[nodiscard]] bool recording() const noexcept;
         [[nodiscard]] bool idle() const noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] nri::Queue& native() const noexcept;
@@ -139,10 +98,7 @@ namespace lux::render::detail
 
     private:
         friend class SubmissionCallback;
-        SubmissionQueue(DeviceSession&, nri::Queue&, QueueProperties, std::uint32_t temporary_capacity) noexcept;
-        [[nodiscard]] RenderResult<nri::CommandBuffer*> begin(std::uint32_t& temporary_slot) noexcept;
-        [[nodiscard]] RenderResult<void> finishRecording() noexcept;
-
+        SubmissionQueue(DeviceSession&, nri::Queue&, QueueProperties) noexcept;
 
     public:
         [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(std::uint64_t serial, nri::StageBits)
@@ -153,26 +109,15 @@ namespace lux::render::detail
         void arm(std::uint64_t serial, SubmissionCallback&, SubmissionCallbackFn, void*) noexcept;
 
     private:
-        void cancelRecording() noexcept;
-        void completePending() noexcept;
         RenderError failure(nri::Result) noexcept;
-
-        struct SubmittedBatch final
-        {
-            nri::CommandAllocator* allocator = nullptr;
-            nri::CommandBuffer* command = nullptr;
-            std::uint64_t serial = 0;
-        };
 
         DeviceSession& session_;
         nri::Queue& queue_;
         QueueProperties properties_;
         nri::Fence* fence_ = nullptr;
-        std::vector<SubmittedBatch> batches_;
-        std::uint32_t next_batch_ = 0;
-        std::vector<nri::FenceSubmitDesc> submission_signals_;
         std::uint64_t submitted_ = 0, completed_ = 0;
-        bool recording_ = false;
+        bool submitting_ = false;
+        bool terminal_retired_ = false;
         std::optional<RenderError> terminal_;
         SubmissionCallback* callbacks_ = nullptr;
         SubmissionCallback* callbacks_tail_ = nullptr;

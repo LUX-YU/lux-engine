@@ -29,9 +29,24 @@ namespace lux::render
         bool operator==(const FrameDataDestination&) const noexcept = default;
     };
 
+    struct ResourceFrameDestination final
+    {
+        ResourceInstanceId resource;
+        std::uint32_t input = 0;
+        bool operator==(const ResourceFrameDestination&) const noexcept = default;
+    };
+
+    struct ViewFrameDestination final
+    {
+        ViewRequest view;
+        bool operator==(const ViewFrameDestination&) const noexcept = default;
+    };
+
+    using VFrameDataDestination = std::variant<FrameDataDestination, ResourceFrameDestination, ViewFrameDestination>;
+
     template <class T> struct FrameDataBinding final
     {
-        FrameDataDestination destination;
+        VFrameDataDestination destination;
     };
 
     // Assemble one known capability occurrence without a query or returned endpoint directory.
@@ -56,12 +71,29 @@ namespace lux::render
             return static_cast<std::uint32_t>(declared.size());
         }();
         static_assert(input < types.size(), "Input must be declared by Capability::PerFrameData");
-        return {{effect, capability, input, std::move(scope)}};
+        return {FrameDataDestination{effect, capability, input, std::move(scope)}};
+    }
+
+    template <class Resource, class T>
+    [[nodiscard]] FrameDataBinding<T> resourceFrameDataBinding(ResourceInstanceId resource) noexcept
+    {
+        constexpr auto input = []() consteval
+        {
+            constexpr auto declared =
+                capability_detail::describeTypes(std::type_identity<typename Resource::PerFrameData>{});
+            for (std::uint32_t i = 0; i < declared.size(); ++i)
+            {
+                if (declared[i] == cxx::make_basic_type_info<T>()) return i;
+            }
+            return UINT32_MAX;
+        }();
+        static_assert(input != UINT32_MAX, "Input must be declared by Resource::PerFrameData");
+        return {ResourceFrameDestination{resource, input}};
     }
 
     struct FrameEntry final
     {
-        FrameDataDestination destination;
+        VFrameDataDestination destination;
         FrameDataRange<std::byte> payload;
     };
 

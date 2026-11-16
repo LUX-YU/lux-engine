@@ -13,4 +13,9 @@ namespace lux::render::detail
         return {kDeviceFailure, {static_cast<std::uint32_t>(result), operation}};
     }
 
+    [[nodiscard]] constexpr bool isNativeFailure(const RenderError& error, nri::Result result) noexcept
+    {
+        return error.type == kDeviceFailure && error.args[0] == nativeError(result).args[0];
+    }
+
 } // namespace lux::render::detail

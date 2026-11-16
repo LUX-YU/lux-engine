@@ -471,10 +471,14 @@ int main(int argc, char** argv)
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
-    const auto meshes = installCommand<Mesh3dCommands::UploadMesh>(*client, commands);
-    const auto materials = installCommand<MaterialCommands::Create>(*client, commands);
-    const auto instances = installCommand<Mesh3dCommands::CreateInstance>(*client, commands, scene);
-    const auto light_storage = installCommand<Lighting3dCommands::CreateLights>(*client, commands, scene);
+    const auto meshes = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kMeshResourceName}
+    ).resource_id;
+    const auto materials = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kMaterialResourceName}
+    ).resource_id;
+    const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
+    const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
     const auto scene_inputs = installInputs(*client, commands, scene);
     const auto instance_updates = frameBinding<MeshInstanceUpdates>(scene_inputs);
     const auto light_updates = frameBinding<LightUpdates>(scene_inputs);
@@ -537,7 +541,7 @@ int main(int argc, char** argv)
     auto instance_ids = call<Mesh3dCommands::CreateInstances>(
                             *client,
                             commands,
-                            {instances, scene, ordered_descriptions}
+                            {instances, ordered_descriptions}
     )
                             .instances;
     std::rotate(instance_ids.begin(), instance_ids.begin() + 2, instance_ids.begin() + 3);
@@ -612,7 +616,7 @@ int main(int argc, char** argv)
             }
         }
         auto lights = call<Lighting3dCommands::CreateLights>(
-            *client, commands, {light_storage, scene, {1, values}}
+            *client, commands, {light_storage, {1, values}}
         ).lights;
         const ShadowMapShape shape{
             64,

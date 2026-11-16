@@ -7,7 +7,7 @@
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
-#include <lux/engine/render/storage/DirectLightingStorage.hpp>
+#include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
 namespace lux::render::detail
 {
@@ -172,7 +172,6 @@ namespace lux::render::detail
             ++revision_;
             for (auto& slice : gpu_)
             {
-                slice.uploaded = 0;
                 slice.binding_changed = true;
             }
         }
@@ -217,11 +216,15 @@ namespace lux::render::detail
         {
             return prepared(FeatureBinding::EPreparation::READY);
         }
-        slice.pending = slice.uploaded;
         slice.pending_revision = 0;
+        bool staged_any = false;
         cxx::scope_exit acknowledge(
             [&]() noexcept
             {
+                if (!staged_any)
+                {
+                    return;
+                }
                 uploads.onPreparationSubmitted(
                     &slice,
                     [](void* value, std::uint32_t, RenderResult<void> accepted) noexcept
@@ -229,11 +232,9 @@ namespace lux::render::detail
                         auto& slice = *static_cast<Slice*>(value);
                         if (accepted)
                         {
-                            slice.uploaded = slice.pending;
                             if (slice.pending_revision)
                             {
                                 slice.revision = slice.pending_revision;
-                                slice.uploaded = 0;
                             }
                         }
                         slice.pending_revision = 0;
@@ -241,24 +242,18 @@ namespace lux::render::detail
                 );
             }
         );
-        std::size_t base = 0;
         for (std::size_t i = 0; i < sources.size(); ++i)
         {
-            while (slice.pending < base + sources[i].size())
+            if (sources[i].empty())
             {
-                const auto offset = slice.pending - base;
-                auto copied = uploads.stageBuffer({slice.buffers[i], offset, sources[i].subspan(offset)});
-                if (!copied)
-                {
-                    return cxx::unexpected(copied.error());
-                }
-                if (!*copied)
-                {
-                    return prepared(FeatureBinding::EPreparation::WAITING);
-                }
-                slice.pending += *copied;
+                continue;
             }
-            base += sources[i].size();
+            auto copied = uploads.stageBuffer({slice.buffers[i], 0, sources[i]});
+            if (!copied)
+            {
+                return cxx::unexpected(copied.error());
+            }
+            staged_any = true;
         }
         slice.pending_revision = revision_;
         return prepared(FeatureBinding::EPreparation::READY);

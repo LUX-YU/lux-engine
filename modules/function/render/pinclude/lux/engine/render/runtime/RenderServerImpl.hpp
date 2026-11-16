@@ -99,6 +99,8 @@ namespace lux::render
 
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
+        stdexec::simple_counting_scope upload_scope_;
+        bool upload_progress_pending_ = false;
         cxx::execution::ManualContext server_context_;
         ipc::RequesterId frame_source_;
         CommandId submit_frame_command_;
@@ -114,7 +116,7 @@ namespace lux::render
         std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features_;
         bool active_frame_inputs_dirty_ = true;
         std::atomic<bool> stop_requested_{false}, has_started_{false}, running_{false};
-        RenderError execution_error_;
+
         std::atomic<std::uint64_t> ticks_{0}, commands_{0}, compiled_graphs_{0}, submissions_{0};
         std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
         std::atomic<std::uint64_t> storages_created_{0};
@@ -134,7 +136,7 @@ namespace lux::render
             runtime_detail::RenderEffect&,
             detail::TargetOutput,
             ResourceSet& scene,
-            ResourceSet& view,
+            runtime_detail::RenderView& view,
             const AttachmentRequest& input
         ) noexcept;
 
@@ -148,9 +150,10 @@ namespace lux::render
             targetDependencyCycle(TargetId, std::span<const TargetImageInput>, AttachmentId) const noexcept;
 
         void rebuildActiveFrameInputs() noexcept;
+        [[nodiscard]] RenderResult<void> applyViewCameras() noexcept;
         [[nodiscard]] RenderResult<bool> acquireFrameOutputs(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> presentFrameOutputs() noexcept;
-        RenderResult<void> submitCurrentFrame(std::uint32_t slot) noexcept;
+        exec::task<RenderResult<void>> submitCurrentFrame(std::uint32_t slot) noexcept;
         RenderResult<void> progressGpuCompletions() noexcept;
         void progressUploads() noexcept;
         void progressFrame() noexcept;
@@ -159,11 +162,12 @@ namespace lux::render
         void bindSubmitFrameCommand() noexcept;
         void admitFrame(RenderFrame, void*, void (*)(void*, FrameCompletion) noexcept) noexcept;
         void finishFrame(FrameRecord&, FrameCompletion) noexcept;
-        [[nodiscard]] RenderResult<BoundFrameData> resolveFrameData(const FrameDataDestination&) noexcept;
+        [[nodiscard]] RenderResult<BoundFrameData> resolveFrameData(const VFrameDataDestination&) noexcept;
         void activateFrame(FrameRecord&) noexcept;
         void dispatchFramePhases(FrameRecord&) noexcept;
         void failFrame(FrameRecord&) noexcept;
         void submitFrameRendering(FrameRecord&) noexcept;
+        void finishFrameRendering(FrameRecord&, RenderResult<void>) noexcept;
         void prepareFramePrograms(FrameRecord&) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> prepareRasterPrograms() noexcept;
 

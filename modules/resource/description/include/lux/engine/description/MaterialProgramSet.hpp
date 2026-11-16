@@ -23,7 +23,7 @@ namespace lux::rdesc
         bool operator==(const MaterialShader&) const noexcept = default;
     };
 
-    // One target per set. Layout/default projection belongs to this target, never to the generic source IR.
+    // One target per set. Layout/default projection belongs to this target, never to the author graph.
     struct MaterialProgramSet final
     {
         ShaderBlock parameters;
@@ -44,6 +44,20 @@ namespace lux::rdesc
         [[nodiscard]] const ShaderBlock* parameterLayout() const noexcept
         {
             return parameters.size ? &parameters : nullptr;
+        }
+
+        [[nodiscard]] bool hasEmptyRecord() const noexcept
+        {
+            return parameters == ShaderBlock{} && parameter_defaults.empty() && texture_count == 0;
+        }
+
+        // Default values are per-material data. Their arity, the target layout and programs define the table.
+        [[nodiscard]] bool hasSameStructure(const MaterialProgramSet& other) const noexcept
+        {
+            return target == other.target && parameters == other.parameters &&
+                parameter_defaults.size() == other.parameter_defaults.size() && texture_count == other.texture_count &&
+                shading_model == other.shading_model && alpha_mode == other.alpha_mode &&
+                double_sided == other.double_sided && programs == other.programs;
         }
 
         bool operator==(const MaterialProgramSet&) const noexcept = default;

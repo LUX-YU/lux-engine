@@ -10,25 +10,17 @@ namespace lux::material
     {
         struct MathOperation final
         {
-            shadergen::EOp op;
             std::uint8_t inputs;
             bool scalar_result{};
         };
 
         // Same ordinal contract as EMathOp. Zero inputs denotes the unsupported legacy LERP value.
         constexpr std::array Operations{
-            MathOperation{shadergen::EOp::MUL, 2},         MathOperation{shadergen::EOp::ADD, 2},
-            MathOperation{shadergen::EOp::SUB, 2},         MathOperation{shadergen::EOp::DIV, 2},
-            MathOperation{shadergen::EOp::DOT, 2, true},   MathOperation{shadergen::EOp::MIN, 2},
-            MathOperation{shadergen::EOp::MAX, 2},         MathOperation{shadergen::EOp::POW, 2},
-            MathOperation{shadergen::EOp::STEP, 2},        MathOperation{shadergen::EOp::MOD, 2},
-            MathOperation{shadergen::EOp::CROSS, 2},       MathOperation{shadergen::EOp::REFLECT, 2},
-            MathOperation{shadergen::EOp::LERP, 0},        MathOperation{shadergen::EOp::SATURATE, 1},
-            MathOperation{shadergen::EOp::ONE_MINUS, 1},   MathOperation{shadergen::EOp::ABS, 1},
-            MathOperation{shadergen::EOp::SQRT, 1},        MathOperation{shadergen::EOp::FLOOR, 1},
-            MathOperation{shadergen::EOp::FRACT, 1},       MathOperation{shadergen::EOp::SIN, 1},
-            MathOperation{shadergen::EOp::COS, 1},         MathOperation{shadergen::EOp::NORMALIZE, 1},
-            MathOperation{shadergen::EOp::LENGTH, 1, true}
+            MathOperation{2}, MathOperation{2}, MathOperation{2},      MathOperation{2}, MathOperation{2, true},
+            MathOperation{2}, MathOperation{2}, MathOperation{2},      MathOperation{2}, MathOperation{2},
+            MathOperation{2}, MathOperation{2}, MathOperation{0},      MathOperation{1}, MathOperation{1},
+            MathOperation{1}, MathOperation{1}, MathOperation{1},      MathOperation{1}, MathOperation{1},
+            MathOperation{1}, MathOperation{1}, MathOperation{1, true}
         };
 
         static_assert(Operations.size() == static_cast<std::size_t>(EMathOp::LENGTH) + 1);
@@ -99,59 +91,6 @@ namespace lux::material
         return {};
     }
 
-    cxx::expected<std::uint32_t, MaterialCompileFailure> detail::appendMath(
-        const MaterialMath& value,
-        std::span<const std::uint32_t> inputs,
-        shadergen::ShaderIR& ir
-    ) noexcept
-    {
-        auto validation = validateMath(value);
-        if (!validation)
-        {
-            return cxx::unexpected(std::move(validation.error()));
-        }
-        if (inputs.size() != 2)
-        {
-            return cxx::unexpected(invalid("Math requires two authoring input positions"));
-        }
-        const auto& info = *operation(value.op);
-        for (std::size_t index = 0; index != inputs.size(); ++index)
-        {
-            if (index >= info.inputs)
-            {
-                if (inputs[index] != shadergen::kNoValue)
-                {
-                    return cxx::unexpected(invalid("unused Math input must not be evaluated"));
-                }
-                continue;
-            }
-            const bool has_value = inputs[index] < ir.values.size();
-            const bool is_type_mismatch =
-                has_value && ir.values[inputs[index]].type != static_cast<shadergen::EValueType>(value.operand_type);
-            if (!has_value)
-            {
-                return cxx::unexpected(invalid("Math input has no SSA value"));
-            }
-            if (is_type_mismatch)
-            {
-                return cxx::unexpected(MaterialCompileFailure{
-                    EMaterialCompileError::TYPE_MISMATCH,
-                    "Math input type differs from its declared operand type"
-                });
-            }
-        }
-        shadergen::ShaderIRValue expression{};
-        expression.op = info.op;
-        expression.type = static_cast<shadergen::EValueType>(mathOutputType(value));
-        for (std::size_t index = 0; index != info.inputs; ++index)
-        {
-            expression.operands[index] = inputs[index];
-        }
-        const auto result = static_cast<std::uint32_t>(ir.values.size());
-        ir.values.push_back(expression);
-        return result;
-    }
-
     MaterialNodeRegistration materialMathRegistration() noexcept
     {
         MaterialNodeRegistration result;
@@ -181,16 +120,90 @@ namespace lux::material
                 {ResultSemantic, "result", graph::EPinDirection::OUTPUT, output_type}
             };
         };
-        result.compile = [](const MaterialNodePayload& value,
-                            std::span<const std::uint32_t> inputs,
-                            shadergen::ShaderIR& ir) noexcept -> MaterialNodeRegistration::ShaderResult
+        result.emit_slang = [](const MaterialNodePayload& payload,
+                               std::span<const std::string_view> inputs,
+                               std::span<const std::string_view> outputs,
+                               std::string& destination) noexcept -> MaterialNodeResult<void>
         {
-            auto output = detail::appendMath(*value.get<MaterialMath>(), inputs, ir);
-            if (!output)
+            const auto& math = *payload.get<MaterialMath>();
+            const auto a = "(" + std::string(inputs[0]) + ")";
+            const auto b = "(" + std::string(inputs[1]) + ")";
+            std::string expression;
+            const auto call = [&](std::string_view name, bool binary = false)
+            { return std::string(name) + "(" + a + (binary ? "," + b : "") + ")"; };
+            switch (math.op)
             {
-                return cxx::unexpected(std::move(output.error()));
+            case EMathOp::MUL:
+                expression = a + "*" + b;
+                break;
+            case EMathOp::ADD:
+                expression = a + "+" + b;
+                break;
+            case EMathOp::SUB:
+                expression = a + "-" + b;
+                break;
+            case EMathOp::DIV:
+                expression = a + "/" + b;
+                break;
+            case EMathOp::DOT:
+                expression = call("dot", true);
+                break;
+            case EMathOp::MIN:
+                expression = call("min", true);
+                break;
+            case EMathOp::MAX:
+                expression = call("max", true);
+                break;
+            case EMathOp::POW:
+                expression = call("pow", true);
+                break;
+            case EMathOp::STEP:
+                expression = call("step", true);
+                break;
+            case EMathOp::MOD:
+                expression = a + "-" + b + "*floor(" + a + "/" + b + ")";
+                break;
+            case EMathOp::CROSS:
+                expression = call("cross", true);
+                break;
+            case EMathOp::REFLECT:
+                expression = call("reflect", true);
+                break;
+            case EMathOp::SATURATE:
+                expression = call("saturate");
+                break;
+            case EMathOp::ONE_MINUS:
+                expression = "1.0-" + a;
+                break;
+            case EMathOp::ABS:
+                expression = call("abs");
+                break;
+            case EMathOp::SQRT:
+                expression = call("sqrt");
+                break;
+            case EMathOp::FLOOR:
+                expression = call("floor");
+                break;
+            case EMathOp::FRACT:
+                expression = call("frac");
+                break;
+            case EMathOp::SIN:
+                expression = call("sin");
+                break;
+            case EMathOp::COS:
+                expression = call("cos");
+                break;
+            case EMathOp::NORMALIZE:
+                expression = call("normalize");
+                break;
+            case EMathOp::LENGTH:
+                expression = call("length");
+                break;
+            default:
+                return cxx::unexpected(invalid("unsupported Math operation"));
             }
-            return std::vector<std::uint32_t>{*output};
+            destination += std::string(outputs[0]) + " = " + expression + ";\n";
+            return {};
         };
         return result;
     }

@@ -106,7 +106,7 @@ The library returns structured diagnostics and never chooses a terminal or loggi
 
 Before `run()`, the application selects one IPC Link with `setFrameSource()`. That Client sends a sealed
 `SubmitFrame`: one immutable RenderFrame borrowing entries, explicit phases and stable data blocks. Each entry names
-a precise implementation/input/scope endpoint. Phases execute in written order; entries within one explicitly independent
+a Resource/input ordinal, a Scene/View camera, or an Effect capability input. Phases execute in written order; entries within one explicitly independent
 phase may prepare asynchronously. Input handlers produce only completion status, never child IPC messages or replies.
 After all started inputs settle the Server prepares/submits the frame and publishes one root FrameCompletion.
 An empty packet explicitly renders unchanged state; an empty IPC queue does not generate frames.
@@ -318,7 +318,8 @@ DescriptorTable maintains independent image and sampler indices. Identical sampl
 device-lifetime sampler. Texture references carry both indices and explicit flags; the material sampling code
 returns white for its default flag without accessing a descriptor. The device does not allocate a white texture.
 Cooked material payload version 11 includes the target identity and its own layout; version 9 remains readable as
-legacy SPIR-V data. MaterialIR assets use payload version 10 and are derived before entering Render.
+legacy SPIR-V data. Former v10 expression assets require rederivation from MaterialSource; Render consumes
+only target programs, never author graphs or compiler sessions.
 
 The default is two frames in flight, configurable from one to three. Dynamic instance fields, page tables,
 material parameters, descriptor records, indirect data and Target outputs have physical frame slices. CPU business
@@ -344,9 +345,16 @@ adopted values and marks affected GPU ranges for repair before another Draw. Cli
 Buffer growth keeps the previously published binding until the complete candidate is accepted; failed growth
 cannot expose a half-populated buffer. Repair failure stops rendering instead of drawing mixed revisions.
 
-FIF replica preparation coalesces adjacent dirty words before splitting at physical pages and finite staging
-windows. Submission acceptance acknowledges only copied records; failed windows remain dirty. CPU preparation
-and descriptor updates finish before `SubmissionQueue::recordAndSubmit` begins recording.
+FIF replica preparation reserves one complete snapshot across physical staging pages. Insufficient staging or
+CopyRange capacity rejects the whole preparation before submission; it does not publish a partially updated slice.
+Failed preparation or submission retains dirty revisions. Large stable sources are copied on the shared CPU scheduler;
+bounded transient projections use `stageInlineBuffer` to freeze their scratch bytes before the callback returns.
+A fully prepared replacement waits for actual acceptance before publishing its binding. This can precede graph
+recording, but never splits the replacement to compensate for insufficient staging. Descriptor publication and dirty
+adoption stay on the control owner. FrameExecution owns frame command resources;
+ResourceUploader owns its independent per-physical-queue upload command windows and StagingArena. Queue owns neither.
+The host settles accepted GPU use before destroying either command owner; destruction checks this contract and never
+hides an outstanding use with a wait.
 
 The Runtime rebuilds its non-owning Storage preparation list when Attachment membership or RenderGraphInstance identity
 changes. Project GPU consumers collect the actual `StorageFrameUse` borrows at those changes and supply their span
@@ -698,10 +706,11 @@ The remaining Attachment/FrameExecution lifecycle continues to serve its existin
 
 ## Native execution and return delivery
 
-Each DeviceSession owns one NativeExecution host for its program-creation serial domain. Logical queue roles
+Each DeviceSession owns one NativeExecution host for its program-creation and queue-submission serial domain. Logical queue roles
 share that host. It combines the real ManualContext, a stable Producer, a retained atomic wakeup and one worker;
 it defines no replacement Sender or completion protocol. Only the control owner obtains and starts ordered native
-work. Server startup transfers that ownership before admitting commands.
+work from the Server delivery scheduler; standalone consumers provide their own single control owner.
+Scheduler access does not claim to verify the thread that eventually starts an operation.
 
 Static and dynamic pipeline preparation freezes its inputs in the connected coroutine operation. Shader preparation
 runs on the CPU pool; NRI pipeline creation runs on the native worker. Native value, error and stopped terminals are
@@ -714,7 +723,15 @@ reported its terminal. Closed native scheduling reports a structured error on th
 return delivery is a fatal host-lifetime violation. The wakeup storage outlives its Context and worker. Context allocation
 capacity is a hint; actual Frame, Job, Uploader and Queue admission limits remain their owners' responsibility.
 
-Queue submission, uploads and WSI retain their current execution paths until their own native integration is completed.
+Queue submission freezes its descriptors in the connected task and permits one unconfirmed call per physical queue.
+Only successful native return advances the submitted frontier. Known rejection preserves earlier accepted work;
+uncertain acceptance enters a terminal UNKNOWN state without replay or an invented completion value. Only this
+exceptional path uses native QueueWaitIdle to retire uncertain payloads before delivery; ordinary reuse observes fences.
+The external NRI fork propagates D3D12 Wait/Signal failure and classifies potentially accepted submission as uncertain.
+ResourceUploader progresses without a Job or FrameSlot. CPU source borrowing ends at the task terminal while accepted
+staging and command windows remain protected by their real GPU frontiers. Stop still adopts an already accepted
+native result before returning cancellation. Server drains both frame/command and upload work while return delivery
+is open. WSI integration remains on its existing path until the Target task replaces it.
 Core RunLoop consumers outside Render remain supported.
 
 ## Target shader artifacts
@@ -747,3 +764,71 @@ ImGui is pinned to fork commit `ad75bbcb15ba47f921dca082b1377cca9907ae98`
 (1.91.9 WIP, 16-bit ImDrawIdx, 64-bit ImTextureID). Lux owns UI GPU uploads and
 encoding; NRIImgui remains disabled. A later UI migration must replace that owner,
 not add a second active upload path.
+
+## Mesh and Texture Resources
+
+`resources/MeshResource.hpp` and `resources/TextureResource.hpp` declare the public Resource contracts.
+Their sole implementations, packing and command adapters live under `resource/mesh` and `resource/texture`.
+Command registration binds static adapters to a qualified instance; there is no empty Handler object or
+capability-selection upload route. GPU binding metadata remains in `extensions/resource`.
+
+Mesh packing runs on the shared CPU scheduler and returns to the originating control scheduler before native
+allocation or publication. Both factories require an Uploader, but no device frame slot or frame-count policy.
+Entry identities retain their parent Resource; declarations sharing implementation metadata still own distinct data.
+Failed or stopped uploads retire only their private candidates. Existing BufferArena and Session cleanup frontiers
+protect accepted GPU work independently of the CPU Response.
+
+Texture uploads retain format/extent/mip/colour validation against the actual device. CloneRegion produces a new
+identity, preserving the source, its untouched mips and regions. The source entry carries its actual clone borrow
+count; Release returns busy until those native submissions have returned. Null bindings retain the white default,
+while stale or foreign non-null identities fail explicitly.
+
+D3D12 COPY uploads hand off through COMMON (`nri::Layout::GENERAL`) before Graphics transitions to shader access,
+using the existing queue fence dependency. This follows the
+[DirectX COPY-queue layout contract](https://microsoft.github.io/DirectX-Specs/d3d/D3D12EnhancedBarriers.html#copy-queues).
+The pinned external NRI fork rounds explicit BC copy extents to complete blocks, consistently with its existing
+whole-mip path, for upload, clone and readback of tail mips. Vulkan keeps its logical texel extents.
+
+## Material Resources
+
+`resources/MaterialResource.hpp` declares the Resource; `resource/material` owns its single material table and
+static typed command adapters. Inputs own shared target programs, parameter values and TextureIds. Render does
+not retain author graphs, source pointers or Slang sessions. Each program set must match the device target and
+its reflected record layout. Requested purposes must exist explicitly, including opaque Shadow programs.
+Canonical empty records from constant or Shadow derivation are valid.
+
+Default values do not distinguish table structure. Dynamic updates retain the table slot and do not compile
+programs; a new target program creates a separate material identity. Native pipeline variants are prepared on
+demand and published only after candidate success. Failed writes retain published CPU records and mark affected
+GPU replicas for repair before use; Stop does not publish an accepted upload's cancelled candidate.
+
+Texture references must name live entries in the same Resource domain or a real ancestor. Null explicitly selects
+the white default. Clients must end material references before releasing textures, and end draw references before
+releasing materials; this does not add generic reference counting. DeviceSession frontiers retire GPU objects.
+Engine's decision to derive a new purpose and custom PassEncoding execution remain separate integration work.
+
+## Scene, View and UI data
+
+`resources/InstanceResource.hpp` and `resources/LightResource.hpp` declare Scene-owned data. Their implementations
+and static command/frame adapters live in `resource/instance` and `resource/lighting`. Use
+`resourceFrameDataBinding<InstanceResource, TransformData>(id)` (or `MeshInstanceUpdates`) and
+`resourceFrameDataBinding<LightResource, LightUpdates>(id)` with the existing FrameWriter. These inputs resolve
+the actual ResourceInstanceId directly; no Effect is required to update Scene authority. The complete batch is
+validated before mutation. Mesh/material associations, regrouping observers and buffer-growth subscriptions remain
+active. Clients end those references before releasing the referenced entries.
+
+Active graph consumers share each Resource's real FIF slices. Structural changes rebuild a list deduplicated by
+ResourceInstanceId; preparation tracks the source revision separately for each physical slot. Failed preparation
+does not acknowledge dirty data. Accepted replacement buffers publish to all subscribers before subsequent use.
+There is no Job-owned copy of the Scene transform table or second dirty/accepted owner.
+
+Use `viewCameraBinding({scene, view})` for CameraInput. Each View owns its camera and revision, including before any
+Effect is attached. Attachment creation and frame preparation project that View value into the selected shader
+regions; these are execution copies. Effect configurations retain algorithm parameters. CameraInput is no longer
+accepted as an attachment parameter update. Engine camera controls and the later Job/Effect control migration are
+separate work.
+
+UI decoding and borrowed draw input live in `resource/ui`; they use the existing frame blocks through terminal
+FrameCompletion. GPU staging and FIF reuse still follow Uploader/Queue frontiers. UI CPU fields are checked against
+the selected target reflection, and upload/recording preserves that target's trailing parameter padding. SubmitFrame
+sequence identifies CPU input ordering, not a GPU completion clock.

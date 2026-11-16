@@ -1,4 +1,3 @@
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/MaterialIR.cmake")
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_MATERIAL_GRAPH_LIBRARY
@@ -17,11 +16,9 @@ add_component(
     OUTPUT_NAME    lux_engine_function_material_graph
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialMath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinMaterialNodes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinMaterialCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialValidation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodePayload.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodeCatalog.cpp
@@ -34,6 +31,8 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+
+target_compile_features(material_graph PUBLIC cxx_std_20)
 
 target_include_directories(material_graph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 
@@ -50,7 +49,6 @@ target_include_directories(
 target_link_libraries(
     material_graph
     PUBLIC
-        lux::engine::function::material_ir
         lux::engine::function::graph
         lux::engine::resource::description_types
         lux::engine::resource::identity
@@ -59,7 +57,7 @@ target_link_libraries(
 
 component_add_transitive_commands(
     material_graph
-    "find_package(lux-engine-function REQUIRED COMPONENTS graph material_ir)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description_types)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
@@ -69,9 +67,13 @@ if(TARGET shader_compiler)
 endif()
 
 if(BUILD_TESTING)
+    if(NOT TARGET material_compiler)
+        message(FATAL_ERROR "Material compiler contracts require LUX_BUILD_MATERIAL_COMPILER=ON")
+    endif()
+
     add_executable(material_registered_graph_test test/registered_graph.cpp)
 
-    target_link_libraries(material_registered_graph_test PRIVATE lux::engine::function::material_graph)
+    target_link_libraries(material_registered_graph_test PRIVATE lux::engine::function::material_compiler)
 
     add_test(
         NAME material.registered_graph
@@ -80,39 +82,27 @@ if(BUILD_TESTING)
 
     add_executable(material_authoring_schema_test test/authoring_schema.cpp)
 
-    target_link_libraries(material_authoring_schema_test PRIVATE lux::engine::function::material_graph)
+    target_link_libraries(material_authoring_schema_test PRIVATE lux::engine::function::material_compiler)
 
     add_test(NAME material.authoring_schema COMMAND material_authoring_schema_test)
 
-    add_executable(material_builtin_nodes_test test/builtin_nodes.cpp)
-
-    target_link_libraries(material_builtin_nodes_test PRIVATE lux::engine::function::material_graph)
-
-    add_test(NAME material.builtin_nodes COMMAND material_builtin_nodes_test)
-
     add_executable(material_math_registration_test test/math_registration.cpp)
 
-    target_link_libraries(material_math_registration_test PRIVATE lux::engine::function::material_graph)
+    target_link_libraries(material_math_registration_test PRIVATE lux::engine::function::material_compiler)
 
     add_test(NAME material.math_registration COMMAND material_math_registration_test)
 
-    add_executable(material_lowering_test test/lowering.cpp)
+    add_executable(material_source_generation_test test/source_generation.cpp)
 
-    target_link_libraries(material_lowering_test PRIVATE lux::engine::function::material_graph)
+    target_link_libraries(material_source_generation_test PRIVATE lux::engine::function::material_compiler)
 
-    add_test(NAME material.lowering COMMAND material_lowering_test)
+    add_test(NAME material.source_generation COMMAND material_source_generation_test)
 
     add_executable(material_node_identity_test test/node_identity.cpp)
 
-    target_link_libraries(material_node_identity_test PRIVATE lux::engine::function::material_graph)
+    target_link_libraries(material_node_identity_test PRIVATE lux::engine::function::material_compiler)
 
     add_test(NAME material.node_identity COMMAND material_node_identity_test)
-
-    add_executable(material_shader_ir_test test/shader_ir.cpp)
-
-    target_link_libraries(material_shader_ir_test PRIVATE lux::engine::function::material_graph)
-
-    add_test(NAME material.shader_ir COMMAND material_shader_ir_test)
 
     add_executable(material_node_catalog_test test/node_catalog.cpp)
 
@@ -128,7 +118,7 @@ if(BUILD_TESTING)
 
     target_link_libraries(
         material_node_plugin_test
-        PRIVATE lux::engine::function::material_graph lux::engine::platform::dynamic_library
+        PRIVATE lux::engine::function::material_compiler lux::engine::platform::dynamic_library
     )
 
     add_dependencies(material_node_plugin_test material_node_plugin)

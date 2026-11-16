@@ -53,5 +53,5 @@ namespace lux::render
     encodeCapabilityComposition(const CapabilityCompositionDescription&) noexcept;
 
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<CapabilityCompositionDescription>
-        decodeCapabilityComposition(std::span<const std::byte>) noexcept;
+    decodeCapabilityComposition(std::span<const std::byte>) noexcept;
 } // namespace lux::render

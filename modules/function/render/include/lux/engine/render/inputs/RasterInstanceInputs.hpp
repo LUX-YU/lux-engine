@@ -6,6 +6,8 @@
 #include <lux/engine/render/core/ResourceId.hpp>
 
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
 #include <lux/engine/render/inputs/RasterMaterialInputs.hpp>
@@ -19,6 +21,11 @@ namespace lux::render
     using MeshInstanceId = ResourceId<MeshInstanceTag>;
     using TransformMatrix = std::array<float, 16>;
     inline constexpr TransformMatrix kIdentityTransform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+
+    [[nodiscard]] inline bool isFiniteTransform(const TransformMatrix& value) noexcept
+    {
+        return std::ranges::all_of(value, [](float element) noexcept { return std::isfinite(element); });
+    }
 
     struct MeshInstanceData final
     {

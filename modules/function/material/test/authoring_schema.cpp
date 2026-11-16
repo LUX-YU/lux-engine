@@ -1,6 +1,6 @@
 #include "MaterialTest.hpp"
 #include <lux/engine/material/BuiltinMaterialNodes.hpp>
-#include <lux/engine/material/MaterialLowering.hpp>
+#include <lux/engine/material/compiler/MaterialCompiler.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 
 #include <algorithm>
@@ -23,12 +23,8 @@ namespace
         }
     }
 
-    bool draft(
-        const MaterialNodeType& type,
-        MaterialNodePayload& payload,
-        MaterialNode node,
-        std::size_t pin_count
-    ) noexcept
+    bool
+    draft(const MaterialNodeType& type, MaterialNodePayload& payload, MaterialNode node, std::size_t pin_count) noexcept
     {
         MaterialSource source{asset::AssetId{std::array<std::uint8_t, 16>{1}}, "editable draft", {}};
         const auto id = material_test::add(source.graph, std::move(node));
@@ -40,19 +36,18 @@ namespace
         require(decoded.has_value());
         auto reencoded = encodeMaterialSource(*decoded);
         require(reencoded && *encoded == *reencoded);
-        auto lowered = lowerMaterial(decoded->graph);
+        auto lowered = generateMaterialSlang(decoded->graph, lux::rdesc::EMaterialPurpose::GBUFFER);
         require(!lowered && lowered.error().node_id == id);
         auto validation = type.validate(payload);
         require(!validation);
         require(validation.error().code == lowered.error().code);
         require(validation.error().message == lowered.error().message);
         require(validation.error().pin_index == lowered.error().pin_index);
-        shadergen::ShaderIR ir;
-        const auto fingerprint = shadergen::computeFingerprint(ir);
-        auto compiled = type.compile(payload, {}, ir);
+        std::string emitted;
+        auto compiled = type.emitSlang(payload, {}, {}, emitted);
         require(!compiled && compiled.error().code == validation.error().code);
         require(compiled.error().message == validation.error().message);
-        require(shadergen::computeFingerprint(ir) == fingerprint);
+        require(emitted.empty());
         auto pins = type.describePins(payload);
         auto copy = payload.clone();
         require(copy.has_value());

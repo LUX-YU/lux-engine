@@ -43,7 +43,6 @@ namespace lux::render::detail
         {
             std::array<nri::Buffer*, 3> buffers{};
             std::uint64_t revision = 0;
-            std::size_t uploaded = 0, pending = 0;
             std::uint64_t pending_revision = 0;
             bool binding_changed = true;
         };

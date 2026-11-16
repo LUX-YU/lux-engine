@@ -21,17 +21,8 @@ namespace lux::render
     // Client-supplied finite values in the Cooked parameter order; Render checks the actual layout and count.
     using MaterialParameters = std::vector<std::array<float, 4>>;
 
-    struct MaterialTextureGpuRef final
-    {
-        std::uint32_t representation_index = 0;
-        std::uint32_t resource_index = 0;
-        std::uint32_t sampler_index = 0;
-        std::uint32_t flags = 0;
-    };
-
-    static_assert(sizeof(MaterialTextureGpuRef) == 16);
-
-    // Cooked material value. Asset identifiers have already been resolved by the caller.
+    // Owned target program value. Asset identifiers have already been resolved by the caller.
+    // Render retains no author graph, generated source string or compiler Session.
     struct MaterialData final
     {
         rdesc::MaterialProgramSet program;

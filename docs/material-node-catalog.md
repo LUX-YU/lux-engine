@@ -6,8 +6,8 @@ Registration does not construct a payload or invoke plugin callbacks. A rejected
 Lookup uses `graph::NodeTypeId`, derived from the canonical name using the shared lux-cxx FNV-1a algorithm.
 The catalog rejects duplicate names/versions, mismatched declared hashes and hash/name collisions.
 
-`MaterialNodeRegistration` declares an owning name/version, the payload's C++ TypeToken, a code lease and four
-`noexcept` callbacks: create, describe pins, validate, compile. The catalog owns copies of the canonical and
+`MaterialNodeRegistration` declares an owning name/version, the payload's C++ type identity, a code lease and four
+`noexcept` callbacks: create, describe pins, validate, emit Slang. The catalog owns copies of the canonical and
 C++ type names. The returned shared immutable definition survives catalog destruction and keeps its callback code.
 This is a domain directory, not a PluginManager or service factory.
 
@@ -23,10 +23,16 @@ not overlap destruction or mutation of their definition/payload; these pure valu
 
 Pin declarations are owning values generated from the payload and may have a dynamic count. Semantic pin keys
 are distinct from graph-issued PinId. Pin identity, direction and value type are checked before compilation.
-Compilation receives already resolved SSA input indices and a caller-owned disposable ShaderIR candidate. It
-returns output indices in output declaration order, including multiple outputs. Incorrect input/output count,
-type or indices are rejected. A failed callback may have changed that disposable candidate; it never authorizes
-adoption of the candidate into live authoring or rendering state.
+Emission receives stable input expression views and predeclared typed output identifiers, in declaration
+order. An empty input means optional absence or UNUSED; unused dependencies are not traversed. The
+callback appends Slang statements to the disposable output string. It cannot retain those views or
+assume they alias the appendable destination. Type/coercion qualification remains in graph traversal.
+A failed callback discards the whole source candidate and never authorizes adoption.
+
+Callback ABI 2 requires a version handshake before an external registration table is constructed or
+copied. The DLL sample exports `materialNodeRegistrationV2`; old symbols must not be invoked with the
+new layout. Catalog `add` additionally rejects an explicit mismatched ABI before inspecting its span.
+Author node type/version and payload codec identities remain unchanged.
 
 The Material module does not depend on Engine, Editor, shaderc or PluginManager. It uses the existing Object
 module's CodeLease and the existing graph and resource contracts. No new library or alternate graph is created.
@@ -34,5 +40,5 @@ Tests exercise dynamic schemas, immutable definition lifetime, rejected batches,
 an actual loaded DLL whose code outlives its catalog and is released after its last payload.
 
 Serialized graphs carry canonical type/version information. GraphTopology remains the sole structural
-authority; the catalog does not replace graph identity, editing, lowering or persistence. See the
+authority; the catalog does not replace graph identity, editing, compilation or persistence. See the
 [Material module](../modules/function/material/README.md) for the integrated authoring surface.

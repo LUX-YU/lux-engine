@@ -108,29 +108,21 @@ namespace
             }
             return pins;
         };
-        result.compile = [](const MaterialNodePayload& payload,
-                            std::span<const std::uint32_t> inputs,
-                            shadergen::ShaderIR& ir) noexcept -> MaterialNodeResult<std::vector<std::uint32_t>>
+        result.emit_slang = [](const MaterialNodePayload& payload,
+                               std::span<const std::string_view> inputs,
+                               std::span<const std::string_view> outputs,
+                               std::string& destination) noexcept -> MaterialNodeResult<void>
         {
-            const auto& value = *payload.get<Payload>();
-            std::vector<std::uint32_t> outputs;
-            for (unsigned i = 0; i != value.outputs; ++i)
+            if (payload.get<Payload>()->invalid_output)
             {
-                const auto index = static_cast<std::uint32_t>(ir.values.size());
-                shadergen::ShaderIRValue expression{shadergen::EOp::ADD, shadergen::EValueType::FLOAT};
-                if (inputs[0] == shadergen::kNoValue)
-                {
-                    expression.op = shadergen::EOp::CONSTANT;
-                }
-                else
-                {
-                    expression.operands[0] = inputs[0];
-                    expression.operands[1] = inputs[0];
-                }
-                ir.values.push_back(expression);
-                outputs.push_back(value.invalid_output ? shadergen::kNoValue : index);
+                return cxx::unexpected(MaterialCompileFailure{EMaterialCompileError::INVALID_RESULT, "invalid output"});
             }
-            return outputs;
+            for (auto output : outputs)
+            {
+                destination +=
+                    std::string(output) + " = " + (inputs[0].empty() ? "0.0" : std::string(inputs[0]) + "*2") + ";\n";
+            }
+            return {};
         };
         return result;
     }
@@ -150,6 +142,7 @@ int main()
         auto input = registration();
         std::string transient_type_name(input.payload_type.name());
         input.payload_type = cxx::type_info{input.payload_type.hash(), transient_type_name};
+        require(!catalog.add({&input, 1}, kMaterialNodeAbi - 1));
         require(catalog.add({&input, 1}).has_value());
         type = catalog.find(input.identity.id);
         require(bool(type));
@@ -169,7 +162,7 @@ int main()
         require(!catalog.find(batch[0].identity.id));
         require(catalog.find(duplicate.identity.id) == type);
         auto invalid = registration("test.material.invalid.v1");
-        invalid.compile = nullptr;
+        invalid.emit_slang = nullptr;
         rejected = catalog.add({&invalid, 1});
         require(!rejected && rejected.error() == EMaterialNodeCatalogError::INVALID_REGISTRATION);
         invalid = registration("test.material.mismatched_hash.v1");
@@ -192,31 +185,27 @@ int main()
     payload->get<Payload>()->outputs = 0;
     require(!type->validate(*payload));
     require(type->describePins(*payload)->size() == 1);
-    shadergen::ShaderIR rejected_candidate;
-    auto rejected_compile = type->compile(*payload, {}, rejected_candidate);
+    std::string rejected_candidate;
+    auto rejected_compile = type->emitSlang(*payload, {}, {}, rejected_candidate);
     require(!rejected_compile && rejected_compile.error().message == "no outputs");
-    require(rejected_candidate.values.empty());
+    require(rejected_candidate.empty());
     payload->get<Payload>()->outputs = 2;
     require(type->describePins(*payload)->size() == 3);
     payload->get<Payload>()->outputs = 3;
     require(type->describePins(*payload)->size() == 4);
-    shadergen::ShaderIR candidate;
-    candidate.values.push_back({shadergen::EOp::CONSTANT, shadergen::EValueType::FLOAT});
-    std::uint32_t inputs[]{0};
-    auto outputs = type->compile(*payload, inputs, candidate);
-    require(outputs.has_value() && outputs->size() == 3);
-    require(candidate.values.size() == 4 && outputs->back() == 3);
-    require(candidate.values[3].operands[0] == 0);
-    std::uint32_t bad_input[]{shadergen::kNoValue};
-    const auto prior = shadergen::computeFingerprint(candidate);
-    require(!type->compile(*payload, bad_input, candidate));
-    require(shadergen::computeFingerprint(candidate) == prior);
+    std::string candidate;
+    std::string_view inputs[]{"value"}, bad_input[]{""}, output_names[]{"a", "b", "c"};
+    auto outputs = type->emitSlang(*payload, inputs, output_names, candidate);
+    require(outputs.has_value() && !candidate.empty());
+    const auto prior = candidate;
+    require(!type->emitSlang(*payload, bad_input, output_names, candidate));
+    require(candidate == prior);
     payload->get<Payload>()->input_use = EMaterialInputUse::CONNECTED_VALUE;
-    require(type->compile(*payload, bad_input, candidate).has_value());
-    require(type->compile(*payload, inputs, candidate).has_value());
+    require(type->emitSlang(*payload, bad_input, output_names, candidate).has_value());
+    require(type->emitSlang(*payload, inputs, output_names, candidate).has_value());
     payload->get<Payload>()->input_use = EMaterialInputUse::UNUSED;
-    require(type->compile(*payload, bad_input, candidate).has_value());
-    require(!type->compile(*payload, inputs, candidate));
+    require(type->emitSlang(*payload, bad_input, output_names, candidate).has_value());
+    require(!type->emitSlang(*payload, inputs, output_names, candidate));
     payload->get<Payload>()->input_use = static_cast<EMaterialInputUse>(255);
     require(!type->describePins(*payload));
     payload->get<Payload>()->input_use = EMaterialInputUse::VALUE;
@@ -227,7 +216,7 @@ int main()
     require(!type->describePins(*payload));
     payload->get<Payload>()->invalid_pins = false;
     payload->get<Payload>()->invalid_output = true;
-    require(!type->compile(*payload, inputs, candidate));
+    require(!type->emitSlang(*payload, inputs, output_names, candidate));
     payload->get<Payload>()->reject_clone = true;
     auto rejected_clone = payload->clone();
     require(!rejected_clone && rejected_clone.error().message == "clone rejected");

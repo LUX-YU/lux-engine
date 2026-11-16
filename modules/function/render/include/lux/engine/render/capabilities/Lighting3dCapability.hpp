@@ -14,6 +14,6 @@ namespace lux::render
             Lighting3dCommands::CreateLights,
             Lighting3dCommands::ReleaseLight
         >;
-        using PerFrameData = std::tuple<LightUpdates, CameraInput>;
+        using PerFrameData = std::tuple<>;
     };
 } // namespace lux::render

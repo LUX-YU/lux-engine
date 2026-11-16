@@ -1,5 +1,6 @@
-#include <lux/engine/render/device/Error.hpp>
 #include <algorithm>
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/execution/BindingState.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
@@ -55,10 +56,18 @@ namespace lux::render::detail
 
     FrameExecution::~FrameExecution() noexcept
     {
+        if (rendering_)
+        {
+            std::terminate();
+        }
         for (std::uint32_t slot = 0; slot < frame_count_; ++slot)
         {
             if (owns_write_window_ && uploads_->pendingWrites(slot)) std::terminate();
             auto& frame = frames_[slot];
+            const auto& queue = device_.queue();
+            const bool has_live_gpu_use = frame.preparation_command_serial > queue.completed() &&
+                !queue.idle() && !queue.deviceLost();
+            if (has_live_gpu_use) std::terminate();
             if (frame.preparation_command) device_.nriCore().DestroyCommandBuffer(frame.preparation_command);
             if (frame.preparation_allocator) device_.nriCore().DestroyCommandAllocator(frame.preparation_allocator);
         }
@@ -101,9 +110,11 @@ namespace lux::render::detail
         if (uploads_)
         {
             const auto& frame = frames_[next_frame_];
-            const bool preparing = frame.phase == EFramePhase::PREPARING || frame.phase == EFramePhase::SUBMITTING;
-            const bool writable = frame.phase == EFramePhase::FREE || frame.phase == EFramePhase::COLLECTING;
-            uploads_->setWriteWindow(next_frame_, writable, frame.phase == EFramePhase::SUBMITTING);
+            const bool preparing =
+                rendering_ || frame.phase == EFramePhase::PREPARING || frame.phase == EFramePhase::SUBMITTING;
+            const bool writable =
+                !rendering_ && (frame.phase == EFramePhase::FREE || frame.phase == EFramePhase::COLLECTING);
+            uploads_->setWriteWindow(next_frame_, writable, rendering_ || frame.phase == EFramePhase::SUBMITTING);
             uploads_->setBackgroundTransfersAllowed(!preparing);
         }
     }
@@ -175,21 +186,44 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<std::uint32_t> FrameExecution::render(
+    exec::task<RenderResult<std::uint32_t>> FrameExecution::render(
         std::span<RenderGraphInstance* const> instances,
         std::span<const StorageFrameUse> storages,
         std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features
     ) noexcept
     {
+        if (rendering_)
+        {
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
+        }
+        rendering_ = true;
+        cxx::scope_exit settle(
+            [this]() noexcept
+            {
+                rendering_ = false;
+                if (cancellation_)
+                {
+                    const auto error = *std::exchange(cancellation_, {});
+                    cancelSubmissions(error);
+                }
+                updateUploadAdmission();
+            }
+        );
+        updateUploadAdmission();
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested())
+        {
+            cancelSubmissions(RenderError{kUploadStopped});
+            co_return cxx::unexpected(RenderError{kUploadStopped});
+        }
         if (uploads_)
         {
             uploads_->reserveFrameStaging(!instances.empty());
         }
-        cxx::scope_exit update_admission([this]() noexcept { updateUploadAdmission(); });
         auto& frame = frames_[next_frame_];
         if (frame.phase == EFramePhase::SUBMITTING)
         {
-            return advanceSubmissions();
+            co_return co_await advanceSubmissions();
         }
         if (uploads_ && uploads_->hasWrites(next_frame_) && frame.phase == EFramePhase::FREE)
         {
@@ -199,7 +233,7 @@ namespace lux::render::detail
         }
         if (instances.empty() && frame.phase == EFramePhase::FREE)
         {
-            return 0;
+            co_return 0;
         }
         auto outcome = [&](EExecutionOutcome value) noexcept -> RenderResult<std::uint32_t>
         {
@@ -211,7 +245,7 @@ namespace lux::render::detail
         };
         if (frame.phase == EFramePhase::SUBMITTED)
         {
-            return outcome(EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
+            co_return outcome(EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
         }
         if (frame.phase == EFramePhase::FREE)
         {
@@ -221,33 +255,35 @@ namespace lux::render::detail
         frame.phase = EFramePhase::PREPARING;
         if (uploads_ && uploads_->pendingWrites(next_frame_) != 0)
         {
-            return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+            co_return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
         }
         if (instances.empty())
         {
             sealFrame(frame);
             next_frame_ = (next_frame_ + 1) % frame_count_;
-            return 0;
+            co_return 0;
         }
         // A finite preparation window can be ready while its temporary command slot is pending.
         // Submit those exact staged ranges before preparing again; do not overwrite acceptance callbacks.
         if ((uploads_ && uploads_->hasFrameCopies()) || !frame.feature_copies.empty())
         {
-            return submitPreparationCopies(features, false);
+            co_return co_await submitPreparationCopies(features, false);
         }
         // This synchronous phase may fill staging and update descriptors, but may not
         // submit, suspend or dispatch callbacks. Only the following recording segment owns a CommandBuffer.
         if ((!storages.empty() || !features.empty()) && !uploads_)
         {
             cancelSubmissions(RenderError{kDeviceArgument});
-            return cxx::unexpected(RenderError{kDeviceArgument});
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
         }
         const auto resources_ready = prepareStorages(storages);
         if (!resources_ready)
         {
             cancelSubmissions(resources_ready.error());
-            return cxx::unexpected(resources_ready.error());
+            co_return cxx::unexpected(resources_ready.error());
         }
+        // A complete replacement may still await submission acceptance before publishing its binding.
+        // Capacity exhaustion is an error from the preparer, never a request for another partial window.
         bool instances_ready = *resources_ready;
         bool feature_copies = false;
         auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
@@ -257,9 +293,13 @@ namespace lux::render::detail
             if (!features_ready)
             {
                 cancelSubmissions(features_ready.error());
-                return cxx::unexpected(features_ready.error());
+                co_return cxx::unexpected(features_ready.error());
             }
-            instances_ready = *features_ready;
+            if (!*features_ready)
+            {
+                cancelSubmissions(RenderError{kDeviceCapacity});
+                co_return cxx::unexpected(RenderError{kDeviceCapacity});
+            }
         }
         if (instances_ready)
         {
@@ -267,9 +307,13 @@ namespace lux::render::detail
             if (!prepared)
             {
                 cancelSubmissions(prepared.error());
-                return cxx::unexpected(prepared.error());
+                co_return cxx::unexpected(prepared.error());
             }
-            instances_ready = *prepared;
+            if (!*prepared)
+            {
+                cancelSubmissions(RenderError{kDeviceCapacity});
+                co_return cxx::unexpected(RenderError{kDeviceCapacity});
+            }
         }
         if (instances_ready)
         {
@@ -277,7 +321,7 @@ namespace lux::render::detail
             if (!prepared)
             {
                 cancelSubmissions(prepared.error());
-                return cxx::unexpected(prepared.error());
+                co_return cxx::unexpected(prepared.error());
             }
             instances_ready = *prepared;
             waiting = EExecutionOutcome::HISTORY_PENDING;
@@ -286,7 +330,7 @@ namespace lux::render::detail
         if (!instances_ready && !has_copies)
         {
             finishPreparation(cxx::unexpected(RenderError{kDeviceBusy}));
-            return outcome(waiting);
+            co_return outcome(waiting);
         }
         if (instances_ready)
         {
@@ -295,16 +339,16 @@ namespace lux::render::detail
             if (!prepared)
             {
                 cancelSubmissions(prepared.error());
-                return cxx::unexpected(prepared.error());
+                co_return cxx::unexpected(prepared.error());
             }
-            return advanceSubmissions();
+            co_return co_await advanceSubmissions();
         }
-        auto accepted = submitPreparationCopies(features, *resources_ready);
+        auto accepted = co_await submitPreparationCopies(features, *resources_ready);
         if (accepted)
         {
             (void)outcome(waiting);
         }
-        return accepted;
+        co_return accepted;
     }
 
     RenderResult<bool> FrameExecution::prepareStorages(std::span<const StorageFrameUse> storages) noexcept
@@ -461,7 +505,7 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<std::uint32_t> FrameExecution::submitPreparationCopies(
+    exec::task<RenderResult<std::uint32_t>> FrameExecution::submitPreparationCopies(
         std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features,
         bool include_features
     ) noexcept
@@ -472,33 +516,61 @@ namespace lux::render::detail
         {
             collectFeatureCopies(features);
         }
-        if (graphics.recording() || !graphics.hasCapacity())
+        if (graphics.submitting() || frame.preparation_command_serial > graphics.completed())
         {
-            return 0;
+            co_return 0;
         }
-        auto accepted = graphics.recordAndSubmit(
-            [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+        if (uploads_ && uploads_->hasFrameCopies())
+        {
+            auto copied = co_await uploads_->prepareFrameCopies();
+            if (!copied)
             {
-                if (uploads_)
-                {
-                    uploads_->recordFrameCopies(command);
-                    uploads_->recordCopies(command, frame.feature_copies);
-                }
-                return {};
+                cancelSubmissions(copied.error());
+                co_return cxx::unexpected(copied.error());
             }
-        );
+        }
+        if (cancellation_)
+        {
+            co_return cxx::unexpected(*cancellation_);
+        }
+        auto recorded = device_.resetCommandAllocator(*frame.preparation_allocator);
+        if (recorded == nri::Result::SUCCESS)
+        {
+            recorded = device_.nriCore().BeginCommandBuffer(*frame.preparation_command, nullptr);
+        }
+        if (recorded == nri::Result::SUCCESS)
+        {
+            if (uploads_)
+            {
+                uploads_->recordFrameCopies(*frame.preparation_command);
+                uploads_->recordCopies(*frame.preparation_command, frame.feature_copies);
+            }
+            recorded = device_.nriCore().EndCommandBuffer(*frame.preparation_command);
+        }
+        if (recorded != nri::Result::SUCCESS)
+        {
+            auto error = nativeError(recorded);
+            cancelSubmissions(error);
+            co_return cxx::unexpected(error);
+        }
+        auto accepted = co_await graphics.submit({&frame.preparation_command, 1});
         if (!accepted)
         {
             cancelSubmissions(accepted.error());
-            return cxx::unexpected(accepted.error());
+            co_return cxx::unexpected(accepted.error());
         }
         acceptSubmission(next_frame_, graphics);
-        frame.graphics_serial = graphics.submitted();
+        frame.graphics_serial = *accepted;
+        frame.preparation_command_serial = *accepted;
         frame.recorded_instances = 0;
         frame.recorded_passes = 0;
         frame.feature_copies.clear();
         finishPreparation({});
-        return 1; // A preparation submission does not publish an instance or advance its history.
+        if (cancellation_)
+        {
+            co_return cxx::unexpected(*cancellation_);
+        }
+        co_return 1; // A preparation submission does not publish an instance or advance its history.
     }
 
     std::size_t FrameExecution::queueIndex(const SubmissionQueue& queue) const noexcept
@@ -864,6 +936,14 @@ namespace lux::render::detail
 
     void FrameExecution::cancelSubmissions(RenderError error) noexcept
     {
+        if (rendering_)
+        {
+            if (!cancellation_)
+            {
+                cancellation_ = error;
+            }
+            return; // Actual native result must be adopted before retiring this frame's borrowed payloads.
+        }
         auto& frame = frames_[next_frame_];
         if (frame.phase != EFramePhase::SUBMITTING)
         {
@@ -977,9 +1057,15 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<std::uint32_t> FrameExecution::advanceSubmissions() noexcept
+    exec::task<RenderResult<std::uint32_t>> FrameExecution::advanceSubmissions() noexcept
     {
         auto& frame = frames_[next_frame_];
+        const bool has_pending_preparation =
+            frame.preparation_serial == 0 && uploads_ && (uploads_->hasFrameCopies() || !frame.feature_copies.empty());
+        if (has_pending_preparation && frame.preparation_command_serial > device_.queue().completed())
+        {
+            co_return 0;
+        }
         const auto queue_count = static_cast<std::uint32_t>(device_.queueCount());
         std::uint32_t submissions = 0;
         for (;;)
@@ -989,7 +1075,7 @@ namespace lux::render::detail
             {
                 const auto q = (submit_queue_cursor_ + offset) % queue_count;
                 const auto& queue = device_.physicalQueue(q);
-                if (!frame.ready_batches[q].empty() && !queue.recording())
+                if (!frame.ready_batches[q].empty() && !queue.submitting())
                 {
                     selected_queue = q;
                     break;
@@ -1014,7 +1100,7 @@ namespace lux::render::detail
                 if (!dependency)
                 {
                     cancelSubmissions(dependency.error());
-                    return cxx::unexpected(dependency.error());
+                    co_return cxx::unexpected(dependency.error());
                 }
                 frame.wait_fences.push_back(*dependency);
             }
@@ -1046,6 +1132,16 @@ namespace lux::render::detail
                 (uploads_->hasFrameCopies() || !frame.feature_copies.empty());
             if (has_copies)
             {
+                auto copied = co_await uploads_->prepareFrameCopies();
+                if (!copied)
+                {
+                    cancelSubmissions(copied.error());
+                    co_return cxx::unexpected(copied.error());
+                }
+                if (cancellation_)
+                {
+                    co_return cxx::unexpected(*cancellation_);
+                }
                 auto result = device_.resetCommandAllocator(*frame.preparation_allocator);
                 if (result == nri::Result::SUCCESS)
                 {
@@ -1061,7 +1157,7 @@ namespace lux::render::detail
                 {
                     const auto error = nativeError(result);
                     cancelSubmissions(error);
-                    return cxx::unexpected(error);
+                    co_return cxx::unexpected(error);
                 }
                 frame.recording_commands.push_back(frame.preparation_command);
             }
@@ -1074,17 +1170,21 @@ namespace lux::render::detail
                 if (!commands)
                 {
                     cancelSubmissions(commands.error());
-                    return cxx::unexpected(commands.error());
+                    co_return cxx::unexpected(commands.error());
                 }
                 frame.recording_commands.insert(frame.recording_commands.end(), commands->begin(), commands->end());
             }
-            auto accepted = queue.submit(frame.recording_commands, frame.wait_fences, frame.signal_fences);
+            auto accepted = co_await queue.submit(frame.recording_commands, frame.wait_fences, frame.signal_fences);
             if (!accepted)
             {
                 cancelSubmissions(accepted.error());
-                return cxx::unexpected(accepted.error());
+                co_return cxx::unexpected(accepted.error());
             }
-            const auto serial = queue.submitted();
+            const auto serial = *accepted;
+            if (has_copies)
+            {
+                frame.preparation_command_serial = serial;
+            }
             acceptSubmission(next_frame_, queue);
             if (&queue == &device_.queue())
             {
@@ -1101,6 +1201,10 @@ namespace lux::render::detail
                 finishPreparation({});
             }
             ++submissions;
+            if (cancellation_)
+            {
+                co_return cxx::unexpected(*cancellation_);
+            }
             submit_queue_cursor_ = (selected_queue + 1) % queue_count;
         }
         if (frame.remaining_batches == 0)
@@ -1110,7 +1214,7 @@ namespace lux::render::detail
         }
         else if (submissions == 0)
         {
-            // Graph commands no longer consume temporary slots. Only a currently recording
+            // Graph commands own their slots. Only an unconfirmed submission on a physical
             // queue can defer ready work; dependency-blocked batches are not rescanned.
             for (std::uint32_t q = 0; q < queue_count; ++q)
             {
@@ -1122,7 +1226,7 @@ namespace lux::render::detail
                 }
             }
         }
-        return submissions;
+        co_return submissions;
     }
 
     bool FrameExecution::dumpSubmissions(DumpSink sink) const noexcept
@@ -1205,7 +1309,7 @@ namespace lux::render::detail
         {
             const auto index = (wait_queue_cursor_ + offset) % count;
             auto& queue = device_.physicalQueue(index);
-            if (!queue.idle())
+            if (queue.submitted() > queue.completed())
             {
                 wait_queue_cursor_ = (index + 1) % count;
                 return queue.wait(queue.completed() + 1, timeout_ns);

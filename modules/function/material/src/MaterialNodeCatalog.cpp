@@ -6,12 +6,6 @@ namespace lux::material
 {
     namespace
     {
-        // The two existing scalar/vector contracts are ordinal-compatible; changes must be explicit.
-        static_assert(static_cast<shadergen::EValueType>(EValueType::FLOAT) == shadergen::EValueType::FLOAT);
-        static_assert(static_cast<shadergen::EValueType>(EValueType::VEC2) == shadergen::EValueType::VEC2);
-        static_assert(static_cast<shadergen::EValueType>(EValueType::VEC3) == shadergen::EValueType::VEC3);
-        static_assert(static_cast<shadergen::EValueType>(EValueType::VEC4) == shadergen::EValueType::VEC4);
-
         MaterialCompileFailure invalid(std::string message, std::uint32_t pin = ~std::uint32_t{0}) noexcept
         {
             return {EMaterialCompileError::INVALID_GRAPH, std::move(message), {}, pin};
@@ -42,7 +36,7 @@ namespace lux::material
                                       canonicalName(value.identity.canonical_name);
             const bool has_payload_type = value.payload_type.isValid();
             const bool has_code = value.code.valid();
-            const bool has_callbacks = value.create && value.describe_pins && value.validate && value.compile;
+            const bool has_callbacks = value.create && value.describe_pins && value.validate && value.emit_slang;
             const bool has_role = value.role == EMaterialNodeRole::VALUE || value.role == EMaterialNodeRole::SURFACE;
             const bool has_codec_pair = (value.encode != nullptr) == (value.decode != nullptr);
             return has_identity && has_payload_type && has_code && has_callbacks && has_role && has_codec_pair;
@@ -73,10 +67,9 @@ namespace lux::material
         return registration_.role;
     }
 
-    MaterialNodeResult<void> MaterialNodeType::validateBindings(
-        const MaterialNodePayload& payload,
-        const shadergen::ShaderIR& resources
-    ) const noexcept
+    MaterialNodeResult<void>
+    MaterialNodeType::validateBindings(const MaterialNodePayload& payload, const MaterialGraph& resources)
+        const noexcept
     {
         auto accepted = validate(payload);
         if (!accepted)
@@ -143,9 +136,8 @@ namespace lux::material
         return payload;
     }
 
-    MaterialNodeResult<std::vector<MaterialPinDeclaration>> MaterialNodeType::describePins(
-        const MaterialNodePayload& payload
-    ) const noexcept
+    MaterialNodeResult<std::vector<MaterialPinDeclaration>>
+    MaterialNodeType::describePins(const MaterialNodePayload& payload) const noexcept
     {
         if (!accepts(payload))
         {
@@ -177,105 +169,74 @@ namespace lux::material
                                         !is_valid_use || is_output_use_mismatch;
             if (is_invalid_pin)
             {
-                return cxx::unexpected(
-                    invalid("invalid or duplicate node pin declaration", static_cast<std::uint32_t>(i))
-                );
+                return
+                cxx::unexpected(invalid("invalid or duplicate node pin declaration", static_cast<std::uint32_t>(i)));
             }
         }
         return pins;
     }
 
-    MaterialNodeResult<std::vector<std::uint32_t>> MaterialNodeType::compile(
+    MaterialNodeResult<void>
+    MaterialNodeType::emitSlang(
         const MaterialNodePayload& payload,
-        std::span<const std::uint32_t> inputs,
-        shadergen::ShaderIR& candidate
+        std::span<const std::string_view> inputs,
+        std::span<const std::string_view> outputs,
+        std::string& destination
     ) const noexcept
     {
         auto validation = validate(payload);
         if (!validation)
         {
-            return cxx::unexpected(std::move(validation.error()));
+            return validation;
         }
         auto pins = describePins(payload);
         if (!pins)
         {
             return cxx::unexpected(std::move(pins.error()));
         }
-        std::size_t input_count{};
-        std::size_t output_count{};
+        std::size_t input_count = 0, output_count = 0;
         for (const auto& pin : *pins)
         {
             if (pin.direction == graph::EPinDirection::OUTPUT)
             {
+                const bool is_invalid_output = output_count >= outputs.size() || outputs[output_count].empty();
+                if (is_invalid_output)
+                {
+                    return cxx::unexpected(invalid("missing output identifier"));
+                }
                 ++output_count;
                 continue;
             }
             if (input_count >= inputs.size())
             {
-                return cxx::unexpected(invalid("node input count does not match its pin declarations"));
+                return cxx::unexpected(invalid("missing node input"));
             }
-            const auto input = inputs[input_count];
-            const bool has_value = input < candidate.values.size();
-            const bool has_matching_type =
-                has_value && candidate.values[input].type == static_cast<shadergen::EValueType>(pin.type);
-            const bool is_absent = input == shadergen::kNoValue;
-            bool accepted{};
-            switch (pin.input_use)
+            const bool is_absent = inputs[input_count].empty();
+            const bool is_input_mismatch = (pin.input_use == EMaterialInputUse::VALUE && is_absent) ||
+                                           (pin.input_use == EMaterialInputUse::UNUSED && !is_absent);
+            if (is_input_mismatch)
             {
-            case EMaterialInputUse::VALUE:
-                accepted = has_matching_type;
-                break;
-            case EMaterialInputUse::CONNECTED_VALUE:
-                accepted = is_absent || has_matching_type;
-                break;
-            case EMaterialInputUse::UNUSED:
-                accepted = is_absent;
-                break;
-            }
-            if (!accepted)
-            {
-                return cxx::unexpected(invalid("node input does not match its pin declaration"));
+                return cxx::unexpected(invalid("node input demand mismatch", input_count));
             }
             ++input_count;
         }
-        if (input_count != inputs.size())
+        const bool is_count_mismatch = input_count != inputs.size() || output_count != outputs.size();
+        if (is_count_mismatch)
         {
-            return cxx::unexpected(invalid("node input count does not match its pin declarations"));
+            return cxx::unexpected(invalid("node expression count mismatch"));
         }
-        auto outputs = registration_.compile(payload, inputs, candidate);
-        if (!outputs)
-        {
-            return cxx::unexpected(std::move(outputs.error()));
-        }
-        if (outputs->size() != output_count)
-        {
-            return cxx::unexpected(invalid("node compiler returned the wrong output count"));
-        }
-        std::size_t output_index{};
-        for (const auto& pin : *pins)
-        {
-            if (pin.direction != graph::EPinDirection::OUTPUT)
-            {
-                continue;
-            }
-            const auto value = (*outputs)[output_index++];
-            const bool has_value = value < candidate.values.size();
-            const bool has_matching_type =
-                has_value && candidate.values[value].type == static_cast<shadergen::EValueType>(pin.type);
-            if (!has_matching_type)
-            {
-                return cxx::unexpected(invalid("node compiler returned an invalid output value"));
-            }
-        }
-        return outputs;
+        return registration_.emit_slang(payload, inputs, outputs, destination);
     }
 
     MaterialNodeCatalog::~MaterialNodeCatalog() = default;
 
-    cxx::expected<void, EMaterialNodeCatalogError> MaterialNodeCatalog::add(
-        std::span<const MaterialNodeRegistration> registrations
-    ) noexcept
+    cxx::expected<void, EMaterialNodeCatalogError>
+    MaterialNodeCatalog::add(std::span<const MaterialNodeRegistration> registrations, std::uint32_t abi) noexcept
     {
+        if (abi != kMaterialNodeAbi)
+        {
+            return cxx::unexpected(EMaterialNodeCatalogError::INVALID_REGISTRATION);
+        }
         for (std::size_t i = 0; i != registrations.size(); ++i)
         {
             const auto& value = registrations[i];
@@ -290,7 +251,8 @@ namespace lux::material
                 {
                     return {};
                 }
-                return cxx::unexpected(
+                return
+                cxx::unexpected(
                     value.identity.canonical_name == previous.canonical_name ? EMaterialNodeCatalogError::DUPLICATE_TYPE
                                                                              : EMaterialNodeCatalogError::HASH_COLLISION
                 );

@@ -26,6 +26,6 @@ namespace lux::render
             Mesh3dCommands::CreateInstances,
             Mesh3dCommands::ReleaseInstance
         >;
-        using PerFrameData = std::tuple<TransformData, MeshInstanceUpdates, CameraInput>;
+        using PerFrameData = std::tuple<>;
     };
 } // namespace lux::render

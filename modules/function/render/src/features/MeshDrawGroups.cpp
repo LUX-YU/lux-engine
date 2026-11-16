@@ -5,8 +5,8 @@
 #include <lux/engine/render/features/MeshDrawGroups.hpp>
 #include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/storage/RasterMaterialStorage.hpp>
+#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
 
 namespace lux::render::detail
 {
@@ -73,7 +73,7 @@ namespace lux::render::detail
         if (selection)
         {
             auto storage = resources_.borrow<RasterMaterialStorage>(
-                extension_detail::ResourceIdentity::storage(selection->material)
+                extension_detail::ResourceIdentity::parent(selection->material)
             );
             const auto* program = storage ? (*storage)->program(selection->material) : nullptr;
             if (!program)
@@ -141,10 +141,6 @@ namespace lux::render::detail
         }
         source_.revision += source_changed;
         ++data_revision_;
-        for (auto& slice : slices_)
-        {
-            slice.uploaded = 0;
-        }
     }
 
     RenderResult<void> MeshDrawGroups::pack() noexcept
@@ -172,7 +168,7 @@ namespace lux::render::detail
             }
             const auto [mesh, program, section] = group.key;
             auto storage =
-                resources_.borrow<IndexedTriangleMeshStorage>(extension_detail::ResourceIdentity::storage(mesh));
+                resources_.borrow<IndexedTriangleMeshStorage>(extension_detail::ResourceIdentity::parent(mesh));
             const auto* geometry = storage ? (*storage)->find(mesh) : nullptr;
             if (!geometry || section >= geometry->submeshes.size())
             {
@@ -263,10 +259,6 @@ namespace lux::render::detail
         {
             source_.view_count = view_count;
             ++data_revision_;
-            for (auto& slice : slices_)
-            {
-                slice.uploaded = 0;
-            }
         }
         if (auto packed = pack(); !packed)
         {
@@ -314,7 +306,7 @@ namespace lux::render::detail
                 }
                 releaseAfterGpu(device_, buffer);
                 buffer = candidate;
-                slice.uploaded = 0;
+
                 slice.revision = 0;
             }
             slice.updates[i] = {configuration_.outputs[i], {buffer, 0, bytes}};
@@ -324,12 +316,12 @@ namespace lux::render::detail
         {
             return FeatureBinding::Preparation{FeatureBinding::EPreparation::READY, slice.updates};
         }
-        slice.pending = slice.uploaded;
         slice.pending_revision = 0;
+        bool staged_any = false;
         cxx::scope_exit register_copy(
             [&]() noexcept
             {
-                if (slice.pending == slice.uploaded && !slice.pending_revision)
+                if (!staged_any)
                 {
                     return;
                 }
@@ -340,11 +332,9 @@ namespace lux::render::detail
                         auto& state = *static_cast<Slice*>(data);
                         if (accepted)
                         {
-                            state.uploaded = state.pending;
                             if (state.pending_revision)
                             {
                                 state.revision = state.pending_revision;
-                                state.uploaded = 0;
                             }
                         }
                         state.pending_revision = 0;
@@ -352,27 +342,19 @@ namespace lux::render::detail
                 );
             }
         );
-        std::size_t begin = 0;
         constexpr std::array<std::uint32_t, 4> targets{0, 1, 2, 5};
         for (std::size_t i = 0; i < inputs.size(); ++i)
         {
-            const auto bytes = inputs[i];
-            const auto end = begin + bytes.size();
-            while (slice.pending < end)
+            if (inputs[i].empty())
             {
-                const auto offset = slice.pending - begin;
-                auto copied = uploader.stageBuffer({slice.buffers[targets[i]], offset, bytes.subspan(offset)});
-                if (!copied)
-                {
-                    return cxx::unexpected(copied.error());
-                }
-                if (*copied == 0)
-                {
-                    return FeatureBinding::Preparation{FeatureBinding::EPreparation::WAITING, slice.updates};
-                }
-                slice.pending += *copied;
+                continue;
             }
-            begin = end;
+            auto copied = uploader.stageBuffer({slice.buffers[targets[i]], 0, inputs[i]});
+            if (!copied)
+            {
+                return cxx::unexpected(copied.error());
+            }
+            staged_any = true;
         }
         slice.pending_revision = data_revision_;
         return FeatureBinding::Preparation{FeatureBinding::EPreparation::RECORD, slice.updates};

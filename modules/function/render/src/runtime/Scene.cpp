@@ -46,6 +46,7 @@ namespace lux::render::runtime_detail
             scene = other.scene;
             view = other.view;
             target = other.target;
+            camera_revision = other.camera_revision;
             view_position = other.view_position;
             effect_position = other.effect_position;
         }

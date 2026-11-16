@@ -357,39 +357,10 @@ namespace lux::shader
             return true;
         }
 
-        ShaderCompileResult compileSource(const ShaderCompileRequest& request)
+        using SessionResult = cxx::expected<Slang::ComPtr<slang::ISession>, ShaderCompileFailure>;
+
+        SessionResult createSession(slang::IGlobalSession& global, const ShaderCompileRequest& request)
         {
-            const bool is_invalid_text = request.source.empty() || request.entry.empty() ||
-                                         request.source.find('\0') != std::string_view::npos ||
-                                         request.entry.find('\0') != std::string_view::npos;
-            const bool is_supported_stage = request.stage == rdesc::EShaderType::VERTEX ||
-                                            request.stage == rdesc::EShaderType::FRAGMENT ||
-                                            request.stage == rdesc::EShaderType::COMPUTE;
-            if (is_invalid_text || !is_supported_stage || request.target > rdesc::EShaderTarget::DXIL)
-            {
-                return failure(EShaderCompileError::INVALID_INPUT, "invalid shader source, stage or target");
-            }
-            Slang::ComPtr<slang::IGlobalSession> global;
-            if (SLANG_FAILED(slang::createGlobalSession(global.writeRef())))
-            {
-                return failure(EShaderCompileError::COMPILER_FAILURE, "cannot create Slang session");
-            }
-            const auto runtime = runtimeDirectory();
-            if (runtime.empty())
-            {
-                return failure(EShaderCompileError::COMPILER_FAILURE, "cannot locate compiler runtime");
-            }
-#ifdef _WIN32
-            const auto dxc = runtime / "dxcompiler.dll";
-#else
-            const auto dxc = runtime / "libdxcompiler.so";
-#endif
-            if (request.target == rdesc::EShaderTarget::DXIL && !std::filesystem::is_regular_file(dxc))
-            {
-                return failure(EShaderCompileError::COMPILER_FAILURE, "pinned DXC runtime is missing");
-            }
-            // Slang prefixes this directory to the downstream library name.
-            global->setDownstreamCompilerPath(SLANG_PASS_THROUGH_DXC, runtime.string().c_str());
             slang::TargetDesc target;
             slang::CompilerOptionEntry preserve_entry{
                 slang::CompilerOptionName::VulkanUseEntryPointName,
@@ -399,7 +370,7 @@ namespace lux::shader
             target.compilerOptionEntryCount = 1;
             target.format = request.target == rdesc::EShaderTarget::SPIRV ? SLANG_SPIRV : SLANG_DXIL;
             const std::string profile(request.profile);
-            target.profile = global->findProfile(profile.c_str());
+            target.profile = global.findProfile(profile.c_str());
             if (target.profile == SLANG_PROFILE_UNKNOWN)
             {
                 return failure(EShaderCompileError::INVALID_INPUT, "unknown shader profile");
@@ -422,9 +393,33 @@ namespace lux::shader
             description.targetCount = 1;
             description.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
             Slang::ComPtr<slang::ISession> session;
-            if (SLANG_FAILED(global->createSession(description, session.writeRef())))
+            if (SLANG_FAILED(global.createSession(description, session.writeRef())))
             {
                 return failure(EShaderCompileError::COMPILER_FAILURE, "cannot create target session");
+            }
+            return session;
+        }
+
+        void recordDiagnostics(const ShaderCompileRequest& request, slang::IBlob* blob)
+        {
+            if (request.report && blob)
+            {
+                request.report->diagnostic += diagnostics(blob, "");
+            }
+        }
+
+        ShaderCompileResult
+        compileSource(slang::ISession& session, const ShaderCompileRequest& request, std::size_t ordinal)
+        {
+            const bool is_invalid_text = request.source.empty() || request.entry.empty() ||
+                                         request.source.find('\0') != std::string_view::npos ||
+                                         request.entry.find('\0') != std::string_view::npos;
+            const bool is_supported_stage = request.stage == rdesc::EShaderType::VERTEX ||
+                                            request.stage == rdesc::EShaderType::FRAGMENT ||
+                                            request.stage == rdesc::EShaderType::COMPUTE;
+            if (is_invalid_text || !is_supported_stage || request.target > rdesc::EShaderTarget::DXIL)
+            {
+                return failure(EShaderCompileError::INVALID_INPUT, "invalid shader source, stage or target");
             }
             Slang::ComPtr<slang::IBlob> diagnostic;
             const std::string source = std::string(
@@ -433,12 +428,22 @@ namespace lux::shader
                                        ) +
                                        std::string(request.source);
             const std::string entry_name(request.entry), source_path(request.source_path);
-            auto* module = session->loadModuleFromSourceString(
-                "lux_shader",
-                source_path.c_str(),
+            // Content identity plus a batch-local ordinal: hashes never authorize cache equality.
+            std::uint64_t fingerprint = 1469598103934665603ULL;
+            for (unsigned char byte : source + source_path)
+            {
+                fingerprint = (fingerprint ^ byte) * 1099511628211ULL;
+            }
+            const auto module_name = "lux_shader_" + std::to_string(fingerprint) + "_" + std::to_string(ordinal);
+            const auto module_path =
+                (std::filesystem::path(source_path).parent_path() / (module_name + ".slang")).string();
+            auto* module = session.loadModuleFromSourceString(
+                module_name.c_str(),
+                module_path.c_str(),
                 source.c_str(),
                 diagnostic.writeRef()
             );
+            recordDiagnostics(request, diagnostic);
             if (!module)
             {
                 return failure(EShaderCompileError::COMPILER_FAILURE, diagnostics(diagnostic, "cannot load source"));
@@ -450,22 +455,29 @@ namespace lux::shader
             }
             slang::IComponentType* components[]{module, entry};
             Slang::ComPtr<slang::IComponentType> composite, linked;
-            if (SLANG_FAILED(
-                    session->createCompositeComponentType(components, 2, composite.writeRef(), diagnostic.writeRef())
-                ) ||
-                SLANG_FAILED(composite->link(linked.writeRef(), diagnostic.writeRef())))
+            auto status =
+                session.createCompositeComponentType(components, 2, composite.writeRef(), diagnostic.writeRef());
+            recordDiagnostics(request, diagnostic);
+            if (SLANG_FAILED(status))
+            {
+                return failure(EShaderCompileError::COMPILER_FAILURE, diagnostics(diagnostic, "cannot compose shader"));
+            }
+            status = composite->link(linked.writeRef(), diagnostic.writeRef());
+            recordDiagnostics(request, diagnostic);
+            if (SLANG_FAILED(status))
             {
                 return failure(EShaderCompileError::COMPILER_FAILURE, diagnostics(diagnostic, "cannot link shader"));
             }
             Slang::ComPtr<slang::IBlob> code;
-            if (SLANG_FAILED(linked->getEntryPointCode(0, 0, code.writeRef(), diagnostic.writeRef())))
+            status = linked->getEntryPointCode(0, 0, code.writeRef(), diagnostic.writeRef());
+            recordDiagnostics(request, diagnostic);
+            if (SLANG_FAILED(status))
             {
-                return failure(
-                    EShaderCompileError::COMPILER_FAILURE,
-                    diagnostics(diagnostic, "target generation failed")
-                );
+                return
+                failure(EShaderCompileError::COMPILER_FAILURE, diagnostics(diagnostic, "target generation failed"));
             }
             auto* layout = linked->getLayout(0, diagnostic.writeRef());
+            recordDiagnostics(request, diagnostic);
             if (!layout || layout->getEntryPointCount() != 1 || code->getBufferSize() % 4 != 0)
             {
                 return failure(EShaderCompileError::COMPILER_FAILURE, "invalid target output");
@@ -497,7 +509,8 @@ namespace lux::shader
             {
                 if (!resource(*layout->getParameterByIndex(index), stages, result.interface))
                 {
-                    return failure(
+                    return
+                    failure(
                         EShaderCompileError::UNSUPPORTED_LAYOUT,
                         std::string("unsupported resource layout or register collision: ") +
                             layout->getParameterByIndex(index)->getName() + " kind=" +
@@ -507,6 +520,35 @@ namespace lux::shader
                             " category=" +
                             std::to_string(static_cast<unsigned>(layout->getParameterByIndex(index)->getCategory()))
                     );
+                }
+            }
+            if (request.report)
+            {
+                Slang::ComPtr<slang::IMetadata> metadata;
+                const auto metadata_status =
+                    linked->getEntryPointMetadata(0, 0, metadata.writeRef(), diagnostic.writeRef());
+                recordDiagnostics(request, diagnostic);
+                for (unsigned index = 0; index < layout->getParameterCount(); ++index)
+                {
+                    auto* parameter = layout->getParameterByIndex(index);
+                    ShaderParameterUse usage{
+                        parameter->getName(),
+                        parameter->getBindingSpace(),
+                        parameter->getBindingIndex()
+                    };
+                    bool used = false;
+                    const bool has_usage = SLANG_SUCCEEDED(metadata_status) && metadata &&
+                                           SLANG_SUCCEEDED(metadata->isParameterLocationUsed(
+                                               static_cast<SlangParameterCategory>(parameter->getCategory()),
+                                               usage.space,
+                                               usage.binding,
+                                               used
+                                           ));
+                    if (has_usage)
+                    {
+                        usage.use = used ? EShaderParameterUse::USED : EShaderParameterUse::UNUSED;
+                    }
+                    request.report->parameters.push_back(std::move(usage));
                 }
             }
             rdesc::EntryPointInfo entry_info{entry_name, request.stage};
@@ -526,15 +568,108 @@ namespace lux::shader
                 result.interface.vertex_inputs = entry_info.inputs;
             }
             result.interface.entry_points.push_back(std::move(entry_info));
+            // Use the same canonical set order as the asset codec, independent of declaration order.
+            std::ranges::sort(result.interface.sets, {}, &rdesc::DescriptorSetLayoutInfo::set);
             return result;
         }
     } // namespace
 
-    ShaderCompileResult compile(const ShaderCompileRequest& request) noexcept
+    struct ShaderCompiler::Impl final
+    {
+        Slang::ComPtr<slang::IGlobalSession> global;
+        std::filesystem::path runtime;
+    };
+
+    ShaderCompiler::ShaderCompiler(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+
+    ShaderCompiler::~ShaderCompiler() noexcept = default;
+
+    ShaderCompiler::CreateResult ShaderCompiler::create() noexcept
     {
         try
         {
-            return compileSource(request);
+            auto impl = std::make_unique<Impl>();
+            if (SLANG_FAILED(slang::createGlobalSession(impl->global.writeRef())))
+            {
+                return failure(EShaderCompileError::COMPILER_FAILURE, "cannot create Slang global session");
+            }
+            impl->runtime = runtimeDirectory();
+            if (impl->runtime.empty())
+            {
+                return failure(EShaderCompileError::COMPILER_FAILURE, "cannot locate compiler runtime");
+            }
+            impl->global->setDownstreamCompilerPath(SLANG_PASS_THROUGH_DXC, impl->runtime.string().c_str());
+            return std::unique_ptr<ShaderCompiler>(new ShaderCompiler(std::move(impl)));
+        }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (const std::exception& exception)
+        {
+            return failure(EShaderCompileError::COMPILER_FAILURE, exception.what());
+        }
+        catch (...)
+        {
+            return failure(EShaderCompileError::COMPILER_FAILURE, "foreign shader compiler initialization failure");
+        }
+    }
+
+    ShaderCompileBatchResult ShaderCompiler::compileBatch(std::span<const ShaderCompileRequest> requests) noexcept
+    {
+        try
+        {
+            std::vector<rdesc::ShaderProgramArtifact> result;
+            result.reserve(requests.size());
+            Slang::ComPtr<slang::ISession> session;
+            const ShaderCompileRequest* previous = nullptr;
+            for (const auto& request : requests)
+            {
+                if (request.report)
+                {
+                    *request.report = {};
+                }
+                const bool has_invalid_option =
+                    request.profile.find('\0') != std::string_view::npos ||
+                    request.source_path.find('\0') != std::string_view::npos ||
+                    std::ranges::any_of(
+                        request.include_directories,
+                        [](std::string_view path) { return path.find('\0') != std::string_view::npos; }
+                    );
+                if (has_invalid_option)
+                {
+                    return failure(EShaderCompileError::INVALID_INPUT, "embedded null in shader options");
+                }
+#ifdef _WIN32
+                const auto dxc = impl_->runtime / "dxcompiler.dll";
+#else
+                const auto dxc = impl_->runtime / "libdxcompiler.so";
+#endif
+                if (request.target == rdesc::EShaderTarget::DXIL && !std::filesystem::is_regular_file(dxc))
+                {
+                    return failure(EShaderCompileError::COMPILER_FAILURE, "pinned DXC runtime is missing");
+                }
+                const bool same_options =
+                    previous && previous->target == request.target && previous->profile == request.profile &&
+                    std::ranges::equal(previous->include_directories, request.include_directories);
+                if (!same_options)
+                {
+                    auto created = createSession(*impl_->global, request);
+                    if (!created)
+                    {
+                        return cxx::unexpected(std::move(created.error()));
+                    }
+                    session = std::move(*created);
+                }
+                auto compiled = compileSource(*session, request, result.size());
+                if (!compiled)
+                {
+                    return cxx::unexpected(std::move(compiled.error()));
+                }
+                result.push_back(std::move(*compiled));
+                previous = &request;
+            }
+            return result;
         }
         catch (const std::bad_alloc&)
         {
@@ -548,6 +683,16 @@ namespace lux::shader
         {
             return failure(EShaderCompileError::COMPILER_FAILURE, "foreign shader compiler failure");
         }
+    }
+
+    ShaderCompileResult ShaderCompiler::compile(const ShaderCompileRequest& request) noexcept
+    {
+        auto result = compileBatch({&request, 1});
+        if (!result)
+        {
+            return cxx::unexpected(std::move(result.error()));
+        }
+        return std::move(result->front());
     }
 
     std::string_view compilerVersion() noexcept

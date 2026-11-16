@@ -196,7 +196,9 @@ namespace lux::render::detail
             reserve_frame_staging_ = reserve;
         }
 
-        void submitReadyTransfers() noexcept;
+        [[nodiscard]] bool canProgressTransfers() const noexcept;
+        [[nodiscard]] Task submitReadyTransfers() noexcept;
+        [[nodiscard]] Task prepareFrameCopies() noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
         // Settles staging after the frame submission attempt; this does not observe GPU completion.
         void finishFrameCopySubmission(RenderResult<void>, std::uint32_t frame_slot) noexcept;
@@ -228,9 +230,11 @@ namespace lux::render::detail
             const nri::Texture* clone = nullptr
         ) noexcept;
 
-        // Device-thread preparation of already published data. A short result means this finite
-        // staging window is full; no Sender or per-frame operation state is created.
+        // Reserve an entire write before publication; insufficient finite capacity fails the whole
+        // preparation. CPU copying occurs after all source borrows are frozen.
         [[nodiscard]] RenderResult<std::size_t> stageBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
+        // Freeze a transient projection (at most 16 KiB) before its caller's scratch is reused.
+        [[nodiscard]] RenderResult<std::size_t> stageInlineBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
 
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
         {
@@ -250,6 +254,7 @@ namespace lux::render::detail
         }
 
     private:
+        [[nodiscard]] RenderResult<std::size_t> stage(const BufferWrite&, std::size_t, bool copy_now) noexcept;
         struct WriteState final
         {
             SubmissionFrontiers accepted;
@@ -287,6 +292,18 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] RenderResult<void> collectUploadTimestamps(std::size_t page, std::uint32_t bits) noexcept;
 
+        struct CommandWindow final
+        {
+            nri::CommandAllocator* allocator = nullptr;
+            nri::CommandBuffer* command = nullptr;
+            std::uint64_t serial = 0;
+        };
+
+        [[nodiscard]] RenderResult<nri::CommandBuffer*> beginCommands(SubmissionQueue&, std::uint32_t&) noexcept;
+        void acceptCommands(SubmissionQueue&, std::uint32_t, std::uint64_t) noexcept;
+        std::vector<CommandWindow> command_windows_;
+        std::vector<std::uint32_t> next_commands_;
+        bool progressing_ = false;
         std::unique_ptr<StagingArena> staging_arena_;
         bool background_allowed_ = true;
         bool reserve_frame_staging_ = false;

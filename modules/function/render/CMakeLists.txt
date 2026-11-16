@@ -31,8 +31,8 @@ generate_visibility_header(
 set(render_sources
     src/runtime/RenderClient.cpp
     src/frame/FrameStorage.cpp
-    src/capabilities/CameraInputHandler.cpp
-    src/capabilities/UiInputHandler.cpp
+    src/resource/view/CameraInputHandler.cpp
+    src/resource/ui/UiInputHandler.cpp
     src/core/Target.cpp
     src/core/Error.cpp
     src/core/RasterViewport.cpp
@@ -47,15 +47,15 @@ set(render_sources
     src/resource/StorageMeta.cpp
     src/resource/ResourceRegistry.cpp
     src/resource/ResourceSet.cpp
-    src/storage/MeshPacking.cpp
-    src/storage/IndexedTriangleMesh.cpp
-    src/storage/RasterMaterial.cpp
+    src/resource/mesh/MeshPacking.cpp
+    src/resource/mesh/IndexedTriangleMesh.cpp
+    src/resource/material/RasterMaterial.cpp
     src/graph/RenderGraphBuilder.cpp
     src/graph/RenderGraphAnalysis.cpp
     src/graph/Diagnostics.cpp
     src/features/FeatureAssembly.cpp
     src/features/FeatureBuildContext.cpp
-    src/features/CameraParameters.cpp
+    src/resource/view/CameraParameters.cpp
     src/features/RasterMeshParameters.cpp
     src/features/RasterMesh.cpp
     src/features/MaterialMeshRaster.cpp
@@ -74,7 +74,7 @@ set(render_sources
     src/features/UiScene.cpp
     src/features/FullscreenRaster.cpp
     src/features/ParameterLayout.cpp
-    src/storage/DirectLightingStorage.cpp
+    src/resource/lighting/DirectLightingStorage.cpp
     src/features/RasterMeshDraws.cpp
     src/features/MeshDrawGroups.cpp
     src/device/Error.cpp
@@ -107,15 +107,12 @@ set(render_sources
     src/graph/ShaderInterface.cpp
     src/upload/Preparation.cpp
     src/upload/ResourceUploader.cpp
-    src/memory/StagingArena.cpp
-    src/memory/BufferArena.cpp
-    src/storage/SampledTexture2DStorage.cpp
-    src/storage/SampledTexture2DCommandHandler.cpp
-    src/storage/RasterMaterialStorage.cpp
-    src/storage/RasterMaterialCommandHandler.cpp
-    src/storage/RasterMeshInstanceStorage.cpp
-    src/storage/IndexedTriangleMeshStorage.cpp
-    src/storage/IndexedTriangleMeshCommandHandler.cpp
+    src/upload/StagingArena.cpp
+    src/device/BufferArena.cpp
+    src/resource/texture/SampledTexture2DStorage.cpp
+    src/resource/material/RasterMaterialStorage.cpp
+    src/resource/instance/RasterMeshInstanceStorage.cpp
+    src/resource/mesh/IndexedTriangleMeshStorage.cpp
     src/runtime/RenderServer.cpp
     src/runtime/CapabilityRegistry.cpp
     src/runtime/CapabilityCompilation.cpp

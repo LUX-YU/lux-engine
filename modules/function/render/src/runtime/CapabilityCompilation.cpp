@@ -134,6 +134,16 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
+            if (implementation.view_parameter_type.isValid())
+            {
+                const auto [offset, bytes] = effect.plan->parameterRegion(occurrence);
+                const bool is_invalid_projection = !implementation.project_parameters || bytes == 0 ||
+                    implementation.view_parameter_type != cxx::make_basic_type_info<CameraInput>();
+                if (is_invalid_projection) return cxx::unexpected(RenderError{kFeatureContract});
+                effect.view_projections.push_back(
+                    {implementation.view_parameter_type, implementation.project_parameters, offset, bytes}
+                );
+            }
             const auto capability = capability_registry_.capabilityOf(use.id);
             for (auto type : capability_registry_.get(capability)->per_frame_data)
             {

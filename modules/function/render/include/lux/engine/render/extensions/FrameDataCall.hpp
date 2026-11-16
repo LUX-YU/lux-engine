@@ -13,16 +13,18 @@ namespace lux::render
     {
         STORAGE,
         PARAMETERS,
-        DRAW_LIST
+        DRAW_LIST,
+        VIEW
     };
 
-    // Stored in the real capability implementation. The Handler record has the sole object owner;
-    // this record describes one frame-data method and borrows that stable registration.
+    // Stored in the Resource registration or capability implementation. This record only describes
+    // one frame-data method; the Resource/View or registered Handler remains the actual owner.
     struct FrameDataCall final
     {
         cxx::type_info data_type;
         cxx::type_info handler_type;
         cxx::type_info method_type;
+        cxx::type_info storage_type;
         std::size_t root_size = 0;
         std::size_t root_alignment = 1;
         EFrameDataTarget target;
@@ -39,7 +41,8 @@ namespace lux::render
         bool operator==(const FrameDataCall& other) const noexcept
         {
             return data_type == other.data_type && handler_type == other.handler_type &&
-                   method_type == other.method_type && target == other.target &&
+                   method_type == other.method_type && storage_type == other.storage_type && target == other.target &&
+                   root_size == other.root_size && root_alignment == other.root_alignment &&
                    resource_dependency == other.resource_dependency && graph_feature == other.graph_feature &&
                    contribution_key == other.contribution_key && pass_key == other.pass_key;
         }
@@ -56,7 +59,10 @@ namespace lux::render
             constexpr bool storage_target = std::is_lvalue_reference_v<Target> &&
                                             std::is_class_v<std::remove_reference_t<Target>> &&
                                             !std::is_const_v<std::remove_reference_t<Target>>;
-            static_assert(storage_target || std::same_as<Target, FrameParameterTarget> || std::same_as<Target, FrameDrawTarget>);
+            static_assert(
+                storage_target || std::same_as<Target, FrameParameterTarget> ||
+                std::same_as<Target, FrameDrawTarget> || std::same_as<Target, FrameViewTarget>
+            );
             if constexpr (!synchronous)
             {
                 using Environment =
@@ -78,6 +84,7 @@ namespace lux::render
             if constexpr (storage_target)
             {
                 result.target = EFrameDataTarget::STORAGE;
+                result.storage_type = cxx::make_basic_type_info<std::remove_reference_t<Target>>();
                 result.resolve_storage = [](ResourceRegistry& resources,
                                             ResourceInstanceId id) noexcept -> RenderResult<void*>
                 {
@@ -92,6 +99,10 @@ namespace lux::render
             else if constexpr (std::same_as<Target, FrameParameterTarget>)
             {
                 result.target = EFrameDataTarget::PARAMETERS;
+            }
+            else if constexpr (std::same_as<Target, FrameViewTarget>)
+            {
+                result.target = EFrameDataTarget::VIEW;
             }
             else
             {

@@ -22,10 +22,7 @@ namespace lux::material::detail
         }
     } // namespace
 
-    MaterialNodeResult<MaterialCompileGraph> validateMaterialGraph(
-        const MaterialGraph& graph,
-        shadergen::ShaderIR& resources
-    ) noexcept
+    MaterialNodeResult<MaterialCompileGraph> validateMaterialGraph(const MaterialGraph& graph) noexcept
     {
         const bool has_nodes = !graph.nodes().empty();
         const bool exceeds_parameters = graph.param_slots.size() > UINT32_MAX;
@@ -45,11 +42,6 @@ namespace lux::material::detail
         {
             return invalidGraph("invalid material render state");
         }
-        for (const auto& texture : graph.texture_slots)
-        {
-            // A declared slot may have no asset override; runtime uses its neutral white input.
-            resources.textures.push_back({texture.name});
-        }
         for (const auto& parameter : graph.param_slots)
         {
             if (!validType(parameter.type))
@@ -63,11 +55,6 @@ namespace lux::material::detail
                     return invalidGraph("material parameter default is not finite");
                 }
             }
-            shadergen::ParamSlot slot;
-            slot.name = parameter.name;
-            slot.type = static_cast<shadergen::EValueType>(parameter.type);
-            std::copy_n(parameter.dflt, 4, slot.dflt);
-            resources.params.push_back(std::move(slot));
         }
 
         MaterialCompileGraph result;
@@ -90,7 +77,7 @@ namespace lux::material::detail
             {
                 return invalidGraph("material graph contains an invalid node identity", record.id);
             }
-            auto admitted = node->definition->validateBindings(node->payload, resources);
+            auto admitted = node->definition->validateBindings(node->payload, graph);
             if (!admitted)
             {
                 admitted.error().node_id = record.id;

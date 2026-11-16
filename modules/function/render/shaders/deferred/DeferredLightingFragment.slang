@@ -3,7 +3,7 @@
 #include "brdf/brdf_common.glsl"
 #include "brdf/brdf_ggx.glsl"
 #include "brdf/direct_lighting.glsl"
-#include "gbuffer_encode.glsl"
+#include "GBufferEncode.slang"
 #ifdef CLUSTERED
 #include "ClusterLookup.slang"
 #endif

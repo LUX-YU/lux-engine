@@ -32,7 +32,7 @@
         {
             "name": "NRI",
             "url": "https://github.com/LUX-YU/NRI.git",
-            "revision": "4c5cb282a5b0318117dcdabd47d48c0d35ce6bb3",
+            "revision": "5e24ce4d5a50aa9bbc8e1efc113f8b05431dad96",
             "platforms": ["host"]
         },
         {

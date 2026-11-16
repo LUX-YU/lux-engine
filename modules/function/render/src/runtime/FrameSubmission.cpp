@@ -1,4 +1,5 @@
 #include <exec/create.hpp>
+#include <lux/engine/render/resource/view/CameraInputHandler.hpp>
 #include <limits>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
@@ -44,7 +45,7 @@ namespace lux::render
             reject(RenderError{kCommandCancelled});
             return;
         }
-        if (const auto rejection = execution_error_; rejection.type != 0)
+        if (const auto rejection = device_->terminalError(); rejection.type != 0)
         {
             reject(rejection);
             return;
@@ -117,8 +118,27 @@ namespace lux::render
         ++frame_count_;
     }
 
-    RenderResult<BoundFrameData> RenderServer::Impl::resolveFrameData(const FrameDataDestination& destination) noexcept
+    RenderResult<BoundFrameData> RenderServer::Impl::resolveFrameData(const VFrameDataDestination& selected) noexcept
     {
+        if (const auto* resource = std::get_if<ResourceFrameDestination>(&selected))
+        {
+            const auto* factory = resources_->factory(resources_->declarationOf(resource->resource));
+            const bool is_invalid_input = !factory || resource->input >= factory->frame_calls.size();
+            if (is_invalid_input) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            const auto& call = factory->frame_calls[resource->input];
+            auto target = call.resolve_storage(*resources_, resource->resource);
+            if (!target) return cxx::unexpected(target.error());
+            return BoundFrameData{&call, VFrameDataTarget{*target}};
+        }
+        if (const auto* request = std::get_if<ViewFrameDestination>(&selected))
+        {
+            auto* scene = scenes_.find(request->view.scene);
+            auto* view = scene ? scene->views.find(request->view.view) : nullptr;
+            if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            static const auto call = FrameDataCall::declare<CameraInput, &detail::CameraInputHandler::apply>();
+            return BoundFrameData{&call, FrameViewTarget{view->camera, view->camera_revision}};
+        }
+        const auto& destination = std::get<FrameDataDestination>(selected);
         const auto* effect = effects_.find(destination.effect);
         if (!effect || destination.capability >= effect->implementations.size())
         {
@@ -189,7 +209,9 @@ namespace lux::render
                 : RenderResult<void>{};
             for (std::uint32_t i = 0; i < frame.dispatched; ++i)
             {
-                if (const auto* id = std::get_if<AttachmentId>(&frame.input.entries[i].destination.scope))
+                const auto* destination = std::get_if<FrameDataDestination>(&frame.input.entries[i].destination);
+                const auto* id = destination ? std::get_if<AttachmentId>(&destination->scope) : nullptr;
+                if (id)
                 {
                     attachments_.find(*id)->instance->finishDrawListUploads(frame.slot, uploaded);
                 }
@@ -213,10 +235,10 @@ namespace lux::render
         {
             frame.error = RenderError{kFrameResynchronization};
         }
-        if (execution_error_.type != 0)
+        if (device_->terminalError().type != 0)
         {
-            frame.error = execution_error_;
-            frame.outcome_unknown |= execution_error_.type == kOutcomeUnknown;
+            frame.error = device_->terminalError();
+            frame.outcome_unknown |= device_->terminalError().type == kOutcomeUnknown;
         }
         if (frame.error.type == 0)
         {
@@ -240,9 +262,9 @@ namespace lux::render
                 const auto index = phase.first + i;
                 const auto& entry = frame.input.entries[index];
                 ++frame.dispatched;
-                if (execution_error_.type != 0)
+                if (device_->terminalError().type != 0)
                 {
-                    completeFrameData(frame, index, execution_error_);
+                    completeFrameData(frame, index, device_->terminalError());
                     continue;
                 }
                 // Structural commands cannot overtake accepted frames, so admitted binding and block
@@ -290,6 +312,11 @@ namespace lux::render
         if (active_frame_inputs_dirty_)
         {
             rebuildActiveFrameInputs();
+        }
+        if (auto applied = applyViewCameras(); !applied)
+        {
+            frame.error = applied.error();
+            return;
         }
         const bool requires_programs = std::ranges::any_of(
             frame_features_,
@@ -369,15 +396,29 @@ namespace lux::render
 
     void RenderServer::Impl::submitFrameRendering(FrameRecord& frame) noexcept
     {
-        if (execution_error_.type != 0)
-        {
-            // Cleanup is a discrete operation now. An empty data frame cannot hide device failure.
-            frame.error = execution_error_;
-            frame.outcome_unknown |= execution_error_.type == kOutcomeUnknown;
-            failFrame(frame);
-            return;
-        }
-        const auto submitted = submitCurrentFrame(frame.slot);
+        frame.pending = 1;
+        const auto delivery = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
+        stdexec::spawn(
+            stdexec::starts_on(delivery, submitCurrentFrame(frame.slot)) |
+                stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
+                stdexec::upon_stopped(
+                    []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCommandCancelled}); }
+                ) |
+                stdexec::continues_on(delivery) |
+                stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
+                stdexec::then(
+                    [this, &frame](RenderResult<void> result) noexcept
+                    {
+                        frame.pending = 0;
+                        finishFrameRendering(frame, std::move(result));
+                    }
+                ),
+            command_scope_.get_token()
+        );
+    }
+
+    void RenderServer::Impl::finishFrameRendering(FrameRecord& frame, RenderResult<void> submitted) noexcept
+    {
         if (!submitted)
         {
             frame.error = submitted.error();
@@ -397,6 +438,11 @@ namespace lux::render
                     true
                 }
             );
+            return;
+        }
+        if (frame.error.type != 0)
+        {
+            failFrame(frame);
             return;
         }
         if (frames_->inputConsumed(frame.slot))

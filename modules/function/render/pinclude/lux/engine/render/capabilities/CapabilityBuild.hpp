@@ -6,7 +6,7 @@
 
 #include <lux/engine/render/capabilities/BuiltinImplementations.hpp>
 #include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
-#include <lux/engine/render/features/CameraParameters.hpp>
+#include <lux/engine/render/resource/view/CameraParameters.hpp>
 #include <lux/engine/render/inputs/DirectLightInputs.hpp>
 #include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
 #include <lux/engine/render/inputs/RasterInstanceInputs.hpp>

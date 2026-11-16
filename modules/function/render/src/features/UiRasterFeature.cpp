@@ -75,7 +75,7 @@ namespace lux::render
             if (!valid_vertex || !valid_fragment || vertex.push_constants.size() != 1 ||
                 shader.interface.push_constants.size() != 1 ||
                 vertex.push_constants[0].block != shader.interface.push_constants[0].block ||
-                vertex.push_constants[0].size != sizeof(UiDrawParameters))
+                !UiDrawParameters::matchesLayout(vertex.push_constants[0].block))
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
@@ -91,7 +91,7 @@ namespace lux::render
             RasterWork work;
             auto& fixed_work = work.fixed();
             fixed_work.interface.program = *program;
-            fixed_work.interface.parameters.values.resize(sizeof(UiDrawParameters));
+            fixed_work.interface.parameters.values.resize(vertex.push_constants[0].size);
             fixed_work.interface.resources.push_back({"source_images", {context.resource("sampled_images")}});
             fixed_work.interface.samplers.push_back({"source_sampler", {context.addSampler({})}});
             fixed_work.graphics.vertex_bindings = {{0, sizeof(ImDrawVert)}};

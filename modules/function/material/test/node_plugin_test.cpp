@@ -1,7 +1,7 @@
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/material/BuiltinMaterialNodes.hpp>
-#include <lux/engine/material/MaterialLowering.hpp>
 #include <lux/engine/material/MaterialNodeCatalog.hpp>
+#include <lux/engine/material/compiler/MaterialCompiler.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 
 #include "node_plugin_state.hpp"
@@ -44,7 +44,7 @@ int main(int argc, char** argv)
         require(library->is_loaded());
         observed_library = library;
         using Entry = void(MaterialNodeRegistration&, const object::CodeLease&, NodePluginState&) noexcept;
-        const auto entry = library->get_symbol<Entry>("materialNodeRegistration");
+        const auto entry = library->get_symbol<Entry>("materialNodeRegistrationV2");
         require(entry != nullptr);
         MaterialNodeRegistration registration;
         entry(registration, object::CodeLease::plugin(library), state);
@@ -58,10 +58,10 @@ int main(int argc, char** argv)
     }
     require(!observed_library.expired() && !state.unloaded);
     require(type->describePins(payload)->size() == 1);
-    shadergen::ShaderIR ir;
-    auto outputs = type->compile(payload, {}, ir);
-    require(outputs.has_value() && outputs->size() == 1);
-    require(ir.values[outputs->front()].constant[0] == 0.625F);
+    std::string emitted;
+    std::string_view output_names[]{"external_value"};
+    auto outputs = type->emitSlang(payload, {}, output_names, emitted);
+    require(outputs.has_value() && emitted.find("0.625") != std::string::npos);
     type.reset();
     require(!observed_library.expired());
     state.reject_clone = true;
@@ -94,7 +94,7 @@ int main(int argc, char** argv)
         require(library->is_loaded());
         graph_library = library;
         using Entry = void(MaterialNodeRegistration&, const object::CodeLease&, NodePluginState&) noexcept;
-        const auto entry = library->get_symbol<Entry>("materialNodeRegistration");
+        const auto entry = library->get_symbol<Entry>("materialNodeRegistrationV2");
         require(entry != nullptr);
         MaterialNodeRegistration registration;
         entry(registration, object::CodeLease::plugin(library), graph_state);
@@ -127,8 +127,8 @@ int main(int argc, char** argv)
         decoded.emplace(std::move(*restored));
     }
     require(!graph_library.expired() && !graph_state.unloaded);
-    auto lowered = lowerMaterial(source.graph);
-    require(lowered.has_value() && lowered->shader.values.front().constant[0] == 0.625F);
+    auto lowered = generateMaterialSlang(source.graph, lux::rdesc::EMaterialPurpose::GBUFFER);
+    require(lowered.has_value() && lowered->find("0.625") != std::string::npos);
     auto bytes = encodeMaterialSource(source);
     require(bytes.has_value());
     graph_state.reject_clone = true;

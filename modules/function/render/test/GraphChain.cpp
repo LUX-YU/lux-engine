@@ -89,7 +89,7 @@ static std::uint32_t finishSubmissions(DeviceSession& session, FrameExecution& f
     while (frames.submitting() && std::chrono::steady_clock::now() < deadline)
     {
         CHECK(session.progressCompletions());
-        submitted += take(frames.render({}, {})); // Continue the frozen window, not a fresh preparation.
+        submitted += take(runTask(frames.render({}, {}))); // Continue the frozen window, not a fresh preparation.
         if (frames.submitting())
         {
             take(frames.waitForProgress(1'000'000));
@@ -122,7 +122,7 @@ static void checkPixels(
             mapped_buffer
         ) == nri::Result::SUCCESS
     );
-    CHECK(session.queue().recordAndSubmit(
+    CHECK(submitFixtureCommands(session, session.queue(),
         [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
         {
             const nri::BufferBarrierDesc barrier{
@@ -185,7 +185,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
 {
     DeviceOptions options;
     options.multiple_queues = async_compute;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc image{64, 64};
@@ -289,7 +289,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     const std::array instances{instance.get(), second_instance.get()};
     const auto submit = [&](std::span<RenderGraphInstance* const> selected)
     {
-        auto submitted = take(frames->render(selected, {}));
+        auto submitted = take(runTask(frames->render(selected, {})));
         submitted += finishSubmissions(*session, *frames);
         return submitted;
     };
@@ -307,7 +307,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     }
     if (!async_compute)
     {
-        CHECK(take(frames->render(instances, {})) == 0);
+        CHECK(take(runTask(frames->render(instances, {}))) == 0);
     }
     CHECK(session->drain());
     const auto submission_dump_offset = dump.size();
@@ -338,7 +338,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
 
 static void indirectCounts(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, 3));
     RenderGraphBuilder builder;
     const auto commands = take(builder.declareResource({"commands", GraphBufferDesc{128}}));
@@ -415,7 +415,7 @@ static void indirectCounts(Validation& validation)
                 {nullptr, 0, 0, std::as_bytes(std::span(&requested_value, 1)), &parameter_layout, parameter_revision}
             );
         }
-        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
         checkPixels(
             *session,
@@ -432,7 +432,7 @@ static void indirectCounts(Validation& validation)
 
 static void resolveAndCopy(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, 2));
     RenderGraphBuilder builder;
     GraphImageDesc multisample{32, 32};
@@ -481,7 +481,7 @@ static void resolveAndCopy(Validation& validation)
     auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
-    CHECK(take(frames->render(instances, {})) == 1);
+    CHECK(take(runTask(frames->render(instances, {}))) == 1);
     CHECK(session->drain());
     checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 16, 256, {255, 0, 0, 255}, 256);
     instance.reset();
@@ -498,7 +498,7 @@ static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session
         core.CreatePlacedBuffer(session.device(), NriHostReadbackHeap, {size, 0, nri::BufferUsageBits::NONE}, read) ==
         nri::Result::SUCCESS
     );
-    CHECK(session.queue().recordAndSubmit(
+    CHECK(submitFixtureCommands(session, session.queue(),
         [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
         {
             const nri::BufferBarrierDesc transition{
@@ -524,7 +524,7 @@ static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session
 
 static void historySequence(Validation& validation, std::uint32_t fif, bool use_fallback)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
@@ -597,7 +597,7 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     const std::uint8_t enabled_initial = 1;
     CHECK(instance->setConditions({&enabled_initial, 1}));
     CHECK(take(instance->prepareFrame(0)));
-    const auto rejected = session->queue().recordAndSubmit(
+    const auto rejected = submitFixtureCommands(*session, session->queue(),
         [](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void>
         { return lux::cxx::unexpected(RenderError{kDeviceArgument}); }
     );
@@ -623,7 +623,7 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
             }
             ++sequence;
         }
-        const auto submitted = take(frames->render(instances, {}));
+        const auto submitted = take(runTask(frames->render(instances, {})));
         CHECK(submitted == 1);
         const auto slot = instance->progress().last_submitted_slot;
         CHECK(session->drain());
@@ -642,10 +642,10 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     CHECK(instance->setConditions({&enabled_value, 1}));
     for (std::uint32_t i = 0; i < fif; ++i)
     {
-        if (!take(frames->render(instances, {})))
+        if (!take(runTask(frames->render(instances, {}))))
         {
             CHECK(session->drain());
-            CHECK(take(frames->render(instances, {})) == 1);
+            CHECK(take(runTask(frames->render(instances, {}))) == 1);
         }
         ++sequence;
     }
@@ -661,7 +661,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
 {
     DeviceOptions options;
     options.multiple_queues = true;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc image{9, 7, 1, 1, rdesc::ETextureFormat::R32_SFLOAT};
@@ -736,7 +736,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
         {
             // Retire an in-flight old instance while preparing a larger candidate from the same immutable plan.
             const std::array old{instance.get()};
-            CHECK(take(frames->render(old, {})) > 0 && !frames->submitting());
+            CHECK(take(runTask(frames->render(old, {}))) > 0 && !frames->submitting());
             target.width = 17;
             target.height = 11;
             auto replacement = take(OffscreenTarget::create(*session, target, fif));
@@ -747,7 +747,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
             CHECK(session->drain());
         }
         const std::array instances{instance.get()};
-        CHECK(take(frames->render(instances, {})) > 0 && !frames->submitting());
+        CHECK(take(runTask(frames->render(instances, {}))) > 0 && !frames->submitting());
         CHECK(session->drain());
         const auto values = readHistoryResult<128>(
             *session,
@@ -769,7 +769,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
 
 static void conditionalRegion(Validation& validation, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto input = take(builder.declareCondition("choose update"));
@@ -808,7 +808,7 @@ static void conditionalRegion(Validation& validation, std::uint32_t fif)
     for (const std::uint8_t enabled : {0, 1, 0, 1})
     {
         CHECK(instance->setConditions({&enabled, 1}));
-        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
         const auto values = readHistoryResult<4>(
             *session,
@@ -824,7 +824,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
 {
     DeviceOptions options;
     options.multiple_queues = true;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 1));
+    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, 2));
     const auto& core = session->nriCore();
     nri::Buffer* shared = nullptr;
@@ -836,7 +836,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
             shared
         ) == nri::Result::SUCCESS
     );
-    CHECK(session->queue().recordAndSubmit(
+    CHECK(submitFixtureCommands(*session, session->queue(),
         [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
         {
             core.CmdZeroBuffer(command, *shared, 0, 32);
@@ -884,7 +884,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
     }
     const std::array instances{first.get(), second.get()};
     const auto before = session->queue(EQueueRole::COMPUTE).submitted();
-    CHECK(take(frames->render(instances, {})) > 0);
+    CHECK(take(runTask(frames->render(instances, {}))) > 0);
     finishSubmissions(*session, *frames);
     if (&session->queue() != &session->queue(EQueueRole::COMPUTE))
     {
@@ -906,7 +906,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
 
 static void multiQueueHistory(Validation& validation, DeviceOptions options, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 1));
+    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
@@ -964,7 +964,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     {
         const auto before_graphics = session->queue().submitted();
         const auto before_compute = session->queue(EQueueRole::COMPUTE).submitted();
-        CHECK(take(frames->render(instances, {})) != 0);
+        CHECK(take(runTask(frames->render(instances, {}))) != 0);
         if (separate)
         {
             // Every graph batch owns a FIF command buffer: seven batches must no longer
@@ -1005,25 +1005,30 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     }
     if (separate)
     {
-        // Retain partial-submission cancellation coverage without the removed pool bottleneck.
-        // A real in-progress Compute recording lets Graphics accept its prefix, then defers Compute.
-        CHECK(session->queue(EQueueRole::COMPUTE).recordAndSubmit(
-            [&](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void>
-            {
-                CHECK(take(frames->render(instances, {})) != 0);
-                CHECK(frames->submitting());
-                frames->cancelSubmissions(RenderError{kDeviceArgument});
-                CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == 2);
-                CHECK(!frames->submitting() && !first->prepareFrame(0));
-                return {};
-            }
-        ));
+        // Reject Compute before native acceptance after Graphics has accepted the frame prefix.
+        auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+        static decltype(core.QueueSubmit) original_submit;
+        static nri::Queue* rejected_queue;
+        original_submit = core.QueueSubmit;
+        rejected_queue = &session->queue(EQueueRole::COMPUTE).native();
+        core.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& input) noexcept -> nri::Result
+        {
+            return &queue == rejected_queue ? nri::Result::INVALID_ARGUMENT : original_submit(queue, input);
+        };
+        const auto before = session->queue().submitted();
+        const auto rejected = runTask(frames->render(instances, {}));
+        core.QueueSubmit = original_submit;
+        CHECK(!rejected && rejected.error().type == kDeviceFailure);
+        CHECK(rejected.error().args[0] == static_cast<std::uint64_t>(nri::Result::INVALID_ARGUMENT));
+        CHECK(session->queue().submitted() > before);
+        CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == 2);
+        CHECK(!frames->submitting() && !first->prepareFrame(0));
     }
     first.reset();
     second.reset();
     CHECK(session->drain());
     const auto old_serial = session->queue().submitted();
-    CHECK(session->queue().recordAndSubmit(
+    CHECK(submitFixtureCommands(*session, session->queue(),
         [](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void> { return {}; }
     ));
     const auto dependency = take(session->queue().dependency(old_serial, nri::StageBits::ALL));
@@ -1034,7 +1039,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
 
 static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool alias_memory = false)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"red temporary", GraphImageDesc{16, 16}}));
@@ -1086,7 +1091,7 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool a
     const std::array instances{instance.get()};
     for (std::uint32_t i = 0; i < fif + 1; ++i)
     {
-        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
         const auto slot = instance->progress().last_submitted_slot;
         checkPixels(*session, *instance->nativeBuffer(red.index, slot), 16, 0, {255, 0, 0, 255}, 256);
@@ -1099,7 +1104,7 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool a
 static void
 physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, bool ordered, bool alias_memory = false)
 {
-    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"first temporary", GraphBufferDesc{16}}));
@@ -1191,7 +1196,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
         while (instance->progress().count(EExecutionOutcome::EXECUTED) <= frame &&
                std::chrono::steady_clock::now() < deadline)
         {
-            take(frames->render(instances, {}));
+            take(runTask(frames->render(instances, {})));
             CHECK(session->progressCompletions());
             if (instance->progress().count(EExecutionOutcome::EXECUTED) <= frame)
             {
@@ -1206,7 +1211,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     const auto right = readHistoryResult<4>(*session, *instance->nativeBuffer(output_b.index, slot));
     CHECK(std::ranges::all_of(left, [](auto value) { return value == 4; }));
     CHECK(std::ranges::all_of(right, [](auto value) { return value == 8; }));
-    take(frames->render(instances, {}));
+    take(runTask(frames->render(instances, {})));
     finishSubmissions(*session, *frames);
     instance.reset(); // Accepted GPU work retains the unique physical collection through cleanup_scope_.
     CHECK(session->drain());
@@ -1214,7 +1219,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
 
 static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc description{32, 32};
@@ -1254,7 +1259,7 @@ static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
     const std::array instances{instance.get()};
     for (std::uint32_t frame = 0; frame < fif; ++frame)
     {
-        CHECK(take(frames->render(instances, {})) != 0);
+        CHECK(take(runTask(frames->render(instances, {}))) != 0);
         finishSubmissions(*session, *frames);
         CHECK(session->drain());
         checkPixels(*session, *instance->nativeBuffer(output.index, frame), 32, 0, {64, 128, 191, 255}, 256);

@@ -31,15 +31,35 @@ namespace lux::render::detail
 
     DeviceSession::DeviceSession() noexcept : descriptor_table_(*this) {}
 
+    RenderResult<std::vector<nri::AdapterDesc>> DeviceSession::enumerateAdapters() noexcept
+    {
+        std::uint32_t count = 0;
+        auto status = nri::nriEnumerateAdapters(nullptr, count);
+        if (status != nri::Result::SUCCESS)
+        {
+            return cxx::unexpected(nativeError(status));
+        }
+        std::vector<nri::AdapterDesc> adapters(count);
+        if (count)
+        {
+            status = nri::nriEnumerateAdapters(adapters.data(), count);
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+            adapters.resize(count);
+        }
+        return adapters;
+    }
+
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
-        bool validation,
-        std::uint32_t temporary_capacity
+        bool validation
     ) noexcept
     {
         auto result = std::unique_ptr<DeviceSession>(new DeviceSession);
-        auto initialized = DeviceBackend::initialize(*result, options, diagnostic, validation, temporary_capacity);
+        auto initialized = DeviceBackend::initialize(*result, options, diagnostic, validation);
         if (!initialized)
         {
             return cxx::unexpected(initialized.error());
@@ -56,9 +76,16 @@ namespace lux::render::detail
         return native_execution_->scheduler();
     }
 
-    void DeviceSession::adoptNativeOwner() noexcept
+    RenderError DeviceSession::terminalError() const noexcept
     {
-        native_execution_->adoptOwner();
+        for (const auto& queue : physical_queues_)
+        {
+            if (const auto error = queue->terminalError(); error.type)
+            {
+                return error;
+            }
+        }
+        return {};
     }
 
     exec::task<RenderResult<void>> DeviceSession::waitFrontiers(SubmissionFrontiers frontiers) noexcept
@@ -95,9 +122,10 @@ namespace lux::render::detail
 
     void DeviceSession::requireCleanupComplete(const RenderResult<void>& result) noexcept
     {
-        const bool device_lost = !result && result.error().type == kDeviceFailure &&
-                                 result.error().args[0] == static_cast<std::uint32_t>(nri::Result::DEVICE_LOST);
-        if (!result && !device_lost)
+        const bool device_lost = !result && isNativeFailure(result.error(), nri::Result::DEVICE_LOST);
+        const bool retired_unknown =
+            !result && result.error().type == kOutcomeUnknown && terminalError().type == kOutcomeUnknown;
+        if (!result && !device_lost && !retired_unknown)
         {
             std::terminate();
         }
@@ -146,6 +174,10 @@ namespace lux::render::detail
         for (const auto& queue : physical_queues_)
         {
             auto result = queue->waitIdle(UINT64_MAX);
+            if (!result && queue->idle())
+            {
+                continue;
+            }
             if (!failure)
             {
                 if (!result)
@@ -176,7 +208,10 @@ namespace lux::render::detail
 
     bool DeviceSession::pendingGpuWork() const noexcept
     {
-        return std::ranges::any_of(physical_queues_, [](const auto& queue) { return !queue->idle(); });
+        return std::ranges::any_of(
+            physical_queues_,
+            [](const auto& queue) { return !queue->terminalError().type && queue->completed() < queue->submitted(); }
+        );
     }
 
     RenderResult<void> DeviceSession::progressCompletions() noexcept

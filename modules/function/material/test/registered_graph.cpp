@@ -1,6 +1,6 @@
 #include "MaterialTest.hpp"
 
-#include <lux/engine/material/MaterialLowering.hpp>
+#include <lux/engine/material/compiler/MaterialCompiler.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 
 #include <array>
@@ -56,18 +56,16 @@ namespace
             }
             return pins;
         };
-        result.compile = [](const MaterialNodePayload& payload, std::span<const std::uint32_t>, shadergen::ShaderIR& ir
-                         ) noexcept -> MaterialNodeRegistration::ShaderResult
+        result.emit_slang = [](const MaterialNodePayload&,
+                               std::span<const std::string_view>,
+                               std::span<const std::string_view> outputs,
+                               std::string& destination) noexcept -> MaterialNodeResult<void>
         {
-            std::vector<std::uint32_t> outputs;
-            for (unsigned index = 0; index != payload.get<Outputs>()->count; ++index)
+            for (std::size_t index = 0; index < outputs.size(); ++index)
             {
-                outputs.push_back(static_cast<std::uint32_t>(ir.values.size()));
-                shadergen::ShaderIRValue value{shadergen::EOp::CONSTANT, shadergen::EValueType::FLOAT};
-                value.constant[0] = static_cast<float>(index + 1) * 0.125F;
-                ir.values.push_back(value);
+                destination += std::string(outputs[index]) + " = " + std::to_string(float(index + 1) * 0.125F) + ";\n";
             }
-            return outputs;
+            return {};
         };
         result.encode = [](const MaterialNodePayload& payload) noexcept -> MaterialNodeResult<std::string>
         { return std::to_string(payload.get<Outputs>()->count); };
@@ -109,17 +107,17 @@ namespace
         const auto surface = material_test::add(source.graph, MaterialOutputSurface{});
         const auto output = source.graph.pinId(id, graph::PinSemanticId{103});
         check(source.graph.connect(output, material_test::input(source.graph, surface, 3)).has_value());
-        auto ir = lowerMaterial(source.graph);
-        check(ir.has_value() && ir->shader.values.size() == 4);
-        check(ir->shader.outputs[3].value_id == 3 && ir->shader.values[3].constant[0] == 0.5F);
+        auto ir = generateMaterialSlang(source.graph, lux::rdesc::EMaterialPurpose::GBUFFER);
+        check(ir.has_value());
+        check(ir->find("0.500000") != std::string::npos);
         const auto encoded = encodeMaterialSource(source);
         check(encoded.has_value() && encoded->find("external.multiple.v1") != std::string::npos);
         auto absent = decodeMaterialSource(*encoded);
         check(!absent && absent.error().code == EMaterialSourceError::UNKNOWN_NODE_KIND);
         auto decoded = decodeMaterialSource(*encoded, catalog);
         check(decoded.has_value() && *encodeMaterialSource(*decoded) == *encoded);
-        auto decoded_ir = lowerMaterial(decoded->graph);
-        check(decoded_ir.has_value() && decoded_ir->combined_fingerprint == ir->combined_fingerprint);
+        auto decoded_ir = generateMaterialSlang(decoded->graph, lux::rdesc::EMaterialPurpose::GBUFFER);
+        check(decoded_ir.has_value() && *decoded_ir == *ir);
         auto wrong_version = *encoded;
         const auto version = wrong_version.find("type_version = 1");
         check(version != std::string::npos);

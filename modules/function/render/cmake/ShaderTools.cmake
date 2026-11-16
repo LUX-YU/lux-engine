@@ -47,6 +47,7 @@ function(lux_render_shader output source stage symbol)
         "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang"
         "${render_shader_root}/shaders/*.slang"
         "${render_shader_root}/../material/shaders/*.glsl"
+        "${render_shader_root}/../material/shaders/*.slang"
     )
     add_custom_command(
         OUTPUT "${output}"

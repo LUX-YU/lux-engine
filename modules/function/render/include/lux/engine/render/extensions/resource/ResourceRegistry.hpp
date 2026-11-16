@@ -111,7 +111,7 @@ namespace lux::render
         }
 
         // Non-owning boundary lookup; valid until its ResourceSet removes the instance.
-        [[nodiscard]] void* storageInstance(ResourceInstanceId id) const noexcept;
+        [[nodiscard]] void* resourceInstance(ResourceInstanceId id) const noexcept;
 
         [[nodiscard]] std::size_t size() const noexcept
         {

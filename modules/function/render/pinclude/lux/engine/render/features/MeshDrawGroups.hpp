@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
+#include <lux/engine/render/resource/instance/RasterMeshInstanceStorage.hpp>
 #include <map>
 
 namespace lux::render::detail
@@ -81,7 +81,6 @@ namespace lux::render::detail
             std::array<nri::Buffer*, 6> buffers{};
             std::array<ResourceUpdate, 6> updates;
             std::uint64_t revision = 0, pending_revision = 0;
-            std::size_t uploaded = 0, pending = 0;
         };
 
         MeshDrawGroups(DeviceSession&, FrameExecution&, ResourceRegistry&, MeshDrawGroupsConfiguration) noexcept;

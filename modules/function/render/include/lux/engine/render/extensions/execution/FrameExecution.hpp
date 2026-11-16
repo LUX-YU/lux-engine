@@ -34,7 +34,7 @@ namespace lux::render::detail
         [[nodiscard]] bool inputConsumed(std::uint32_t slot) const noexcept;
         [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
 
-        [[nodiscard]] RenderResult<std::uint32_t> render(
+        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> render(
             std::span<RenderGraphInstance* const>,
             std::span<const StorageFrameUse>,
             std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features = {}
@@ -110,6 +110,7 @@ namespace lux::render::detail
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
             std::uint64_t preparation_serial = 0;
+            std::uint64_t preparation_command_serial = 0;
             std::vector<InstanceExecution> instances;
             std::vector<BatchExecution> batches;
             std::vector<BatchDependency> dependencies;
@@ -137,7 +138,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareDrawLists(std::span<RenderGraphInstance* const>) noexcept;
         void collectFeatureCopies(std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> submitPreparationCopies(
+        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparationCopies(
             std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>,
             bool include_features
         ) noexcept;
@@ -148,12 +149,14 @@ namespace lux::render::detail
         void selectReadyBatches(FrameSlot&, std::uint32_t queue) noexcept;
         void acceptBatch(FrameSlot&, std::uint32_t batch, std::uint64_t serial) noexcept;
         [[nodiscard]] static bool laterBatch(const FrameSlot&, std::uint32_t, std::uint32_t) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> advanceSubmissions() noexcept;
+        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> advanceSubmissions() noexcept;
         [[nodiscard]] std::size_t queueIndex(const SubmissionQueue&) const noexcept;
 
         DeviceSession& device_;
         ResourceUploader* uploads_;
         bool owns_write_window_ = false;
+        bool rendering_ = false;
+        std::optional<RenderError> cancellation_;
         std::array<FrameSlot, 3> frames_;
         std::uint32_t frame_count_;
         std::uint32_t next_frame_ = 0;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lux/engine/description/Material.hpp>
-#include <lux/engine/material/MaterialIR.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/visibility.h>
@@ -13,20 +12,10 @@
 #include <memory>
 #include <string_view>
 #include <vector>
-#include <variant>
 
 namespace lux::asset
 {
-    // The generic source owns asset references. Target layouts remain in the cooked alternative.
-    struct MaterialIRDescription final
-    {
-        material::MaterialIR ir;
-        std::vector<AssetId> texture_slot_ids;
-    };
-
-    using VMaterialAssetData = std::variant<rdesc::MaterialDescription, MaterialIRDescription>;
-
-    class LUX_ASSET_PUBLIC MaterialAsset final : public TAsset<VMaterialAssetData>
+    class LUX_ASSET_PUBLIC MaterialAsset final : public TAsset<rdesc::MaterialDescription>
     {
     public:
         inline static constexpr std::string_view canonical_name{"lux.material"};
@@ -36,14 +25,14 @@ namespace lux::asset
 
         [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure> create(
             AssetInfo info,
-            std::shared_ptr<const VMaterialAssetData> data,
+            std::shared_ptr<const rdesc::MaterialDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
         ) noexcept;
 
     private:
         MaterialAsset(
             AssetInfo info,
-            std::shared_ptr<const VMaterialAssetData> data,
+            std::shared_ptr<const rdesc::MaterialDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary
         ) noexcept;
     };
@@ -73,16 +62,11 @@ namespace lux::asset
 
     template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<MaterialAsset> final
     {
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure> decode(
-            AssetId requested,
-            lux::cxx::SharedBytes<> image,
-            const AssetDecodeLimits& limits
-        ) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure>
+        decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
-            const MaterialAsset& asset,
-            const AssetEncodeLimits& limits
-        ) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
+        encode(const MaterialAsset& asset, const AssetEncodeLimits& limits) noexcept;
 
         // Synchronous borrowing encode; no copy of the payload or artificial shared owner.
         [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
@@ -98,10 +82,8 @@ namespace lux::asset
         [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialInstanceAsset>, AssetDecodeFailure>
         decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
-            const MaterialInstanceAsset& asset,
-            const AssetEncodeLimits& limits
-        ) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
+        encode(const MaterialInstanceAsset& asset, const AssetEncodeLimits& limits) noexcept;
 
         // Synchronous borrowing encode; no copy of the payload or artificial shared owner.
         [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(

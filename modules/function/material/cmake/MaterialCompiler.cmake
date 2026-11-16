@@ -4,12 +4,12 @@ generate_visibility_header(
     GENERATE_FILE_PATH lux/engine/material/compiler/visibility.h
 )
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_types.glsl" material_types_source)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer_encode.glsl" gbuffer_source)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/MaterialTypes.slang" material_types_source)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/GBufferEncode.slang" gbuffer_source)
 set_property(
     DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_types.glsl"
-    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer_encode.glsl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/MaterialTypes.slang"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/GBufferEncode.slang"
 )
 
 configure_file(
@@ -22,7 +22,7 @@ add_component(
     COMPONENT_NAME material_compiler
     NAMESPACE lux::engine::function
     OUTPUT_NAME lux_engine_material_compiler
-    SOURCE_FILES src/compiler/MaterialCompiler.cpp src/compiler/SlangBackend.cpp
+    SOURCE_FILES src/compiler/MaterialCompiler.cpp src/compiler/SlangSource.cpp src/MaterialValidation.cpp
 )
 
 component_include_directories(
@@ -36,19 +36,18 @@ target_compile_definitions(material_compiler PRIVATE LUX_MATERIAL_COMPILER_LIBRA
 target_compile_features(material_compiler PUBLIC cxx_std_20)
 target_link_libraries(
     material_compiler
-    PUBLIC lux::engine::function::material_ir lux::engine::resource::identity lux::cxx::compile_time
-    PRIVATE lux::engine::resource::shader_compiler
+    PUBLIC lux::engine::function::material_graph lux::engine::resource::identity lux::cxx::compile_time
+    PUBLIC lux::engine::resource::shader_compiler
 )
 
 component_add_transitive_commands(
     material_compiler
-    "find_package(lux-engine-function REQUIRED COMPONENTS material_ir)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS material_graph)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity shader_compiler)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 
-# The command-line authoring adapter is the only target here that links the graph and asset codecs.
-# deriveMaterial itself remains an IR-only compiler API.
+# Only the command-line adapter links the cooked asset codec.
 add_executable(lux_material_tool src/compiler/MaterialTool.cpp)
 target_link_libraries(lux_material_tool PRIVATE material_graph material_compiler lux::engine::resource::asset)
 install(TARGETS lux_material_tool RUNTIME DESTINATION bin COMPONENT lux_engine_function)

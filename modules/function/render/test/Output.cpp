@@ -19,7 +19,7 @@ using namespace foundation_test;
 
 static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer& output, std::uint64_t bytes)
 {
-    CHECK(session.queue().recordAndSubmit(
+    CHECK(submitFixtureCommands(session, session.queue(),
         [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
         {
             const nri::BufferBarrierDesc source_ready{
@@ -36,7 +36,7 @@ static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer&
 
 static void graphOutput(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, 3));
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;
@@ -96,10 +96,10 @@ static void graphOutput(Validation& validation)
         session->nriCore().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
         nri::Result::SUCCESS
     );
-    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
-    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
-    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
-    CHECK(take(frames->render(contexts, storage_preparation)) == 0);
+    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
+    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
+    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
+    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 0);
     CHECK(session->drain());
     for (auto id : {pixels, copied})
     {
@@ -124,7 +124,7 @@ static void graphOutput(Validation& validation)
         }
         session->nriCore().UnmapBuffer(*output);
     }
-    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
+    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
     execution.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
@@ -134,7 +134,7 @@ static void graphOutput(Validation& validation)
 
 static void importedIdentityReuse(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     auto frames = take(FrameExecution::create(*session, nullptr, 1));
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
@@ -205,7 +205,7 @@ static void importedIdentityReuse(Validation& validation)
     const auto render = [&]()
     {
         const std::array instances{&*instance};
-        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(!frames->submitting());
         CHECK(session->drain());
     };
@@ -237,16 +237,16 @@ static void importedIdentityReuse(Validation& validation)
     std::puts("IMPORTED IDENTITY PASS: same address rebuilt; unchanged inputs reused dependencies");
 }
 
-static void deviceLostDelivery(Validation& validation, bool enable_validation = true)
+static void deviceLostDelivery(Validation& validation, bool enable_validation = nativeValidationEnabled())
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), enable_validation, 2));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), enable_validation));
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     nri::Buffer* buffer = nullptr;
     const nri::BufferDesc description{16, 0, nri::BufferUsageBits::NONE};
     CHECK(core.CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, buffer) == nri::Result::SUCCESS);
     auto& queue = session->queue();
     const auto record = [](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void> { return {}; };
-    CHECK(queue.recordAndSubmit(record));
+    CHECK(submitFixtureCommands(*session, queue, record));
     CHECK(session->drain()); // No live GPU access is exposed to a simulated loss on healthy hardware.
     RenderError delivered;
     SubmissionCallback callback;
@@ -258,7 +258,7 @@ static void deviceLostDelivery(Validation& validation, bool enable_validation = 
     const auto submit = core.QueueSubmit;
     core.QueueSubmit = [](nri::Queue&, const nri::QueueSubmitDesc&) noexcept -> nri::Result
     { return nri::Result::DEVICE_LOST; };
-    const auto rejected = queue.recordAndSubmit(record);
+    const auto rejected = submitFixtureCommands(*session, queue, record);
     core.QueueSubmit = submit;
     CHECK(!rejected && session->deviceLost());
     CHECK(rejected.error().args[0] == static_cast<std::uint32_t>(nri::Result::DEVICE_LOST));
@@ -279,7 +279,7 @@ static void deviceLostDelivery(Validation& validation, bool enable_validation = 
 
 static void importedExtentContracts(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 1));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
     const auto& core = session->nriCore();
     for (const bool resolve : {false, true})
     {

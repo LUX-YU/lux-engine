@@ -1,55 +1,30 @@
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 
+#include <algorithm>
 #include <limits>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <optional>
 #include <vector>
 
 namespace lux::render::detail
 {
-    SubmissionQueue::SubmissionQueue(
-        DeviceSession& session,
-        nri::Queue& queue,
-        QueueProperties properties,
-        std::uint32_t temporary_capacity
-    ) noexcept
-        : session_(session), queue_(queue), properties_(properties), batches_(temporary_capacity)
+    SubmissionQueue::SubmissionQueue(DeviceSession& session, nri::Queue& queue, QueueProperties properties) noexcept
+        : session_(session), queue_(queue), properties_(properties)
     {
     }
 
-    RenderResult<std::unique_ptr<SubmissionQueue>> SubmissionQueue::create(
-        DeviceSession& session,
-        nri::Queue& queue,
-        QueueProperties properties,
-        std::uint32_t temporary_capacity
-    ) noexcept
+    RenderResult<std::unique_ptr<SubmissionQueue>>
+    SubmissionQueue::create(DeviceSession& session, nri::Queue& queue, QueueProperties properties) noexcept
     {
-        if (temporary_capacity == 0)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        auto result_queue = std::unique_ptr<SubmissionQueue>(
-            new SubmissionQueue(session, queue, properties, temporary_capacity)
-        );
+        auto result_queue = std::unique_ptr<SubmissionQueue>(new SubmissionQueue(session, queue, properties));
         const auto& nri_core = session.nriCore();
         auto result = nri_core.CreateFence(session.device(), nri::FenceDesc{}, result_queue->fence_);
         if (result != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
-        }
-        for (auto& batch : result_queue->batches_)
-        {
-            result = nri_core.CreateCommandAllocator(queue, batch.allocator);
-            if (result != nri::Result::SUCCESS)
-            {
-                return cxx::unexpected(nativeError(result));
-            }
-            result = nri_core.CreateCommandBuffer(*batch.allocator, batch.command);
-            if (result != nri::Result::SUCCESS)
-            {
-                return cxx::unexpected(nativeError(result));
-            }
         }
         return result_queue;
     }
@@ -60,19 +35,12 @@ namespace lux::render::detail
         {
             std::terminate();
         }
-        completePending();
-        const auto& nri_core = session_.nriCore();
-        for (auto& batch : batches_)
+        // Destruction is not a hidden wait. The owning scope must settle CPU/native and GPU use first.
+        if (submitting_ || (!idle() && !deviceLost()))
         {
-            if (batch.command)
-            {
-                nri_core.DestroyCommandBuffer(batch.command);
-            }
-            if (batch.allocator)
-            {
-                nri_core.DestroyCommandAllocator(batch.allocator);
-            }
+            std::terminate();
         }
+        const auto& nri_core = session_.nriCore();
         if (fence_)
         {
             nri_core.DestroyFence(fence_);
@@ -99,6 +67,15 @@ namespace lux::render::detail
         void* user
     ) noexcept
     {
+        if (callback.armed_)
+        {
+            std::terminate();
+        }
+        if (serial > submitted_)
+        {
+            function(user, cxx::unexpected(RenderError{kDeviceArgument}));
+            return;
+        }
         callback.callback_ = function;
         callback.user_ = user;
         callback.serial_ = serial;
@@ -160,22 +137,6 @@ namespace lux::render::detail
         }
     }
 
-    void SubmissionQueue::completePending() noexcept
-    {
-        if (recording_)
-        {
-            std::terminate();
-        }
-        if (!deviceLost() && !idle())
-        {
-            auto result = waitIdle(UINT64_MAX);
-            if (!result || !*result)
-            {
-                std::terminate();
-            }
-        }
-    }
-
     RenderError SubmissionQueue::failure(nri::Result result) noexcept
     {
         const auto error = nativeError(result);
@@ -186,99 +147,92 @@ namespace lux::render::detail
         return error;
     }
 
-    RenderResult<nri::CommandBuffer*> SubmissionQueue::begin(std::uint32_t& temporary_slot) noexcept
-    {
-        if (terminal_)
-        {
-            return cxx::unexpected(*terminal_);
-        }
-        if (recording_)
-        {
-            return cxx::unexpected(RenderError{kDeviceBusy});
-        }
-        // The device progress phase observes completion and dispatches dependent reuse callbacks.
-        // Refreshing the frontier here could reuse a query temporary_slot before its completed measurement
-        // has been consumed. Recording never advances or re-enters that phase.
-        if (!hasCapacity())
-        {
-            return cxx::unexpected(RenderError{kDeviceCapacity});
-        }
-        temporary_slot = next_batch_;
-        const auto& batch = batches_[temporary_slot];
-        auto result = session_.resetCommandAllocator(*batch.allocator);
-        if (result != nri::Result::SUCCESS)
-        {
-            return cxx::unexpected(failure(result));
-        }
-        result = session_.nriCore().BeginCommandBuffer(*batch.command, nullptr);
-        if (result != nri::Result::SUCCESS)
-        {
-            return cxx::unexpected(failure(result));
-        }
-        recording_ = true;
-        return batch.command;
-    }
-
-    bool SubmissionQueue::hasCapacity() const noexcept
-    {
-        return batches_[next_batch_].serial <= completed_;
-    }
-
-    RenderResult<void> SubmissionQueue::finishRecording() noexcept
-    {
-        const auto temporary_slot = next_batch_;
-        const auto result = session_.nriCore().EndCommandBuffer(*batches_[temporary_slot].command);
-        if (result != nri::Result::SUCCESS)
-        {
-            return cxx::unexpected(failure(result));
-        }
-        return {};
-    }
-
-    RenderResult<void> SubmissionQueue::submit(
+    exec::task<RenderResult<std::uint64_t>> SubmissionQueue::submit(
         std::span<nri::CommandBuffer* const> commands,
         std::span<const nri::FenceSubmitDesc> waits,
         std::span<const nri::FenceSubmitDesc> signals
     ) noexcept
     {
+        const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
         if (terminal_)
         {
-            return cxx::unexpected(*terminal_);
+            co_return cxx::unexpected(*terminal_);
         }
-        if (submitted_ == std::numeric_limits<std::uint64_t>::max())
+        if (submitting_)
         {
-            return cxx::unexpected(RenderError{kDeviceCapacity});
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        const nri::FenceSubmitDesc signal{fence_, submitted_ + 1, nri::StageBits::ALL};
-        nri::QueueSubmitDesc submission{};
-        submission.commandBuffers = commands.data();
-        submission.commandBufferNum = static_cast<std::uint32_t>(commands.size());
-        submission.waitFences = waits.data();
-        submission.waitFenceNum = static_cast<std::uint32_t>(waits.size());
-        if (signals.empty())
+        const bool is_invalid_count =
+            commands.size() > UINT32_MAX || waits.size() > UINT32_MAX || signals.size() >= UINT32_MAX;
+        if (is_invalid_count)
         {
-            submission.signalFences = &signal;
-            submission.signalFenceNum = 1;
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        else
+        if (submitted_ == UINT64_MAX)
         {
-            submission_signals_.assign(signals.begin(), signals.end());
-            submission_signals_.push_back(signal);
-            submission.signalFences = submission_signals_.data();
-            submission.signalFenceNum = static_cast<std::uint32_t>(submission_signals_.size());
+            co_return cxx::unexpected(RenderError{kDeviceCapacity});
         }
-        const auto result = session_.nriCore().QueueSubmit(queue_, submission);
-        if (result != nri::Result::SUCCESS)
+        submitting_ = true;
+        cxx::scope_exit release([this]() noexcept { submitting_ = false; });
+        const auto serial = submitted_ + 1;
+        std::vector<nri::CommandBuffer*> frozen_commands(commands.begin(), commands.end());
+        std::vector<nri::FenceSubmitDesc> frozen_waits(waits.begin(), waits.end());
+        std::vector<nri::FenceSubmitDesc> frozen_signals(signals.begin(), signals.end());
+        frozen_signals.push_back({fence_, serial, nri::StageBits::ALL});
+        const nri::QueueSubmitDesc submission{
+            frozen_waits.data(),
+            static_cast<std::uint32_t>(frozen_waits.size()),
+            frozen_commands.data(),
+            static_cast<std::uint32_t>(frozen_commands.size()),
+            frozen_signals.data(),
+            static_cast<std::uint32_t>(frozen_signals.size())
+        };
+        // Device/queue facts and operation-owned frozen arrays only; no business state on the worker.
+        auto result = co_await (
+            stdexec::schedule(session_.nativeScheduler()) |
+            stdexec::then(
+                [core = &session_.nriCore(), queue = &queue_, submission]() noexcept -> RenderResult<void>
+                {
+                    const auto result = core->QueueSubmit(*queue, submission);
+                    if (result == nri::Result::SUCCESS)
+                    {
+                        return {};
+                    }
+                    const bool rejected = result == nri::Result::INVALID_ARGUMENT ||
+                                          result == nri::Result::UNSUPPORTED || result == nri::Result::OUT_OF_MEMORY;
+                    if (rejected || result == nri::Result::DEVICE_LOST)
+                    {
+                        return cxx::unexpected(nativeError(result));
+                    }
+                    // Exceptional uncertain acceptance: retire native payloads before returning UNKNOWN.
+                    // This is never the ordinary submit/reuse path, and never fabricates a completed serial.
+                    const auto retired = core->QueueWaitIdle(queue);
+                    if (retired != nri::Result::SUCCESS && retired != nri::Result::DEVICE_LOST)
+                    {
+                        std::terminate();
+                    }
+                    return cxx::unexpected(RenderError{kOutcomeUnknown, {static_cast<std::uint64_t>(result)}});
+                }
+            ) |
+            stdexec::upon_error(NativeScheduleFailure<void>{}) |
+            stdexec::upon_stopped(
+                []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kNativeExecutionClosed}); }
+            ) |
+            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<void>{})
+        );
+        if (!result)
         {
-            return cxx::unexpected(failure(result));
+            const auto error = result.error();
+            const bool lost = isNativeFailure(error, nri::Result::DEVICE_LOST);
+            if (lost || error.type == kOutcomeUnknown)
+            {
+                terminal_ = error;
+                terminal_retired_ = true;
+            }
+            co_return cxx::unexpected(error);
         }
-        ++submitted_;
-        return {};
-    }
-
-    void SubmissionQueue::cancelRecording() noexcept
-    {
-        recording_ = false;
+        submitted_ = serial;
+        co_return serial;
     }
 
     RenderResult<void> SubmissionQueue::poll() noexcept
@@ -297,7 +251,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(failure(result));
         }
-        completed_ = value;
+        completed_ = std::min(value, submitted_); // A native signal may precede Server adoption.
         return {};
     }
 
@@ -329,6 +283,10 @@ namespace lux::render::detail
 
     RenderResult<bool> SubmissionQueue::waitIdle(std::uint64_t timeout_ns) noexcept
     {
+        if (submitting_)
+        {
+            return false;
+        }
         return wait(submitted_, timeout_ns);
     }
 
@@ -356,11 +314,6 @@ namespace lux::render::detail
         return CompletionSender{*this, serial};
     }
 
-    SubmissionQueue::CompletionSender SubmissionQueue::whenAvailable() noexcept
-    {
-        return CompletionSender{*this, batches_[next_batch_].serial};
-    }
-
     std::uint64_t SubmissionQueue::completed() const noexcept
     {
         return completed_;
@@ -371,24 +324,14 @@ namespace lux::render::detail
         return submitted_;
     }
 
-    std::uint32_t SubmissionQueue::temporaryCapacity() const noexcept
-    {
-        return static_cast<std::uint32_t>(batches_.size());
-    }
-
-    bool SubmissionQueue::recording() const noexcept
-    {
-        return recording_;
-    }
-
     bool SubmissionQueue::idle() const noexcept
     {
-        return completed_ == submitted_;
+        return !submitting_ && (terminal_retired_ || completed_ == submitted_);
     }
 
     bool SubmissionQueue::deviceLost() const noexcept
     {
-        return terminal_.has_value();
+        return terminal_ && isNativeFailure(*terminal_, nri::Result::DEVICE_LOST);
     }
 
     nri::Queue& SubmissionQueue::native() const noexcept

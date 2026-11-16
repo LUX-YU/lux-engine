@@ -57,11 +57,12 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC DeviceSession final
     {
     public:
+        // Cold query values; an explicit DeviceOptions index uses this same NRI enumeration order.
+        [[nodiscard]] static RenderResult<std::vector<nri::AdapterDesc>> enumerateAdapters() noexcept;
         [[nodiscard]] static RenderResult<std::unique_ptr<DeviceSession>> create(
             const DeviceOptions& options,
             const nri::CallbackInterface& diagnostic,
-            bool validation = false,
-            std::uint32_t temporary_capacity = 3
+            bool validation = false
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
@@ -72,7 +73,7 @@ namespace lux::render::detail
         // Shared by all logical queue roles in this Session's native host domain. Start only
         // from the control owner; CPU workers must first deliver back to that owner.
         [[nodiscard]] cxx::execution::ManualContext::Scheduler nativeScheduler() noexcept;
-        void adoptNativeOwner() noexcept;
+        [[nodiscard]] RenderError terminalError() const noexcept;
         // External Context/Storage owners and upload producers must be settled before final close.
         void close() noexcept;
 
@@ -98,7 +99,7 @@ namespace lux::render::detail
         // Explicit accepted values, indexed by physical queue. Zero means no dependency.
         template <class Release> void deferRelease(SubmissionFrontiers frontiers, Release release) noexcept
         {
-            auto complete = [release = std::move(release)](RenderResult<void> result) mutable noexcept
+            auto complete = [this, release = std::move(release)](RenderResult<void> result) mutable noexcept
             {
                 requireCleanupComplete(result);
                 std::invoke(release);
@@ -248,7 +249,7 @@ namespace lux::render::detail
 
     private:
         friend struct DeviceBackend;
-        static void requireCleanupComplete(const RenderResult<void>&) noexcept;
+        void requireCleanupComplete(const RenderResult<void>&) noexcept;
         DeviceSession() noexcept;
         void releaseBackendData() noexcept;
         struct BackendData;

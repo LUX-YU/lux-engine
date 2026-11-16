@@ -27,6 +27,8 @@ namespace lux::render::runtime_detail
     {
         ResourceSet storages;
         std::vector<AttachmentId> attachments;
+        CameraInput camera;
+        std::uint64_t camera_revision = 1;
 
         explicit RenderView(ResourceRegistry& registry, ResourceSet& parent) noexcept
             : storages(registry, EResourceDomain::VIEW, &parent) {}
@@ -91,6 +93,7 @@ namespace lux::render::runtime_detail
         std::vector<SamplerDescription> samplers;
         std::vector<AttachmentId> attachments;
         std::vector<ParameterProjection> parameter_projections;
+        std::vector<ParameterProjection> view_projections;
 
         struct Implementation final
         {
@@ -150,6 +153,7 @@ namespace lux::render::runtime_detail
             const void* argument,
             std::uint32_t frame_count
         ) noexcept;
+        std::uint64_t camera_revision = 0;
         std::size_t view_position = 0;
         std::size_t effect_position = 0;
     };

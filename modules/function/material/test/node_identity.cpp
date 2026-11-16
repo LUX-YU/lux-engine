@@ -1,5 +1,5 @@
 #include "MaterialTest.hpp"
-#include <lux/engine/material/MaterialLowering.hpp>
+#include <lux/engine/material/compiler/MaterialCompiler.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 
 #include <array>
@@ -123,7 +123,7 @@ int main()
     auto rejected_source = validateMaterialSource(source);
     require(!rejected_source && rejected_source.error().code == EMaterialSourceError::INVALID_VALUE);
     require(rejected_source.error().node == id && rejected_source.error().pin == original_pin);
-    auto rejected_ir = lowerMaterial(graph);
+    auto rejected_ir = generateMaterialSlang(graph, lux::rdesc::EMaterialPurpose::GBUFFER);
     require(!rejected_ir && rejected_ir.error().code == EMaterialCompileError::INVALID_GRAPH);
     require(rejected_ir.error().node_id == id);
     graph.pin(original_pin)->constant[0] = 0;

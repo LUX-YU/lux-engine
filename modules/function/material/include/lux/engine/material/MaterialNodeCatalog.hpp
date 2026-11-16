@@ -2,7 +2,6 @@
 
 #include <lux/engine/function/graph/GraphNodeTypeIdentity.hpp>
 #include <lux/engine/material/MaterialNodePayload.hpp>
-#include <lux/engine/material/ShaderIR.hpp>
 #include <lux/engine/material/graph/Types.hpp>
 
 #include <array>
@@ -12,6 +11,9 @@
 
 namespace lux::material
 {
+    class MaterialGraph;
+    inline constexpr std::uint32_t kMaterialNodeAbi = 2;
+
     enum class EMaterialNodeRole : std::uint8_t
     {
         VALUE,
@@ -33,21 +35,24 @@ namespace lux::material
         EValueType type{EValueType::FLOAT};
         std::array<float, 4> default_value{};
         // Input demand is independent of authoring pin existence. UNUSED is never evaluated;
-        // CONNECTED_VALUE leaves an unconnected input as kNoValue instead of creating a constant.
+        // CONNECTED_VALUE leaves an unconnected input as an empty expression instead of creating a constant.
         EMaterialInputUse input_use{EMaterialInputUse::VALUE};
     };
 
     struct MaterialNodeRegistration final
     {
         using PinResult = MaterialNodeResult<std::vector<MaterialPinDeclaration>>;
-        using ShaderResult = MaterialNodeResult<std::vector<std::uint32_t>>;
         using Create = MaterialNodeResult<MaterialNodePayload> (*)(const object::CodeLease&) noexcept;
         using DescribePins = PinResult (*)(const MaterialNodePayload&) noexcept;
         using Validate = MaterialNodeResult<void> (*)(const MaterialNodePayload&) noexcept;
         using ValidateBindings =
-            MaterialNodeResult<void> (*)(const MaterialNodePayload&, const shadergen::ShaderIR&) noexcept;
-        using Compile =
-            ShaderResult (*)(const MaterialNodePayload&, std::span<const std::uint32_t>, shadergen::ShaderIR&) noexcept;
+            MaterialNodeResult<void> (*)(const MaterialNodePayload&, const MaterialGraph&) noexcept;
+        using EmitSlang = MaterialNodeResult<void> (*)(
+            const MaterialNodePayload&,
+            std::span<const std::string_view> inputs,
+            std::span<const std::string_view> outputs,
+            std::string& destination
+        ) noexcept;
         using Encode = MaterialNodeResult<std::string> (*)(const MaterialNodePayload&) noexcept;
         using Decode = MaterialNodeResult<MaterialNodePayload> (*)(std::string_view, const object::CodeLease&) noexcept;
 
@@ -60,7 +65,7 @@ namespace lux::material
         DescribePins describe_pins{};
         // Intrinsic compilation diagnostics; an editable draft need not pass this check.
         Validate validate{};
-        Compile compile{};
+        EmitSlang emit_slang{};
         EMaterialNodeRole role{EMaterialNodeRole::VALUE};
         // Optional resource admission, including disconnected nodes. Does not emit shader expressions.
         ValidateBindings validate_bindings{};
@@ -84,20 +89,22 @@ namespace lux::material
         [[nodiscard]] EMaterialNodeRole role() const noexcept;
         [[nodiscard]] MaterialNodeResult<MaterialNodePayload> create() const noexcept;
         [[nodiscard]] MaterialNodeResult<void> validate(const MaterialNodePayload&) const noexcept;
-        [[nodiscard]] MaterialNodeResult<void> validateBindings(const MaterialNodePayload&, const shadergen::ShaderIR&)
-            const noexcept;
+        [[nodiscard]] MaterialNodeResult<void>
+        validateBindings(const MaterialNodePayload&, const MaterialGraph&) const noexcept;
         // Checks payload ownership and authoring schema, without requiring a compilable node.
         [[nodiscard]] MaterialNodeRegistration::PinResult describePins(const MaterialNodePayload&) const noexcept;
         [[nodiscard]] MaterialNodeResult<std::string> encode(const MaterialNodePayload&) const noexcept;
         [[nodiscard]] MaterialNodeResult<MaterialNodePayload> decode(std::string_view) const noexcept;
 
-        // Inputs use declaration order: VALUE requires SSA; CONNECTED_VALUE also permits kNoValue;
-        // UNUSED requires kNoValue. A graph compiler resolves only demanded inputs. Outputs use output
-        // declaration order. The caller owns a disposable IR candidate: failure never authorizes its adoption.
-        [[nodiscard]] MaterialNodeRegistration::ShaderResult compile(
+        // Inputs/outputs follow declaration order. Empty inputs represent absent/UNUSED values.
+        // Output identifiers name predeclared typed locals. All views remain stable during emission;
+        // callbacks borrow them and append statements, never retain them or the destination.
+        [[nodiscard]] MaterialNodeResult<void>
+        emitSlang(
             const MaterialNodePayload&,
-            std::span<const std::uint32_t> inputs,
-            shadergen::ShaderIR& candidate
+            std::span<const std::string_view> inputs,
+            std::span<const std::string_view> outputs,
+            std::string& destination
         ) const noexcept;
 
     private:
@@ -127,8 +134,10 @@ namespace lux::material
         MaterialNodeCatalog(MaterialNodeCatalog&&) = delete;
         MaterialNodeCatalog& operator=(MaterialNodeCatalog&&) = delete;
 
-        [[nodiscard]] cxx::expected<void, EMaterialNodeCatalogError> add(std::span<
-                                                                         const MaterialNodeRegistration>) noexcept;
+        // Binary plugins must negotiate this ABI before constructing a callback table. Old entry
+        // symbols must not be invoked with the new registration layout (see the versioned sample).
+        [[nodiscard]] cxx::expected<void, EMaterialNodeCatalogError>
+        add(std::span<const MaterialNodeRegistration>, std::uint32_t abi = kMaterialNodeAbi) noexcept;
 
         [[nodiscard]] std::shared_ptr<const MaterialNodeType> find(graph::NodeTypeId) const noexcept;
 

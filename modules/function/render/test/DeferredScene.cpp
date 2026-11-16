@@ -357,7 +357,7 @@ static void descriptorTables()
     options.multiple_queues = true;
     options.descriptor_layout_limits = {32, 16, 16};
     options.descriptor_initial_counts = {1, 1, 1};
-    auto session = take(DeviceSession::create(options, diagnostics(validation), true));
+    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
     const auto& enabled = session->enabledFeatures();
     std::printf("Descriptor facts: buffers=%u variable=%u queues=%zu\n",
         enabled.buffer_descriptors, enabled.variable_descriptor_count, session->queueCount());
@@ -393,7 +393,7 @@ static void descriptorTables()
     CHECK(core.CreatePipelineLayout(session->device(), layout_desc, layout) == nri::Result::SUCCESS);
     for (std::size_t q = 0; q < session->queueCount(); ++q)
     {
-        CHECK(session->physicalQueue(q).recordAndSubmit([&](nri::CommandBuffer& command, std::uint32_t) noexcept
+        CHECK(submitFixtureCommands(*session, session->physicalQueue(q), [&](nri::CommandBuffer& command, std::uint32_t) noexcept
             -> RenderResult<void>
         {
             if (q == session->queueIndex(session->queue()))
@@ -445,7 +445,7 @@ static void descriptorTables()
     // Explicit layout requests must fail before exceeding the selected device limit.
     auto invalid_options = options;
     invalid_options.descriptor_layout_limits[1] = session->description().descriptorSet.updateAfterSet.samplerMaxNum + 1;
-    auto rejected = DeviceSession::create(invalid_options, diagnostics(validation), true);
+    auto rejected = DeviceSession::create(invalid_options, diagnostics(validation), nativeValidationEnabled());
     CHECK(!rejected && rejected.error().type == kDeviceCapacity);
     const auto fixed_ranges = DescriptorTable::layoutRanges({32, 16, 16}, false);
     for (const auto& range : fixed_ranges)
@@ -493,7 +493,7 @@ int main(int argc, char** argv)
     auto runtime = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(runtime);
     std::atomic<unsigned> diagnostic_count{0};
-    RenderServerConfig config{"test.deferred", true};
+    RenderServerConfig config{"test.deferred", nativeValidationEnabled()};
     config.diagnostics = {
         &diagnostic_count,
         [](void* context, const RenderDiagnostic& diagnostic) noexcept
@@ -601,10 +601,14 @@ int main(int argc, char** argv)
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
-    const auto meshes = installCommand<Mesh3dCommands::UploadMesh>(*client, commands);
-    const auto materials = installCommand<MaterialCommands::Create>(*client, commands);
-    const auto instances = installCommand<Mesh3dCommands::CreateInstance>(*client, commands, scene);
-    const auto light_storage = installCommand<Lighting3dCommands::CreateLights>(*client, commands, scene);
+    const auto meshes = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kMeshResourceName}
+    ).resource_id;
+    const auto materials = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kMaterialResourceName}
+    ).resource_id;
+    const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
+    const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
     const auto scene_inputs = installInputs(*client, commands, scene);
     const auto instance_updates = frameBinding<MeshInstanceUpdates>(scene_inputs);
     const auto light_updates = frameBinding<LightUpdates>(scene_inputs);
@@ -671,12 +675,12 @@ int main(int argc, char** argv)
     auto ids = call<Mesh3dCommands::CreateInstances>(
                    *client,
                    commands,
-                   {installCommand<Mesh3dCommands::CreateInstances>(*client, commands, scene), scene, values}
+                   {instances, values}
     )
                    .instances;
     std::vector<VDirectLight> lights{DirectionalLightGpu{}, PointLightGpu{}, SpotLightGpu{}};
     auto light_ids = call<Lighting3dCommands::CreateLights>(
-            *client, commands, {light_storage, scene, {1, lights}}
+            *client, commands, {light_storage, {1, lights}}
         ).lights;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     SceneParameters parameters;
@@ -839,7 +843,7 @@ int main(int argc, char** argv)
                 MeshInstanceData value{mesh, left_material};
                 value.render_enabled = false;
                 const auto instance = call<Mesh3dCommands::CreateInstance>(
-                    *client, commands, {instances, scene, value}
+                    *client, commands, {instances, value}
                 ).instance;
                 advance();
                 CHECK(call_capture_fail_set.load() == 0);
@@ -938,7 +942,7 @@ int main(int argc, char** argv)
         }
         auto probe_instances = call<Mesh3dCommands::CreateInstances>(
             *client, commands,
-            {installCommand<Mesh3dCommands::CreateInstances>(*client, commands, scene), scene, probe_values}
+            {instances, probe_values}
         ).instances;
         churn_active = churn_groups;
         draw_probe_active = true;
@@ -975,9 +979,8 @@ int main(int argc, char** argv)
         else if (device.cached_unused_programs == 0)
         {
             CHECK(call_capture_counts[2].load() > graphics);
-            // installInputs keeps its Effect alive for command/frame routes. Its shared compute
-            // programs still have a logical owner and must survive even with a zero unused budget.
-            CHECK(call_capture_counts[40].load() == compute);
+            // Resource frame routes own no hidden Effect or cached compute-program use.
+            CHECK(call_capture_counts[40].load() > compute);
         }
     }
     if (material_pages)
@@ -1011,7 +1014,7 @@ int main(int argc, char** argv)
     auto stale_key = extension_detail::ResourceIdentity::local(stale);
     ++stale_key.gen;
     stale = extension_detail::ResourceIdentity::make<decltype(stale)>(
-        extension_detail::ResourceIdentity::storage(stale),
+        extension_detail::ResourceIdentity::parent(stale),
         stale_key
     );
     const std::array invalid_light{DirectLightUpdate{stale, lights.front()}};
@@ -1034,7 +1037,9 @@ int main(int argc, char** argv)
     const std::array changes{DirectLightUpdate{light_ids[1], lights[1]}};
     CHECK(submitFrameData(*client, commands, update_frame, light_updates, LightUpdates{3, changes}).error.type == 0);
     run(1);
-    const auto texture_storage = installCommand<ImageCommands::Upload>(*client, commands);
+    const auto texture_storage = call<GetOrCreateResource>(
+        *client, commands, {GlobalRenderScope{}, kTextureResourceName}
+    ).resource_id;
     rdesc::TextureInfo texture_info{};
     texture_info.width = texture_info.height = texture_info.mip_count = 1;
     texture_info.channel = 4;
@@ -1156,7 +1161,7 @@ int main(int argc, char** argv)
         extra_instances = call<Mesh3dCommands::CreateInstances>(
                               *client,
                               commands,
-                              {instances, scene, additions}
+                              {instances, additions}
         )
                               .instances;
         mixed_winding = true;
@@ -1208,7 +1213,7 @@ int main(int argc, char** argv)
         mixed_winding = false;
     }
     ids[0] = call<Mesh3dCommands::CreateInstances>(
-        *client, commands, {instances, scene, std::span<const MeshInstanceData>{&values[0], 1}}
+        *client, commands, {instances, std::span<const MeshInstanceData>{&values[0], 1}}
     ).instances.front();
     pbr = normal_mapped;
     right_material =
@@ -1233,11 +1238,19 @@ int main(int argc, char** argv)
     CameraInput initial_camera;
     initial_camera.view = parameters.mesh.view;
     initial_camera.projection = parameters.mesh.projection;
-    AttachmentRequest invalid_request{scene, invalid_view, invalid_target, scene_inputs.effect};
-    const auto camera_bytes = std::as_bytes(std::span(&initial_camera, 1));
-    invalid_request.parameters.assign(camera_bytes.begin(), camera_bytes.end());
-    invalid_request.parameter_type = lux::cxx::make_basic_type_info<CameraInput>();
-    const auto invalid_attachment = call<Attach>(*client, commands, std::move(invalid_request)).attachment;
+    CreateEffectRequest invalid_effect_request{{target.format}};
+    for (std::uint32_t i = 0; i < scene_inputs.capabilities.size(); ++i)
+    {
+        invalid_effect_request.composition.contributions.push_back(
+            {i == 0 ? "mesh" : "light", scene_inputs.capabilities[i].type, scene_inputs.implementations[i], {}}
+        );
+    }
+    invalid_effect_request.composition.outputs.push_back({"light", "color"});
+    const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid_effect_request)).effect;
+    submitFrameData(*client, commands, update_frame, viewCameraBinding({scene, invalid_view}), initial_camera);
+    const auto invalid_attachment = call<Attach>(
+        *client, commands, {scene, invalid_view, invalid_target, invalid_effect}
+    ).attachment;
     auto incompatible_instance = values[1];
     incompatible_instance.material = incompatible_material;
     const std::array invalid_update{MeshInstanceUpdate{ids[1], incompatible_instance}};
@@ -1252,6 +1265,7 @@ int main(int argc, char** argv)
     CHECK(rejected_frame.error.type == kFeatureContract && rejected_frame.requires_resynchronization);
     submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{14, restored}, true, true);
     detach(*client, commands, invalid_attachment);
+    call<RemoveEffect>(*client, commands, {invalid_effect});
     call<RemoveView>(*client, commands, {scene, invalid_view});
     call<RemoveTarget>(*client, commands, invalid_target);
     call<MaterialCommands::Release>(*client, commands, {incompatible_material});

@@ -1,16 +1,17 @@
 #include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/material/compiler/MaterialCompiler.hpp>
-#include <lux/engine/material/compiler/SlangBackend.hpp>
 #include <lux/engine/shader/ShaderCompiler.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <new>
 
 namespace lux::material
 {
-    MaterialDeriveResult deriveMaterial(
-        const MaterialIR& ir,
-        std::span<const asset::AssetId> textures,
+    MaterialDeriveResult
+    deriveMaterial(
+        shader::ShaderCompiler& compiler,
+        const MaterialGraph& graph,
         const MaterialDeriveOptions& options
     ) noexcept
     {
@@ -18,12 +19,7 @@ namespace lux::material
         { return cxx::unexpected(MaterialDeriveFailure{code, std::move(diagnostic)}); };
         try
         {
-            if (!validateMaterialIR(ir))
-            {
-                return fail(EMaterialDeriveError::INVALID_IR, "invalid material IR");
-            }
-            const bool is_invalid_request = textures.size() != ir.shader.textures.size() || options.purposes.empty() ||
-                                            options.target > rdesc::EShaderTarget::DXIL;
+            const bool is_invalid_request = options.purposes.empty() || options.target > rdesc::EShaderTarget::DXIL;
             if (is_invalid_request)
             {
                 return fail(EMaterialDeriveError::INVALID_REQUEST, "invalid target or asset bindings");
@@ -53,21 +49,27 @@ namespace lux::material
             key(shader::compilerVersion());
             key(options.profile);
             key(options.target == rdesc::EShaderTarget::SPIRV ? "spirv" : "dxil");
-            key("lux-material-ir-1");
+            key("lux-material-slang-direct-2");
             key(std::to_string(rdesc::kMaterialShaderAbi));
             auto& programs = result.material.programs;
             programs.target = options.target;
-            programs.shading_model = ir.shading_model;
-            programs.alpha_mode = ir.alpha_mode;
-            programs.double_sided = ir.double_sided;
-            programs.texture_count = static_cast<std::uint32_t>(textures.size());
-            result.material.texture_slot_ids.assign(textures.begin(), textures.end());
-            for (const auto& parameter : ir.shader.params)
+            programs.shading_model = graph.shading_model;
+            programs.alpha_mode = graph.render_state.alpha_mode;
+            programs.double_sided = graph.render_state.double_sided;
+            programs.texture_count = static_cast<std::uint32_t>(graph.texture_slots.size());
+            for (const auto& texture : graph.texture_slots)
+            {
+                result.material.texture_slot_ids.push_back(texture.texture);
+            }
+            for (const auto& parameter : graph.param_slots)
             {
                 auto& values = programs.parameter_defaults.emplace_back();
                 std::ranges::copy(parameter.dflt, values.begin());
             }
-            // Canonical purpose order keeps the code key independent of request ordering.
+            // One immutable batch shares the target Session, including imported common modules.
+            std::vector<std::string> sources;
+            std::vector<rdesc::EMaterialPurpose> purposes;
+            sources.reserve(3);
             for (unsigned index = 0; index < 3; ++index)
             {
                 if ((selected & (1U << index)) == 0)
@@ -75,18 +77,55 @@ namespace lux::material
                     continue;
                 }
                 const auto purpose = static_cast<rdesc::EMaterialPurpose>(index);
-                auto source = detail::emitSlang(ir, purpose);
+                auto source = generateMaterialSlang(graph, purpose);
                 if (!source)
                 {
-                    return cxx::unexpected(std::move(source.error()));
+                    return cxx::unexpected(MaterialDeriveFailure{
+                        EMaterialDeriveError::INVALID_GRAPH,
+                        source.error().message,
+                        source.error().node_id,
+                        source.error().pin_index
+                    });
                 }
                 key(*source);
-                auto artifact =
-                    shader::compile({*source, "main", rdesc::EShaderType::FRAGMENT, options.target, options.profile});
-                if (!artifact)
+                sources.push_back(std::move(*source));
+                purposes.push_back(purpose);
+            }
+            std::vector<shader::ShaderCompileReport> reports(sources.size());
+            std::vector<shader::ShaderCompileRequest> requests;
+            for (std::size_t index = 0; index < sources.size(); ++index)
+            {
+                requests.push_back(
+                    {sources[index],
+                     "main",
+                     rdesc::EShaderType::FRAGMENT,
+                     options.target,
+                     options.profile,
+                     "lux_material.slang",
+                     {},
+                     &reports[index]
+                    }
+                );
+            }
+            auto artifacts = compiler.compileBatch(requests);
+            if (!artifacts)
+            {
+                auto diagnostic = std::move(artifacts.error().diagnostic);
+                graph::NodeId node;
+                const auto marker = diagnostic.find("node_");
+                if (marker != std::string::npos)
                 {
-                    return fail(EMaterialDeriveError::COMPILER_FAILURE, std::move(artifact.error().diagnostic));
+                    std::from_chars(diagnostic.data() + marker + 5, diagnostic.data() + diagnostic.size(), node.value);
                 }
+                return cxx::unexpected(
+                    MaterialDeriveFailure{EMaterialDeriveError::COMPILER_FAILURE, std::move(diagnostic), node}
+                );
+            }
+            for (std::size_t index = 0; index < artifacts->size(); ++index)
+            {
+                auto* artifact = &(*artifacts)[index];
+                const auto purpose = purposes[index];
+                result.diagnostic += reports[index].diagnostic;
                 for (const auto& set : artifact->interface.sets)
                 {
                     for (const auto& binding : set.bindings)
@@ -113,6 +152,12 @@ namespace lux::material
                         : (purpose == rdesc::EMaterialPurpose::SHADOW ? "lux.material.coverage.forward-z.v1"
                                                                       : "lux.material.forward.linear.v1");
                 programs.programs.push_back({purpose, std::string(semantic), std::move(*artifact)});
+            }
+            if (programs.parameters.size == 0)
+            {
+                programs.parameter_defaults.clear();
+                programs.texture_count = 0;
+                result.material.texture_slot_ids.clear();
             }
             return result;
         }

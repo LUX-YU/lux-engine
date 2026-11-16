@@ -5,6 +5,7 @@
 #include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <variant>
+#include <lux/engine/render/inputs/CameraInputs.hpp>
 
 namespace nri
 {
@@ -41,7 +42,13 @@ namespace lux::render
         RenderResult<FrameSampledImage> (*resolve_target)(void*, TargetId, std::uint32_t) noexcept = nullptr;
     };
 
-    using VFrameDataTarget = std::variant<void*, FrameParameterTarget, FrameDrawTarget>;
+    struct FrameViewTarget final
+    {
+        CameraInput& camera;
+        std::uint64_t& revision;
+    };
+
+    using VFrameDataTarget = std::variant<void*, FrameParameterTarget, FrameDrawTarget, FrameViewTarget>;
 } // namespace lux::render
 
 namespace lux::render::runtime_detail

@@ -3,6 +3,7 @@
 #include <lux/engine/render/visibility.h>
 
 #include <array>
+#include <algorithm>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
@@ -19,6 +20,13 @@ namespace lux::render
         static const std::array<const CommandDescriptor*, sizeof...(Commands)> values{&commandDescriptor<Commands>()...
         };
         return values;
+    }
+
+    template <class... Inputs>
+    [[nodiscard]] std::span<const cxx::type_info> resourceFrameTypes(std::tuple<Inputs...>*) noexcept
+    {
+        static const std::array<cxx::type_info, sizeof...(Inputs)> types{cxx::make_basic_type_info<Inputs>()...};
+        return types;
     }
 
     enum class EStorageCapability : std::uint32_t
@@ -46,6 +54,7 @@ namespace lux::render
         std::string_view description;
         EResourceDomain domain = EResourceDomain::DEVICE;
         std::span<const CommandDescriptor* const> commands;
+        std::span<const cxx::type_info> frame_inputs;
 
         [[nodiscard]] bool supports(std::uint32_t capabilities) const noexcept
         {
@@ -71,7 +80,7 @@ namespace lux::render
                     return false;
                 }
             }
-            return true;
+            return std::ranges::equal(frame_inputs, other.frame_inputs);
         }
     };
 

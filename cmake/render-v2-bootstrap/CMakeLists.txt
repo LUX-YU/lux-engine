@@ -113,7 +113,7 @@ lux_engine_install_components(
     COMPONENTS ${core_components}
 )
 
-set(function_components script_core graph material_ir material_graph material_compiler)
+set(function_components script_core graph material_graph material_compiler)
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-function

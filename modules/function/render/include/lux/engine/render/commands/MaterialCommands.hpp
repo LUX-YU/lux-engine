@@ -35,7 +35,7 @@ namespace lux::render::MaterialCommands
         static constexpr std::string_view name = "lux.render.material.update";
         static constexpr bool requires_frame_boundary = true;
         using Data = MaterialUpdate;
-        // Keep the program/table slot. A different Cooked program requires a new identity.
+        // Keep the program/table slot. A different target program requires a new identity.
         struct Request final
         {
             Data data;

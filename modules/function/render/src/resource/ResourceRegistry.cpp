@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <exception>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
@@ -218,7 +219,8 @@ namespace lux::render
                 factory.commands,
                 [](const auto& a, const auto& b) noexcept { return a.hasSameImplementation(b); }
             );
-            const bool is_factory_mismatch = *previous.factory.storage != *factory.storage || is_command_mismatch;
+            const bool is_factory_mismatch = *previous.factory.storage != *factory.storage || is_command_mismatch ||
+                !std::ranges::equal(previous.factory.frame_calls, factory.frame_calls);
             if (is_factory_mismatch)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
@@ -315,7 +317,7 @@ namespace lux::render
         return entry && entry->instance && entry->storage_set == &set ? std::optional{entry->position} : std::nullopt;
     }
 
-    void* ResourceRegistry::storageInstance(ResourceInstanceId id) const noexcept
+    void* ResourceRegistry::resourceInstance(ResourceInstanceId id) const noexcept
     {
         const auto* entry = entries_.find(id);
         return entry ? entry->instance : nullptr;

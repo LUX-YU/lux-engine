@@ -114,7 +114,7 @@ namespace lux::render
                 result.storage_ = [](const platform::ipc::IpcMessage& message) noexcept
                 {
                     const auto resource = C::resourceId(message.get<typename C::Request>());
-                    return extension_detail::ResourceIdentity::storage(resource);
+                    return extension_detail::ResourceIdentity::parent(resource);
                 };
             }
             if constexpr (!std::is_void_v<Storage>)

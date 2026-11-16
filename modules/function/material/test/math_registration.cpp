@@ -1,7 +1,7 @@
 #include "MaterialTest.hpp"
-#include <lux/engine/material/MaterialLowering.hpp>
 #include <lux/engine/material/MaterialMath.hpp>
 #include <lux/engine/material/MaterialNodeCatalog.hpp>
+#include <lux/engine/material/compiler/MaterialCompiler.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 
 #include <array>
@@ -48,14 +48,14 @@ int main()
         const auto id = material_test::add(graph, std::move(node));
         const auto output = material_test::add(graph, MaterialOutputSurface{});
         require(material_test::connect(graph, id, 0, output, 0));
-        auto lowered = lowerMaterial(graph);
+        auto lowered = generateMaterialSlang(graph, lux::rdesc::EMaterialPurpose::GBUFFER);
         auto pins = type->describePins(*payload);
         if (math->op == EMathOp::LERP)
         {
             require(!lowered && pins && pins->size() == 3);
-            shadergen::ShaderIR candidate;
-            auto compiled = type->compile(*payload, {}, candidate);
-            require(!compiled && candidate.values.empty());
+            std::string candidate;
+            auto compiled = type->emitSlang(*payload, {}, {}, candidate);
+            require(!compiled && candidate.empty());
             require(lowered.error().code == compiled.error().code);
             require(lowered.error().message == compiled.error().message);
             continue;
@@ -64,27 +64,14 @@ int main()
         require(pins->size() == 3);
         require((*pins)[0].input_use == EMaterialInputUse::VALUE);
         const bool unary = (*pins)[1].input_use == EMaterialInputUse::UNUSED;
-        const auto position = unary ? 1U : 2U;
-        const auto& original = lowered->shader.values[position];
-        require(original.type == static_cast<shadergen::EValueType>((*pins)[2].type));
-        std::array<std::uint32_t, 2> inputs{original.operands[0], shadergen::kNoValue};
-        if (!unary)
-        {
-            inputs[1] = original.operands[1];
-        }
-        auto candidate = lowered->shader;
-        candidate.outputs.clear();
-        candidate.values.resize(position);
-        auto compiled = type->compile(*payload, inputs, candidate);
-        require(compiled.has_value() && compiled->size() == 1 && compiled->front() == position);
-        auto expected = lowered->shader;
-        expected.outputs.clear();
-        expected.values.resize(position + 1);
-        require(shadergen::computeFingerprint(candidate) == shadergen::computeFingerprint(expected));
-        const auto before = shadergen::computeFingerprint(candidate);
-        inputs[1] = unary ? inputs[0] : shadergen::kNoValue;
-        require(!type->compile(*payload, inputs, candidate));
-        require(shadergen::computeFingerprint(candidate) == before);
+        std::array<std::string_view, 2> inputs{"float3(1)", unary ? "" : "float3(2)"};
+        std::string_view output_names[]{"result"};
+        std::string candidate;
+        require(type->emitSlang(*payload, inputs, output_names, candidate).has_value());
+        const auto before = candidate;
+        inputs[1] = unary ? inputs[0] : "";
+        require(!type->emitSlang(*payload, inputs, output_names, candidate));
+        require(candidate == before);
         ++checked;
     }
     require(checked == 22);

@@ -57,7 +57,7 @@ namespace lux::render
         qualify(ResourceTypeId, EResourceDomain, const ResourceCreateContext&) const noexcept;
 
         [[nodiscard]] ResourceTypeId declarationOf(ResourceInstanceId) const noexcept;
-        [[nodiscard]] RenderResult<ResourceCommandUse> acquireCommand(ResourceInstanceId, cxx::type_info) noexcept;
+        [[nodiscard]] RenderResult<ResourceCommandUse> acquireCommand(ResourceInstanceId, CommandId) noexcept;
         [[nodiscard]] bool hasCommands(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept;
         [[nodiscard]] const CommandBindingLocation* commandBinding(ResourceTypeId, CommandId) const noexcept;

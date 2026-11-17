@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
@@ -14,29 +15,40 @@ namespace lux::render::detail
 {
     namespace
     {
-        exec::task<Lighting3dCommands::CreateLights::Response>
-        createLights(DirectLightingStorage& resource, Lighting3dCommands::CreateLights::Request&& input) noexcept
+        exec::task<LightingCommands::CreateLights::Response>
+        createLights(DirectLightingStorage& resource, LightingCommands::CreateLights::Request&& input) noexcept
         {
             const auto sequence = input.data.sequence;
             auto result = co_await resource.create(std::move(input.data));
-            co_return result ? Lighting3dCommands::CreateLights::Response{{}, sequence, std::move(*result)}
-                             : Lighting3dCommands::CreateLights::Response{result.error(), sequence};
+            co_return result ? LightingCommands::CreateLights::Response{{}, sequence, std::move(*result)}
+                             : LightingCommands::CreateLights::Response{result.error(), sequence};
         }
 
-        exec::task<Lighting3dCommands::ReleaseLight::Response>
-        removeLight(DirectLightingStorage& resource, Lighting3dCommands::ReleaseLight::Request&& input) noexcept
+        exec::task<LightingCommands::ReleaseLight::Response>
+        removeLight(DirectLightingStorage& resource, LightingCommands::ReleaseLight::Request&& input) noexcept
         {
             auto result = co_await resource.remove(input.light);
-            co_return Lighting3dCommands::ReleaseLight::Response{
+            co_return LightingCommands::ReleaseLight::Response{
                 result ? RenderError{} : result.error(), input.sequence
             };
         }
 
-        RenderResult<void> updateLights(DirectLightingStorage& resource, LightUpdates input) noexcept
+        RenderResult<void>
+        updateLights(DirectLightingStorage& resource, std::span<const DirectLightUpdate> input) noexcept
         {
             auto result = resource.update(input);
             return result ? RenderResult<void>{} : cxx::unexpected(result.error());
         }
+        void updateLightsCommand(
+            DirectLightingStorage& resource,
+            const LightingCommands::Update::Request& input,
+            AckResponse& response
+        ) noexcept
+        {
+            const auto result = updateLights(resource, input.values);
+            response.error = result ? RenderError{} : result.error();
+        }
+
     } // namespace
 
     namespace
@@ -229,17 +241,17 @@ namespace lux::render::detail
         co_return result;
     }
 
-    RenderResult<std::uint32_t> DirectLightingStorage::update(LightUpdates input) noexcept
+    RenderResult<std::uint32_t> DirectLightingStorage::update(std::span<const DirectLightUpdate> input) noexcept
     {
         if (updating_)
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        if (input.values.size() > UINT32_MAX)
+        if (input.size() > UINT32_MAX)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
-        for (const auto& value : input.values)
+        for (const auto& value : input)
         {
             const auto* entry = extension_detail::ResourceIdentity::parent(value.light) == id_
                 ? entries_.find(extension_detail::ResourceIdentity::local(value.light)) : nullptr;
@@ -256,7 +268,7 @@ namespace lux::render::detail
         }
         bool shadow_changed = false;
         bool changed = false;
-        for (const auto& value : input.values)
+        for (const auto& value : input)
         {
             auto* entry = entries_.find(extension_detail::ResourceIdentity::local(value.light));
             const bool active_shadow = entry->shadows.enabled || value.shadows.enabled;
@@ -300,7 +312,7 @@ namespace lux::render::detail
         }
         preparation_revision_ += changed;
         shadow_revision_ += shadow_changed;
-        return static_cast<std::uint32_t>(input.values.size());
+        return static_cast<std::uint32_t>(input.size());
     }
 
     exec::task<RenderResult<void>> DirectLightingStorage::remove(LightId light) noexcept
@@ -590,7 +602,12 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<bool> DirectLightingStorage::prepareFrame(std::uint32_t frame, ResourceUploader& uploads) noexcept
+    RenderResult<bool>
+    DirectLightingStorage::prepareFrame(
+        std::uint32_t frame,
+        ResourceUploader& uploads,
+        Preparation& preparation
+    ) noexcept
     {
         if (frame >= frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
         bool progress = false;
@@ -599,7 +616,7 @@ namespace lux::render::detail
             {
                 if (progress)
                 {
-                    uploads_.onPreparationSubmitted(
+                    preparation.onSubmitted(
                         this,
                         [](void* value, std::uint32_t f, RenderResult<void> result) noexcept
                         { static_cast<DirectLightingStorage*>(value)->finishPreparation(f, result); }
@@ -702,13 +719,13 @@ namespace lux::render::detail
 
     ResourceRegistration DirectLightingStorage::factory() noexcept
     {
-        static const std::array frame_calls{
-            FrameDataCall::declare<LightUpdates, &updateLights>()
-        };
+        static const auto frame_call =
+            FrameDataCall::declare<LightResource, DirectLightingStorage, &updateLights>();
 
         static const std::array commands{
-            CommandBinding::declare<Lighting3dCommands::CreateLights, &createLights>(),
-            CommandBinding::declare<Lighting3dCommands::ReleaseLight, &removeLight>()
+            CommandBinding::declare<LightingCommands::CreateLights, &createLights>(),
+            CommandBinding::declare<LightingCommands::ReleaseLight, &removeLight>(),
+            CommandBinding::declare<LightingCommands::Update, &updateLightsCommand>()
         };
         static const StorageBindingOps binding{
             [](void* value,
@@ -720,8 +737,8 @@ namespace lux::render::detail
                 return static_cast<DirectLightingStorage*>(value)
                     ->resolve(resource, *static_cast<const DirectLightingBinding*>(argument), node, output);
             },
-            [](void* value, std::uint32_t frame, ResourceUploader& uploads) noexcept
-            { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame, uploads); },
+            [](void* value, std::uint32_t frame, ResourceUploader& uploads, Preparation& preparation) noexcept
+            { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame, uploads, preparation); },
             [](const void* value) noexcept
             { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; }
         };
@@ -738,7 +755,7 @@ namespace lux::render::detail
             nullptr,
             &binding,
             commands,
-            frame_calls
+            frame_call
         );
     }
 } // namespace lux::render::detail

@@ -39,7 +39,6 @@ namespace lux::render::detail
     build(
         const void*,
         std::string_view,
-        FeatureBuildContext&,
-        const lux::render::detail::EnabledDeviceFeatures&
+        FeatureBuildContext&
     ) noexcept;
 } // namespace lux::render::detail

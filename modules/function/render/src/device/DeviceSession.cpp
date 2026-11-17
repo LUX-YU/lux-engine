@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <lux/engine/render/device/NativeExecution.hpp>
-#include <lux/engine/render/graph/CompiledPrograms.hpp>
+#include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>

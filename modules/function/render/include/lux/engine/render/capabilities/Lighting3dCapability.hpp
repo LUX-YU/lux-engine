@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/commands/Lighting3dCommands.hpp>
+#include <lux/engine/render/resources/lighting/Resource.hpp>
+
 #include <lux/engine/render/capabilities/Mesh3dCapability.hpp>
-#include <lux/engine/render/inputs/DirectLightInputs.hpp>
 
 namespace lux::render
 {
@@ -10,10 +10,7 @@ namespace lux::render
     struct Lighting3dCapability final
     {
         using PrerequisiteCapabilities = std::tuple<Mesh3dCapability>;
-        using Commands = std::tuple<
-            Lighting3dCommands::CreateLights,
-            Lighting3dCommands::ReleaseLight
-        >;
-        using PerFrameData = std::tuple<>;
+        using Commands = std::tuple<>;
+        using Resources = std::tuple<LightResource>;
     };
 } // namespace lux::render

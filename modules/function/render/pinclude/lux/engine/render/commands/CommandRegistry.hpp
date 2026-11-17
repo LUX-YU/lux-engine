@@ -1,12 +1,11 @@
 #pragma once
 
 #include <limits>
-#include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/commands/DiscoveryCommands.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/extensions/detail/HandlerRecord.hpp>
 #include <map>
-#include <mutex>
 
 namespace lux::render::runtime_detail
 {
@@ -16,6 +15,11 @@ namespace lux::render::runtime_detail
         HandlerCall call;
         cxx::type_info method_type;
         cxx::type_info storage_type;
+
+        [[nodiscard]] bool callable() const noexcept
+        {
+            return call.invoke && (handler.isNull() || call.object);
+        }
     };
 
     struct CommandRecord final
@@ -31,6 +35,11 @@ namespace lux::render::runtime_detail
         SceneId (*scene)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         ResourceInstanceId (*storage)(const platform::ipc::IpcMessage&) noexcept = nullptr;
 
+        [[nodiscard]] const HandlerBinding* binding(std::uint32_t index) const noexcept
+        {
+            return index < bindings.size() ? &bindings[index] : nullptr;
+        }
+
         [[nodiscard]] const HandlerBinding* selectedBinding() const noexcept
         {
             return selected_binding == kUnbound ? nullptr : &bindings[selected_binding];
@@ -41,18 +50,21 @@ namespace lux::render::runtime_detail
     {
     public:
         CommandId registerCommand(CommandBinding) noexcept;
+        [[nodiscard]] RenderResult<void>
+        validateStaticBindings(std::span<const CommandBinding>, bool capability = false) const noexcept;
+        void publishStaticBindings(std::span<const CommandBinding>) noexcept;
         [[nodiscard]] RenderResult<void> validateResourceBindings(std::span<const CommandBinding>) const noexcept;
         [[nodiscard]] CommandBindingLocation publishResourceBinding(const CommandBinding&) noexcept;
         RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
         RenderResult<HandlerId> findHandler(cxx::type_info, std::string_view) const noexcept;
         // Validation is used only for external declarations. Publication is shared with built-ins.
         RenderResult<void>
-        validateHandler(const HandlerRecord&, std::span<const CommandBinding>, std::span<const FrameDataCall> = {})
+        validateHandler(const HandlerRecord&, std::span<const CommandBinding>)
             const noexcept;
         HandlerId publishHandler(HandlerRecord) noexcept;
         CommandBindingLocation publishBinding(HandlerId, const CommandBinding&) noexcept;
         [[nodiscard]] RenderResult<CommandBindingLocation>
-        findBinding(const CommandDescriptor&, HandlerId) const noexcept;
+        findBinding(const CommandBinding&, HandlerId) const noexcept;
         [[nodiscard]] const HandlerBinding* binding(CommandBindingLocation) const noexcept;
         [[nodiscard]] HandlerId handlerId(cxx::type_info, std::string_view) const noexcept;
         void activateHandlers(ResourceRegistry&) noexcept;
@@ -61,7 +73,6 @@ namespace lux::render::runtime_detail
 
         void reserve(std::size_t added_commands, std::size_t added_handlers)
         {
-            std::scoped_lock lock{command_mutex_};
             commands_.reserve(commands_.size() + added_commands);
             handlers_.reserve(handlers_.size() + added_handlers);
         }
@@ -97,8 +108,7 @@ namespace lux::render::runtime_detail
         void activateHandler(HandlerId, ResourceRegistry&) noexcept;
 
         // Handler records have stable addresses; these views borrow their owned names until clear().
-        // Only descriptor lookup crosses threads. Dispatch and installation remain RenderThread-owned.
-        mutable std::mutex command_mutex_;
+        // Setup and Server-owner access only; runtime discovery is an IPC command.
         using HandlerName = std::pair<std::string_view, std::string_view>;
         cxx::SlotMap<CommandRecord, CommandTag> commands_;
         cxx::SlotMap<std::unique_ptr<HandlerRecord>, HandlerTag> handlers_;

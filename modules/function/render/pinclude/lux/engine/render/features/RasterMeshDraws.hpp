@@ -3,7 +3,7 @@
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/MeshDrawGroups.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -69,7 +69,7 @@ namespace lux::render::detail
         void rebuildDrawOrder() noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> preparePrograms(execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<FeatureBinding::Preparation>
-        prepare(const FeatureFrameInput&, ResourceUploader&) noexcept;
+        prepare(const FeatureFrameInput&, ResourceUploader&, detail::Preparation&) noexcept;
         // Refreshes current FIF bindings; true means the packet structure was rebuilt and needs merging.
         [[nodiscard]] RenderResult<bool>
         refreshDrawPackets(const FeatureFrameInput&, Slice&, RasterDrawList&) noexcept;

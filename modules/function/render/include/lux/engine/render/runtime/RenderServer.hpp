@@ -69,7 +69,7 @@ namespace lux::render
         std::uint64_t presentations = 0; // Successful QueuePresent calls, not measured display scanout.
     };
 
-    // The application owns the rendering thread. commandId(), stop() and stats() may race with run().
+    // The application owns the rendering thread. only stop() and stats() may race with run().
     // Stop and join that thread before destruction; the borrowed ExecutionRuntime must outlive this Server.
     class LUX_RENDER_PUBLIC RenderServer final
     {
@@ -88,27 +88,15 @@ namespace lux::render
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
 
-        // Thread-safe descriptor lookup; synchronizes internally with publication and shutdown clearing.
-        // Returns an ID value, never a borrowed registry entry. The Server must outlive the call.
-        template <RenderCommand C> [[nodiscard]] RenderResult<CommandId>
-        commandId() const noexcept
-        {
-            return findCommand(commandDescriptor<C>());
-        }
-
-        [[nodiscard]] RenderResult<CommandId>
-        commandId(const CommandDescriptor& descriptor) const noexcept
-        {
-            return findCommand(descriptor);
-        }
-
-        // Graph-author cold lookup. Ordinary applications use ListCapabilities instead.
+        // Setup-thread cold lookup. Runtime applications use ListCapabilities through IPC.
         [[nodiscard]] RenderResult<FeatureId>
         featureId(std::string_view implementation) const noexcept;
 
         // Extension authors include extensions/Registration.hpp for these template definitions.
-        // Metadata and callback code must outlive the Server and all accepted work. Register before
-        // run() or at a frame-boundary RenderThread safe point. Validation failure changes no directory.
+        // Metadata and callback code must outlive the Server and all accepted work. Cold catalog
+        // access belongs to the setup thread before run(), or after run() returns and is joined.
+        // Runtime Handler/static-command installation is allowed only on the Server owner at a
+        // frame boundary. Other running-thread catalog access is rejected. Query IDs through IPC.
         template <class Feature> [[nodiscard]] RenderResult<FeatureId>
         registerFeature() noexcept;
 
@@ -125,9 +113,6 @@ namespace lux::render
         [[nodiscard]] RenderResult<CapabilityId>
         registerCapability(const CapabilityDescription&) noexcept;
 
-        [[nodiscard]] const CapabilityRegistry&
-        capabilities() const noexcept;
-
         [[nodiscard]] RenderResult<CapabilityImplementationId>
         addCapabilityImplementation(CapabilityId capability, const CapabilityImplementation& declaration) noexcept;
 
@@ -142,6 +127,10 @@ namespace lux::render
 
         // Resource declaration and shared implementation metadata remain distinct at registration.
         [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}) noexcept;
+
+        // Stateless typed functions use the same command directory without a dummy Handler owner.
+        // Register on the setup thread, or at a Server-owner frame boundary. Query IDs through IPC.
+        [[nodiscard]] RenderResult<void> registerCommands(std::span<const CommandBinding>) noexcept;
 
         // Installs the Resource definition, creation policy and its declaration-owned static command thunks.
         template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>)
@@ -190,7 +179,6 @@ namespace lux::render
         registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] bool pagedInstances() const noexcept;
-        [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
 
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

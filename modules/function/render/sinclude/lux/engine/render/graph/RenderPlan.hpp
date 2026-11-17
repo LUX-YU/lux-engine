@@ -125,28 +125,54 @@ namespace lux::render::detail
 
     struct RasterCommands final
     {
+        [[nodiscard]] RenderResult<void>
+        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
+
         // Fixed raster program. Dynamic raster lists carry the program on each draw packet.
-        nri::Pipeline* pipeline = nullptr;
-        std::vector<RasterAttachment> colors;
-        std::optional<RasterAttachment> depth;
         std::vector<VertexSource> vertices;
         VRasterDraw draw;
-        std::optional<RasterViewport> viewport;
-        std::optional<RasterStateInput> state_input;
-        std::array<float, 2> depth_bias{};
     };
 
     struct ComputeCommands final
     {
+        [[nodiscard]] RenderResult<void>
+        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
+
         VDispatchArguments dispatch;
-        nri::Pipeline* pipeline = nullptr;
     };
 
-    using VPassCommands = std::variant<RasterCommands, ComputeCommands, TransferWork>;
+    struct TransferCommands final
+    {
+        std::vector<VTransferOperation> operations;
+
+        [[nodiscard]] RenderResult<void>
+        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
+    };
+
+    static_assert(sizeof(RasterCommands) <= 768 && sizeof(ComputeCommands) <= 768 && sizeof(TransferCommands) <= 768);
+
+    struct CompiledRasterScope final : RasterScope
+    {
+        bool exclusive = false;
+        std::array<float, 2> depth_bias{};
+    };
 
     struct CompiledPass final
     {
-        VPassCommands work;
+        [[nodiscard]] const CompiledRasterScope* rasterScope() const noexcept
+        {
+            return rendering ? &*rendering : nullptr;
+        }
+
+        [[nodiscard]] CompiledRasterScope* rasterScope() noexcept
+        {
+            return rendering ? &*rendering : nullptr;
+        }
+
+        PassEncoding work;
+        std::optional<CompiledRasterScope> rendering;
+        EGraphPassKind kind = EGraphPassKind::TRANSFER;
+        nri::Pipeline* pipeline = nullptr;
         BarrierBatch before;
         std::uint32_t source_pass = kGraphInvalidIndex;
         std::uint32_t submission = kGraphInvalidIndex;
@@ -264,7 +290,7 @@ namespace lux::render::detail
         std::vector<EResourceReuse> reasons;
     };
 
-    // The Effect owns this immutable result; execution contexts borrow it within the Effect lifetime.
+    // The execution candidate owns this immutable result; its graph instance borrows it until teardown.
     class LUX_RENDER_PUBLIC RenderPlan final
     {
     public:
@@ -320,7 +346,7 @@ namespace lux::render::detail
     private:
         friend class RenderGraphInstance;
         friend class GraphCompiler;
-        friend class RenderExecutor;
+        friend class FrameExecutor;
         friend class FrameExecution;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
@@ -329,6 +355,7 @@ namespace lux::render::detail
         nri::Device* device_;
         EffectOutputDesc output_description_;
         CompiledPrograms* program_cache_ = nullptr;
+        DeviceSession* encoding_owner_ = nullptr;
         std::vector<nri::Pipeline*> program_uses_;
         std::vector<nri::PipelineLayout*> layout_uses_;
         std::vector<CompiledResource> resources_;

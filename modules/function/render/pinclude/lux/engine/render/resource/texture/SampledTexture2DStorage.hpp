@@ -1,11 +1,11 @@
 #pragma once
 
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
-#include <lux/engine/render/resources/TextureResource.hpp>
+#include <lux/engine/render/resources/texture/Resource.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/resource/SampledTexture2D.hpp>
+#include <lux/engine/render/resources/texture/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>

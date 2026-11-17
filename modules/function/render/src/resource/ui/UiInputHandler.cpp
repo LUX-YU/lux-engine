@@ -5,23 +5,19 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/resource/ui/UiInputHandler.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
-#include <lux/engine/render/execution/DrawListResources.hpp>
-#include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/DrawListResources.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 
 namespace lux::render::detail
 {
-    UiInputHandler* UiInputHandler::create(ResourceRegistry& resources) noexcept
-    {
-        return new UiInputHandler(resources);
-    }
-
-    RenderResult<void> UiInputHandler::draw(FrameDrawTarget target, ImguiFrameData input) noexcept
+    RenderResult<void>
+    UiInputHandler::draw(ResourceRegistry& resources, FrameDrawTarget target, const ImguiFrameData& input) noexcept
     {
         const auto* pass = target.instance.compiledPass(target.pass);
-        const auto* raster = pass ? std::get_if<RasterCommands>(&pass->work) : nullptr;
+        const auto* raster = pass ? pass->work.getIf<RasterCommands>() : nullptr;
         const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
         const bool has_layout = list && raster->vertices.size() == 1;
         const bool layout_matches = has_layout && raster->vertices[0].stride == sizeof(ImDrawVert) &&
@@ -47,8 +43,11 @@ namespace lux::render::detail
         std::size_t vertex_bytes = 0, index_bytes = 0;
         for (const auto& chunk : input.lists)
         {
-            const auto vertices = input.frame.borrow(chunk.vertices);
-            const auto indices = input.frame.borrow(chunk.indices);
+            const auto vertices = chunk.vertices;
+            const auto indices = chunk.indices;
+            const bool exceeds_native_count = vertices.size() > UINT32_MAX / sizeof(ImDrawVert) ||
+                indices.size() > UINT32_MAX / sizeof(ImDrawIdx) || chunk.commands.size() > UINT32_MAX;
+            if (exceeds_native_count) return cxx::unexpected(RenderError{kRuntimeCapacity});
             const auto padded_indices = (indices.size_bytes() + 3u) & ~std::size_t{3};
             if (vertices.size_bytes() > UINT32_MAX - vertex_bytes || padded_indices > UINT32_MAX - index_bytes)
             {
@@ -88,7 +87,7 @@ namespace lux::render::detail
             if (!image.texture.isNull() && image.target.isNull())
             {
                 auto storage =
-                    resources_.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::parent(image.texture
+                    resources.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::parent(image.texture
                     ));
                 const auto* value = storage ? (*storage)->find(image.texture) : nullptr;
                 if (!value)
@@ -130,9 +129,9 @@ namespace lux::render::detail
         std::size_t vertex_offset = 0, index_offset = 0, chunk_index = 0;
         for (const auto& chunk : input.lists)
         {
-            const auto vertices = input.frame.borrow(chunk.vertices);
-            const auto indices = input.frame.borrow(chunk.indices);
-            const auto commands = input.frame.borrow(chunk.commands);
+            const auto vertices = chunk.vertices;
+            const auto indices = chunk.indices;
+            const auto commands = chunk.commands;
             if (!vertices.empty())
             {
                 physical.upload_writes.push_back({physical.vertices, vertex_offset, std::as_bytes(vertices)});

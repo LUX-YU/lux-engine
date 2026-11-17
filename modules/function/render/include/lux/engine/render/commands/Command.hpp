@@ -39,6 +39,10 @@ namespace lux::render
         bool operator==(const RequestId&) const noexcept = default;
     };
 
+    struct EmptyRequest final
+    {
+    };
+
     struct Ack final
     {
     };

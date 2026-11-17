@@ -1,15 +1,16 @@
+#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <algorithm>
-#include <lux/engine/render/graph/CompiledPrograms.hpp>
+#include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <bit>
 #include <cstring>
 #include <functional>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/execution/RasterDraws.hpp>
-#include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/RasterDraws.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 #include <lux/engine/render/features/ShadowInputs.hpp>
@@ -134,19 +135,20 @@ namespace lux::render::detail
         const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         const auto& compiled = *instance_.compiledPass(configuration_.pass);
-        const auto& raster = std::get<RasterCommands>(compiled.work);
+        const auto& raster = compiled.work.get<RasterCommands>();
         const auto& stage = std::get<RasterListCommands>(raster.draw).description;
+        const auto& scope = *compiled.rasterScope();
         std::vector<nri::Format> colors;
-        for (const auto& color : raster.colors)
+        for (const auto& color : scope.colors)
         {
             const auto& image =
                 std::get<GraphImageDesc>(instance_.plan().resources()[color.access.version.resource.index].description);
             colors.push_back(imageFormat(image.format).native);
         }
         const auto depth =
-            raster.depth
+            scope.depth
                 ? imageFormat(std::get<GraphImageDesc>(
-                                  instance_.plan().resources()[raster.depth->access.version.resource.index].description
+                                  instance_.plan().resources()[scope.depth->access.version.resource.index].description
                               )
                                   .format)
                       .native
@@ -435,7 +437,7 @@ namespace lux::render::detail
     }
 
     RenderResult<FeatureBinding::Preparation>
-    RasterMeshDraws::prepare(const FeatureFrameInput& frame, ResourceUploader&) noexcept
+    RasterMeshDraws::prepare(const FeatureFrameInput& frame, ResourceUploader&, detail::Preparation&) noexcept
     {
         if (requiresPrograms())
         {
@@ -487,7 +489,7 @@ namespace lux::render::detail
         if (*refreshed)
         {
             const auto& compiled = *instance_.compiledPass(configuration_.pass);
-            const auto& stage = std::get<RasterListCommands>(std::get<RasterCommands>(compiled.work).draw).description;
+            const auto& stage = std::get<RasterListCommands>(compiled.work.get<RasterCommands>().draw).description;
             draws.parameters = stage.parameters.values;
         }
         updateViewParameters(frame, draws);
@@ -594,7 +596,7 @@ namespace lux::render::detail
                 if (!rebuild) continue;
                 auto& packet = draws.packets[ordinal];
                 packet.pipeline = program.pipeline;
-                packet.bindings = &program.bindings;
+                packet.bindings = program.bindings.recordBindings();
                 packet.first_descriptor = shared_members ? program_index : ordinal;
                 packet.descriptor_count = 1;
                 packet.first_vertex = ordinal;
@@ -650,7 +652,7 @@ namespace lux::render::detail
         const auto same_state = [&](const RasterDrawPacket& left, const RasterDrawPacket& right) noexcept
         {
             const bool same_pipeline = left.pipeline == right.pipeline &&
-                left.bindings->layout == right.bindings->layout;
+                left.bindings.layout == right.bindings.layout;
             const bool same_index = left.index == right.index && left.index_offset == right.index_offset &&
                 left.index_type == right.index_type;
             const bool same_scissor = left.scissor.x == right.scissor.x && left.scissor.y == right.scissor.y &&
@@ -894,7 +896,7 @@ namespace lux::render::detail
         auto value =
             std::unique_ptr<RasterMeshDraws>(new RasterMeshDraws(device, resources, instance, programs, configuration));
         const auto& stage =
-            std::get<RasterListCommands>(std::get<RasterCommands>(instance.compiledPass(configuration.pass)->work).draw)
+            std::get<RasterListCommands>(instance.compiledPass(configuration.pass)->work.get<RasterCommands>().draw)
                 .description;
         constexpr std::array<std::string_view, 2> names{"view", "projection"};
         for (std::uint32_t i = 0; configuration.views.index == kGraphInvalidIndex && i < names.size(); ++i)
@@ -912,8 +914,15 @@ namespace lux::render::detail
         return FeatureBinding{
             {value.release(), [](void* data) noexcept { delete static_cast<RasterMeshDraws*>(data); }},
             FeatureBinding::RasterPreparation{
-                [](void* data, const FeatureFrameInput& frame, ResourceUploader& uploads) noexcept
-                { return static_cast<RasterMeshDraws*>(data)->prepare(frame, uploads); },
+                [](
+                    void* data,
+                    const FeatureFrameInput& frame,
+                    ResourceUploader& uploads,
+                    detail::Preparation& preparation
+                ) noexcept
+                {
+                    return static_cast<RasterMeshDraws*>(data)->prepare(frame, uploads, preparation);
+                },
                 [](const void* data) noexcept { return static_cast<const RasterMeshDraws*>(data)->requiresPrograms(); },
                 [](void* data, execution::CpuScheduler cpu) noexcept
                 { return static_cast<RasterMeshDraws*>(data)->preparePrograms(cpu); }

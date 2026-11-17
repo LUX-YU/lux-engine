@@ -1,6 +1,8 @@
 #pragma once
 
 #include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/GraphProgram.hpp>
+#include <lux/engine/render/extensions/graph/Sampler.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render
@@ -15,6 +17,13 @@ namespace lux::render
         std::optional<PassCondition> condition;
         std::optional<PassInterface> encoding_interface;
         nri::StageBits encoding_stages = nri::StageBits::NONE;
+        std::optional<RasterScope> rendering;
+
+        [[nodiscard]] const RasterScope* rasterScope() const noexcept
+        {
+            if (const auto* raster = work.getIf<RasterWork>()) return raster;
+            return rendering ? &*rendering : nullptr;
+        }
     };
 
     class RenderGraphBuilder;
@@ -42,9 +51,14 @@ namespace lux::render
             return outputs_;
         }
 
-        [[nodiscard]] std::span<const rdesc::ShaderProgramArtifact> programs() const noexcept
+        [[nodiscard]] std::span<const GraphProgram> programs() const noexcept
         {
             return programs_;
+        }
+
+        [[nodiscard]] std::span<const SamplerDescription> samplers() const noexcept
+        {
+            return samplers_;
         }
 
         [[nodiscard]] std::span<const HistoryDescription> histories() const noexcept
@@ -59,7 +73,8 @@ namespace lux::render
 
     private:
         friend class RenderGraphBuilder;
-        std::vector<rdesc::ShaderProgramArtifact> programs_;
+        std::vector<GraphProgram> programs_;
+        std::vector<SamplerDescription> samplers_;
         std::vector<GraphResource> resources_;
         std::vector<GraphPass> passes_;
         std::vector<GraphDependency> dependencies_;

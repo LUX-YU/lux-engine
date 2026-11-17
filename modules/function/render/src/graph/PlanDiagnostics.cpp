@@ -1,5 +1,5 @@
 #include <lux/engine/render/graph/DumpText.hpp>
-#include <lux/engine/render/graph/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <set>
 
@@ -128,19 +128,12 @@ namespace lux::render::detail
         {
             image_barriers += pass.before.images.size();
             buffer_barriers += pass.before.buffers.size();
-            if (const auto* raster = std::get_if<RasterCommands>(&pass.work))
+            if (const auto* raster = pass.work.getIf<RasterCommands>())
             {
                 dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw) ||
                                          std::holds_alternative<IndexedListCommands>(raster->draw);
             }
-            if (const auto* raster = std::get_if<RasterCommands>(&pass.work); raster && raster->pipeline)
-            {
-                pipelines.insert(raster->pipeline);
-            }
-            if (const auto* compute = std::get_if<ComputeCommands>(&pass.work); compute && compute->pipeline)
-            {
-                pipelines.insert(compute->pipeline);
-            }
+            if (pass.pipeline) pipelines.insert(pass.pipeline);
             if (auto* layout = plan.descriptor_plan_->passes[pass.source_pass].layout)
             {
                 layouts.insert(layout);
@@ -165,7 +158,7 @@ namespace lux::render::detail
             }
             const auto& pass = program.passes[p];
             output +=
-                "{\"source\":" + std::to_string(pass.source_pass) + ",\"kind\":" + std::to_string(pass.work.index()) +
+                "{\"source\":" + std::to_string(pass.source_pass) + ",\"kind\":" + std::to_string(static_cast<unsigned>(pass.kind)) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
                 ",\"condition_region\":" + std::to_string(pass.condition_region) +
                 ",\"queue_role\":" + std::to_string(static_cast<unsigned>(pass.queue)) +

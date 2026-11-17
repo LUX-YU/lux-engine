@@ -7,14 +7,15 @@
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/commands/ImageCommands.hpp>
-#include <lux/engine/render/commands/Lighting3dCommands.hpp>
-#include <lux/engine/render/commands/MaterialCommands.hpp>
-#include <lux/engine/render/commands/Mesh3dCommands.hpp>
+#include <lux/engine/render/resources/texture/Commands.hpp>
+#include <lux/engine/render/resources/lighting/Commands.hpp>
+#include <lux/engine/render/resources/material/Commands.hpp>
+#include <lux/engine/render/resources/mesh/Commands.hpp>
+#include <lux/engine/render/resources/instance/Commands.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
-#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/resources/lighting/Binding.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -517,7 +518,9 @@ int main(int argc, char** argv)
         }
     };
     config.frames_in_flight = fif;
-    config.uploads = TransferOptions{65536, 2, 2 * 1024 * 1024};
+    // Frame preparation freezes a whole Resource slice; the instance page needs about 1 MiB.
+    // Tiny-window asset streaming and capacity rejection are covered by the upload probes.
+    config.uploads = TransferOptions{};
     DeviceOptions device{};
     device.multiple_queues = true;
     device.texture_descriptors = true;
@@ -587,19 +590,18 @@ int main(int argc, char** argv)
     const auto shadow = take(server->featureId("lux.render.feature.MeshDepthRaster"));
     const auto deferred_probe = registerRenderProbe<DeferredProbeConfiguration>(
         *server, "test.deferred", {gbuffer, lighting, tone, capture, visibility},
-        probePorts({"color"}, {"pixels", "commands"}), kLitProbeDependencies, lowerDeferredProbe
+        probePorts({"color"}, {"pixels", "commands"}), lowerDeferredProbe
     );
     const auto coverage_probe = registerRenderProbe<CoverageProbeConfiguration>(
         *server, "test.coverage", {shadow, capture, visibility},
-        probePorts({"color"}, {"pixels"}), kRasterProbeDependencies, lowerCoverageProbe
+        probePorts({"color"}, {"pixels"}), lowerCoverageProbe
     );
-    CommandList bootstrap;
-    bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
+
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
-    const auto commands = call<ListCommands>(*client, bootstrap, {});
+    const auto commands = queryCommands(*client);
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto meshes = call<GetOrCreateResource>(
         *client, commands, {GlobalRenderScope{}, kMeshResourceName}
@@ -610,9 +612,8 @@ int main(int argc, char** argv)
     const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
     const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
     const auto scene_inputs = installInputs(*client, commands, scene);
-    const auto instance_updates = frameBinding<MeshInstanceUpdates>(scene_inputs);
-    const auto light_updates = frameBinding<LightUpdates>(scene_inputs);
-    FrameStorage update_frame;
+    const auto instance_updates = scene_inputs.instances;
+    const auto light_updates = scene_inputs.lights;
 
     struct Vertex
     {
@@ -646,8 +647,8 @@ int main(int argc, char** argv)
     }
     mesh_data.bounds = lux::math::AABB{{-.48F, -.8F, .5F}, {.48F, .8F, .5F}};
     auto geometry = take(describeIndexedMesh(mesh_data));
-    const auto left_mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
-    const auto right_mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
+    const auto left_mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
+    const auto right_mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
     const MaterialParameters left_values{{.2F, .4F, .6F, 1}, {0, 0, 0, 0}, {1, 0, 0, 0}};
     const MaterialParameters right_values{{.3F, .5F, .7F, 1}, {0, 0, 0, 0}, {1, 0, 0, 0}};
     auto left_material = call<MaterialCommands::Create>(*client, commands, {materials, {unlit, left_values}}).material;
@@ -672,14 +673,14 @@ int main(int argc, char** argv)
     values[1].transform[12] = .5F;
     values[1].transform[0] = -1; // Mirror: normal cofactor sign and double-sided raster must remain correct.
     values[1].transform[5] = .75F;
-    auto ids = call<Mesh3dCommands::CreateInstances>(
+    auto ids = call<InstanceCommands::CreateInstances>(
                    *client,
                    commands,
                    {instances, values}
     )
                    .instances;
     std::vector<VDirectLight> lights{DirectionalLightGpu{}, PointLightGpu{}, SpotLightGpu{}};
-    auto light_ids = call<Lighting3dCommands::CreateLights>(
+    auto light_ids = call<LightingCommands::CreateLights>(
             *client, commands, {light_storage, {1, lights}}
         ).lights;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
@@ -754,7 +755,7 @@ int main(int argc, char** argv)
                     if (churn_active)
                     {
                         const auto failures = call_capture_failed_allocations.load();
-                        RenderFrame request{nextSceneRequest(), {}};
+                        RenderFrame request{};
                         request.resynchronize = resynchronize;
                         const auto response = call<SubmitFrame>(*client, commands, request, false);
                         if (response.error.type)
@@ -797,7 +798,7 @@ int main(int argc, char** argv)
         }
         if (!removed_groups.empty())
         {
-            for (auto id : removed_groups) call<Mesh3dCommands::ReleaseInstance>(*client, commands, {id});
+            for (auto id : removed_groups) call<InstanceCommands::ReleaseInstance>(*client, commands, {id});
             removed_groups = {};
             advance();
         }
@@ -839,10 +840,10 @@ int main(int argc, char** argv)
             CHECK(views == call_capture_counts[3].load());
             for (unsigned iteration = 0; iteration < 2; ++iteration)
             {
-                const auto mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
+                const auto mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
                 MeshInstanceData value{mesh, left_material};
                 value.render_enabled = false;
-                const auto instance = call<Mesh3dCommands::CreateInstance>(
+                const auto instance = call<InstanceCommands::CreateInstance>(
                     *client, commands, {instances, value}
                 ).instance;
                 advance();
@@ -850,22 +851,21 @@ int main(int argc, char** argv)
                 CHECK(call_capture_fail_pool.load() == 0);
                 CHECK(pools == call_capture_counts[0].load());
                 CHECK(sets == call_capture_counts[4].load());
-                call<Mesh3dCommands::ReleaseInstance>(*client, commands, {instance});
+                call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
                 advance();
                 CHECK(pools == call_capture_counts[0].load());
                 CHECK(sets == call_capture_counts[4].load());
-                call<Mesh3dCommands::ReleaseMesh>(*client, commands, {mesh});
+                call<MeshCommands::ReleaseMesh>(*client, commands, {mesh});
             }
             std::puts("DESCRIPTOR REUSE PASS stable=zero_create shared_material_churn=zero_sets failures=recovered");
         }
         if (!in_frame_updates.empty())
         {
-            submitFrameData(
+            updateSceneData(
                 *client,
                 commands,
-                update_frame,
-                instance_updates,
-                MeshInstanceUpdates{20, in_frame_updates}
+                        instance_updates,
+                std::span<const MeshInstanceUpdate>{in_frame_updates}
             );
             advance();
         }
@@ -929,7 +929,7 @@ int main(int argc, char** argv)
         std::vector<MeshInstanceData> probe_values;
         for (std::uint32_t group = 0; group < draw_groups; ++group)
         {
-            const auto mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
+            const auto mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
             probe_meshes.push_back(mesh);
             MeshInstanceData value{mesh, left_material};
             value.render_enabled = true;
@@ -940,7 +940,7 @@ int main(int argc, char** argv)
             value.transform[14] = -.1F;
             probe_values.push_back(value);
         }
-        auto probe_instances = call<Mesh3dCommands::CreateInstances>(
+        auto probe_instances = call<InstanceCommands::CreateInstances>(
             *client, commands,
             {instances, probe_values}
         ).instances;
@@ -955,11 +955,11 @@ int main(int argc, char** argv)
         draw_probe_active = false;
         for (auto id : probe_instances)
         {
-            call<Mesh3dCommands::ReleaseInstance>(*client, commands, {id});
+            call<InstanceCommands::ReleaseInstance>(*client, commands, {id});
         }
         for (auto mesh : probe_meshes)
         {
-            call<Mesh3dCommands::ReleaseMesh>(*client, commands, {mesh});
+            call<MeshCommands::ReleaseMesh>(*client, commands, {mesh});
         }
         std::printf("DRAW GROUPS PASS groups=%u removed=%u views=2 mixed_winding=1\n", draw_groups, removed);
     }
@@ -993,7 +993,7 @@ int main(int argc, char** argv)
         all_materials.push_back(right_material);
         values[1].material = right_material;
         const std::array replaced_material{MeshInstanceUpdate{ids[1], values[1]}};
-        submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{29, replaced_material});
+        updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{replaced_material});
         call<MaterialCommands::Release>(*client, commands, {previous_material});
         std::erase(all_materials, previous_material);
         CHECK(all_candidates == run(0));
@@ -1002,13 +1002,13 @@ int main(int argc, char** argv)
     // must not bypass render permission; reenabling keeps the same resource/instance identities.
     values[0].render_enabled = values[1].render_enabled = false;
     const std::array hidden{MeshInstanceUpdate{ids[0], values[0]}, MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{30, hidden});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{hidden});
     const auto hidden_pixels = run(0, false, false);
     CHECK(hidden_pixels == run(0, true, false));
     CHECK(hidden_pixels != all_candidates);
     values[0].render_enabled = values[1].render_enabled = true;
     const std::array shown{MeshInstanceUpdate{ids[0], values[0]}, MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{31, shown});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{shown});
     CHECK(all_candidates == run(0));
     auto stale = light_ids.front();
     auto stale_key = extension_detail::ResourceIdentity::local(stale);
@@ -1019,23 +1019,27 @@ int main(int argc, char** argv)
     );
     const std::array invalid_light{DirectLightUpdate{stale, lights.front()}};
     auto rejected =
-        submitFrameData(*client, commands, update_frame, light_updates, LightUpdates{8, invalid_light}, false);
-    CHECK(rejected.error.type && rejected.failed_entry == 0 && rejected.requires_resynchronization);
-    CHECK(rejected.outcome == EFrameOutcome::NOT_SUBMITTED);
-    // A failed sealed frame requires an explicit Client resynchronization, even when this
-    // particular stale identity was rejected before mutation. Supply the full authoritative light set.
+        updateSceneData(*client, commands, light_updates, std::span<const DirectLightUpdate>{invalid_light}, false);
+    CHECK(rejected.error.type && !rejected.requires_resynchronization);
+    CHECK(rejected.outcome == EFrameOutcome::REJECTED);
+    // The Resource command rejected the stale identity before a frame was submitted.
+    // No frame recovery is needed; the following valid edit still exercises the same live identities.
     std::vector<DirectLightUpdate> restored_lights;
     for (std::size_t i = 0; i < light_ids.size(); ++i)
     {
         restored_lights.push_back({light_ids[i], lights[i]});
     }
     const auto light_recovery =
-        submitFrameData(*client, commands, update_frame, light_updates, LightUpdates{2, restored_lights}, true, true);
+        updateSceneData(
+            *client, commands, light_updates, std::span<const DirectLightUpdate>{restored_lights}
+        );
     CHECK(!light_recovery.requires_resynchronization);
     // Update only one light, preserve identities and repair all FIF replicas before subsequent Draws.
     std::get<PointLightGpu>(lights[1]).position_range = {0, 0, 30, .2F};
     const std::array changes{DirectLightUpdate{light_ids[1], lights[1]}};
-    CHECK(submitFrameData(*client, commands, update_frame, light_updates, LightUpdates{3, changes}).error.type == 0);
+    const auto changed_lights =
+        updateSceneData(*client, commands, light_updates, std::span<const DirectLightUpdate>{changes});
+    CHECK(changed_lights.error.type == 0);
     run(1);
     const auto texture_storage = call<GetOrCreateResource>(
         *client, commands, {GlobalRenderScope{}, kTextureResourceName}
@@ -1048,14 +1052,14 @@ int main(int argc, char** argv)
     texture_info.mip_ranges[0] = {0, 4, 1, 1};
     const std::array<std::byte, 4> normal_bytes{std::byte{204}, std::byte{128}, std::byte{230}, std::byte{255}};
     auto normal_texture =
-        call<ImageCommands::Upload>(*client, commands, {texture_storage, {texture_info, normal_bytes}}).texture;
+        call<TextureCommands::Upload>(*client, commands, {texture_storage, {texture_info, normal_bytes}}).texture;
     pbr = normal_mapped;
     right_material =
         call<MaterialCommands::Create>(*client, commands, {materials, {pbr, right_values, {normal_texture}}}).material;
     all_materials.push_back(right_material);
     values[1].material = right_material;
     const std::array normal_update{MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{4, normal_update});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{normal_update});
     normal_textures = {{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
     expected_normal = {-(204 / 255.0F * 2 - 1), 128 / 255.0F * 2 - 1, 230 / 255.0F * 2 - 1};
     const auto normal_reference = run(0);
@@ -1068,10 +1072,10 @@ int main(int argc, char** argv)
         vertex.tangent.setZero();
         vertex.bitangent.setZero();
     }
-    const auto missing_uv_mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &missing_uv}).mesh;
+    const auto missing_uv_mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &missing_uv}).mesh;
     values[1].mesh = missing_uv_mesh;
     const std::array missing_uv_update{MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{5, missing_uv_update});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{missing_uv_update});
     const auto missing_uv_pixels = run(0);
     std::size_t differing_bytes = 0;
     unsigned maximum_difference = 0;
@@ -1106,17 +1110,17 @@ int main(int argc, char** argv)
     all_materials.push_back(no_uv_material);
     values[1].material = no_uv_material;
     const std::array no_uv_input{MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{6, no_uv_input});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{no_uv_input});
     CHECK(run(0) == normal_reference); // Tangent vertex variant without a UV interpolant.
     values[1].mesh = right_mesh;
     values[1].material = right_material;
     const std::array restored_mesh{MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{6, restored_mesh});
-    call<Mesh3dCommands::ReleaseMesh>(*client, commands, {missing_uv_mesh});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored_mesh});
+    call<MeshCommands::ReleaseMesh>(*client, commands, {missing_uv_mesh});
     std::puts("MISSING UV PASS: zero UV/tangent/bitangent preserves mirrored normal-map pixels");
     // The readback inspects one geometry/program group. Remove the unrelated unlit group
     // so the first indirect stream is the mixed-winding group checked below.
-    call<Mesh3dCommands::ReleaseInstance>(*client, commands, {ids[0]});
+    call<InstanceCommands::ReleaseInstance>(*client, commands, {ids[0]});
     // Both face modes must support mixed signs within one group and nonuniform normal-mapped transforms.
     for (bool two_sided : {false, true})
     {
@@ -1144,7 +1148,7 @@ int main(int argc, char** argv)
         all_materials.insert(all_materials.end(), {right_material, other_material});
         values[1].material = right_material;
         const std::array changed{MeshInstanceUpdate{ids[1], values[1]}};
-        submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{10, changed});
+        updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{changed});
         std::array<MeshInstanceData, 4> additions;
         for (unsigned i = 0; i < additions.size(); ++i)
         {
@@ -1158,7 +1162,7 @@ int main(int argc, char** argv)
         }
         additions[2].transform[12] = 4;
         additions[3].transform[14] = 2;
-        extra_instances = call<Mesh3dCommands::CreateInstances>(
+        extra_instances = call<InstanceCommands::CreateInstances>(
                               *client,
                               commands,
                               {instances, additions}
@@ -1204,7 +1208,7 @@ int main(int argc, char** argv)
         CHECK(changed_pixels != culled);
         for (auto instance : extra_instances)
         {
-            call<Mesh3dCommands::ReleaseInstance>(
+            call<InstanceCommands::ReleaseInstance>(
                 *client,
                 commands,
                 {instance}
@@ -1212,7 +1216,7 @@ int main(int argc, char** argv)
         }
         mixed_winding = false;
     }
-    ids[0] = call<Mesh3dCommands::CreateInstances>(
+    ids[0] = call<InstanceCommands::CreateInstances>(
         *client, commands, {instances, std::span<const MeshInstanceData>{&values[0], 1}}
     ).instances.front();
     pbr = normal_mapped;
@@ -1221,18 +1225,14 @@ int main(int argc, char** argv)
     all_materials.push_back(right_material);
     values[1].material = right_material;
     const std::array restored{MeshInstanceUpdate{ids[1], values[1]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{12, restored});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored});
     // Resources may upload successfully before a particular Effect prepares their program.
     // A material without GBuffer output fails that visible frame, retaining the old cache entries.
-    auto incompatible_program = pbr;
-    std::erase_if(
-        incompatible_program.programs,
-        [](const auto& shader) { return shader.purpose == rdesc::EMaterialPurpose::GBUFFER; }
-    );
-    const auto incompatible_material =
-        call<MaterialCommands::Create>(
-            *client, commands, {materials, {incompatible_program, right_values, {normal_texture}}}
-        ).material;
+    // Derive the actual requested purpose so unused author parameters/textures are normalized.
+    auto incompatible_program = cook(true, false, true, true);
+    const auto incompatible_material = call<MaterialCommands::Create>(
+        *client, commands, {materials, {incompatible_program, {}, {}}}
+    ).material;
     const auto invalid_view = call<CreateView>(*client, commands, {scene}).view;
     const auto invalid_target = call<CreateTarget>(*client, commands, {target}).target;
     CameraInput initial_camera;
@@ -1247,23 +1247,23 @@ int main(int argc, char** argv)
     }
     invalid_effect_request.composition.outputs.push_back({"light", "color"});
     const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid_effect_request)).effect;
-    submitFrameData(*client, commands, update_frame, viewCameraBinding({scene, invalid_view}), initial_camera);
+    updateSceneData(*client, commands, ViewRequest{scene, invalid_view}, initial_camera);
     const auto invalid_attachment = call<Attach>(
         *client, commands, {scene, invalid_view, invalid_target, invalid_effect}
     ).attachment;
     auto incompatible_instance = values[1];
     incompatible_instance.material = incompatible_material;
     const std::array invalid_update{MeshInstanceUpdate{ids[1], incompatible_instance}};
-    const auto rejected_frame = submitFrameData(
+    const auto rejected_frame = updateSceneData(
         *client,
         commands,
-        update_frame,
         instance_updates,
-        MeshInstanceUpdates{13, invalid_update},
+        std::span<const MeshInstanceUpdate>{invalid_update},
         false
     );
-    CHECK(rejected_frame.error.type == kFeatureContract && rejected_frame.requires_resynchronization);
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{14, restored}, true, true);
+    CHECK(rejected_frame.error.type == kFeatureContract && !rejected_frame.requires_resynchronization);
+    // The standalone edit was already acknowledged; this frame applied no borrowed input packet.
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored});
     detach(*client, commands, invalid_attachment);
     call<RemoveEffect>(*client, commands, {invalid_effect});
     call<RemoveView>(*client, commands, {scene, invalid_view});
@@ -1276,7 +1276,7 @@ int main(int argc, char** argv)
     all_materials.push_back(left_material);
     values[0].material = left_material;
     const std::array mask_update{MeshInstanceUpdate{ids[0], values[0]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{5, mask_update});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{mask_update});
     expected_left = {0, 0, 0};
     run(0);
     const auto check_shadow = [&](float expected)
@@ -1339,7 +1339,7 @@ int main(int argc, char** argv)
     run(0);
     for (auto id : light_ids)
     {
-        call<Lighting3dCommands::ReleaseLight>(
+        call<LightingCommands::ReleaseLight>(
             *client,
             commands,
             {id, 3}
@@ -1355,7 +1355,7 @@ int main(int argc, char** argv)
     all_materials.push_back(left_material);
     values[0].material = left_material;
     const std::array shadow_update{MeshInstanceUpdate{ids[0], values[0]}};
-    submitFrameData(*client, commands, update_frame, instance_updates, MeshInstanceUpdates{6, shadow_update});
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{shadow_update});
     check_shadow(.5F);
     call<RemoveScene>(*client, commands, {scene});
     for (auto material : all_materials)
@@ -1368,13 +1368,13 @@ int main(int argc, char** argv)
     }
     for (auto mesh : {left_mesh, right_mesh})
     {
-        call<Mesh3dCommands::ReleaseMesh>(
+        call<MeshCommands::ReleaseMesh>(
             *client,
             commands,
             {mesh}
         );
     }
-    call<ImageCommands::Release>(
+    call<TextureCommands::Release>(
         *client,
         commands,
         {normal_texture}

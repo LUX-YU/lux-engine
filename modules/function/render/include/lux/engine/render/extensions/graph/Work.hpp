@@ -28,11 +28,25 @@ namespace lux::render
         std::string source_field;
     };
 
+    enum class EDeviceParameter : std::uint8_t
+    {
+        INDIRECT_FIRST_INSTANCE
+    };
+
+    struct DeviceParameter final
+    {
+        std::string shader_field;
+        EDeviceParameter source = EDeviceParameter::INDIRECT_FIRST_INSTANCE;
+    };
+
     struct ParameterBinding final
     {
         std::vector<std::byte> values;
         rdesc::ShaderBlock instance_layout;
         std::vector<ValueParameter> fields;
+        std::vector<DeviceParameter> device_fields;
+        // Explicitly zero-initialize any reflected tail beyond the supplied constant bytes.
+        bool zero_fill_tail = false;
     };
 
     struct SamplerParameter final
@@ -110,7 +124,18 @@ namespace lux::render
         ParameterBinding parameters;
     };
 
-    struct RasterWork final
+    struct RasterScope
+    {
+        [[nodiscard]] bool hasAttachments() const noexcept { return !colors.empty() || depth.has_value(); }
+
+        std::vector<RasterAttachment> colors;
+        std::optional<RasterAttachment> depth;
+        // Per-pass rectangle in its attachment; absent uses the instance's normalized viewport.
+        std::optional<RasterViewport> viewport;
+        std::optional<RasterStateInput> state_input; // Prepared CPU parameter record; overrides viewport and bias.
+    };
+
+    struct RasterWork final : RasterScope
     {
         struct FixedProgram final
         {
@@ -122,11 +147,6 @@ namespace lux::render
 
         using VProgram = std::variant<FixedProgram, RasterPassTemplate>;
         VProgram program;
-        std::vector<RasterAttachment> colors;
-        std::optional<RasterAttachment> depth;
-        // Per-pass rectangle in its attachment; absent uses the instance's normalized viewport.
-        std::optional<RasterViewport> viewport;
-        std::optional<RasterStateInput> state_input; // Prepared CPU parameter record; overrides viewport and bias.
 
         // Explicit fixed-program authoring; dynamic producers assign RasterPassTemplate instead.
         [[nodiscard]] FixedProgram& fixed() noexcept
@@ -304,10 +324,11 @@ namespace lux::render
     struct PassDeclaration final
     {
         EGraphPassKind kind = EGraphPassKind::COMPUTE;
-        // Conservative stage union for ALL explicit accesses; none is never a valid custom declaration.
+        // Shader-stage union for declared shader accesses; fixed-function usages supply their compatible stages.
         nri::StageBits stages = nri::StageBits::NONE;
         std::vector<ResourceAccess> accesses;
         PassInterface interface;
+        std::optional<RasterScope> rendering;
     };
 
     enum class EConditionSource : std::uint8_t

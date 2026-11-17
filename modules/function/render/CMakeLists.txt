@@ -29,8 +29,10 @@ generate_visibility_header(
 )
 
 set(render_sources
+    src/device/CopyEncoding.cpp
     src/runtime/RenderClient.cpp
-    src/frame/FrameStorage.cpp
+    src/frame/FrameLayout.cpp
+    src/frame/FrameData.cpp
     src/resource/view/CameraInputHandler.cpp
     src/resource/ui/UiInputHandler.cpp
     src/core/Target.cpp
@@ -53,8 +55,8 @@ set(render_sources
     src/graph/RenderGraphBuilder.cpp
     src/graph/RenderGraphAnalysis.cpp
     src/graph/Diagnostics.cpp
-    src/features/FeatureAssembly.cpp
-    src/features/FeatureBuildContext.cpp
+    src/graph/FeatureAssembly.cpp
+    src/graph/FeatureBuildContext.cpp
     src/resource/view/CameraParameters.cpp
     src/features/RasterMeshParameters.cpp
     src/features/RasterMesh.cpp
@@ -85,23 +87,24 @@ set(render_sources
     src/device/d3d12/DeviceBackend.cpp
     src/device/SubmissionQueue.cpp
     src/execution/FrameExecution.cpp
-    src/execution/FrameResources.cpp
-    src/execution/ResizeResources.cpp
-    src/execution/HistoryState.cpp
+    src/graph/execute/FrameResources.cpp
+    src/graph/execute/ResizeResources.cpp
+    src/graph/execute/HistoryState.cpp
     src/execution/OffscreenTarget.cpp
     src/execution/SurfaceTarget.cpp
-    src/execution/RenderGraphInstance.cpp
-    src/execution/RenderExecutor.cpp
-    src/graph/RenderPlan.cpp
-    src/graph/CompiledPrograms.cpp
+    src/graph/execute/RenderGraphInstance.cpp
+    src/graph/execute/FrameExecutor.cpp
+    src/graph/execute/BuiltinPassEncoding.cpp
+    src/graph/compile/RenderPlan.cpp
+    src/device/CompiledPrograms.cpp
     src/graph/PlanDiagnostics.cpp
-    src/graph/GraphCompiler.cpp
-    src/graph/RenderingPlan.cpp
-    src/graph/ConditionalPlan.cpp
-    src/graph/SubmissionPlan.cpp
-    src/graph/PhysicalResourcePlan.cpp
-    src/graph/BarrierPlan.cpp
-    src/graph/ShaderBindingPlan.cpp
+    src/graph/compile/GraphCompiler.cpp
+    src/graph/compile/RenderingPlan.cpp
+    src/graph/compile/ConditionalPlan.cpp
+    src/graph/compile/SubmissionPlan.cpp
+    src/graph/compile/PhysicalResourcePlan.cpp
+    src/graph/compile/BarrierPlan.cpp
+    src/graph/compile/ShaderBindingPlan.cpp
     src/graph/Shader.cpp
     src/graph/RasterProgram.cpp
     src/graph/ShaderInterface.cpp
@@ -114,7 +117,7 @@ set(render_sources
     src/resource/instance/RasterMeshInstanceStorage.cpp
     src/resource/mesh/IndexedTriangleMeshStorage.cpp
     src/runtime/RenderServer.cpp
-    src/runtime/CapabilityRegistry.cpp
+    src/capabilities/CapabilityRegistry.cpp
     src/runtime/CapabilityCompilation.cpp
     src/commands/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
@@ -126,7 +129,7 @@ set(render_sources
     src/runtime/JobControl.cpp
     src/runtime/JobRelations.cpp
     src/runtime/Scene.cpp
-    src/runtime/EffectCompilation.cpp
+    src/runtime/EffectBuild.cpp
     src/commands/CommandDispatchContext.cpp
     src/runtime/FrameSubmission.cpp
     src/commands/ResponseOutbox.cpp

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+
 #include <array>
 
 #include <lux/engine/render/core/ConfigValue.hpp>
@@ -50,11 +52,13 @@ namespace lux::render::detail
         {
             EPreparation state = EPreparation::READY;
             std::span<const ResourceUpdate> resources;
-            std::span<const ResourceUploader::BufferCopy> copies;
+            std::span<const BufferCopyRegion> copies;
         };
 
         using PrepareResources =
-            RenderResult<Preparation> (*)(void*, const FeatureFrameInput&, ResourceUploader&) noexcept;
+            RenderResult<Preparation> (*)(
+                void*, const FeatureFrameInput&, ResourceUploader&, detail::Preparation&
+            ) noexcept;
 
         struct RasterPreparation final
         {
@@ -68,8 +72,9 @@ namespace lux::render::detail
         VPreparation preparation;
         // Effect declarations are frozen before any Attachment borrows this address.
         const FeatureFrameContribution* definition = nullptr;
+        std::uint32_t parameter_offset = 0, parameter_bytes = 0;
         std::vector<ResourceInput> resolved_inputs;
-        std::span<const ResourceUploader::BufferCopy> prepared_copies;
+        std::span<const BufferCopyRegion> prepared_copies;
         std::span<const ResourceUpdate> initial_resources;
         // Null preserves true per-frame preparation (camera/light-derived values, for example).
         // A producer revision allows each physical slice to skip already prepared derived data.
@@ -97,7 +102,7 @@ namespace lux::render::detail
         Create create = nullptr;
         std::vector<GraphResourceId> inputs;
         std::uint32_t parameter_bytes = 0;
-        std::uint32_t parameter_group = 0, parameter_offset = 0;
+        std::uint32_t parameter_group = 0;
         std::vector<GraphPassId> passes;
     };
 } // namespace lux::render::detail

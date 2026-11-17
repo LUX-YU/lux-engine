@@ -5,7 +5,8 @@
 
 namespace lux::render::detail
 {
-    RenderResult<void> CameraInputHandler::apply(FrameViewTarget target, CameraInput input) noexcept
+    RenderResult<void>
+    CameraInputHandler::apply(CameraInput& camera, std::uint64_t& revision, const CameraInput& input) noexcept
     {
         const RasterViewport viewport{input.viewport[0], input.viewport[1], input.viewport[2], input.viewport[3]};
         if (auto valid = viewport.validate(); !valid) return valid;
@@ -21,10 +22,10 @@ namespace lux::render::detail
         const bool has_invalid_direction = !std::isfinite(length) || std::abs(length - 1.F) > 0.001F;
         const bool is_invalid_camera = has_invalid_values || has_invalid_planes || has_invalid_direction;
         if (is_invalid_camera) return cxx::unexpected(RenderError{kFrameContract});
-        if (target.camera != input)
+        if (camera != input)
         {
-            target.camera = input;
-            ++target.revision;
+            camera = input;
+            ++revision;
         }
         return {};
     }

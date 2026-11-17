@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -793,7 +794,12 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<bool> RasterMaterialStorage::prepareFrame(std::uint32_t frame, ResourceUploader& uploads) noexcept
+    RenderResult<bool>
+    RasterMaterialStorage::prepareFrame(
+        std::uint32_t frame,
+        ResourceUploader& uploads,
+        Preparation& preparation
+    ) noexcept
     {
         bool copied_any = false;
         cxx::scope_exit acknowledge(
@@ -801,7 +807,7 @@ namespace lux::render::detail
             {
                 if (copied_any)
                 {
-                    uploads_.onPreparationSubmitted(
+                    preparation.onSubmitted(
                         this,
                         [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
                         {
@@ -904,8 +910,8 @@ namespace lux::render::detail
                 return static_cast<RasterMaterialStorage*>(object)
                     ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);
             },
-            [](void* object, std::uint32_t slot, ResourceUploader& uploads) noexcept
-            { return static_cast<RasterMaterialStorage*>(object)->prepareFrame(slot, uploads); },
+            [](void* object, std::uint32_t slot, ResourceUploader& uploads, Preparation& preparation) noexcept
+            { return static_cast<RasterMaterialStorage*>(object)->prepareFrame(slot, uploads, preparation); },
             [](const void* value) noexcept
             { return &static_cast<const RasterMaterialStorage*>(value)->preparation_revision_; }
         };

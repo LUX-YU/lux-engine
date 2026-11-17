@@ -13,16 +13,23 @@ endif()
 add_executable(query_consumer query.cpp)
 target_link_libraries(query_consumer PRIVATE lux::engine::scene::system_mesh_query)
 
-find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)
+find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_extensions)
+
 add_library(probe_feature SHARED Probe.cpp)
 target_include_directories(probe_feature
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_compile_definitions(probe_feature PRIVATE PROBE_LIBRARY)
-target_link_libraries(probe_feature PUBLIC lux::engine::function::render)
+target_link_libraries(probe_feature
+    PRIVATE lux::engine::function::render_extensions
+    PUBLIC lux::engine::function::render
+)
 
 add_executable(feature_consumer feature.cpp)
-target_link_libraries(feature_consumer PRIVATE probe_feature)
+
+find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)
+
+target_link_libraries(feature_consumer PRIVATE probe_feature lux::engine::core::core_execution)
 
 foreach(target probe_feature feature_consumer query_consumer)
     if(MSVC)

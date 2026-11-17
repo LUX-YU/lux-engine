@@ -44,22 +44,21 @@ namespace lux::render
                 return valid;
             }
         }
-        if (factory.frame_calls.size() != type.frame_inputs.size())
-        {
+        const auto& call = factory.frame_call;
+        const bool has_inputs = !type.frame_inputs.empty();
+        const bool is_invalid_call = has_inputs != (call.invoke != nullptr) ||
+            call.channels.size() != type.frame_inputs.size();
+        if (is_invalid_call) return cxx::unexpected(RenderError{kStorageContract});
+        if (has_inputs && (!call.declaration_type.isValid() || !call.method_type.isValid() ||
+            call.storage_type != factory.storage->implementation_type))
             return cxx::unexpected(RenderError{kStorageContract});
-        }
-        for (std::size_t i = 0; i < factory.frame_calls.size(); ++i)
+        for (std::size_t i = 0; i < call.channels.size(); ++i)
         {
-            const auto& call = factory.frame_calls[i];
-            const bool is_invalid_route = call.target != EFrameDataTarget::STORAGE || call.handler_type.isValid() ||
-                !call.resolve_storage || !call.invoke || call.root_size == 0 ||
-                !std::has_single_bit(call.root_alignment) || !call.method_type.isValid();
-            const bool is_wrong_type = call.data_type != type.frame_inputs[i] ||
-                call.storage_type != factory.storage->implementation_type;
-            if (is_invalid_route || is_wrong_type)
-            {
-                return cxx::unexpected(RenderError{kStorageContract});
-            }
+            const auto& channel = call.channels[i];
+            const bool is_wrong_type = channel.element != type.frame_inputs[i] ||
+                channel.declaration != call.declaration_type || channel.resource.name() != type.type.name();
+            const bool is_invalid_layout = channel.size == 0 || !std::has_single_bit(channel.alignment);
+            if (is_wrong_type || is_invalid_layout) return cxx::unexpected(RenderError{kStorageContract});
         }
         return compatibleStorage(type, *factory.descriptor);
     }

@@ -5,5 +5,5 @@
 namespace lux::render::detail
 {
     [[nodiscard]] RenderResult<RasterWork>
-    fullscreenRaster(FeatureBuildContext&, rdesc::ShaderProgramArtifact fragment) noexcept;
+    fullscreenRaster(FeatureBuildContext&, GraphProgram fragment) noexcept;
 } // namespace lux::render::detail

@@ -6,11 +6,9 @@
 #include <lux/engine/render/capabilities/RasterSurface.hpp>
 #include <lux/engine/render/capabilities/ColorEncoding.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
-#include <lux/engine/render/extensions/CapabilityRegistry.hpp>
+#include <lux/engine/render/extensions/CapabilityImplementation.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/extensions/CommandMethod.hpp>
-#include <lux/engine/render/extensions/FrameDataMethod.hpp>
-#include <lux/engine/render/resource/ui/UiInputHandler.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
@@ -26,7 +24,6 @@ namespace lux::render::detail
     struct RasterSurface final
     {
         using Capability = Mesh3dCapability;
-        using FrameBindings = std::tuple<>;
         using Features = std::tuple<GBufferFeature, MeshVisibilityFeature>;
         using Config = RasterSurfaceConfiguration;
         static constexpr FeatureName name{"lux.render.raster_surface"};
@@ -38,7 +35,6 @@ namespace lux::render::detail
     struct DeferredLight final
     {
         using Capability = Lighting3dCapability;
-        using FrameBindings = std::tuple<>;
         using Features = std::tuple<
             DeferredLightingFeature, TonemapFeature, ClusteredLightingFeature,
             ShadowMapFeature, MeshShadowFeature, MeshVisibilityFeature>;
@@ -52,7 +48,6 @@ namespace lux::render::detail
     struct UiScene final
     {
         using Capability = ImguiCapability;
-        using FrameBindings = std::tuple<FrameDataMethod<ImguiFrameData, &UiInputHandler::draw, 0, "ui", "draw">>;
         using Features = std::tuple<UiRasterFeature>;
         using Config = UiConfiguration;
         static constexpr FeatureName name{"lux.render.scene.ui"};

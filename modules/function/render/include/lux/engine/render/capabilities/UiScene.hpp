@@ -6,7 +6,7 @@
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/inputs/DrawInputs.hpp>
 #include <lux/engine/render/inputs/ImageShape.hpp>
-#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
+#include <lux/engine/render/resources/texture/Data.hpp>
 #include <algorithm>
 #include <cstddef>
 #include <variant>

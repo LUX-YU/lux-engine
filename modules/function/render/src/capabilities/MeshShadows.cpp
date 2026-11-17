@@ -1,7 +1,7 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/render/capabilities/CapabilityBuild.hpp>
 #include <lux/engine/render/capabilities/MeshShadows.hpp>
-#include <lux/engine/render/commands/Lighting3dCommands.hpp>
+#include <lux/engine/render/resources/lighting/Commands.hpp>
 
 #include <cmath>
 

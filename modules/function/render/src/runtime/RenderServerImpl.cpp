@@ -1,7 +1,9 @@
 #include <exception>
+#include <lux/engine/render/device/NativeResult.hpp>
+#include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <exec/variant_sender.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/execution/ResizeResources.hpp>
+#include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
@@ -25,6 +27,8 @@ namespace lux::render
         bindFrameworkCommand<CreateScene, &Impl::createScene>();
         bindFrameworkCommand<RemoveScene, &Impl::removeScene>();
         bindFrameworkCommand<CreateView, &Impl::createView>();
+        bindFrameworkCommand<UpdateViewCamera, &Impl::updateViewCamera>();
+        bindFrameworkCommand<QueryFrameInputLayout, &Impl::queryFrameInputLayout>();
         bindFrameworkCommand<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
         bindFrameworkCommand<InvalidateHistory, &Impl::invalidateHistory>();
         bindFrameworkCommand<RemoveView, &Impl::removeView>();
@@ -47,6 +51,7 @@ namespace lux::render
         bindSubmitFrameCommand();
         frame_inputs_.resize(static_cast<std::size_t>(config_.max_frames_ahead) + 1);
         submit_frame_command_ = *command_registry_.findCommand(commandDescriptor<SubmitFrame>());
+        submit_ui_frame_command_ = *command_registry_.findCommand(commandDescriptor<SubmitUiFrame>());
         select_binding_command_ = *command_registry_.findCommand(commandDescriptor<SelectCommandBinding>());
     }
 
@@ -116,28 +121,19 @@ namespace lux::render
 
     namespace
     {
-        // One operation owns the input data moved to the CPU scheduler. Device and
-        // registered feature declarations are borrowed: the Server's command scope
-        // must be settled before either owner is destroyed.
-        struct EffectCompileWork final
+        // The CPU operation owns author data and borrows only immutable registrations.
+        // The Server command scope settles it before those declarations are destroyed.
+        struct EffectBuildWork final
         {
-            nri::Device& device;
-            const nri::CoreInterface& core;
-            detail::EnabledDeviceFeatures features;
-            std::array<const detail::QueueProperties*, 3> queues;
             std::vector<ResourceDeclaration> resource_declarations;
             GraphEffectRequest request;
             std::vector<const FeatureEntry*> entries;
             std::size_t config_limit;
             std::vector<RenderEffect::ResourceDependency> resource_dependencies;
 
-            [[nodiscard]] RenderResult<std::pair<RenderEffect, RenderGraph>> compile() && noexcept
+            [[nodiscard]] RenderResult<RenderEffect> build() && noexcept
             {
-                return compileEffect(
-                    device,
-                    core,
-                    features,
-                    queues,
+                return buildEffect(
                     resource_declarations,
                     request,
                     entries,
@@ -148,8 +144,8 @@ namespace lux::render
         };
     } // namespace
 
-    exec::task<EffectCreated> RenderServer::Impl::adoptCompiledEffect(
-        EffectCompileResult candidate,
+    exec::task<EffectCreated> RenderServer::Impl::adoptBuiltEffect(
+        EffectBuildResult candidate,
         std::vector<RenderEffect::Implementation> implementations
     ) noexcept
     {
@@ -158,35 +154,25 @@ namespace lux::render
             co_return EffectCreated{candidate.error()};
         }
 
-        auto [compiled_effect, graph] = std::move(*candidate);
+        auto built_effect = std::move(*candidate);
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
             co_return EffectCreated{RenderError{kCommandCancelled}};
         }
 
-        auto programs = co_await compiled_effect.plan->preparePrograms(*device_, graph, cpu_scheduler_);
-        if (!programs)
-        {
-            co_return EffectCreated{programs.error()};
-        }
-        if (stop.stop_requested())
-        {
-            co_return EffectCreated{RenderError{kCommandCancelled}};
-        }
-
-        compiled_effect.implementations = std::move(implementations);
-        if (auto bindings = resolveFrameBindings(compiled_effect, graph); !bindings)
+        built_effect.implementations = std::move(implementations);
+        if (auto bindings = resolveFrameBindings(built_effect, built_effect.graph); !bindings)
         {
             co_return EffectCreated{bindings.error()};
         }
 
-        const auto effect = effects_.emplace(std::move(compiled_effect));
+        const auto effect = effects_.emplace(std::move(built_effect));
         compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
         co_return EffectCreated{{}, effect};
     }
 
-    auto RenderServer::Impl::compileGraphEffect(
+    auto RenderServer::Impl::buildGraphEffect(
         GraphEffectRequest&& input,
         RenderError initial_error,
         std::vector<RenderEffect::Implementation> implementations,
@@ -227,15 +213,7 @@ namespace lux::render
             }
         );
         std::ranges::sort(resource_declarations, {}, [](const ResourceDeclaration& type) { return type.name.name(); });
-        EffectCompileWork work{
-            device_->device(),
-            device_->nriCore(),
-            device_->enabledFeatures(),
-            {
-                &device_->queue(detail::EQueueRole::GRAPHICS).properties(),
-                &device_->queue(detail::EQueueRole::COMPUTE).properties(),
-                &device_->queue(detail::EQueueRole::TRANSFER).properties()
-            },
+        EffectBuildWork work{
             std::move(resource_declarations),
             std::move(input),
             std::move(registrations),
@@ -243,15 +221,15 @@ namespace lux::render
             std::move(resource_dependencies)
         };
 
-        // The CPU operation owns its request. Only the RenderThread adopts a compiled effect.
+        // The CPU operation owns its request. Only the RenderThread publishes the logical Effect.
         auto compiled =
             stdexec::schedule(cpu_scheduler_) |
-            stdexec::then([work = std::move(work)]() mutable noexcept { return std::move(work).compile(); }) |
+            stdexec::then([work = std::move(work)]() mutable noexcept { return std::move(work).build(); }) |
             stdexec::continues_on(server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery)) |
             stdexec::let_value(
-                [this, implementations = std::move(implementations)](EffectCompileResult& candidate) mutable noexcept
+                [this, implementations = std::move(implementations)](EffectBuildResult& candidate) mutable noexcept
                 {
-                    return adoptCompiledEffect(std::move(candidate), std::move(implementations));
+                    return adoptBuiltEffect(std::move(candidate), std::move(implementations));
                 }
             );
         auto invalid = stdexec::just(EffectCreated{initial_error});
@@ -269,7 +247,7 @@ namespace lux::render
         {
             implementations.push_back({contribution.implementation_id, contribution.key, {}});
         }
-        return compileGraphEffect(
+        return buildGraphEffect(
             std::move(graph),
             built ? RenderError{} : built.error(),
             std::move(implementations),
@@ -296,7 +274,8 @@ namespace lux::render
         }
         // Effect deletion must not silently destroy other Views' associations. The creator
         // removes it only after every borrowing Attachment has explicitly left.
-        if (!effect->attachments.empty())
+        const bool is_borrowed = !effect->attachments.empty() || effect->pending_executions != 0;
+        if (is_borrowed)
         {
             output_response.error = RenderError{kRuntimeState};
             return;
@@ -306,7 +285,8 @@ namespace lux::render
     }
 
     RenderResult<EffectAttachment> RenderServer::Impl::prepareAttachment(
-        RenderEffect& effect,
+        const RenderEffect& effect,
+        std::unique_ptr<detail::RenderPlan> prepared_plan,
         detail::TargetOutput output,
         ResourceSet& scene,
         RenderView& view,
@@ -314,8 +294,15 @@ namespace lux::render
     ) noexcept
     {
         const auto target_images = std::span(input.target_images);
-        const auto& plan = *effect.plan;
-        auto dependencies = resourceCreateContext();
+        const auto& plan = *prepared_plan;
+        EffectAttachment candidate;
+        candidate.plan = std::move(prepared_plan);
+        for (const auto& projection : effect.view_projections)
+        {
+            const auto [offset, bytes] = plan.parameterRegion(projection.parameter_group);
+            if (!bytes) return cxx::unexpected(RenderError{kFeatureContract});
+            candidate.view_projections.push_back({projection.type, projection.apply, offset, bytes});
+        }
         const std::array scope_sets{&*global_storages_, &scene, &view.storages};
         std::vector<ResourceInstanceId> dependency_storages;
         dependency_storages.reserve(effect.resource_dependencies.size());
@@ -331,7 +318,24 @@ namespace lux::render
             }
             dependency_storages.push_back(*instance);
         }
-        EffectAttachment candidate;
+        std::vector<FrameChannel> input_channels;
+        for (std::size_t i = 0; i < dependency_storages.size(); ++i)
+        {
+            const auto id = dependency_storages[i];
+            const auto* factory = resources_->factory(effect.resource_dependencies[i].declaration);
+            const auto& call = factory->frame_call;
+            if (!call.invoke) continue;
+            auto& bound = candidate.inputs.emplace_back(id, resources_->resourceInstance(id), &call);
+            for (const auto& channel : call.channels)
+            {
+                if (input_channels.size() >= UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+                bound.columns.push_back(static_cast<std::uint32_t>(input_channels.size()));
+                input_channels.push_back(channel);
+            }
+        }
+        auto layout = FrameLayout::create(input_channels, 1);
+        if (!layout) return cxx::unexpected(layout.error());
+        candidate.input_layout = std::move(*layout);
         candidate.instance =
             std::make_unique<detail::RenderGraphInstance>(*device_, frames_->frameCount(), plan, output);
         candidate.target_images.reserve(target_images.size());
@@ -415,6 +419,8 @@ namespace lux::render
         }
         for (const auto& binding : effect.bindings)
         {
+            const auto [offset, bytes] = plan.parameterRegion(binding.parameter_group);
+            if (binding.parameter_bytes > bytes) return cxx::unexpected(RenderError{kFeatureContract});
             auto created = binding.create(
                 *device_,
                 *frames_,
@@ -428,6 +434,8 @@ namespace lux::render
             {
                 return cxx::unexpected(created.error());
             }
+            created->parameter_offset = offset;
+            created->parameter_bytes = bytes;
             created->definition = &binding;
             created->resolved_inputs.resize(binding.inputs.size());
             for (std::uint32_t slot = 0; slot < frames_->frameCount(); ++slot)
@@ -466,22 +474,22 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
-        const auto parameters = input.parameters.empty() && !effect.view_projections.empty()
+        const auto parameters = input.parameters.empty() && !candidate.view_projections.empty()
             ? candidate.instance->instanceParameters() : std::span<const std::byte>{input.parameters};
         if (auto values =
                 candidate.instance
-                    ->setInputs(parameters, input.conditions, input.parameter_type, effect.parameter_projections);
+                    ->setInputs(parameters, input.conditions, input.parameter_type, {});
             !values)
         {
             return cxx::unexpected(values.error());
         }
         candidate.instance->setViewport(input.viewport);
-        for (const auto& projection : effect.view_projections)
+        for (const auto& projection : candidate.view_projections)
         {
             auto applied = candidate.instance->setParameterInput(std::as_bytes(std::span{&view.camera, 1}), projection);
             if (!applied) return cxx::unexpected(applied.error());
         }
-        if (!effect.view_projections.empty())
+        if (!candidate.view_projections.empty())
         {
             const auto& viewport = view.camera.viewport;
             candidate.instance->setViewport({viewport[0], viewport[1], viewport[2], viewport[3]});
@@ -534,9 +542,8 @@ namespace lux::render
         attachments_.erase(id);
     }
 
-    void RenderServer::Impl::attachEffect(const Attach::Request& _request, Attach::Response& output_response) noexcept
+    RenderResult<void> RenderServer::Impl::validateAttachment(const AttachmentRequest& _request) const noexcept
     {
-
         const auto& scene_id = _request.scene;
         const auto& view_id = _request.view;
         const auto& target_id = _request.target;
@@ -548,62 +555,107 @@ namespace lux::render
         const bool invalid = !view || !target || !effect;
         if (invalid)
         {
-            output_response.error = RenderError{kRuntimeIdentity};
-            return;
+            return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
         if (target->resizing)
         {
-            output_response.error = RenderError{kDeviceBusy};
-            return;
+            return cxx::unexpected(RenderError{kDeviceBusy});
         }
         if (target->surface() && !target->surface()->available())
         {
-            output_response.error = RenderError{kRuntimeState};
-            return;
+            return cxx::unexpected(RenderError{kRuntimeState});
         }
-        if (target->surface() && effect->plan->output() == kGraphInvalidIndex)
+        const bool has_present_output = std::ranges::any_of(effect->graph.outputs(),
+            [](const auto& output) noexcept { return output.target.has_value(); });
+        const bool is_missing_present_output = target->surface() && !has_present_output;
+        if (is_missing_present_output) return cxx::unexpected(RenderError{kRuntimeUnsupported});
+        for (const auto& image : _request.target_images)
         {
-            output_response.error = RenderError{kRuntimeUnsupported};
-            return;
+            const auto* source = targets_.find(image.target);
+            if (!source) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (source->resizing) return cxx::unexpected(RenderError{kDeviceBusy});
         }
         const bool target_mismatch = !target->attachment.isNull() && target->attachment != _request.replaces;
         if (target_mismatch)
         {
-            output_response.error = RenderError{kRuntimeState};
-            return;
+            return cxx::unexpected(RenderError{kRuntimeState});
         }
         if (!_request.replaces.isNull())
         {
             const auto* previous = attachments_.find(_request.replaces);
             if (!previous)
             {
-                output_response.error = RenderError{kRuntimeIdentity};
-                return;
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
             }
             const bool different_view = previous->scene != scene_id || previous->view != view_id;
             if (different_view || !canChangeAttachments({&_request.replaces, 1}))
             {
-                output_response.error = RenderError{different_view ? kRuntimeIdentity : kDeviceBusy};
-                return;
+                return cxx::unexpected(RenderError{different_view ? kRuntimeIdentity : kDeviceBusy});
             }
         }
         if (auto valid = _request.viewport.validate(); !valid)
         {
-            output_response.error = valid.error();
-            return;
+            return cxx::unexpected(valid.error());
         }
         if (targetDependencyCycle(target_id, _request.target_images, _request.replaces))
         {
-            output_response.error = RenderError{kCommandContract};
-            return;
+            return cxx::unexpected(RenderError{kCommandContract});
         }
-        auto prepared =
-            prepareAttachment(*effect, target->output(), scene->storages, *view, _request);
-        if (!prepared)
-        {
-            output_response.error = prepared.error();
-            return;
-        }
+        return {};
+    }
+
+    exec::task<AttachmentCreated> RenderServer::Impl::attachEffect(AttachmentRequest&& _request) noexcept
+    {
+        if (auto valid = validateAttachment(_request); !valid) co_return AttachmentCreated{valid.error()};
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        const auto is_stopping = [&]() noexcept
+        { return stop.stop_requested() || stop_requested_.load(std::memory_order_acquire); };
+        if (is_stopping()) co_return AttachmentCreated{RenderError{kCommandCancelled}};
+        auto* effect = effects_.find(_request.effect);
+        if (effect->pending_executions == UINT32_MAX) co_return AttachmentCreated{RenderError{kRuntimeCapacity}};
+        ++effect->pending_executions;
+        cxx::scope_exit release_recipe([effect]() noexcept { --effect->pending_executions; });
+
+        // Only immutable recipe data crosses to CPU. Removal is refused until this accepted borrow settles.
+        // No Scene/View/Target pointer is retained across suspension; adoption qualifies their generations again.
+        const std::array queues{
+            &device_->queue(detail::EQueueRole::GRAPHICS).properties(),
+            &device_->queue(detail::EQueueRole::COMPUTE).properties(),
+            &device_->queue(detail::EQueueRole::TRANSFER).properties()
+        };
+        const auto owner = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
+        auto compiled = co_await (
+            stdexec::schedule(cpu_scheduler_) |
+            stdexec::then([effect, device = device_.get(), queues]() noexcept
+            {
+                return detail::GraphCompiler::compile(
+                    device->device(), device->nriCore(), queues, effect->graph, effect->analysis, &effect->output,
+                    detail::ETransientAllocation::ALIAS_MEMORY, effect->parameter_groups
+                );
+            }) |
+            stdexec::upon_stopped([]() noexcept -> RenderResult<detail::RenderPlan>
+                { return cxx::unexpected(RenderError{kCommandCancelled}); }) |
+            stdexec::continues_on(owner) |
+            stdexec::upon_error(detail::NativeDeliveryFailure<detail::RenderPlan>{})
+        );
+        if (!compiled) co_return AttachmentCreated{compiled.error()};
+        if (is_stopping()) co_return AttachmentCreated{RenderError{kCommandCancelled}};
+        auto plan = std::make_unique<detail::RenderPlan>(std::move(*compiled));
+        auto programs = co_await plan->preparePrograms(*device_, effect->graph, cpu_scheduler_);
+        if (!programs) co_return AttachmentCreated{programs.error()};
+        if (is_stopping()) co_return AttachmentCreated{RenderError{kCommandCancelled}};
+        if (auto valid = validateAttachment(_request); !valid) co_return AttachmentCreated{valid.error()};
+
+        const auto scene_id = _request.scene;
+        const auto effect_id = _request.effect;
+        const auto view_id = _request.view;
+        const auto target_id = _request.target;
+        auto* scene = scenes_.find(scene_id);
+        auto* view = scene->views.find(view_id);
+        auto* target = targets_.find(target_id);
+        if (!plan->compatible(target->description)) co_return AttachmentCreated{RenderError{kDeviceArgument}};
+        auto prepared = prepareAttachment(*effect, std::move(plan), target->output(), scene->storages, *view, _request);
+        if (!prepared) co_return AttachmentCreated{prepared.error()};
         prepared->effect = effect_id;
         prepared->scene = scene_id;
         prepared->view = view_id;
@@ -614,6 +666,10 @@ namespace lux::render
         }
         const auto id = attachments_.emplace(std::move(*prepared));
         auto& attachment = *attachments_.find(id);
+        const auto revision = (std::uint64_t{id.gen} << 32) | id.index;
+        auto layout = FrameLayout::create(attachment.input_layout.channels(), revision);
+        if (!layout) std::terminate(); // The candidate already qualified this exact schema.
+        attachment.input_layout = std::move(*layout);
         attachment.view_position = view->attachments.size();
         attachment.effect_position = effect->attachments.size();
         view->attachments.push_back(id);
@@ -627,15 +683,14 @@ namespace lux::render
                 consumers.push_back(id);
             }
         }
-        output_response = {};
-        output_response.attachment = id;
+        AttachmentCreated result{{}, id};
         if (target->enabled)
         {
             active_targets_.emplace(target_id);
         }
         active_frame_inputs_dirty_ = true;
         storages_created_.store(resources_->creations(), std::memory_order_relaxed);
-        return;
+        co_return result;
     }
 
     bool RenderServer::Impl::targetDependencyCycle(
@@ -756,10 +811,9 @@ namespace lux::render
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
-        const auto& effect = *effects_.find(attachment->effect);
         if (auto applied =
                 attachment->instance
-                    ->setInputs(input.parameters, input.conditions, input.parameter_type, effect.parameter_projections);
+                    ->setInputs(input.parameters, input.conditions, input.parameter_type, {});
             !applied)
         {
             output_response.error = applied.error();
@@ -923,7 +977,7 @@ namespace lux::render
         {
             affected.push_back(target->attachment);
             const auto& attachment = *attachments_.find(target->attachment);
-            if (!effects_.find(attachment.effect)->plan->compatible(input.description))
+            if (!attachment.plan->compatible(input.description))
             {
                 co_return response(RenderError{kDeviceArgument});
             }
@@ -1212,16 +1266,15 @@ namespace lux::render
         for (auto id : active_targets_.keys())
         {
             auto& attachment = *attachments_.find(targets_.find(id)->attachment);
-            const auto& effect = *effects_.find(attachment.effect);
             const auto& view = *scenes_.find(attachment.scene)->views.find(attachment.view);
             if (attachment.camera_revision == view.camera_revision) continue;
-            for (const auto& projection : effect.view_projections)
+            for (const auto& projection : attachment.view_projections)
             {
                 auto applied =
                     attachment.instance->setParameterInput(std::as_bytes(std::span{&view.camera, 1}), projection);
                 if (!applied) return applied;
             }
-            if (!effect.view_projections.empty())
+            if (!attachment.view_projections.empty())
             {
                 const auto& viewport = view.camera.viewport;
                 attachment.instance->setViewport({viewport[0], viewport[1], viewport[2], viewport[3]});
@@ -1469,20 +1522,20 @@ namespace lux::render
         if (entry.storage)
         {
             const auto id = entry.storage(request);
-            const auto declaration = resources_->declarationOf(id);
-            if (declaration.isNull()) return cxx::unexpected(RenderError{kStorageIdentity});
-            const auto* location = resources_->commandBinding(declaration, command);
-            const auto* selected = location ? command_registry_.binding(*location) : nullptr;
-            if (!selected || !selected->call.invoke) return cxx::unexpected(RenderError{kCommandContract});
-            auto borrowed = resources_->acquireCommand(id, selected->storage_type);
+            auto borrowed = resources_->acquireCommand(id, command);
             if (!borrowed) return cxx::unexpected(borrowed.error());
+            const auto* selected = entry.binding(borrowed->binding().binding);
+            const bool is_invalid_call = !selected || !selected->call.invoke ||
+                selected->storage_type != borrowed->implementationType();
+            if (is_invalid_call) return cxx::unexpected(RenderError{kCommandContract});
             resource = std::move(*borrowed);
             return selected->call;
         }
         if (!entry.implementation)
         {
             const auto* binding = entry.selectedBinding();
-            if (!binding || !binding->call.object)
+            const bool is_invalid_call = !binding || !binding->callable();
+            if (is_invalid_call)
             {
                 return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
@@ -1501,8 +1554,9 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
-        const auto* binding = command_registry_.binding(method->location);
-        if (!binding || !binding->call.object)
+        const auto* binding = entry.binding(method->location.binding);
+        const bool is_invalid_call = !binding || !binding->callable();
+        if (is_invalid_call)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
@@ -1516,7 +1570,8 @@ namespace lux::render
         const ResponseRoute route{received.requesterId(), RequestId{received.correlation()}};
         const auto id = commandIdFromTag(received.tag());
         const auto* entry = command_registry_.findCommand(id);
-        const bool is_wrong_frame_source = id == submit_frame_command_ && route.requester_id != frame_source_;
+        const bool is_frame = id == submit_frame_command_ || id == submit_ui_frame_command_;
+        const bool is_wrong_frame_source = is_frame && route.requester_id != frame_source_;
         const bool requires_frame_boundary =
             (entry && entry->description->requires_frame_boundary) || id == select_binding_command_;
         if (requires_frame_boundary && frame_count_ != 0)
@@ -1538,7 +1593,7 @@ namespace lux::render
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kFrameSource});
         }
-        else if (device_->terminalError().type != 0 && !entry->description->failure_safe && id != submit_frame_command_)
+        else if (device_->terminalError().type != 0 && !entry->description->failure_safe && !is_frame)
         {
             entry->make_error(response_outbox_.prepare(route), device_->terminalError());
         }
@@ -1730,12 +1785,20 @@ namespace lux::render
         return result.settled;
     }
 
+    thread_local RenderServer::Impl* RenderServer::Impl::catalog_owner_ = nullptr;
+
     RenderResult<void> RenderServer::Impl::run() noexcept
     {
         if (has_started_.exchange(true))
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
+        auto* previous_owner = std::exchange(catalog_owner_, this);
+        cxx::scope_exit finish_owner([&]() noexcept
+        {
+            catalog_owner_ = previous_owner;
+            run_finished_.store(true);
+        });
         if (stop_requested_.load())
         {
             shutdown();

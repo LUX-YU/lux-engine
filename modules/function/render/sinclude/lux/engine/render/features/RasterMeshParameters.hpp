@@ -10,7 +10,7 @@
 #include <cstddef>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
-#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
+#include <lux/engine/render/resources/instance/Binding.hpp>
 #include <span>
 #include <type_traits>
 

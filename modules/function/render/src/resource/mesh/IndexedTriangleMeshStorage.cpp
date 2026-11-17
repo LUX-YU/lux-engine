@@ -16,23 +16,23 @@ namespace lux::render::detail
 {
     namespace
     {
-        exec::task<Mesh3dCommands::UploadMesh::Response>
-        createMesh(IndexedTriangleMeshStorage& resource, Mesh3dCommands::UploadMesh::Request&& input) noexcept
+        exec::task<MeshCommands::UploadMesh::Response>
+        createMesh(IndexedTriangleMeshStorage& resource, MeshCommands::UploadMesh::Request&& input) noexcept
         {
             if (!input.mesh)
             {
-                co_return Mesh3dCommands::UploadMesh::Response{RenderError{kCommandContract}};
+                co_return MeshCommands::UploadMesh::Response{RenderError{kCommandContract}};
             }
             auto uploaded = co_await resource.upload(*input.mesh);
-            co_return uploaded ? Mesh3dCommands::UploadMesh::Response{{}, *uploaded}
-                               : Mesh3dCommands::UploadMesh::Response{uploaded.error()};
+            co_return uploaded ? MeshCommands::UploadMesh::Response{{}, *uploaded}
+                               : MeshCommands::UploadMesh::Response{uploaded.error()};
         }
 
         void
         releaseMesh(
             IndexedTriangleMeshStorage& resource,
-            const Mesh3dCommands::ReleaseMesh::Request& input,
-            Mesh3dCommands::ReleaseMesh::Response& response
+            const MeshCommands::ReleaseMesh::Request& input,
+            MeshCommands::ReleaseMesh::Response& response
         ) noexcept
         {
             const auto released = resource.release(input.data);
@@ -317,8 +317,8 @@ namespace lux::render::detail
     {
 
         static const std::array commands{
-            CommandBinding::declare<Mesh3dCommands::UploadMesh, &createMesh>(),
-            CommandBinding::declare<Mesh3dCommands::ReleaseMesh, &releaseMesh>()
+            CommandBinding::declare<MeshCommands::UploadMesh, &createMesh>(),
+            CommandBinding::declare<MeshCommands::ReleaseMesh, &releaseMesh>()
         };
         static const StorageBindingOps binding{
             [](void* object,

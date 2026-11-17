@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cstring>
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/resource/mesh/MeshPacking.hpp>
 

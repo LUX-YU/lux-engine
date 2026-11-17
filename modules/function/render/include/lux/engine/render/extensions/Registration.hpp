@@ -2,7 +2,7 @@
 
 #include <array>
 #include <lux/cxx/compile_time/tuple_traits.hpp>
-#include <lux/engine/render/extensions/CapabilityRegistry.hpp>
+#include <lux/engine/render/extensions/CapabilityImplementation.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/detail/FeatureEntry.hpp>
 #include <lux/engine/render/extensions/detail/HandlerRecord.hpp>
@@ -89,27 +89,6 @@ namespace lux::render::runtime_detail
         }(uniqueTypes(static_cast<std::tuple<Methods...>*>(nullptr)));
     }
 
-    template <class Method> FrameDataCall frameCall() noexcept
-    {
-        auto call = FrameDataCall::declare<typename Method::Data, Method::method>();
-        if constexpr (std::is_lvalue_reference_v<typename Method::Target>)
-        {
-            call.resource_dependency = Method::dependency;
-        }
-        else if constexpr (std::same_as<typename Method::Target, FrameDrawTarget>)
-        {
-            call.graph_feature = Method::dependency;
-            call.contribution_key = Method::contribution.view();
-            call.pass_key = Method::pass.view();
-        }
-        return call;
-    }
-
-    template <class... Methods> auto frameCalls(std::tuple<Methods...>*) noexcept
-    {
-        return std::array<FrameDataCall, sizeof...(Methods)>{frameCall<Methods>()...};
-    }
-
     // The same typed metadata construction serves builtin and external registration.
     // It neither constructs a Handler/Storage nor creates a second graph-factory description.
     template <class Declaration> CapabilityImplementation makeImplementation() noexcept
@@ -121,8 +100,6 @@ namespace lux::render::runtime_detail
         {
             result.make_default_configuration = &makeDefaultConfiguration<Declaration>;
         }
-        const auto frames = frameCalls(static_cast<typename Declaration::FrameBindings*>(nullptr));
-        result.frame_calls.assign(frames.begin(), frames.end());
         return result;
     }
 
@@ -159,7 +136,7 @@ namespace lux::render
         return registerFeature(runtime_detail::FeatureEntry{
             Feature::name,
             runtime_detail::configurationType<Feature>(),
-            Feature::graph(pagedInstances())
+            runtime_detail::featureGraphOps<Feature>(pagedInstances())
         });
     }
 
@@ -171,18 +148,16 @@ namespace lux::render
         auto factories = runtime_detail::storageFactories(
             runtime_detail::uniqueTypes(static_cast<typename Implementation::Storages*>(nullptr))
         );
-        using Methods = decltype(std::tuple_cat(
-            std::declval<typename Implementation::Bindings>(),
-            std::declval<typename Implementation::FrameBindings>()
-        ));
-        auto handlers = runtime_detail::handlerRecords(runtime_detail::handlerTypes(static_cast<Methods*>(nullptr)));
+        auto handlers = runtime_detail::handlerRecords(
+            runtime_detail::handlerTypes(static_cast<typename Implementation::Bindings*>(nullptr))
+        );
         const auto bindings = runtime_detail::commandBindings(static_cast<typename Implementation::Bindings*>(nullptr));
         auto graph_features = []<class... Features>(std::tuple<Features...>, bool paged_instances) noexcept
         {
             return std::array<runtime_detail::FeatureEntry, sizeof...(Features)>{runtime_detail::FeatureEntry{
                 Features::type::name,
                 runtime_detail::configurationType<typename Features::type>(),
-                Features::type::graph(paged_instances)
+                runtime_detail::featureGraphOps<typename Features::type>(paged_instances)
             }...};
         }(runtime_detail::uniqueTypes(static_cast<typename Implementation::Features*>(nullptr)), pagedInstances());
         auto implementation = runtime_detail::makeImplementation<Implementation>();

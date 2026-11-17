@@ -15,27 +15,27 @@ namespace lux::render::detail
 {
     namespace
     {
-        exec::task<ImageCommands::Upload::Response>
-        createTexture(SampledTexture2DStorage& resource, ImageCommands::Upload::Request&& input) noexcept
+        exec::task<TextureCommands::Upload::Response>
+        createTexture(SampledTexture2DStorage& resource, TextureCommands::Upload::Request&& input) noexcept
         {
             auto uploaded = co_await resource.upload(std::move(input.data));
-            co_return uploaded ? ImageCommands::Upload::Response{{}, *uploaded}
-                               : ImageCommands::Upload::Response{uploaded.error()};
+            co_return uploaded ? TextureCommands::Upload::Response{{}, *uploaded}
+                               : TextureCommands::Upload::Response{uploaded.error()};
         }
 
-        exec::task<ImageCommands::CloneRegion::Response>
-        cloneTexture(SampledTexture2DStorage& resource, ImageCommands::CloneRegion::Request&& input) noexcept
+        exec::task<TextureCommands::CloneRegion::Response>
+        cloneTexture(SampledTexture2DStorage& resource, TextureCommands::CloneRegion::Request&& input) noexcept
         {
             auto uploaded = co_await resource.upload(std::move(input.data));
-            co_return uploaded ? ImageCommands::CloneRegion::Response{{}, *uploaded}
-                               : ImageCommands::CloneRegion::Response{uploaded.error()};
+            co_return uploaded ? TextureCommands::CloneRegion::Response{{}, *uploaded}
+                               : TextureCommands::CloneRegion::Response{uploaded.error()};
         }
 
         void
         releaseTexture(
             SampledTexture2DStorage& resource,
-            const ImageCommands::Release::Request& input,
-            ImageCommands::Release::Response& response
+            const TextureCommands::Release::Request& input,
+            TextureCommands::Release::Response& response
         ) noexcept
         {
             const auto released = resource.release(input.data);
@@ -480,9 +480,9 @@ namespace lux::render::detail
     {
 
         static const std::array commands{
-            CommandBinding::declare<ImageCommands::Upload, &createTexture>(),
-            CommandBinding::declare<ImageCommands::CloneRegion, &cloneTexture>(),
-            CommandBinding::declare<ImageCommands::Release, &releaseTexture>()
+            CommandBinding::declare<TextureCommands::Upload, &createTexture>(),
+            CommandBinding::declare<TextureCommands::CloneRegion, &cloneTexture>(),
+            CommandBinding::declare<TextureCommands::Release, &releaseTexture>()
         };
         static const StorageBindingOps bindings{
             [](void* storage,

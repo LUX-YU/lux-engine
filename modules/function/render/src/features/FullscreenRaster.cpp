@@ -5,27 +5,33 @@
 namespace lux::render::detail
 {
     RenderResult<RasterWork>
-    fullscreenRaster(FeatureBuildContext& context, rdesc::ShaderProgramArtifact shader) noexcept
+    fullscreenRaster(FeatureBuildContext& context, GraphProgram shaders) noexcept
     {
-        auto vertex = kFullscreenVertex.load(shader.target);
-        if (shader.stages.empty() || vertex.stages.empty())
+        if (shaders.targets.empty()) return cxx::unexpected(RenderError{kFeatureContract});
+        auto parameter_bytes = UINT32_MAX;
+        for (auto& shader : shaders.targets)
         {
-            return cxx::unexpected(RenderError{kFeatureContract});
+            auto vertex = kFullscreenVertex.load(shader.target);
+            if (shader.stages.empty() || vertex.stages.empty())
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            shader.stages.insert(shader.stages.begin(), vertex.stages.begin(), vertex.stages.end());
+            shader.interface.entry_points.insert(
+                shader.interface.entry_points.end(),
+                vertex.interface.entry_points.begin(),
+                vertex.interface.entry_points.end()
+            );
+            shader.interface.vertex_inputs = std::move(vertex.interface.vertex_inputs);
+            const auto bytes = shader.interface.push_constants.empty() ? 0 : shader.interface.push_constants.front().size;
+            parameter_bytes = std::min(parameter_bytes, bytes);
         }
-        shader.stages.insert(shader.stages.begin(), vertex.stages.begin(), vertex.stages.end());
-        shader.interface.entry_points.insert(
-            shader.interface.entry_points.end(),
-            vertex.interface.entry_points.begin(),
-            vertex.interface.entry_points.end()
-        );
-        shader.interface.vertex_inputs = std::move(vertex.interface.vertex_inputs);
         RasterWork work;
         auto& fixed_work = work.fixed();
-        if (!shader.interface.push_constants.empty())
-        {
-            fixed_work.interface.parameters.values.resize(shader.interface.push_constants.front().size);
-        }
-        auto program = context.graph.addProgram(std::move(shader));
+        // Authors may fill the common byte prefix. Target-specific trailing padding is supplied by Compile.
+        fixed_work.interface.parameters.values.resize(parameter_bytes);
+        fixed_work.interface.parameters.zero_fill_tail = true;
+        auto program = context.graph.addProgram(std::move(shaders));
         if (!program)
         {
             return cxx::unexpected(program.error());

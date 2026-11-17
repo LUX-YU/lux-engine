@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/commands/CommandBindingLocation.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render
@@ -24,13 +25,20 @@ namespace lux::render
             return instance_;
         }
 
+        [[nodiscard]] CommandBindingLocation binding() const noexcept { return binding_; }
+        [[nodiscard]] cxx::type_info implementationType() const noexcept { return implementation_; }
+
         void reset() noexcept;
 
     private:
         friend class ResourceRegistry;
-        ResourceCommandUse(ResourceRegistry&, ResourceInstanceId, void*) noexcept;
+        ResourceCommandUse(
+            ResourceRegistry&, ResourceInstanceId, void*, CommandBindingLocation, cxx::type_info
+        ) noexcept;
         ResourceRegistry* registry_ = nullptr;
         ResourceInstanceId id_;
         void* instance_ = nullptr;
+        CommandBindingLocation binding_;
+        cxx::type_info implementation_;
     };
 } // namespace lux::render

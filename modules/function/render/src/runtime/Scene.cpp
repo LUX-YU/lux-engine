@@ -1,4 +1,4 @@
-#include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
 
 namespace lux::render::runtime_detail
@@ -38,6 +38,8 @@ namespace lux::render::runtime_detail
             }
             storage_inputs.clear();
             instance.reset();
+            plan = std::move(other.plan);
+            view_projections = std::move(other.view_projections);
             instance = std::move(other.instance);
             storage_inputs = std::move(other.storage_inputs);
             feature_bindings = std::move(other.feature_bindings);
@@ -46,6 +48,8 @@ namespace lux::render::runtime_detail
             scene = other.scene;
             view = other.view;
             target = other.target;
+            input_layout = std::move(other.input_layout);
+            inputs = std::move(other.inputs);
             camera_revision = other.camera_revision;
             view_position = other.view_position;
             effect_position = other.effect_position;

@@ -37,7 +37,7 @@ namespace lux::render::detail
             const Description&
         ) noexcept;
         [[nodiscard]] RenderResult<FeatureBinding::Preparation>
-        prepareFrame(const FeatureFrameInput&, ResourceUploader&) noexcept;
+        prepareFrame(const FeatureFrameInput&, ResourceUploader&, detail::Preparation&) noexcept;
 
         struct Slice final
         {

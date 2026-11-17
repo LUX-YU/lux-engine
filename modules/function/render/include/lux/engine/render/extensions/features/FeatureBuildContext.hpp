@@ -9,6 +9,7 @@
 namespace lux::render::detail
 {
     struct FeatureFrameContribution;
+    struct FeatureBuildAccess;
 }
 
 namespace lux::render
@@ -25,21 +26,28 @@ namespace lux::render
     struct LUX_RENDER_PUBLIC FeatureBuildContext final
     {
         RenderGraphBuilder& graph;
-        std::span<ResolvedResource> ports;
-        std::vector<StorageArgument>& arguments;
-        std::vector<detail::FeatureFrameContribution>& bindings;
-        std::vector<SamplerDescription>& samplers;
-
-        [[nodiscard]] std::uint32_t addSampler(const SamplerDescription& description) noexcept
-        {
-            const auto index = static_cast<std::uint32_t>(samplers.size());
-            samplers.push_back(description);
-            return index;
-        }
+        // Attach-time Resource configuration, qualified against this contribution's declared ports.
+        void require(StorageArgument argument) noexcept;
 
         // Resolves one declared port in this contribution; the key is local to this Feature use.
         [[nodiscard]] ResourceVersion resource(std::string_view key) const noexcept;
         // Connects a produced version to an output port. It creates no Storage or persistent Feature instance.
         [[nodiscard]] RenderResult<void> publish(std::string_view key, ResourceVersion version) noexcept;
+
+    private:
+        friend struct detail::FeatureBuildAccess;
+        FeatureBuildContext(
+            RenderGraphBuilder& builder,
+            std::span<ResolvedResource> ports,
+            std::vector<StorageArgument>& arguments,
+            std::vector<detail::FeatureFrameContribution>& bindings
+        ) noexcept : graph(builder), ports_(ports), arguments_(arguments), bindings_(bindings)
+        {
+        }
+
+        std::span<ResolvedResource> ports_;
+        std::vector<StorageArgument>& arguments_;
+        std::vector<detail::FeatureFrameContribution>& bindings_;
+
     };
 } // namespace lux::render

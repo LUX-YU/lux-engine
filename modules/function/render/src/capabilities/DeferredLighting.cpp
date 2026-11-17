@@ -214,7 +214,6 @@ namespace lux::render
                 );
                 auto support =
                     describeImplementation(name.name(), kDeferredLightingConfigurationSchema, std::move(ports));
-                support.resource_dependencies = lightStorageDependencies;
                 support.project_parameters = projectCameraInput;
                 support.view_parameter_type = cxx::make_basic_type_info<CameraInput>();
                 support.decode_configuration =

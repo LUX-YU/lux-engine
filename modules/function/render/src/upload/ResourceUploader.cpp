@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
 #include <algorithm>
 #include <bit>
 #include <chrono>
@@ -121,7 +122,6 @@ namespace lux::render::detail
     ) noexcept
         : device_(device), options_(settings), cpu_scheduler_(std::move(cpu_scheduler))
     {
-        preparation_receivers_.reserve(options_.window_regions);
         for (auto& write : writes_) write.accepted = device_.makeFrontiers();
     }
 
@@ -201,17 +201,9 @@ namespace lux::render::detail
         }
     }
 
-    void ResourceUploader::onPreparationSubmitted(
-        void* receiver,
-        void (*complete)(void*, std::uint32_t, RenderResult<void>) noexcept
-    ) noexcept
-    {
-        preparation_receivers_.emplace_back(receiver, complete);
-    }
-
     ResourceUploader::~ResourceUploader() noexcept
     {
-        if (progressing_ || ready_head_ || range_waiters_ || frame_waiters_ || !preparation_receivers_.empty())
+        if (progressing_ || ready_head_ || range_waiters_ || frame_waiters_)
         {
             std::terminate();
         }
@@ -392,7 +384,7 @@ namespace lux::render::detail
                 {access, nri::StageBits::ALL},
                 {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
             );
-            nri_core.CmdCopyBuffer(command, target, offset, *range.buffer, range.offset, bytes);
+            recordCopy(nri_core, command, BufferCopyRegion{range.buffer, &target, range.offset, offset, bytes});
         }
         if (final)
         {
@@ -458,20 +450,14 @@ namespace lux::render::detail
                         .before = {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::ALL};
                     original.after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
                     emit(original);
-                    for (nri::Dim_t mip = 0; mip < description.mipNum; ++mip)
-                    {
-                        for (nri::Dim_t layer = 0; layer < description.layerNum; ++layer)
-                        {
-                            nri::TextureRegionDesc region{};
-                            region.width = std::max(1u, std::uint32_t(description.width) >> mip);
-                            region.height = std::max(1u, std::uint32_t(description.height) >> mip);
-                            region.depth = 1;
-                            region.mipOffset = mip;
-                            region.layerOffset = layer;
-                            region.planes = nri::PlaneBits::COLOR;
-                            nri_core.CmdCopyTexture(command, target, &region, *clone, &region);
-                        }
-                    }
+                    nri::TextureRegionDesc region{};
+                    region.width = description.width;
+                    region.height = description.height;
+                    region.depth = 1;
+                    region.planes = nri::PlaneBits::COLOR;
+                    recordCopy(nri_core, command, TextureCopyRegion{
+                        clone, &target, region, region, description.mipNum, description.layerNum
+                    });
                     std::swap(original.before, original.after);
                     emit(original);
                     barrier.before = barrier.after;
@@ -485,7 +471,7 @@ namespace lux::render::detail
             const auto slice_unit = std::lcm(row_pitch, slice_alignment);
             const auto slice_pitch = ((row_pitch * rows + slice_unit - 1) / slice_unit) * slice_unit;
             const nri::TextureDataLayoutDesc layout{range.offset, row_pitch, slice_pitch};
-            nri_core.CmdUploadBufferToTexture(command, target, region, *range.buffer, layout);
+            recordUpload(nri_core, command, target, region, *range.buffer, layout);
         }
         if (final)
         {
@@ -669,9 +655,9 @@ namespace lux::render::detail
                 }
                 // Merge only the native copy. Every separately acquired range keeps its existing
                 // commit/cancel responsibility and no span is formed across borrowed CPU objects.
-                nri_core.CmdCopyBuffer(
-                    command, *target, copy.offset, *copy.staging.buffer, copy.staging.offset, bytes
-                );
+                recordCopy(nri_core, command, BufferCopyRegion{
+                    copy.staging.buffer, target, copy.staging.offset, copy.offset, bytes
+                });
                 i = next;
             }
             bufferBarrier(
@@ -685,7 +671,7 @@ namespace lux::render::detail
         }
     }
 
-    void ResourceUploader::finishFrameCopySubmission(RenderResult<void> result, std::uint32_t frame_slot) noexcept
+    void ResourceUploader::finishFrameCopySubmission(RenderResult<void> result) noexcept
     {
         for (auto& copy : frame_copies_)
         {
@@ -700,16 +686,6 @@ namespace lux::render::detail
             }
         }
         frame_copies_.clear();
-        const auto boundary = preparation_receivers_.size();
-        const auto slot = frame_slot;
-        for (std::size_t i = 0; i < boundary; ++i)
-        {
-            // Remove this borrow before delivery. A callback may append work for the next
-            // submission and grow the vector; no iterator or record reference crosses it.
-            const auto [receiver, complete] = std::exchange(preparation_receivers_[i], {});
-            complete(receiver, slot, result);
-        }
-        preparation_receivers_.erase(preparation_receivers_.begin(), preparation_receivers_.begin() + boundary);
     }
 
     bool ResourceUploader::canStage(std::uint32_t frame_slot) const noexcept
@@ -1586,31 +1562,6 @@ namespace lux::render::detail
             accepted_any = true;
         }
         co_return RenderResult<void>{};
-    }
-
-    void ResourceUploader::recordCopies(nri::CommandBuffer& command, std::span<const BufferCopy> copies) noexcept
-    {
-        const auto& core = device_.nriCore();
-        for (const auto& copy : copies)
-        {
-            const std::array<nri::BufferBarrierDesc, 2> barriers{
-                {{copy.source,
-                  {bufferAccess(core.GetBufferDesc(*copy.source).usage), nri::StageBits::ALL},
-                  {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}},
-                 {copy.destination,
-                  {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-                  {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}}}
-            };
-            core.CmdBarrier(command, {nullptr, 0, barriers.data(), static_cast<std::uint32_t>(barriers.size())});
-            core.CmdCopyBuffer(
-                command,
-                *copy.destination,
-                copy.destination_offset,
-                *copy.source,
-                copy.source_offset,
-                copy.bytes
-            );
-        }
     }
 
 } // namespace lux::render::detail

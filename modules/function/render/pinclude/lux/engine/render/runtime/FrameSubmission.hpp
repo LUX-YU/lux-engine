@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Frame.hpp>
+#include <lux/engine/render/commands/UiCommands.hpp>
 
 namespace lux::render::runtime_detail
 {
@@ -20,7 +21,7 @@ namespace lux::render::runtime_detail
 
         EStage stage = EStage::EMPTY;
         RenderFrame input;
-        std::size_t phase = 0;
+        std::span<const UiDrawInput> ui_inputs;
         std::size_t dispatched = 0;
         std::size_t pending = 0;
         std::uint32_t slot = UINT32_MAX;

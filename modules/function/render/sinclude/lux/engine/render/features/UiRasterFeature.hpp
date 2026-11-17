@@ -8,7 +8,7 @@
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
-#include <lux/engine/render/extensions/resource/SampledTexture2D.hpp>
+#include <lux/engine/render/resources/texture/Binding.hpp>
 
 namespace lux::render
 {

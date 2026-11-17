@@ -1,17 +1,18 @@
 #pragma once
 
-#include <lux/engine/render/commands/Lighting3dCommands.hpp>
+#include <lux/engine/render/resources/lighting/Commands.hpp>
 
-#include <lux/engine/render/commands/Mesh3dCommands.hpp>
+#include <lux/engine/render/resources/mesh/Commands.hpp>
+#include <lux/engine/render/resources/instance/Commands.hpp>
 
 #include <lux/engine/render/capabilities/BuiltinImplementations.hpp>
 #include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
 #include <lux/engine/render/resource/view/CameraParameters.hpp>
-#include <lux/engine/render/inputs/DirectLightInputs.hpp>
-#include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
-#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
-#include <lux/engine/render/inputs/RasterMaterialInputs.hpp>
-#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
+#include <lux/engine/render/resources/lighting/Data.hpp>
+#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/render/resources/instance/Data.hpp>
+#include <lux/engine/render/resources/material/Data.hpp>
+#include <lux/engine/render/resources/texture/Data.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
 #include <algorithm>
@@ -94,19 +95,6 @@ namespace lux::render::detail
     {
         result.ports[portIndex(input, key)] = std::move(references);
     }
-
-    // Professional resource requirements shared by the corresponding raster algorithms.
-    // These are static dependency declarations, not a second registry or owner.
-    inline constexpr std::array rasterStorageDependencies{
-        CapabilityResourceDependency{EStorageScope::GLOBAL, kMeshResourceName},
-        CapabilityResourceDependency{EStorageScope::GLOBAL, kTextureResourceName},
-        CapabilityResourceDependency{EStorageScope::GLOBAL, kMaterialResourceName},
-        CapabilityResourceDependency{EStorageScope::SCENE, kInstanceResourceName}
-    };
-
-    inline constexpr std::array lightStorageDependencies{
-        CapabilityResourceDependency{EStorageScope::SCENE, kLightResourceName}
-    };
 
     [[nodiscard]] RenderResult<EffectDefinition> buildShadowFeatures(const CapabilityBuildInput&) noexcept;
 

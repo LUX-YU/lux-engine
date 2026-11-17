@@ -119,7 +119,8 @@ namespace lux::render
         {
             auto& use = effect.implementations[occurrence];
             const auto& implementation = *capability_registry_.find(use.id);
-            use.resource_dependencies.assign(implementation.resource_dependencies.size(), UINT32_MAX);
+            const auto& declaration = *capability_registry_.get(capability_registry_.capabilityOf(use.id));
+            use.resource_dependencies.assign(declaration.resources.size(), UINT32_MAX);
             for (std::uint32_t index = 0; index < effect.resource_dependencies.size(); ++index)
             {
                 for (const auto& input : effect.resource_dependencies[index].inputs)
@@ -136,34 +137,15 @@ namespace lux::render
             }
             if (implementation.view_parameter_type.isValid())
             {
-                const auto [offset, bytes] = effect.plan->parameterRegion(occurrence);
-                const bool is_invalid_projection = !implementation.project_parameters || bytes == 0 ||
+                const bool is_invalid_projection = !implementation.project_parameters ||
                     implementation.view_parameter_type != cxx::make_basic_type_info<CameraInput>();
                 if (is_invalid_projection) return cxx::unexpected(RenderError{kFeatureContract});
                 effect.view_projections.push_back(
-                    {implementation.view_parameter_type, implementation.project_parameters, offset, bytes}
+                    {implementation.view_parameter_type, implementation.project_parameters, occurrence}
                 );
             }
-            const auto capability = capability_registry_.capabilityOf(use.id);
-            for (auto type : capability_registry_.get(capability)->per_frame_data)
+            for (const auto& input : implementation.draw_inputs)
             {
-                const auto method = std::ranges::find(implementation.frame_calls, type, &FrameDataCall::data_type);
-                const auto& input = *method; // Registration proved exactly one method per public data type.
-                auto& call = use.frame_calls.emplace_back(&input, GraphPassId{UINT32_MAX});
-                if (input.target == EFrameDataTarget::PARAMETERS)
-                {
-                    const auto [offset, bytes] = effect.plan->parameterRegion(occurrence);
-                    if (!implementation.project_parameters || bytes == 0)
-                    {
-                        return cxx::unexpected(RenderError{kFeatureContract});
-                    }
-                    call.parameters = {input.data_type, implementation.project_parameters, offset, bytes};
-                    effect.parameter_projections.push_back(call.parameters);
-                }
-                if (input.target != EFrameDataTarget::DRAW_LIST)
-                {
-                    continue;
-                }
                 const auto* feature = features_.find(implementation.features[input.graph_feature]);
                 const auto key = featureKey(
                     FeatureName{feature->name},
@@ -178,18 +160,14 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kFeatureContract});
                 }
                 const auto index = static_cast<std::uint32_t>(found - passes.begin());
-                const auto lowered = std::ranges::find_if(
-                    effect.plan->passes(),
-                    [index](const auto& pass) noexcept { return pass.source_pass == index; }
-                );
-                const auto* raster = lowered != effect.plan->passes().end()
-                                         ? std::get_if<detail::RasterCommands>(&lowered->work)
-                                         : nullptr;
-                if (!raster || !std::holds_alternative<detail::IndexedListCommands>(raster->draw))
-                {
-                    return cxx::unexpected(RenderError{kFeatureContract});
-                }
-                call.pass = GraphPassId{index};
+                const bool is_live = std::ranges::find(effect.analysis.execution_order, GraphPassId{index}) !=
+                    effect.analysis.execution_order.end();
+                const auto* raster = found->work.getIf<RasterWork>();
+                const auto* fixed = raster ? std::get_if<RasterWork::FixedProgram>(&raster->program) : nullptr;
+                const bool is_indexed_list = fixed && std::holds_alternative<DrawIndexedList>(fixed->draw);
+                const bool is_invalid_draw_input = !is_live || !is_indexed_list;
+                if (is_invalid_draw_input) return cxx::unexpected(RenderError{kFeatureContract});
+                effect.draw_inputs.push_back(GraphPassId{index});
             }
         }
         return {};
@@ -265,7 +243,8 @@ namespace lux::render
             {
                 return cxx::unexpected(configuration.error());
             }
-            auto dependencies = resolveCapabilityStorage(entry);
+            const auto& declaration = *capability_registry_.get(capability_registry_.find(selected.capability));
+            auto dependencies = resolveCapabilityResources(declaration);
             if (!dependencies)
             {
                 return cxx::unexpected(dependencies.error());
@@ -415,19 +394,19 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<std::vector<RenderEffect::ResourceDependency>> RenderServer::Impl::resolveCapabilityStorage(
-        const CapabilityImplementation& implementation
+    RenderResult<std::vector<RenderEffect::ResourceDependency>> RenderServer::Impl::resolveCapabilityResources(
+        const CapabilityDescription& capability
     ) const noexcept
     {
         std::vector<RenderEffect::ResourceDependency> result;
-        for (std::uint32_t index = 0; index < implementation.resource_dependencies.size(); ++index)
+        for (std::uint32_t index = 0; index < capability.resources.size(); ++index)
         {
-            const auto& declaration = implementation.resource_dependencies[index];
-            const auto type = resources_->typeId(declaration.storage_type);
+            const auto& declaration = *capability.resources[index];
+            const auto type = resources_->typeId(declaration.type);
             const auto* factory = resources_->factory(type);
             if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
-            if (static_cast<unsigned>(declaration.scope) != static_cast<unsigned>(factory->descriptor->domain))
-                return cxx::unexpected(RenderError{kStorageMismatch});
+            if (auto valid = compatibleStorage(declaration, *factory->descriptor); !valid)
+                return cxx::unexpected(valid.error());
             const auto found = std::ranges::find_if(
                 result,
                 [&](const auto& dependency) noexcept
@@ -438,7 +417,7 @@ namespace lux::render
             if (found == result.end())
             {
                 result.push_back(
-                    {declaration.scope,
+                    {static_cast<EResourceDomain>(declaration.domain),
                      type,
                      {},
                      {{0, index}}}

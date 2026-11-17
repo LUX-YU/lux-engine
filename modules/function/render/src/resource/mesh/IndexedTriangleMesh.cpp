@@ -1,6 +1,6 @@
 #include <cmath>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/resource/mesh/MeshPacking.hpp>
 
 namespace lux::render

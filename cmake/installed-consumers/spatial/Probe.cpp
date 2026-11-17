@@ -1,19 +1,12 @@
-#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
 #include <probe/Probe.hpp>
 
 namespace probe
 {
-    class ProbeCommandHandler final
+    namespace
     {
-    public:
-        static ProbeCommandHandler* create(lux::render::ResourceRegistry&) noexcept
-        {
-            return new ProbeCommandHandler;
-        }
-
-        static constexpr std::string_view name = "test.external.ProbeCommandHandler";
-
-        void set(const SetValues::Request& input, SetValues::Response& output) noexcept
+        void setValues(const SetValues::Request& input, SetValues::Response& output) noexcept
         {
             output = {};
             for (const auto& value : input.values)
@@ -22,12 +15,11 @@ namespace probe
                 output.sum += value.amount;
             }
         }
+    }
 
-    };
-
-    lux::render::RenderResult<lux::render::HandlerId> install(lux::render::RenderServer& server) noexcept
+    lux::render::RenderResult<void> install(lux::render::RenderServer& server) noexcept
     {
-        using Bindings = std::tuple<lux::render::CommandMethod<SetValues, &ProbeCommandHandler::set>>;
-        return server.registerHandler<ProbeCommandHandler, Bindings>("external");
+        const std::array bindings{lux::render::CommandBinding::declare<SetValues, &setValues>()};
+        return server.registerCommands(bindings);
     }
 } // namespace probe

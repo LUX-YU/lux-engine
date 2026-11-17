@@ -22,7 +22,7 @@ namespace probe
     struct SetValues final
     {
         static constexpr std::string_view name = "test.external.probe.set_values";
-        static constexpr bool frame_scoped = false; // CPU-only extension, no visible render state.
+        static constexpr bool requires_frame_boundary = false; // CPU-only extension, no visible render state.
 
         struct Request final
         {
@@ -37,6 +37,5 @@ namespace probe
         };
     };
 
-    [[nodiscard]] PROBE_PUBLIC lux::render::RenderResult<lux::render::HandlerId> install(lux::render::
-                                                                                             RenderServer&) noexcept;
+    [[nodiscard]] PROBE_PUBLIC lux::render::RenderResult<void> install(lux::render::RenderServer&) noexcept;
 } // namespace probe

@@ -4,7 +4,7 @@
 #include <lux/engine/render/capabilities/ImguiCapability.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/extensions/features/EffectDefinition.hpp>
-#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
+#include <lux/engine/render/resources/texture/Data.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
 namespace lux::render::detail
@@ -46,9 +46,6 @@ namespace lux::render::detail
 
     CapabilityImplementation UiScene::implementation() noexcept
     {
-        static const std::array dependencies{
-            CapabilityResourceDependency{EStorageScope::GLOBAL, kTextureResourceName}
-        };
         static const CapabilityImplementation support = []
         {
             CapabilityImplementation result;
@@ -75,9 +72,9 @@ namespace lux::render::detail
             return result;
         }();
         auto implementation = support;
-        implementation.resource_dependencies = dependencies;
         implementation.decode_configuration = decodeConfiguration;
         implementation.build_graph = lowerUi;
+        implementation.draw_inputs = {{0, "ui", "draw"}};
         return implementation;
     }
 } // namespace lux::render::detail

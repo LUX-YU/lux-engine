@@ -128,9 +128,9 @@ namespace lux::render
                     published.outputs.push_back(port.key);
                 }
             }
-            for (const auto& declaration : implementation.resource_dependencies)
+            for (const auto* declaration : capability.resources)
             {
-                const auto* factory = resources_->factory(declaration.storage_type);
+                const auto* factory = resources_->factory(declaration->type);
                 const bool is_unsupported = !factory ||
                     (factory->descriptor->required_capabilities & ~device_->resourceCapabilities()) != 0;
                 if (is_unsupported)
@@ -177,7 +177,9 @@ namespace lux::render
             result.error = configuration.error();
             return;
         }
-        auto dependencies = resolveCapabilityStorage(implementation);
+        auto dependencies = resolveCapabilityResources(
+            *capability_registry_.get(capability_registry_.capabilityOf(input.implementation_id))
+        );
         result.error = dependencies ? RenderError{} : dependencies.error();
     }
 

@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/FeatureBuildAccess.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
@@ -5,8 +6,8 @@
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
+#include <lux/engine/render/resources/material/Binding.hpp>
 #include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 
@@ -424,7 +425,7 @@ namespace lux::render::detail
             binding.inputs.push_back(views);
             binding.inputs.push_back(raster_states);
         }
-        context.bindings.push_back(std::move(binding));
+        detail::FeatureBuildAccess::bind(context, std::move(binding));
         return {};
     }
 
@@ -452,7 +453,7 @@ namespace lux::render::detail
 
     template <bool Depth, bool Paged>
     RenderResult<void>
-    build(const void* value, std::string_view key, FeatureBuildContext& context, const lux::render::detail::EnabledDeviceFeatures&) noexcept
+    build(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
     {
         const auto& config = *static_cast<const MeshFeatureConfig*>(value);
         const auto purpose = Depth ? rdesc::EMaterialPurpose::SHADOW : rdesc::EMaterialPurpose::FORWARD;
@@ -506,14 +507,14 @@ namespace lux::render::detail
     template RenderResult<void> describe<true>(const void*, std::string_view, FeaturePorts&) noexcept;
     template RenderResult<void> build<
         false,
-        false>(const void*, std::string_view, FeatureBuildContext&, const lux::render::detail::EnabledDeviceFeatures&) noexcept;
+        false>(const void*, std::string_view, FeatureBuildContext&) noexcept;
     template RenderResult<void> build<
         false,
-        true>(const void*, std::string_view, FeatureBuildContext&, const lux::render::detail::EnabledDeviceFeatures&) noexcept;
+        true>(const void*, std::string_view, FeatureBuildContext&) noexcept;
     template RenderResult<void> build<
         true,
-        false>(const void*, std::string_view, FeatureBuildContext&, const lux::render::detail::EnabledDeviceFeatures&) noexcept;
+        false>(const void*, std::string_view, FeatureBuildContext&) noexcept;
     template RenderResult<void> build<
         true,
-        true>(const void*, std::string_view, FeatureBuildContext&, const lux::render::detail::EnabledDeviceFeatures&) noexcept;
+        true>(const void*, std::string_view, FeatureBuildContext&) noexcept;
 } // namespace lux::render::detail

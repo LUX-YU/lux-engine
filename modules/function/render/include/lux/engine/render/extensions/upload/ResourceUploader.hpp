@@ -126,15 +126,6 @@ namespace lux::render::detail
             std::size_t bytes_;
         };
 
-        struct BufferCopy final
-        {
-            nri::Buffer* source;
-            nri::Buffer* destination;
-            std::uint64_t source_offset, destination_offset, bytes;
-        };
-
-        void recordCopies(nri::CommandBuffer&, std::span<const BufferCopy>) noexcept;
-
         using Result = RenderResult<void>;
         using Task = exec::task<Result>;
 
@@ -189,7 +180,6 @@ namespace lux::render::detail
         }
 
         void finishWrites(std::uint32_t slot, SubmissionFrontiers& accepted) noexcept;
-        void onPreparationSubmitted(void*, void (*)(void*, std::uint32_t, RenderResult<void>) noexcept) noexcept;
 
         void reserveFrameStaging(bool reserve) noexcept
         {
@@ -201,7 +191,7 @@ namespace lux::render::detail
         [[nodiscard]] Task prepareFrameCopies() noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
         // Settles staging after the frame submission attempt; this does not observe GPU completion.
-        void finishFrameCopySubmission(RenderResult<void>, std::uint32_t frame_slot) noexcept;
+        void finishFrameCopySubmission(RenderResult<void>) noexcept;
         [[nodiscard]] bool hasFrameCopies() const noexcept;
 
         // Lazy device-thread task. Source ranges and their descriptors stay valid through terminal completion.
@@ -268,8 +258,6 @@ namespace lux::render::detail
         bool writes_allowed_ = false, resources_frozen_ = false, background_window_ = true;
         WriteWaiter* frame_waiters_ = nullptr;
         WriteWaiter* frame_waiters_tail_ = nullptr;
-        using PreparationCallback = void (*)(void*, std::uint32_t, RenderResult<void>) noexcept;
-        std::vector<std::pair<void*, PreparationCallback>> preparation_receivers_;
         struct Copy;
         struct BatchEntry;
         class BatchSender;

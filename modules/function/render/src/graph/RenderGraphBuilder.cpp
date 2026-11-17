@@ -261,9 +261,9 @@ namespace lux::render
         return index;
     }
 
-    RenderResult<std::uint32_t> RenderGraphBuilder::addProgram(rdesc::ShaderProgramArtifact program) noexcept
+    RenderResult<std::uint32_t> RenderGraphBuilder::addProgram(GraphProgram program) noexcept
     {
-        if (program.stages.empty() || candidate_.programs_.size() >= kGraphInvalidIndex)
+        if (!program.valid() || candidate_.programs_.size() >= kGraphInvalidIndex)
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         }
@@ -299,8 +299,15 @@ namespace lux::render
         const bool is_invalid_declaration = declaration.kind > EGraphPassKind::TRANSFER ||
             declaration.stages == nri::StageBits::NONE;
         const bool has_no_declared_effect = declaration.accesses.empty() &&
-            declaration.interface.resources.empty() && !options.side_effect;
-        const bool is_invalid_pass = is_invalid_operation || is_invalid_declaration || has_no_declared_effect;
+            declaration.interface.resources.empty() && !declaration.rendering && !options.side_effect;
+        const bool is_empty_scope = declaration.rendering && !declaration.rendering->hasAttachments();
+        const bool is_scope_kind_mismatch = declaration.rendering && declaration.kind != EGraphPassKind::GRAPHICS;
+        const bool is_missing_managed_scope = declaration.kind == EGraphPassKind::GRAPHICS &&
+            operation.policy().scope == EPassEncodingScope::MANAGED && !declaration.rendering;
+        const bool has_unqualified_attachment = std::ranges::any_of(declaration.accesses, [](const auto& access) noexcept
+        { return access.usage == EGraphUse::COLOR_ATTACHMENT || access.usage == EGraphUse::DEPTH_ATTACHMENT; });
+        const bool is_invalid_pass = is_invalid_operation || is_invalid_declaration || has_no_declared_effect ||
+            is_empty_scope || is_scope_kind_mismatch || is_missing_managed_scope || has_unqualified_attachment;
         if (is_invalid_pass) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         const auto kind = declaration.kind;
         return addWork(std::move(key), DeclaredWork{std::move(declaration), std::move(operation)}, kind, options);
@@ -394,7 +401,7 @@ namespace lux::render
                 }
             }
             std::vector<const rdesc::EDescriptorBindingInfo*> descriptors;
-            for (const auto& set : candidate_.programs_[input.program].interface.sets)
+            for (const auto& set : candidate_.programs_[input.program].targets.front().interface.sets)
             {
                 for (const auto& descriptor : set.bindings)
                 {
@@ -448,6 +455,38 @@ namespace lux::render
                                                    : EGraphUse::STORAGE_READ;
                     append(element, element_usage);
                 }
+            }
+        };
+        const auto rasterScope = [&](RasterScope& scope) noexcept
+        {
+            if (scope.state_input)
+            {
+                const auto resource = scope.state_input->resource;
+                const bool valid = resource.index < candidate_.resources_.size() &&
+                                   candidate_.resources_[resource.index].origin == EGraphOrigin::IMPORTED;
+                if (!valid)
+                {
+                    failure = graphError(kGraphInvalidDescriptor, {}, resource);
+                    return;
+                }
+            }
+            for (auto& color : scope.colors)
+            {
+                color.access.access =
+                    color.load == EAttachmentLoad::LOAD ? EGraphAccess::ATTACHMENT_LOAD : EGraphAccess::WRITE;
+                append(color.access, EGraphUse::COLOR_ATTACHMENT);
+                if (color.resolve)
+                {
+                    color.resolve->access = EGraphAccess::WRITE;
+                    append(*color.resolve, EGraphUse::COLOR_ATTACHMENT);
+                }
+            }
+            if (scope.depth)
+            {
+                scope.depth->access.access = scope.depth->load == EAttachmentLoad::LOAD
+                                                 ? EGraphAccess::ATTACHMENT_LOAD
+                                                 : EGraphAccess::WRITE;
+                append(scope.depth->access, EGraphUse::DEPTH_ATTACHMENT);
             }
         };
         std::visit(
@@ -515,93 +554,64 @@ namespace lux::render
                             }
                         }
                     }
-                    if (value.state_input)
+                    rasterScope(value);
+                    if (fixed)
                     {
-                        const auto resource = value.state_input->resource;
-                        const bool valid = resource.index < candidate_.resources_.size() &&
-                                           candidate_.resources_[resource.index].origin == EGraphOrigin::IMPORTED;
-                        if (!valid)
+                        for (const auto& vertex : fixed->vertex_buffers)
                         {
-                            failure = graphError(kGraphInvalidDescriptor, {}, resource);
-                            return;
+                            read(vertex.resource, EGraphUse::VERTEX);
                         }
-                    }
-                    for (auto& color : value.colors)
-                    {
-                        color.access.access =
-                            color.load == EAttachmentLoad::LOAD ? EGraphAccess::ATTACHMENT_LOAD : EGraphAccess::WRITE;
-                        append(color.access, EGraphUse::COLOR_ATTACHMENT);
-                        if (color.resolve)
-                        {
-                            color.resolve->access = EGraphAccess::WRITE;
-                            append(*color.resolve, EGraphUse::COLOR_ATTACHMENT);
-                        }
-                    }
-                    if (value.depth)
-                    {
-                        value.depth->access.access = value.depth->load == EAttachmentLoad::LOAD
-                                                         ? EGraphAccess::ATTACHMENT_LOAD
-                                                         : EGraphAccess::WRITE;
-                        append(value.depth->access, EGraphUse::DEPTH_ATTACHMENT);
-                    }
-                    if (!fixed)
-                    {
-                        return;
-                    }
-                    for (const auto& vertex : fixed->vertex_buffers)
-                    {
-                        read(vertex.resource, EGraphUse::VERTEX);
-                    }
-                    std::visit(
-                        [&](auto& draw) noexcept
-                        {
-                            using Draw = std::remove_cvref_t<decltype(draw)>;
-                            if constexpr (!std::is_same_v<Draw, DrawVertices>)
+                        std::visit(
+                            [&](auto& draw) noexcept
                             {
-                                read(draw.index_resource, EGraphUse::INDEX);
-                            }
-                            if constexpr (std::is_same_v<Draw, DrawIndexedIndirect>)
-                            {
-                                const bool is_invalid_count = draw.count == 0 || draw.stride < 20;
-                                if (is_invalid_count)
+                                using Draw = std::remove_cvref_t<decltype(draw)>;
+                                if constexpr (!std::is_same_v<Draw, DrawVertices>)
                                 {
-                                    failure = graphError(kGraphInvalidRange, {}, draw.commands_resource.resource);
-                                    return;
+                                    read(draw.index_resource, EGraphUse::INDEX);
                                 }
-                                if (draw.stride == 20)
+                                if constexpr (std::is_same_v<Draw, DrawIndexedIndirect>)
                                 {
-                                    read(
-                                        draw.commands_resource,
-                                        EGraphUse::INDIRECT,
-                                        GraphBufferRange{draw.commands_offset, std::uint64_t(draw.count) * 20}
-                                    );
-                                }
-                                else
-                                {
-                                    for (std::uint32_t command = 0; command < draw.count; ++command)
+                                    const bool is_invalid_count = draw.count == 0 || draw.stride < 20;
+                                    if (is_invalid_count)
+                                    {
+                                        failure = graphError(kGraphInvalidRange, {}, draw.commands_resource.resource);
+                                        return;
+                                    }
+                                    if (draw.stride == 20)
                                     {
                                         read(
                                             draw.commands_resource,
                                             EGraphUse::INDIRECT,
-                                            GraphBufferRange{
-                                                draw.commands_offset + std::uint64_t(command) * draw.stride,
-                                                20
-                                            }
+                                            GraphBufferRange{draw.commands_offset, std::uint64_t(draw.count) * 20}
+                                        );
+                                    }
+                                    else
+                                    {
+                                        for (std::uint32_t command = 0; command < draw.count; ++command)
+                                        {
+                                            read(
+                                                draw.commands_resource,
+                                                EGraphUse::INDIRECT,
+                                                GraphBufferRange{
+                                                    draw.commands_offset + std::uint64_t(command) * draw.stride,
+                                                    20
+                                                }
+                                            );
+                                        }
+                                    }
+                                    if (draw.count_resource)
+                                    {
+                                        read(
+                                            *draw.count_resource,
+                                            EGraphUse::INDIRECT,
+                                            GraphBufferRange{draw.count_offset, 4}
                                         );
                                     }
                                 }
-                                if (draw.count_resource)
-                                {
-                                    read(
-                                        *draw.count_resource,
-                                        EGraphUse::INDIRECT,
-                                        GraphBufferRange{draw.count_offset, 4}
-                                    );
-                                }
-                            }
-                        },
-                        fixed->draw
-                    );
+                            },
+                            fixed->draw
+                        );
+                    }
                 }
                 else if constexpr (std::is_same_v<Work, ComputeWork>)
                 {
@@ -754,6 +764,8 @@ namespace lux::render
                             failure = graphError(kGraphInvalidDescriptor, {}, access.version.resource);
                         append(access, access.usage);
                     }
+                    if (declaration.rendering) rasterScope(*declaration.rendering);
+                    pass.rendering = std::move(declaration.rendering);
                     pass.encoding_interface = std::move(declaration.interface);
                     pass.encoding_stages = declaration.stages;
                     pass.work = std::move(value.operation);

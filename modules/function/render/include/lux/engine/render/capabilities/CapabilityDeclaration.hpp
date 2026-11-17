@@ -3,7 +3,7 @@
 #include <array>
 #include <concepts>
 #include <cstdint>
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <span>
 #include <tuple>
 #include <type_traits>
@@ -15,9 +15,8 @@ namespace lux::render
         cxx::type_info type;
         // Discrete operations, with their own Request/Response contracts.
         std::span<const CommandDescriptor* const> commands;
-        // Input types accepted in a sealed frame batch. No per-item Request or Response.
-        // This declares supported data, not a requirement to resend unchanged values every frame.
-        std::span<const cxx::type_info> per_frame_data;
+        // Resource identity and input/command contracts are declared once by each Resource.
+        std::span<const ResourceDefinition* const> resources;
         std::span<const cxx::type_info> prerequisites;
 
         constexpr bool operator==(const CapabilityDescription& other) const noexcept
@@ -71,11 +70,21 @@ namespace lux::render
             return std::array<cxx::type_info, sizeof...(T)>{cxx::make_basic_type_info<T>()...};
         }
 
+        template <class... R> constexpr auto describeResources(std::type_identity<std::tuple<R...>>) noexcept
+        {
+            return std::array<const ResourceDefinition*, sizeof...(R)>{&R::descriptor...};
+        }
+
+        template <class... R> consteval bool declaredResources(std::type_identity<std::tuple<R...>>) noexcept
+        {
+            return (requires { { R::descriptor } -> std::convertible_to<const ResourceDefinition&>; } && ...);
+        }
+
         template <class... C> consteval bool declaredPrerequisites(std::type_identity<std::tuple<C...>>) noexcept
         {
             return (requires {
                 typename C::Commands;
-                typename C::PerFrameData;
+                typename C::Resources;
                 typename C::PrerequisiteCapabilities;
             } && ...);
         }
@@ -83,9 +92,9 @@ namespace lux::render
         template <class C> consteval bool validDeclaration() noexcept
         {
             using Commands = typename C::Commands;
-            using PerFrameData = typename C::PerFrameData;
+            using Resources = typename C::Resources;
             using Prerequisites = typename C::PrerequisiteCapabilities;
-            if constexpr (!is_tuple<Commands> || !is_tuple<PerFrameData> || !is_tuple<Prerequisites>)
+            if constexpr (!is_tuple<Commands> || !is_tuple<Resources> || !is_tuple<Prerequisites>)
             {
                 return false;
             }
@@ -93,7 +102,8 @@ namespace lux::render
             {
                 using Dependencies = typename JoinedTypes<std::tuple<C>, Prerequisites>::Type;
                 return uniqueTypes(std::type_identity<Commands>{}) &&
-                       uniqueTypes(std::type_identity<PerFrameData>{}) &&
+                       uniqueTypes(std::type_identity<Resources>{}) &&
+                       declaredResources(std::type_identity<Resources>{}) &&
                        declaredCommands(std::type_identity<Commands>{}) &&
                        uniqueTypes(std::type_identity<Dependencies>{}) &&
                        declaredPrerequisites(std::type_identity<Prerequisites>{});
@@ -104,7 +114,7 @@ namespace lux::render
     template <class C>
     concept CapabilityConcept = requires {
         typename C::Commands;
-        typename C::PerFrameData;
+        typename C::Resources;
         typename C::PrerequisiteCapabilities;
     } && capability_detail::validDeclaration<C>();
 
@@ -114,12 +124,12 @@ namespace lux::render
     {
         static constexpr auto commands =
             capability_detail::describeCommands(std::type_identity<typename C::Commands>{});
-        static constexpr auto per_frame_data =
-            capability_detail::describeTypes(std::type_identity<typename C::PerFrameData>{});
+        static const auto resources =
+            capability_detail::describeResources(std::type_identity<typename C::Resources>{});
         static constexpr auto prerequisites =
             capability_detail::describeTypes(std::type_identity<typename C::PrerequisiteCapabilities>{});
-        static constexpr CapabilityDescription description{
-            cxx::make_basic_type_info<C>(), commands, per_frame_data, prerequisites
+        static const CapabilityDescription description{
+            cxx::make_basic_type_info<C>(), commands, resources, prerequisites
         };
         return description;
     }

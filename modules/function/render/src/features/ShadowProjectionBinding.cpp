@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/features/ShadowProjectionBinding.hpp>
 
 #include <bit>
@@ -61,15 +62,26 @@ namespace lux::render::detail
         auto binding = new ShadowProjectionBinding(device, frames, resources, light_storage, description);
         FeatureBinding result{
             {binding, [](void* pointer) noexcept { delete static_cast<ShadowProjectionBinding*>(pointer); }},
-            [](void* pointer, const FeatureFrameInput& input, ResourceUploader& uploads) noexcept
-            { return static_cast<ShadowProjectionBinding*>(pointer)->prepareFrame(input, uploads); }
+            [](
+                void* pointer,
+                const FeatureFrameInput& input,
+                ResourceUploader& uploads,
+                detail::Preparation& preparation
+            ) noexcept
+            {
+                return static_cast<ShadowProjectionBinding*>(pointer)->prepareFrame(input, uploads, preparation);
+            }
         };
         result.initial_resources = binding->updates_;
         return result;
     }
 
     RenderResult<FeatureBinding::Preparation>
-    ShadowProjectionBinding::prepareFrame(const FeatureFrameInput& input, ResourceUploader& uploads) noexcept
+    ShadowProjectionBinding::prepareFrame(
+        const FeatureFrameInput& input,
+        ResourceUploader& uploads,
+        detail::Preparation& preparation
+    ) noexcept
     {
         const auto& config = description_.config;
         const bool invalid_parameters = config.camera_offset > input.parameters.size() ||
@@ -225,7 +237,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                uploads.onPreparationSubmitted(
+                preparation.onSubmitted(
                     &slice,
                     [](void* value, std::uint32_t, RenderResult<void> accepted) noexcept
                     {

@@ -1,10 +1,10 @@
+#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <algorithm>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/execution/BindingState.hpp>
-#include <lux/engine/render/execution/FrameResources.hpp>
-#include <lux/engine/render/execution/RenderExecutor.hpp>
-#include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/BindingState.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
@@ -21,6 +21,7 @@ namespace lux::render::detail
         for (auto& frame : frames_)
         {
             frame.execution = this;
+            frame.preparation = std::make_unique<Preparation>(uploads ? uploads->windowRegionLimit() : 0);
             frame.accepted = device.makeFrontiers();
             frame.completions = std::make_unique<SubmissionCallback[]>(device.queueCount());
             frame.ready_batches.resize(device.queueCount());
@@ -145,8 +146,9 @@ namespace lux::render::detail
         }
         if (uploads_)
         {
-            uploads_->finishFrameCopySubmission(result, next_frame_);
+            uploads_->finishFrameCopySubmission(result);
         }
+        frames_[next_frame_].preparation->finishCallbacks(next_frame_, result);
     }
 
     void FrameExecution::sealFrame(FrameSlot& frame) noexcept
@@ -367,7 +369,7 @@ namespace lux::render::detail
             {
                 continue;
             }
-            auto prepared = use.ops->prepareFrame(use.storage, next_frame_, *uploads_);
+            auto prepared = use.ops->prepareFrame(use.storage, next_frame_, *uploads_, *frame.preparation);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -401,7 +403,7 @@ namespace lux::render::detail
             }
             const FeatureFrameInput input{
                 next_frame_,
-                instance->instanceParameters().subspan(definition.parameter_offset, definition.parameter_bytes),
+                instance->instanceParameters().subspan(binding->parameter_offset, binding->parameter_bytes),
                 binding->resolved_inputs
             };
             const auto prepare = std::visit(
@@ -420,7 +422,7 @@ namespace lux::render::detail
                 },
                 binding->preparation
             );
-            auto prepared = prepare(binding->value.get(), input, *uploads_);
+            auto prepared = prepare(binding->value.get(), input, *uploads_, *frames_[next_frame_].preparation);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -436,7 +438,7 @@ namespace lux::render::detail
             }
             binding->prepared_copies = prepared->state == FeatureBinding::EPreparation::RECORD
                                            ? prepared->copies
-                                           : std::span<const ResourceUploader::BufferCopy>{};
+                                           : std::span<const BufferCopyRegion>{};
             has_copies |= !binding->prepared_copies.empty();
         }
         return features_ready;
@@ -460,7 +462,7 @@ namespace lux::render::detail
             // settles unprepared sources, including frames with no active output.
             if (!prepared || uploads_->hasFrameCopies())
             {
-                uploads_->onPreparationSubmitted(
+                frames_[next_frame_].preparation->onSubmitted(
                     instance,
                     [](void* value, std::uint32_t slot, RenderResult<void> result) noexcept
                     { static_cast<RenderGraphInstance*>(value)->finishDrawListUploads(slot, result); }
@@ -543,8 +545,8 @@ namespace lux::render::detail
             if (uploads_)
             {
                 uploads_->recordFrameCopies(*frame.preparation_command);
-                uploads_->recordCopies(*frame.preparation_command, frame.feature_copies);
             }
+            recordPreservingCopies(device_.nriCore(), *frame.preparation_command, frame.feature_copies);
             recorded = device_.nriCore().EndCommandBuffer(*frame.preparation_command);
         }
         if (recorded != nri::Result::SUCCESS)
@@ -857,7 +859,7 @@ namespace lux::render::detail
                 for (std::uint32_t pass = submission.first_pass; pass < submission.first_pass + submission.pass_count;
                      ++pass)
                 {
-                    const auto* raster = std::get_if<RasterCommands>(&instance.plan_->passes()[pass].work);
+                    const auto* raster = instance.plan_->passes()[pass].work.getIf<RasterCommands>();
                     if (!raster)
                     {
                         continue;
@@ -1060,8 +1062,9 @@ namespace lux::render::detail
     exec::task<RenderResult<std::uint32_t>> FrameExecution::advanceSubmissions() noexcept
     {
         auto& frame = frames_[next_frame_];
+        const bool has_staged_copies = uploads_ && uploads_->hasFrameCopies();
         const bool has_pending_preparation =
-            frame.preparation_serial == 0 && uploads_ && (uploads_->hasFrameCopies() || !frame.feature_copies.empty());
+            frame.preparation_serial == 0 && (has_staged_copies || !frame.feature_copies.empty());
         if (has_pending_preparation && frame.preparation_command_serial > device_.queue().completed())
         {
             co_return 0;
@@ -1128,15 +1131,17 @@ namespace lux::render::detail
             }
             const bool preparation = frame.preparation_serial == 0;
             frame.recording_commands.clear();
-            const bool has_copies = preparation && uploads_ &&
-                (uploads_->hasFrameCopies() || !frame.feature_copies.empty());
+            const bool has_copies = preparation && (has_staged_copies || !frame.feature_copies.empty());
             if (has_copies)
             {
-                auto copied = co_await uploads_->prepareFrameCopies();
-                if (!copied)
+                if (has_staged_copies)
                 {
-                    cancelSubmissions(copied.error());
-                    co_return cxx::unexpected(copied.error());
+                    auto copied = co_await uploads_->prepareFrameCopies();
+                    if (!copied)
+                    {
+                        cancelSubmissions(copied.error());
+                        co_return cxx::unexpected(copied.error());
+                    }
                 }
                 if (cancellation_)
                 {
@@ -1149,8 +1154,8 @@ namespace lux::render::detail
                 }
                 if (result == nri::Result::SUCCESS)
                 {
-                    uploads_->recordFrameCopies(*frame.preparation_command);
-                    uploads_->recordCopies(*frame.preparation_command, frame.feature_copies);
+                    if (has_staged_copies) uploads_->recordFrameCopies(*frame.preparation_command);
+                    recordPreservingCopies(device_.nriCore(), *frame.preparation_command, frame.feature_copies);
                     result = device_.nriCore().EndCommandBuffer(*frame.preparation_command);
                 }
                 if (result != nri::Result::SUCCESS)
@@ -1164,9 +1169,7 @@ namespace lux::render::detail
             for (auto index : frame.recording_batches)
             {
                 const auto& batch = frame.batches[index];
-                auto commands = RenderExecutor::prepareBatch(
-                    *frame.instances[batch.instance].instance, next_frame_, batch.local_batch
-                );
+                auto commands = frame.instances[batch.instance].instance->recordBatch(next_frame_, batch.local_batch);
                 if (!commands)
                 {
                     cancelSubmissions(commands.error());

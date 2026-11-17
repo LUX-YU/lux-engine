@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <bit>
 #include <limits>
 #include <lux/cxx/core/scope_exit.hpp>
@@ -252,7 +253,11 @@ namespace lux::render::detail
     }
 
     RenderResult<FeatureBinding::Preparation>
-    MeshDrawGroups::prepare(const FeatureFrameInput& input, ResourceUploader& uploader) noexcept
+    MeshDrawGroups::prepare(
+        const FeatureFrameInput& input,
+        ResourceUploader& uploader,
+        detail::Preparation& preparation
+    ) noexcept
     {
         const auto view_count = static_cast<std::uint32_t>(input.resources.front().size / sizeof(MeshVisibilityView));
         if (source_.view_count != view_count)
@@ -325,7 +330,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                uploader.onPreparationSubmitted(
+                preparation.onSubmitted(
                     &slice,
                     [](void* data, std::uint32_t, RenderResult<void> accepted) noexcept
                     {
@@ -394,9 +399,17 @@ namespace lux::render::detail
         auto* source = value.get();
         FeatureBinding binding{
             {value.release(), [](void* data) noexcept { delete static_cast<MeshDrawGroups*>(data); }},
-            FeatureBinding::PrepareResources{[](void* data, const FeatureFrameInput& frame, ResourceUploader& uploader
-                                             ) noexcept
-                                             { return static_cast<MeshDrawGroups*>(data)->prepare(frame, uploader); }}
+            FeatureBinding::PrepareResources{
+                [](
+                    void* data,
+                    const FeatureFrameInput& frame,
+                    ResourceUploader& uploader,
+                    detail::Preparation& preparation
+                ) noexcept
+                {
+                    return static_cast<MeshDrawGroups*>(data)->prepare(frame, uploader, preparation);
+                }
+            }
         };
         binding.initial_resources = std::span(&source->slices_[0].updates[0], 1);
         // View count may change without an instance membership mutation (dynamic shadow slices).

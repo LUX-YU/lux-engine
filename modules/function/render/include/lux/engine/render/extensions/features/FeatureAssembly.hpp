@@ -37,13 +37,11 @@ namespace lux::render
         std::vector<FeatureContribution> contributions;
         std::vector<StorageArgument> arguments;
         std::vector<detail::FeatureFrameContribution> bindings;
-        std::vector<SamplerDescription> samplers;
     };
 
     // Synchronous cold assembly. Inputs/configurations are borrowed for this call only; the result owns
     // graph, analysis and Attach arguments. Failure publishes no Effect and leaves inputs untouched.
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<FeatureAssembly> composeFeatures(
-        const detail::EnabledDeviceFeatures& enabled,
         std::span<const FeatureBuildInput> instances,
         std::size_t config_byte_limit,
         std::span<const FeatureConnection> connections,

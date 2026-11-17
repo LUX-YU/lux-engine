@@ -3,7 +3,7 @@
 #include <cmath>
 #include <lux/engine/description/LightDescription.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/inputs/DirectLightInputs.hpp>
+#include <lux/engine/render/resources/lighting/Data.hpp>
 
 namespace lux::render
 {

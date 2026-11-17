@@ -7,9 +7,9 @@
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
-#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/resources/material/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/resources/MaterialResource.hpp>
+#include <lux/engine/render/resources/material/Resource.hpp>
 
 namespace lux::render::detail
 {
@@ -73,7 +73,7 @@ namespace lux::render::detail
         template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>> write(Input) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(const VGraphResourceDesc&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
         void finishFramePreparation(std::uint32_t frame, RenderResult<void>) noexcept;
         void markDirty(Page&, std::uint32_t frame, std::uint32_t record) noexcept;
         void removeDirty(Page&, std::uint32_t frame) noexcept;

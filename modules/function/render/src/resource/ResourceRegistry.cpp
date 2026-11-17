@@ -7,8 +7,14 @@
 
 namespace lux::render
 {
-    ResourceCommandUse::ResourceCommandUse(ResourceRegistry& registry, ResourceInstanceId id, void* instance) noexcept
-        : registry_(&registry), id_(id), instance_(instance)
+    ResourceCommandUse::ResourceCommandUse(
+        ResourceRegistry& registry,
+        ResourceInstanceId id,
+        void* instance,
+        CommandBindingLocation binding,
+        cxx::type_info implementation
+    ) noexcept
+        : registry_(&registry), id_(id), instance_(instance), binding_(binding), implementation_(implementation)
     {
     }
 
@@ -19,7 +25,8 @@ namespace lux::render
 
     ResourceCommandUse::ResourceCommandUse(ResourceCommandUse&& other) noexcept
         : registry_(std::exchange(other.registry_, nullptr)), id_(other.id_),
-          instance_(std::exchange(other.instance_, nullptr))
+          instance_(std::exchange(other.instance_, nullptr)), binding_(other.binding_),
+          implementation_(other.implementation_)
     {
     }
 
@@ -31,6 +38,8 @@ namespace lux::render
             registry_ = std::exchange(other.registry_, nullptr);
             id_ = other.id_;
             instance_ = std::exchange(other.instance_, nullptr);
+            binding_ = other.binding_;
+            implementation_ = other.implementation_;
         }
         return *this;
     }
@@ -45,20 +54,24 @@ namespace lux::render
     }
 
     RenderResult<ResourceCommandUse>
-    ResourceRegistry::acquireCommand(ResourceInstanceId id, cxx::type_info implementation) noexcept
+    ResourceRegistry::acquireCommand(ResourceInstanceId id, CommandId command) noexcept
     {
-        auto instance = borrow(id, implementation);
-        if (!instance)
+        auto* entry = entries_.find(id);
+        if (!entry || !entry->instance)
         {
-            return cxx::unexpected(instance.error());
+            return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        auto& entry = *entries_.find(id);
-        if (entry.command_uses == UINT32_MAX)
+        const auto& definition = *types_.find(entry->type);
+        const auto location = std::ranges::find(definition.commands, command, &CommandBindingLocation::command);
+        if (location == definition.commands.end())
         {
-            std::terminate();
+            return cxx::unexpected(RenderError{kCommandContract});
         }
-        ++entry.command_uses;
-        return ResourceCommandUse{*this, id, *instance};
+        if (entry->command_uses == UINT32_MAX) std::terminate();
+        ++entry->command_uses;
+        return ResourceCommandUse{
+            *this, id, entry->instance, *location, definition.factory.storage->implementation_type
+        };
     }
 
     bool ResourceRegistry::hasCommands(ResourceInstanceId id) const noexcept
@@ -220,7 +233,7 @@ namespace lux::render
                 [](const auto& a, const auto& b) noexcept { return a.hasSameImplementation(b); }
             );
             const bool is_factory_mismatch = *previous.factory.storage != *factory.storage || is_command_mismatch ||
-                !std::ranges::equal(previous.factory.frame_calls, factory.frame_calls);
+                previous.factory.frame_call != factory.frame_call;
             if (is_factory_mismatch)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});

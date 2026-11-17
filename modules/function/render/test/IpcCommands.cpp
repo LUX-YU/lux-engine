@@ -1,8 +1,9 @@
 #include <atomic>
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/commands/Mesh3dCommands.hpp>
-#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
+#include <lux/engine/render/resources/mesh/Commands.hpp>
+#include <lux/engine/render/resources/instance/Commands.hpp>
+#include <lux/engine/render/resources/instance/Data.hpp>
 #include <type_traits>
 
 #if defined(VK_VERSION_1_0) || defined(_WINDOWS_)
@@ -11,8 +12,8 @@
 
 #include "TestSupport.hpp"
 
-static_assert(std::is_trivially_copyable_v<lux::render::FrameDataLayout<lux::render::TransformData>::Stored>);
-static_assert(std::is_standard_layout_v<lux::render::FrameDataLayout<lux::render::TransformData>::Stored>);
+static_assert(std::is_trivially_copyable_v<lux::render::TransformUpdate>);
+static_assert(std::is_standard_layout_v<lux::render::TransformUpdate>);
 static_assert(std::is_trivially_copyable_v<lux::render::MeshId> && std::is_standard_layout_v<lux::render::MeshId>);
 static_assert(sizeof(lux::render::MeshId) == 16);
 static_assert(sizeof(lux::render::RequestId) == sizeof(std::uint64_t));

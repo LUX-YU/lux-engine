@@ -12,6 +12,7 @@
 namespace lux::render::detail
 {
     class ResourceUploader;
+    class Preparation;
 
     // Intrusive, non-owning change relationship. The consumer embeds this node in its actual
     // record; the Storage keeps only the list head. Heads and linked consumers have stable addresses.
@@ -121,7 +122,8 @@ namespace lux::render::detail
         Resolve resolve;
         // Freeze all dirty data or return a capacity error. False only awaits acceptance of a complete
         // replacement before its binding can be published; it never requests another partial copy window.
-        RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, ResourceUploader&) noexcept = nullptr;
+        using PrepareFrame = RenderResult<bool> (*)(void*, std::uint32_t, ResourceUploader&, Preparation&) noexcept;
+        PrepareFrame prepareFrame = nullptr;
         // Cold borrow. The producer advances it before any attempt that may dirty a replica,
         // including a failed upload which leaves repair work. No callback is needed to read it.
         const std::uint64_t* (*preparationRevision)(const void*) noexcept = nullptr;

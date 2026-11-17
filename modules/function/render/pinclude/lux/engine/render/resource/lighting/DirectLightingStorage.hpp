@@ -1,10 +1,10 @@
 #pragma once
 
-#include <lux/engine/render/resources/LightResource.hpp>
+#include <lux/engine/render/resources/lighting/Resource.hpp>
 
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
+#include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
@@ -21,7 +21,7 @@ namespace lux::render::detail
         DirectLightingStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~DirectLightingStorage() noexcept;
         [[nodiscard]] exec::task<RenderResult<std::vector<LightId>>> create(LightData) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> update(LightUpdates) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> update(std::span<const DirectLightUpdate>) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> remove(LightId) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(
@@ -30,7 +30,7 @@ namespace lux::render::detail
             StorageSubscription&,
             std::span<ResourceInput>
         ) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
         [[nodiscard]] bool read(LightId, VDirectLight&, std::uint32_t& dense_index) const noexcept;
         [[nodiscard]] std::array<std::uint32_t, 3> counts() const noexcept;
 

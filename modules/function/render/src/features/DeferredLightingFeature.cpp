@@ -4,7 +4,7 @@
 #include "DeferredLightingShadow.hpp"
 #include <cstring>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
+#include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
@@ -12,194 +12,195 @@
 
 namespace lux::render
 {
-    namespace
+    constexpr std::array<std::string_view, 4>
+        surfaces{"albedo_metallic", "normal_roughness", "emissive_ao", "depth"};
+    constexpr std::array<std::string_view, 4>
+        lights{"directional_lights", "point_lights", "spot_lights", "light_counts"};
+    constexpr std::array<std::uint32_t, 4> strides{32, 48, 64, 16};
+
+    RenderResult<void>
+    detail::DeferredLightingFeature::Ports::describe(
+        const Config* value,
+        std::string_view,
+        FeaturePorts& result
+    ) noexcept
     {
-        constexpr std::array<std::string_view, 4>
-            surfaces{"albedo_metallic", "normal_roughness", "emissive_ao", "depth"};
-        constexpr std::array<std::string_view, 4>
-            lights{"directional_lights", "point_lights", "spot_lights", "light_counts"};
-        constexpr std::array<std::uint32_t, 4> strides{32, 48, 64, 16};
-
-        RenderResult<void> describeLighting(const void* value, std::string_view, FeaturePorts& result) noexcept
+        const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
+        const bool invalid_extent = (config.extent.extent.source == EImageExtentSource::FIXED &&
+            (!config.extent.width || !config.extent.height)) || config.extent.mips != 1 ||
+                                    config.extent.layers != 1 || config.extent.samples != 1;
+        const bool missing_lights = !config.external_lights && config.lights.empty();
+        const bool invalid_clusters =
+            config.clusters && (config.clusters->cluster_count == 0 || config.clusters->index_capacity == 0);
+        const bool invalid_configuration = invalid_extent || missing_lights || invalid_clusters;
+        if (invalid_configuration)
         {
-            const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
-            const bool invalid_extent = (config.extent.extent.source == EImageExtentSource::FIXED &&
-                (!config.extent.width || !config.extent.height)) || config.extent.mips != 1 ||
-                                        config.extent.layers != 1 || config.extent.samples != 1;
-            const bool missing_lights = !config.external_lights && config.lights.empty();
-            const bool invalid_clusters =
-                config.clusters && (config.clusters->cluster_count == 0 || config.clusters->index_capacity == 0);
-            const bool invalid_configuration = invalid_extent || missing_lights || invalid_clusters;
-            if (invalid_configuration)
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-            for (std::size_t i = 0; i < surfaces.size(); ++i)
-            {
-                auto image = config.extent;
-                image.format = i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
-                FeaturePort port{std::string(surfaces[i]), EFeaturePort::INPUT, image};
-                port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(surfaces[i]);
-                result.resources.push_back(std::move(port));
-                if (config.external_lights)
-                {
-                    result.resources.push_back(
-                        {std::string(lights[i]), EFeaturePort::INPUT, GraphBufferDesc{strides[i]}}
-                    );
-                }
-                else
-                {
-                    result.storage.scene.push_back(
-                        {std::string(lights[i]),
-                         EFeaturePort::OUTPUT,
-                         GraphBufferDesc{strides[i]},
-                         EGraphOrigin::IMPORTED,
-                         {GraphBufferRange{0, strides[i]}},
-                         ResourceRequirement{ResourceName(config.lights)}}
-                    );
-                }
-            }
-            if (config.shadows)
-            {
-                const auto& shape = *config.shadows;
-                const auto buffer = [&](std::string name, std::uint64_t size, std::string_view semantic)
-                {
-                    FeaturePort port{std::move(name), EFeaturePort::INPUT, GraphBufferDesc{size}};
-                    port.semantic = semantic;
-                    result.resources.push_back(std::move(port));
-                };
-                buffer(
-                    "shadow_views",
-                    std::uint64_t(shape.view_count) * sizeof(MeshVisibilityView),
-                    kMeshVisibilityViews
-                );
-                buffer("shadow_slices", std::uint64_t(shape.view_count) * sizeof(ShadowSliceGpu), kShadowSlices);
-                buffer("shadow_ranges", sizeof(ShadowMappingHeader) + sizeof(LightShadowRange), kLightShadowRanges);
-                FeaturePort depth{"shadow_depth", EFeaturePort::INPUT, shape.image()};
-                depth.semantic = kShadowDepth;
-                result.resources.push_back(std::move(depth));
-            }
-            if (config.clusters)
-            {
-                const auto port = [&](std::string name, std::uint64_t bytes, std::string_view semantic)
-                {
-                    FeaturePort input{std::move(name), EFeaturePort::INPUT, GraphBufferDesc{bytes}};
-                    input.semantic = semantic;
-                    result.resources.push_back(std::move(input));
-                };
-                port("cluster_grid", sizeof(ClusterGridGpu), kClusterGrid);
-                port("cluster_offsets", (std::uint64_t(config.clusters->cluster_count) + 1) * 4, kClusterOffsets);
-                port("cluster_indices", std::uint64_t(config.clusters->index_capacity) * 4, kClusterIndices);
-                port("cluster_status", sizeof(ClusterStatusGpu), kClusterStatus);
-            }
-            auto image = config.extent;
-            image.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
-            FeaturePort hdr{"hdr_color", EFeaturePort::OUTPUT, image};
-            hdr.semantic = "lux.color.linear-hdr.v1";
-            result.resources.push_back(std::move(hdr));
-            return {};
+            return cxx::unexpected(RenderError{kFeatureContract});
         }
-
-        RenderResult<void>
-        buildLighting(
-            const void* value,
-            std::string_view key,
-            FeatureBuildContext& context,
-            const lux::render::detail::EnabledDeviceFeatures& enabled
-        ) noexcept
+        for (std::size_t i = 0; i < surfaces.size(); ++i)
         {
-            const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
-            auto work = config.clusters
-                            ? (config.shadows ? detail::fullscreenRaster(
-                                                    context,
-                                                    kDeferredLightingClusteredShadow.load(enabled.shader_target)
-                                                )
-                                              : detail::fullscreenRaster(
-                                                    context,
-                                                    kDeferredLightingClustered.load(enabled.shader_target)
-                                                ))
-                            : (config.shadows
-                                   ? detail::fullscreenRaster(
-                                         context,
-                                         kDeferredLightingShadow.load(enabled.shader_target)
-                                     )
-                                   : detail::fullscreenRaster(context, kDeferredLighting.load(enabled.shader_target)));
-            if (!work)
+            auto image = config.extent;
+            image.format = i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
+            FeaturePort port{std::string(surfaces[i]), EFeaturePort::INPUT, image};
+            port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(surfaces[i]);
+            result.resources.push_back(std::move(port));
+            if (config.external_lights)
             {
-                return cxx::unexpected(work.error());
-            }
-            for (auto name : surfaces)
-            {
-                work->fixed().interface.resources.push_back({std::string(name), {context.resource(name)}});
-            }
-            for (std::uint32_t i = 0; i < lights.size(); ++i)
-            {
-                auto resource = context.resource(lights[i]);
-                work->fixed().interface.resources.push_back({std::string(lights[i]), {resource}});
-                if (!config.external_lights)
-                {
-                    context.arguments.push_back(StorageArgument::make(
-                        resource.resource,
-                        DirectLightingBinding{static_cast<EDirectLightingBuffer>(i)}
-                    ));
-                }
-            }
-            if (config.shadows)
-            {
-                for (auto name : {"shadow_views", "shadow_slices", "shadow_ranges", "shadow_depth"})
-                {
-                    work->fixed().interface.resources.push_back({name, {context.resource(name)}});
-                }
-                const auto sampler = context.addSampler(
-                    {ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_BORDER, EDepthCompare::LESS_EQUAL, 1}
+                result.resources.push_back(
+                    {std::string(lights[i]), EFeaturePort::INPUT, GraphBufferDesc{strides[i]}}
                 );
-                work->fixed().interface.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
-            }
-            if (config.clusters)
-            {
-                for (auto name : {"cluster_grid", "cluster_offsets", "cluster_indices", "cluster_status"})
-                {
-                    work->fixed().interface.resources.push_back({name, {context.resource(name)}});
-                }
-            }
-            work->fixed().interface.parameters.instance_layout = config.input_layout;
-            for (auto name : {"inverse_view_projection", "viewport", "background"})
-            {
-                work->fixed().interface.parameters.fields.push_back({name, {}, name});
-            }
-            work->fixed().interface.parameters.fields.push_back({"camera_position", {}, "position_near"});
-            const bool supplied_environment =
-                std::ranges::find(config.input_layout.fields, "environment", &rdesc::ShaderMember::path) !=
-                config.input_layout.fields.end();
-            if (supplied_environment)
-            {
-                work->fixed().interface.parameters.fields.push_back({"environment", {}, "environment"});
             }
             else
             {
-                std::memcpy(
-                    work->fixed().interface.parameters.values.data() +
-                        offsetof(DeferredLightingParameters, environment),
-                    config.environment.data(),
-                    sizeof(config.environment)
+                result.storage.scene.push_back(
+                    {std::string(lights[i]),
+                     EFeaturePort::OUTPUT,
+                     GraphBufferDesc{strides[i]},
+                     EGraphOrigin::IMPORTED,
+                     {GraphBufferRange{0, strides[i]}},
+                     ResourceRequirement{ResourceName(config.lights)}}
                 );
             }
-            work->colors.push_back({{context.resource("hdr_color")}});
-            auto pass = context.graph.addRasterPass(
-                featureKey(
-                    detail::DeferredLightingFeature::name,
-                    key,
-                    config.clusters ? "clustered lights" : "all lights"
-                ),
-                std::move(*work)
-            );
-            if (!pass)
-            {
-                return cxx::unexpected(pass.error());
-            }
-            return context.publish("hdr_color", pass->written.front());
         }
-    } // namespace
+        if (config.shadows)
+        {
+            const auto& shape = *config.shadows;
+            const auto buffer = [&](std::string name, std::uint64_t size, std::string_view semantic)
+            {
+                FeaturePort port{std::move(name), EFeaturePort::INPUT, GraphBufferDesc{size}};
+                port.semantic = semantic;
+                result.resources.push_back(std::move(port));
+            };
+            buffer(
+                "shadow_views",
+                std::uint64_t(shape.view_count) * sizeof(MeshVisibilityView),
+                kMeshVisibilityViews
+            );
+            buffer("shadow_slices", std::uint64_t(shape.view_count) * sizeof(ShadowSliceGpu), kShadowSlices);
+            buffer("shadow_ranges", sizeof(ShadowMappingHeader) + sizeof(LightShadowRange), kLightShadowRanges);
+            FeaturePort depth{"shadow_depth", EFeaturePort::INPUT, shape.image()};
+            depth.semantic = kShadowDepth;
+            result.resources.push_back(std::move(depth));
+        }
+        if (config.clusters)
+        {
+            const auto port = [&](std::string name, std::uint64_t bytes, std::string_view semantic)
+            {
+                FeaturePort input{std::move(name), EFeaturePort::INPUT, GraphBufferDesc{bytes}};
+                input.semantic = semantic;
+                result.resources.push_back(std::move(input));
+            };
+            port("cluster_grid", sizeof(ClusterGridGpu), kClusterGrid);
+            port("cluster_offsets", (std::uint64_t(config.clusters->cluster_count) + 1) * 4, kClusterOffsets);
+            port("cluster_indices", std::uint64_t(config.clusters->index_capacity) * 4, kClusterIndices);
+            port("cluster_status", sizeof(ClusterStatusGpu), kClusterStatus);
+        }
+        auto image = config.extent;
+        image.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+        FeaturePort hdr{"hdr_color", EFeaturePort::OUTPUT, image};
+        hdr.semantic = "lux.color.linear-hdr.v1";
+        result.resources.push_back(std::move(hdr));
+        return {};
+    }
+
+    RenderResult<void>
+    detail::DeferredLightingFeature::build(
+        const Config* value,
+        std::string_view key,
+        FeatureBuildContext& context
+    ) noexcept
+    {
+        const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
+        auto work = config.clusters
+                        ? (config.shadows ? detail::fullscreenRaster(
+                                                context,
+                                                GraphProgram{kDeferredLightingClusteredShadow}
+                                            )
+                                          : detail::fullscreenRaster(
+                                                context,
+                                                GraphProgram{kDeferredLightingClustered}
+                                            ))
+                        : (config.shadows
+                               ? detail::fullscreenRaster(
+                                     context,
+                                     GraphProgram{kDeferredLightingShadow}
+                                 )
+                               : detail::fullscreenRaster(context, GraphProgram{kDeferredLighting}));
+        if (!work)
+        {
+            return cxx::unexpected(work.error());
+        }
+        for (auto name : surfaces)
+        {
+            work->fixed().interface.resources.push_back({std::string(name), {context.resource(name)}});
+        }
+        for (std::uint32_t i = 0; i < lights.size(); ++i)
+        {
+            auto resource = context.resource(lights[i]);
+            work->fixed().interface.resources.push_back({std::string(lights[i]), {resource}});
+            if (!config.external_lights)
+            {
+                context.require(StorageArgument::make(
+                    resource.resource,
+                    DirectLightingBinding{static_cast<EDirectLightingBuffer>(i)}
+                ));
+            }
+        }
+        if (config.shadows)
+        {
+            for (auto name : {"shadow_views", "shadow_slices", "shadow_ranges", "shadow_depth"})
+            {
+                work->fixed().interface.resources.push_back({name, {context.resource(name)}});
+            }
+            const auto sampler = context.graph.addSampler(
+                {ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_BORDER, EDepthCompare::LESS_EQUAL, 1}
+            );
+            work->fixed().interface.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
+        }
+        if (config.clusters)
+        {
+            for (auto name : {"cluster_grid", "cluster_offsets", "cluster_indices", "cluster_status"})
+            {
+                work->fixed().interface.resources.push_back({name, {context.resource(name)}});
+            }
+        }
+        work->fixed().interface.parameters.instance_layout = config.input_layout;
+        for (auto name : {"inverse_view_projection", "viewport", "background"})
+        {
+            work->fixed().interface.parameters.fields.push_back({name, {}, name});
+        }
+        work->fixed().interface.parameters.fields.push_back({"camera_position", {}, "position_near"});
+        const bool supplied_environment =
+            std::ranges::find(config.input_layout.fields, "environment", &rdesc::ShaderMember::path) !=
+            config.input_layout.fields.end();
+        if (supplied_environment)
+        {
+            work->fixed().interface.parameters.fields.push_back({"environment", {}, "environment"});
+        }
+        else
+        {
+            std::memcpy(
+                work->fixed().interface.parameters.values.data() +
+                    offsetof(DeferredLightingParameters, environment),
+                config.environment.data(),
+                sizeof(config.environment)
+            );
+        }
+        work->colors.push_back({{context.resource("hdr_color")}});
+        auto pass = context.graph.addRasterPass(
+            featureKey(
+                detail::DeferredLightingFeature::name,
+                key,
+                config.clusters ? "clustered lights" : "all lights"
+            ),
+            std::move(*work)
+        );
+        if (!pass)
+        {
+            return cxx::unexpected(pass.error());
+        }
+        return context.publish("hdr_color", pass->written.front());
+    }
 
     RenderResult<std::size_t>
     ConfigValueTraits<DeferredLightingFeatureConfig>::retainedBytes(const DeferredLightingFeatureConfig& value) noexcept
@@ -214,9 +215,4 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureGraphOps& detail::DeferredLightingFeature::graph(bool) noexcept
-    {
-        static const FeatureGraphOps graph{describeLighting, buildLighting};
-        return graph;
-    }
 } // namespace lux::render

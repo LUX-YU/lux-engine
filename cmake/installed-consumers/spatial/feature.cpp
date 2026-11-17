@@ -1,4 +1,6 @@
+#include <array>
 #include <chrono>
+#include <lux/engine/render/commands/DiscoveryCommands.hpp>
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
@@ -23,32 +25,40 @@ int main()
     namespace ipc = lux::platform::ipc;
     auto execution = lux::execution::ExecutionRuntime::create({1, 64, {64}});
     check(bool(execution));
-    auto server = RenderServer::create({"spatial.external"}, *execution);
+    auto server = RenderServer::create({"spatial.external"}, **execution);
     check(bool(server));
     auto handler = probe::install(**server);
     check(bool(handler));
     auto second = probe::install(**server);
-    check(bool(second) && *second == *handler);
-    auto command = (*server)->commandId<probe::SetValues>();
-    check(bool(command));
+    check(bool(second));
     auto client = ipc::IpcCore::instance().createRequester("spatial.external");
     check(bool(client));
     std::thread render([&]() { check(bool((*server)->run())); });
     ipc::IpcMessage message;
-    message.emplace<probe::SetValues::Request>(probe::SetValues::Request{{{1, 2.5}, {2, 7.5}}});
-    check(bool(client->trySend(commandTag(*command), 1, message)));
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    std::uint64_t correlation = 0;
-    while (client->tryReceive(correlation, message) != ipc::EIpcReceive::RECEIVED)
+    const std::array names{CommandName{probe::SetValues::name}};
+    message.emplace<QueryCommandIds::Request>(names);
+    check(bool(client->trySend(commandTag(QueryCommandIds::id), 1, message)));
+    const auto receive = [&](std::uint64_t expected)
     {
-        check(std::chrono::steady_clock::now() < deadline);
-        std::this_thread::yield();
-    }
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        std::uint64_t correlation = 0;
+        while (client->tryReceive(correlation, message) != ipc::EIpcReceive::RECEIVED)
+        {
+            check(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        check(correlation == expected);
+    };
+    receive(1);
+    const auto ids = std::move(message.get<QueryCommandIds::Response>());
+    check(!ids.error.type && ids.ids.size() == 1);
+    message.emplace<probe::SetValues::Request>(probe::SetValues::Request{{{1, 2.5}, {2, 7.5}}});
+    check(bool(client->trySend(commandTag(ids.ids.front()), 2, message)));
+    receive(2);
     const auto& reply = message.get<probe::SetValues::Response>();
-    check(correlation == 1 && !reply.error.type && reply.sequence == 2 && reply.sum == 10);
+    check(!reply.error.type && reply.sequence == 2 && reply.sum == 10);
     (*server)->stop();
     render.join();
     server->reset();
-    execution->requestStop();
-    check(bool(execution->join()));
+    execution->reset();
 }

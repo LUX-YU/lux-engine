@@ -42,7 +42,16 @@ namespace lux::render
         ) noexcept;
         [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> declareCondition(std::string key) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> addProgram(rdesc::ShaderProgramArtifact program) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> addProgram(GraphProgram program) noexcept;
+        [[nodiscard]] std::uint32_t addSampler(SamplerDescription description) noexcept
+        {
+            const auto index = static_cast<std::uint32_t>(candidate_.samplers_.size());
+            candidate_.samplers_.push_back(std::move(description));
+            return index;
+        }
+
+        [[nodiscard]] std::size_t samplerCount() const noexcept { return candidate_.samplers_.size(); }
+
         // Pass resource accesses use declared ranges/versions. Writes return new versions in PassResult;
         // callers connect consumers to those versions instead of inventing execution ordering.
         [[nodiscard]] RenderResult<PassResult>

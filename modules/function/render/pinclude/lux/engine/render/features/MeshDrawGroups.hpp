@@ -88,7 +88,7 @@ namespace lux::render::detail
         [[nodiscard]] bool remove(std::uint32_t instance) noexcept;
         [[nodiscard]] RenderResult<void> pack() noexcept;
         [[nodiscard]] RenderResult<FeatureBinding::Preparation>
-        prepare(const FeatureFrameInput&, ResourceUploader&) noexcept;
+        prepare(const FeatureFrameInput&, ResourceUploader&, detail::Preparation&) noexcept;
 
         DeviceSession& device_;
         FrameExecution& frames_;

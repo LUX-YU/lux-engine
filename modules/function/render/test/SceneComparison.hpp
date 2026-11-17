@@ -10,7 +10,7 @@ struct SceneComparison
     static constexpr FeatureName name{"test.Compare"};
     using Storages = std::tuple<>;
     using Commands = std::tuple<>;
-    static const FeatureGraphOps& graph(bool) noexcept;
+    using Ports = SceneComparison;
 
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
@@ -26,8 +26,7 @@ struct SceneComparison
     build(
         const void*,
         std::string_view key,
-        FeatureBuildContext& context,
-        const lux::render::detail::EnabledDeviceFeatures&
+        FeatureBuildContext& context
     ) noexcept
     {
         auto shader = kClusterCompare.load(rdesc::EShaderTarget::SPIRV);
@@ -49,11 +48,6 @@ struct SceneComparison
     }
 };
 
-inline const FeatureGraphOps& SceneComparison::graph(bool) noexcept
-{
-    static const FeatureGraphOps value{SceneComparison::describe, SceneComparison::build};
-    return value;
-}
 
 static void verifyEqualPixels(const CapturedPixels& pixels)
 {

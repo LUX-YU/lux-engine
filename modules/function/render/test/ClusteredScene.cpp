@@ -4,11 +4,12 @@
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/commands/Lighting3dCommands.hpp>
-#include <lux/engine/render/commands/MaterialCommands.hpp>
-#include <lux/engine/render/commands/Mesh3dCommands.hpp>
-#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/resources/lighting/Commands.hpp>
+#include <lux/engine/render/resources/material/Commands.hpp>
+#include <lux/engine/render/resources/mesh/Commands.hpp>
+#include <lux/engine/render/resources/instance/Commands.hpp>
+#include <lux/engine/render/resources/lighting/Binding.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -36,7 +37,7 @@ struct ClusterCapture
     using Storages = std::tuple<CaptureBuffer>;
     using Commands = std::tuple<>;
 
-    static const FeatureGraphOps& graph(bool) noexcept;
+    using Ports = ClusterCapture;
 
     static RenderResult<void> describe(const void* data, std::string_view key, FeaturePorts& ports) noexcept
     {
@@ -65,15 +66,14 @@ struct ClusterCapture
     build(
         const void* data,
         std::string_view key,
-        FeatureBuildContext& context,
-        const lux::render::detail::EnabledDeviceFeatures&
+        FeatureBuildContext& context
     ) noexcept
     {
         const auto& config = *static_cast<const ClusterCaptureConfig*>(data);
         const auto lengths = sizes(config.grid);
         CaptureConfig capture{config.pixels};
         for (auto bytes : lengths) capture.bytes += bytes;
-        context.arguments.push_back(StorageArgument::make(context.resource("pixels").resource, capture));
+        context.require(StorageArgument::make(context.resource("pixels").resource, capture));
         TransferWork work;
         std::uint64_t offset = 0;
         for (std::size_t i = 0; i < outputs.size(); ++i)
@@ -101,7 +101,7 @@ struct ScanProbe
     using Storages = std::tuple<>;
     using Commands = std::tuple<>;
 
-    static const FeatureGraphOps& graph(bool) noexcept;
+    using Ports = ScanProbe;
 
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
@@ -116,8 +116,7 @@ struct ScanProbe
     build(
         const void*,
         std::string_view key,
-        FeatureBuildContext& context,
-        const lux::render::detail::EnabledDeviceFeatures&
+        FeatureBuildContext& context
     ) noexcept
     {
         auto initialized = take(context.graph.addTransferPass(
@@ -145,17 +144,7 @@ struct ScanProbe
     }
 };
 
-inline const FeatureGraphOps& ClusterCapture::graph(bool) noexcept
-{
-    static const FeatureGraphOps value{ClusterCapture::describe, ClusterCapture::build};
-    return value;
-}
 
-inline const FeatureGraphOps& ScanProbe::graph(bool) noexcept
-{
-    static const FeatureGraphOps value{ScanProbe::describe, ScanProbe::build};
-    return value;
-}
 
 struct Parameters
 {
@@ -444,18 +433,17 @@ int main(int argc, char** argv)
     take(server->registerResource<CaptureBuffer>());
     const auto cluster_probe = registerRenderProbe<ClusterProbeConfiguration>(
         *server, "test.clustered", {gbuffer, lighting, cluster, compare, capture, cluster_capture, visibility},
-        probePorts({}, {"differences", "lists"}), kLitProbeDependencies, lowerClusterProbe
+        probePorts({}, {"differences", "lists"}), lowerClusterProbe
     );
     const auto scan_implementation = registerRenderProbe<ScanProbeConfiguration>(
-        *server, "test.scan", {scan_probe, capture}, probePorts({}, {"offsets", "status"}), {}, lowerScanProbe
+        *server, "test.scan", {scan_probe, capture}, probePorts({}, {"offsets", "status"}), lowerScanProbe
     );
-    CommandList bootstrap;
-    bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
+
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
-    const auto commands = call<ListCommands>(*client, bootstrap, {});
+    const auto commands = queryCommands(*client);
     const auto meshes = call<GetOrCreateResource>(
         *client, commands, {GlobalRenderScope{}, kMeshResourceName}
     ).resource_id;
@@ -486,7 +474,7 @@ int main(int argc, char** argv)
         vertex.bitangent = {0, 1, 0};
     }
     auto geometry = take(describeIndexedMesh(mesh_data));
-    const auto mesh = call<Mesh3dCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
+    const auto mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
     using namespace lux::material;
     MaterialGraph author;
     author.shading_model = rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
@@ -511,7 +499,7 @@ int main(int argc, char** argv)
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
         auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
         const std::array descriptions{MeshInstanceData{mesh, material, 0, kIdentityTransform, true}};
-        call<Mesh3dCommands::CreateInstances>(
+        call<InstanceCommands::CreateInstances>(
             *client,
             commands,
             {instances, descriptions}
@@ -540,7 +528,7 @@ int main(int argc, char** argv)
         }
         if (!lights.empty())
         {
-            call<Lighting3dCommands::CreateLights>(*client, commands, {light_storage, {1, lights}});
+            call<LightingCommands::CreateLights>(*client, commands, {light_storage, {1, lights}});
         }
         ClusterGrid grid{
             scenario < 2 ? std::array<std::uint32_t, 3>{1, 1, 1} : std::array<std::uint32_t, 3>{7, 5, 9},
@@ -667,7 +655,7 @@ int main(int argc, char** argv)
         commands,
         {material}
     );
-    call<Mesh3dCommands::ReleaseMesh>(
+    call<MeshCommands::ReleaseMesh>(
         *client,
         commands,
         {mesh}

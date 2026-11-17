@@ -1,6 +1,12 @@
-#include <lux/engine/render/resources/InstanceResource.hpp>
-#include <lux/engine/render/resources/LightResource.hpp>
 #pragma once
+#include <lux/engine/render/resources/lighting/Resource.hpp>
+#include <lux/engine/render/resources/instance/Resource.hpp>
+#include <lux/engine/render/resources/material/Resource.hpp>
+#include <lux/engine/render/resources/texture/Resource.hpp>
+#include <lux/engine/render/resources/mesh/Resource.hpp>
+
+#include <lux/engine/render/resources/instance/Resource.hpp>
+#include <lux/engine/render/resources/lighting/Resource.hpp>
 
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/RasterSurface.hpp>
@@ -15,17 +21,17 @@
 #include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/resource/SampledTexture2D.hpp>
-#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
-#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
-#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
-#include <lux/engine/render/frame/FrameStorage.hpp>
-#include <lux/engine/render/inputs/DirectLightInputs.hpp>
-#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
-#include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
-#include <lux/engine/render/inputs/RasterMaterialInputs.hpp>
-#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
+#include <lux/engine/render/resources/texture/Binding.hpp>
+#include <lux/engine/render/resources/material/Binding.hpp>
+#include <lux/engine/render/resources/instance/Binding.hpp>
+#include <lux/engine/render/resources/lighting/Binding.hpp>
+#include <lux/engine/render/frame/FrameData.hpp>
+#include <lux/engine/render/resources/lighting/Data.hpp>
+#include <lux/engine/render/resources/instance/Data.hpp>
+#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/render/resources/material/Data.hpp>
+#include <lux/engine/render/resources/texture/Data.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <map>
 #include <tuple>
@@ -42,7 +48,7 @@ struct RenderProbeCapability final
 {
     using PrerequisiteCapabilities = std::tuple<>;
     using Commands = std::tuple<>;
-    using PerFrameData = std::tuple<>;
+    using Resources = std::tuple<MeshResource, TextureResource, MaterialResource, InstanceResource, LightResource>;
 };
 
 // Test configurations compose existing typed Feature inputs; preserve their real cold memory accounting.
@@ -499,19 +505,6 @@ inline void endCallCapture() noexcept
 // No Graph description is carried in its public Commands or frame protocol.
 
 
-inline constexpr std::array kRasterProbeDependencies{
-    CapabilityResourceDependency{EStorageScope::GLOBAL, kMeshResourceName},
-    CapabilityResourceDependency{EStorageScope::GLOBAL, kTextureResourceName},
-    CapabilityResourceDependency{EStorageScope::GLOBAL, kMaterialResourceName},
-    CapabilityResourceDependency{EStorageScope::SCENE, kInstanceResourceName}
-};
-
-inline constexpr std::array kLitProbeDependencies{
-    kRasterProbeDependencies[0], kRasterProbeDependencies[1], kRasterProbeDependencies[2],
-    kRasterProbeDependencies[3],
-    CapabilityResourceDependency{EStorageScope::SCENE, kLightResourceName}
-};
-
 inline std::vector<CapabilityPort>
 probePorts(std::initializer_list<std::string_view> images, std::initializer_list<std::string_view> buffers)
 {
@@ -525,10 +518,9 @@ probePorts(std::initializer_list<std::string_view> images, std::initializer_list
     return ports;
 }
 
-template <class Configuration>
+template <class Configuration, class Capability = RenderProbeCapability>
 CapabilityImplementationId registerRenderProbe(
     RenderServer& server, std::string name, std::vector<FeatureId> features, std::vector<CapabilityPort> ports,
-    std::span<const CapabilityResourceDependency> dependencies,
     RenderResult<CapabilityGraphContribution> (*build)(const CapabilityBuildInput&) noexcept
 )
 {
@@ -536,13 +528,12 @@ CapabilityImplementationId registerRenderProbe(
     implementation.implementation = std::move(name);
     implementation.features = std::move(features);
     implementation.config_type = lux::cxx::make_basic_type_info<Configuration>();
-    implementation.resource_dependencies = dependencies;
     implementation.build_graph = build;
     implementation.graph.ports = std::move(ports);
     implementation.graph.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA16_SFLOAT};
     implementation.graph.target_samples = {1};
     implementation.graph.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
-    const auto capability = take(server.registerCapability<RenderProbeCapability>());
+    const auto capability = take(server.registerCapability<Capability>());
     return take(server.addCapabilityImplementation(capability, implementation));
 }
 
@@ -553,7 +544,7 @@ inline void publishProbeOutputs(CapabilityGraphContribution& graph, const Capabi
     for (const auto& output : graph.definition.outputs) graph.ports.push_back({output.source});
 }
 
-template <class Configuration>
+template <class Configuration, class Capability = RenderProbeCapability>
 CreateEffectRequest probeRequest(
     TargetDesc target, CapabilityImplementationId implementation, Configuration configuration,
     std::initializer_list<std::string_view> outputs
@@ -561,7 +552,7 @@ CreateEffectRequest probeRequest(
 {
     CreateEffectRequest request{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
     request.composition.contributions.push_back(
-        {"probe", lux::cxx::make_basic_type_info<RenderProbeCapability>(), implementation,
+        {"probe", lux::cxx::make_basic_type_info<Capability>(), implementation,
          take(ConfigValue::make(std::move(configuration)))}
     );
     for (auto port : outputs) request.composition.outputs.push_back({"probe", std::string(port)});
@@ -694,7 +685,7 @@ struct CaptureFeature
     static constexpr FeatureName name{"test.deferred.Copy"};
     using Storages = std::tuple<CaptureBuffer>;
     using Commands = std::tuple<>;
-    static const FeatureGraphOps& graph(bool) noexcept;
+    using Ports = CaptureFeature;
 
     static RenderResult<void> describe(const void* value, std::string_view key, FeaturePorts& ports) noexcept
     {
@@ -723,11 +714,10 @@ struct CaptureFeature
     build(
         const void* value,
         std::string_view key,
-        FeatureBuildContext& context,
-        const lux::render::detail::EnabledDeviceFeatures&
+        FeatureBuildContext& context
     ) noexcept
     {
-        context.arguments.push_back(StorageArgument::make(context.resource("pixels").resource,
+        context.require(StorageArgument::make(context.resource("pixels").resource,
             *static_cast<const CaptureConfig*>(value)));
         auto initialized = context.graph.addTransferPass(
             featureKey(FeatureName{"test.deferred.Copy"}, key, "initialize"),
@@ -764,11 +754,6 @@ struct CaptureFeature
     }
 };
 
-inline const FeatureGraphOps& CaptureFeature::graph(bool) noexcept
-{
-    static const FeatureGraphOps value{CaptureFeature::describe, CaptureFeature::build};
-    return value;
-}
 
 // Fixture-owned correlation across its sequential calls; production Clients own their own counters.
 static std::uint64_t nextSceneRequest() noexcept
@@ -782,6 +767,8 @@ static typename C::Response
 call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request request, bool success = true)
 {
     const auto found = std::ranges::find(catalog.commands, C::name, &CommandInfo::name);
+    if (found == catalog.commands.end())
+        std::fprintf(stderr, "Missing registered command: %.*s\n", int(C::name.size()), C::name.data());
     CHECK(found != catalog.commands.end());
     const auto request_id = nextSceneRequest();
     ipc::IpcMessage message;
@@ -825,7 +812,7 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
 
 static void renderFrame(ipc::IpcRequester& client, const CommandList& commands)
 {
-    const auto response = call<SubmitFrame>(client, commands, {nextSceneRequest(), {}});
+    const auto response = call<SubmitFrame>(client, commands, {});
     CHECK(response.outcome == EFrameOutcome::SUBMITTED);
 }
 
@@ -843,6 +830,17 @@ static void detach(ipc::IpcRequester& client, const CommandList& commands, Attac
         CHECK(response.error.type == kDeviceBusy && Clock::now() < deadline);
         std::this_thread::yield();
     }
+}
+
+// Bootstrap and discovery stay on the Server owner through the existing IPC protocol.
+static CommandList queryCommands(ipc::IpcRequester& client)
+{
+    CommandList bootstrap;
+    bootstrap.commands.push_back({std::string(QueryCommandIds::name), QueryCommandIds::id});
+    const std::array names{CommandName{ListCommands::name}};
+    const auto ids = call<QueryCommandIds>(client, bootstrap, names);
+    bootstrap.commands.push_back({std::string(ListCommands::name), ids.ids.front()});
+    return call<ListCommands>(client, bootstrap, {});
 }
 
 struct SceneInputRoutes final
@@ -875,54 +873,21 @@ static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandLi
     return routes;
 }
 
-template <class T> static FrameDataBinding<T> frameBinding(const SceneInputRoutes& routes)
-{
-    if constexpr (std::same_as<T, TransformData> || std::same_as<T, MeshInstanceUpdates>)
-    {
-        return resourceFrameDataBinding<InstanceResource, T>(routes.instances);
-    }
-    else if constexpr (std::same_as<T, LightUpdates>)
-    {
-        return resourceFrameDataBinding<LightResource, T>(routes.lights);
-    }
-    else
-    {
-        static_assert(std::same_as<T, CameraInput>);
-        return viewCameraBinding(std::get<ViewRequest>(routes.scope));
-    }
-}
-
-static void writeFrameData(FrameWriter& writer, FrameDataBinding<CameraInput> binding, const CameraInput& input)
-{
-    CHECK(writer.write(binding, input));
-}
-
-static void writeFrameData(FrameWriter& writer, FrameDataBinding<LightUpdates> binding, const LightUpdates& input)
-{
-    CHECK(writer.write(binding, {input.sequence, take(writer.copy<DirectLightUpdate>(input.values))}));
-}
-
-static void
-writeFrameData(FrameWriter& writer, FrameDataBinding<MeshInstanceUpdates> binding, const MeshInstanceUpdates& input)
-{
-    CHECK(writer.write(binding, {input.sequence, take(writer.copy<MeshInstanceUpdate>(input.updates))}));
-}
-
-template <class T>
-static FrameCompletion submitFrameData(
-    ipc::IpcRequester& client,
-    const CommandList& commands,
-    FrameStorage& storage,
-    FrameDataBinding<T> binding,
-    const T& input,
-    bool success = true,
-    bool resynchronize = false
+// Explicit commands also work without a Job/Attachment. These scene fixtures use that route
+// for edits between frames; the column-packet integration fixture covers Attachment cold bindings.
+template <class Target, class T>
+static FrameCompletion updateSceneData(
+    ipc::IpcRequester& client, const CommandList& commands, Target target, const T& input,
+    bool success = true, bool resynchronize = false
 )
 {
-    FrameWriter writer{storage};
-    writeFrameData(writer, binding, input);
-    const auto result = call<SubmitFrame>(client, commands, storage.seal(nextSceneRequest(), resynchronize), success);
-    // Only the complete frame terminal ends every source borrow.
-    storage.reset();
-    return result;
+    AckResponse applied;
+    if constexpr (std::same_as<Target, ViewRequest>)
+        applied = call<UpdateViewCamera>(client, commands, {target, input}, success);
+    else if constexpr (std::same_as<T, std::span<const DirectLightUpdate>>)
+        applied = call<LightingCommands::Update>(client, commands, {target, input}, success);
+    else
+        applied = call<InstanceCommands::Update>(client, commands, {target, {}, input}, success);
+    if (applied.error.type != 0) return {applied.error, EFrameOutcome::REJECTED};
+    return call<SubmitFrame>(client, commands, {{}, nullptr, resynchronize}, success);
 }

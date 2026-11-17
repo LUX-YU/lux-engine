@@ -1,0 +1,159 @@
+#include <lux/engine/render/frame/FrameData.hpp>
+#include <exception>
+
+namespace lux::render
+{
+    struct FrameData::Impl final
+    {
+        struct OwnedColumn final
+        {
+            const frame_detail::ColumnOps* operations;
+            std::unique_ptr<void, void (*)(void*) noexcept> values;
+        };
+
+        FrameLayout layout;
+        std::vector<OwnedColumn> columns;
+        bool sealed = false;
+        bool borrowed = false;
+    };
+
+    FrameData::FrameData() noexcept = default;
+
+    FrameData::FrameData(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+
+    FrameData::~FrameData() noexcept
+    {
+        requireUnsealed();
+    }
+
+    FrameData::FrameData(FrameData&& other) noexcept
+    {
+        other.requireUnsealed();
+        impl_ = std::move(other.impl_);
+    }
+
+    FrameData& FrameData::operator=(FrameData&& other) noexcept
+    {
+        requireUnsealed();
+        other.requireUnsealed();
+        if (this != &other) impl_ = std::move(other.impl_);
+        return *this;
+    }
+
+    void FrameData::requireUnsealed() const noexcept
+    {
+        if (impl_ && impl_->sealed) std::terminate();
+    }
+
+    RenderResult<FrameData>
+    FrameData::create(
+        FrameLayout layout,
+        std::span<const frame_detail::ColumnOps* const> operations,
+        std::span<const std::size_t> capacities
+    ) noexcept
+    {
+        const bool is_invalid_layout = !layout.valid() || operations.size() != layout.channels().size();
+        const bool is_invalid_capacities = !capacities.empty() && capacities.size() != operations.size();
+        if (is_invalid_layout || is_invalid_capacities) return cxx::unexpected(RenderError{kFrameContract});
+        auto result = std::make_unique<Impl>();
+        result->layout = std::move(layout);
+        result->columns.reserve(operations.size());
+        for (std::size_t i = 0; i < operations.size(); ++i)
+        {
+            const auto* operation = operations[i];
+            if (!operation) return cxx::unexpected(RenderError{kFrameContract});
+            Impl::OwnedColumn column{operation, {operation->create(), operation->destroy}};
+            if (!capacities.empty())
+            {
+                if (auto reserved = operation->reserve(column.values.get(), capacities[i]); !reserved)
+                    return cxx::unexpected(reserved.error());
+            }
+            result->columns.push_back(std::move(column));
+        }
+        return FrameData{std::move(result)};
+    }
+
+    bool FrameData::writable() const noexcept
+    {
+        return impl_ && !impl_->sealed;
+    }
+
+    bool FrameData::sealed() const noexcept
+    {
+        return impl_ && impl_->sealed;
+    }
+
+    bool FrameData::beginBorrow() noexcept
+    {
+        if (!sealed() || impl_->borrowed) return false;
+        impl_->borrowed = true;
+        return true;
+    }
+
+    void FrameData::finishBorrow() noexcept
+    {
+        if (!impl_ || !impl_->borrowed || !impl_->sealed) std::terminate();
+        impl_->borrowed = impl_->sealed = false;
+    }
+
+    const FrameLayout& FrameData::layout() const noexcept
+    {
+        if (!impl_) std::terminate();
+        return impl_->layout;
+    }
+
+    std::size_t FrameData::findChannel(cxx::type_info declaration, cxx::type_info element) const noexcept
+    {
+        return impl_ ? impl_->layout.find(declaration, element) : SIZE_MAX;
+    }
+
+    FrameData::Column FrameData::column(std::size_t index) const noexcept
+    {
+        if (!impl_ || index >= impl_->columns.size()) std::terminate();
+        const auto& column = impl_->columns[index];
+        return {column.operations->data(column.values.get()), column.operations->size(column.values.get())};
+    }
+
+    std::size_t FrameData::capacity(std::size_t index) const noexcept
+    {
+        if (!impl_ || index >= impl_->columns.size()) std::terminate();
+        const auto& column = impl_->columns[index];
+        return column.operations->capacity(column.values.get());
+    }
+
+    RenderResult<void*> FrameData::append(std::size_t index, std::size_t count) noexcept
+    {
+        const bool is_invalid_column = !impl_ || index >= impl_->columns.size();
+        if (is_invalid_column || !writable()) return cxx::unexpected(RenderError{kFrameContract});
+        auto& column = impl_->columns[index];
+        return column.operations->append(column.values.get(), count);
+    }
+
+    RenderResult<void> FrameData::reserve(std::size_t index, std::size_t count) noexcept
+    {
+        const bool is_invalid_column = !impl_ || index >= impl_->columns.size();
+        if (is_invalid_column || !writable()) return cxx::unexpected(RenderError{kFrameContract});
+        auto& column = impl_->columns[index];
+        return column.operations->reserve(column.values.get(), count);
+    }
+
+    RenderResult<void> FrameData::seal() noexcept
+    {
+        if (!writable()) return cxx::unexpected(RenderError{kFrameContract});
+        impl_->sealed = true;
+        return {};
+    }
+
+    void FrameData::release() noexcept
+    {
+        if (!impl_ || !impl_->sealed || impl_->borrowed) std::terminate();
+        impl_->sealed = false;
+    }
+
+    void FrameData::reset() noexcept
+    {
+        requireUnsealed();
+        if (!impl_) return;
+        for (auto& column : impl_->columns) column.operations->clear(column.values.get());
+    }
+} // namespace lux::render

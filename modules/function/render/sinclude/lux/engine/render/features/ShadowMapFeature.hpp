@@ -3,7 +3,7 @@
 #include <lux/engine/render/core/ConfigValue.hpp>
 
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
-#include <lux/engine/render/extensions/resource/DirectLighting.hpp>
+#include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/features/ShadowInputs.hpp>
 
 namespace lux::render

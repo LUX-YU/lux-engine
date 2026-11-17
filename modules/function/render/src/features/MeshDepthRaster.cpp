@@ -1,6 +1,6 @@
-#include <lux/engine/render/extensions/resource/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
-#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
+#include <lux/engine/render/resources/mesh/Binding.hpp>
+#include <lux/engine/render/resources/material/Binding.hpp>
+#include <lux/engine/render/resources/instance/Binding.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
@@ -8,10 +8,23 @@
 namespace lux::render
 {
 
-    const FeatureGraphOps& detail::MeshDepthRaster::graph(bool paged_instances) noexcept
+    RenderResult<void>
+    detail::MeshDepthRaster::Ports::describe(const Config* config, std::string_view key, FeaturePorts& ports) noexcept
     {
-        static const FeatureGraphOps contiguous{detail::describe<true>, detail::build<true, false>};
-        static const FeatureGraphOps paged{detail::describe<true>, detail::build<true, true>};
-        return paged_instances ? paged : contiguous;
+        return detail::describe<true>(config, key, ports);
     }
+
+    template <bool Paged>
+    RenderResult<void>
+    detail::MeshDepthRaster::build(const Config* config, std::string_view key, FeatureBuildContext& context) noexcept
+    {
+        return detail::build<true, Paged>(config, key, context);
+    }
+
+    template RenderResult<void>
+    detail::MeshDepthRaster::build<false>(const Config*, std::string_view, FeatureBuildContext&) noexcept;
+
+    template RenderResult<void>
+    detail::MeshDepthRaster::build<true>(const Config*, std::string_view, FeatureBuildContext&) noexcept;
+
 } // namespace lux::render

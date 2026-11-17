@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/resources/InstanceResource.hpp>
+#include <lux/engine/render/resources/instance/Resource.hpp>
 
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
@@ -8,7 +8,7 @@
 #include <exec/task.hpp>
 
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/RasterMeshInstances.hpp>
+#include <lux/engine/render/resources/instance/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 
@@ -65,8 +65,8 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceData) noexcept;
         [[nodiscard]] exec::task<
             RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceData>) noexcept;
-        [[nodiscard]] RenderResult<TransformApplied> update(TransformData) noexcept;
-        [[nodiscard]] RenderResult<TransformApplied> update(MeshInstanceUpdates) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> update(std::span<const TransformUpdate>) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> update(std::span<const MeshInstanceUpdate>) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
         void observe(Observer&) noexcept;
 
@@ -102,7 +102,7 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&, Preparation&) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty>
         resolveReferences(const MeshInstanceData&, std::uint32_t frame) const noexcept;
         [[nodiscard]] Selection selection(const Entry&) const noexcept;

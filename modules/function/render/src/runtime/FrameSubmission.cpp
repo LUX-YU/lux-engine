@@ -1,4 +1,5 @@
 #include <exec/create.hpp>
+#include <lux/engine/render/resource/ui/UiInputHandler.hpp>
 #include <lux/engine/render/resource/view/CameraInputHandler.hpp>
 #include <limits>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
@@ -27,200 +28,113 @@ namespace lux::render
         );
     }
 
+    auto RenderServer::Impl::submitUiFrame(SubmitUiFrame::Request&& input) noexcept
+    {
+        return exec::create<stdexec::set_value_t(FrameCompletion)>([this, input](auto& context) noexcept
+        {
+            using Context = std::remove_reference_t<decltype(context)>;
+            admitFrame(input.frame, &context, [](void* value, FrameCompletion result) noexcept
+            {
+                auto& context = *static_cast<Context*>(value);
+                stdexec::set_value(std::move(context.receiver), std::move(result));
+            }, input.draws);
+        });
+    }
+
     void RenderServer::Impl::bindSubmitFrameCommand() noexcept
     {
         bindFrameworkCommand<SubmitFrame, &Impl::submitFrame>();
+        bindFrameworkCommand<SubmitUiFrame, &Impl::submitUiFrame>();
+    }
+
+    void
+    RenderServer::Impl::queryFrameInputLayout(const AttachmentId& id, QueryFrameInputLayout::Response& output) noexcept
+    {
+        const auto* attachment = attachments_.find(id);
+        if (!attachment) { output.error = {kRuntimeIdentity}; return; }
+        output = {{}, attachment->input_layout};
+    }
+
+    void RenderServer::Impl::updateViewCamera(const UpdateViewCamera::Request& input, AckResponse& output) noexcept
+    {
+        auto* scene = scenes_.find(input.view.scene);
+        auto* view = scene ? scene->views.find(input.view.view) : nullptr;
+        if (!view) { output.error = {kRuntimeIdentity}; return; }
+        const auto applied = detail::CameraInputHandler::apply(view->camera, view->camera_revision, input.camera);
+        output.error = applied ? RenderError{} : applied.error();
     }
 
     void RenderServer::Impl::admitFrame(
         RenderFrame input,
         void* receiver,
-        void (*complete)(void*, FrameCompletion) noexcept
+        void (*complete)(void*, FrameCompletion) noexcept,
+        std::span<const UiDrawInput> ui
     ) noexcept
     {
         const auto reject = [&](RenderError error, std::uint32_t entry = UINT32_MAX) noexcept
-        { complete(receiver, {error, input.sequence, EFrameOutcome::REJECTED, 0, frame_resynchronization_, entry}); };
-        if (stop_requested_.load())
+        { complete(receiver, {error, EFrameOutcome::REJECTED, 0, frame_resynchronization_, entry}); };
+        if (stop_requested_.load()) { reject(RenderError{kCommandCancelled}); return; }
+        if (const auto error = device_->terminalError(); error.type != 0) { reject(error); return; }
+        if (frame_count_ == frame_inputs_.size()) { reject(RenderError{kRuntimeCapacity}); return; }
+        if (frame_resynchronization_ && !input.resynchronize) { reject(RenderError{kFrameResynchronization}); return; }
+        if (input.data)
         {
-            reject(RenderError{kCommandCancelled});
-            return;
+            const auto* attachment = attachments_.find(input.attachment);
+            const bool is_missing_target = attachment == nullptr;
+            const bool is_invalid_owner = !input.data->sealed();
+            const bool is_layout_mismatch = !is_missing_target && !is_invalid_owner &&
+                !input.data->layout().hasSameIdentity(attachment->input_layout);
+            const bool is_invalid_packet = is_missing_target || is_invalid_owner || is_layout_mismatch;
+            if (is_invalid_packet) { reject(RenderError{kFrameContract}); return; }
+            for (const auto& bound : attachment->inputs)
+            {
+                // Entry generations remain mutable facts even though declaration/ABI/indices are cold.
+                if (resources_->resourceInstance(bound.identity) != bound.object)
+                { reject(RenderError{kStorageIdentity}); return; }
+            }
         }
-        if (const auto rejection = device_->terminalError(); rejection.type != 0)
+        for (const auto& draw : ui)
         {
-            reject(rejection);
-            return;
-        }
-        if (input.sequence == 0 || input.sequence <= last_frame_sequence_)
-        {
-            reject(RenderError{kFrameContract});
-            return;
-        }
-        if (frame_count_ == frame_inputs_.size())
-        {
-            reject(RenderError{kRuntimeCapacity});
-            return;
-        }
-        if (frame_resynchronization_ && !input.resynchronize)
-        {
-            reject(RenderError{kFrameResynchronization});
-            return;
+            const auto* attachment = attachments_.find(draw.attachment);
+            const auto* effect = attachment ? effects_.find(attachment->effect) : nullptr;
+            const bool has_draw = effect && draw.draw < effect->draw_inputs.size();
+            const bool is_invalid_draw = !has_draw || !uploads_;
+            if (is_invalid_draw) { reject(RenderError{kFrameContract}); return; }
         }
         auto& frame = frame_inputs_[(first_frame_ + frame_count_) % frame_inputs_.size()];
-        std::size_t covered = 0;
-        for (const auto phase : input.phases)
-        {
-            const bool is_invalid_phase =
-                phase.first != covered || phase.count == 0 || phase.count > input.entries.size() - covered;
-            if (is_invalid_phase)
-            {
-                reject(RenderError{kFrameContract});
-                return;
-            }
-            covered += phase.count;
-        }
-        if (covered != input.entries.size() || input.entries.size() > UINT32_MAX)
-        {
-            reject(RenderError{kFrameContract});
-            return;
-        }
-        const FrameDataView data{input.blocks};
-        for (std::uint32_t index = 0; index < input.entries.size(); ++index)
-        {
-            const auto& entry = input.entries[index];
-            const auto binding = resolveFrameData(entry.destination);
-            const bool is_missing_binding = !binding ||
-                (binding->call->handler_type.isValid() && (!binding->call->handler || !binding->call->handler->object));
-            if (is_missing_binding)
-            {
-                reject(RenderError{kRuntimeIdentity}, index);
-                return;
-            }
-            const auto& call = *binding->call;
-            const auto root = data.read(entry.payload);
-            const bool is_invalid_root = !root || entry.payload.count != call.root_size ||
-                                         reinterpret_cast<std::uintptr_t>(root->data()) % call.root_alignment != 0;
-            if (is_invalid_root)
-            {
-                reject(RenderError{kFrameContract}, index);
-                return;
-            }
-        }
         frame.input = input;
+        frame.ui_inputs = ui;
         frame.stage = FrameRecord::EStage::QUEUED;
-        frame.phase = frame.dispatched = frame.pending = 0;
+        frame.dispatched = frame.pending = 0;
         frame.failed_entry = UINT32_MAX;
         frame.outcome_unknown = false;
         frame.slot = UINT32_MAX;
         frame.error = {};
         frame.receiver = receiver;
         frame.complete = complete;
-        last_frame_sequence_ = input.sequence;
         ++frame_count_;
-    }
-
-    RenderResult<BoundFrameData> RenderServer::Impl::resolveFrameData(const VFrameDataDestination& selected) noexcept
-    {
-        if (const auto* resource = std::get_if<ResourceFrameDestination>(&selected))
-        {
-            const auto* factory = resources_->factory(resources_->declarationOf(resource->resource));
-            const bool is_invalid_input = !factory || resource->input >= factory->frame_calls.size();
-            if (is_invalid_input) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            const auto& call = factory->frame_calls[resource->input];
-            auto target = call.resolve_storage(*resources_, resource->resource);
-            if (!target) return cxx::unexpected(target.error());
-            return BoundFrameData{&call, VFrameDataTarget{*target}};
-        }
-        if (const auto* request = std::get_if<ViewFrameDestination>(&selected))
-        {
-            auto* scene = scenes_.find(request->view.scene);
-            auto* view = scene ? scene->views.find(request->view.view) : nullptr;
-            if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            static const auto call = FrameDataCall::declare<CameraInput, &detail::CameraInputHandler::apply>();
-            return BoundFrameData{&call, FrameViewTarget{view->camera, view->camera_revision}};
-        }
-        const auto& destination = std::get<FrameDataDestination>(selected);
-        const auto* effect = effects_.find(destination.effect);
-        if (!effect || destination.capability >= effect->implementations.size())
-        {
-            return cxx::unexpected(RenderError{kRuntimeIdentity});
-        }
-        const auto& implementation = effect->implementations[destination.capability];
-        if (destination.input >= implementation.frame_calls.size())
-        {
-            return cxx::unexpected(RenderError{kFrameContract});
-        }
-        const auto& input = implementation.frame_calls[destination.input];
-        const auto& call = *input.method;
-        if (call.target == EFrameDataTarget::STORAGE)
-        {
-            auto storage =
-                resolveEffectResource(*effect, destination.capability, call.resource_dependency, destination.scope);
-            if (!storage)
-            {
-                return cxx::unexpected(storage.error());
-            }
-            auto target = call.resolve_storage(*resources_, *storage);
-            if (!target)
-            {
-                return cxx::unexpected(target.error());
-            }
-            return BoundFrameData{&call, VFrameDataTarget{*target}};
-        }
-        const auto* id = std::get_if<AttachmentId>(&destination.scope);
-        auto* attachment = id ? attachments_.find(*id) : nullptr;
-        if (!attachment || attachment->effect != destination.effect)
-        {
-            return cxx::unexpected(RenderError{kRuntimeIdentity});
-        }
-        if (call.target == EFrameDataTarget::PARAMETERS)
-        {
-            return BoundFrameData{&call, FrameParameterTarget{*attachment->instance, input.parameters}};
-        }
-        if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
-        return BoundFrameData{
-            &call,
-            FrameDrawTarget{
-                *attachment->instance,
-                input.pass,
-                *uploads_,
-                this,
-                [](void* context, TargetId id, std::uint32_t slot) noexcept -> RenderResult<FrameSampledImage>
-                {
-                    auto* target = static_cast<Impl*>(context)->targets_.find(id);
-                    if (!target || !target->description.sampled || target->surface())
-                    {
-                        return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    }
-                    const auto output = target->output().frames[slot];
-                    return FrameSampledImage{output.image, output.sampled_index};
-                }
-            }
-        };
     }
 
     void RenderServer::Impl::finishFrame(FrameRecord& frame, FrameCompletion result) noexcept
     {
         // A later input failure or an inactive output may bypass preparation entirely.
-        // Settle every adopted attachment's source borrow before returning FrameStorage.
+        // Settle every adopted attachment's source borrow before returning the column/UI source borrow.
         if (frame.slot != UINT32_MAX)
         {
             const RenderResult<void> uploaded = result.error.type != 0 ? cxx::unexpected(result.error)
                 : result.outcome == EFrameOutcome::NO_DRAW ? cxx::unexpected(RenderError{kCommandCancelled})
                 : RenderResult<void>{};
-            for (std::uint32_t i = 0; i < frame.dispatched; ++i)
+            for (const auto& input : frame.ui_inputs)
             {
-                const auto* destination = std::get_if<FrameDataDestination>(&frame.input.entries[i].destination);
-                const auto* id = destination ? std::get_if<AttachmentId>(&destination->scope) : nullptr;
-                if (id)
-                {
-                    attachments_.find(*id)->instance->finishDrawListUploads(frame.slot, uploaded);
-                }
+                attachments_.find(input.attachment)->instance->finishDrawListUploads(frame.slot, uploaded);
             }
         }
+
         auto* receiver = frame.receiver;
         const auto complete = frame.complete;
         frame.stage = FrameRecord::EStage::EMPTY;
         frame.input = {};
+        frame.ui_inputs = {};
         frame.receiver = nullptr;
         frame.complete = nullptr;
         first_frame_ = (first_frame_ + 1) % frame_inputs_.size();
@@ -250,44 +164,54 @@ namespace lux::render
         }
     }
 
-    void RenderServer::Impl::dispatchFramePhases(FrameRecord& frame) noexcept
+    void RenderServer::Impl::applyFrameInputs(FrameRecord& frame) noexcept
     {
-        const FrameDataView data{frame.input.blocks};
-        while (frame.phase < frame.input.phases.size())
+        if (frame.input.data)
         {
-            const auto phase = frame.input.phases[frame.phase++];
-            frame.pending = phase.count; // Register the entire phase before any synchronous completion.
-            for (std::uint32_t i = 0; i < phase.count; ++i)
+            const auto& packet = *frame.input.data;
+            const auto& inputs = attachments_.find(frame.input.attachment)->inputs;
+            for (std::uint32_t i = 0; i < inputs.size(); ++i)
             {
-                const auto index = phase.first + i;
-                const auto& entry = frame.input.entries[index];
+                const auto& input = inputs[i];
+                const bool has_updates = std::ranges::any_of(input.columns, [&](auto column) noexcept
+                { return packet.column(column).count != 0; });
+                if (!has_updates) continue;
                 ++frame.dispatched;
-                if (device_->terminalError().type != 0)
+                auto applied = input.call->invoke(input.object, packet, input.columns);
+                if (!applied)
                 {
-                    completeFrameData(frame, index, device_->terminalError());
-                    continue;
+                    frame.error = applied.error();
+                    frame.outcome_unknown |= frame.error.type == kOutcomeUnknown;
+                    frame.failed_entry = i;
+                    return;
                 }
-                // Structural commands cannot overtake accepted frames, so admitted binding and block
-                // identities remain valid. There is no per-frame Invocation cache or repeated type lookup.
-                const auto binding = *resolveFrameData(entry.destination);
-                const auto* root = frame.input.blocks[entry.payload.block].data() + entry.payload.offset;
-                FrameDispatchContext context{
-                    data, root, binding.target, frame, index, command_scope_,
-                    server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery)
-                };
-                binding.call->invoke(binding.call->handler ? binding.call->handler->object.get() : nullptr, context);
-            }
-            if (frame.pending != 0 || frame.error.type != 0)
-            {
-                break;
             }
         }
-        const bool all_inputs_complete =
-            frame.pending == 0 && frame.error.type == 0 && frame.phase == frame.input.phases.size();
-        if (all_inputs_complete)
+        for (const auto& input : frame.ui_inputs)
         {
-            frame.stage = FrameRecord::EStage::PREPARING_PROGRAMS;
+            auto& attachment = *attachments_.find(input.attachment);
+            const auto pass = effects_.find(attachment.effect)->draw_inputs[input.draw];
+            FrameDrawTarget target{
+                *attachment.instance, pass, *uploads_, this,
+                [](void* context, TargetId id, std::uint32_t slot) noexcept -> RenderResult<FrameSampledImage>
+                {
+                    auto* target = static_cast<Impl*>(context)->targets_.find(id);
+                    if (!target || !target->description.sampled || target->surface())
+                        return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    const auto output = target->output().frames[slot];
+                    return FrameSampledImage{output.image, output.sampled_index};
+                }
+            };
+            ++frame.dispatched;
+            auto applied = detail::UiInputHandler::draw(*resources_, target, input.data);
+            if (!applied)
+            {
+                frame.error = applied.error();
+                frame.outcome_unknown |= frame.error.type == kOutcomeUnknown;
+                return;
+            }
         }
+        frame.stage = FrameRecord::EStage::PREPARING_PROGRAMS;
     }
 
     exec::task<RenderResult<void>> RenderServer::Impl::prepareRasterPrograms() noexcept
@@ -385,7 +309,6 @@ namespace lux::render
             frame,
             FrameCompletion{
                 frame.error,
-                frame.input.sequence,
                 outcome,
                 accepted,
                 frame_resynchronization_,
@@ -430,7 +353,6 @@ namespace lux::render
                 frame,
                 FrameCompletion{
                     frame.error,
-                    frame.input.sequence,
                     frame.outcome_unknown
                         ? EFrameOutcome::UNKNOWN
                         : (accepted ? EFrameOutcome::PARTIALLY_SUBMITTED : EFrameOutcome::NOT_SUBMITTED),
@@ -453,7 +375,6 @@ namespace lux::render
                 frame,
                 FrameCompletion{
                     {},
-                    frame.input.sequence,
                     no_draw ? EFrameOutcome::NO_DRAW : EFrameOutcome::SUBMITTED,
                     frames_->submittedBatches(frame.slot),
                     false
@@ -494,7 +415,7 @@ namespace lux::render
             frame.stage == FrameRecord::EStage::APPLYING && frame.pending == 0 && frame.error.type == 0;
         if (can_dispatch)
         {
-            dispatchFramePhases(frame);
+            applyFrameInputs(frame);
         }
         if (frame.stage == FrameRecord::EStage::PREPARING_PROGRAMS && frame.pending == 0 && frame.error.type == 0)
         {
@@ -538,20 +459,3 @@ namespace lux::render
         }
     }
 } // namespace lux::render
-
-namespace lux::render::runtime_detail
-{
-    void completeFrameData(FrameRecord& frame, std::uint32_t entry, RenderError error) noexcept
-    {
-        --frame.pending;
-        if (error.type != 0)
-        {
-            frame.outcome_unknown |= error.type == kOutcomeUnknown;
-            if (entry < frame.failed_entry)
-            {
-                frame.failed_entry = entry;
-                frame.error = error;
-            }
-        }
-    }
-} // namespace lux::render::runtime_detail

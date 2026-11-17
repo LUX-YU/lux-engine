@@ -576,11 +576,9 @@ namespace lux::render
                 const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
                 parameters_input =
                     fixed ? &fixed->interface.parameters : &std::get<RasterPassTemplate>(raster->program).parameters;
-                if (raster->state_input)
-                {
-                    parameters[raster->state_input->resource.index] = true;
-                }
             }
+            if (const auto* scope = passes[id.index].rasterScope(); scope && scope->state_input)
+                parameters[scope->state_input->resource.index] = true;
             if (const auto* compute = passes[id.index].work.getIf<ComputeWork>())
             {
                 parameters_input = &compute->interface.parameters;

@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/frame/RenderFrame.hpp>
 #include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/frame/FrameLayout.hpp>
 #include <span>
 
 namespace lux::render
@@ -19,7 +20,6 @@ namespace lux::render
     struct FrameCompletion final
     {
         RenderError error{};
-        std::uint64_t sequence = 0;
         EFrameOutcome outcome = EFrameOutcome::REJECTED;
         // Accepted FrameExecution batches, including replica preparation. Independent asset
         // uploads retain their own Command outcomes and are not counted as frame submissions.
@@ -36,5 +36,18 @@ namespace lux::render
         static constexpr bool requires_frame_boundary = false;
         using Request = RenderFrame;
         using Response = FrameCompletion;
+        static FrameData* frameData(const Request& request) noexcept { return request.data; }
+    };
+
+    struct QueryFrameInputLayout final
+    {
+        static constexpr std::string_view name = "render.frame.query_input_layout";
+        static constexpr bool requires_frame_boundary = false;
+        using Request = AttachmentId;
+        struct Response final
+        {
+            RenderError error{};
+            FrameLayout layout;
+        };
     };
 } // namespace lux::render

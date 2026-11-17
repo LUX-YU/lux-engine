@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
@@ -24,14 +25,12 @@ namespace lux::render
         bool operator==(const StorageMeta&) const noexcept = default;
     };
 
-    struct FrameDataCall;
-
     struct ResourceRegistration final
     {
         const ResourceDefinition* descriptor;
         const StorageMeta* storage;
         std::span<const CommandBinding> commands;
-        std::span<const FrameDataCall> frame_calls;
+        FrameDataCall frame_call;
     };
 
     template <class Declaration> [[nodiscard]] constexpr cxx::type_info storageOpsType() noexcept
@@ -149,7 +148,7 @@ namespace lux::render
         StorageOpsArgument<typename Declaration::Ops> ops,
         const void* binding_ops = nullptr,
         std::span<const CommandBinding> commands = {},
-        std::span<const FrameDataCall> frame_calls = {}
+        FrameDataCall frame_call = {}
     ) noexcept
     {
         return {
@@ -161,7 +160,7 @@ namespace lux::render
                 Create,
                 Compatible>(ops, binding_ops),
             commands,
-            frame_calls
+            frame_call
         };
     }
 

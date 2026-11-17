@@ -1,0 +1,618 @@
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+
+#include <lux/engine/render/graph/FeatureBuildAccess.hpp>
+#include <algorithm>
+#include <numeric>
+#include <tuple>
+
+namespace lux::render
+{
+    namespace
+    {
+        RenderError failure(std::uint64_t type, std::size_t feature = 0, std::size_t port = 0) noexcept
+        {
+            return {type, {feature, port}};
+        }
+
+        struct PlacedPort final
+        {
+            FeaturePort declaration;
+            std::vector<GraphStorageBinding>* storage = nullptr;
+        };
+
+        struct Contribution final
+        {
+            std::vector<PlacedPort> declarations;
+            std::vector<ResolvedResource> resolved;
+            std::vector<std::size_t> incoming;
+            std::vector<ResourceVersion> supplied;
+            std::vector<FeatureHistory> histories;
+            std::size_t first_resource = 0, resource_count = 0;
+            std::size_t first_argument = 0, argument_count = 0;
+            std::size_t first_binding = 0, binding_count = 0;
+            std::size_t first_sampler = 0, sampler_count = 0;
+            bool built = false;
+        };
+
+        std::size_t portIndex(const Contribution& contribution, std::string_view key) noexcept
+        {
+            const auto found = std::ranges::find_if(
+                contribution.declarations,
+                [&](const auto& port) noexcept { return port.declaration.key == key; }
+            );
+            return static_cast<std::size_t>(found - contribution.declarations.begin());
+        }
+    } // namespace
+
+    RenderResult<FeatureAssembly> composeFeatures(
+        std::span<const FeatureBuildInput> inputs,
+        std::size_t config_byte_limit,
+        std::span<const FeatureConnection> connections,
+        std::span<const FeatureExport> exports,
+        std::span<const FeatureInput> external
+    ) noexcept
+    {
+        FeatureAssembly result;
+        std::vector<Contribution> work(inputs.size());
+        std::vector<std::size_t> order(inputs.size());
+        std::iota(order.begin(), order.end(), 0);
+        for (std::size_t i = 0; i < inputs.size(); ++i)
+        {
+            const auto& input = inputs[i];
+            const bool invalid_definition = !input.graph || !input.graph->describe_ports;
+            if (invalid_definition)
+            {
+                return cxx::unexpected(failure(kFeatureContract, i));
+            }
+            const bool invalid_identity = !input.type.isValid() || input.contribution_key.empty();
+            const bool has_config = input.config && *input.config;
+            const bool requires_config = !input.config_type.name().empty();
+            const bool invalid_config =
+                has_config != requires_config || (has_config && (input.config_type != input.config->type() ||
+                                                                 input.config->retainedBytes() > config_byte_limit));
+            if (invalid_identity || invalid_config)
+            {
+                return cxx::unexpected(failure(invalid_config ? kInvalidConfig : kFeatureContract, i));
+            }
+            FeaturePorts ports;
+            auto described =
+                input.graph->describe_ports(has_config ? input.config->data() : nullptr, input.contribution_key, ports);
+            if (!described)
+            {
+                return cxx::unexpected(described.error());
+            }
+            work[i].histories = std::move(ports.histories);
+            const auto append = [&](auto& source, std::vector<GraphStorageBinding>* storage)
+            {
+                for (auto& port : source)
+                {
+                    if (auto* image = std::get_if<GraphImageDesc>(&port.description);
+                        image && image->extent.source != EImageExtentSource::FIXED)
+                    {
+                        image->width = image->height = 0;
+                    }
+                    work[i].declarations.push_back({std::move(port), storage});
+                }
+            };
+            append(ports.resources, nullptr);
+            append(ports.storage.global, &result.external_bindings.global);
+            append(ports.storage.scene, &result.external_bindings.scene);
+            append(ports.storage.view, &result.external_bindings.view);
+            auto& declarations = work[i].declarations;
+            std::ranges::sort(declarations, {}, [](const auto& port) { return port.declaration.key; });
+            for (std::size_t p = 0; p < declarations.size(); ++p)
+            {
+                const auto& port = declarations[p];
+                const auto& d = port.declaration;
+                const bool duplicate = p != 0 && declarations[p - 1].declaration.key == d.key;
+                const bool invalid =
+                    d.key.empty() || d.direction > EFeaturePort::OPTIONAL || bool(d.storage) != bool(port.storage) ||
+                    (d.storage && (d.direction != EFeaturePort::OUTPUT || d.origin != EGraphOrigin::IMPORTED));
+                if (duplicate || invalid)
+                {
+                    return cxx::unexpected(failure(duplicate ? kFeatureDuplicate : kFeatureContract, i, p));
+                }
+                work[i].resolved.push_back({d.key, {}});
+            }
+            work[i].incoming.resize(declarations.size(), SIZE_MAX);
+        }
+        std::ranges::sort(
+            order,
+            [&](auto a, auto b)
+            {
+                return std::tuple{inputs[a].type.name(), inputs[a].contribution_key} <
+                       std::tuple{inputs[b].type.name(), inputs[b].contribution_key};
+            }
+        );
+        for (std::size_t i = 1; i < order.size(); ++i)
+        {
+            const auto& a = inputs[order[i - 1]];
+            const auto& b = inputs[order[i]];
+            const bool same_type = a.type == b.type;
+            const bool conflicting = same_type && (a.config_type != b.config_type || a.graph != b.graph ||
+                                                   a.contribution_key == b.contribution_key);
+            if (conflicting)
+            {
+                return cxx::unexpected(failure(kFeatureDuplicate, order[i]));
+            }
+        }
+        for (std::size_t c = 0; c < connections.size(); ++c)
+        {
+            const auto& connection = connections[c];
+            const auto from = connection.source.contribution, to = connection.destination.contribution;
+            if (from >= work.size() || to >= work.size())
+            {
+                return cxx::unexpected(failure(kFeatureContract, to, c));
+            }
+            const auto source = portIndex(work[from], connection.source.port);
+            const auto destination = portIndex(work[to], connection.destination.port);
+            const bool missing =
+                source == work[from].declarations.size() || destination == work[to].declarations.size();
+            if (missing)
+            {
+                return cxx::unexpected(failure(kFeatureContract, to, c));
+            }
+            const auto& a = work[from].declarations[source].declaration;
+            const auto& b = work[to].declarations[destination].declaration;
+            const bool invalid_direction = a.direction != EFeaturePort::OUTPUT || b.direction == EFeaturePort::OUTPUT;
+            const bool mismatch = a.description != b.description || (!b.semantic.empty() && a.semantic != b.semantic);
+            if (invalid_direction || mismatch || work[to].incoming[destination] != SIZE_MAX)
+            {
+                return cxx::unexpected(failure(mismatch ? kFeatureResourceMismatch : kFeatureContract, to, c));
+            }
+            work[to].incoming[destination] = c;
+        }
+        RenderGraphBuilder builder;
+        for (std::size_t e = 0; e < external.size(); ++e)
+        {
+            const auto& input = external[e];
+            const auto i = input.destination.contribution;
+            if (i >= work.size())
+            {
+                return cxx::unexpected(failure(kFeatureContract, i, e));
+            }
+            const auto p = portIndex(work[i], input.destination.port);
+            if (p == work[i].declarations.size())
+            {
+                return cxx::unexpected(failure(kFeatureContract, i, e));
+            }
+            const auto& port = work[i].declarations[p].declaration;
+            auto description = input.resource.description;
+            if (auto* image = std::get_if<GraphImageDesc>(&description);
+                image && image->extent.source != EImageExtentSource::FIXED)
+            {
+                image->width = image->height = 0;
+            }
+            const bool invalid =
+                port.direction == EFeaturePort::OUTPUT || input.resource.origin != EGraphOrigin::IMPORTED ||
+                description != port.description ||
+                (!port.semantic.empty() && input.semantic != port.semantic) || work[i].incoming[p] != SIZE_MAX ||
+                work[i].resolved[p].version.resource.index != kGraphInvalidIndex;
+            if (invalid)
+            {
+                return cxx::unexpected(failure(kFeatureResourceMismatch, i, p));
+            }
+            auto resource = builder.declareResource(input.resource);
+            if (!resource)
+            {
+                return cxx::unexpected(resource.error());
+            }
+            work[i].resolved[p].version = {*resource, 0};
+        }
+        for (auto i : order)
+        {
+            for (const auto& history : work[i].histories)
+            {
+                const auto previous = portIndex(work[i], history.previous);
+                const auto current = portIndex(work[i], history.current);
+                const auto count = work[i].declarations.size();
+                if (previous == count || current == count || previous == current)
+                {
+                    return cxx::unexpected(failure(kFeatureContract, i));
+                }
+                const auto& a = work[i].declarations[previous].declaration;
+                const auto& b = work[i].declarations[current].declaration;
+                const bool invalid_pair = a.direction != EFeaturePort::OUTPUT || b.direction != EFeaturePort::OUTPUT ||
+                                          a.origin != EGraphOrigin::HISTORY_PREVIOUS ||
+                                          b.origin != EGraphOrigin::HISTORY_CURRENT || a.description != b.description ||
+                                          a.storage || b.storage ||
+                                          work[i].resolved[previous].version.resource.index != kGraphInvalidIndex ||
+                                          work[i].resolved[current].version.resource.index != kGraphInvalidIndex;
+                if (invalid_pair)
+                {
+                    return cxx::unexpected(failure(kFeatureContract, i));
+                }
+                auto pair = builder.declareHistory(
+                    featureKey(inputs[i].type, inputs[i].contribution_key, history.current),
+                    b.description,
+                    history.initial,
+                    history.canonical_use,
+                    history.distance
+                );
+                if (!pair)
+                {
+                    return cxx::unexpected(pair.error());
+                }
+                work[i].resolved[previous].version = {pair->previous, 0};
+                work[i].resolved[current].version = {pair->current, 0};
+            }
+            for (std::size_t p = 0; p < work[i].declarations.size(); ++p)
+            {
+                auto& port = work[i].declarations[p];
+                auto& d = port.declaration;
+                if (d.direction != EFeaturePort::OUTPUT)
+                {
+                    if (d.direction == EFeaturePort::INPUT && work[i].incoming[p] == SIZE_MAX &&
+                        work[i].resolved[p].version.resource.index == kGraphInvalidIndex)
+                    {
+                        return cxx::unexpected(failure(kFeatureMissingProvider, i, p));
+                    }
+                    continue;
+                }
+                if (work[i].resolved[p].version.resource.index != kGraphInvalidIndex)
+                {
+                    continue;
+                }
+                auto resource = builder.declareResource(
+                    {featureKey(inputs[i].type, inputs[i].contribution_key, d.key),
+                     d.description,
+                     d.origin,
+                     d.initial_ranges,
+                     d.initial_use}
+                );
+                if (!resource)
+                {
+                    return cxx::unexpected(resource.error());
+                }
+                work[i].resolved[p].version = {*resource, 0};
+                if (port.storage)
+                {
+                    port.storage->push_back({*resource, std::move(*d.storage)});
+                }
+            }
+        }
+        std::size_t remaining = work.size();
+        while (remaining != 0)
+        {
+            bool progressed = false;
+            for (auto i : order)
+            {
+                auto& contribution = work[i];
+                if (contribution.built)
+                {
+                    continue;
+                }
+                const bool ready = std::ranges::all_of(
+                    contribution.incoming,
+                    [&](auto connection) noexcept
+                    { return connection == SIZE_MAX || work[connections[connection].source.contribution].built; }
+                );
+                if (!ready)
+                {
+                    continue;
+                }
+                for (std::size_t p = 0; p < contribution.incoming.size(); ++p)
+                {
+                    const auto incoming = contribution.incoming[p];
+                    if (incoming != SIZE_MAX)
+                    {
+                        const auto& source = connections[incoming].source;
+                        contribution.resolved[p].version =
+                            work[source.contribution]
+                                .resolved[portIndex(work[source.contribution], source.port)]
+                                .version;
+                    }
+                }
+                const auto& input = inputs[i];
+                const auto first = builder.passCount();
+                const auto first_output = builder.outputCount();
+                contribution.first_argument = result.arguments.size();
+                contribution.first_binding = result.bindings.size();
+                contribution.first_sampler = builder.samplerCount();
+                contribution.first_resource = builder.resourceCount();
+                contribution.supplied.clear();
+                for (const auto& port : contribution.resolved)
+                {
+                    contribution.supplied.push_back(port.version);
+                }
+                auto context = detail::FeatureBuildAccess::context(builder, contribution.resolved, result);
+                if (input.graph->build)
+                {
+                    auto built = input.graph->build(
+                        input.config ? input.config->data() : nullptr,
+                        input.contribution_key,
+                        context
+                    );
+                    if (!built)
+                    {
+                        return cxx::unexpected(built.error());
+                    }
+                }
+                const bool changed_prefix =
+                    builder.passCount() < first || builder.resourceCount() < contribution.first_resource ||
+                    builder.outputCount() != first_output || result.arguments.size() < contribution.first_argument ||
+                    result.bindings.size() < contribution.first_binding ||
+                    builder.samplerCount() < contribution.first_sampler;
+                if (changed_prefix)
+                {
+                    return cxx::unexpected(failure(kFeatureOwnership, i));
+                }
+                contribution.resource_count = builder.resourceCount() - contribution.first_resource;
+                contribution.argument_count = result.arguments.size() - contribution.first_argument;
+                contribution.binding_count = result.bindings.size() - contribution.first_binding;
+                contribution.sampler_count = builder.samplerCount() - contribution.first_sampler;
+                for (std::size_t p = 0; p < contribution.resolved.size(); ++p)
+                {
+                    const auto before = contribution.supplied[p], after = contribution.resolved[p].version;
+                    const auto direction = contribution.declarations[p].declaration.direction;
+                    const bool invalid_publish =
+                        before.resource != after.resource || (direction != EFeaturePort::OUTPUT && before != after);
+                    if (invalid_publish)
+                    {
+                        return cxx::unexpected(failure(kFeatureVersion, i, p));
+                    }
+                    if (direction == EFeaturePort::OUTPUT &&
+                        contribution.declarations[p].declaration.origin == EGraphOrigin::HISTORY_CURRENT)
+                    {
+                        if (auto published = builder.publishHistory(after); !published)
+                        {
+                            return cxx::unexpected(published.error());
+                        }
+                    }
+                }
+                for (std::size_t b = contribution.first_binding; b < result.bindings.size(); ++b)
+                {
+                    result.bindings[b].parameter_group = input.parameter_group;
+                }
+                result.contributions.push_back({i, first, builder.passCount() - first, input.parameter_group});
+                contribution.built = true;
+                --remaining;
+                progressed = true;
+            }
+            if (!progressed)
+            {
+                return cxx::unexpected(RenderError{kGraphDependencyCycle});
+            }
+        }
+        for (const auto& output : exports)
+        {
+            const auto i = output.source.contribution;
+            if (i >= work.size())
+            {
+                return cxx::unexpected(failure(kFeatureContract, i));
+            }
+            const auto p = portIndex(work[i], output.source.port);
+            if (p == work[i].declarations.size() ||
+                work[i].declarations[p].declaration.direction != EFeaturePort::OUTPUT)
+            {
+                return cxx::unexpected(failure(kFeatureContract, i, p));
+            }
+            auto exported =
+                builder.exportOutput({work[i].resolved[p].version, output.range, output.target, output.final_use});
+            if (!exported)
+            {
+                return cxx::unexpected(exported.error());
+            }
+        }
+        auto graph = std::move(builder).finish();
+        if (!graph)
+        {
+            return cxx::unexpected(graph.error());
+        }
+        std::vector<bool> storage_resources(graph->resources().size(), false);
+        const auto markStorage = [&](const auto& group)
+        {
+            for (const auto& binding : group)
+            {
+                storage_resources[binding.resource.index] = true;
+            }
+        };
+        markStorage(result.external_bindings.global);
+        markStorage(result.external_bindings.scene);
+        markStorage(result.external_bindings.view);
+        std::vector<bool> configured(graph->resources().size(), false), constructed(graph->resources().size(), false);
+        // Audit only appended contributions, using captured IDs and supplied versions, never names.
+        for (const auto& contribution : result.contributions)
+        {
+            const auto i = contribution.input_index;
+            const auto& owner = work[i];
+            const auto allowed = [&](ResourceVersion version, bool write)
+            {
+                const auto resource = version.resource.index;
+                if (resource >= owner.first_resource && resource - owner.first_resource < owner.resource_count)
+                {
+                    return true;
+                }
+                for (std::size_t p = 0; p < owner.supplied.size(); ++p)
+                {
+                    if (owner.supplied[p].resource != version.resource)
+                    {
+                        continue;
+                    }
+                    if (owner.declarations[p].declaration.direction == EFeaturePort::OUTPUT)
+                    {
+                        return true;
+                    }
+                    if (!write && owner.supplied[p] == version)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            for (auto a = owner.first_argument; a < owner.first_argument + owner.argument_count; ++a)
+            {
+                const auto resource = result.arguments[a].resource;
+                const bool valid = resource.index < storage_resources.size() && storage_resources[resource.index] &&
+                                   !configured[resource.index] && allowed({resource, 0}, true);
+                if (!valid)
+                {
+                    return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                }
+                configured[resource.index] = true;
+            }
+            for (auto b = owner.first_binding; b < owner.first_binding + owner.binding_count; ++b)
+            {
+                const auto& binding = result.bindings[b];
+                const bool has_work = !binding.outputs.empty() || !binding.passes.empty();
+                if (!binding.create || !has_work)
+                {
+                    return cxx::unexpected(failure(kFeatureOwnership, i, b));
+                }
+                for (auto resource : binding.inputs)
+                {
+                    // Preparation borrows an identity, not a GPU version. GPU accesses below
+                    // still require the exact version supplied through the Feature port.
+                    const bool is_owned = resource.index >= owner.first_resource &&
+                        resource.index - owner.first_resource < owner.resource_count;
+                    const bool is_supplied = std::ranges::any_of(
+                        owner.supplied, [&](auto version) { return version.resource == resource; }
+                    );
+                    if (!is_owned && !is_supplied)
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                    }
+                }
+                for (auto pass : binding.passes)
+                {
+                    const bool is_owned = pass.index >= contribution.first_pass &&
+                        pass.index - contribution.first_pass < contribution.pass_count;
+                    if (!is_owned)
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, pass.index));
+                    }
+                }
+                for (auto resource : binding.outputs)
+                {
+                    const bool valid = resource.index < storage_resources.size() &&
+                                       !storage_resources[resource.index] && !constructed[resource.index] &&
+                                       graph->resources()[resource.index].origin == EGraphOrigin::IMPORTED &&
+                                       allowed({resource, 0}, true);
+                    if (!valid)
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                    }
+                    constructed[resource.index] = true;
+                }
+            }
+            for (auto p = contribution.first_pass; p < contribution.first_pass + contribution.pass_count; ++p)
+            {
+                const auto& pass = graph->passes()[p];
+                const PassInterface* input = nullptr;
+                const ParameterBinding* parameters = nullptr;
+                if (const auto* raster = pass.work.getIf<RasterWork>())
+                {
+                    const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
+                    input = fixed ? &fixed->interface : nullptr;
+                    parameters = fixed ? &fixed->interface.parameters
+                                       : &std::get<RasterPassTemplate>(raster->program).parameters;
+                }
+                const auto* scope = pass.rasterScope();
+                const bool has_state_input = scope && scope->state_input.has_value();
+                const bool is_unowned_state_input = has_state_input && !allowed({scope->state_input->resource, 0}, false);
+                if (is_unowned_state_input)
+                {
+                    return cxx::unexpected(failure(kFeatureOwnership, i, p));
+                }
+                if (const auto* compute = pass.work.getIf<ComputeWork>())
+                {
+                    input = &compute->interface;
+                    parameters = &compute->interface.parameters;
+                }
+                if (pass.encoding_interface)
+                {
+                    input = &*pass.encoding_interface;
+                    parameters = &input->parameters;
+                }
+                if (input)
+                {
+                    for (const auto& sampler : input->samplers)
+                    {
+                        for (auto slot : sampler.inputs)
+                        {
+                            const bool invalid =
+                                slot < owner.first_sampler || slot - owner.first_sampler >= owner.sampler_count;
+                            if (invalid)
+                            {
+                                return cxx::unexpected(failure(kFeatureOwnership, i, p));
+                            }
+                            if (sampler.comparison != graph->samplers()[slot].comparison.has_value())
+                            {
+                                return cxx::unexpected(failure(kFeatureContract, i, p));
+                            }
+                        }
+                    }
+                }
+                if (parameters)
+                {
+                    for (const auto& field : parameters->fields)
+                    {
+                        if (field.resource.index == kGraphInvalidIndex)
+                        {
+                            continue;
+                        }
+                        const bool supplied = std::ranges::any_of(
+                            owner.supplied,
+                            [&](const auto& value) { return value.resource == field.resource; }
+                        );
+                        if (!supplied && !allowed({field.resource, 0}, true))
+                        {
+                            return cxx::unexpected(failure(kFeatureOwnership, i, p));
+                        }
+                    }
+                }
+                for (const auto& access : pass.uses)
+                {
+                    const bool write = access.access != EGraphAccess::READ;
+                    const bool invalid =
+                        !allowed(access.version, write) || (access.fallback && !allowed(*access.fallback, false));
+                    if (invalid)
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, p));
+                    }
+                }
+            }
+        }
+        auto analysis = analyzeRenderGraph(*graph);
+        if (!analysis)
+        {
+            return cxx::unexpected(analysis.error());
+        }
+        result.definition = std::move(*graph);
+        result.analysis = std::move(*analysis);
+        return result;
+    }
+
+    std::span<const error::ErrorDescriptor> renderFeatureErrorDescriptors() noexcept
+    {
+        using error::EArgument;
+        static constexpr auto args = std::array{EArgument::UNSIGNED, EArgument::UNSIGNED, EArgument::UNSIGNED};
+        static constexpr error::ErrorDescriptor descriptors[]{
+            {"lux.render.feature.contract",
+             "Invalid feature contract (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.duplicate",
+             "Duplicate feature declaration (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.missing_provider",
+             "Required provider missing (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.resource_mismatch",
+             "Resource contracts differ (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.ownership",
+             "Unauthorized graph contribution (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.version",
+             "Unsupported shared version (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args}
+        };
+        return descriptors;
+    }
+} // namespace lux::render

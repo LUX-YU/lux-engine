@@ -7,10 +7,41 @@ namespace lux::render
 {
     namespace extension_detail
     {
-        template <class C, auto Method> struct CommandInvocation;
+        template <class C, auto Method, class Signature = decltype(Method)> struct CommandInvocation;
 
-        template <class C, class H, void (H::*Method)(const typename C::Request&, typename C::Response&) noexcept>
-        struct CommandInvocation<C, Method> final
+        template <class C, auto Method, class Request, class Response>
+            requires std::same_as<Request, typename C::Request> && std::same_as<Response, typename C::Response>
+        struct CommandInvocation<C, Method, void (*)(const Request&, Response&) noexcept> final
+        {
+            using Handler = void;
+            using Storage = void;
+            using Result = void;
+            static constexpr bool synchronous = true;
+
+            static void invoke(void*, const typename C::Request& request, typename C::Response& response) noexcept
+            {
+                Method(request, response);
+            }
+        };
+
+        template <class C, auto Method, class R, class Request>
+            requires std::same_as<Request, typename C::Request>
+        struct CommandInvocation<C, Method, R (*)(Request&&) noexcept> final
+        {
+            using Handler = void;
+            using Storage = void;
+            using Result = R;
+            static constexpr bool synchronous = false;
+
+            static R invoke(void*, typename C::Request&& request) noexcept
+            {
+                return Method(std::move(request));
+            }
+        };
+
+        template <class C, auto Method, class H, class Request, class Response>
+            requires std::same_as<Request, typename C::Request> && std::same_as<Response, typename C::Response>
+        struct CommandInvocation<C, Method, void (H::*)(const Request&, Response&) noexcept> final
         {
             using Handler = H;
             using Storage = void;
@@ -24,8 +55,9 @@ namespace lux::render
             }
         };
 
-        template <class C, class H, class R, R (H::*Method)(typename C::Request&&) noexcept>
-        struct CommandInvocation<C, Method> final
+        template <class C, auto Method, class H, class R, class Request>
+            requires std::same_as<Request, typename C::Request>
+        struct CommandInvocation<C, Method, R (H::*)(Request&&) noexcept> final
         {
             using Handler = H;
             using Storage = void;
@@ -38,12 +70,9 @@ namespace lux::render
             }
         };
 
-        template <
-            class C,
-            class H,
-            class S,
-            void (H::*Method)(S&, const typename C::Request&, typename C::Response&) noexcept>
-        struct CommandInvocation<C, Method> final
+        template <class C, auto Method, class H, class S, class Request, class Response>
+            requires std::same_as<Request, typename C::Request> && std::same_as<Response, typename C::Response>
+        struct CommandInvocation<C, Method, void (H::*)(S&, const Request&, Response&) noexcept> final
         {
             using Handler = H;
             using Storage = S;
@@ -62,8 +91,9 @@ namespace lux::render
             }
         };
 
-        template <class C, class H, class S, class R, R (H::*Method)(S&, typename C::Request&&) noexcept>
-        struct CommandInvocation<C, Method> final
+        template <class C, auto Method, class H, class S, class R, class Request>
+            requires std::same_as<Request, typename C::Request>
+        struct CommandInvocation<C, Method, R (H::*)(S&, Request&&) noexcept> final
         {
             using Handler = H;
             using Storage = S;
@@ -76,8 +106,9 @@ namespace lux::render
             }
         };
 
-        template <class C, class S, void (*Method)(S&, const typename C::Request&, typename C::Response&) noexcept>
-        struct CommandInvocation<C, Method> final
+        template <class C, auto Method, class S, class Request, class Response>
+            requires std::same_as<Request, typename C::Request> && std::same_as<Response, typename C::Response>
+        struct CommandInvocation<C, Method, void (*)(S&, const Request&, Response&) noexcept> final
         {
             using Handler = void;
             using Storage = S;
@@ -91,8 +122,9 @@ namespace lux::render
             }
         };
 
-        template <class C, class S, class R, R (*Method)(S&, typename C::Request&&) noexcept>
-        struct CommandInvocation<C, Method> final
+        template <class C, auto Method, class S, class R, class Request>
+            requires std::same_as<Request, typename C::Request>
+        struct CommandInvocation<C, Method, R (*)(S&, Request&&) noexcept> final
         {
             using Handler = void;
             using Storage = S;

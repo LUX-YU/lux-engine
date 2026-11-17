@@ -7,6 +7,7 @@
 #include <lux/engine/render/visibility.h>
 #include <exec/completion_behavior.hpp>
 
+#include <lux/engine/render/frame/FrameData.hpp>
 #include <array>
 #include <memory>
 #include <tuple>
@@ -27,6 +28,8 @@ namespace lux::render
         };
 
         using CommonCommands = std::tuple<
+            QueryFrameInputLayout,
+            UpdateViewCamera,
             QueryResource,
             GetOrCreateResource,
             CreateScene,
@@ -100,6 +103,7 @@ namespace lux::render
                 CommandId command;
                 typename C::Request& input;
                 Receiver receiver;
+                FrameData* borrowed_frame = nullptr;
 
                 Operation(
                     RenderClient& client,
@@ -120,6 +124,11 @@ namespace lux::render
                 ) noexcept
                 {
                     auto& operation = static_cast<Operation&>(node);
+                    if (operation.borrowed_frame)
+                    {
+                        operation.borrowed_frame->finishBorrow();
+                        operation.borrowed_frame = nullptr;
+                    }
                     if (error.type != 0)
                     {
                         typename C::Response response{};
@@ -135,6 +144,16 @@ namespace lux::render
 
                 void start() & noexcept
                 {
+                    if constexpr (requires { C::frameData(input); })
+                    {
+                        auto* packet = C::frameData(input);
+                        if (packet && !packet->beginBorrow())
+                        {
+                            RenderClient::deliver(*this, {}, {kFrameContract});
+                            return;
+                        }
+                        borrowed_frame = packet;
+                    }
                     if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                     {
                         RenderClient::deliver(*this, {}, {kCommandCancelled});

@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/resource/RasterMaterial.hpp>
+#include <lux/engine/render/resources/material/Binding.hpp>
 
 namespace lux::render
 {

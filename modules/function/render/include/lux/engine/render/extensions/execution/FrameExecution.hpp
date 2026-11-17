@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
@@ -9,6 +11,7 @@
 namespace lux::render::detail
 {
     class DeviceSession;
+    class Preparation;
     class RenderGraphInstance;
     struct FeatureBinding;
 
@@ -121,8 +124,9 @@ namespace lux::render::detail
             nri::CommandBuffer* preparation_command = nullptr;
             std::vector<nri::CommandBuffer*> recording_commands; // Borrowed for one QueueSubmit.
             std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;
-            std::vector<ResourceUploader::BufferCopy> feature_copies;
+            std::vector<BufferCopyRegion> feature_copies;
             std::vector<PreparedStorage> prepared_storages;
+            std::unique_ptr<Preparation> preparation;
             std::uint32_t remaining_batches = 0;
             std::uint64_t dependency_rebuilds = 0, imported_comparisons = 0;
         };

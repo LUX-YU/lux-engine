@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
+#include <lux/engine/render/resources/instance/Data.hpp>
 
 namespace lux::render
 {
@@ -21,8 +21,4 @@ namespace lux::render
         bool operator==(const CameraInput&) const noexcept = default;
     };
 
-    [[nodiscard]] inline FrameDataBinding<CameraInput> viewCameraBinding(ViewRequest view) noexcept
-    {
-        return {ViewFrameDestination{view}};
-    }
 } // namespace lux::render

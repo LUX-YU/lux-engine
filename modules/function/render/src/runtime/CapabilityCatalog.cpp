@@ -1,6 +1,5 @@
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
-#include <ranges>
-#include <set>
+#include <algorithm>
 
 namespace lux::render
 {
@@ -9,16 +8,12 @@ namespace lux::render
         const EffectOutputDesc& output
     ) noexcept
     {
-        if (const auto valid = validateEffectOutput(output); !valid)
+        if (const auto valid = validateEffectOutput({output.format, output.samples, output.kind}); !valid)
         {
             return valid.error();
         }
-        const bool has_format =
-            std::ranges::find(capability.target_formats, output.format) != capability.target_formats.end();
-        const bool has_samples =
-            std::ranges::find(capability.target_samples, output.samples) != capability.target_samples.end();
-        const bool has_kind = std::ranges::find(capability.target_kinds, output.kind) != capability.target_kinds.end();
-        const bool supported = has_format && has_samples && has_kind;
+        const CapabilityOutputSupport requested{output.format, output.samples, output.kind};
+        const bool supported = std::ranges::binary_search(capability.outputs, requested);
         return supported ? RenderError{} : RenderError{kRuntimeUnsupported};
     }
 

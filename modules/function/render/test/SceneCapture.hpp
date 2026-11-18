@@ -44,11 +44,15 @@ namespace rdesc = lux::rdesc;
 using Clock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
 
+struct CaptureDescriptor;
+
 struct RenderProbeCapability final
 {
     using PrerequisiteCapabilities = std::tuple<>;
     using Commands = std::tuple<>;
-    using Resources = std::tuple<MeshResource, TextureResource, MaterialResource, InstanceResource, LightResource>;
+    using Resources = std::tuple<
+        MeshResource, TextureResource, MaterialResource, InstanceResource, LightResource, CaptureDescriptor
+    >;
 };
 
 // Test configurations compose existing typed Feature inputs; preserve their real cold memory accounting.
@@ -534,9 +538,12 @@ RenderProbe<Configuration, Capability> registerRenderProbe(
     CapabilityImplementation implementation;
     implementation.implementation = std::move(name);
     implementation.features = features;
-    implementation.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA16_SFLOAT};
-    implementation.target_samples = {1};
-    implementation.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
+    using enum rdesc::ETextureFormat;
+    using enum ETargetKind;
+    implementation.outputs = {
+        {RGBA8_UNORM, 1, OFFSCREEN}, {RGBA8_UNORM, 1, SURFACE},
+        {RGBA16_SFLOAT, 1, OFFSCREEN}, {RGBA16_SFLOAT, 1, SURFACE}
+    };
     auto capability = server.capabilityId(lux::cxx::make_basic_type_info<Capability>());
     if (!capability && capability.error().type == kRuntimeIdentity)
         capability = server.registerCapability<Capability>();
@@ -594,6 +601,22 @@ struct CaptureDescriptor
         "View-owned terminal copy collection.", EResourceDomain::VIEW
     };
 };
+
+struct CaptureCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<>;
+    using Resources = std::tuple<CaptureDescriptor>;
+};
+
+inline CapabilityImplementationId registerCaptureProbe(RenderServer& server, FeatureId feature)
+{
+    CapabilityImplementation implementation;
+    implementation.implementation = "test.capture";
+    implementation.features = {feature};
+    implementation.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
+    return take(server.addCapabilityImplementation(take(server.registerCapability<CaptureCapability>()), implementation));
+}
 
 class CaptureBuffer
 {

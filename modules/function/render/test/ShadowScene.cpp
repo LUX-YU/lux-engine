@@ -332,6 +332,7 @@ static void verifyPresets(
     SceneId scene,
     ResourceInstanceId lights,
     FeatureId capture,
+    CapabilityImplementationId capture_probe,
     const TargetDesc& target,
     CameraInput camera,
     unsigned fif
@@ -378,7 +379,8 @@ static void verifyPresets(
         CapturedPixels pixels;
         auto& recipe = request.definition;
         const auto copy = static_cast<std::uint32_t>(recipe.features.size());
-        recipe.features.push_back({capture, "read preset", take(ConfigValue::make(CaptureConfig{&pixels}))});
+        request.implementations.push_back({capture_probe, "capture"});
+        recipe.features.push_back({capture, "capture/pixels", take(ConfigValue::make(CaptureConfig{&pixels}))});
         recipe.connections.push_back({recipe.outputs.front().source, {copy, "color"}});
         recipe.outputs.push_back({{copy, "pixels"}, {}});
 
@@ -496,6 +498,7 @@ int main(int argc, char** argv)
     const auto shadow = take(server->featureId("lux.render.feature.MeshShadowFeature"));
     take(server->registerResource<CaptureBuffer>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
+    const auto capture_probe = presets ? registerCaptureProbe(*server, capture) : CapabilityImplementationId{};
     const auto cluster_feature = take(server->featureId("lux.render.feature.ClusteredLightingFeature"));
     const auto comparison = take(server->registerFeature<SceneComparison>());
     const auto shadow_probe = registerRenderProbe<ShadowProbeConfiguration>(
@@ -603,7 +606,7 @@ int main(int argc, char** argv)
     camera.position = {0, 0, 2};
     camera.far_distance = 3;
     camera.background = {0, 0, 0, 1};
-    if (presets) verifyPresets(*client, commands, scene, light_storage, capture, target, camera, fif);
+    if (presets) verifyPresets(*client, commands, scene, light_storage, capture, capture_probe, target, camera, fif);
     std::array<unsigned, 4> reference_lit{}, reference_occluded{};
     bool masked = false;
 

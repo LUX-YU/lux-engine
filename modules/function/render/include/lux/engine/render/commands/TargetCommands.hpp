@@ -40,6 +40,8 @@ namespace lux::render
     // together in the next complete frame; earlier queued frames cannot draw with stale size-dependent inputs.
     struct ResizeTarget final
     {
+        // If a WSI replacement fails after retiring the previous chain, output_available is false.
+        // A later ResizeTarget may retry using the same TargetId.
         static constexpr std::string_view name{"render.target.resize"};
         using Request = ResizeTargetRequest;
         using Response = TargetCreated;

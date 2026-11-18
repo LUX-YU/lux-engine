@@ -19,12 +19,19 @@ namespace lux::render::runtime_detail
         bool binds_graph = false;
     };
 
+    struct QualifiedEffectRecipe final
+    {
+        std::vector<const FeatureEntry*> features;
+        std::vector<RenderEffect::ResourceDependency> resources;
+        std::vector<CommandBindingLocation> commands;
+        bool uses_capabilities = false;
+    };
+
     // Build owns the immutable logical result. No device, native queues, pipelines or scene instances enter here.
     RenderResult<RenderEffect> buildEffect(
         std::span<const ResourceDeclaration> declarations,
         const CreateEffectRequest& request,
-        std::span<const FeatureEntry* const> registrations,
-        std::size_t max_config_bytes,
-        std::vector<RenderEffect::ResourceDependency> resource_dependencies
+        QualifiedEffectRecipe recipe,
+        std::size_t max_config_bytes
     ) noexcept;
 } // namespace lux::render::runtime_detail

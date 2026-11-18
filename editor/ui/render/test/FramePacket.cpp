@@ -167,6 +167,7 @@ int main(int argc, char** argv)
     take(registerUi(*server));
     take(server->registerResource<CaptureBuffer>());
     const auto capture_feature = take(server->registerFeature<CaptureFeature>());
+    const auto capture_probe = registerCaptureProbe(*server, capture_feature);
     take(server->registerResource(Counter::factory<0>()));
     take(server->registerResource(Counter::factory<1>()));
     const auto feature = take(server->registerFeature<ClearFeature>());
@@ -279,6 +280,16 @@ int main(int argc, char** argv)
     CHECK(packet.writable());
     packet.reset(); CHECK(packet.seal());
     request<UpdateFrameData>(*client, update, {attachment, &packet});
+    packet.reset();
+    CHECK(packet.addData<Inputs<0>>(Delta{11}));
+    CHECK(packet.addData<Inputs<1>>(Delta{-1}));
+    CHECK(packet.seal());
+    CHECK(request<UpdateFrameData>(*client, update, {attachment, &packet}, false).error.type == kStorageContract);
+    CHECK(packet.writable());
+    first = call<Read>(*wire, commands, {a});
+    second = call<Read>(*wire, commands, {b});
+    CHECK(first.sum == 18 && first.calls == 3);
+    CHECK(second.sum == 50 && second.calls == 1);
     CameraInput camera;
     call<UpdateViewCamera>(*wire, commands, {{scene, view}, camera});
     camera.near_distance = -1;
@@ -302,8 +313,9 @@ int main(int argc, char** argv)
     CHECK(!makeUiRenderEffect({target.format}, *ui, wrong_index_type));
     CapturedPixels ui_pixels;
     auto ui_request = take(makeUiRenderEffect({target.format}, *ui, loaded_ui));
+    ui_request.implementations.push_back({capture_probe, "capture"});
     ui_request.definition.features.push_back({
-        capture_feature, "read_ui", take(ConfigValue::make(CaptureConfig{&ui_pixels}))
+        capture_feature, "capture/pixels", take(ConfigValue::make(CaptureConfig{&ui_pixels}))
     });
     ui_request.definition.connections.push_back({{0, "color"}, {1, "color"}});
     ui_request.definition.outputs.push_back({{1, "pixels"}, {}});
@@ -435,6 +447,12 @@ int main(int argc, char** argv)
     packet.reset(); CHECK(packet.seal());
     CHECK(request<UpdateFrameData>(*client, update, {attachment, &packet}, false).error.type == kFrameContract);
     CHECK(packet.writable());
+    call<StopRenderJob>(*wire, commands, attachment);
+    packet.reset();
+    CHECK(packet.seal());
+    CHECK(request<UpdateFrameData>(*client, update, {attachment, &packet}, false).error.type == kJobStopped);
+    CHECK(packet.writable());
+    call<StartRenderJob>(*wire, commands, {attachment, output});
     const auto live_layout = call<QueryRenderJobInputLayout>(*wire, commands, attachment).layout;
     auto shutdown_packet = take(FrameData::create<Resources>(live_layout));
     CHECK(shutdown_packet.addData<Inputs<0>>(Delta{1}));

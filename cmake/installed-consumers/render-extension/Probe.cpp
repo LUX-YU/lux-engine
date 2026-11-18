@@ -141,9 +141,7 @@ template <std::uint32_t Value> struct RoutedImplementation final
     {
         CapabilityImplementation result;
         result.implementation = Value == 17 ? "example.effect.route.a" : "example.effect.route.b";
-        result.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
-        result.target_samples = {1};
-        result.target_kinds = {ETargetKind::OFFSCREEN};
+        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
         return result;
     }
 };
@@ -362,9 +360,7 @@ template <bool Alternate> struct ProbeFeature final
     {
         CapabilityImplementation result;
         result.implementation = name.name();
-        result.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
-        result.target_samples = {1};
-        result.target_kinds = {ETargetKind::OFFSCREEN};
+        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
         return result;
     }
 };
@@ -419,9 +415,7 @@ template <bool Matching> struct ProbeEffect final
         {
             auto value = ProbeFeature<false>::implementation();
             value.implementation = name.name();
-            value.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
-            value.target_samples = {1};
-            value.target_kinds = {ETargetKind::OFFSCREEN};
+            value.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
             return value;
         }();
         return result;
@@ -468,9 +462,7 @@ struct RejectedInstallation final
     {
         CapabilityImplementation result;
         result.implementation = "example.install.failure";
-        result.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
-        result.target_samples = {1};
-        result.target_kinds = {ETargetKind::OFFSCREEN};
+        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
         return result;
     }
 };
@@ -615,7 +607,6 @@ int main(int argc, char** argv)
     config.uploads.emplace();
     DeviceOptions device;
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") device.backend = EGraphicsBackend::D3D12;
-    const bool audit_qualification = std::getenv("LUX_RENDER_QUALIFICATION_BASELINE") != nullptr;
     auto server = take(RenderServer::create(config, *execution, device));
     // The module installs its unique declarations once; implementations reference that closure.
     take(server->registerResource<ProbeStorageType<false>>());
@@ -643,15 +634,19 @@ int main(int argc, char** argv)
     take(server->registerCapabilityImplementation<RejectedInstallation>());
     take(server->registerCapabilityImplementation<ProbeEffect<true>>());
     take(server->registerCapabilityImplementation<ProbeEffect<false>>());
-    CapabilityImplementationId undeclared_resource;
-    if (audit_qualification)
-    {
-        const auto audit = take(server->registerCapability<QualificationAuditCapability>());
-        auto candidate = ProbeFeature<false>::implementation();
-        candidate.implementation = "example.audit.undeclared_resource";
-        candidate.features = {graph_feature};
-        undeclared_resource = take(server->addCapabilityImplementation(audit, candidate));
-    }
+    const auto audit = take(server->registerCapability<QualificationAuditCapability>());
+    auto candidate = ProbeFeature<false>::implementation();
+    candidate.implementation = "example.audit.undeclared_resource";
+    candidate.features = {graph_feature};
+    const auto undeclared_resource = take(server->addCapabilityImplementation(audit, candidate));
+    const auto graph_capability = take(server->capabilityId(cxx::make_basic_type_info<ProbeGraphCapability>()));
+    candidate.implementation = "example.graph.output_matrix";
+    candidate.outputs.push_back(candidate.outputs.front());
+    candidate.outputs.push_back({rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE});
+    const auto output_matrix = take(server->addCapabilityImplementation(graph_capability, candidate));
+    candidate.outputs.push_back({rdesc::ETextureFormat::BGRA8_UNORM, 4, ETargetKind::SURFACE});
+    const auto invalid = server->replaceCapabilityImplementation(output_matrix, candidate);
+    CHECK(!invalid && invalid.error().type == kInvalidTargetKind);
     const auto duplicate_resource = server->registerResource<ProbeStorageType<false>>();
     CHECK(!duplicate_resource && duplicate_resource.error().type == kStorageMismatch);
     const auto duplicate_feature = server->registerFeature<ProbeEffect<true>>();
@@ -726,11 +721,11 @@ int main(int argc, char** argv)
     const auto graph_choice = call<ListCapabilities>(
         client, list, {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
     ).implementations.front();
-    if (audit_qualification)
     {
-        auto qualify = [&](std::vector<EffectImplementationUse> implementations, std::string contribution)
+        auto qualify = [&](std::vector<EffectImplementationUse> implementations, std::string contribution,
+                           EffectOutputDesc output = {rdesc::ETextureFormat::RGBA8_UNORM})
         {
-            CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
+            CreateEffectRequest request{output};
             request.implementations = std::move(implementations);
             request.definition.features.push_back({graph_feature, std::move(contribution), {}});
             request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
@@ -739,9 +734,27 @@ int main(int argc, char** argv)
         const auto owner = graph_choice.implementation_id;
         const auto wrong_feature = qualify({{route_a, "commands"}, {owner, "output"}}, "commands/node");
         const auto wrong_resource = qualify({{undeclared_resource, "output"}}, "output/node");
-        CHECK(!wrong_feature.error.type && !wrong_feature.effect.isNull());
-        CHECK(!wrong_resource.error.type && !wrong_resource.effect.isNull());
-        std::puts("BASELINE QUALIFICATION: accepted foreign Feature and undeclared live Resource");
+        CHECK(wrong_feature.error.type == kCapabilityDeclaration && wrong_feature.effect.isNull());
+        CHECK(wrong_resource.error.type == kCapabilityDeclaration && wrong_resource.effect.isNull());
+        CHECK(qualify({{owner, "output"}}, "output_invalid").error.type == kCapabilityDeclaration);
+        CHECK(qualify({{owner, "output"}, {owner, "output/nested"}}, "output/nested/node").error.type ==
+            kCapabilityDeclaration);
+        CHECK(!qualify({{owner, "output"}, {undeclared_resource, "other"}}, "other/node").error.type);
+        CHECK(!qualify({}, "free").error.type);
+
+        const EffectOutputDesc supported{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
+        const EffectOutputDesc crossed{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE};
+        const auto output_status = [&](EffectOutputDesc output)
+        {
+            const auto options = call<ListCapabilities>(client, list, {{}, candidate.implementation, output});
+            CHECK(!options.error.type && options.implementations.size() == 1);
+            return options.implementations.front().unavailable.type;
+        };
+        CHECK(!output_status(supported));
+        CHECK(!qualify({{output_matrix, "output"}}, "output/node", supported).error.type);
+        CHECK(output_status(crossed) == kRuntimeUnsupported);
+        CHECK(qualify({{output_matrix, "output"}}, "output/node", crossed).error.type == kRuntimeUnsupported);
+        std::puts("SDK QUALIFICATION: contribution ownership, resource union, free graph and exact output tuples");
     }
     auto make_routed = [&](std::span<const CapabilityImplementationId> routes)
     {

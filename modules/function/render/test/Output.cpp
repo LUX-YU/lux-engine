@@ -640,6 +640,38 @@ static void basicFeatureOutputs(bool d3d12)
 }
 
 #ifdef _WIN32
+struct WsiFailureProbe final
+{
+    struct Descriptor final
+    {
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{ResourceNameView{"test.wsi.failure"}, 0, 0, {}};
+    };
+
+    static inline std::atomic<bool> fail_view = false;
+    static inline decltype(nri::CoreInterface::CreateTextureView) create_texture_view = nullptr;
+
+    static RenderResult<std::unique_ptr<WsiFailureProbe>>
+    create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+    {
+        auto& core = const_cast<nri::CoreInterface&>(context.device.nriCore());
+        create_texture_view = core.CreateTextureView;
+        core.CreateTextureView = [](const nri::TextureViewDesc& description, nri::Descriptor*& view) noexcept
+        {
+            if (description.type == nri::TextureView::COLOR_ATTACHMENT && fail_view.exchange(false))
+                return nri::Result::OUT_OF_MEMORY;
+            return create_texture_view(description, view);
+        };
+        return std::make_unique<WsiFailureProbe>();
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
+        return makeResourceRegistration<Descriptor, WsiFailureProbe, &create>(nullptr);
+    }
+};
+
 static HWND createProbeWindow()
 {
     const auto instance = GetModuleHandleW(nullptr);
@@ -700,10 +732,12 @@ static void windowOutput(bool d3d12)
     auto& execution = lux::execution::ExecutionRuntime::instance();
     auto server = take(RenderServer::create(config, execution, options));
     auto feature = take(server->registerFeature<WindowClear>());
+    take(server->registerResource<WsiFailureProbe>());
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     std::thread render([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, WsiFailureProbe::Descriptor::descriptor.type});
     const auto [width, height] = dimensions();
     const TargetDesc description{width, height, rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE};
     auto target = call<CreateTarget>(*client, commands, {description, SurfaceDescription{Win32Surface{window}}});
@@ -747,6 +781,13 @@ static void windowOutput(bool d3d12)
     auto requested = target.description;
     requested.width = changed_width;
     requested.height = changed_height;
+    // The first color view of the replacement fails after the previous swapchain is closed.
+    WsiFailureProbe::fail_view = true;
+    const auto failed = call<ResizeTarget>(*client, commands, {target.target, requested}, false);
+    CHECK(!WsiFailureProbe::fail_view && failed.error.type == kDeviceFailure);
+    CHECK(!failed.output_available && failed.target == target.target && failed.epoch == target.epoch);
+    CHECK(call<SetTargetActive>(*client, commands, {target.target, true, failed.epoch}, false).error.type ==
+        kRuntimeState);
     const auto resized = call<ResizeTarget>(*client, commands, {target.target, requested});
     CHECK(resized.output_available && resized.epoch == target.epoch + 1);
     CHECK(resized.description.width == changed_width && resized.description.height == changed_height);
@@ -774,6 +815,7 @@ static void windowOutput(bool d3d12)
     CHECK(PostMessageW(window, WM_CLOSE, 0, 0));
     ui.join();
     std::puts("WSI RETIREMENT PASS: READY Acquire reused after Stop and released by Remove; live Target settled at join");
+    std::puts("WSI RETRY PASS: failed replacement reports unavailable; same TargetId recovered");
     std::printf("WSI PASS backend=%s real presents=%llu resize/writer replacement/remove/shutdown\n",
         d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned long long>(server->stats().presentations));
 }

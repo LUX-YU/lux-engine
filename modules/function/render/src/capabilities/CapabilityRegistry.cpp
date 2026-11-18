@@ -59,6 +59,9 @@ namespace lux::render
     CapabilityImplementationId
     CapabilityRegistry::publish(CapabilityId id, CapabilityImplementation implementation) noexcept
     {
+        std::ranges::sort(implementation.outputs);
+        const auto duplicate = std::ranges::unique(implementation.outputs);
+        implementation.outputs.erase(duplicate.begin(), duplicate.end());
         const auto inserted = implementations_.insert(ImplementationRecord{id, std::move(implementation)});
         capabilities_.tryGet(id)->implementations.push_back(inserted);
         return inserted;

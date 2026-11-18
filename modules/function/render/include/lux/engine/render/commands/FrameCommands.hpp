@@ -19,6 +19,9 @@ namespace lux::render
         };
     };
 
+    // Qualifies Resource identities before writing, then independently applies each Resource's batch.
+    // A later Resource's error leaves earlier successful writes in place. The reply settles the packet borrow.
+    // StopRenderJob rejects new updates. Already borrowed packets remain borrowed until their terminal reply.
     struct UpdateFrameData final
     {
         static constexpr std::string_view name = "render.frame.update_data";

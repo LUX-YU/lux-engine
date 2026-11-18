@@ -119,6 +119,13 @@ namespace lux::render
     ) const noexcept
     {
         if (implementation.implementation.empty()) return cxx::unexpected(RenderError{kFeatureContract});
+        for (const auto& output : implementation.outputs)
+        {
+            if (auto valid = validateEffectOutput({output.format, output.samples, output.kind}); !valid)
+            {
+                return valid;
+            }
+        }
         for (const auto prerequisite : capability.prerequisites)
         {
             if (capability_registry_.find(prerequisite).isNull())

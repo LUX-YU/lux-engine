@@ -225,8 +225,8 @@ namespace lux::render
         using EffectBuildResult = RenderResult<RenderEffect>;
         [[nodiscard]] exec::task<EffectCreated> adoptBuiltEffect(EffectBuildResult) noexcept;
         auto createEffect(CreateEffect::Request&&) noexcept;
-        [[nodiscard]] RenderResult<std::vector<RenderEffect::ResourceDependency>>
-        qualifyEffectRecipe(const CreateEffectRequest&, std::vector<CommandBindingLocation>&) const noexcept;
+        [[nodiscard]] RenderResult<runtime_detail::QualifiedEffectRecipe>
+        qualifyEffectRecipe(const CreateEffectRequest&) const noexcept;
         void bindCreateEffectCommand() noexcept;
 
         [[nodiscard]] static RenderError

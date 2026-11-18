@@ -8,9 +8,8 @@ namespace lux::render::runtime_detail
     RenderResult<RenderEffect> buildEffect(
         std::span<const ResourceDeclaration> declarations,
         const CreateEffectRequest& request,
-        std::span<const FeatureEntry* const> registrations,
-        std::size_t max_config_bytes,
-        std::vector<RenderEffect::ResourceDependency> resource_dependencies
+        QualifiedEffectRecipe recipe,
+        std::size_t max_config_bytes
     ) noexcept
     {
         const auto* input = &request;
@@ -20,7 +19,7 @@ namespace lux::render::runtime_detail
         for (std::size_t i = 0; i < input->definition.features.size(); ++i)
         {
             const auto& selection = input->definition.features[i];
-            const auto* registration = registrations[i];
+            const auto* registration = recipe.features[i];
             selected.push_back(
                 {FeatureName{registration->name},
                  registration->config_type,
@@ -108,12 +107,16 @@ namespace lux::render::runtime_detail
                 if (scope != factory->domain)
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 auto dependency = std::ranges::find(
-                    resource_dependencies, factory->id, &RenderEffect::ResourceDependency::declaration
+                    recipe.resources, factory->id, &RenderEffect::ResourceDependency::declaration
                 );
-                if (dependency == resource_dependencies.end())
+                if (dependency == recipe.resources.end())
                 {
-                    resource_dependencies.push_back({scope, factory->id, {}, {}});
-                    dependency = std::prev(resource_dependencies.end());
+                    if (recipe.uses_capabilities)
+                    {
+                        return cxx::unexpected(RenderError{kCapabilityDeclaration});
+                    }
+                    recipe.resources.push_back({scope, factory->id, {}, {}});
+                    dependency = std::prev(recipe.resources.end());
                 }
                 StorageArgument argument;
                 argument.resource = binding.resource;
@@ -134,8 +137,8 @@ namespace lux::render::runtime_detail
 
         std::vector<FrameChannel> channels;
         std::vector<std::span<const FrameChannel>> dependency_channels;
-        dependency_channels.reserve(resource_dependencies.size());
-        for (const auto& dependency : resource_dependencies)
+        dependency_channels.reserve(recipe.resources.size());
+        for (const auto& dependency : recipe.resources)
         {
             const auto declaration = std::ranges::find(declarations, dependency.declaration, &ResourceDeclaration::id);
             if (declaration == declarations.end())
@@ -154,9 +157,9 @@ namespace lux::render::runtime_detail
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
-        for (std::size_t i = 0; i < resource_dependencies.size(); ++i)
+        for (std::size_t i = 0; i < recipe.resources.size(); ++i)
         {
-            auto& columns = resource_dependencies[i].columns;
+            auto& columns = recipe.resources[i].columns;
             columns.reserve(dependency_channels[i].size());
             for (const auto& channel : dependency_channels[i])
             {
@@ -187,7 +190,8 @@ namespace lux::render::runtime_detail
         result.analysis = std::move(assembly->analysis);
         result.output = input->output;
         result.parameter_groups = std::move(parameter_groups);
-        result.resource_dependencies = std::move(resource_dependencies);
+        result.resource_dependencies = std::move(recipe.resources);
+        result.commands = std::move(recipe.commands);
         result.input_schema = std::move(*schema);
         return result;
     }

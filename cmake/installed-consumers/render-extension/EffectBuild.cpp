@@ -295,9 +295,7 @@ struct ClearImplementation final
     {
         CapabilityImplementation result;
         result.implementation = "test.effect.clear";
-        result.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
-        result.target_samples = {1};
-        result.target_kinds = {ETargetKind::OFFSCREEN};
+        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
         return result;
     }
 };

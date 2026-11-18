@@ -28,6 +28,9 @@ namespace lux::render
     {
         EffectOutputDesc output;
         EffectDefinition definition;
+        // With selections, each Feature key names exactly one implementation contribution or its slash-delimited
+        // child. Live external Resources must belong to the union of selected Capabilities.
+        // With no selections, the Feature ports declare the free graph's Resource requirements.
         std::vector<EffectImplementationUse> implementations;
         EffectParameters parameters;
     };

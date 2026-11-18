@@ -97,6 +97,11 @@ set_tests_properties(installed.render.effect_build_vulkan installed.render.effec
 add_test(NAME installed.render.extension COMMAND render_extension)
 set_tests_properties(installed.render.extension PROPERTIES TIMEOUT 45)
 
+if(WIN32)
+    add_test(NAME installed.render.extension_d3d12 COMMAND render_extension d3d12)
+    set_tests_properties(installed.render.extension_d3d12 PROPERTIES TIMEOUT 45)
+endif()
+
 add_executable(frame_columns FrameColumns.cpp)
 
 target_link_libraries(frame_columns PRIVATE lux::engine::function::render)

@@ -47,12 +47,14 @@ namespace lux::render::detail
     {
         CapabilityImplementation result;
         result.implementation = name;
-        result.target_formats = {
-            rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA8_SRGB,
-            rdesc::ETextureFormat::BGRA8_UNORM, rdesc::ETextureFormat::BGRA8_SRGB
+        using enum rdesc::ETextureFormat;
+        using enum ETargetKind;
+        result.outputs = {
+            {RGBA8_UNORM, 1, OFFSCREEN}, {RGBA8_UNORM, 1, SURFACE},
+            {RGBA8_SRGB, 1, OFFSCREEN}, {RGBA8_SRGB, 1, SURFACE},
+            {BGRA8_UNORM, 1, OFFSCREEN}, {BGRA8_UNORM, 1, SURFACE},
+            {BGRA8_SRGB, 1, OFFSCREEN}, {BGRA8_SRGB, 1, SURFACE}
         };
-        result.target_samples = {1};
-        result.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
         return result;
     }
 } // namespace lux::render::detail

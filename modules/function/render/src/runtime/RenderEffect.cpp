@@ -1,6 +1,7 @@
 #include <exec/variant_sender.hpp>
 #include <limits>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
+#include <map>
 #include <set>
 
 namespace lux::render::runtime_detail
@@ -46,10 +47,8 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
-    RenderResult<std::vector<RenderEffect::ResourceDependency>>
-    RenderServer::Impl::qualifyEffectRecipe(
-        const CreateEffectRequest& request, std::vector<CommandBindingLocation>& commands
-    ) const noexcept
+    RenderResult<runtime_detail::QualifiedEffectRecipe>
+    RenderServer::Impl::qualifyEffectRecipe(const CreateEffectRequest& request) const noexcept
     {
         if (auto valid = validateEffectOutput(request.output); !valid)
         {
@@ -59,24 +58,30 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kInvalidConfig});
         }
-        std::set<std::string_view> keys;
+        if (request.definition.features.empty())
+        {
+            return cxx::unexpected(RenderError{kFeatureContract});
+        }
+        runtime_detail::QualifiedEffectRecipe recipe;
+        recipe.uses_capabilities = !request.implementations.empty();
+        std::map<std::string_view, const CapabilityImplementation*> contributions;
         std::set<std::pair<std::size_t, std::string_view>> capabilities;
         std::set<std::pair<std::uint32_t, std::uint32_t>> resource_ids;
         std::vector<const CapabilityDescription*> declarations;
-        std::vector<RenderEffect::ResourceDependency> dependencies;
         for (const auto& use : request.implementations)
         {
             const auto* implementation = capability_registry_.find(use.implementation);
             if (!implementation) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            if (use.contribution.empty() || !keys.emplace(use.contribution).second)
+            if (use.contribution.empty() || !contributions.emplace(use.contribution, implementation).second)
                 return cxx::unexpected(RenderError{kCapabilityDeclaration});
             if (auto error = capabilityOutputError(*implementation, request.output); error.type)
                 return cxx::unexpected(error);
 
             for (const auto& binding : implementation->command_bindings)
             {
-                const auto previous = std::ranges::find(commands, binding.command, &CommandBindingLocation::command);
-                if (previous == commands.end()) commands.push_back(binding);
+                const auto previous =
+                    std::ranges::find(recipe.commands, binding.command, &CommandBindingLocation::command);
+                if (previous == recipe.commands.end()) recipe.commands.push_back(binding);
                 else if (previous->binding != binding.binding)
                     return cxx::unexpected(RenderError{kCapabilityDeclaration});
             }
@@ -93,7 +98,7 @@ namespace lux::render
                 if (!resource_ids.emplace(type.index, type.gen).second) continue;
                 const auto* factory = domain_->resources_.factory(type);
                 if (!factory) return cxx::unexpected(RenderError{kStorageIdentity});
-                dependencies.push_back({factory->descriptor->domain, type, {}, {}});
+                recipe.resources.push_back({factory->descriptor->domain, type, {}, {}});
             }
         }
         for (const auto* declaration : declarations)
@@ -104,33 +109,38 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kCapabilityPrerequisite});
             }
         }
-        return dependencies;
+        recipe.features.reserve(request.definition.features.size());
+        for (const auto& selection : request.definition.features)
+        {
+            const auto* feature = features_.find(selection.feature);
+            if (!feature) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (recipe.uses_capabilities)
+            {
+                const std::string_view key = selection.contribution_key;
+                const CapabilityImplementation* owner = nullptr;
+                for (const auto& [name, implementation] : contributions)
+                {
+                    const bool is_child = key.size() > name.size() && key.starts_with(name) && key[name.size()] == '/';
+                    if (key != name && !is_child) continue;
+                    if (owner) return cxx::unexpected(RenderError{kCapabilityDeclaration});
+                    owner = implementation;
+                }
+                if (!owner || std::ranges::find(owner->features, selection.feature) == owner->features.end())
+                {
+                    return cxx::unexpected(RenderError{kCapabilityDeclaration});
+                }
+            }
+            recipe.features.push_back(feature);
+        }
+        return recipe;
     }
 
     auto RenderServer::Impl::createEffect(CreateEffect::Request&& request) noexcept
     {
-        std::vector<CommandBindingLocation> commands;
-        auto dependencies = qualifyEffectRecipe(request, commands);
-        auto error = dependencies ? RenderError{} : dependencies.error();
-        if (!error.type && request.definition.features.empty()) error = {kFeatureContract};
-
-        std::vector<const FeatureEntry*> registrations;
+        auto recipe = qualifyEffectRecipe(request);
+        const auto error = recipe ? RenderError{} : recipe.error();
         std::vector<ResourceDeclaration> declarations;
-        if (!error.type)
-        {
-            registrations.reserve(request.definition.features.size());
-            for (const auto& selection : request.definition.features)
-            {
-                const auto* feature = features_.find(selection.feature);
-                if (!feature)
-                {
-                    error = {kRuntimeIdentity};
-                    break;
-                }
-                registrations.push_back(feature);
-            }
-        }
-        if (!error.type)
+        if (recipe)
         {
             domain_->resources_.forEachType(
                 [&](ResourceTypeId id, const ResourceDefinition& definition) noexcept
@@ -150,14 +160,12 @@ namespace lux::render
         auto compiled =
             stdexec::schedule(cpu_scheduler_) |
             stdexec::then([
-                declarations = std::move(declarations), request = std::move(request), commands = std::move(commands),
-                registrations = std::move(registrations), limit = config_.max_config_bytes,
-                dependencies = dependencies ? std::move(*dependencies) : std::vector<RenderEffect::ResourceDependency>{}
+                declarations = std::move(declarations), request = std::move(request),
+                qualified = recipe ? std::move(*recipe) : runtime_detail::QualifiedEffectRecipe{},
+                limit = config_.max_config_bytes
             ]() mutable noexcept
             {
-                auto effect = buildEffect(declarations, request, registrations, limit, std::move(dependencies));
-                if (effect) effect->commands = std::move(commands);
-                return effect;
+                return buildEffect(declarations, request, std::move(qualified), limit);
             }) |
             stdexec::continues_on(server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery)) |
             stdexec::let_value([this](EffectBuildResult& built) { return adoptBuiltEffect(std::move(built)); });

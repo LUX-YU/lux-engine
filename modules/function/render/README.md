@@ -34,8 +34,14 @@ Server creation registers built-in construction/call entries. A public capabilit
 `PrerequisiteCapabilities`, `Resources`, and Effect `Commands`. `CapabilityDescription` stores their borrowed
 metadata. Resource declarations alone own their commands and per-frame element types; Capability implementations
 cannot redirect those calls or substitute another Resource identity. Composition deduplicates Resource requirements
-across selected capabilities. `ListCapabilities` discovers concrete implementations by capability type name and implementation name;
-results contain the public declaration, implementation identity, Feature IDs and device eligibility.
+across selected capabilities. `ListCapabilities` discovers concrete implementations by capability type name
+and implementation name. Results contain the public declaration, implementation identity, Feature IDs and
+device eligibility. Each implementation lists exact output format, sample count and Target kind combinations.
+Target and Graph qualification handle sampling separately.
+In an Effect with selected implementations, each Feature key belongs to exactly one selection through an exact
+name or slash-delimited child. Its Feature ID must be listed by that implementation, and each live external
+Resource must be declared by one of the selected Capabilities. An Effect without selections obtains its
+Resource requirements from the Feature ports.
 The saved composition keeps names and actual configuration bytes; generational IDs belong only to this Server.
 
 Resource upload is independent of Effect creation. `GetOrCreateResource` selects an instance in a real
@@ -176,8 +182,11 @@ The library returns structured diagnostics and never chooses a terminal or loggi
    reply confirms native submission acceptance. Actual GPU completion governs physical FIF reuse and Target
    retirement. For window Targets, presentation is a separate native outcome.
 
-Both operations use the same typed columns. The Server checks the shared layout identity and mutable Resource
-identities before applying nonempty columns once per Resource. An exact request that fails has its own terminal
+Both operations use the same typed columns. The Server checks the shared layout identity, Resource identities
+and exclusive access before applying nonempty columns once per Resource. If a Resource rejects its input,
+earlier successful Resource writes remain in effect. The reply settles the packet borrow. After
+`StopRenderJob`, new updates fail with `kJobStopped` while already borrowed packets settle on their own terminal
+replies. An exact request that fails has its own terminal
 and can be retried after its cause is resolved. A continuous Job with a failed round exposes `last_run_error`
 through `QueryExecutionProgress`. An explicit request, execution input change or cadence change can retry it.
 The [installed UI consumer fixture](../../../editor/ui/render/test/FramePacket.cpp) drives the SDK and verifies

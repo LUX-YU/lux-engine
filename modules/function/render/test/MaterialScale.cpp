@@ -386,6 +386,7 @@ namespace
                 static_cast<unsigned long long>(memory_bytes), static_cast<unsigned long long>(uploaded),
                 double(record_bytes * kFif) / double(buffer_bytes), wall_us, cpu_us
             );
+            std::fflush(stdout);
             if (round == 4) break;
             for (const auto id : ids) call<MaterialCommands::Release>(ipc, commands, {id});
             ids.clear();
@@ -397,11 +398,18 @@ namespace
         {
             MeshInstanceData value{mesh, ids[index]};
             value.render_enabled = true;
-            // Place each record over a distinct pixel, with material zero at the readback point.
-            const auto pixel = (32 * 64 + 32 + index) % (64 * 64);
-            value.transform[0] = value.transform[5] = 1.0F / 64;
-            value.transform[12] = (2 * float(pixel % 64) + 1) / 64 - 1;
-            value.transform[13] = 1 - (2 * float(pixel / 64) + 1) / 64;
+            if (index == 0)
+            {
+                // The readback point stays well inside this quad on either backend.
+                value.transform[0] = value.transform[5] = .125F;
+            }
+            else
+            {
+                const auto pixel = index - 1;
+                value.transform[0] = value.transform[5] = 1.0F / 64;
+                value.transform[12] = (2 * float(pixel % 64) + 1) / 64 - 1;
+                value.transform[13] = 1 - (2 * float(pixel / 64) + 1) / 64;
+            }
             input.push_back(value);
         }
         constexpr unsigned sparse = 8;
@@ -443,6 +451,7 @@ namespace
                 static_cast<unsigned long long>(reads.buffer_bytes), static_cast<unsigned long long>(reads.image_ranges),
                 static_cast<unsigned long long>(reads.image_subresources)
             );
+            std::fflush(stdout);
         }
         call<RemoveScene>(ipc, commands, {scene});
         for (const auto id : ids) call<MaterialCommands::Release>(ipc, commands, {id});

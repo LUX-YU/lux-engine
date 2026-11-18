@@ -899,6 +899,23 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
     return response;
 }
 
+inline MaterialProgramId registerMaterialProgram(
+    ipc::IpcRequester& client, const CommandList& commands, ResourceInstanceId resource, rdesc::MaterialProgramSet program
+)
+{
+    return call<MaterialCommands::RegisterProgram>(client, commands, {resource, std::move(program)}).program;
+}
+
+inline MaterialId createMaterialInstance(
+    ipc::IpcRequester& client, const CommandList& commands, MaterialProgramId program,
+    MaterialParameters parameters = {}, std::vector<TextureId> textures = {}
+)
+{
+    return call<MaterialCommands::CreateInstance>(
+        client, commands, {program, std::move(parameters), std::move(textures)}
+    ).material;
+}
+
 static void renderFrame(ipc::IpcRequester& client, const CommandList& commands, RenderJobId job)
 {
     CHECK(call<RequestRenderJob>(client, commands, {job}).job == job);

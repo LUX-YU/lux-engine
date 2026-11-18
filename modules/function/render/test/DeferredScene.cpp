@@ -645,22 +645,32 @@ int main(int argc, char** argv)
     const auto right_mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
     const MaterialParameters left_values{{.2F, .4F, .6F, 1}, {0, 0, 0, 0}, {1, 0, 0, 0}};
     const MaterialParameters right_values{{.3F, .5F, .7F, 1}, {0, 0, 0, 0}, {1, 0, 0, 0}};
-    auto left_material = call<MaterialCommands::Create>(*client, commands, {materials, {unlit, left_values}}).material;
+    std::vector<MaterialProgramId> registered;
+    const auto registerProgram = [&](rdesc::MaterialProgramSet program)
+    {
+        const auto id = registerMaterialProgram(*client, commands, materials, std::move(program));
+        registered.push_back(id);
+        return id;
+    };
+    const auto createInstance = [&](MaterialProgramId program, MaterialParameters values, std::vector<TextureId> textures = {})
+    {
+        return createMaterialInstance(*client, commands, program, std::move(values), std::move(textures));
+    };
+    auto left_material = createInstance(registerProgram(unlit), left_values);
+    auto pbr_id = registerProgram(pbr);
     // Distinct records, including later pages, must be addressed through this FIF material reference.
     std::vector<MaterialId> page_materials;
     if (material_pages)
     {
         for (unsigned i = 0; i < 49; ++i)
-            page_materials.push_back(
-                call<MaterialCommands::Create>(*client, commands, {materials, {pbr, left_values}}).material
-            );
+            page_materials.push_back(createInstance(pbr_id, left_values));
         // Holes in earlier pages remain reusable without moving any published record.
         for (unsigned i = 0; i < 16; ++i)
-            call<MaterialCommands::Release>(*client, commands, {page_materials[i]});
+            call<MaterialCommands::ReleaseInstance>(*client, commands, {page_materials[i]});
         page_materials.erase(page_materials.begin(), page_materials.begin() + 16);
     }
-    const auto unused = call<MaterialCommands::Create>(*client, commands, {materials, {pbr, left_values}}).material;
-    auto right_material = call<MaterialCommands::Create>(*client, commands, {materials, {pbr, right_values}}).material;
+    const auto unused = createInstance(pbr_id, left_values);
+    auto right_material = createInstance(pbr_id, right_values);
     std::array<MeshInstanceData, 2> values{{{left_mesh, left_material}, {right_mesh, right_material}}};
     for (auto& value : values) value.render_enabled = true;
     values[0].transform[12] = -.5F;
@@ -1001,26 +1011,29 @@ int main(int argc, char** argv)
     {
         auto invalid_abi = pbr;
         invalid_abi.programs.front().shader.interface.entry_points.front().name += "_invalid";
-        const auto rejected = call<MaterialCommands::Create>(
-            *client, commands, {materials, {std::move(invalid_abi), right_values}}, false
+        const auto rejected = call<MaterialCommands::RegisterProgram>(
+            *client, commands, {materials, std::move(invalid_abi)}, false
         );
         CHECK(rejected.error.type == kStorageContract);
 
-        // Replacing a record with the same program must refresh the reads source without regrouping.
+        // Distinct registrations with an equal shader and ABI reuse the existing native PSO.
         const auto previous_material = right_material;
         auto same_table = pbr;
         CHECK(!same_table.parameter_defaults.empty());
         same_table.parameter_defaults.front()[0] += 1;
-        right_material = call<MaterialCommands::Create>(
-            *client, commands, {materials, {std::move(same_table), right_values}}
-        ).material;
+        const auto duplicate = registerProgram(std::move(same_table));
+        CHECK(duplicate != pbr_id);
+        const auto pipelines = call_capture_counts[2].load();
+        right_material = createInstance(duplicate, right_values);
         all_materials.push_back(right_material);
         values[1].material = right_material;
         const std::array replaced_material{MeshInstanceUpdate{ids[1], values[1]}};
         updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{replaced_material});
-        call<MaterialCommands::Release>(*client, commands, {previous_material});
+        call<MaterialCommands::ReleaseInstance>(*client, commands, {previous_material});
         std::erase(all_materials, previous_material);
         CHECK(all_candidates == run(0));
+        if (program_cache_probe && device.cached_unused_programs >= 256)
+            CHECK(call_capture_counts[2].load() == pipelines);
     }
     // Flags use the existing property stream and survive all FIF replicas. Disabling frustum tests
     // must not bypass render permission; reenabling keeps the same resource/instance identities.
@@ -1085,8 +1098,8 @@ int main(int argc, char** argv)
         ).texture;
     }
     pbr = normal_mapped;
-    right_material =
-        call<MaterialCommands::Create>(*client, commands, {materials, {pbr, right_values, {normal_texture}}}).material;
+    const auto normal_mapped_id = registerProgram(pbr);
+    right_material = createInstance(normal_mapped_id, right_values, {normal_texture});
     all_materials.push_back(right_material);
     values[1].material = right_material;
     const std::array normal_update{MeshInstanceUpdate{ids[1], values[1]}};
@@ -1143,9 +1156,7 @@ int main(int argc, char** argv)
         CHECK(std::ranges::none_of(entry.inputs, is_uv));
     }
     const auto buffers_before = call_capture_placed_buffers.load();
-    const auto no_uv_material = call<MaterialCommands::Create>(
-        *client, commands, {materials, {no_uv_program, right_values, {normal_texture}}}
-    ).material;
+    const auto no_uv_material = createInstance(registerProgram(no_uv_program), right_values, {normal_texture});
     if (material_pages && call_capture_core)
     {
         CHECK(!pbr.hasSameStructure(no_uv_program) && pbr.parameters == no_uv_program.parameters);
@@ -1158,11 +1169,9 @@ int main(int argc, char** argv)
         shorter.parameter_defaults.pop_back();
         auto shorter_values = right_values;
         shorter_values.pop_back();
-        const auto separate = call<MaterialCommands::Create>(
-            *client, commands, {materials, {std::move(shorter), std::move(shorter_values), {normal_texture}}}
-        ).material;
+        const auto separate = createInstance(registerProgram(std::move(shorter)), std::move(shorter_values), {normal_texture});
         CHECK(call_capture_placed_buffers.load() == buffers_before + fif);
-        call<MaterialCommands::Release>(*client, commands, {separate});
+        call<MaterialCommands::ReleaseInstance>(*client, commands, {separate});
         std::puts("MATERIAL PROJECTION PASS: same stride and hash bucket kept distinct ABI pages");
     }
     all_materials.push_back(no_uv_material);
@@ -1183,26 +1192,15 @@ int main(int argc, char** argv)
     for (bool two_sided : {false, true})
     {
         pbr = cook(shader_target, true, false, true, false, two_sided);
-        right_material = call<MaterialCommands::Create>(
-                             *client,
-                             commands,
-                             {materials, {pbr, right_values, {normal_texture}}}
-        ).material;
+        pbr_id = registerProgram(pbr);
+        right_material = createInstance(pbr_id, right_values, {normal_texture});
         if (material_pages)
         {
             // The same program draws records in different physical pages in one group.
             for (unsigned i = 0; i < 49; ++i)
-                all_materials.push_back(
-                    call<MaterialCommands::Create>(
-                        *client, commands, {materials, {pbr, right_values, {normal_texture}}}
-                    ).material
-                );
+                all_materials.push_back(createInstance(pbr_id, right_values, {normal_texture}));
         }
-        const auto other_material = call<MaterialCommands::Create>(
-                                        *client,
-                                        commands,
-                                        {materials, {pbr, left_values, {normal_texture}}}
-        ).material;
+        const auto other_material = createInstance(pbr_id, left_values, {normal_texture});
         all_materials.insert(all_materials.end(), {right_material, other_material});
         values[1].material = right_material;
         const std::array changed{MeshInstanceUpdate{ids[1], values[1]}};
@@ -1232,9 +1230,7 @@ int main(int argc, char** argv)
         CHECK(reference == culled);
         if (material_pages)
         {
-            const auto switched = call<MaterialCommands::Create>(
-                *client, commands, {materials, {pbr, left_values, {alternate_normal}}}
-            ).material;
+            const auto switched = createInstance(pbr_id, left_values, {alternate_normal});
             auto replacement = additions[0];
             replacement.material = switched;
             const std::array changed_texture{MeshInstanceUpdate{extra_instances[0], replacement}};
@@ -1261,7 +1257,7 @@ int main(int argc, char** argv)
             if (program_cache_probe) CHECK(call_capture_counts[2].load() == pipelines);
             const std::array restored{MeshInstanceUpdate{extra_instances[0], additions[0]}};
             updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored});
-            call<MaterialCommands::Release>(*client, commands, {switched});
+            call<MaterialCommands::ReleaseInstance>(*client, commands, {switched});
             std::puts("MATERIAL UPDATE PASS: member, texture and parameter changes reached GPU pixels");
         }
         // Independent interior-pixel oracle: both orientations survive hardware culling, use the
@@ -1314,8 +1310,7 @@ int main(int argc, char** argv)
         *client, commands, {instances, std::span<const MeshInstanceData>{&values[0], 1}}
     ).instances.front();
     pbr = normal_mapped;
-    right_material =
-        call<MaterialCommands::Create>(*client, commands, {materials, {pbr, right_values, {normal_texture}}}).material;
+    right_material = createInstance(normal_mapped_id, right_values, {normal_texture});
     all_materials.push_back(right_material);
     values[1].material = right_material;
     const std::array restored{MeshInstanceUpdate{ids[1], values[1]}};
@@ -1324,9 +1319,7 @@ int main(int argc, char** argv)
     // A material without GBuffer output fails that visible frame, retaining the old cache entries.
     // Derive the actual requested purpose so unused author parameters/textures are normalized.
     auto incompatible_program = cook(shader_target, true, false, true, true);
-    const auto incompatible_material = call<MaterialCommands::Create>(
-        *client, commands, {materials, {incompatible_program, {}, {}}}
-    ).material;
+    const auto incompatible_material = createInstance(registerProgram(std::move(incompatible_program)), {});
     const auto invalid_view = call<CreateView>(*client, commands, {scene}).view;
     const auto invalid_target = call<CreateTarget>(*client, commands, {target}).target;
     const auto initial_camera = camera;
@@ -1364,11 +1357,11 @@ int main(int argc, char** argv)
     call<RemoveEffect>(*client, commands, {invalid_effect});
     call<RemoveView>(*client, commands, {scene, invalid_view});
     call<RemoveTarget>(*client, commands, invalid_target);
-    call<MaterialCommands::Release>(*client, commands, {incompatible_material});
+    call<MaterialCommands::ReleaseInstance>(*client, commands, {incompatible_material});
     unlit = masked;
     auto masked_values = left_values;
     masked_values[2][0] = 0;
-    left_material = call<MaterialCommands::Create>(*client, commands, {materials, {unlit, masked_values}}).material;
+    left_material = createInstance(registerProgram(unlit), masked_values);
     all_materials.push_back(left_material);
     values[0].material = left_material;
     const std::array mask_update{MeshInstanceUpdate{ids[0], values[0]}};
@@ -1447,7 +1440,7 @@ int main(int argc, char** argv)
     unlit = cook(shader_target, true, false, false, true);
     CHECK(unlit.parameter_defaults.empty() && unlit.texture_count == 0);
     const auto constant_buffers = call_capture_placed_buffers.load();
-    left_material = call<MaterialCommands::Create>(*client, commands, {materials, {unlit, {}}}).material;
+    left_material = createInstance(registerProgram(unlit), {});
     if (material_pages && call_capture_core)
         CHECK(call_capture_placed_buffers.load() == constant_buffers);
     all_materials.push_back(left_material);
@@ -1458,12 +1451,13 @@ int main(int argc, char** argv)
     call<RemoveScene>(*client, commands, {scene});
     for (auto material : all_materials)
     {
-        call<MaterialCommands::Release>(
+        call<MaterialCommands::ReleaseInstance>(
             *client,
             commands,
             {material}
         );
     }
+    for (const auto program : registered) call<MaterialCommands::UnregisterProgram>(*client, commands, {program});
     for (auto mesh : {left_mesh, right_mesh})
     {
         call<MeshCommands::ReleaseMesh>(
@@ -1509,16 +1503,18 @@ int main(int argc, char** argv)
         const auto resource = call<GetOrCreateResource>(
             requester, directory, {GlobalRenderScope{}, kMaterialResourceName}
         ).resource_id;
-        const auto constant = call<MaterialCommands::Create>(requester, directory, {resource, {unlit, {}}}).material;
+        const auto program = registerMaterialProgram(requester, directory, resource, unlit);
+        const auto constant = createMaterialInstance(requester, directory, program);
         CHECK(!constant.isNull());
-        call<MaterialCommands::Release>(requester, directory, {constant});
-        const auto reused = call<MaterialCommands::Create>(requester, directory, {resource, {unlit, {}}}).material;
+        call<MaterialCommands::ReleaseInstance>(requester, directory, {constant});
+        const auto reused = createMaterialInstance(requester, directory, program);
         const auto before = extension_detail::ResourceIdentity::local(constant);
         const auto after = extension_detail::ResourceIdentity::local(reused);
         CHECK(before.index == after.index && before.gen != after.gen);
         const auto stale = call<MaterialCommands::Update>(requester, directory, {{constant, {}, {}}}, false);
         CHECK(stale.error.type == kStorageIdentity);
-        call<MaterialCommands::Release>(requester, directory, {reused});
+        call<MaterialCommands::ReleaseInstance>(requester, directory, {reused});
+        call<MaterialCommands::UnregisterProgram>(requester, directory, {program});
         constant_server->stop();
         worker.join();
         CHECK(constant_server->stats().validation_errors == 0);

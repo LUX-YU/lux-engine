@@ -459,11 +459,8 @@ int main(int argc, char** argv)
         ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
     auto compiled = deriveFixtureMaterial(author, purposes, shader_target);
     CHECK(compiled);
-    const auto material = call<MaterialCommands::Create>(
-                              *client,
-                              commands,
-                              {materials, {compiled->material.programs, MaterialParameters{{.5F, .6F, .7F, 1}}}}
-    ).material;
+    const auto program = registerMaterialProgram(*client, commands, materials, std::move(compiled->material.programs));
+    const auto material = createMaterialInstance(*client, commands, program, {{.5F, .6F, .7F, 1}});
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN};
     for (unsigned scenario = 0; scenario < 6; ++scenario)
     {
@@ -618,11 +615,12 @@ int main(int argc, char** argv)
         CHECK(value.required_indices == UINT32_MAX && value.flags == 5);
     }
     call<RemoveEffect>(*client, commands, {scan_effect});
-    call<MaterialCommands::Release>(
+    call<MaterialCommands::ReleaseInstance>(
         *client,
         commands,
         {material}
     );
+    call<MaterialCommands::UnregisterProgram>(*client, commands, {program});
     call<MeshCommands::ReleaseMesh>(
         *client,
         commands,

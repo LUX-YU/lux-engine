@@ -11,6 +11,7 @@
 #include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
 #include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
 #ifdef _WIN32
+#include "Allocation.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -394,15 +395,14 @@ namespace
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, const Probes& probes,
         SceneId scene, ResourceInstanceId materials, ResourceInstanceId instances, MeshId mesh,
         std::span<const TextureId, 2> textures, lux::shader::ShaderCompiler& compiler,
-        rdesc::EShaderTarget target, bool legacy
+        rdesc::EShaderTarget target
     )
     {
         constexpr std::array purposes{EMaterialPurpose::FORWARD, EMaterialPurpose::GBUFFER, EMaterialPurpose::SHADOW};
         auto program = cookProgram(compiler, target, purposes, 1, .125F);
         CHECK(program.programs.size() == purposes.size());
-        const auto material = call<MaterialCommands::Create>(
-            ipc, commands, {materials, {program, {{1, 0, 0, 0}}, {textures[0]}}}
-        ).material;
+        const auto registered = registerMaterialProgram(ipc, commands, materials, std::move(program));
+        const auto material = createMaterialInstance(ipc, commands, registered, {{1, 0, 0, 0}}, {textures[0]});
         MeshInstanceData input{mesh, material};
         input.render_enabled = true;
         const auto instance = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
@@ -415,27 +415,26 @@ namespace
         CHECK(std::to_integer<int>(forward.center[3]) == 255 && std::to_integer<int>(gbuffer.center[3]) == 0);
         CHECK(std::abs(std::bit_cast<float>(shadow.center) - .5F) < 1e-5F);
         CHECK(forward.image_ranges == kFif && gbuffer.image_ranges == kFif);
-        CHECK(shadow.image_ranges == (legacy ? kFif : 0));
+        CHECK(shadow.image_ranges == 0);
         CHECK(forward.buffer_ranges == kFif && gbuffer.buffer_ranges == kFif && shadow.buffer_ranges == kFif);
         call<MaterialCommands::Update>(ipc, commands, {{material, {{.25F, 0, 0, 0}}, {textures[0]}}});
         const auto masked = sampleRaster(server, ipc, commands, probes[2], purposes[2], scene);
         CHECK(std::bit_cast<float>(masked.center) == 1);
         call<MaterialCommands::Update>(ipc, commands, {{material, {{1, 0, 0, 0}}, {textures[0]}}});
-        const auto other = call<MaterialCommands::Create>(
-            ipc, commands, {materials, {std::move(program), {{.75F, 0, 0, 0}}, {textures[1]}}}
-        ).material;
+        const auto other = createMaterialInstance(ipc, commands, registered, {{.75F, 0, 0, 0}}, {textures[1]});
         input.material = other;
         input.transform[0] = input.transform[5] = .25F;
         input.transform[12] = .5F;
         const auto sibling = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
         input.material = material;
-        const InstanceSwitch change{instances, {sibling, input}, legacy ? 2 * kFif : kFif};
+        const InstanceSwitch change{instances, {sibling, input}, kFif};
         const auto together = sampleRaster(server, ipc, commands, probes[0], purposes[0], scene, &change);
         CHECK(together.buffer_ranges == kFif && together.image_ranges == 2 * kFif);
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {sibling});
-        call<MaterialCommands::Release>(ipc, commands, {other});
+        call<MaterialCommands::ReleaseInstance>(ipc, commands, {other});
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {instance});
-        call<MaterialCommands::Release>(ipc, commands, {material});
+        call<MaterialCommands::ReleaseInstance>(ipc, commands, {material});
+        call<MaterialCommands::UnregisterProgram>(ipc, commands, {registered});
         std::printf(
             "MATERIAL_PURPOSES forward_red=%u gbuffer_red=%u shadow_depth=0.5 masked_depth=1 shadow_image_ranges=%llu "
             "group_image_ranges=%llu switched_image_ranges=%llu\n",
@@ -482,6 +481,7 @@ namespace
     {
         CapturedPixels pixels;
         MaterialId material;
+        MaterialProgramId program;
         EffectId effect;
         RenderJobId job;
         ViewId view;
@@ -491,9 +491,15 @@ namespace
         MeshInstanceId member;
     };
 
+    struct ProbeMaterial final
+    {
+        MaterialProgramId program;
+        MaterialId instance;
+    };
+
     JobSubmitted verifyPreparationLifecycle(
         RenderServer& server, ipc::IpcRequester& client, ipc::IpcRequester& requests, const CommandList& commands,
-        const PipelineJob& job, TargetId input, MeshId mesh, std::span<const MaterialId, 3> variants
+        const PipelineJob& job, TargetId input, MeshId mesh, std::span<const ProbeMaterial, 3> variants
     )
     {
         using Probe = PipelineIsolationProbe;
@@ -530,7 +536,7 @@ namespace
             CHECK(snapshot().discarded_preparations == previous + 1);
         };
 
-        changeMaterial(variants[0]);
+        changeMaterial(variants[0].instance);
         const auto stop_before = snapshot();
         const auto stop_creates = Probe::created_pipelines.load();
         const auto stop_destroys = Probe::destroyed_pipelines.load();
@@ -546,15 +552,20 @@ namespace
         CHECK(call<RemoveRenderJob>(client, commands, job.job, false).error.type == kJobBusy);
         requireBorrowedTarget(job.target, ETextureFormat::RGBA8_UNORM);
         requireBorrowedTarget(input, ETextureFormat::RGBA16_SFLOAT);
+        changeMaterial(job.material);
+        call<MaterialCommands::ReleaseInstance>(client, commands, {variants[0].instance});
+        const auto busy = call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program}, false);
+        CHECK(busy.error.type == kDeviceBusy); // No live instance remains, only the frozen PSO borrow.
         Probe::releaseDriver();
         waitForDiscard(stop_before.discarded_preparations);
+        call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
         CHECK(Probe::created_pipelines.load() == stop_creates + 1);
         CHECK(Probe::destroyed_pipelines.load() == stop_destroys + 1);
         call<RebindRenderJobEffect>(client, commands, {job.job, job.effect});
         call<StartRenderJob>(client, commands, {job.job, job.target, job.binding});
         renderFrame(client, commands, job.job);
 
-        changeMaterial(variants[1]);
+        changeMaterial(variants[1].instance);
         const auto failure_before = snapshot();
         const auto calls_before = Probe::pipeline_calls.load();
         Probe::fail_pipeline = true;
@@ -569,7 +580,7 @@ namespace
 
         const auto layout = call<QueryRenderJobInputLayout>(client, commands, job.job).layout;
         auto packet = take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout));
-        MeshInstanceData value{mesh, variants[1]};
+        MeshInstanceData value{mesh, variants[1].instance};
         value.render_enabled = true;
         CHECK(packet.addData<InstanceResource>(MeshInstanceUpdate{job.member, value}));
         CHECK(packet.seal());
@@ -578,8 +589,8 @@ namespace
         Probe::gate = Probe::EGate::ARMED;
         const auto pending = requestFrame(requests, commands, job.job, &packet);
         Probe::waitForDriver();
-        for (unsigned update = 0; update < 2048; ++update) changeMaterial(variants[1 + (update + 1) % 2]);
-        changeMaterial(variants[2]);
+        for (unsigned update = 0; update < 2048; ++update) changeMaterial(variants[1 + (update + 1) % 2].instance);
+        changeMaterial(variants[2].instance);
         CHECK(packet.sealed());
         CHECK(!receiveFrameBefore(requests, pending, Clock::now() + 20ms));
         Probe::releaseDriver();
@@ -593,6 +604,7 @@ namespace
         CHECK(after.discarded_preparations == stale_before.discarded_preparations + 1);
         CHECK(Probe::destroyed_pipelines.load() == stale_destroys + 1);
         std::puts("PIPELINE_LIFETIME stale_revisions=2048 discarded=1 stopped=1 failure_attempts=1 terminal_replies=1");
+        std::puts("MATERIAL_PROGRAM_BORROW unregister_while_borrowed=busy released_after_return=1");
         return *final;
     }
 
@@ -611,9 +623,8 @@ namespace
         {
             auto program = cookProgram(compiler, target, purposes, shape, emission);
             auto parameters = program.parameter_defaults;
-            return call<MaterialCommands::Create>(
-                client, commands, {materials, {std::move(program), std::move(parameters), {texture}}}
-            ).material;
+            const auto id = registerMaterialProgram(client, commands, materials, std::move(program));
+            return ProbeMaterial{id, createMaterialInstance(client, commands, id, std::move(parameters), {texture})};
         };
         TargetId source;
         if (expect_progress)
@@ -634,7 +645,9 @@ namespace
         for (unsigned i = 0; i < jobs.size(); ++i)
         {
             auto& job = jobs[i];
-            job.material = createMaterial(i + 1, float(i + 1) / 8);
+            const auto created = createMaterial(i + 1, float(i + 1) / 8);
+            job.program = created.program;
+            job.material = created.instance;
             job.instances = call<GetOrCreateResource>(client, commands, {scenes[i], kInstanceResourceName}).resource_id;
             MeshInstanceData input{mesh, job.material};
             input.render_enabled = true;
@@ -770,7 +783,7 @@ namespace
         CHECK((holding_slot == 0) == expect_progress);
 
         std::optional<JobSubmitted> newest;
-        std::array<MaterialId, 3> variants;
+        std::array<ProbeMaterial, 3> variants;
         if (expect_progress)
         {
             variants = {createMaterial(3, .375F), createMaterial(4, .75F), createMaterial(5, .5F)};
@@ -793,7 +806,8 @@ namespace
                 std::this_thread::yield();
             }
             call<RemoveScene>(client, commands, {scenes[i]});
-            call<MaterialCommands::Release>(client, commands, {job.material});
+            call<MaterialCommands::ReleaseInstance>(client, commands, {job.material});
+            call<MaterialCommands::UnregisterProgram>(client, commands, {job.program});
         }
         if (newest)
         {
@@ -809,7 +823,11 @@ namespace
                 historical[history_offset + 2] > historical[history_offset + 1] &&
                 historical[history_offset + 3] == std::byte{255};
             CHECK(sampled_publication);
-            for (auto variant : variants) call<MaterialCommands::Release>(client, commands, {variant});
+            for (const auto& variant : std::span(variants).subspan(1))
+            {
+                call<MaterialCommands::ReleaseInstance>(client, commands, {variant.instance});
+                call<MaterialCommands::UnregisterProgram>(client, commands, {variant.program});
+            }
             std::printf("PIPELINE_LATEST frame=%llu red=%u sampled_history=1\n",
                 static_cast<unsigned long long>(newest->frame_index), std::to_integer<unsigned>(frame[offset]));
         }
@@ -830,12 +848,20 @@ namespace
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands,
         const RenderProbe<RasterProbeConfig>& forward, SceneId scene, ResourceInstanceId materials,
         ResourceInstanceId instances, MeshId mesh, std::span<const TextureId> textures,
-        lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target, unsigned count, bool varied, bool legacy
+        lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target, unsigned count, bool varied
     )
     {
         constexpr std::array purposes{EMaterialPurpose::FORWARD};
         const auto abi_count = varied ? std::min(count, 128u) : 1u;
-        std::vector<rdesc::MaterialProgramSet> programs;
+        struct Program final
+        {
+            MaterialProgramId id;
+            MaterialParameters defaults;
+            std::uint32_t texture_count;
+            std::uint32_t stride;
+        };
+        std::vector<Program> programs;
+        programs.reserve(count);
         std::set<std::size_t> binaries;
         std::set<std::pair<std::size_t, std::uint32_t>> projections;
         std::uint64_t record_bytes = 0;
@@ -852,10 +878,13 @@ namespace
             CHECK(program.parameter_defaults.size() == parameters && program.texture_count == texture_count);
             projections.emplace(program.parameter_defaults.size(), program.texture_count);
             record_bytes += program.parameters.size;
-            programs.push_back(std::move(program));
+            const auto stride = program.parameters.size;
+            auto defaults = program.parameter_defaults;
+            const auto id = registerMaterialProgram(ipc, commands, materials, std::move(program));
+            programs.push_back({id, std::move(defaults), texture_count, stride});
         }
         CHECK(projections.size() == abi_count && textures.size() == 9);
-        const auto pages = legacy ? count : abi_count * pagesFor(count / abi_count);
+        const auto pages = abi_count * pagesFor(count / abi_count);
         std::vector<MaterialId> ids;
         ids.reserve(count);
         std::uint64_t resident_buffer_bytes = 0;
@@ -870,9 +899,7 @@ namespace
                 const auto& program = programs[i];
                 std::vector<TextureId> bindings(program.texture_count);
                 bindings.front() = textures[std::min<std::size_t>(i, textures.size() - 1)];
-                ids.push_back(call<MaterialCommands::Create>(
-                    ipc, commands, {materials, {program, program.parameter_defaults, std::move(bindings)}}
-                ).material);
+                ids.push_back(createMaterialInstance(ipc, commands, program.id, program.defaults, std::move(bindings)));
             }
             const auto cpu_us = processCpuMicroseconds() - cpu_before;
             const auto wall_us = std::chrono::duration<double, std::micro>(Clock::now() - start).count();
@@ -897,7 +924,7 @@ namespace
             );
             std::fflush(stdout);
             if (round == 4) break;
-            for (const auto id : ids) call<MaterialCommands::Release>(ipc, commands, {id});
+            for (const auto id : ids) call<MaterialCommands::ReleaseInstance>(ipc, commands, {id});
             ids.clear();
         }
 
@@ -931,8 +958,8 @@ namespace
             CHECK(created.instances.size() == active - previous);
             previous = active;
             const auto reads = sampleRaster(server, ipc, commands, forward, purposes[0], scene);
-            const auto expected_pages = active == count ? pages : (legacy || varied ? sparse : 1);
-            const auto expected_images = legacy ? active : std::min<unsigned>(active, 9);
+            const auto expected_pages = active == count ? pages : (varied ? sparse : 1);
+            const auto expected_images = std::min<unsigned>(active, 9);
             CHECK(reads.buffer_ranges == expected_pages * kFif);
             if (active == count)
             {
@@ -940,13 +967,13 @@ namespace
             }
             else
             {
-                std::uint64_t expected_bytes = programs.front().parameters.size * 16ull;
-                if (legacy || varied)
+                std::uint64_t expected_bytes = programs.front().stride * 16ull;
+                if (varied)
                 {
                     expected_bytes = 0;
                     for (unsigned index = 0; index < active; ++index)
                     {
-                        expected_bytes += programs[index].parameters.size * 16ull;
+                        expected_bytes += programs[index].stride * 16ull;
                     }
                 }
                 CHECK(reads.buffer_bytes == expected_bytes * kFif);
@@ -963,7 +990,96 @@ namespace
             std::fflush(stdout);
         }
         call<RemoveScene>(ipc, commands, {scene});
-        for (const auto id : ids) call<MaterialCommands::Release>(ipc, commands, {id});
+        for (const auto id : ids) call<MaterialCommands::ReleaseInstance>(ipc, commands, {id});
+        for (const auto& program : programs) call<MaterialCommands::UnregisterProgram>(ipc, commands, {program.id});
+    }
+
+    void profileInstances(
+        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands,
+        const RenderProbe<RasterProbeConfig>& forward, SceneId scene, ResourceInstanceId materials,
+        ResourceInstanceId instances, MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler,
+        rdesc::EShaderTarget target
+    )
+    {
+        using Register = MaterialCommands::RegisterProgram;
+        using Create = MaterialCommands::CreateInstance;
+        static_assert(ipc::IpcMessage::stores_inline<Create::Request>);
+        constexpr unsigned count = 10'000;
+        constexpr std::array purposes{EMaterialPurpose::FORWARD};
+        auto program = cookProgram(compiler, target, purposes, 1, .125F);
+        const auto stride = program.parameters.size;
+        const auto values = program.parameter_defaults;
+        const auto registration_bytes = sizeof(Register::Request) - sizeof(program) +
+            take(ConfigValueTraits<rdesc::MaterialProgramSet>::retainedBytes(program));
+        const auto logical_instance_bytes = sizeof(Create::Request) + values.size() * sizeof(values.front()) +
+            sizeof(TextureId);
+        std::size_t shader_bytes = 0;
+        for (const auto& purpose : program.programs)
+            for (const auto& stage : purpose.shader.stages)
+                shader_bytes += stage.words.size() * sizeof(stage.words.front());
+        const auto registration_start = Clock::now();
+        const auto id = registerMaterialProgram(ipc, commands, materials, std::move(program));
+        const auto registration_us = std::chrono::duration<double, std::micro>(Clock::now() - registration_start);
+
+        std::vector<MaterialId> ids;
+        ids.reserve(count);
+        std::vector<double> samples;
+        samples.reserve(count);
+        const auto before = MaterialAllocationProbe::sample();
+        MaterialAllocationProbe::measuring = true;
+        const auto start = Clock::now();
+        const auto cpu_before = processCpuMicroseconds();
+#ifdef _WIN32
+        ipc_allocation::start();
+#endif
+        for (unsigned i = 0; i < count; ++i)
+        {
+            const auto request_start = Clock::now();
+            ids.push_back(createMaterialInstance(ipc, commands, id, values, {texture}));
+            samples.push_back(std::chrono::duration<double, std::micro>(Clock::now() - request_start).count());
+        }
+#ifdef _WIN32
+        const auto client_allocations = ipc_allocation::stop();
+        CHECK(client_allocations == count * 2);
+        std::printf("MATERIAL_INSTANCE_CLIENT allocations=%zu count=%u\n", client_allocations, count);
+#endif
+        const auto cpu_us = processCpuMicroseconds() - cpu_before;
+        const auto wall_us = std::chrono::duration<double, std::micro>(Clock::now() - start).count();
+        MaterialAllocationProbe::measuring = false;
+        const auto after = MaterialAllocationProbe::sample();
+        const auto buffers = after.buffers - before.buffers;
+        const auto descriptors = after.views - before.views;
+        const auto allocation = after.memory_bytes - before.memory_bytes;
+        const auto uploaded = after.upload_bytes - before.upload_bytes;
+        CHECK(buffers == pagesFor(count) * kFif);
+        CHECK(buffers == descriptors && uploaded == count * stride);
+        CHECK(call<MaterialCommands::UnregisterProgram>(ipc, commands, {id}, false).error.type == kDeviceBusy);
+        std::ranges::sort(ids, std::less<>{});
+        CHECK(std::ranges::adjacent_find(ids) == ids.end());
+        std::ranges::sort(samples);
+        std::printf(
+            "MATERIAL_INSTANCE_PROFILE programs=1 instances=%u register_retained_bytes=%zu register_shader_bytes=%zu "
+            "request_inline_bytes=%zu request_logical_bytes=%zu request_shader_bytes=0 "
+            "register_us=%.3f create_wall_us=%.3f create_cpu_us=%.3f create_p50_us=%.3f create_p95_us=%.3f "
+            "pages=%u buffers=%llu descriptors=%llu native_memory_requirement_bytes=%llu upload_bytes=%llu\n",
+            count, registration_bytes, shader_bytes, sizeof(Create::Request), logical_instance_bytes,
+            registration_us.count(), wall_us, cpu_us, samples[count / 2 - 1], samples[count * 95 / 100 - 1],
+            pagesFor(count), static_cast<unsigned long long>(buffers), static_cast<unsigned long long>(descriptors),
+            static_cast<unsigned long long>(allocation), static_cast<unsigned long long>(uploaded)
+        );
+        std::fflush(stdout);
+
+        std::array live{MeshInstanceData{mesh, ids.front()}, MeshInstanceData{mesh, ids.back()}};
+        for (auto& instance : live) instance.render_enabled = true;
+        call<InstanceCommands::CreateInstances>(ipc, commands, {instances, live});
+        const auto sampled = sampleRaster(server, ipc, commands, forward, purposes[0], scene);
+        CHECK(sampled.buffer_ranges == 2 * kFif);
+        CHECK(sampled.image_ranges == kFif);
+        CHECK(std::abs(std::to_integer<int>(sampled.center[0]) - 96) <= 1);
+        call<RemoveScene>(ipc, commands, {scene});
+        for (const auto instance : ids) call<MaterialCommands::ReleaseInstance>(ipc, commands, {instance});
+        call<MaterialCommands::UnregisterProgram>(ipc, commands, {id});
+        std::puts("MATERIAL_INSTANCE_READBACK first_and_last_pages=1 releases=10000 program_unregistered=1");
     }
 } // namespace
 
@@ -975,7 +1091,7 @@ int main(int argc, char** argv)
     device.cached_unused_programs = 4096;
     unsigned count = 0;
     bool varied = false;
-    bool legacy = false;
+    bool instance_profile = false;
     std::optional<bool> pipeline_isolation;
     unsigned workers = 2;
     bool stop_server = false;
@@ -984,7 +1100,7 @@ int main(int argc, char** argv)
         const std::string_view arg = argv[i];
         if (arg == "d3d12") device.backend = EGraphicsBackend::D3D12;
         else if (arg == "--varied") varied = true;
-        else if (arg == "--legacy-pages") legacy = true;
+        else if (arg == "--instance-profile") instance_profile = true;
         else if (arg == "--pipeline-isolation") pipeline_isolation = true;
         else if (arg == "--expect-pipeline-blocking") pipeline_isolation = false;
         else if (arg == "--single-worker") workers = 1;
@@ -1034,7 +1150,7 @@ int main(int argc, char** argv)
     call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, MaterialAllocationProbe::Descriptor::descriptor.type});
     if (pipeline_isolation.has_value())
     {
-        CHECK(!count && !varied && !legacy);
+        CHECK(!count && !varied);
         call<GetOrCreateResource>(
             *ipc, commands, {GlobalRenderScope{}, PipelineIsolationProbe::Descriptor::descriptor.type}
         );
@@ -1060,15 +1176,21 @@ int main(int argc, char** argv)
             images.front(), **compiler, shader_target, clear, *pipeline_isolation, workers, stop_server
         );
     }
+    else if (instance_profile)
+    {
+        CHECK(!count && !varied);
+        profileInstances(*server, *ipc, commands, probes[0], scene, materials, instances, mesh, images.front(),
+            **compiler, shader_target);
+    }
     else if (count)
     {
         verifyScale(*server, *ipc, commands, probes[0], scene, materials, instances, mesh, images, **compiler,
-            shader_target, count, varied, legacy);
+            shader_target, count, varied);
     }
     else
     {
         verifyPurposes(*server, *ipc, commands, probes, scene, materials, instances, mesh,
-            std::span<const TextureId, 2>(images.data(), 2), **compiler, shader_target, legacy);
+            std::span<const TextureId, 2>(images.data(), 2), **compiler, shader_target);
         call<RemoveScene>(*ipc, commands, {scene});
     }
     if (thread.joinable())

@@ -35,7 +35,7 @@ namespace lux::render::detail
         }
 
         exec::task<MaterialCommands::RegisterProgram::Response>
-        registerProgram(RasterMaterialStorage& resource, MaterialCommands::RegisterProgram::Request&& input) noexcept
+        handleRegisterProgram(RasterMaterialStorage& resource, MaterialCommands::RegisterProgram::Request&& input) noexcept
         {
             const auto registered = resource.registerProgram(std::move(input.program));
             co_return registered ? MaterialCommands::RegisterProgram::Response{{}, *registered}
@@ -43,7 +43,7 @@ namespace lux::render::detail
         }
 
         exec::task<MaterialCommands::CreateInstance::Response>
-        createInstance(RasterMaterialStorage& resource, MaterialCommands::CreateInstance::Request&& input) noexcept
+        handleCreateInstance(RasterMaterialStorage& resource, MaterialCommands::CreateInstance::Request&& input) noexcept
         {
             const auto created = co_await resource.createInstance(std::move(input));
             co_return created ? MaterialCommands::CreateInstance::Response{{}, *created}
@@ -59,7 +59,7 @@ namespace lux::render::detail
             response.error = released ? RenderError{} : released.error();
         }
 
-        void unregisterProgram(
+        void handleUnregisterProgram(
             RasterMaterialStorage& resource, const MaterialCommands::UnregisterProgram::Request& input,
             MaterialCommands::UnregisterProgram::Response& response
         ) noexcept
@@ -1017,10 +1017,10 @@ namespace lux::render::detail
             CommandBinding::declare<MaterialCommands::Create, &createMaterial>(),
             CommandBinding::declare<MaterialCommands::Update, &updateMaterial>(),
             CommandBinding::declare<MaterialCommands::Release, &releaseMaterial>(),
-            CommandBinding::declare<MaterialCommands::RegisterProgram, &registerProgram>(),
-            CommandBinding::declare<MaterialCommands::CreateInstance, &createInstance>(),
+            CommandBinding::declare<MaterialCommands::RegisterProgram, &handleRegisterProgram>(),
+            CommandBinding::declare<MaterialCommands::CreateInstance, &handleCreateInstance>(),
             CommandBinding::declare<MaterialCommands::ReleaseInstance, &releaseInstance>(),
-            CommandBinding::declare<MaterialCommands::UnregisterProgram, &unregisterProgram>()
+            CommandBinding::declare<MaterialCommands::UnregisterProgram, &handleUnregisterProgram>()
         };
         static const StorageBindingOps binding{
             [](void* object,

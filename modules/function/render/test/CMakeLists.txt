@@ -56,9 +56,15 @@ endforeach()
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
 
+set(ipc_test_source "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/ipc/test")
+
 if(LUX_RENDER_DEVELOPMENT_METRICS)
     add_executable(render_material_scale MaterialScale.cpp)
     target_include_directories(render_material_scale PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+    if(WIN32)
+        target_sources(render_material_scale PRIVATE "${ipc_test_source}/Allocation.cpp")
+        target_include_directories(render_material_scale PRIVATE "${ipc_test_source}")
+    endif()
     target_link_libraries(render_material_scale PRIVATE
         render_native_probe_host NRI lux::engine::function::material_compiler lux::engine::function::material_graph
         lux::engine::core::math
@@ -113,7 +119,6 @@ target_link_libraries(render_clustered_scene PRIVATE render_extensions)
 set_tests_properties(render.sample.clustered PROPERTIES TIMEOUT 120)
 
 # Render Command contracts live with Render; Platform IPC remains independently buildable.
-set(ipc_test_source "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/ipc/test")
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS memory)
 add_executable(render_ipc_commands_test IpcCommands.cpp "${ipc_test_source}/Allocation.cpp")
 target_include_directories(render_ipc_commands_test PRIVATE "${ipc_test_source}" "${ipc_test_source}/../pinclude")

@@ -566,14 +566,11 @@ int main(int argc, char** argv)
         ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
     auto program = material(shader_target);
     MaterialParameters material_values{{.7F, .7F, .7F, 1}};
-    auto material_id =
-        call<MaterialCommands::Create>(*client, commands, {materials, {program, material_values}}).material;
+    const auto registered = registerMaterialProgram(*client, commands, materials, std::move(program));
+    auto material_id = createMaterialInstance(*client, commands, registered, material_values);
     auto unlit_program = material(shader_target, false, true);
-    auto unlit_material = call<MaterialCommands::Create>(
-                              *client,
-                              commands,
-                              {materials, {unlit_program, MaterialParameters{{.2F, .1F, .05F, 1}}}}
-    ).material;
+    const auto registered_unlit = registerMaterialProgram(*client, commands, materials, std::move(unlit_program));
+    auto unlit_material = createMaterialInstance(*client, commands, registered_unlit, {{.2F, .1F, .05F, 1}});
     std::array<MeshInstanceData, 4> descriptions{
         {{mesh, material_id}, {caster_mesh, material_id}, {caster_mesh, material_id}, {mesh, unlit_material}}
     };
@@ -1133,6 +1130,7 @@ int main(int argc, char** argv)
         if (!projection_revisions) run(kind, false, 1);
     }
     MaterialId masked_material;
+    MaterialProgramId registered_masked;
     if (!projection_revisions)
     {
         // Keep the light and color rendering enabled; only per-instance shadow permission is disabled.
@@ -1147,9 +1145,8 @@ int main(int argc, char** argv)
         run(EDirectLightingBuffer::POINT, true, 1, false, false, true);
         run(EDirectLightingBuffer::POINT, true, 1, true, false, true);
         masked = true;
-        const auto masked_program = material(shader_target, true);
-        masked_material =
-            call<MaterialCommands::Create>(*client, commands, {materials, {masked_program, material_values}}).material;
+        registered_masked = registerMaterialProgram(*client, commands, materials, material(shader_target, true));
+        masked_material = createMaterialInstance(*client, commands, registered_masked, material_values);
         descriptions[1].material = descriptions[2].material = masked_material;
         const std::array replacements{
             MeshInstanceUpdate{instance_ids[1], descriptions[1]},
@@ -1159,20 +1156,23 @@ int main(int argc, char** argv)
         run(EDirectLightingBuffer::DIRECTIONAL, true, 0);
     }
     call<RemoveScene>(*client, commands, {scene});
-    call<MaterialCommands::Release>(
+    call<MaterialCommands::ReleaseInstance>(
         *client,
         commands,
         {material_id}
     );
     if (!projection_revisions)
     {
-        call<MaterialCommands::Release>(*client, commands, {masked_material});
+        call<MaterialCommands::ReleaseInstance>(*client, commands, {masked_material});
+        call<MaterialCommands::UnregisterProgram>(*client, commands, {registered_masked});
     }
-    call<MaterialCommands::Release>(
+    call<MaterialCommands::ReleaseInstance>(
         *client,
         commands,
         {unlit_material}
     );
+    call<MaterialCommands::UnregisterProgram>(*client, commands, {registered});
+    call<MaterialCommands::UnregisterProgram>(*client, commands, {registered_unlit});
     call<MeshCommands::ReleaseMesh>(
         *client,
         commands,

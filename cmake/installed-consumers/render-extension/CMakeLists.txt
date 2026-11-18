@@ -6,6 +6,8 @@ find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_extensions)
 
 find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)
 
+find_package(lux-engine-function CONFIG REQUIRED COMPONENTS material_compiler)
+
 add_executable(render_extension Probe.cpp)
 target_link_libraries(render_extension PRIVATE lux::engine::function::render_extensions lux::engine::core::core_execution)
 target_compile_features(render_extension PRIVATE cxx_std_20)
@@ -18,6 +20,27 @@ enable_testing()
 find_program(LUX_PROBE_SHADER_COMPILER lux_shader_compile REQUIRED)
 
 set(render_test_sources "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/render/test")
+add_executable(installed_material_commands MaterialCommands.cpp)
+
+target_include_directories(installed_material_commands PRIVATE "${render_test_sources}")
+
+target_link_libraries(installed_material_commands PRIVATE
+    lux::engine::function::render_extensions
+    lux::engine::function::material_compiler
+    lux::engine::core::core_execution
+)
+
+target_compile_features(installed_material_commands PRIVATE cxx_std_20)
+
+if(MSVC)
+    target_compile_options(installed_material_commands PRIVATE /utf-8 /permissive- /Zc:__cplusplus /GR- /bigobj)
+endif()
+
+add_test(NAME installed.render.material_commands_vulkan COMMAND installed_material_commands)
+if(WIN32)
+    add_test(NAME installed.render.material_commands_d3d12 COMMAND installed_material_commands d3d12)
+endif()
+
 set(compute_source "${render_test_sources}/shaders/GraphFill.slang")
 set(compute_header "${CMAKE_CURRENT_BINARY_DIR}/GraphFill.hpp")
 add_custom_command(

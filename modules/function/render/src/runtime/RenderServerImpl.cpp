@@ -90,7 +90,10 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::initialize(DeviceOptions device_options) noexcept
     {
         const nri::CallbackInterface callbacks{Impl::diagnostic, [](void*) noexcept {}, this};
-        auto entry = detail::DeviceEntry::create(domain_->resources_, device_options, callbacks, config_, cpu_scheduler_);
+        // Frame copies and standalone staging need a worker that cannot be held by a dynamic PSO batch.
+        auto entry = detail::DeviceEntry::create(
+            domain_->resources_, device_options, callbacks, config_, recording_scheduler_
+        );
         if (!entry)
         {
             return cxx::unexpected(entry.error());

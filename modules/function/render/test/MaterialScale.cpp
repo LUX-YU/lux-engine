@@ -722,7 +722,18 @@ namespace
             return;
         }
         const auto submits_before = Probe::accepted_submits.load();
-        const auto warm_request = requestFrame(client, commands, warm);
+        std::optional<FrameData> warm_packet;
+        if (expect_progress)
+        {
+            const auto layout = call<QueryRenderJobInputLayout>(client, commands, warm).layout;
+            warm_packet.emplace(take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout)));
+            MeshInstanceData moved{mesh, jobs[0].material};
+            moved.render_enabled = true;
+            moved.transform[12] = .125F;
+            CHECK(warm_packet->addData<InstanceResource>(MeshInstanceUpdate{jobs[0].member, moved}));
+            CHECK(warm_packet->seal());
+        }
+        const auto warm_request = requestFrame(client, commands, warm, warm_packet ? &*warm_packet : nullptr);
         const auto early = receiveFrameBefore(client, warm_request, Clock::now() + 2s);
         if (early && expect_progress)
         {
@@ -742,6 +753,7 @@ namespace
         const auto warm_reply = early ? early : receiveFrameBefore(client, warm_request, Clock::now() + 15s);
         const auto cold_reply = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 15s);
         CHECK(warm_reply && !warm_reply->error.type && warm_reply->job == warm);
+        if (warm_packet) warm_packet->release();
         CHECK(cold_reply && !cold_reply->error.type && cold_reply->job == cold);
         CHECK(blocked);
         const auto holding_slot = blocked->program_preparations_holding_slot - before->program_preparations_holding_slot;

@@ -1254,11 +1254,15 @@ int main(int argc, char** argv)
             CHECK(run(0, true, false) == switched_pixels);
             call<MaterialCommands::Update>(*client, commands, {{switched, left_values, {normal_texture}}});
             CHECK(run(0, true, false) == reference);
+            call<MaterialCommands::Update>(*client, commands, {{switched, right_values, {normal_texture}}});
+            CHECK(run(0, true, false) != reference);
+            call<MaterialCommands::Update>(*client, commands, {{switched, left_values, {normal_texture}}});
+            CHECK(run(0, true, false) == reference);
             if (program_cache_probe) CHECK(call_capture_counts[2].load() == pipelines);
             const std::array restored{MeshInstanceUpdate{extra_instances[0], additions[0]}};
             updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored});
             call<MaterialCommands::Release>(*client, commands, {switched});
-            std::puts("MATERIAL TEXTURE PASS: same group member switch and texture update reached GPU pixels");
+            std::puts("MATERIAL UPDATE PASS: member, texture and parameter changes reached GPU pixels");
         }
         // Independent interior-pixel oracle: both orientations survive hardware culling, use the
         // second material's parameters and preserve the mirrored tangent-space normal.

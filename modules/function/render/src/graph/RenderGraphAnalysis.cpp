@@ -187,10 +187,15 @@ namespace lux::render
         work.reserve(passes.size());
         auto retain = [&](GraphPassId pass)
         {
-            if (!live[pass.index])
+            if (live[pass.index]) return;
+            const auto& command = passes[pass.index];
+            const bool sequence = command.sequence_first.index != kGraphInvalidIndex;
+            const auto first = sequence ? command.sequence_first.index : pass.index;
+            const auto last = sequence ? command.sequence_last.index : pass.index;
+            for (auto index = first; index <= last; ++index)
             {
-                live[pass.index] = true;
-                work.push_back(pass);
+                live[index] = true;
+                work.push_back({index});
             }
         };
 
@@ -330,7 +335,12 @@ namespace lux::render
         }
         for (std::uint32_t p = 0; p < passes.size(); ++p)
         {
-            if (passes[p].side_effect)
+            const bool writes_import = std::ranges::any_of(passes[p].uses, [&](const auto& use) noexcept
+            {
+                return detail::writes(use.access) &&
+                       resources[use.version.resource.index].origin == EGraphOrigin::IMPORTED;
+            });
+            if (passes[p].side_effect || writes_import)
             {
                 retain({p});
             }
@@ -475,6 +485,32 @@ namespace lux::render
                     }
                 }
             }
+        }
+        // A live sequence is scheduled as one interval. Project its external edges onto entry and exit;
+        // internal hazards still retain their individual command positions for synchronization.
+        std::vector<GraphDependency> sequence_edges;
+        for (std::uint32_t from = 0; from < edges.size(); ++from)
+        {
+            if (!live[from]) continue;
+            for (auto to : edges[from])
+            {
+                if (!live[to]) continue;
+                const auto& predecessor = passes[from];
+                const auto& successor = passes[to];
+                const auto start = successor.sequence_first;
+                const auto end = predecessor.sequence_last;
+                if (start.index != kGraphInvalidIndex && start == predecessor.sequence_first) continue;
+                const GraphPassId before = end.index == kGraphInvalidIndex ? GraphPassId{from} : end;
+                const GraphPassId after = start.index == kGraphInvalidIndex ? GraphPassId{to} : start;
+                if (before.index != from || after.index != to)
+                {
+                    sequence_edges.push_back({before, after});
+                }
+            }
+        }
+        for (const auto& edge : sequence_edges)
+        {
+            addEdge(edges, edge.before, edge.after);
         }
         auto order = topological(edges, live);
         if (!order)

@@ -7,9 +7,10 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <lux/engine/render/extensions/graph/InstanceData.hpp>
 #include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
 {
@@ -24,17 +25,20 @@ namespace lux::render::detail
         RenderGraphInstance(
             DeviceSession&,
             std::uint32_t frame_count,
-            const RenderPlan&,
+            const PreparedRenderGraph&,
             TargetOutput = {}
         ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
         [[nodiscard]] RenderResult<void>
-        createData(const RenderGraph&, ResourceRegistry&, std::span<const ResourceInstanceId>) noexcept;
+        createData(
+            std::span<const InstanceDataRecipe>, ResourceRegistry&, std::span<const ResourceInstanceId>
+        ) noexcept;
         [[nodiscard]] RenderResult<bool> prepareData(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
         [[nodiscard]] bool requiresDataPrograms() const noexcept;
         [[nodiscard]] RenderResult<void>
-        setIndexedDrawData(GraphPassId, std::uint32_t, const IndexedDrawData&) noexcept override;
+        setIndexedDrawData(IndexedDrawStreamSlot, std::uint32_t, const IndexedDrawData&) noexcept override;
         [[nodiscard]] std::vector<TargetId> sampledTargets() const noexcept;
+        [[nodiscard]] RenderResult<IndexedDrawStreamSlot> indexedDrawStream(GraphPassId) const noexcept override;
         [[nodiscard]] bool hasData() const noexcept { return !data_.empty(); }
         void captureProgramRevisions(std::vector<std::uint64_t>&) const noexcept;
         [[nodiscard]] bool matchesProgramRevisions(std::span<const std::uint64_t>) const noexcept;
@@ -72,7 +76,9 @@ namespace lux::render::detail
         // The caller first reserves the reusable physical replica. This only
         // prepares that reusable slice; the professional Handler performs its data conversion/upload.
         [[nodiscard]] RenderResult<DrawListResources*>
-        prepareDrawList(GraphPassId, std::uint32_t slot, std::size_t vertex_bytes, std::size_t index_bytes) noexcept;
+        prepareDrawList(
+            const CompiledPass&, std::uint32_t slot, std::size_t vertex_bytes, std::size_t index_bytes
+        ) noexcept;
         // Copies borrowed frame input into finite staging windows; accepted copies, not GPU completion,
         // release that input. A terminal frame failure must settle the remaining borrow before delivery.
         [[nodiscard]] RenderResult<bool> prepareDrawListUploads(std::uint32_t slot, ResourceUploader&) noexcept;
@@ -91,7 +97,7 @@ namespace lux::render::detail
         // The selected writable FIF slot owns the list. Features fill physical packets before
         // prepareFrame seals attachments and barriers; no list is mutated during recording.
         [[nodiscard]] RasterDrawList&
-        rasterDraws(GraphPassId, std::uint32_t slot, bool recording_changed = true) noexcept;
+        rasterDraws(const CompiledPass&, std::uint32_t slot, bool recording_changed = true) noexcept;
         // Prepare one owned dynamic array in the already-acquired FIF slot. Views are created
         // before publication; failure preserves the prior image and no CPU/GPU wait is introduced.
         [[nodiscard]] RenderResult<std::span<nri::Descriptor* const>>
@@ -120,7 +126,7 @@ namespace lux::render::detail
             return plan_->device();
         }
 
-        [[nodiscard]] const RenderPlan& plan() const noexcept
+        [[nodiscard]] const RenderGraphExecutable& plan() const noexcept
         {
             return *plan_;
         }
@@ -180,7 +186,7 @@ namespace lux::render::detail
         [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
 
         // Explicit dirty notification for producers that opted out of rasterDraws' conservative default.
-        void invalidateRasterDraws(GraphPassId, std::uint32_t frame_slot) noexcept;
+        void invalidateRasterDraws(const CompiledPass&, std::uint32_t frame_slot) noexcept;
 
     private:
         friend class FrameOperation;
@@ -256,7 +262,6 @@ namespace lux::render::detail
             std::vector<nri::Descriptor*> clear_views;
             std::array<std::uint32_t, 3> dispatch_groups{};
             std::span<std::byte> parameters;
-            std::vector<std::byte> scratch;
             RasterState raster_state;
         };
 
@@ -272,7 +277,7 @@ namespace lux::render::detail
 
         struct Data final
         {
-            const InstanceDataRecipe* recipe;
+            std::vector<GraphResourceId> input_slots;
             std::unique_ptr<InstanceData> value;
             std::uint32_t parameter_offset, parameter_bytes;
             std::vector<ResourceInput> inputs;
@@ -280,7 +285,9 @@ namespace lux::render::detail
         std::vector<Data> data_;
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
-        const RenderPlan* plan_;
+        const RenderGraphExecutable* plan_;
+        const NativeGraphPrograms* programs_;
+        std::span<const std::uint32_t> instance_recipes_;
         RasterViewport viewport_;
         TargetOutput output_;
 

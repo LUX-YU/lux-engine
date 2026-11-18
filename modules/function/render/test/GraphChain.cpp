@@ -59,7 +59,7 @@ static rdesc::ShaderProgramArtifact rasterProgram(const rdesc::EmbeddedShader& f
     return result;
 }
 
-static RenderPlan compile(
+static PreparedRenderGraph compile(
     DeviceSession& session,
     const RenderGraph& graph,
     const RenderGraphAnalysis& analysis,
@@ -284,7 +284,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     }
     auto larger_target = target;
     larger_target.width = larger_target.height = 128;
-    CHECK(plan.compatible(larger_target));
+    CHECK(plan.executable.compatible(larger_target));
     auto larger = std::optional{take(OffscreenTarget::create(*session, larger_target, fif))};
     auto second_instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, larger->output());
     CHECK(second_instance->bindSampler(0, *sampler));
@@ -413,14 +413,17 @@ static void indirectCounts(Validation& validation)
     RecordTextureQueries::original = core.GetTextureDesc;
     RecordTextureQueries::count = 0;
     core.GetTextureDesc = &RecordTextureQueries::get;
-    for (std::uint32_t batch = 0; batch < plan.submissions().size(); ++batch)
+    for (std::uint32_t batch = 0; batch < plan.executable.submissions().size(); ++batch)
     {
         const auto commands = take(instance->recordBatch(0, batch));
-        CHECK(runTask(session->queue(plan.submissions()[batch].queue).submit(commands)));
+        CHECK(runTask(session->queue(plan.executable.submissions()[batch].queue).submit(commands)));
         CHECK(session->drain()); // This fixture serializes batches; normal queue dependencies are tested below.
     }
-    core.GetTextureDesc = RecordTextureQueries::original;
     CHECK(RecordTextureQueries::count == 0);
+    requested_value = 1;
+    CHECK(take(instance->prepareFrame(0)));
+    CHECK(RecordTextureQueries::count == 0); // An unchanged fixed slice reuses its frozen native bindings.
+    core.GetTextureDesc = RecordTextureQueries::original;
     checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
     CHECK(!instance->prepareFrame(UINT32_MAX));
     std::puts("FROZEN INPUT PASS author changed after Prepare, GPU uses prepared bytes, Record texture queries=0");
@@ -544,63 +547,6 @@ static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session
     return result;
 }
 
-struct OpenCopy final
-{
-    struct Config final
-    {
-        GraphResourceId source, destination;
-        bool fail_compile = false, fail_record = false;
-    };
-
-    struct State final
-    {
-        Config config;
-
-        RenderResult<void>
-        record(const PassRecordInput& input, nri::CommandBuffer& command, const nri::CoreInterface& core) const noexcept
-        {
-            ++records;
-            CHECK(input.parameters.size() == 4 && input.scratch.size() == 4);
-            std::uint32_t parameter = 0;
-            std::memcpy(&parameter, input.parameters.data(), 4);
-            CHECK(parameter == 19);
-            std::memcpy(input.scratch.data(), &parameter, 4);
-            if (config.fail_record) return lux::cxx::unexpected(RenderError{kDeviceArgument});
-            const auto& source = input.resources[config.source.index];
-            const auto& destination = input.resources[config.destination.index];
-            recordCopy(core, command, BufferCopyRegion{
-                source.buffer, destination.buffer, source.buffer_offset, destination.buffer_offset, 16
-            });
-            return {};
-        }
-    };
-
-    static inline unsigned compiles = 0, records = 0;
-
-    static RenderResult<State> compile(const Config& config, PassCompileContext&) noexcept
-    {
-        ++compiles;
-        if (config.fail_compile) return lux::cxx::unexpected(RenderError{kDeviceUnsupported});
-        return State{config};
-    }
-};
-
-struct OpenEvent final
-{
-    struct State final
-    {
-        RenderResult<void>
-        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept
-        {
-            ++records;
-            return {};
-        }
-    };
-
-    static inline unsigned records = 0;
-    static RenderResult<State> compile(const std::monostate&, PassCompileContext&) noexcept { return State{}; }
-};
-
 struct HeldCompletion final
 {
     inline static decltype(nri::CoreInterface::GetFenceValue) original = nullptr;
@@ -614,33 +560,33 @@ struct HeldCompletion final
 
 struct RecordingGate final
 {
-    std::atomic<unsigned> next_marker{0};
-    std::atomic<unsigned> entered{0};
-    std::atomic<bool> released{false};
+    inline static decltype(nri::CoreInterface::CmdZeroBuffer) original = nullptr;
+    inline static std::atomic<unsigned> entered{0};
+    inline static std::atomic<bool> released{false};
+
+    static void NRI_CALL zero(nri::CommandBuffer& command, nri::Buffer& buffer, std::uint64_t offset, std::uint64_t size)
+    {
+        entered.fetch_add(1);
+        released.wait(false);
+        original(command, buffer, offset, size);
+    }
 };
 
-struct RecordingProbe final
+struct EndFailure final
 {
-    struct State final
-    {
-        RecordingGate* gate;
+    inline static decltype(nri::CoreInterface::EndCommandBuffer) original = nullptr;
+    inline static bool fail = false;
+    inline static unsigned calls = 0;
 
-        RenderResult<void>
-        record(const PassRecordInput& input, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept
+    static nri::Result NRI_CALL end(nri::CommandBuffer& command)
+    {
+        ++calls;
+        const auto result = original(command);
+        if (std::exchange(fail, false) && result == nri::Result::SUCCESS)
         {
-            CHECK(input.scratch.size() == 64);
-            const auto marker = std::byte{static_cast<unsigned char>(gate->next_marker.fetch_add(1) + 1)};
-            std::ranges::fill(input.scratch, marker);
-            gate->entered.fetch_add(1);
-            gate->released.wait(false);
-            CHECK(std::ranges::all_of(input.scratch, [marker](auto value) { return value == marker; }));
-            return {};
+            return nri::Result::INVALID_ARGUMENT;
         }
-    };
-
-    static RenderResult<State> compile(RecordingGate* const& gate, PassCompileContext&) noexcept
-    {
-        return State{gate};
+        return result;
     }
 };
 
@@ -653,31 +599,25 @@ static void recordingOwnership(Validation& validation, bool d3d12)
         options.backend = EGraphicsBackend::D3D12;
     }
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-    RecordingGate gate;
+    auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+    RecordingGate::original = core.CmdZeroBuffer;
+    RecordingGate::entered = 0;
+    RecordingGate::released = false;
+    core.CmdZeroBuffer = &RecordingGate::zero;
     RenderGraphBuilder builder;
-    for (bool async : {false, true})
-    {
-        PassDeclaration declaration;
-        declaration.stages = nri::StageBits::ALL;
-        declaration.allow_async_compute = async;
-        CHECK(builder.addEncodedPass(
-            async ? "async event" : "graphics event", std::move(declaration),
-            take(PassWork::create<RecordingProbe>(&gate, {EPassEncodingScope::MANAGED, false, 64})), {true}
-        ));
-    }
+    const auto buffer = take(builder.declareResource({"recording", GraphBufferDesc{16}}));
+    CHECK(builder.addTransferPass("recording", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}, {true}));
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
     CHECK(instance->initialize());
     CHECK(take(instance->prepareFrame(0)));
     CHECK(take(instance->prepareFrame(1)));
-    const auto parallel_slot = plan.submissions().size() > 1 ? 0u : 1u;
-    const auto parallel_batch = plan.submissions().size() > 1 ? 1u : 0u;
     RenderResult<std::span<nri::CommandBuffer* const>> first, second;
     const auto waitEntered = [&](unsigned count)
     {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (gate.entered.load() < count)
+        while (RecordingGate::entered.load() < count)
         {
             CHECK(std::chrono::steady_clock::now() < deadline);
             std::this_thread::yield();
@@ -687,32 +627,31 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     waitEntered(1);
     const auto duplicate = instance->recordBatch(0, 0);
     CHECK(!duplicate && duplicate.error().type == kDeviceBusy);
-    CHECK(gate.entered == 1);
-    std::thread second_worker([&] { second = instance->recordBatch(parallel_slot, parallel_batch); });
-    waitEntered(2); // No device-wide lock: independent allocator/scratch pairs record concurrently.
-    gate.released.store(true);
-    gate.released.notify_all();
+    CHECK(RecordingGate::entered == 1);
+    std::thread second_worker([&] { second = instance->recordBatch(1, 0); });
+    waitEntered(2); // Distinct FIF allocators can record concurrently.
+    RecordingGate::released.store(true);
+    RecordingGate::released.notify_all();
     first_worker.join();
     second_worker.join();
     CHECK(first && second && first->front() != second->front());
 
     auto frames = std::make_unique<FrameHarness>(*session, 2);
     const std::array instances{instance.get()};
-    auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     HeldCompletion::original = core.GetFenceValue;
     HeldCompletion::completed = 0;
     core.GetFenceValue = &HeldCompletion::get;
     CHECK(take(runTask(frames->render(instances, {}))) != 0);
     CHECK(take(runTask(frames->render(instances, {}))) != 0);
-    const auto recorded = gate.entered.load();
+    const auto recorded = RecordingGate::entered.load();
     std::uint32_t slot = UINT32_MAX;
     CHECK(!frames->beginFrame(slot) && slot == UINT32_MAX);
     CHECK(take(runTask(frames->render(instances, {}))) == 0);
-    CHECK(gate.entered == recorded); // Accepted use without observed completion cannot reset/re-record a FIF slot.
+    CHECK(RecordingGate::entered == recorded); // Accepted use without observed completion cannot reset/re-record a FIF slot.
     core.GetFenceValue = HeldCompletion::original;
     CHECK(session->drain());
     CHECK(take(runTask(frames->render(instances, {}))) != 0);
-    CHECK(gate.entered > recorded);
+    CHECK(RecordingGate::entered > recorded);
     CHECK(session->drain());
 
     // All real work is complete before injecting a terminal result on a healthy device.
@@ -722,13 +661,14 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     const auto lost = runTask(frames->render(instances, {}));
     core.QueueSubmit = submit;
     CHECK(!lost && session->deviceLost());
-    const auto after_loss = gate.entered.load();
+    const auto after_loss = RecordingGate::entered.load();
     CHECK(!frames->beginFrame(slot));
     const auto rejected = runTask(frames->render(instances, {}));
     CHECK(!rejected && rejected.error() == lost.error());
     CHECK(!instance->prepareFrame(0));
     CHECK(!instance->recordBatch(0, 0));
-    CHECK(gate.entered == after_loss);
+    CHECK(RecordingGate::entered == after_loss);
+    core.CmdZeroBuffer = RecordingGate::original;
     (void)session->progressCompletions();
     frames.reset();
     instance.reset();
@@ -739,117 +679,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     );
 }
 
-struct OpenCompute final
-{
-    static inline std::atomic<unsigned> alive = 0;
-    struct State final
-    {
-        nri::Pipeline* pipeline;
-        PassDescriptorBindings bindings;
-        bool exclusive;
-
-        State(nri::Pipeline* p, PassDescriptorBindings b, bool e) noexcept
-            : pipeline(p), bindings(b), exclusive(e)
-        {
-        }
-
-        State(State&& other) noexcept
-            : pipeline(std::exchange(other.pipeline, nullptr)), bindings(other.bindings),
-              exclusive(other.exclusive)
-        {
-        }
-
-        ~State() noexcept
-        {
-            if (pipeline)
-            {
-                --alive;
-            }
-        }
-
-        RenderResult<void>
-        record(const PassRecordInput& input, nri::CommandBuffer& command, const nri::CoreInterface& api) const noexcept
-        {
-            if (exclusive)
-            {
-                api.CmdSetPipelineLayout(command, nri::BindPoint::COMPUTE, *bindings.layout);
-                api.CmdSetDescriptorSet(command, {
-                    bindings.private_set, input.native->private_descriptors, nri::BindPoint::COMPUTE
-                });
-            }
-            api.CmdSetPipeline(command, *pipeline);
-            api.CmdDispatch(command, {4, 4, 1});
-            return {};
-        }
-    };
-
-    static RenderResult<State> compile(const bool& exclusive, PassCompileContext& context) noexcept
-    {
-        const auto& shader = context.programs[context.interface.program];
-        CHECK(shader.target == context.device.enabledFeatures().shader_target);
-        CHECK(context.bindings.layout && shader.stages.size() == 1);
-        auto* pipeline = context.pipeline;
-        CHECK(pipeline);
-        ++alive;
-        return State{pipeline, context.bindings, exclusive};
-    }
-};
-
-struct OpenRaster final
-{
-    struct Config final { bool exclusive = false, fail = false; };
-    struct State final
-    {
-        nri::Pipeline* pipeline;
-        nri::PipelineLayout* layout;
-        Config config;
-
-        State(nri::Pipeline* p, nri::PipelineLayout* l, Config value) noexcept
-            : pipeline(p), layout(l), config(value)
-        {
-        }
-
-        State(State&& other) noexcept
-            : pipeline(std::exchange(other.pipeline, nullptr)), layout(other.layout),
-              config(other.config)
-        {
-        }
-
-        ~State() noexcept = default;
-
-        RenderResult<void>
-        record(const PassRecordInput& input, nri::CommandBuffer& command, const nri::CoreInterface& api) const noexcept
-        {
-            const auto& native = *input.native;
-            if (config.exclusive)
-            {
-                api.CmdSetPipelineLayout(command, nri::BindPoint::GRAPHICS, *layout);
-                nri::RenderingDesc rendering{};
-                rendering.colors = native.colors.data();
-                rendering.colorNum = static_cast<std::uint32_t>(native.colors.size());
-                rendering.depth = native.depth;
-                api.CmdBeginRendering(command, rendering);
-                api.CmdSetViewports(command, &native.viewport, 1);
-                api.CmdSetScissors(command, &native.scissor, 1);
-            }
-            api.CmdSetPipeline(command, *pipeline);
-            if (!config.fail) api.CmdDraw(command, {3, 1});
-            if (config.exclusive) api.CmdEndRendering(command);
-            if (config.fail) return lux::cxx::unexpected(RenderError{kDeviceArgument});
-            return {};
-        }
-    };
-
-    static RenderResult<State> compile(const Config& config, PassCompileContext& context) noexcept
-    {
-        CHECK(context.rendering && context.rendering->colors.size() == 1);
-        auto* pipeline = context.pipeline;
-        CHECK(pipeline);
-        return State{pipeline, context.bindings.layout, config};
-    }
-};
-
-static GraphProgram openRasterProgram()
+static GraphProgram dualTargetRasterProgram()
 {
     GraphProgram result;
     for (auto target : {rdesc::EShaderTarget::SPIRV, rdesc::EShaderTarget::DXIL})
@@ -864,85 +694,60 @@ static GraphProgram openRasterProgram()
     return result;
 }
 
-static void openRasterScopes(Validation& validation, bool d3d12)
+static void typedRasterScopes(Validation& validation, bool d3d12)
 {
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-    for (bool exclusive : {false, true})
     {
-        for (bool fail : {false, true})
-        {
-            RenderGraphBuilder builder;
-            const auto color = take(builder.declareResource({"scoped color", GraphImageDesc{64, 64, 2, 2}}));
-            const auto depth = take(builder.declareResource({"scoped depth",
-                GraphImageDesc{64, 64, 2, 2, rdesc::ETextureFormat::D32_SFLOAT}}));
-            const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{8192}}));
-            const auto shader = take(builder.addProgram(openRasterProgram()));
-            PassDeclaration declaration;
-            declaration.kind = EGraphPassKind::GRAPHICS;
-            declaration.stages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
-            declaration.interface.program = shader;
-            const auto policy = PassEncodingPolicy{
-                exclusive ? EPassEncodingScope::EXCLUSIVE : EPassEncodingScope::MANAGED, true
-            };
-            if (!exclusive)
-                CHECK(!builder.addEncodedPass("missing scope", declaration,
-                    take(PassWork::create<OpenRaster>(OpenRaster::Config{}, policy))));
-            declaration.rendering.emplace();
-            CHECK(!builder.addEncodedPass("empty scope", declaration,
-                take(PassWork::create<OpenRaster>(OpenRaster::Config{}, policy))));
-            declaration.rendering->colors = {{{{color, 0}, GraphImageRange{1, 1, 1, 1, 1}},
-                EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 1, 0, 1}}};
-            declaration.rendering->depth = RasterAttachment{
-                {{depth, 0}, GraphImageRange{2, 1, 1, 1, 1}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE
-            };
-            declaration.graphics.emplace();
-            declaration.graphics->depth_test = declaration.graphics->depth_write = true;
-            declaration.graphics->depth_compare = EDepthCompare::ALWAYS;
-            const auto drawn = take(builder.addEncodedPass("open raster", declaration,
-                take(PassWork::create<OpenRaster>(OpenRaster::Config{exclusive, fail}, policy))));
-            RasterWork load;
-            load.viewport = RasterViewport{0, 0, 0.25f, 1};
-            load.fixed().interface.program = shader;
-            load.fixed().graphics.depth_write = true;
-            load.colors = {{{written(drawn, color), GraphImageRange{1, 1, 1, 1, 1}},
-                EAttachmentLoad::LOAD, EAttachmentStore::STORE}};
-            load.depth = RasterAttachment{
-                {written(drawn, depth), GraphImageRange{2, 1, 1, 1, 1}}, EAttachmentLoad::LOAD, EAttachmentStore::STORE
-            };
-            const auto ordinary = take(builder.addRasterPass("ordinary load", std::move(load)));
-            const auto copied = take(builder.addTransferPass("scoped pixels", TransferWork{
-                {CopyImageBuffer{{written(ordinary, color), GraphImageRange{1, 1, 1, 1, 1}}, {{pixels, 0}}, 256, 8192}}
-            }));
-            exportRows(builder, copied.written.front(), 32, 32, 256);
-            const auto graph = take(std::move(builder).finish());
-            const auto analysis = take(analyzeRenderGraph(graph));
-            auto plan = compile(*session, graph, analysis, nullptr);
-            CHECK(plan.passes()[0].rendering_group == 0);
-            CHECK((plan.passes()[1].rendering_group == plan.passes()[0].rendering_group) == !exclusive);
-            CHECK(plan.passes()[0].pipeline != plan.passes()[1].pipeline); // Same shader, different depth state.
-            if (!exclusive && !fail)
-            {
-                const auto duplicate = compile(*session, graph, analysis, nullptr);
-                CHECK(duplicate.passes()[0].pipeline == plan.passes()[0].pipeline);
-                CHECK(duplicate.passes()[1].pipeline == plan.passes()[1].pipeline);
-            }
-            auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
-            CHECK(instance->initialize());
-            auto frames = std::make_unique<FrameHarness>(*session, 2);
-            const std::array instances{instance.get()};
-            const auto before = session->queue().submitted();
-            const auto outcome = runTask(frames->render(instances, {}));
-            if (fail) CHECK(!outcome && session->queue().submitted() == before);
-            else
-            {
-                CHECK(outcome && *outcome == 1 && session->drain());
-                checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
-            }
-            instance.reset();
-            CHECK(session->drain());
-        }
+        RenderGraphBuilder builder;
+        const auto color = take(builder.declareResource({"scoped color", GraphImageDesc{64, 64, 2, 2}}));
+        const auto depth = take(builder.declareResource({"scoped depth",
+            GraphImageDesc{64, 64, 2, 2, rdesc::ETextureFormat::D32_SFLOAT}}));
+        const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{8192}}));
+        const auto shader = take(builder.addProgram(dualTargetRasterProgram()));
+        RasterWork clear;
+        clear.fixed().interface.program = shader;
+        CHECK(!builder.addRasterPass("empty scope", clear));
+        clear.colors = {{{{color, 0}, GraphImageRange{1, 1, 1, 1, 1}},
+            EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 1, 0, 1}}};
+        clear.depth = RasterAttachment{
+            {{depth, 0}, GraphImageRange{2, 1, 1, 1, 1}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE
+        };
+        clear.fixed().graphics.depth_test = clear.fixed().graphics.depth_write = true;
+        clear.fixed().graphics.depth_compare = EDepthCompare::ALWAYS;
+        const auto drawn = take(builder.addRasterPass("clear and draw", std::move(clear)));
+        RasterWork load;
+        load.viewport = RasterViewport{0, 0, 0.25f, 1};
+        load.fixed().interface.program = shader;
+        load.fixed().graphics.depth_write = true;
+        load.colors = {{{written(drawn, color), GraphImageRange{1, 1, 1, 1, 1}},
+            EAttachmentLoad::LOAD, EAttachmentStore::STORE}};
+        load.depth = RasterAttachment{
+            {written(drawn, depth), GraphImageRange{2, 1, 1, 1, 1}}, EAttachmentLoad::LOAD, EAttachmentStore::STORE
+        };
+        const auto ordinary = take(builder.addRasterPass("load and draw", std::move(load)));
+        const auto copied = take(builder.addTransferPass("scoped pixels", TransferWork{
+            {CopyImageBuffer{{written(ordinary, color), GraphImageRange{1, 1, 1, 1, 1}}, {{pixels, 0}}, 256, 8192}}
+        }));
+        exportRows(builder, copied.written.front(), 32, 32, 256);
+        const auto graph = take(std::move(builder).finish());
+        const auto analysis = take(analyzeRenderGraph(graph));
+        auto plan = compile(*session, graph, analysis, nullptr);
+        CHECK(plan.executable.passes()[0].rendering_group == 0);
+        CHECK(plan.executable.passes()[1].rendering_group == plan.executable.passes()[0].rendering_group);
+        CHECK(plan.programs[0].pipeline != plan.programs[1].pipeline);
+        const auto duplicate = compile(*session, graph, analysis, nullptr);
+        CHECK(duplicate.programs[0].pipeline == plan.programs[0].pipeline);
+        CHECK(duplicate.programs[1].pipeline == plan.programs[1].pipeline);
+        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+        CHECK(instance->initialize());
+        auto frames = std::make_unique<FrameHarness>(*session, 2);
+        const std::array instances{instance.get()};
+        CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
+        checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
+        instance.reset();
+        CHECK(session->drain());
     }
     {
         RenderGraphBuilder builder;
@@ -950,16 +755,12 @@ static void openRasterScopes(Validation& validation, bool d3d12)
             GraphImageDesc{32, 32, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM, 4}}));
         const auto resolved = take(builder.declareResource({"resolved color", GraphImageDesc{32, 32}}));
         const auto pixels = take(builder.declareResource({"resolve pixels", GraphBufferDesc{8192}}));
-        PassDeclaration declaration;
-        declaration.kind = EGraphPassKind::GRAPHICS;
-        declaration.stages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
-        declaration.interface.program = take(builder.addProgram(openRasterProgram()));
-        declaration.rendering.emplace();
+        RasterWork raster;
+        raster.fixed().interface.program = take(builder.addProgram(dualTargetRasterProgram()));
         RasterAttachment attachment{{{color, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE};
         attachment.resolve = ResourceAccess{{resolved, 0}};
-        declaration.rendering->colors.push_back(attachment);
-        const auto drawn = take(builder.addEncodedPass("open resolve", std::move(declaration),
-            take(PassWork::create<OpenRaster>(OpenRaster::Config{}, {EPassEncodingScope::MANAGED, true}))));
+        raster.colors.push_back(attachment);
+        const auto drawn = take(builder.addRasterPass("resolve", std::move(raster)));
         const auto copied = take(builder.addTransferPass("resolve readback", TransferWork{
             {CopyImageBuffer{{written(drawn, resolved)}, {{pixels, 0}}, 256, 8192}}
         }));
@@ -975,10 +776,10 @@ static void openRasterScopes(Validation& validation, bool d3d12)
         instance.reset();
         CHECK(session->drain());
     }
-    std::puts("OPEN RASTER PASS: target shaders, color/depth mip/layer, LOAD scope, exclusive/failure, MSAA resolve");
+    std::puts("TYPED RASTER PASS: target shaders, color/depth mip/layer, merged LOAD scope, MSAA resolve");
 }
 
-static void openEncodings(Validation& validation, bool d3d12)
+static void typedRecording(Validation& validation, bool d3d12)
 {
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
@@ -1001,142 +802,105 @@ static void openEncodings(Validation& validation, bool d3d12)
         ));
         CHECK(rejected && !std::get<0>(*rejected) && std::get<0>(*rejected).error().type == kDeviceArgument);
     }
-    for (const bool exclusive : {false, true})
     {
-        const auto scope = exclusive ? EPassEncodingScope::EXCLUSIVE : EPassEncodingScope::MANAGED;
-        for (const unsigned failure : {0u, 1u, 2u})
-        {
-            auto frames = std::make_unique<FrameHarness>(*session, 2);
-            RenderGraphBuilder builder;
-            const auto source = take(builder.declareResource({"source", GraphBufferDesc{16}}));
-            const auto destination = take(builder.declareResource({"destination", GraphBufferDesc{16}}));
-            const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
-            const auto fill = take(builder.addTransferPass(
-                "builtin fill", TransferWork{{FillBuffer{{{source, 0}}, 7}}}
-            ));
-            PassDeclaration declaration;
-            declaration.kind = EGraphPassKind::TRANSFER;
-            declaration.stages = nri::StageBits::COPY;
-            declaration.accesses = {
-                {fill.written.front(), {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
-                {{destination, 0}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}
-            };
-            declaration.interface.parameters.values.resize(4);
-            const std::uint32_t constant = 19;
-            std::memcpy(declaration.interface.parameters.values.data(), &constant, 4);
-            auto operation = take(PassWork::create<OpenCopy>(
-                OpenCopy::Config{source, destination, failure == 1, failure == 2}, {scope, true, 4}
-            ));
-            OpenCopy::compiles = OpenCopy::records = 0;
-            const auto copied = take(builder.addEncodedPass("open copy", std::move(declaration), std::move(operation)));
-            const auto observed = take(builder.addTransferPass(
-                "builtin result", TransferWork{{CopyBuffer{{copied.written.front()}, {{output, 0}}}}}
-            ));
-            CHECK(builder.exportOutput({observed.written.front()}));
-            const auto graph = take(std::move(builder).finish());
-            const auto analysis = take(analyzeRenderGraph(graph));
-            CHECK(OpenCopy::compiles == 0 && OpenCopy::records == 0);
-            auto ready = stdexec::sync_wait(GraphCompiler::compile(
-                *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis
-            ));
-            CHECK(ready && OpenCopy::compiles == 1);
-            if (failure == 1)
-            {
-                CHECK(!std::get<0>(*ready) && std::get<0>(*ready).error().type == kDeviceUnsupported);
-                continue;
-            }
-            auto plan = take(std::move(std::get<0>(*ready)));
-            auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
-            CHECK(instance->initialize());
-            const std::array instances{instance.get()};
-            const auto before = session->queue().submitted();
-            const auto result = runTask(frames->render(instances, {}));
-            CHECK(OpenCopy::records == 1);
-            if (failure == 2)
-            {
-                CHECK(!result && result.error().type == kDeviceArgument && session->queue().submitted() == before);
-            }
-            else
-            {
-                CHECK(result && *result == 1);
-                CHECK(session->drain());
-                const auto values = readHistoryResult<4>(*session, *instance->nativeBuffer(output.index, 0));
-                CHECK(std::ranges::all_of(values, [](auto value) { return value == 7; }));
-            }
-            instance.reset();
-            CHECK(session->drain());
-        }
         RenderGraphBuilder builder;
-        const auto color = take(builder.declareResource({"custom color", GraphImageDesc{32, 32}}));
-        const auto pixels = take(builder.declareResource({"readback", GraphBufferDesc{8192}}));
-        PassDeclaration declaration;
-        declaration.kind = EGraphPassKind::COMPUTE;
-        declaration.stages = nri::StageBits::COMPUTE_SHADER;
-        const auto program_id = take(builder.addProgram(GraphProgram{kGraphFill}));
-        declaration.interface.program = program_id;
-        declaration.interface.resources = {{"generated", {{color, 0}, {}, EGraphAccess::WRITE}}};
-        const auto filled = take(builder.addEncodedPass(
-            "open shader", std::move(declaration), take(PassWork::create<OpenCompute>(exclusive, {scope, true}))
+        const auto source = take(builder.declareResource({"source", GraphBufferDesc{16}}));
+        const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
+        const auto fill = take(builder.addTransferPass("fill", TransferWork{{FillBuffer{{{source, 0}}, 7}}}));
+        const auto copy = take(builder.addTransferPass(
+            "copy", TransferWork{{CopyBuffer{{fill.written.front()}, {{output, 0}}}}}
         ));
-        const auto other = take(builder.declareResource({"builtin color", GraphImageDesc{32, 32}}));
-        const auto other_pixels = take(builder.declareResource({"builtin readback", GraphBufferDesc{8192}}));
-        ComputeWork builtin;
-        builtin.interface.program = program_id;
-        builtin.interface.resources = {{"generated", {{other, 0}, {}, EGraphAccess::WRITE}}};
-        builtin.dispatch = DispatchArguments{{4, 4, 1}};
-        const auto ordinary = take(builder.addComputePass("builtin shader", std::move(builtin)));
-        CHECK(builder.dependsOn(filled.pass, ordinary.pass));
-        const auto copied = take(builder.addTransferPass("builtin pixels", TransferWork{
-            {CopyImageBuffer{{filled.written.front()}, {{pixels, 0}}, 256, 8192},
-             CopyImageBuffer{{ordinary.written.front()}, {{other_pixels, 0}}, 256, 8192}}
-        }));
-        exportRows(builder, written(copied, pixels), 32, 32, 256);
-        exportRows(builder, written(copied, other_pixels), 32, 32, 256);
-        const auto graph = take(std::move(builder).finish());
-        auto plan = std::make_unique<RenderPlan>(compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr));
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, *plan);
+        CHECK(builder.exportOutput({copy.written.front()}));
+        auto plan = [&]
+        {
+            const auto graph = take(std::move(builder).finish());
+            return compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+        }();
+        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
         CHECK(instance->initialize());
+        CHECK(take(instance->prepareFrame(0)));
+        auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+        EndFailure::original = core.EndCommandBuffer;
+        EndFailure::fail = true;
+        EndFailure::calls = 0;
+        core.EndCommandBuffer = &EndFailure::end;
+        const auto rejected = instance->recordBatch(0, 0);
+        CHECK(!rejected && session->queue().submitted() == 0 && EndFailure::calls == 1);
+        CHECK(instance->recordBatch(0, 0) && EndFailure::calls == 2);
+        CHECK(instance->recordBatch(0, 0) && EndFailure::calls == 2);
+        core.EndCommandBuffer = EndFailure::original;
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
-        checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {64, 128, 191, 255}, 256);
-        checkPixels(*session, *instance->nativeBuffer(other_pixels.index, 0), 32, 0, {64, 128, 191, 255}, 256);
-        auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
-        HeldCompletion::original = core.GetFenceValue;
-        HeldCompletion::completed = session->queue().completed();
-        core.GetFenceValue = &HeldCompletion::get;
-        CHECK(take(runTask(frames->render(instances, {}))) == 1);
+        const auto values = readHistoryResult<4>(*session, *instance->nativeBuffer(output.index, 0));
+        CHECK(std::ranges::all_of(values, [](auto value) { return value == 7; }));
         instance.reset();
-        plan.reset();
-        CHECK(OpenCompute::alive == 1); // Accepted GPU use is not yet reported complete.
-        core.GetFenceValue = HeldCompletion::original;
         CHECK(session->drain());
-        CHECK(OpenCompute::alive == 0);
     }
+    std::printf("TYPED RECORDING PASS backend=%s: detached source, End failure and retry, GPU buffer results\n",
+        d3d12 ? "D3D12" : "Vulkan");
+}
+
+static void multiCommandCompute(Validation& validation, bool d3d12)
+{
+    DeviceOptions options;
+    if (d3d12) options.backend = EGraphicsBackend::D3D12;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    RenderGraphBuilder builder;
+    const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
+    const auto intermediate = take(builder.declareResource({"intermediate", GraphBufferDesc{16}}));
+    const auto result = take(builder.declareResource({"result", GraphBufferDesc{16}}));
+    const auto readback = take(builder.declareResource({"readback", GraphBufferDesc{16}}));
+    const auto initialized = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{seed, 0}}, 11}}}));
+    const auto program = take(builder.addProgram(GraphProgram{kGraphHistory}));
+    const auto dispatch = [program](ResourceVersion input, GraphResourceId output)
     {
-        RenderGraphBuilder builder;
-        PassDeclaration declaration;
-        declaration.stages = nri::StageBits::ALL;
-        CHECK(builder.addEncodedPass("explicit event", std::move(declaration),
-            take(PassWork::create<OpenEvent>(std::monostate{})), {true}));
+        ComputeWork work;
+        work.interface.program = program;
+        work.interface.resources = {
+            {"previous_sample", {input}},
+            {"current_sample", {{output, 0}, {}, EGraphAccess::WRITE}}
+        };
+        return work;
+    };
+    const auto next = take(builder.nextWriteVersion(intermediate));
+    auto invalid = dispatch(next, result);
+    invalid.interface.program = kGraphInvalidIndex;
+    CHECK(!builder.addComputeSequence("invalid", {dispatch(initialized.written.front(), intermediate), invalid}));
+    CHECK(builder.passCount() == 1 && take(builder.nextWriteVersion(intermediate)) == next);
+    const auto sequence = take(builder.addComputeSequence(
+        "two increments", {dispatch(initialized.written.front(), intermediate), dispatch(next, result)}
+    ));
+    const auto copied = take(builder.addTransferPass(
+        "readback", TransferWork{{CopyBuffer{{written(sequence, result)}, {{readback, 0}}}}}
+    ));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    auto executable = [&]
+    {
         const auto graph = take(std::move(builder).finish());
-        auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 1, plan);
-        CHECK(instance->initialize());
-        auto frames = std::make_unique<FrameHarness>(*session, 1);
-        const std::array instances{instance.get()};
-        OpenEvent::records = 0;
-        CHECK(take(runTask(frames->render(instances, {}))) == 1);
-        CHECK(OpenEvent::records == 1 && session->drain());
-        instance.reset();
-        CHECK(session->drain());
-    }
-    std::printf(
-        "OPEN PASS PASS backend=%s: managed/exclusive, mixed builtins, scratch/constants, "
-        "compile/record failures, target shader pixels, deferred GPU state retirement\n",
-        d3d12 ? "D3D12" : "Vulkan"
-    );
+        const auto analysis = take(analyzeRenderGraph(graph));
+        CHECK(analysis.execution_order.size() == 4);
+        return compile(*session, graph, analysis, nullptr);
+    }();
+    CHECK(executable.executable.recordingUnits().size() == 3);
+    CHECK(executable.executable.recordingUnits()[1].pass_count == 2);
+    const auto passes = executable.executable.passes();
+    CHECK(passes[1].submission == passes[2].submission);
+    CHECK(std::ranges::any_of(passes[2].before.buffers, [&](const auto& barrier)
+    {
+        return barrier.resource == intermediate.index;
+    }));
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, executable);
+    CHECK(instance->initialize());
+    auto frames = std::make_unique<FrameHarness>(*session, 2);
+    const std::array instances{instance.get()};
+    CHECK(take(runTask(frames->render(instances, {}))) == 1);
+    CHECK(session->drain());
+    const auto values = readHistoryResult<4>(*session, *instance->nativeBuffer(readback.index, 0));
+    CHECK(std::ranges::all_of(values, [](auto value) { return value == 13; }));
+    instance.reset();
+    CHECK(session->drain());
 }
 
 static void historySequence(Validation& validation, std::uint32_t fif, bool use_fallback)
@@ -1209,8 +973,8 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     std::uint32_t sequence = 0;
-    CHECK(plan.physicalResources().reasons[history.previous.index] == EResourceReuse::HISTORY);
-    CHECK(plan.physicalResources().resource_slots[history.current.index] == kGraphInvalidIndex);
+    CHECK(plan.executable.physicalResources().reasons[history.previous.index] == EResourceReuse::HISTORY);
+    CHECK(plan.executable.physicalResources().resource_slots[history.current.index] == kGraphInvalidIndex);
     const std::uint8_t enabled_initial = 1;
     CHECK(instance->setConditions({&enabled_initial, 1}));
     CHECK(take(instance->prepareFrame(0)));
@@ -1407,7 +1171,7 @@ static void conditionalRegion(Validation& validation, std::uint32_t fif)
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     std::string dump;
-    CHECK(plan.physicalResources().reasons[data.index] == EResourceReuse::CONDITIONAL);
+    CHECK(plan.executable.physicalResources().reasons[data.index] == EResourceReuse::CONDITIONAL);
     CHECK(dumpPlan(
         plan,
         EGraphDumpFormat::JSON,
@@ -1558,13 +1322,13 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     const bool separate = &session->queue() != &session->queue(EQueueRole::COMPUTE);
-    CHECK(plan.submissions().size() == (separate ? 7 : 1));
+    CHECK(plan.executable.submissions().size() == (separate ? 7 : 1));
     if (separate)
     {
-        const auto& copy_dependencies = plan.submissions()[2].dependencies;
+        const auto& copy_dependencies = plan.executable.submissions()[2].dependencies;
         const auto copy = std::ranges::find(copy_dependencies, 1u, &SubmissionDependency::producer);
         CHECK(copy != copy_dependencies.end() && copy->stages == nri::StageBits::COPY);
-        const auto& compute_dependencies = plan.submissions()[3].dependencies;
+        const auto& compute_dependencies = plan.executable.submissions()[3].dependencies;
         const auto compute = std::ranges::find(compute_dependencies, 2u, &SubmissionDependency::producer);
         // The latest Graphics producer also covers the shared preparation edge (ALL).
         CHECK(compute != compute_dependencies.end() && compute->stages == nri::StageBits::ALL);
@@ -1686,10 +1450,10 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool a
         alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS
     );
     CHECK(
-        (plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]) ==
+        (plan.executable.physicalResources().resource_slots[a.index] == plan.executable.physicalResources().resource_slots[b.index]) ==
         !alias_memory
     );
-    CHECK(plan.physicalResources().slots.size() == (alias_memory ? 4 : 3));
+    CHECK(plan.executable.physicalResources().slots.size() == (alias_memory ? 4 : 3));
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
     CHECK(instance->initialize());
     if (alias_memory)
@@ -1761,11 +1525,11 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
         alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS
     );
     auto control = compile(*session, graph, analysis, nullptr, ETransientAllocation::INDEPENDENT);
-    CHECK(plan.submissions().size() == control.submissions().size());
-    for (std::size_t i = 0; i < plan.submissions().size(); ++i)
+    CHECK(plan.executable.submissions().size() == control.executable.submissions().size());
+    for (std::size_t i = 0; i < plan.executable.submissions().size(); ++i)
     {
-        const auto& compiled = plan.submissions()[i];
-        const auto& independent = control.submissions()[i];
+        const auto& compiled = plan.executable.submissions()[i];
+        const auto& independent = control.executable.submissions()[i];
         CHECK(compiled.queue == independent.queue && compiled.dependencies.size() == independent.dependencies.size());
         for (std::size_t d = 0; d < compiled.dependencies.size(); ++d)
         {
@@ -1774,12 +1538,12 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     }
     const bool reuse = ordered || &session->queue() == &session->queue(EQueueRole::COMPUTE);
     CHECK(
-        (plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]) ==
+        (plan.executable.physicalResources().resource_slots[a.index] == plan.executable.physicalResources().resource_slots[b.index]) ==
         (reuse && !alias_memory)
     );
-    CHECK(plan.physicalResources().reasons[output_a.index] == EResourceReuse::EXPORTED);
-    CHECK(control.physicalResources().slots.size() == 4);
-    CHECK(plan.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
+    CHECK(plan.executable.physicalResources().reasons[output_a.index] == EResourceReuse::EXPORTED);
+    CHECK(control.executable.physicalResources().slots.size() == 4);
+    CHECK(plan.executable.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
     CHECK(instance->initialize());
     if (alias_memory)
@@ -1863,7 +1627,7 @@ static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    const auto& transitions = plan.passes().front().before.images;
+    const auto& transitions = plan.executable.passes().front().before.images;
     CHECK(transitions.size() == 1);
     const auto& transition = transitions.front();
     CHECK(transition.resource == image.index && transition.previous.index == kGraphInvalidIndex);
@@ -1886,8 +1650,42 @@ static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
     std::printf("COALESCED RANGE PASS cells=12 descriptors=1 FIF=%u last_layer_readback=correct\n", fif);
 }
 
+static void cpuGraphAnalysis()
+{
+    {
+        RenderGraphBuilder builder;
+        const auto buffer = take(builder.declareResource({"buffer", GraphBufferDesc{16}}));
+        const auto written = take(builder.addTransferPass(
+            "write first half", TransferWork{{FillBuffer{{{buffer, 0}, GraphBufferRange{0, 8}}, 0}}}
+        ));
+        CHECK(builder.exportOutput({written.written.front()}));
+        const auto graph = take(std::move(builder).finish());
+        const auto analysis = analyzeRenderGraph(graph);
+        CHECK(!analysis && analysis.error().type == kGraphUndefinedRead);
+    }
+    {
+        RenderGraphBuilder builder;
+        const auto dead = take(builder.declareResource({"dead", GraphBufferDesc{16}}));
+        const auto external = take(builder.declareResource({
+            "external", GraphBufferDesc{16}, EGraphOrigin::IMPORTED
+        }));
+        CHECK(builder.addTransferPass("dead write", TransferWork{{FillBuffer{{{dead, 0}}, 0}}}));
+        const auto live = take(builder.addTransferPass(
+            "external write", TransferWork{{FillBuffer{{{external, 0}}, 0}}}
+        ));
+        const auto graph = take(std::move(builder).finish());
+        const auto analysis = take(analyzeRenderGraph(graph));
+        CHECK(analysis.execution_order == std::vector{live.pass});
+    }
+}
+
 int main(int argc, char** argv)
 {
+    if (argc > 1 && std::string_view(argv[1]) == "analysis")
+    {
+        cpuGraphAnalysis();
+        return 0;
+    }
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     Validation validation;
@@ -1899,13 +1697,15 @@ int main(int argc, char** argv)
     }
     if (argc > 1 && std::string_view(argv[1]) == "raster")
     {
-        openRasterScopes(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");
+        typedRasterScopes(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");
         CHECK(validation.errors == 0);
         return 0;
     }
     if (argc > 1 && std::string_view(argv[1]) == "encoding")
     {
-        openEncodings(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");
+        const bool d3d12 = argc > 2 && std::string_view(argv[2]) == "d3d12";
+        typedRecording(validation, d3d12);
+        multiCommandCompute(validation, d3d12);
         CHECK(validation.errors == 0);
         return 0;
     }

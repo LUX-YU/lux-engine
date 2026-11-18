@@ -77,8 +77,8 @@ namespace lux::editor::ui
     class UiInstance final : public render::detail::InstanceData
     {
     public:
-        UiInstance(UiState& state, InstanceAccess& instance, GraphPassId pass) noexcept
-            : state_(state), instance_(instance), pass_(pass)
+        UiInstance(UiState& state, InstanceAccess& instance, IndexedDrawStreamSlot stream) noexcept
+            : state_(state), instance_(instance), stream_(stream)
         {
         }
 
@@ -96,6 +96,6 @@ namespace lux::editor::ui
     private:
         UiState& state_;
         InstanceAccess& instance_;
-        GraphPassId pass_;
+        IndexedDrawStreamSlot stream_;
     };
 } // namespace lux::editor::ui

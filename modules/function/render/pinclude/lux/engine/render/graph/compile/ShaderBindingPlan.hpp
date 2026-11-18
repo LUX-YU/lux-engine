@@ -4,8 +4,15 @@
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
 #include <NRI.h>
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
+
+namespace lux::render
+{
+    class RenderGraph;
+    struct RenderGraphAnalysis;
+    struct InstanceDataRecipe;
+}
 
 namespace lux::render::detail
 {
@@ -58,7 +65,7 @@ namespace lux::render::detail
     // consume this same value. Private resources are packed; a resource never consumes an entire set.
     struct ShaderBindingPlan final
     {
-        std::vector<PassBindings> passes; // Original GraphPassId indices; pruned entries stay empty.
+        std::vector<PassBindings> passes;
 
         struct ParameterRegion final
         {

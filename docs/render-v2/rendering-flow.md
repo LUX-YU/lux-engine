@@ -37,7 +37,7 @@ flowchart TD
     Adopt --> Start[Start/Rebind：解析 Resource 并建立 JobExecution]
     Upload --> Start
     Start --> Prepare[FrameOperation：Resource 和 Instance 准备]
-    Prepare --> Record[RenderExecutor：按 RenderPlan 录制]
+    Prepare --> Record[RenderExecutor：按 RenderGraphExecutable 录制]
     Record --> Queue[SubmissionQueue：合并提交与 GPU 依赖]
     Queue --> Target[OffscreenTarget 的当前 FIF 输出]
     Queue --> Complete[完成前沿 / 帧槽复用 / cleanup_scope_]
@@ -278,8 +278,8 @@ Effect 留下不可变计划和 Start/Rebind 所需数据，不需要实例化�
 | `composeFeatures` | 声明解析、连接/贡献验证、拓扑构建及唯一 Graph 装配 | [FeatureAssembly.cpp](../../modules/function/render/src/features/FeatureAssembly.cpp) |
 | `RenderGraphBuilder` | 建立逻辑资源版本、typed Work、访问范围和输出 | [实现](../../modules/function/render/src/graph/RenderGraphBuilder.cpp) |
 | `RenderGraphAnalysis` | 活图、执行顺序、生命周期和依赖；RAW/WAR/WAW 按访问范围建立 | [实现](../../modules/function/render/src/graph/RenderGraphAnalysis.cpp) |
-| `GraphCompiler` | 将活图降低成唯一设备执行计划 | [实现](../../modules/function/render/src/graph/GraphCompiler.cpp) |
-| `RenderPlan` | 拥有 Pipeline/Layout 与不可变资源、录制、批次和分配计划 | [定义](../../modules/function/render/sinclude/lux/engine/render/graph/RenderPlan.hpp) |
+| `GraphCompiler` | 将活图降低成唯一设备执行计划 | [实现](../../modules/function/render/src/graph/compile/GraphCompiler.cpp) |
+| `RenderGraphExecutable` | 持有不可变的资源、录制、批次和分配表。程序与描述符由槽位寻址 | [定义](../../modules/function/render/sinclude/lux/engine/render/graph/RenderGraphExecutable.hpp) |
 
 `GraphCompiler::compile()` 的关键顺序为：资源/输出合同 → `planLayouts` → Shader 重定位及 Pipeline 创建/复用
 → `planConditions` → `selectQueues` → `planBarriers` → `planSubmissions` → `planPhysicalResources`
@@ -335,8 +335,7 @@ Transform 运行期变号不依赖 CPU 符号缓存。奇异变换不产生有�
 ## 8. Job：从逻辑配方到实际执行
 
 [RenderJob.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/RenderJob.hpp) 记录 Scene、View、Effect 和运行资格。
-[JobExecution.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/JobExecution.hpp) 按构造次序拥有 RenderPlan 和
-RenderGraphInstance，以及 FrameLayout、紧凑的 Resource apply 记录和 Storage 订阅。设备、Scene 与 View 的 ResourceSet
+[JobExecution.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/JobExecution.hpp) 按构造次序拥有 RenderGraphExecutable、原生程序租约和 RenderGraphInstance，以及 FrameLayout、紧凑的 Resource apply 记录和 Storage 订阅。设备、Scene 与 View 的 ResourceSet
 继续独立拥有各域资源。
 
 ```text
@@ -469,7 +468,7 @@ Scope join 不替代外部 Producer 退栈或代码模块寿命证明。
 ## Effect 输出与实例尺寸
 
 EffectOutputDesc 只含 format、samples、kind、sampled。CreateEffect 和能力图构建不接收窗口宽高。
-RenderPlan 保存该静态输出合同、尺寸规则及 Graph 显式的固定输出限制，不保存首次 Target 分辨率。
+RenderGraphExecutable 保存该静态输出合同、尺寸规则及 Graph 显式的固定输出限制，不保存首次 Target 分辨率。
 FIXED 图像保留绝对尺寸；TARGET/IMPORTED 图像在图构建时规范化掉无意义的初始宽高，保留比例、对齐和子资源声明。
 
 Target 与 Effect 都准备好后启动 Job。Instance 根据实际 Target/导入图像创建中间资源及 view，核对 mip、

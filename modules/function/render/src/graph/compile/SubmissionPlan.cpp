@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
@@ -68,13 +69,14 @@ namespace lux::render::detail
 
     void selectQueues(
         const RenderGraph& graph,
+        std::span<const GraphPassId> order,
         std::array<const QueueProperties*, 3> queues,
         RecordingProgram& recording
     ) noexcept
     {
         for (auto& pass : recording.passes)
         {
-            const auto& source = graph.passes()[pass.source_pass];
+            const auto& source = graph.passes()[order[pass.binding_slot].index];
             if (!source.allow_async_compute || queues[0] == queues[1])
             {
                 continue;
@@ -99,6 +101,26 @@ namespace lux::render::detail
             {
                 pass.queue = EQueueRole::COMPUTE;
             }
+        }
+        for (std::size_t index = 0; index < order.size();)
+        {
+            const auto& source = graph.passes()[order[index].index];
+            if (source.sequence_first.index == kGraphInvalidIndex)
+            {
+                ++index;
+                continue;
+            }
+            const auto count = source.sequence_last.index - source.sequence_first.index + 1;
+            auto commands = std::span(recording.passes).subspan(index, count);
+            const bool requires_graphics = std::ranges::any_of(commands, [](const auto& command)
+            {
+                return command.queue == EQueueRole::GRAPHICS;
+            });
+            if (requires_graphics)
+            {
+                for (auto& command : commands) command.queue = EQueueRole::GRAPHICS;
+            }
+            index += count;
         }
         // An initial conditional region is a single-queue interval, including its false transitions.
         for (const auto& region : recording.conditions)
@@ -140,7 +162,7 @@ namespace lux::render::detail
             const auto batch = static_cast<std::uint32_t>(batches.size() - 1);
             recording.passes[p].submission = batch;
             ++batches.back().pass_count;
-            if (const auto* raster = pass.work.getIf<RasterCommands>())
+            if (const auto* raster = recording.rasterCommands(pass))
             {
                 auto& reads = batches.back().shared_draw_reads;
                 const auto add = [&](SubmissionBatch::DrawRead source) noexcept
@@ -152,8 +174,8 @@ namespace lux::render::detail
                 if (const auto* streamed = std::get_if<IndexedListCommands>(&raster->draw))
                     add({streamed->data_index, true});
             }
-            pass_batches[pass.source_pass] = batch;
-            for (const auto& use : graph.passes()[pass.source_pass].uses)
+            pass_batches[analysis.execution_order[p].index] = batch;
+            for (const auto& use : graph.passes()[analysis.execution_order[p].index].uses)
             {
                 const auto add = [&](GraphResourceId resource, bool write)
                 {
@@ -228,7 +250,7 @@ namespace lux::render::detail
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             const auto& pass = recording.passes[p];
-            const auto consumer = pass_batches[pass.source_pass];
+            const auto consumer = pass_batches[analysis.execution_order[p].index];
             const auto transitionDependency = [&](const auto& barrier)
             {
                 if (barrier.previous.index != kGraphInvalidIndex)

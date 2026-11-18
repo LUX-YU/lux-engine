@@ -4,6 +4,7 @@ namespace lux::render::detail
 {
     void RenderGraphInstance::FrameResources::invalidateImportedBindings() noexcept
     {
+        record_inputs_valid = false;
         record_ready = false;
         // Unique cache revisions prevent a reused instance address from matching an older binding cache.
         static std::atomic<std::uint64_t> next_revision{1};

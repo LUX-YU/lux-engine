@@ -1,10 +1,9 @@
 #include <algorithm>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/execute/PassBindings.hpp>
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -109,13 +108,13 @@ namespace lux::render::detail
                 binding_state.descriptor_pool = frame.descriptor_pool;
                 binding_state.descriptors = {};
             }
-            const auto& placement = plan.descriptor_plan_->passes[compiled.source_pass];
-            if (placement.layout && !pass.native.draws &&
-                compiled.work.policy().scope == EPassEncodingScope::MANAGED)
+            const auto& program = pass.program_bindings;
+            const auto* scope = compiled.rasterScope();
+            const bool owns_draw_sections = scope && scope->exclusive;
+            if (program.layout && !pass.native.draws && !owns_draw_sections)
             {
                 const auto point = compiled.kind == EGraphPassKind::GRAPHICS
                     ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
-                const auto& program = plan.descriptor_plan_->passes[compiled.source_pass];
                 if (binding_state.layout != program.layout || binding_state.point != point)
                 {
                     core.CmdSetPipelineLayout(command, point, *program.layout);
@@ -123,7 +122,7 @@ namespace lux::render::detail
                     binding_state.point = point;
                     binding_state.descriptors = {};
                 }
-                auto* pipeline = compiled.pipeline;
+                auto* pipeline = pass.pipeline;
                 if (pipeline && binding_state.pipeline != pipeline)
                 {
                     core.CmdSetPipeline(command, *pipeline);
@@ -131,7 +130,7 @@ namespace lux::render::detail
                     binding_state.depth_bias.reset();
                 }
                 bindPassDescriptors(
-                    core, frame.shared_descriptors, command, program.recordBindings(),
+                    core, frame.shared_descriptors, command, program,
                     {&pass.private_descriptors, pass.private_descriptors ? 1u : 0u}, binding_state
                 );
                 if (!parameters.empty())
@@ -144,9 +143,8 @@ namespace lux::render::detail
             }
             auto native = pass.native;
             native.bindings = &binding_state;
-            const PassRecordInput input{frame.resources, pass.parameters, pass.scratch, &native};
-            const bool managed_rendering = compiled.rendering_group != kGraphInvalidIndex &&
-                compiled.work.policy().scope == EPassEncodingScope::MANAGED;
+            const PassRecordInput input{frame.resources, pass.parameters, &native};
+            const bool managed_rendering = compiled.rendering_group != kGraphInvalidIndex && !owns_draw_sections;
             if (managed_rendering && native.begin_rendering)
             {
                 nri::RenderingDesc rendering{};
@@ -165,7 +163,12 @@ namespace lux::render::detail
                 if (native.dynamic_depth_bias || binding_state.depth_bias)
                     setPassDepthBias(core, command, native.depth_bias, binding_state);
             }
-            auto recorded = compiled.work.record(input, command, core, binding_state);
+            if (owns_draw_sections) binding_state.invalidate();
+            const auto recorded = recordBlock(plan.recording_, compiled.commands, [&](const auto& packet) noexcept
+            {
+                return packet.record(input, command, core);
+            });
+            if (owns_draw_sections || compiled.kind == EGraphPassKind::TRANSFER) binding_state.invalidate();
             if (managed_rendering && (native.end_rendering || !recorded)) core.CmdEndRendering(command);
             if (!recorded) return recorded;
         }

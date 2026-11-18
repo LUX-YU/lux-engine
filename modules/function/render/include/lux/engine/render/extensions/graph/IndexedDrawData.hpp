@@ -29,12 +29,19 @@ namespace lux::render
         std::uint32_t vertex_stride = 0, index_stride = 0;
     };
 
+    // A final draw-stream slot resolved once during InstanceData creation.
+    struct IndexedDrawStreamSlot final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+    };
+
     class InstanceAccess
     {
     public:
         virtual ~InstanceAccess() noexcept = default;
         [[nodiscard]] virtual const TargetDesc& target() const noexcept = 0;
+        [[nodiscard]] virtual RenderResult<IndexedDrawStreamSlot> indexedDrawStream(GraphPassId) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<void>
-        setIndexedDrawData(GraphPassId, std::uint32_t slot, const IndexedDrawData&) noexcept = 0;
+        setIndexedDrawData(IndexedDrawStreamSlot, std::uint32_t slot, const IndexedDrawData&) noexcept = 0;
     };
 } // namespace lux::render

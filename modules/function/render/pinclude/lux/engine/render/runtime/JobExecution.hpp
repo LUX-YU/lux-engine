@@ -4,7 +4,7 @@
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <vector>
 
@@ -16,7 +16,7 @@ namespace lux::render::runtime_detail
     {
         JobExecution(
             RenderEffect&, DeviceSessionId, detail::DeviceSession&, std::uint32_t frame_count,
-            detail::RenderPlan&&, TargetId, detail::TargetOutput
+            detail::PreparedRenderGraph&&, TargetId, detail::TargetOutput
         ) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
@@ -30,7 +30,7 @@ namespace lux::render::runtime_detail
         RecipeUse recipe;
         DeviceSessionId device;
         TargetId target;
-        detail::RenderPlan plan;
+        const detail::PreparedRenderGraph graph;
         detail::RenderGraphInstance instance;
         std::uint32_t pending_uses = 0;
         struct ProgramPreparation final

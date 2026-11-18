@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
@@ -6,15 +7,16 @@
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
+#include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <utility>
 
 namespace lux::render::detail
 {
     std::pair<std::uint32_t, std::uint32_t>
-    RenderPlan::parameterRegion(std::uint32_t index, EParameterSource source) const noexcept
+    RenderGraphExecutable::parameterRegion(std::uint32_t index, EParameterSource source) const noexcept
     {
         const auto found = std::ranges::find_if(
             descriptor_plan_->parameter_regions,
@@ -28,77 +30,68 @@ namespace lux::render::detail
         return {region.offset, region.layout.size};
     }
 
-    RenderPlan::RenderPlan(nri::Device& device, EffectOutputDesc output) noexcept
+    RenderGraphExecutable::RenderGraphExecutable(nri::Device& device, EffectOutputDesc output) noexcept
         : device_(&device), output_description_(output)
     {
     }
 
-    RenderPlan::~RenderPlan() noexcept
+    RenderGraphExecutable::~RenderGraphExecutable() noexcept = default;
+
+    RenderGraphExecutable::RenderGraphExecutable(RenderGraphExecutable&&) noexcept = default;
+
+    NativeGraphPrograms::NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept
+        : session_(&session), slots_(slots)
     {
-        if (encoding_owner_)
+    }
+
+    NativeGraphPrograms::NativeGraphPrograms(NativeGraphPrograms&& other) noexcept
+        : session_(std::exchange(other.session_, nullptr)), slots_(std::move(other.slots_)),
+          program_uses_(std::move(other.program_uses_)), layout_uses_(std::move(other.layout_uses_))
+    {
+    }
+
+    NativeGraphPrograms::~NativeGraphPrograms() noexcept
+    {
+        if (!session_) return;
+        auto& programs = session_->programs();
+        if (!layout_uses_.empty())
         {
-            // Custom encodings can own GPU objects. Their layouts stay leased until the same
-            // accepted frontiers complete, and are released only after those objects are destroyed.
-            encoding_owner_->deferRelease(
-                [passes = std::move(recording_.passes), layouts = std::move(layout_uses_),
-                 cache = program_cache_]() mutable noexcept
+            session_->deferRelease([layouts = std::move(layout_uses_), &programs]() noexcept
+            {
+                for (auto* layout : layouts)
                 {
-                    passes.clear();
-                    for (auto* layout : layouts)
-                    {
-                        cache->releaseLayout(layout);
-                    }
+                    programs.releaseLayout(layout);
                 }
-            );
-            program_cache_->release(program_uses_);
+            });
         }
+        programs.release(program_uses_);
     }
 
-    RenderPlan::RenderPlan(RenderPlan&& other) noexcept
-        : instance_data_(std::move(other.instance_data_)), descriptor_plan_(std::move(other.descriptor_plan_)),
-          device_(std::exchange(other.device_, nullptr)), device_addresses_(other.device_addresses_),
-          output_description_(other.output_description_), program_cache_(std::exchange(other.program_cache_, nullptr)),
-          encoding_owner_(std::exchange(other.encoding_owner_, nullptr)), program_uses_(std::move(other.program_uses_)),
-          layout_uses_(std::move(other.layout_uses_)), resources_(std::move(other.resources_)),
-          histories_(std::move(other.histories_)), condition_count_(other.condition_count_),
-          recording_(std::move(other.recording_)), submissions_(std::move(other.submissions_)),
-          imported_accesses_(std::move(other.imported_accesses_)),
-          physical_resources_(std::move(other.physical_resources_)), pass_indices_(std::move(other.pass_indices_)),
-          output_(other.output_), output_first_batch_(other.output_first_batch_),
-          output_wait_stages_(other.output_wait_stages_), fixed_output_extent_(other.fixed_output_extent_)
-    {
-    }
-
-    exec::task<RenderResult<void>> RenderPlan::prepareOperations(
-        DeviceSession& session, const RenderGraph& graph, execution::CpuScheduler cpu
+    exec::task<RenderResult<void>> RenderGraphExecutable::prepareOperations(
+        DeviceSession& session,
+        NativeGraphPrograms& native,
+        const RenderGraph& graph,
+        std::span<const GraphPassId> order,
+        execution::CpuScheduler cpu
     ) noexcept
     {
         const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        program_cache_ = &session.programs();
-        encoding_owner_ = &session;
+        auto& program_cache = session.programs();
         std::uint32_t indexed_lists = 0, raster_lists = 0;
         std::vector<std::uint8_t> materialized;
         materialized.reserve(resources_.size());
         for (const auto& resource : resources_) materialized.push_back(resource.memory_used);
-        std::vector<rdesc::ShaderProgramArtifact> programs(graph.programs().size());
-        for (std::size_t i = 0; i < programs.size(); ++i)
-        {
-            const auto* selected = graph.programs()[i].find(session.enabledFeatures().shader_target, device_addresses_);
-            if (selected)
-            {
-                programs[i] = *selected;
-            }
-        }
         for (auto& pass : recording_.passes)
         {
             if (stop.stop_requested())
             {
                 co_return cxx::unexpected(RenderError{kCommandCancelled});
             }
-            const auto& source = graph.passes()[pass.source_pass];
+            const auto& source = graph.passes()[order[pass.binding_slot].index];
             const auto& input = source.interface;
-            auto& bindings = descriptor_plan_->passes[pass.source_pass];
+            auto& bindings = descriptor_plan_->passes[pass.binding_slot];
+            const rdesc::ShaderProgramArtifact* shader = nullptr;
             std::vector<nri::Format> colors;
             std::optional<PassRenderingInfo> rendering;
             if (const auto* scope = pass.rasterScope())
@@ -112,7 +105,6 @@ namespace lux::render::detail
                     colors.push_back(imageFormat(image.format).native);
                     rendering->samples = static_cast<std::uint8_t>(image.samples);
                 }
-                rendering->colors = colors;
                 if (scope->depth)
                 {
                     const auto& image =
@@ -123,8 +115,7 @@ namespace lux::render::detail
             }
             if (input.program != kGraphInvalidIndex)
             {
-                const auto* shader =
-                    graph.programs()[input.program].find(session.enabledFeatures().shader_target, device_addresses_);
+                shader = graph.programs()[input.program].find(session.enabledFeatures().shader_target, device_addresses_);
                 if (!shader)
                 {
                     co_return cxx::unexpected(RenderError{kDeviceUnsupported});
@@ -143,7 +134,6 @@ namespace lux::render::detail
                 {
                     co_return cxx::unexpected(relocated.error());
                 }
-                programs[input.program] = *relocated;
                 RasterProgramKey key;
                 key.shader = std::make_shared<const PreparedShader>(std::move(*relocated));
                 const bool is_raster = source.kind == EGraphPassKind::GRAPHICS;
@@ -158,14 +148,14 @@ namespace lux::render::detail
                     key.depth = rendering->depth;
                     key.samples = rendering->samples;
                 }
-                auto layout = program_cache_->acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
+                auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
                 if (!layout)
                 {
                     co_return cxx::unexpected(layout.error());
                 }
-                cxx::scope_exit release_layout([&]() noexcept { program_cache_->releaseLayout(*layout); });
-                const auto lookup = is_raster ? program_cache_->lookupRaster(key, **layout)
-                                              : program_cache_->lookupCompute(key.shader, **layout);
+                cxx::scope_exit release_layout([&]() noexcept { program_cache.releaseLayout(*layout); });
+                const auto lookup = is_raster ? program_cache.lookupRaster(key, **layout)
+                                              : program_cache.lookupCompute(key.shader, **layout);
                 auto* program = lookup.hit();
                 if (!program)
                 {
@@ -213,36 +203,68 @@ namespace lux::render::detail
                     {
                         co_return cxx::unexpected(compiled.error());
                     }
-                    program = is_raster ? program_cache_->publishRaster(std::move(key), lookup, *compiled)
-                                        : program_cache_->publishCompute(std::move(key.shader), lookup, *compiled);
+                    program = is_raster ? program_cache.publishRaster(std::move(key), lookup, *compiled)
+                                        : program_cache.publishCompute(std::move(key.shader), lookup, *compiled);
                 }
-                program_uses_.push_back(program);
-                pass.pipeline = CompiledPrograms::native(*program);
+                native.program_uses_.push_back(program);
+                native.slots_[pass.binding_slot].pipeline = CompiledPrograms::native(*program);
             }
             else if (!bindings.private_bindings.empty())
             {
-                auto layout = program_cache_->acquireLayout(bindings, static_cast<std::uint32_t>(colors.size()));
+                auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(colors.size()));
                 if (!layout)
                 {
                     co_return cxx::unexpected(layout.error());
                 }
-                layout_uses_.push_back(*layout);
+                native.layout_uses_.push_back(*layout);
             }
+            native.slots_[pass.binding_slot].descriptors = bindings.recordBindings();
+            bindings.layout = nullptr;
             PassCompileContext context{
-                session,       input,          programs,     bindings.recordBindings(), rendering, graph.resources(),
-                pass.pipeline, &indexed_lists, &raster_lists, materialized
+                session, shader ? &shader->interface : nullptr, graph.resources(),
+                &indexed_lists, &raster_lists, materialized
             };
-            auto encoded = source.work.compile(context);
-            if (!encoded)
+            const auto append = [&]<class T>(RenderResult<T> result, ERecordKernel kernel, std::vector<T>& table)
+                noexcept -> RenderResult<RecordBlock>
             {
-                co_return cxx::unexpected(encoded.error());
+                if (!result) return cxx::unexpected(result.error());
+                const auto packet = static_cast<std::uint32_t>(table.size());
+                table.push_back(std::move(*result));
+                return RecordBlock{kernel, packet};
+            };
+            auto commands = std::visit(
+                [&](const auto& command) noexcept -> RenderResult<RecordBlock>
+                {
+                    using Command = std::remove_cvref_t<decltype(command)>;
+                    if constexpr (std::is_same_v<Command, RasterWork>)
+                    {
+                        return append(RasterPass::compile(command, context), ERecordKernel::RASTER, recording_.raster);
+                    }
+                    else if constexpr (std::is_same_v<Command, ComputeWork>)
+                    {
+                        return append(
+                            ComputePass::compile(command, context), ERecordKernel::COMPUTE, recording_.compute
+                        );
+                    }
+                    else
+                    {
+                        return append(
+                            TransferPass::compile(command, context), ERecordKernel::TRANSFER, recording_.transfer
+                        );
+                    }
+                },
+                source.command
+            );
+            if (!commands)
+            {
+                co_return cxx::unexpected(commands.error());
             }
-            pass.work = std::move(*encoded);
+            pass.commands = std::move(*commands);
         }
         co_return RenderResult<void>{};
     }
 
-    bool RenderPlan::compatible(const TargetDesc& target) const noexcept
+    bool RenderGraphExecutable::compatible(const TargetDesc& target) const noexcept
     {
         const bool same_type = target.kind == output_description_.kind && target.format == output_description_.format &&
                                target.samples == output_description_.samples &&

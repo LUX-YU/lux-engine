@@ -30,19 +30,23 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RenderGraphInstance::createData(
-        const RenderGraph&, ResourceRegistry& resources, std::span<const ResourceInstanceId> resolved
+        std::span<const InstanceDataRecipe> recipes,
+        ResourceRegistry& resources,
+        std::span<const ResourceInstanceId> resolved
     ) noexcept
     {
         resources_ = &resources;
         if (!data_.empty()) return cxx::unexpected(RenderError{kDeviceArgument});
-        for (const auto* recipe : plan_->instanceData())
+        for (auto index : instance_recipes_)
         {
-            const auto [offset, bytes] = plan_->parameterRegion(recipe->parameter_group, recipe->parameter_source);
-            if (recipe->parameter_bytes > bytes) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            auto created = recipe->create(*session_, resources, *this, resolved, recipe->configuration.data());
+            if (index >= recipes.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            const auto& recipe = recipes[index];
+            const auto [offset, bytes] = plan_->parameterRegion(recipe.parameter_group, recipe.parameter_source);
+            if (recipe.parameter_bytes > bytes) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            auto created = recipe.create(*session_, resources, *this, resolved, recipe.configuration.data());
             if (!created) return cxx::unexpected(created.error());
-            data_.push_back({recipe, std::move(*created), offset, bytes, {}});
-            data_.back().inputs.resize(recipe->inputs.size());
+            data_.push_back({recipe.inputs, std::move(*created), offset, bytes, {}});
+            data_.back().inputs.resize(recipe.inputs.size());
         }
         return {};
     }
@@ -54,7 +58,7 @@ namespace lux::render::detail
         for (auto& data : data_)
         {
             for (std::size_t i = 0; i < data.inputs.size(); ++i)
-                data.inputs[i] = resourceInput(data.recipe->inputs[i], slot);
+                data.inputs[i] = resourceInput(data.input_slots[i], slot);
             const InstanceInputs input{slot,
                 instanceParameters().subspan(data.parameter_offset, data.parameter_bytes), data.inputs};
             auto ready = data.value->prepare(input, uploads, preparation);
@@ -117,7 +121,7 @@ namespace lux::render::detail
         for (std::size_t p = 0; p < plan_->passes().size(); ++p)
         {
             const auto& pass = plan_->passes()[p];
-            const auto* raster = pass.work.getIf<RasterCommands>();
+            const auto* raster = plan_->rasterCommands(pass);
             if (raster && std::holds_alternative<RasterListCommands>(raster->draw))
             {
                 frame.raster_draws.emplace_back();
@@ -159,14 +163,13 @@ namespace lux::render::detail
     }
 
     RenderResult<DrawListResources*> RenderGraphInstance::prepareDrawList(
-        GraphPassId id,
+        const CompiledPass& pass,
         std::uint32_t slot,
         std::size_t vertex_bytes,
         std::size_t index_bytes
     ) noexcept
     {
-        const auto* pass = compiledPass(id);
-        const auto* raster = pass ? pass->work.getIf<RasterCommands>() : nullptr;
+        const auto* raster = plan_->rasterCommands(pass);
         const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
         if (!list)
         {
@@ -200,7 +203,7 @@ namespace lux::render::detail
             return {};
         };
         physical.draws.packets.clear();
-        physical.draws.parameters.resize(pass->parameter_size);
+        physical.draws.parameters.resize(pass.parameter_size);
         auto vertices =
             grow(physical.vertices, physical.vertex_capacity, vertex_bytes, nri::BufferUsageBits::VERTEX);
         if (!vertices)
@@ -338,7 +341,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, index] : compiled.descriptor_uses)
             {
-                const auto& program = plan_->descriptor_plan_->passes[plan_->passes()[pass].source_pass];
+                const auto& program = plan_->descriptor_plan_->passes[pass];
                 const auto& use = program.uses[index];
                 const auto kind = use.kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE_ARRAY
                                                                              : nri::TextureView::TEXTURE_ARRAY;
@@ -404,7 +407,7 @@ namespace lux::render::detail
             if (replacement.use.target == EImageViewTarget::DESCRIPTOR)
             {
                 const auto& use =
-                    plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass].uses[replacement.use.index];
+                    plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot].uses[replacement.use.index];
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, destination, 1};
                 core.UpdateDescriptorRanges(&update, 1);

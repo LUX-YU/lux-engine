@@ -74,12 +74,33 @@ struct Monitor final
     static inline std::atomic<unsigned> reject_after = 0;
     static inline std::atomic<nri::Result> injected = nri::Result::SUCCESS;
     static inline thread_local bool on_server = false;
+    static inline decltype(nri::CoreInterface::CmdBeginRendering) begin_rendering = nullptr;
+    static inline std::atomic<unsigned> records = 0, parallel_arrivals = 0;
+    static inline std::atomic<bool> require_overlap = false, record_entered = false;
     static inline nri::DeviceDesc rejected{};
     nri::CoreInterface* core;
 
     explicit Monitor(ResourceCreateContext& context) noexcept
         : core(&const_cast<nri::CoreInterface&>(context.device.nriCore()))
     {
+        begin_rendering = core->CmdBeginRendering;
+        core->CmdBeginRendering = [](nri::CommandBuffer& command, const nri::RenderingDesc& desc)
+        {
+            record_entered.store(true);
+            if (require_overlap.load())
+            {
+                CHECK(!on_server);
+                ++parallel_arrivals;
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while (parallel_arrivals.load() < 2)
+                {
+                    CHECK(std::chrono::steady_clock::now() < deadline);
+                    std::this_thread::yield();
+                }
+            }
+            ++records;
+            begin_rendering(command, desc);
+        };
         original = core->GetDeviceDesc;
         core->GetDeviceDesc = [](const nri::Device& device) -> const nri::DeviceDesc&
         {
@@ -118,6 +139,7 @@ struct Monitor final
 
     ~Monitor() noexcept
     {
+        core->CmdBeginRendering = begin_rendering;
         core->GetDeviceDesc = original;
         core->QueueSubmit = submit;
         core->DestroyTexture = destroy_texture;
@@ -243,52 +265,10 @@ struct ClearFeature final
         return {};
     }
 
-    static inline std::atomic<unsigned> records = 0, compiles = 0;
-    static inline std::atomic<unsigned> parallel_arrivals = 0;
-    static inline std::atomic<bool> require_overlap = false;
-    static inline std::atomic<bool> record_entered = false;
-
-    struct State final
-    {
-        RenderResult<void>
-        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept
-        {
-            record_entered.store(true);
-            if (require_overlap.load())
-            {
-                CHECK(!Monitor::on_server);
-                ++parallel_arrivals;
-                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-                while (parallel_arrivals.load() < 2)
-                {
-                    CHECK(std::chrono::steady_clock::now() < deadline);
-                    std::this_thread::yield();
-                }
-            }
-            ++records;
-            return {};
-        }
-    };
-
-    static RenderResult<State> compile(const std::monostate&, PassCompileContext& context) noexcept
-    {
-        ++compiles;
-        if (!context.rendering || context.rendering->colors.size() != 1)
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        return State{};
-    }
-
     static RenderResult<void> build(const void*, std::string_view, FeatureBuildContext& context) noexcept
     {
-        PassDeclaration declaration;
-        declaration.kind = EGraphPassKind::GRAPHICS;
-        declaration.stages = nri::StageBits::COLOR_ATTACHMENT;
-        declaration.rendering.emplace();
-        declaration.rendering->colors = {{{context.resource("color")},
-            EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 1, 0, 1}}};
-        auto encoding = PassWork::create<ClearFeature>(std::monostate{});
-        if (!encoding) return cxx::unexpected(encoding.error());
-        auto pass = context.graph.addEncodedPass("clear", std::move(declaration), std::move(*encoding));
+        TransferWork clear{{ClearImage{{context.resource("color")}, {0, 1, 0, 1}}}};
+        auto pass = context.graph.addTransferPass("clear", std::move(clear));
         if (!pass) return cxx::unexpected(pass.error());
         return context.publish("color", pass->written.front());
     }
@@ -678,20 +658,20 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
         return std::pair{receive<RequestRenderJob>(client, a), receive<RequestRenderJob>(second_wire, b)};
     };
     const auto accepted = [&] { return call<QueryRenderStats>(client, {}).submissions; };
-    ClearFeature::records.store(0);
-    ClearFeature::parallel_arrivals.store(0);
-    ClearFeature::require_overlap.store(true);
+    Monitor::records.store(0);
+    Monitor::parallel_arrivals.store(0);
+    Monitor::require_overlap.store(true);
     const auto merge_before = accepted();
     const auto [merged_first, merged_second] = batch(job.job, other_job);
     CHECK(!merged_first.error.type && !merged_second.error.type && merged_first.frame_index == merged_second.frame_index);
-    CHECK(accepted() == merge_before + 1 && ClearFeature::records == 2 && ClearFeature::parallel_arrivals == 2);
+    CHECK(accepted() == merge_before + 1 && Monitor::records == 2 && Monitor::parallel_arrivals == 2);
     CHECK(call<SetRenderJobDependencies>(client, {other_job, {job.job}, {}}).error.type == 0);
-    ClearFeature::parallel_arrivals.store(0);
+    Monitor::parallel_arrivals.store(0);
     const auto ordered_before = accepted();
     const auto [ordered_first, ordered_second] = batch(job.job, other_job);
     CHECK(!ordered_first.error.type && !ordered_second.error.type && ordered_first.frame_index == ordered_second.frame_index);
-    CHECK(accepted() == ordered_before + 2 && ClearFeature::parallel_arrivals == 2);
-    ClearFeature::require_overlap.store(false);
+    CHECK(accepted() == ordered_before + 2 && Monitor::parallel_arrivals == 2);
+    Monitor::require_overlap.store(false);
     CHECK(call<SetRenderJobDependencies>(client, {other_job, {}, {}}).error.type == 0);
     const auto cold = call<QueryResource>(client, {session, scene, ColdResource::descriptor.type}).resource_id;
     CHECK(!cold.isNull());
@@ -726,15 +706,13 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(!sealed && sealed.error().type == kCapabilityInUse);
     std::puts("SERVER INTERLEAVE PASS: IPC, exclusive Resource, unrelated Job and GPU retirement before terminal delivery");
     CHECK(call<RemoveRenderJob>(client, other_job).error.type == 0);
-    const auto compiles = ClearFeature::compiles.load();
-    const auto records_before_resize = ClearFeature::records.load();
+    const auto records_before_resize = Monitor::records.load();
     const auto resized = call<ResizeTarget>(client, {target, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}});
     CHECK(resized.error.type == 0 && resized.description.width == 64);
     CHECK(call<SetTargetActive>(client, {target, true, resized.epoch}).error.type == 0);
     const auto next = call<RequestRenderJob>(client, {job.job});
     CHECK(next.error.type == 0 && next.job == job.job);
-    CHECK(ClearFeature::records == records_before_resize + 1);
-    CHECK(ClearFeature::compiles == compiles);
+    CHECK(Monitor::records == records_before_resize + 1);
     std::puts("PARALLEL RECORD PASS: two overlapping batches, merged without an edge, ordered with an edge");
 
     const auto texture_store = call<GetOrCreateResource>(client, {session, DeviceScope{}, kTextureResourceName});
@@ -762,10 +740,10 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
         CHECK(std::chrono::steady_clock::now() < upload_deadline);
         std::this_thread::yield();
     }
-    ClearFeature::record_entered.store(false);
+    Monitor::record_entered.store(false);
     const auto pending_frame = send<RequestRenderJob>(client, {job.job});
     const auto expected_record = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (!ClearFeature::record_entered.load())
+    while (!Monitor::record_entered.load())
     {
         CHECK(std::chrono::steady_clock::now() < expected_record);
         std::this_thread::yield();
@@ -1255,11 +1233,10 @@ int main(int argc, char** argv)
         CHECK(call<RemoveEffect>(client, {created.effect}).error.type == 0);
     }
     CHECK(Monitor::queries == 0 && Monitor::deny);
-    const auto native_compiles = ClearFeature::compiles.load();
     const auto resources_before = server->stats().storages_created;
     const auto effect = create();
     CHECK(effect.error.type == 0 && Monitor::queries == 0 && Monitor::deny);
-    CHECK(ClearFeature::compiles == native_compiles && server->stats().storages_created == resources_before);
+    CHECK(server->stats().storages_created == resources_before);
     // Disarm while setting up an actual Target; rearm only for native execution creation.
     Monitor::deny.store(false);
     const auto scene = call<CreateScene>(client, {}).scene;
@@ -1275,7 +1252,6 @@ int main(int argc, char** argv)
     CHECK(retained.error.type == 0 && !retained.resource_id.isNull());
     CHECK(call<StartRenderJob>(client, {session, current, target}).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
-    CHECK(ClearFeature::compiles > native_compiles);
     CHECK(server->stats().submissions == 0);
 
     const auto before = Monitor::queries.load();

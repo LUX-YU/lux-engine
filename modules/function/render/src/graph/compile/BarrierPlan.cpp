@@ -1,4 +1,6 @@
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
+#include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 #include <tuple>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
@@ -112,29 +114,13 @@ namespace lux::render::detail
         ) noexcept
         {
             auto current = accessFor(use, program);
-            if (const auto override = pass.work.access(use, description, backend))
+            if (const auto* transfer = std::get_if<TransferWork>(&pass.command))
             {
-                current.access = override->access;
-                current.stages = override->stages;
-                if (std::holds_alternative<GraphImageDesc>(description)) current.layout = override->layout;
-            }
-            const bool is_shader_use = use.usage == EGraphUse::SAMPLED || use.usage == EGraphUse::STORAGE_READ ||
-                use.usage == EGraphUse::STORAGE_WRITE || use.usage == EGraphUse::STORAGE_READ_WRITE;
-            if (is_shader_use && pass.shader_stages != nri::StageBits::NONE)
-            {
-                // A pass-wide shader union must not broaden attachment/copy/index barriers to
-                // incompatible D3D12 sync/access pairs. Fixed-function uses keep their own stages.
-                const bool storage_access = (current.access & nri::AccessBits::SHADER_RESOURCE_STORAGE) != 0;
-                const auto allowed = storage_access
-                    ? nri::StageBits::ALL_SHADERS | nri::StageBits::CLEAR_STORAGE : nri::StageBits::ALL_SHADERS;
-                const auto selected = static_cast<std::uint32_t>(pass.shader_stages) &
-                    static_cast<std::uint32_t>(allowed);
-                if (pass.shader_stages == nri::StageBits::ALL) current.stages = nri::StageBits::ALL;
-                else if (selected != 0)
+                if (const auto native = TransferPass::access(*transfer, use, description, backend))
                 {
-                    const auto declared = static_cast<nri::StageBits>(selected);
-                    current.stages = current.stages == nri::StageBits::ALL
-                        ? declared : combineStages(current.stages, declared);
+                    current.access = native->access;
+                    current.stages = native->stages;
+                    if (std::holds_alternative<GraphImageDesc>(description)) current.layout = native->layout;
                 }
             }
             return current;
@@ -450,7 +436,7 @@ namespace lux::render::detail
         {
             auto& pass = recording.passes[p];
             const auto& declared = graph.passes()[analysis.execution_order[p].index];
-            const auto& layout = layouts.passes[pass.source_pass];
+            const auto& layout = layouts.passes[pass.binding_slot];
             std::vector<std::vector<Access>> next(resources.size());
             std::vector<std::uint32_t> touched;
             bool incompatible_layouts = false;

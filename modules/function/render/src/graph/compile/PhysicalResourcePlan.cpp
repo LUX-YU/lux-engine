@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <numeric>
@@ -47,6 +48,7 @@ namespace lux::render::detail
 
     PhysicalResourcePlan planPhysicalResources(
         const RenderGraph& graph,
+        std::span<const GraphPassId> source_order,
         std::span<const CompiledResource> resources,
         const RecordingProgram& recording,
         std::span<const SubmissionBatch> submissions,
@@ -102,7 +104,7 @@ namespace lux::render::detail
                         interval.before[axis] = std::min(interval.before[axis], before[axis]);
                     }
                 };
-                for (const auto& use : graph.passes()[pass.source_pass].uses)
+                for (const auto& use : graph.passes()[source_order[p].index].uses)
                 {
                     record(use.version.resource);
                     if (use.access == EGraphAccess::READ && use.fallback)

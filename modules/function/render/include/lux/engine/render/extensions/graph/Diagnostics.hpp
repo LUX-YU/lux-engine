@@ -1,10 +1,14 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <cstdint>
+#include <lux/engine/render/visibility.h>
 #include <string_view>
 
 namespace lux::render
 {
+    class RenderGraph;
+    struct RenderGraphAnalysis;
+
     enum class EGraphDumpFormat : std::uint8_t
     {
         JSON,

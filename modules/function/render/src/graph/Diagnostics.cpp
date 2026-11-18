@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>

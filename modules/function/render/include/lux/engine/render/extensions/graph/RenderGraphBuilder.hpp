@@ -95,15 +95,13 @@ namespace lux::render
         addRasterPass(std::string key, RasterWork work, GraphPassOptions = {}) noexcept;
         [[nodiscard]] RenderResult<PassResult>
         addComputePass(std::string key, ComputeWork work, GraphPassOptions = {}) noexcept;
+        // Commands run in order on one queue. The result exposes each resource's last write.
+        // Use nextWriteVersion to declare a read of an earlier command's output.
+        [[nodiscard]] RenderResult<PassResult>
+        addComputeSequence(std::string key, std::vector<ComputeWork> commands, GraphPassOptions = {}) noexcept;
+        [[nodiscard]] RenderResult<ResourceVersion> nextWriteVersion(GraphResourceId resource) const noexcept;
         [[nodiscard]] RenderResult<PassResult>
         addTransferPass(std::string key, TransferWork work, GraphPassOptions = {}) noexcept;
-        [[nodiscard]] RenderResult<PassResult>
-        addEncodedPass(
-            std::string key,
-            PassDeclaration declaration,
-            PassWork operation,
-            GraphPassOptions = {}
-        ) noexcept;
         // Duplicate identical edges are canonicalized. Self edges are errors.
         [[nodiscard]] RenderResult<void> dependsOn(GraphPassId before, GraphPassId after) noexcept;
         [[nodiscard]] RenderResult<void> exportOutput(GraphExport output) noexcept;
@@ -111,16 +109,8 @@ namespace lux::render
         [[nodiscard]] RenderResult<RenderGraph> finish() && noexcept;
 
     private:
-        struct DeclaredWork final
-        {
-            PassDeclaration declaration;
-            PassWork operation;
-        };
-
-        // Only normalization of convenience frontends; arbitrary operations use the one declared alternative.
-        using VAuthorWork = std::variant<RasterWork, ComputeWork, TransferWork, DeclaredWork>;
         [[nodiscard]] RenderResult<PassResult>
-        addWork(std::string, VAuthorWork, EGraphPassKind, GraphPassOptions) noexcept;
+        addWork(std::string key, VGraphCommand command, EGraphPassKind kind, GraphPassOptions options) noexcept;
         [[nodiscard]] RenderResult<GraphPassId> addPass(GraphPass pass) noexcept;
         RenderGraph candidate_;
         std::vector<std::uint32_t> versions_;

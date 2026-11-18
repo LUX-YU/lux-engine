@@ -230,46 +230,21 @@ synchronously. Dynamic configuration cost counts actual owned capacity, not exte
 
 ## Graph and Features
 
-Logical `GraphPass::work` is an immutable type-erased `PassWork` recipe, not a closed Raster/Compute/Transfer variant.
-The existing convenience constructors normalize their ordinary work into that same graph owner. Custom authors use
-`PassWork::create<Feature>(config, policy)` and `RenderGraphBuilder::addEncodedPass` with an explicit PassDeclaration:
-resource versions/ranges/usages, a conservative native stage union, queue kind, optional common shader interface, and
-ordinary GraphPassOptions for side effects/conditions. The common Builder still validates and versions all accesses;
-analysis and Feature ownership checks see the same graph metadata. Empty undeclared side effects are rejected.
+The Builder owns graph-local resource versions and strongly typed Raster, Compute and Transfer commands.
+Extensions declare their attachment scopes, resource ranges and usage through those commands. The compiler validates
+each command and lowers it into a recording block referencing a typed packet table.
 
-A typed cold `Feature::compile(config, PassCompileContext&) noexcept` returns immutable encoding state.
-`PassEncoding` requires a const/noexcept record returning RenderResult<void>. Its RecordInput contains resolved frozen
-resources/parameters and caller-exclusive scratch, with no Server/Registry/scheduler/GraphInstance lookup. Record only
-encodes into the supplied exclusive command buffer: no Submit, GPU wait, shader compilation, registry changes or unbounded
-allocation. Extension code must outlive every recipe, compiled state, thunk invocation and deleter.
-
-MANAGED encodings provide the operation body; common raster rendering scope, pipeline/descriptors and dynamic state stay
-with the executor. EXCLUSIVE takeover owns its rendering scope and always invalidates the supplied binding cache, including
-on record failure. Merely sharing immutable logical recipes does not share mutable recording scratch or native state.
-
-Both convenience frontends and custom recipes lower to the same `CompiledPass::work` (`PassEncoding`).
-The compiler retains the ordinary resource, layout, rendering-group and submission planning algorithms; the
-executor has no central Raster/Compute/Transfer command variant or type visitor. Ordinary raster groups use the
-common managed rendering scope. Dynamic draw lists explicitly own their sections with EXCLUSIVE encoding.
-Compilation receives target-selected programs and the planned native descriptor layout. The common path binds
-MANAGED layouts, descriptors and constants; EXCLUSIVE code binds its own state. Custom shader code must use the
-provided target and physical layout. Record failure ends the command buffer and prevents its submission.
-Custom Raster declares `PassDeclaration::rendering` using the same `RasterScope` as ordinary Raster. Attachment
-versions, mip/layer views, depth and resolve targets enter the common Builder/Compile/Instance path. MANAGED graphics
-requires a scope; EXCLUSIVE records its own Begin/End using the prepared native views. `PassCompileContext::rendering`
-provides target format/sample facts without passing physical images into logical construction. Attachment/copy barriers
-use fixed-function stages; custom shader-stage unions are filtered to compatible shader accesses.
-
-`PassEncodingPolicy::scratch_bytes` reserves per-pass storage in each FIF slice before recording. Ordinary compiled
-states are stored inline; extension states larger than that inline capacity own a separate allocation. A Plan retires
-encoding-owned GPU objects at the DeviceSession's accepted submission frontiers, then releases their layout leases.
-Prepared `PassDescriptorBindings` contain only native layout and set locations, not the compiler's reflection tables.
+Recorded commands have no extension callback or borrowed source configuration. A Feature that produces dynamic draw
+data uses the indexed or raster draw stream contracts. Indexed producers resolve the final stream with
+`InstanceAccess::indexedDrawStream` during creation. Preparation may supply bounded copies, resource bindings and
+draw packets. The graph still declares attachment writes and fixed graph reads.
 
 `RenderGraphBuilder` owns candidate arrays. `finish()` produces one self-contained immutable Definition;
 `analyzeRenderGraph()` produces independent analysis data. Graph resource/pass IDs are indices within that Definition, not
 global generational identities. Version zero describes explicit initial contents; positive versions name writes.
-Reads, read/write predecessors, conditional fallbacks and overlapping ranges are explicit. Exports and side effects
-root culling. Invalid ranges, live cycles, ambiguous producers and incomplete reads fail with structured errors.
+Reads, read/write predecessors, conditional fallbacks and overlapping ranges are explicit. Exports, published History,
+imported writes and explicit side effects root culling. Invalid ranges, live cycles, ambiguous producers and incomplete
+reads fail with structured errors.
 Untouched subranges inherit the explicit predecessor; analysis follows those ranges only when a consumer observes
 them. Logical lifetime disjointness does not authorize physical memory aliasing.
 
@@ -290,30 +265,26 @@ implementation dependencies. Ordinary clients select capabilities and semantic p
 draws, compilation lowers them, and execution records them. No Feature build callback or graph analysis runs in a
 stable frame. Cooked shader reflection remains the source of parameter layouts.
 
-`GraphCompiler::compile(session, cpu, graph, analysis, ...)` is the sole asynchronous device entry. It returns
-only a complete candidate: target/layout selection, shared cached programs, typed PassEncoding, and
-Barrier/Submission/Physical/Conditional/Rendering plans are ready together. Its CPU work and native pipeline
-creation return to the caller's owner scheduler before cache publication. There is no public second
-`RenderPlan::preparePrograms` step and no built-in/custom execution switch.
+Use `nextWriteVersion` and `addComputeSequence` to declare a read of a preceding dispatch within one logical
+Compute pass. The Builder commits the sequence as a unit and returns the final written version of each resource.
+Analysis keeps the commands together, derives their hazards individually, and rejects dependency cycles. The compiler
+records compatible adjacent work in the same CB and emits the synchronization between commands.
 
-Every logical Pass has one interface, rendering scope and queue declaration. Raster/Compute/Transfer values remain
-convenience frontends for resource-version normalization, then call the same `PassWork::create<Operation>` mechanism
-as external authors. Shaderless typed storage views and operation-specific native access facts also flow through
-that common declaration/compile boundary. Analysis and binding planning never recover an operation type from Work.
-
-The compiler supplies `PassCompileContext::pipeline` as a borrowed pipeline from DeviceSession's sole
-`CompiledPrograms` cache; a State must not destroy it. Graphics authors declare their GraphicsState explicitly,
-including depth behavior. MANAGED/EXCLUSIVE recording and binding invalidation remain PassEncoding contracts.
-Shader reflection determines target binding placement, layouts and descriptor writes. Image and sampler bindings
-remain separate on both SPIR-V and DXIL. Samplers are dense graph-local inputs bound before initialization and do
-not create artificial image hazards. Graph construction never creates a native pipeline.
+`GraphCompiler::compile(session, cpu, graph, analysis, ...)` prepares device-qualified programs, descriptor bindings,
+submissions and physical resource layout before publishing the `RenderGraphExecutable`. Shader reflection supplies
+layouts and descriptor writes on SPIR-V and DXIL. The final descriptor table is dense in execution order. Separate
+image and sampler bindings remain explicit. Program preparation and pipeline creation return to the owner scheduler
+for publication through the existing `CompiledPrograms` cache. The device execution owns those native program
+leases alongside the executable. The executable's recording tables carry slots and the Instance freezes their physical
+bindings for the recording workers.
 
 The Effect keeps Storage requirements and cold Feature creation data. Start or Rebind resolves those inputs and creates
 professional bindings before initializing the `RenderGraphInstance`. The instance allocates graph resources and
 descriptors per existing FIF slot; it neither discovers Storage nor runs factories. Standalone project GPU consumers
 can bind physical inputs directly without creating a Registry or Server.
 
-The `RenderPlan` contains typed recording work, range transitions and rendering groups. Legacy's consecutive-pass
+The `RenderGraphExecutable` contains a recording program with typed Raster, Compute and Transfer packet tables,
+range transitions and rendering groups. Legacy's consecutive-pass
 grouping and execution-order last-use rules are reused with stricter attachment identity, range and dependency
 checks. Only compatible LOAD successors share a rendering scope; sampling an earlier attachment requires the
 corresponding barrier outside rendering. The NRI backend has no discard load operation, so author DISCARD is

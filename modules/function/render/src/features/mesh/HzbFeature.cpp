@@ -43,6 +43,17 @@ namespace lux::render
             return cxx::unexpected(program.error());
         }
         auto current = context.resource("current");
+        auto first = context.graph.nextWriteVersion(current.resource);
+        if (!first)
+        {
+            return cxx::unexpected(first.error());
+        }
+        if (!config.mip_count || config.mip_count - 1 > UINT32_MAX - first->number)
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        std::vector<ComputeWork> commands;
+        commands.reserve(config.mip_count);
         for (std::uint32_t mip = 0; mip < config.mip_count; ++mip)
         {
             const auto source = mip ? current : context.resource("depth");
@@ -55,17 +66,17 @@ namespace lux::render
                 {"uDst", {current, destination_range, EGraphAccess::WRITE}}
             };
             work.dispatch = ImageDispatchArguments{current.resource, mip};
-            auto pass = context.graph.addComputePass(
-                featureKey(detail::HzbFeature::name, key, "mip" + std::to_string(mip)),
-                std::move(work)
-            );
-            if (!pass)
-            {
-                return cxx::unexpected(pass.error());
-            }
-            current = pass->written.front();
+            commands.push_back(std::move(work));
+            current.number = first->number + mip;
         }
-        return context.publish("current", current);
+        auto pass = context.graph.addComputeSequence(
+            featureKey(detail::HzbFeature::name, key, "pyramid"), std::move(commands)
+        );
+        if (!pass)
+        {
+            return cxx::unexpected(pass.error());
+        }
+        return context.publish("current", pass->written.front());
     }
 
 } // namespace lux::render

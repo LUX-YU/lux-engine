@@ -1,13 +1,14 @@
+#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/compile/ConditionalPlan.hpp>
 
 namespace lux::render::detail
 {
-    void planConditions(const RenderGraph& graph, RecordingProgram& recording) noexcept
+    void planConditions(const RenderGraph& graph, std::span<const GraphPassId> order, RecordingProgram& recording) noexcept
     {
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             auto& pass = recording.passes[p];
-            const auto& condition = graph.passes()[pass.source_pass].condition;
+            const auto& condition = graph.passes()[order[p].index].condition;
             if (!condition)
             {
                 continue;

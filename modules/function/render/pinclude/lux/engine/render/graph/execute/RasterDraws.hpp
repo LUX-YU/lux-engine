@@ -1,7 +1,7 @@
 #pragma once
 
 #include <NRI.h>
-#include <lux/engine/render/extensions/graph/PassRecordInput.hpp>
+#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>

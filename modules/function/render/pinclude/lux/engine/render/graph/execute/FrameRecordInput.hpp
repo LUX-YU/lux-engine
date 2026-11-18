@@ -2,12 +2,13 @@
 
 #include <NRI.h>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
+#include <optional>
 #include <span>
 
 namespace lux::render::detail
 {
-    class RenderPlan;
+    class RenderGraphExecutable;
     struct CompiledPass;
     struct RasterDrawList;
 
@@ -19,7 +20,8 @@ namespace lux::render::detail
         std::optional<nri::GlobalBarrierDesc> alias_barrier;
         nri::DescriptorSet* private_descriptors = nullptr;
         std::span<const std::byte> parameters;
-        std::span<std::byte> scratch;
+        PassDescriptorBindings program_bindings;
+        nri::Pipeline* pipeline = nullptr;
         PassNativeInput native;
     };
 
@@ -38,7 +40,7 @@ namespace lux::render::detail
     // Parameters and draw bytes already reside in FIF storage, not the client's mutable vectors.
     struct FrameRecordInput final
     {
-        const RenderPlan& plan;
+        const RenderGraphExecutable& plan;
         std::span<const PassResourceInput> resources;
         std::span<const RecordPass> passes;
         std::span<const RecordHistoryInitialization> history_initializations;

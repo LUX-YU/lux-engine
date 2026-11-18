@@ -28,7 +28,7 @@ Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，
 `sinclude/` 接缝。Platform IPC 位于独立模块，提供进程内类型化消息、SPSC 和来源关联。
 
 稳定名称用于冷态发现；Command、Handler、Scene、View、Effect、Storage 等运行时身份各有独立身份域。
-Scene 拥有 View，Effect 拥有不可变 RenderPlan 及同源 Graph/Analysis，Attachment 拥有 RenderGraphInstance。
+Scene 拥有 View，Effect 拥有 Graph/Analysis，JobExecution 拥有 RenderGraphExecutable、原生程序租约和 RenderGraphInstance。
 Target 拥有实际输出图像，同一 Target 只有一个 Attachment。
 ResourceSet 独占专业 Storage；Registry 只定位实例。Client 显式管理资源间的业务依赖。
 

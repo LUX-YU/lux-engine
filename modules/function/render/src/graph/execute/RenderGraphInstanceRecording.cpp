@@ -69,6 +69,7 @@ namespace lux::render::detail
     void RenderGraphInstance::invalidateRecording(std::uint32_t frame_slot, std::uint32_t compiled_pass) noexcept
     {
         auto& frame = frames_[frame_slot];
+        frame.record_inputs_valid = false;
         frame.record_ready = false;
         if (frame.command_batches.empty()) return; // Inputs can precede initialize().
         const auto batch = plan_->passes()[compiled_pass].submission;
@@ -77,13 +78,14 @@ namespace lux::render::detail
 
     void RenderGraphInstance::invalidateRecordings(std::uint32_t frame_slot) noexcept
     {
+        frames_[frame_slot].record_inputs_valid = false;
         frames_[frame_slot].record_ready = false;
         for (auto& batch : frames_[frame_slot].command_batches) ++batch.revision;
     }
 
-    void RenderGraphInstance::invalidateRasterDraws(GraphPassId pass, std::uint32_t frame_slot) noexcept
+    void RenderGraphInstance::invalidateRasterDraws(const CompiledPass& pass, std::uint32_t frame_slot) noexcept
     {
-        invalidateRecording(frame_slot, plan_->pass_indices_[pass.index]);
+        invalidateRecording(frame_slot, pass.binding_slot);
     }
 
     RenderResult<void> RenderGraphInstance::createRecordings(std::uint32_t frame_slot) noexcept
@@ -119,11 +121,10 @@ namespace lux::render::detail
     }
 
     RasterDrawList&
-    RenderGraphInstance::rasterDraws(GraphPassId pass, std::uint32_t slot, bool recording_changed) noexcept
+    RenderGraphInstance::rasterDraws(const CompiledPass& pass, std::uint32_t slot, bool recording_changed) noexcept
     {
         if (recording_changed) invalidateRasterDraws(pass, slot);
-        const auto& compiled = *compiledPass(pass);
-        const auto& raster = compiled.work.get<RasterCommands>();
+        const auto& raster = *plan_->rasterCommands(pass);
         return frames_[slot].raster_draws[std::get<RasterListCommands>(raster.draw).data_index];
     }
 
@@ -133,7 +134,7 @@ namespace lux::render::detail
         for (const auto& pass : frame.passes)
         {
             const auto& compiled = *pass.compiled_pass;
-            const auto* raster = compiled.work.getIf<RasterCommands>();
+            const auto* raster = plan_->rasterCommands(compiled);
             const auto* scope = compiled.rasterScope();
             const auto* streamed = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
             const auto* dynamic = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
@@ -152,7 +153,7 @@ namespace lux::render::detail
             {
                 continue; // The feature supplied explicit per-layer rendering sections for this reusable slice.
             }
-            const auto& placement = plan_->descriptor_plan_->passes[compiled.source_pass];
+            const auto& program = (*programs_)[compiled.binding_slot];
             draws.colors.assign(pass.colors.begin(), pass.colors.end());
             if (streamed)
             {
@@ -219,8 +220,8 @@ namespace lux::render::detail
             const auto& index = frame.bindings[streamed->index_resource.resource.index];
             for (auto& packet : draws.packets)
             {
-                packet.pipeline = compiled.pipeline;
-                packet.bindings = placement.recordBindings();
+                packet.pipeline = program.pipeline;
+                packet.bindings = program.descriptors;
                 packet.descriptor_count = static_cast<std::uint32_t>(draws.descriptors.size());
                 packet.vertex_count = static_cast<std::uint32_t>(draws.vertices.size());
                 packet.index = index.buffer;
@@ -255,8 +256,11 @@ namespace lux::render::detail
             auto& record = frame.record_passes[i];
             record = {
                 pass.compiled_pass, pass.images, pass.buffers, pass.alias_barrier,
-                pass.private_descriptors, pass.parameters, pass.scratch
+                pass.private_descriptors, pass.parameters
             };
+            const auto& program = (*programs_)[i];
+            record.program_bindings = program.descriptors;
+            record.pipeline = program.pipeline;
             auto& native = record.native;
             native.private_views = pass.private_views;
             native.history_views = pass.history_views;
@@ -267,7 +271,7 @@ namespace lux::render::detail
             native.copy_layouts = pass.copy_layouts;
             native.dispatch_groups = pass.dispatch_groups;
             native.shared_descriptors = frame.shared_descriptors;
-            if (const auto* raster = pass.compiled_pass->work.getIf<RasterCommands>())
+            if (const auto* raster = plan_->rasterCommands(*pass.compiled_pass))
             {
                 if (const auto* streamed = std::get_if<IndexedListCommands>(&raster->draw))
                     native.draws = &frame.draw_lists[streamed->data_index].draws;
@@ -382,12 +386,24 @@ namespace lux::render::detail
         return frames_[slot].enabled_pass_count;
     }
 
-    RenderResult<void> RenderGraphInstance::setIndexedDrawData(
-        GraphPassId id, std::uint32_t slot, const IndexedDrawData& input
-    ) noexcept
+    RenderResult<IndexedDrawStreamSlot> RenderGraphInstance::indexedDrawStream(GraphPassId id) const noexcept
     {
         const auto* pass = compiledPass(id);
-        const auto* raster = pass ? pass->work.getIf<RasterCommands>() : nullptr;
+        const auto* packet = pass ? plan_->rasterCommands(*pass) : nullptr;
+        if (!packet || !std::holds_alternative<IndexedListCommands>(packet->draw))
+        {
+            return cxx::unexpected(RenderError{kGraphUnknownPass, {id.index}});
+        }
+        return IndexedDrawStreamSlot{pass->binding_slot};
+    }
+
+    RenderResult<void> RenderGraphInstance::setIndexedDrawData(
+        IndexedDrawStreamSlot stream, std::uint32_t slot, const IndexedDrawData& input
+    ) noexcept
+    {
+        const auto passes = plan_->passes();
+        const auto* pass = stream.index < passes.size() ? &passes[stream.index] : nullptr;
+        const auto* raster = pass ? plan_->rasterCommands(*pass) : nullptr;
         const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
         const bool has_layout = list && raster->vertices.size() == 1;
         const bool is_matching_layout = has_layout && input.vertex_stride == raster->vertices[0].stride &&
@@ -397,7 +413,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kFrameContract,
                 {input.vertex_stride, has_layout ? raster->vertices[0].stride : 0, pass ? pass->parameter_size : 0}});
         auto prepared = prepareDrawList(
-            id, slot, std::max((input.vertices.size() + 3) & ~std::size_t{3}, std::size_t{input.vertex_stride}),
+            *pass, slot, std::max((input.vertices.size() + 3) & ~std::size_t{3}, std::size_t{input.vertex_stride}),
             std::max((input.indices.size() + 3) & ~std::size_t{3}, std::size_t{4})
         );
         if (!prepared) return cxx::unexpected(prepared.error());

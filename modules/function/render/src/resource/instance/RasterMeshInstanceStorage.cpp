@@ -8,7 +8,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>

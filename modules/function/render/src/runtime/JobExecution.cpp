@@ -16,11 +16,12 @@ namespace lux::render::runtime_detail
         DeviceSessionId session,
         detail::DeviceSession& device,
         std::uint32_t frame_count,
-        detail::RenderPlan&& compiled,
+        detail::PreparedRenderGraph&& compiled,
         TargetId output,
         detail::TargetOutput physical
     ) noexcept
-        : recipe{effect}, device(session), target(output), plan(std::move(compiled)), instance(device, frame_count, plan, physical)
+        : recipe{effect}, device(session), target(output), graph(std::move(compiled)),
+          instance(device, frame_count, graph, physical)
     {
     }
 
@@ -50,7 +51,7 @@ namespace lux::render::runtime_detail
         std::array<detail::ResourceInput, 3> slices;
         auto resolved = ops.resolve(
             native,
-            plan.resources()[resource].description,
+            graph.executable.resources()[resource].description,
             argument,
             use.subscription,
             std::span(slices).first(frame_count)
@@ -98,7 +99,7 @@ namespace lux::render
     ) noexcept
     {
         const auto& effect = candidate.recipe.effect;
-        const auto& plan = candidate.plan;
+        const auto& plan = candidate.graph.executable;
         const auto target_images = std::span(binding.target_images);
         const auto& input = binding.inputs;
         auto& entry = *runtime_->device(candidate.device);
@@ -193,7 +194,8 @@ namespace lux::render
                 }
             }
         }
-        if (auto created = candidate.instance.createData(effect.graph, runtime_->resources_, resolved); !created)
+        const auto created = candidate.instance.createData(effect.graph.instanceData(), runtime_->resources_, resolved);
+        if (!created)
             return cxx::unexpected(created.error());
         for (std::uint32_t input = 0; input < candidate.instance.samplerInputCount(); ++input)
         {

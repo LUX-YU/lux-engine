@@ -131,7 +131,7 @@ namespace lux::render::detail
                             ? (depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT)
                             : (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
                                                                       : nri::TextureView::TEXTURE);
-                    const auto& program = plan_->descriptor_plan_->passes[plan_->passes()[pass].source_pass];
+                    const auto& program = plan_->descriptor_plan_->passes[pass];
                     const bool arrayed =
                         target == Target::DESCRIPTOR && program.bindings[program.uses[index].field].image_arrayed;
                     const auto view_type =
@@ -155,7 +155,7 @@ namespace lux::render::detail
                 else
                 {
                     const auto& selected = std::get<GraphBufferRange>(range);
-                    const auto& plan = plan_->descriptor_plan_->passes[plan_->passes()[pass].source_pass];
+                    const auto& plan = plan_->descriptor_plan_->passes[pass];
                     const auto& shader = plan.bindings[plan.uses[index].field];
                     const auto input = shader.bufferView(slot.buffer, selected.offset, selected.size);
                     result = core.CreateBufferView(input, view);
@@ -171,7 +171,7 @@ namespace lux::render::detail
         for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
         {
             const auto& pass = plan_->passes()[p];
-            const auto& uses = plan_->descriptor_plan_->passes[pass.source_pass].uses;
+            const auto& uses = plan_->descriptor_plan_->passes[pass.binding_slot].uses;
             for (std::uint32_t i = 0; i < uses.size(); ++i)
             {
                 const auto& use = uses[i];
@@ -227,7 +227,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (const auto* transfer = pass.work.getIf<TransferCommands>())
+            if (const auto* transfer = plan_->transferCommands(pass))
             {
                 for (std::uint32_t i = 0; i < transfer->operations.size(); ++i)
                 {
@@ -334,7 +334,7 @@ namespace lux::render::detail
                 case Target::DESCRIPTOR:
                 {
                     const auto& binding =
-                        plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass].uses[use.index];
+                        plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot].uses[use.index];
                     if (!frame.history_valid[h] && binding.fallback != kGraphInvalidIndex)
                     {
                         view = pass.private_views[use.index];

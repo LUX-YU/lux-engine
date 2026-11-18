@@ -10,16 +10,19 @@
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <memory>
 
 namespace lux::render::detail
 {
     struct ShaderBindingPlan;
     class DeviceSession;
-    class RenderPlan;
-    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
+    class RenderGraphExecutable;
+    class NativeGraphPrograms;
+    struct PreparedRenderGraph;
+    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
     enum class EImageViewTarget : std::uint8_t
     {
@@ -150,7 +153,18 @@ namespace lux::render::detail
         record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
     };
 
-    static_assert(sizeof(RasterCommands) <= 768 && sizeof(ComputeCommands) <= 768 && sizeof(TransferCommands) <= 768);
+    enum class ERecordKernel : std::uint8_t
+    {
+        RASTER,
+        COMPUTE,
+        TRANSFER
+    };
+
+    struct RecordBlock final
+    {
+        ERecordKernel kernel;
+        std::uint32_t packet;
+    };
 
     struct CompiledRasterScope final : RasterScope
     {
@@ -170,13 +184,13 @@ namespace lux::render::detail
             return rendering ? &*rendering : nullptr;
         }
 
-        PassEncoding work;
+        RecordBlock commands{};
         std::optional<CompiledRasterScope> rendering;
         EGraphPassKind kind = EGraphPassKind::TRANSFER;
         bool writes_output = false;
-        nri::Pipeline* pipeline = nullptr;
         BarrierBatch before;
-        std::uint32_t source_pass = kGraphInvalidIndex;
+        std::uint32_t binding_slot = kGraphInvalidIndex;
+        std::uint32_t unit = kGraphInvalidIndex;
         std::uint32_t submission = kGraphInvalidIndex;
         std::uint32_t rendering_group = kGraphInvalidIndex;
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
@@ -203,13 +217,51 @@ namespace lux::render::detail
         std::optional<RasterAttachment> depth;
     };
 
+    struct RecordingUnit final
+    {
+        std::uint32_t first_pass;
+        std::uint32_t pass_count;
+    };
+
     struct RecordingProgram final
     {
+        [[nodiscard]] const RasterCommands* rasterCommands(const CompiledPass& pass) const noexcept
+        {
+            return pass.commands.kernel == ERecordKernel::RASTER ? &raster[pass.commands.packet] : nullptr;
+        }
+
+        [[nodiscard]] const ComputeCommands* computeCommands(const CompiledPass& pass) const noexcept
+        {
+            return pass.commands.kernel == ERecordKernel::COMPUTE ? &compute[pass.commands.packet] : nullptr;
+        }
+
+        [[nodiscard]] const TransferCommands* transferCommands(const CompiledPass& pass) const noexcept
+        {
+            return pass.commands.kernel == ERecordKernel::TRANSFER ? &transfer[pass.commands.packet] : nullptr;
+        }
+
         std::vector<CompiledPass> passes;
+        std::vector<RecordingUnit> units;
+        std::vector<RasterCommands> raster;
+        std::vector<ComputeCommands> compute;
+        std::vector<TransferCommands> transfer;
         std::vector<RenderingGroup> groups;
         std::vector<ConditionalRegion> conditions;
         BarrierBatch after;
     };
+
+    template <class Recorder>
+    [[nodiscard]] RenderResult<void>
+    recordBlock(const RecordingProgram& program, RecordBlock block, Recorder recorder) noexcept
+    {
+        switch (block.kernel)
+        {
+        case ERecordKernel::RASTER: return recorder(program.raster[block.packet]);
+        case ERecordKernel::COMPUTE: return recorder(program.compute[block.packet]);
+        case ERecordKernel::TRANSFER: return recorder(program.transfer[block.packet]);
+        }
+        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+    }
 
     struct HistoryPlan final
     {
@@ -301,21 +353,17 @@ namespace lux::render::detail
     };
 
     // The execution candidate owns this immutable result; its graph instance borrows it until teardown.
-    class LUX_RENDER_PUBLIC RenderPlan final
+    class LUX_RENDER_PUBLIC RenderGraphExecutable final
     {
     public:
         [[nodiscard]] std::pair<std::uint32_t, std::uint32_t>
         parameterRegion(std::uint32_t, EParameterSource = EParameterSource::INSTANCE) const noexcept;
 
-        [[nodiscard]] std::span<const InstanceDataRecipe* const> instanceData() const noexcept
-        {
-            return instance_data_;
-        }
-        ~RenderPlan() noexcept;
-        RenderPlan(RenderPlan&& other) noexcept;
-        RenderPlan& operator=(RenderPlan&&) = delete;
-        RenderPlan(const RenderPlan&) = delete;
-        RenderPlan& operator=(const RenderPlan&) = delete;
+        ~RenderGraphExecutable() noexcept;
+        RenderGraphExecutable(RenderGraphExecutable&& other) noexcept;
+        RenderGraphExecutable& operator=(RenderGraphExecutable&&) = delete;
+        RenderGraphExecutable(const RenderGraphExecutable&) = delete;
+        RenderGraphExecutable& operator=(const RenderGraphExecutable&) = delete;
 
         [[nodiscard]] nri::Device* device() const noexcept
         {
@@ -337,6 +385,26 @@ namespace lux::render::detail
             return recording_.passes;
         }
 
+        [[nodiscard]] std::span<const RecordingUnit> recordingUnits() const noexcept
+        {
+            return recording_.units;
+        }
+
+        [[nodiscard]] const RasterCommands* rasterCommands(const CompiledPass& pass) const noexcept
+        {
+            return recording_.rasterCommands(pass);
+        }
+
+        [[nodiscard]] const ComputeCommands* computeCommands(const CompiledPass& pass) const noexcept
+        {
+            return recording_.computeCommands(pass);
+        }
+
+        [[nodiscard]] const TransferCommands* transferCommands(const CompiledPass& pass) const noexcept
+        {
+            return recording_.transferCommands(pass);
+        }
+
         [[nodiscard]] std::uint32_t output() const noexcept
         {
             return output_;
@@ -356,23 +424,24 @@ namespace lux::render::detail
 
     private:
         [[nodiscard]] exec::task<RenderResult<void>>
-        prepareOperations(DeviceSession&, const RenderGraph&, execution::CpuScheduler) noexcept;
+        prepareOperations(
+            DeviceSession&,
+            NativeGraphPrograms&,
+            const RenderGraph&,
+            std::span<const GraphPassId>,
+            execution::CpuScheduler
+        ) noexcept;
         friend class RenderGraphInstance;
         friend class GraphCompiler;
         friend class FrameExecutor;
         friend class SubmissionOperation;
-        friend LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
+        friend LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
-        RenderPlan(nri::Device& device, EffectOutputDesc output) noexcept;
-        std::vector<const InstanceDataRecipe*> instance_data_;
+        RenderGraphExecutable(nri::Device& device, EffectOutputDesc output) noexcept;
         std::unique_ptr<ShaderBindingPlan> descriptor_plan_;
         nri::Device* device_;
         bool device_addresses_ = false;
         EffectOutputDesc output_description_;
-        CompiledPrograms* program_cache_ = nullptr;
-        DeviceSession* encoding_owner_ = nullptr;
-        std::vector<CompiledPrograms::Program*> program_uses_;
-        std::vector<CompiledPrograms::Layout*> layout_uses_;
         std::vector<CompiledResource> resources_;
         std::vector<HistoryPlan> histories_;
         std::uint32_t condition_count_ = 0;
@@ -381,6 +450,7 @@ namespace lux::render::detail
         std::vector<ImportedAccess> imported_accesses_;
         PhysicalResourcePlan physical_resources_;
         std::vector<std::uint32_t> pass_indices_;
+        std::vector<GraphPassId> source_passes_;
 
         std::uint32_t output_ = kGraphInvalidIndex;
         std::uint32_t output_first_batch_ = kGraphInvalidIndex;
@@ -388,4 +458,45 @@ namespace lux::render::detail
         std::array<std::uint32_t, 2> fixed_output_extent_{};
     };
 
+    struct NativeGraphProgram final
+    {
+        nri::Pipeline* pipeline = nullptr;
+        PassDescriptorBindings descriptors;
+    };
+
+    // Native program leases belong to one device execution, alongside its immutable executable.
+    class LUX_RENDER_PUBLIC NativeGraphPrograms final
+    {
+    public:
+        NativeGraphPrograms(NativeGraphPrograms&&) noexcept;
+        NativeGraphPrograms(const NativeGraphPrograms&) = delete;
+        NativeGraphPrograms& operator=(NativeGraphPrograms&&) = delete;
+        NativeGraphPrograms& operator=(const NativeGraphPrograms&) = delete;
+        ~NativeGraphPrograms() noexcept;
+
+        [[nodiscard]] const NativeGraphProgram& operator[](std::size_t slot) const noexcept
+        {
+            return slots_[slot];
+        }
+
+        [[nodiscard]] std::size_t size() const noexcept { return slots_.size(); }
+        [[nodiscard]] const DeviceSession* session() const noexcept { return session_; }
+
+    private:
+        friend class GraphCompiler;
+        friend class RenderGraphExecutable;
+        NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept;
+
+        DeviceSession* session_;
+        std::vector<NativeGraphProgram> slots_;
+        std::vector<CompiledPrograms::Program*> program_uses_;
+        std::vector<CompiledPrograms::Layout*> layout_uses_;
+    };
+
+    struct PreparedRenderGraph final
+    {
+        RenderGraphExecutable executable;
+        NativeGraphPrograms programs;
+        std::vector<std::uint32_t> instance_recipes;
+    };
 } // namespace lux::render::detail

@@ -1,10 +1,15 @@
 #pragma once
 
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
 {
-    void selectQueues(const RenderGraph&, std::array<const QueueProperties*, 3>, RecordingProgram&) noexcept;
+    void selectQueues(
+        const RenderGraph&,
+        std::span<const GraphPassId>,
+        std::array<const QueueProperties*, 3>,
+        RecordingProgram&
+    ) noexcept;
 
     void planSubmissions(
         const RenderGraph&,

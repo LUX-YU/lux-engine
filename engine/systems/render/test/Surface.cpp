@@ -254,17 +254,14 @@ namespace
                     }
                     if (static_cast<const ClearConfiguration*>(value)->sample_input)
                     {
-                        rdesc::SpirvArtifact shader;
-                        shader.stages.push_back(
-                            {rdesc::EShaderType::VERTEX, "main", {std::begin(kGraphTriangle), std::end(kGraphTriangle)}}
+                        auto shader = kSurfaceSample.load(rdesc::EShaderTarget::SPIRV);
+                        auto vertex = kGraphTriangle.load(rdesc::EShaderTarget::SPIRV);
+                        shader.stages.insert(shader.stages.begin(), std::move(vertex.stages.front()));
+                        shader.interface.entry_points.insert(
+                            shader.interface.entry_points.begin(),
+                            vertex.interface.entry_points.begin(),
+                            vertex.interface.entry_points.end()
                         );
-                        shader.stages.push_back(
-                            {rdesc::EShaderType::FRAGMENT,
-                             "main",
-                             {std::begin(kSurfaceSample), std::end(kSurfaceSample)}}
-                        );
-                        CHECK(rdesc::ShaderInfo::deserialize(kSurfaceSampleReflection, shader.interface));
-                        shader.interface.entry_points.push_back({"main", rdesc::EShaderType::VERTEX});
                         RasterWork work;
                         work.fixed().interface.program = take(context.graph.addProgram(std::move(shader)));
                         work.fixed().interface.resources = {{"source_image", {context.resource("source")}}};

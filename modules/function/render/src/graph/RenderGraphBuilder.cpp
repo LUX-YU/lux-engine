@@ -1,4 +1,3 @@
-#include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 
 #include <bit>
@@ -276,6 +275,10 @@ namespace lux::render
     RenderResult<PassResult>
     RenderGraphBuilder::addRasterPass(std::string key, RasterWork work, GraphPassOptions options) noexcept
     {
+        if (!work.hasAttachments())
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
         return addWork(std::move(key), std::move(work), EGraphPassKind::GRAPHICS, options);
     }
 
@@ -285,6 +288,63 @@ namespace lux::render
         return addWork(std::move(key), std::move(work), EGraphPassKind::COMPUTE, options);
     }
 
+    RenderResult<ResourceVersion> RenderGraphBuilder::nextWriteVersion(GraphResourceId resource) const noexcept
+    {
+        if (resource.index >= versions_.size())
+        {
+            return cxx::unexpected(graphError(kGraphUnknownResource, {}, resource));
+        }
+        const auto version = versions_[resource.index];
+        if (version == UINT32_MAX)
+        {
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, resource));
+        }
+        return ResourceVersion{resource, version + 1};
+    }
+
+    RenderResult<PassResult> RenderGraphBuilder::addComputeSequence(
+        std::string key, std::vector<ComputeWork> commands, GraphPassOptions options
+    ) noexcept
+    {
+        if (key.empty() || commands.empty() || commands.size() >= kGraphInvalidIndex - candidate_.passes_.size())
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        if (commands.size() == 1)
+        {
+            return addComputePass(std::move(key), std::move(commands.front()), options);
+        }
+        const auto first = static_cast<std::uint32_t>(candidate_.passes_.size());
+        const auto last = first + static_cast<std::uint32_t>(commands.size()) - 1;
+        auto original_versions = versions_;
+        PassResult result{{first}, {}};
+        for (std::uint32_t index = first; index <= last; ++index)
+        {
+            auto name = index == first ? key : key + "/" + std::to_string(index - first);
+            auto appended = addComputePass(std::move(name), std::move(commands[index - first]), options);
+            if (!appended)
+            {
+                candidate_.passes_.resize(first);
+                versions_ = std::move(original_versions);
+                return cxx::unexpected(appended.error());
+            }
+            auto& pass = candidate_.passes_.back();
+            pass.sequence_first = {first};
+            pass.sequence_last = {last};
+            for (auto version : appended->written)
+            {
+                const auto previous = std::ranges::find(result.written, version.resource, &ResourceVersion::resource);
+                if (previous == result.written.end()) result.written.push_back(version);
+                else *previous = version;
+            }
+        }
+        for (std::uint32_t index = first; index < last; ++index)
+        {
+            candidate_.dependencies_.push_back({{index}, {index + 1}});
+        }
+        return result;
+    }
+
     RenderResult<PassResult>
     RenderGraphBuilder::addTransferPass(std::string key, TransferWork work, GraphPassOptions options) noexcept
     {
@@ -292,36 +352,7 @@ namespace lux::render
     }
 
     RenderResult<PassResult>
-    RenderGraphBuilder::addEncodedPass(
-        std::string key, PassDeclaration declaration, PassWork operation, GraphPassOptions options
-    ) noexcept
-    {
-        const bool is_invalid_operation = !operation.valid();
-        const bool is_invalid_declaration = declaration.kind > EGraphPassKind::TRANSFER ||
-            declaration.stages == nri::StageBits::NONE;
-        const bool has_no_declared_effect = declaration.accesses.empty() &&
-            declaration.interface.resources.empty() && !declaration.rendering && !options.side_effect;
-        const bool is_empty_scope = declaration.rendering && !declaration.rendering->hasAttachments();
-        const bool is_scope_kind_mismatch = declaration.rendering && declaration.kind != EGraphPassKind::GRAPHICS;
-        const bool is_missing_managed_scope = declaration.kind == EGraphPassKind::GRAPHICS &&
-            operation.policy().scope == EPassEncodingScope::MANAGED && !declaration.rendering;
-        const bool has_unqualified_attachment = std::ranges::any_of(declaration.accesses, [](const auto& access) noexcept
-        { return access.usage == EGraphUse::COLOR_ATTACHMENT || access.usage == EGraphUse::DEPTH_ATTACHMENT; });
-        const bool is_invalid_queue = declaration.allow_async_compute && declaration.kind != EGraphPassKind::COMPUTE;
-        const bool is_invalid_graphics = declaration.graphics && declaration.kind != EGraphPassKind::GRAPHICS;
-        const bool has_mixed_bindings = declaration.interface.program != kGraphInvalidIndex &&
-            !declaration.interface.typed_buffer_writes.empty();
-        const bool is_invalid_pass = is_invalid_queue || is_invalid_graphics || has_mixed_bindings ||
-                                     is_invalid_operation || is_invalid_declaration || has_no_declared_effect ||
-                                     is_empty_scope || is_scope_kind_mismatch || is_missing_managed_scope ||
-                                     has_unqualified_attachment;
-        if (is_invalid_pass) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-        const auto kind = declaration.kind;
-        return addWork(std::move(key), DeclaredWork{std::move(declaration), std::move(operation)}, kind, options);
-    }
-
-    RenderResult<PassResult>
-    RenderGraphBuilder::addWork(std::string key, VAuthorWork work, EGraphPassKind kind, GraphPassOptions options) noexcept
+    RenderGraphBuilder::addWork(std::string key, VGraphCommand command, EGraphPassKind kind, GraphPassOptions options) noexcept
     {
         GraphPass pass{std::move(key), kind, {}, {}, options.side_effect, options.condition};
         PassResult result;
@@ -754,90 +785,44 @@ namespace lux::render
                         );
                     }
                 }
+                if constexpr (std::is_same_v<Work, RasterWork>)
+                {
+                    pass.rendering = static_cast<const RasterScope&>(value);
+                    const auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
+                    if (fixed)
+                    {
+                        pass.interface = fixed->interface;
+                        pass.graphics = fixed->graphics;
+                    }
+                    else
+                    {
+                        pass.interface.parameters = std::get<RasterPassTemplate>(value.program).parameters;
+                    }
+                }
+                else if constexpr (std::is_same_v<Work, ComputeWork>)
+                {
+                    pass.interface = value.interface;
+                    pass.allow_async_compute = value.allow_async_compute;
+                }
                 else
                 {
-                    auto& declaration = value.declaration;
-                    if (declaration.interface.program != kGraphInvalidIndex)
+                    for (const auto& operation : value.operations)
                     {
-                        interface(declaration.interface);
-                    }
-                    else
-                    {
-                        const auto& input = declaration.interface;
-                        const bool has_unbound_interface = !input.resources.empty() || !input.samplers.empty() ||
-                            !input.parameters.fields.empty() || input.parameters.instance_layout.size != 0;
-                        if (has_unbound_interface) failure = graphError(kGraphInvalidDescriptor);
-                    }
-                    for (auto& access : declaration.interface.typed_buffer_writes)
-                    {
-                        const bool is_buffer = access.version.resource.index < candidate_.resources_.size() &&
-                                               std::holds_alternative<GraphBufferDesc>(
-                                                   candidate_.resources_[access.version.resource.index].description
-                                               );
-                        if (!is_buffer) { failure = graphError(kGraphInvalidDescriptor); break; }
-                        access.access = EGraphAccess::WRITE;
-                        append(access, EGraphUse::TRANSFER_DESTINATION);
-                    }
-                    for (auto& access : declaration.accesses)
-                    {
-                        if (access.usage == EGraphUse::UNSPECIFIED)
-                            failure = graphError(kGraphInvalidDescriptor, {}, access.version.resource);
-                        append(access, access.usage);
-                    }
-                    if (declaration.rendering) rasterScope(*declaration.rendering);
-                    pass.rendering = std::move(declaration.rendering);
-                    pass.interface = std::move(declaration.interface);
-                    pass.shader_stages = declaration.stages;
-                    pass.graphics = std::move(declaration.graphics);
-                    pass.allow_async_compute = declaration.allow_async_compute;
-                    if (pass.kind == EGraphPassKind::GRAPHICS && pass.interface.program != kGraphInvalidIndex &&
-                        !pass.graphics)
-                    {
-                        pass.graphics.emplace();
-                    }
-                    pass.work = std::move(value.operation);
-                }
-                if constexpr (!std::is_same_v<Work, DeclaredWork>)
-                {
-                    RenderResult<PassWork> compiled;
-                    if constexpr (std::is_same_v<Work, RasterWork>)
-                    {
-                        pass.rendering = static_cast<const RasterScope&>(value);
-                        const auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
-                        pass.interface = fixed ? fixed->interface : PassInterface{};
-                        if (fixed) pass.graphics = fixed->graphics;
-                        else pass.interface.parameters = std::get<RasterPassTemplate>(value.program).parameters;
-                        const bool exclusive = !fixed || std::holds_alternative<DrawIndexedList>(fixed->draw);
-                        compiled = PassWork::create<detail::RasterPass>(std::move(value),
-                            {exclusive ? EPassEncodingScope::EXCLUSIVE : EPassEncodingScope::MANAGED, exclusive});
-                    }
-                    else if constexpr (std::is_same_v<Work, ComputeWork>)
-                    {
-                        pass.interface = value.interface;
-                        pass.allow_async_compute = value.allow_async_compute;
-                        compiled = PassWork::create<detail::ComputePass>(std::move(value));
-                    }
-                    else
-                    {
-                        pass.interface = {};
-                        for (const auto& operation : value.operations)
+                        const auto* fill = std::get_if<FillBuffer>(&operation);
+                        if (fill && fill->value)
                         {
-                            const auto* fill = std::get_if<FillBuffer>(&operation);
-                            if (fill && fill->value) pass.interface.typed_buffer_writes.push_back(fill->destination);
+                            pass.interface.typed_buffer_writes.push_back(fill->destination);
                         }
-                        compiled = PassWork::create<detail::TransferPass>(std::move(value),
-                            {EPassEncodingScope::MANAGED, true});
                     }
-                    if (!compiled) failure = compiled.error();
-                    else pass.work = std::move(*compiled);
                 }
             },
-            work
+            command
         );
         if (failure.type != 0)
         {
             return cxx::unexpected(failure);
         }
+        pass.command = std::move(command);
         auto added = addPass(std::move(pass));
         if (!added)
         {
@@ -989,11 +974,18 @@ namespace lux::render
         {
             return cxx::unexpected(graphError(kGraphUnknownPass, before, {}, after.index));
         }
-        if (before == after)
+        const auto& predecessor = candidate_.passes_[before.index];
+        const auto& successor = candidate_.passes_[after.index];
+        const bool same_sequence = predecessor.sequence_first.index != kGraphInvalidIndex &&
+                                   predecessor.sequence_first == successor.sequence_first;
+        if (before == after || same_sequence)
         {
             return cxx::unexpected(graphError(kGraphDependencyCycle, before));
         }
-        const GraphDependency edge{before, after};
+        const GraphDependency edge{
+            predecessor.sequence_last.index == kGraphInvalidIndex ? before : predecessor.sequence_last,
+            successor.sequence_first.index == kGraphInvalidIndex ? after : successor.sequence_first
+        };
         auto& edges = candidate_.dependencies_;
         if (std::find(edges.begin(), edges.end(), edge) == edges.end())
         {

@@ -172,24 +172,16 @@ if(BUILD_TESTING)
     set_tests_properties(engine.render_lifecycle PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
     if(WIN32 AND TARGET window)
-        set(surface_shader_headers)
-        foreach(source IN ITEMS
-            "${CMAKE_CURRENT_SOURCE_DIR}/test/SurfaceSample.frag"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/render/test/shaders/GraphTriangle.vert"
+        set(surface_sample_header "${CMAKE_CURRENT_BINARY_DIR}/shaders/SurfaceSample.hpp")
+        set(surface_triangle_header "${CMAKE_CURRENT_BINARY_DIR}/shaders/GraphTriangle.hpp")
+        lux_render_shader("${surface_sample_header}" "test/SurfaceSample.slang" fragment kSurfaceSample)
+        lux_render_shader(
+            "${surface_triangle_header}"
+            "../../../modules/function/render/test/shaders/GraphTriangle.slang"
+            vertex
+            kGraphTriangle
         )
-            get_filename_component(shader_name "${source}" NAME_WE)
-            set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.spv")
-            set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
-            add_custom_command(
-                OUTPUT "${binary}" "${header}"
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
-                COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -o "${binary}" "${source}"
-                COMMAND lux_shader_metadata "${binary}" "${header}" "k${shader_name}"
-                DEPENDS "${source}" lux_shader_metadata
-                VERBATIM
-            )
-            list(APPEND surface_shader_headers "${header}")
-        endforeach()
+        set(surface_shader_headers "${surface_sample_header}" "${surface_triangle_header}")
 
         add_executable(engine_render_surface_test test/Surface.cpp ${surface_shader_headers})
         target_include_directories(engine_render_surface_test PRIVATE

@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/extensions/graph/InstanceData.hpp>
+#include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/GraphProgram.hpp>
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
 #include <lux/engine/render/visibility.h>
@@ -13,14 +14,14 @@ namespace lux::render
         std::string key;
         EGraphPassKind kind = EGraphPassKind::COMPUTE;
         std::vector<ResourceAccess> uses;
-        PassWork work;
+        VGraphCommand command;
         bool side_effect = false;
         std::optional<PassCondition> condition;
         PassInterface interface;
-        nri::StageBits shader_stages = nri::StageBits::NONE;
         std::optional<RasterScope> rendering;
         std::optional<GraphicsState> graphics;
         bool allow_async_compute = false;
+        GraphPassId sequence_first, sequence_last;
 
         [[nodiscard]] const RasterScope* rasterScope() const noexcept
         {
@@ -94,18 +95,4 @@ namespace lux::render
         std::vector<std::string> conditions_;
     };
 
-    // Error args: {pass index (or invalid), resource index (or invalid), detail}.
-    inline constexpr auto kGraphUnknownResource = error::errorId("lux.render.graph.unknown_resource");
-    inline constexpr auto kGraphUnknownPass     = error::errorId("lux.render.graph.unknown_pass");
-    inline constexpr auto kGraphInvalidDescriptor = error::errorId("lux.render.graph.invalid_descriptor");
-    inline constexpr auto kGraphInvalidRange    = error::errorId("lux.render.graph.invalid_range");
-    inline constexpr auto kGraphDuplicateKey    = error::errorId("lux.render.graph.duplicate_key");
-    inline constexpr auto kGraphConflictingOutput = error::errorId("lux.render.graph.conflicting_output");
-    inline constexpr auto kGraphUndefinedRead   = error::errorId("lux.render.graph.undefined_read");
-    inline constexpr auto kGraphAmbiguousProducer = error::errorId("lux.render.graph.ambiguous_producer");
-    inline constexpr auto kGraphDependencyCycle = error::errorId("lux.render.graph.dependency_cycle");
-    inline constexpr auto kGraphMissingFallback = error::errorId("lux.render.graph.missing_fallback");
-    inline constexpr auto kGraphMissingInitial  = error::errorId("lux.render.graph.missing_initial");
-
-    [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor> renderGraphErrorDescriptors() noexcept;
 } // namespace lux::render

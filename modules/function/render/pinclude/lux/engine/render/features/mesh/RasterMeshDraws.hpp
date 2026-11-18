@@ -11,6 +11,7 @@ namespace lux::render::detail
 {
     class RenderGraphInstance;
 
+    struct CompiledPass;
     struct RasterDrawList;
 
     struct MeshDrawConfiguration final
@@ -64,7 +65,8 @@ namespace lux::render::detail
             RenderGraphInstance&,
             CompiledPrograms&,
             const MeshDrawGroupSource&,
-            MeshDrawConfiguration
+            MeshDrawConfiguration,
+            const CompiledPass&
         ) noexcept;
         [[nodiscard]] bool requiresPrograms() const noexcept override;
         [[nodiscard]] std::uint64_t programRevision() const noexcept override;
@@ -86,6 +88,7 @@ namespace lux::render::detail
         CompiledPrograms& programs_;
         const MeshDrawGroupSource& source_;
         MeshDrawConfiguration configuration_;
+        const CompiledPass& pass_;
         std::vector<Group> groups_;
         std::vector<std::unique_ptr<Program>> program_bindings_;
         std::vector<std::uint32_t> draw_order_;

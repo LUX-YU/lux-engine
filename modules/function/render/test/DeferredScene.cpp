@@ -22,7 +22,7 @@
 #include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
 #include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <thread>
 #include <lux/engine/render/target/OffscreenTarget.hpp>

@@ -67,13 +67,14 @@ namespace lux::render::detail
         }
     } // namespace
 
-    bool dumpPlan(const RenderPlan& plan, EGraphDumpFormat format, DumpSink sink) noexcept
+    bool dumpPlan(const PreparedRenderGraph& graph, EGraphDumpFormat format, DumpSink sink) noexcept
     {
         if (!sink.write || format > EGraphDumpFormat::DOT)
         {
             return false;
         }
         std::string output;
+        const auto& plan = graph.executable;
         const auto& program = plan.recording_;
         constexpr std::string_view boundaries[]{
             "non-raster",
@@ -84,7 +85,7 @@ namespace lux::render::detail
         };
         if (format == EGraphDumpFormat::DOT)
         {
-            output = "digraph RenderPlan {\nlabel=\"Solid: recording order; dashed: compiled barriers\";\n";
+            output = "digraph RenderGraphExecutable {\nlabel=\"Solid: recording order; dashed: compiled barriers\";\n";
             for (std::size_t i = 0; i < program.passes.size(); ++i)
             {
                 output += "p" + std::to_string(i) + " [label=\"pass " + std::to_string(i) + " / group " +
@@ -128,13 +129,14 @@ namespace lux::render::detail
         {
             image_barriers += pass.before.images.size();
             buffer_barriers += pass.before.buffers.size();
-            if (const auto* raster = pass.work.getIf<RasterCommands>())
+            if (const auto* raster = plan.rasterCommands(pass))
             {
                 dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw) ||
                                          std::holds_alternative<IndexedListCommands>(raster->draw);
             }
-            if (pass.pipeline) pipelines.insert(pass.pipeline);
-            if (auto* layout = plan.descriptor_plan_->passes[pass.source_pass].layout)
+            const auto& native = graph.programs[pass.binding_slot];
+            if (native.pipeline) pipelines.insert(native.pipeline);
+            if (auto* layout = native.descriptors.layout)
             {
                 layouts.insert(layout);
             }
@@ -158,13 +160,15 @@ namespace lux::render::detail
             }
             const auto& pass = program.passes[p];
             output +=
-                "{\"source\":" + std::to_string(pass.source_pass) + ",\"kind\":" + std::to_string(static_cast<unsigned>(pass.kind)) +
+                "{\"source\":" + std::to_string(plan.source_passes_[p].index) +
+                ",\"unit\":" + std::to_string(pass.unit) +
+                ",\"kind\":" + std::to_string(static_cast<unsigned>(pass.kind)) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
                 ",\"condition_region\":" + std::to_string(pass.condition_region) +
                 ",\"queue_role\":" + std::to_string(static_cast<unsigned>(pass.queue)) +
                 ",\"rendering_boundary\":" + quoteDumpText(boundaries[static_cast<unsigned>(pass.rendering_boundary)]) +
                 ",\"descriptors\":[";
-            const auto& layout = plan.descriptor_plan_->passes[pass.source_pass];
+            const auto& layout = plan.descriptor_plan_->passes[pass.binding_slot];
             for (std::size_t i = 0; i < layout.bindings.size(); ++i)
             {
                 if (i)

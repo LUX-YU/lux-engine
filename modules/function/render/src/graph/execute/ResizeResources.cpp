@@ -432,7 +432,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, use_index] : resource.descriptor_uses)
             {
-                const auto& program = plan_->descriptor_plan_->passes[plan_->passes()[pass].source_pass];
+                const auto& program = plan_->descriptor_plan_->passes[pass];
                 const auto& use = program.uses[use_index];
                 nri::Descriptor* descriptor = nullptr;
                 nri::Result status;
@@ -698,7 +698,7 @@ namespace lux::render::detail
                 if (view.use.target == EImageViewTarget::DESCRIPTOR)
                 {
                     const auto& use =
-                        plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass].uses[view.use.index];
+                        plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot].uses[view.use.index];
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, use.binding, use.element, destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);

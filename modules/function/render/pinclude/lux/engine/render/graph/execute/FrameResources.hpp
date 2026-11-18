@@ -45,6 +45,7 @@ namespace lux::render::detail
         std::vector<PassResourceInput> record_resources;
         std::vector<RecordPass> record_passes;
         std::vector<RecordHistoryInitialization> history_initializations;
+        bool record_inputs_valid = false;
         bool record_ready = false;
 
         std::vector<Binding> bindings;
@@ -53,7 +54,7 @@ namespace lux::render::detail
         std::uint64_t imported_revision = 0;
         std::vector<Pass> passes;
         // Each compiled batch owns its allocators, buffers and cache version in this FIF slice.
-        // A recording lease protects the whole batch; distinct batches never share an allocator or scratch.
+        // A recording lease protects the whole batch; distinct batches never share an allocator.
         struct CommandBatch final
         {
             std::array<nri::CommandAllocator*, 2> allocators{};

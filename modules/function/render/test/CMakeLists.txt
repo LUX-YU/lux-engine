@@ -38,6 +38,16 @@ add_test(NAME render.graph.chain COMMAND render_graph_chain)
 # per-scenario progress assertions remain unchanged by this outer process budget.
 set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180)
 
+add_test(NAME render.graph.analysis COMMAND render_graph_chain analysis)
+add_test(NAME render.graph.typed_vulkan COMMAND render_graph_chain encoding)
+add_test(NAME render.graph.recording_vulkan COMMAND render_graph_chain recording)
+add_test(NAME render.graph.raster_vulkan COMMAND render_graph_chain raster)
+if(WIN32)
+    add_test(NAME render.graph.typed_d3d12 COMMAND render_graph_chain encoding d3d12)
+    add_test(NAME render.graph.recording_d3d12 COMMAND render_graph_chain recording d3d12)
+    add_test(NAME render.graph.raster_d3d12 COMMAND render_graph_chain raster d3d12)
+endif()
+
 add_executable(render_deferred_scene DeferredScene.cpp)
 
 target_link_libraries(render_deferred_scene PRIVATE

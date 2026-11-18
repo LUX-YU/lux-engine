@@ -66,7 +66,7 @@ if(WIN32)
     add_test(NAME installed.render.compute_output_d3d12 COMMAND compute_output d3d12)
 endif()
 
-foreach(header IN ITEMS PassEncoding PassRecordInput)
+foreach(header IN ITEMS RenderGraphBuilder Work IndexedDrawData Diagnostics)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${header}Header.cpp")
     file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/extensions/graph/${header}.hpp>\n")
     add_library(header_${header} OBJECT "${source}")

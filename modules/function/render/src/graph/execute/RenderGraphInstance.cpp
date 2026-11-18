@@ -10,11 +10,13 @@ namespace lux::render::detail
     RenderGraphInstance::RenderGraphInstance(
         DeviceSession& session,
         std::uint32_t frame_count,
-        const RenderPlan& plan,
+        const PreparedRenderGraph& compiled,
         TargetOutput output
     ) noexcept
-        : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), output_(output)
+        : session_(&session), uses_(session.makeFrontiers()), plan_(&compiled.executable),
+          programs_(&compiled.programs), instance_recipes_(compiled.instance_recipes), output_(output)
     {
+        const auto& plan = *plan_;
         instance_values_.resize(plan.descriptor_plan_->instance_parameter_bytes);
         condition_values_.resize(plan.condition_count_);
         parameter_copies_.resize(plan.passes().size());
@@ -43,7 +45,7 @@ namespace lux::render::detail
             frame.parameters.resize(parameter_bytes);
             for (const auto& pass : plan.passes())
             {
-                const auto& initial = plan.descriptor_plan_->passes[pass.source_pass].initial_parameters;
+                const auto& initial = plan.descriptor_plan_->passes[pass.binding_slot].initial_parameters;
                 std::ranges::copy(initial, frame.parameters.begin() + pass.parameter_offset);
             }
             frame.parameter_dirty.resize(plan.passes().size());
@@ -109,15 +111,16 @@ namespace lux::render::detail
         const bool needs_target = plan.output() != kGraphInvalidIndex ||
             std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept { return resource.target_sized; });
         const bool missing_target = needs_target && output_.frames.empty();
-        const bool missing_programs = !plan.program_cache_ || std::ranges::any_of(plan.passes(), [&](const auto& pass)
+        const bool invalid_programs = programs_->session() != &session || programs_->size() != plan.passes().size();
+        const bool missing_programs = invalid_programs || std::ranges::any_of(plan.passes(), [&](const auto& pass)
         {
-            const auto& bindings = plan.descriptor_plan_->passes[pass.source_pass];
-            if (!bindings.private_bindings.empty() && !bindings.layout) return true;
-            if (!pass.work.valid()) return true;
-            if (const auto* raster = pass.work.getIf<RasterCommands>())
-                return !std::holds_alternative<RasterListCommands>(raster->draw) && !pass.pipeline;
-            const auto* compute = pass.work.getIf<ComputeCommands>();
-            return compute && !pass.pipeline;
+            const auto& bindings = plan.descriptor_plan_->passes[pass.binding_slot];
+            const auto& native = (*programs_)[pass.binding_slot];
+            if (!bindings.private_bindings.empty() && !native.descriptors.layout) return true;
+            if (const auto* raster = plan.rasterCommands(pass))
+                return !std::holds_alternative<RasterListCommands>(raster->draw) && !native.pipeline;
+            const auto* compute = plan.computeCommands(pass);
+            return compute && !native.pipeline;
         });
         if (wrong_device || wrong_target || missing_target || missing_programs)
         {
@@ -239,6 +242,7 @@ namespace lux::render::detail
         }
         if (!frame.changed_resources.empty())
         {
+            frame.record_inputs_valid = false;
             if (auto rebound = rebind(slot); !rebound)
             {
                 return cxx::unexpected(rebound.error());
@@ -281,7 +285,13 @@ namespace lux::render::detail
             return cxx::unexpected(parameters.error());
         }
         prepareStreamedDraws(slot);
-        freezeRecordInput(slot);
+        const bool has_dynamic_record_input =
+            !histories_.empty() || !frame.draw_lists.empty() || !frame.raster_draws.empty();
+        if (!frame.record_inputs_valid || has_dynamic_record_input)
+        {
+            freezeRecordInput(slot);
+            frame.record_inputs_valid = true;
+        }
         frame.record_ready = true;
         return true;
     }

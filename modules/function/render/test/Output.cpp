@@ -216,7 +216,7 @@ static void importedIdentityReuse(Validation& validation)
     // at the same allocator address. Local ++ used to collide with the next global identity.
     for (std::uint64_t update = 0; update < 2 * creation_revisions; ++update)
     {
-        auto& draws = instance->rasterDraws(pass.pass, 0);
+        auto& draws = instance->rasterDraws(*instance->compiledPass(pass.pass), 0);
         draws.reads = {{buffer, GraphBufferRange{16 * (update % 2), 16}, EGraphUse::STORAGE_READ, 1}};
         render();
     }

@@ -116,10 +116,11 @@ namespace lux::render::detail
         RenderGraphInstance& instance,
         CompiledPrograms& programs,
         const MeshDrawGroupSource& source,
-        MeshDrawConfiguration configuration
+        MeshDrawConfiguration configuration,
+        const CompiledPass& pass
     ) noexcept
         : device_(device), resources_(resources), instance_(instance), programs_(programs), source_(source),
-          configuration_(configuration)
+          configuration_(configuration), pass_(pass)
     {
     }
 
@@ -151,10 +152,9 @@ namespace lux::render::detail
         const auto is_current = [&]() noexcept { return !stop.stop_requested() && revision == source_.revision; };
         if (!is_current()) co_return false;
         const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
-        const auto& compiled = *instance_.compiledPass(configuration_.pass);
-        const auto& raster = compiled.work.get<RasterCommands>();
+        const auto& raster = *instance_.plan().rasterCommands(pass_);
         const auto& stage = std::get<RasterListCommands>(raster.draw).description;
-        const auto& scope = *compiled.rasterScope();
+        const auto& scope = *pass_.rasterScope();
         std::vector<nri::Format> colors;
         for (const auto& color : scope.colors)
         {
@@ -458,7 +458,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
         const auto view_count = configuration_.views.index != kGraphInvalidIndex ? source_.view_count : 1u;
-        auto& draws = instance_.rasterDraws(configuration_.pass, frame.slot, false);
+        auto& draws = instance_.rasterDraws(pass_, frame.slot, false);
         if (configuration_.views.index != kGraphInvalidIndex)
         {
             auto prepared = instance_.prepareImageLayers(configuration_.depth, frame.slot, view_count);
@@ -502,15 +502,14 @@ namespace lux::render::detail
         }
         if (*refreshed)
         {
-            const auto& compiled = *instance_.compiledPass(configuration_.pass);
-            const auto& stage = std::get<RasterListCommands>(compiled.work.get<RasterCommands>().draw).description;
+            const auto& stage = std::get<RasterListCommands>(instance_.plan().rasterCommands(pass_)->draw).description;
             draws.parameters = stage.parameters.values;
         }
         updateViewParameters(frame, draws);
         if (*refreshed)
         {
             mergeDrawPackets(draws);
-            instance_.invalidateRasterDraws(configuration_.pass, frame.slot);
+            instance_.invalidateRasterDraws(pass_, frame.slot);
         }
         slice.draw_revision = draw_layout_revision_;
         return true;
@@ -855,7 +854,7 @@ namespace lux::render::detail
             static_assert(offsetof(CameraParameters, projection) == offsetof(MeshViewParameters, projection));
             static_assert(offsetof(CameraParameters, inverse_view_projection) == sizeof(MeshViewParameters));
             copy(draws.parameters.data(), frame.parameters.data(), sizeof(MeshViewParameters));
-            if (changed) instance_.invalidateRasterDraws(configuration_.pass, frame.slot);
+            if (changed) instance_.invalidateRasterDraws(pass_, frame.slot);
             return;
         }
         const auto view_count = static_cast<std::uint32_t>(draws.sections.size());
@@ -904,7 +903,7 @@ namespace lux::render::detail
                 }
             }
         }
-        if (changed) instance_.invalidateRasterDraws(configuration_.pass, frame.slot);
+        if (changed) instance_.invalidateRasterDraws(pass_, frame.slot);
     }
 
     RenderResult<std::unique_ptr<InstanceData>> RasterMeshDraws::create(
@@ -918,14 +917,17 @@ namespace lux::render::detail
         auto& instance = static_cast<RenderGraphInstance&>(access);
         const auto& configuration = *static_cast<const MeshDrawConfiguration*>(input);
         const auto source = instance.resourceInput(configuration.inputs[0], 0);
-        if (source.parameters.size() != sizeof(MeshDrawGroupSource))
+        const auto* pass = instance.compiledPass(configuration.pass);
+        const auto* commands = pass ? instance.plan().rasterCommands(*pass) : nullptr;
+        const bool is_raster_stream = commands && std::holds_alternative<RasterListCommands>(commands->draw);
+        if (!is_raster_stream || source.parameters.size() != sizeof(MeshDrawGroupSource))
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
         // The producer recipe runs first and owns this view for the lifetime of the Instance.
         const auto& groups = *reinterpret_cast<const MeshDrawGroupSource*>(source.parameters.data());
         auto value = std::unique_ptr<RasterMeshDraws>(
-            new RasterMeshDraws(device, resources, instance, device.programs(), groups, configuration)
+            new RasterMeshDraws(device, resources, instance, device.programs(), groups, configuration, *pass)
         );
         return std::unique_ptr<InstanceData>(std::move(value));
     }

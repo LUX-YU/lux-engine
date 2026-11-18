@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
 {

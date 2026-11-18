@@ -89,8 +89,8 @@ set(render_sources
     src/graph/execute/RenderGraphInstanceDescriptors.cpp
     src/graph/execute/RenderGraphInstanceRecording.cpp
     src/graph/execute/FrameExecutor.cpp
-    src/graph/execute/BuiltinPassEncoding.cpp
-    src/graph/compile/RenderPlan.cpp
+    src/graph/execute/NriRecordCommands.cpp
+    src/graph/compile/RenderGraphExecutable.cpp
     src/device/CompiledPrograms.cpp
     src/graph/PlanDiagnostics.cpp
     src/graph/compile/BuiltinPass.cpp

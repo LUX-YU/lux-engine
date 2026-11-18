@@ -141,7 +141,7 @@ namespace lux::render::detail
         for (const auto& pass : frame.passes)
         {
             auto counted = FrameResources::addDescriptors(
-                required, plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass]
+                required, plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot]
             );
             if (!counted) return cxx::unexpected(counted.error());
         }
@@ -167,13 +167,13 @@ namespace lux::render::detail
         auto shared = session_->descriptors().createSnapshot(*pool);
         if (!shared) return cxx::unexpected(shared.error());
         std::vector<std::pair<nri::DescriptorSet**, nri::DescriptorSet*>> replacements;
-        const auto allocate = [&](const PassBindings& program, nri::DescriptorSet*& destination,
-                                  const auto& view) noexcept -> RenderResult<void>
+        const auto allocate = [&](const PassBindings& program, PassDescriptorBindings native,
+                                  nri::DescriptorSet*& destination, const auto& view) noexcept -> RenderResult<void>
         {
             if (program.private_bindings.empty()) return {};
             nri::DescriptorSet* set = nullptr;
             const auto allocated = core.AllocateDescriptorSets(
-                *pool, *program.layout, program.private_set, &set, 1, 0
+                *pool, *native.layout, native.private_set, &set, 1, 0
             );
             if (allocated != nri::Result::SUCCESS) return cxx::unexpected(nativeError(allocated));
             for (std::size_t i = 0; i < program.uses.size(); ++i)
@@ -190,8 +190,9 @@ namespace lux::render::detail
         };
         for (auto& pass : frame.passes)
         {
-            const auto& program = plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass];
-            auto ready = allocate(program, pass.private_descriptors,
+            const auto& program = plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot];
+            const auto& native = (*programs_)[pass.compiled_pass->binding_slot];
+            auto ready = allocate(program, native.descriptors, pass.private_descriptors,
                 [&](std::size_t i, const auto& use) noexcept
             {
                 if (use.sampler != kGraphInvalidIndex) return samplers_[use.sampler].descriptor;
@@ -204,7 +205,7 @@ namespace lux::render::detail
         }
         for (auto& item : frame.raster_bindings)
         {
-            auto ready = allocate(*item.bindings, item.set,
+            auto ready = allocate(*item.bindings, item.bindings->recordBindings(), item.set,
                 [&](std::size_t i, const auto&) noexcept { return item.views[i]; });
             if (!ready) return cxx::unexpected(ready.error());
         }
@@ -368,7 +369,6 @@ namespace lux::render::detail
         for (const auto& compiled_pass : plan.passes())
         {
             Pass pass{&compiled_pass};
-            pass.scratch.resize(compiled_pass.work.policy().scratch_bytes);
             auto extent = preparePassExtent(
                 session,
                 plan,
@@ -423,7 +423,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (const auto* transfer = compiled_pass.work.getIf<TransferCommands>())
+            if (const auto* transfer = plan_->transferCommands(compiled_pass))
             {
                 pass.copy_layouts.resize(transfer->operations.size());
                 pass.clear_views.resize(transfer->operations.size());
@@ -470,7 +470,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            else if (const auto* transfer = pass.compiled_pass->work.getIf<TransferCommands>())
+            else if (const auto* transfer = plan_->transferCommands(*pass.compiled_pass))
             {
                 for (std::size_t i = 0; i < transfer->operations.size(); ++i)
                 {
@@ -502,11 +502,11 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
             }
-            if ((compiled_pass.work.getIf<TransferCommands>() != nullptr))
+            if ((plan_->transferCommands(compiled_pass) != nullptr))
             {
                 continue;
             }
-            const auto& pass_layout = layout.passes[compiled_pass.source_pass];
+            const auto& pass_layout = layout.passes[compiled_pass.binding_slot];
             for (const auto& mapping : pass_layout.parameters)
             {
                 if (mapping.resource == kGraphInvalidIndex) continue;
@@ -551,7 +551,7 @@ namespace lux::render::detail
             for (std::uint32_t pass = 0; pass < plan_->passes().size(); ++pass)
             {
                 const auto* raster = plan_->passes()[pass].rasterScope();
-                if (!layout.passes[plan_->passes()[pass].source_pass].parameters.empty() ||
+                if (!layout.passes[pass].parameters.empty() ||
                     (raster && raster->state_input))
                 {
                     markParameters(pass, slot);
@@ -562,7 +562,7 @@ namespace lux::render::detail
         if (auto counted = session_->descriptors().addSnapshotDescriptors(pool); !counted) return counted;
         for (const auto& pass : plan_->passes())
         {
-            if (auto counted = FrameResources::addDescriptors(pool, layout.passes[pass.source_pass]); !counted)
+            if (auto counted = FrameResources::addDescriptors(pool, layout.passes[pass.binding_slot]); !counted)
                 return counted;
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
@@ -587,14 +587,14 @@ namespace lux::render::detail
             }
             for (auto& pass : frame.passes)
             {
-                const auto& program = layout.passes[pass.compiled_pass->source_pass];
+                const auto& program = layout.passes[pass.compiled_pass->binding_slot];
                 pass.private_views.resize(program.uses.size());
                 pass.history_views.resize(program.uses.size());
                 if (!program.private_bindings.empty())
                 {
                     const auto status = session_->nriCore().AllocateDescriptorSets(
                         *frame.descriptor_pool,
-                        *program.layout,
+                        *(*programs_)[pass.compiled_pass->binding_slot].descriptors.layout,
                         program.private_set,
                         &pass.private_descriptors,
                         1,
@@ -695,7 +695,7 @@ namespace lux::render::detail
                     continue;
                 }
                 auto& pass = frame.passes[p];
-                const auto& program = layout.passes[pass.compiled_pass->source_pass];
+                const auto& program = layout.passes[pass.compiled_pass->binding_slot];
                 const auto& use = program.uses[index];
                 nri::Descriptor* candidate = nullptr;
                 auto status = nri::Result::SUCCESS;
@@ -895,7 +895,7 @@ namespace lux::render::detail
             }
             auto& parameters = frame.passes[p].parameters;
             const auto& compiled = plan_->passes()[p];
-            for (const auto& mapping : plan_->descriptor_plan_->passes[compiled.source_pass].parameters)
+            for (const auto& mapping : plan_->descriptor_plan_->passes[compiled.binding_slot].parameters)
             {
                 if (mapping.resource != kGraphInvalidIndex) continue;
                 const auto& field = mapping.destination;

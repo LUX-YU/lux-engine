@@ -4,7 +4,7 @@
 
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
 {
@@ -13,7 +13,7 @@ namespace lux::render::detail
     template <class Lookup>
     [[nodiscard]] RenderResult<void> preparePassExtent(
         const DeviceSession& session,
-        const RenderPlan& plan,
+        const RenderGraphExecutable& plan,
         const CompiledPass& compiled_pass,
         Lookup binding,
         std::array<std::uint32_t, 3>& dispatch_groups,
@@ -21,7 +21,7 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto& core = session.nriCore();
-        if (const auto* compute = compiled_pass.work.getIf<ComputeCommands>())
+        if (const auto* compute = plan.computeCommands(compiled_pass))
         {
             if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
             {
@@ -63,7 +63,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kInvalidTargetExtent});
             }
         }
-        if (const auto* transfer = compiled_pass.work.getIf<TransferCommands>())
+        if (const auto* transfer = plan.transferCommands(compiled_pass))
         {
             copy_layouts.resize(transfer->operations.size());
             const auto regionValid = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle)

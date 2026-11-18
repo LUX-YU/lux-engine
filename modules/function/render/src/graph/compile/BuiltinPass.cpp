@@ -224,7 +224,6 @@ namespace lux::render::detail
     {
         const auto* raster = &value;
         const auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
-        const auto* input = &context.interface;
         const auto& limits = context.device.description();
         RasterCommands recorded;
         if (fixed)
@@ -235,7 +234,7 @@ namespace lux::render::detail
             }
             if (const auto* list = std::get_if<DrawIndexedList>(&fixed->draw))
             {
-                const auto reflected = shaderInterface(context.programs[input->program].interface);
+                const auto reflected = shaderInterface(*context.shader);
                 if (!reflected)
                 {
                     return cxx::unexpected(reflected.error());

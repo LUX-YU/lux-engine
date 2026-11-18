@@ -234,7 +234,12 @@ namespace lux::editor::ui
         {
             return cxx::unexpected(state.error());
         }
-        return std::unique_ptr<render::detail::InstanceData>(new UiInstance(**state, instance, recipe.pass));
+        auto stream = instance.indexedDrawStream(recipe.pass);
+        if (!stream)
+        {
+            return cxx::unexpected(stream.error());
+        }
+        return std::unique_ptr<render::detail::InstanceData>(new UiInstance(**state, instance, *stream));
     }
 
     RenderResult<bool> UiInstance::
@@ -249,7 +254,7 @@ namespace lux::editor::ui
         const IndexedDrawData data{value.vertices,   value.indices, std::as_bytes(std::span{&value.parameters, 1}),
                                    value.draws,      value.images,  sizeof(ImDrawVert),
                                    sizeof(ImDrawIdx)};
-        auto prepared = instance_.setIndexedDrawData(pass_, input.slot, data);
+        auto prepared = instance_.setIndexedDrawData(stream_, input.slot, data);
         if (!prepared)
         {
             return cxx::unexpected(prepared.error());

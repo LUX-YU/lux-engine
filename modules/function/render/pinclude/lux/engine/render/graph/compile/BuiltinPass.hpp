@@ -1,9 +1,34 @@
 #pragma once
 
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
 {
+    // Attachment formats and samples used during native pipeline preparation.
+    struct PassRenderingInfo final
+    {
+        nri::Format depth = nri::Format::UNKNOWN;
+        std::uint8_t samples = 1;
+        bool dynamic_depth_bias = false;
+    };
+
+    struct PassCompileContext final
+    {
+        detail::DeviceSession& device;
+        const rdesc::ShaderInfo* shader;
+        std::span<const GraphResource> resources;
+        std::uint32_t* indexed_list_count = nullptr;
+        std::uint32_t* raster_list_count = nullptr;
+        std::span<const std::uint8_t> materialized_resources;
+    };
+
+    struct PassNativeAccess final
+    {
+        nri::AccessBits access;
+        nri::StageBits stages;
+        nri::Layout layout = nri::Layout::UNDEFINED;
+    };
+
     struct RasterPass final
     {
         static RenderResult<RasterCommands> compile(const RasterWork&, PassCompileContext&) noexcept;

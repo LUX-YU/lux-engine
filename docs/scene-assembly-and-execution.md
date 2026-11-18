@@ -362,8 +362,8 @@ SYNCHRONIZATION 之后若没有 `publication_needed`，直接回 NONE；否则�
 | Server 冷态注册 | tuple 遍历 Feature 的 Storage/Command 依赖 | 类型、Factory、Handler 调用入口、Feature 图贡献及能力声明 |
 | 能力查询 | `ListCapabilities` | 该 Server 实际可用的能力实现、配置/Payload/端口/目标约束 |
 | 作用域安装 | `InstallCapabilities` | 在实际 Global/Scene/View 等 StorageSet 落实需要的实例，返回逻辑输入目的地 |
-| Effect 创建 | capability lowering → Feature 装配 → Graph 分析/编译 | `RenderEffect` 拥有 Graph、Analysis 和 RenderPlan |
-| Attach | 绑定 Scene/View/Target/Effect、资源与参数 | `EffectAttachment` 拥有 `RenderGraphInstance` 及实际关联 |
+| Effect 创建 | capability lowering → Feature 装配 → Graph 分析 | `RenderEffect` 拥有 Graph 和 Analysis |
+| Start/Rebind | 绑定 Scene/View/Target/Effect，编译设备执行图并准备资源 | `JobExecution` 拥有 `RenderGraphExecutable`、原生程序租约和 `RenderGraphInstance` |
 | 每帧 | 准备数据、选择 FIF 切片、记录与提交 | 使用已编译计划，不重新进行能力发现和全图编译 |
 
 源码入口：[FeatureRegistration.hpp](../modules/function/render/include/lux/engine/render/extensions/FeatureRegistration.hpp)、[CapabilityInstallation.cpp](../modules/function/render/src/runtime/CapabilityInstallation.cpp)、[CapabilityCompilation.cpp](../modules/function/render/src/runtime/CapabilityCompilation.cpp)、[EffectCompilation.cpp](../modules/function/render/src/runtime/EffectCompilation.cpp)。
@@ -441,7 +441,7 @@ UI 没有独立的 appendFrame/SubmitFrame、完成队列或 Scope。窗口 Resi
 [CapabilityGraph.hpp](../modules/function/render/include/lux/engine/render/extensions/features/CapabilityGraph.hpp)
 保留扩展作者和编译器实际需要的资源端口、相容性与连接算法。
 [CapabilityCompilation.cpp](../modules/function/render/src/runtime/CapabilityCompilation.cpp)
-检查类型/依赖并降低为既有 Graph/Analysis/RenderPlan。普通 Editor 选择能力及实现配置，
+检查类型和依赖并降低为 Graph/Analysis。普通 Editor 选择能力及实现配置，
 不从底层端口列表拼出一套影子调度器。
 
 ## 10. 关闭、信号与 stdexec：三种完成不能混为一谈

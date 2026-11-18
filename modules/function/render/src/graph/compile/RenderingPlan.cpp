@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/RenderingPlan.hpp>
@@ -222,14 +223,14 @@ namespace lux::render::detail
                     }
                 }
             }
-            else if (const auto* compute = pass.work.getIf<ComputeCommands>())
+            else if (const auto* compute = recording.computeCommands(pass))
             {
                 if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
                 {
                     extent(dispatch->resource);
                 }
             }
-            else if (const auto* transfer = pass.work.getIf<TransferCommands>())
+            else if (const auto* transfer = recording.transferCommands(pass))
             {
                 for (std::uint32_t i = 0; i < transfer->operations.size(); ++i)
                 {

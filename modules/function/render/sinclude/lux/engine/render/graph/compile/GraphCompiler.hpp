@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
 {
@@ -8,7 +9,7 @@ namespace lux::render::detail
     {
     public:
         // Sole device compilation entry. Returns a fully prepared immutable native candidate.
-        [[nodiscard]] static exec::task<RenderResult<RenderPlan>> compile(
+        [[nodiscard]] static exec::task<RenderResult<PreparedRenderGraph>> compile(
             DeviceSession&, execution::CpuScheduler, const RenderGraph&, const RenderGraphAnalysis&,
             const EffectOutputDesc* target = nullptr,
             ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
@@ -16,13 +17,13 @@ namespace lux::render::detail
         ) noexcept;
 
     private:
-        [[nodiscard]] static RenderResult<RenderPlan> planStructure(
+        [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
             nri::Device&, const nri::CoreInterface&, std::array<const QueueProperties*, 3>, const RenderGraph&,
             const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation, std::span<const std::uint32_t>,
-            bool
+            bool, std::vector<std::uint32_t>&
         ) noexcept;
         [[nodiscard]] static RenderResult<void> finishPlan(
-            RenderPlan&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
+            RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
             const nri::DeviceDesc&, ETransientAllocation
         ) noexcept;
     };

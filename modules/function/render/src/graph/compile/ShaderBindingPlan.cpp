@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
 #include <limits>
 #include <lux/engine/render/device/Error.hpp>

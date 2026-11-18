@@ -93,10 +93,13 @@ namespace lux::render::detail
 
     } // namespace
 
-    RenderResult<RenderPlan> GraphCompiler::planStructure(
+    RenderResult<RenderGraphExecutable> GraphCompiler::planStructure(
         nri::Device& device, const nri::CoreInterface& core, std::array<const QueueProperties*, 3> queues,
         const RenderGraph& graph, const RenderGraphAnalysis& analysis, const EffectOutputDesc* target,
-        ETransientAllocation allocation, std::span<const std::uint32_t> parameter_groups, bool device_addresses
+        ETransientAllocation allocation,
+        std::span<const std::uint32_t> parameter_groups,
+        bool device_addresses,
+        std::vector<std::uint32_t>& recipe_indices
     ) noexcept
     {
         if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
@@ -117,7 +120,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        RenderPlan plan(device, target ? *target : EffectOutputDesc{});
+        RenderGraphExecutable plan(device, target ? *target : EffectOutputDesc{});
         plan.device_addresses_ = device_addresses;
         plan.condition_count_ = static_cast<std::uint32_t>(graph.conditions().size());
         std::vector<bool> live(graph.resources().size(), false);
@@ -130,6 +133,7 @@ namespace lux::render::detail
         {
             live[input.index] = true;
         }
+        std::vector<const InstanceDataRecipe*> instance_recipes;
         for (const auto& data : graph.instanceData() | std::views::reverse)
         {
             if (!data.create)
@@ -164,9 +168,12 @@ namespace lux::render::detail
             {
                 live[id.index] = true;
             }
-            plan.instance_data_.push_back(&data);
+            const auto recipe = static_cast<std::uint32_t>(&data - graph.instanceData().data());
+            recipe_indices.push_back(recipe);
+            instance_recipes.push_back(&data);
         }
-        std::ranges::reverse(plan.instance_data_);
+        std::ranges::reverse(recipe_indices);
+        std::ranges::reverse(instance_recipes);
         for (std::uint32_t i = 0; i < graph.resources().size(); ++i)
         {
             const auto& resource = graph.resources()[i];
@@ -288,12 +295,19 @@ namespace lux::render::detail
             plan.fixed_output_extent_ = {requirement.width, requirement.height};
             resource.target_sized = relative;
         }
-        auto layouts = planLayouts(limits, graph, analysis, parameter_groups, device_addresses, plan.instanceData());
+        auto layouts = planLayouts(limits, graph, analysis, parameter_groups, device_addresses, instance_recipes);
         if (!layouts)
         {
             return cxx::unexpected(layouts.error());
         }
+        auto source_layouts = std::move(layouts->passes);
+        layouts->passes.reserve(analysis.execution_order.size());
+        for (auto id : analysis.execution_order)
+        {
+            layouts->passes.push_back(std::move(source_layouts[id.index]));
+        }
         plan.descriptor_plan_ = std::make_unique<ShaderBindingPlan>(std::move(*layouts));
+        plan.source_passes_ = analysis.execution_order;
 
         plan.pass_indices_.resize(graph.passes().size(), kGraphInvalidIndex);
         std::size_t parameter_bytes = 0;
@@ -306,9 +320,9 @@ namespace lux::render::detail
             }
             CompiledPass pass;
             pass.kind = source.kind;
-            pass.source_pass = id.index;
+            pass.binding_slot = static_cast<std::uint32_t>(plan.recording_.passes.size());
             pass.parameter_offset = parameter_bytes;
-            pass.parameter_size = plan.descriptor_plan_->passes[id.index].initial_parameters.size();
+            pass.parameter_size = plan.descriptor_plan_->passes[pass.binding_slot].initial_parameters.size();
             parameter_bytes += pass.parameter_size;
             if (source.condition && source.condition->source == EConditionSource::HISTORY_VALID &&
                 plan.resources_[source.condition->input].history == kGraphInvalidIndex)
@@ -321,8 +335,10 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(valid.error());
                 }
-                pass.rendering =
-                    CompiledRasterScope{*scope, source.work.policy().scope == EPassEncodingScope::EXCLUSIVE};
+                const auto& raster = std::get<RasterWork>(source.command);
+                const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster.program);
+                const bool owns_draw_sections = !fixed || std::holds_alternative<DrawIndexedList>(fixed->draw);
+                pass.rendering = CompiledRasterScope{*scope, owns_draw_sections};
             }
             if (source.graphics && pass.rendering)
             {
@@ -331,11 +347,24 @@ namespace lux::render::detail
             plan.pass_indices_[id.index] = static_cast<std::uint32_t>(plan.recording_.passes.size());
             plan.recording_.passes.push_back(std::move(pass));
         }
+        for (std::uint32_t p = 0; p < plan.recording_.passes.size();)
+        {
+            const auto& source = graph.passes()[analysis.execution_order[p].index];
+            const bool is_sequence = source.sequence_first.index != kGraphInvalidIndex;
+            const auto count = is_sequence ? source.sequence_last.index - source.sequence_first.index + 1 : 1;
+            const auto unit = static_cast<std::uint32_t>(plan.recording_.units.size());
+            for (auto offset = 0u; offset < count; ++offset)
+            {
+                plan.recording_.passes[p + offset].unit = unit;
+            }
+            plan.recording_.units.push_back({p, count});
+            p += count;
+        }
         return plan;
     }
 
     RenderResult<void> GraphCompiler::finishPlan(
-        RenderPlan& plan, const RenderGraph& graph, const RenderGraphAnalysis& analysis,
+        RenderGraphExecutable& plan, const RenderGraph& graph, const RenderGraphAnalysis& analysis,
         std::array<const QueueProperties*, 3> queues, const nri::DeviceDesc& limits, ETransientAllocation allocation
     ) noexcept
     {
@@ -358,7 +387,7 @@ namespace lux::render::detail
             {
                 parameter_plan.parameter_uses[raster->state_input->resource.index].push_back(p);
             }
-            for (const auto& mapping : parameter_plan.passes[pass.source_pass].parameters)
+            for (const auto& mapping : parameter_plan.passes[pass.binding_slot].parameters)
             {
                 auto& uses = mapping.resource == kGraphInvalidIndex ? parameter_plan.instance_parameter_uses
                                                                     : parameter_plan.parameter_uses[mapping.resource];
@@ -397,8 +426,8 @@ namespace lux::render::detail
                 parameter_plan.parameter_resources.push_back(resource);
             }
         }
-        planConditions(graph, plan.recording_);
-        selectQueues(graph, queues, plan.recording_);
+        planConditions(graph, analysis.execution_order, plan.recording_);
+        selectQueues(graph, analysis.execution_order, queues, plan.recording_);
         // Logical transitions establish the original batch dependency graph before choosing storage.
         auto barriers = planBarriers(
             graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
@@ -454,7 +483,9 @@ namespace lux::render::detail
             }
         }
         plan.physical_resources_ =
-            planPhysicalResources(graph, plan.resources_, plan.recording_, plan.submissions_, queues, allocation);
+            planPhysicalResources(
+                graph, analysis.execution_order, plan.resources_, plan.recording_, plan.submissions_, queues, allocation
+            );
         if (std::ranges::find(plan.physical_resources_.reasons, EResourceReuse::REUSED) !=
             plan.physical_resources_.reasons.end())
         {
@@ -475,7 +506,7 @@ namespace lux::render::detail
             bool found_output_use = false;
             for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
             {
-                for (const auto& [resource, stages] : use_stages[plan.recording_.passes[p].source_pass])
+                for (const auto& [resource, stages] : use_stages[analysis.execution_order[p].index])
                 {
                     if (resource != plan.output_)
                     {
@@ -502,8 +533,8 @@ namespace lux::render::detail
             for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
             {
                 const auto& pass = plan.recording_.passes[p];
-                const auto& source = graph.passes()[pass.source_pass];
-                const auto* raster = pass.work.getIf<RasterCommands>();
+                const auto& source = graph.passes()[analysis.execution_order[p].index];
+                const auto* raster = plan.rasterCommands(pass);
                 if (source.side_effect || (raster && std::holds_alternative<IndexedListCommands>(raster->draw)))
                 {
                     batch.reusable_recording = false;
@@ -536,6 +567,7 @@ namespace lux::render::detail
                         break;
                     }
                     const auto& pass = plan.recording_.passes[begin];
+                    begin = std::min(begin, plan.recording_.units[pass.unit].first_pass);
                     if (pass.rendering_group != kGraphInvalidIndex)
                     {
                         begin = std::min(begin, plan.recording_.groups[pass.rendering_group].first_pass);
@@ -551,7 +583,7 @@ namespace lux::render::detail
         return {};
     }
 
-    exec::task<RenderResult<RenderPlan>> GraphCompiler::compile(
+    exec::task<RenderResult<PreparedRenderGraph>> GraphCompiler::compile(
         DeviceSession& session, execution::CpuScheduler cpu, const RenderGraph& graph,
         const RenderGraphAnalysis& analysis, const EffectOutputDesc* target, ETransientAllocation allocation,
         std::span<const std::uint32_t> parameter_groups
@@ -562,6 +594,7 @@ namespace lux::render::detail
             &session.queue(EQueueRole::GRAPHICS).properties(), &session.queue(EQueueRole::COMPUTE).properties(),
             &session.queue(EQueueRole::TRANSFER).properties()
         };
+        std::vector<std::uint32_t> recipes;
         auto candidate = co_await (
             stdexec::schedule(cpu) |
             stdexec::then(
@@ -569,20 +602,22 @@ namespace lux::render::detail
                 {
                     return planStructure(
                         session.device(), session.nriCore(), queues, graph, analysis, target, allocation,
-                        parameter_groups, session.usesDeviceAddresses()
+                        parameter_groups, session.usesDeviceAddresses(), recipes
                     );
                 }
             ) |
             stdexec::upon_stopped(
-                []() noexcept -> RenderResult<RenderPlan> { return cxx::unexpected(RenderError{kCpuStopped}); }
+                []() noexcept -> RenderResult<RenderGraphExecutable> { return cxx::unexpected(RenderError{kCpuStopped}); }
             ) |
-            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<RenderPlan>{})
+            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<RenderGraphExecutable>{})
         );
         if (!candidate)
         {
             co_return cxx::unexpected(candidate.error());
         }
-        if (auto prepared = co_await candidate->prepareOperations(session, graph, cpu); !prepared)
+        NativeGraphPrograms native(session, candidate->passes().size());
+        auto prepared = co_await candidate->prepareOperations(session, native, graph, analysis.execution_order, cpu);
+        if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
         }
@@ -600,6 +635,6 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(planned.error());
         }
-        co_return std::move(*candidate);
+        co_return PreparedRenderGraph{std::move(*candidate), std::move(native), std::move(recipes)};
     }
 } // namespace lux::render::detail

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/graph/execute/BindingState.hpp>
-#include <lux/engine/render/extensions/graph/PassRecordInput.hpp>
+#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 
 namespace lux::render::detail
 {

@@ -56,7 +56,6 @@ namespace lux::render
     {
         std::span<const PassResourceInput> resources;
         std::span<const std::byte> parameters;
-        std::span<std::byte> scratch; // Exclusive to this recording operation.
         const PassNativeInput* native = nullptr;
     };
 } // namespace lux::render

@@ -1,4 +1,7 @@
 #include <algorithm>
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+#include <chrono>
+#endif
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
@@ -348,6 +351,9 @@ namespace lux::render::detail
                 return std::tie(a.instance, a.batch) < std::tie(b.instance, b.batch);
             }
         );
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto overlap_start = std::chrono::steady_clock::now();
+#endif
         for (std::size_t first = 0; first < frame.imported_uses.size();)
         {
             auto end = first + 1;
@@ -357,6 +363,13 @@ namespace lux::render::detail
                 ++end;
             }
             const auto group = std::span(frame.imported_uses).subspan(first, end - first);
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+            if (group.size() >= frame.imported_group_counts.size())
+            {
+                frame.imported_group_counts.resize(group.size() + 1);
+            }
+            ++frame.imported_group_counts[group.size()];
+#endif
             if (std::ranges::any_of(group, &ImportedUse::write))
             {
                 for (std::size_t a = 0; a < group.size(); ++a)
@@ -383,6 +396,11 @@ namespace lux::render::detail
             }
             first = end;
         }
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        frame.imported_overlap_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - overlap_start
+        ).count();
+#endif
         frame.imported_uses.clear();
         return {};
     }
@@ -706,8 +724,18 @@ namespace lux::render::detail
                 output += std::to_string(accepted.serials()[queue]);
             }
             output += "],\"dependency_rebuilds\":" + std::to_string(frame.dependency_rebuilds) +
-                      ",\"imported_comparisons\":" + std::to_string(frame.imported_comparisons) +
-                      ",\"dependency_edges\":" + std::to_string(frame.dependencies.size()) + ",\"batch_serials\":[";
+                      ",\"imported_comparisons\":" + std::to_string(frame.imported_comparisons);
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+            output += ",\"imported_overlap_ns\":" + std::to_string(frame.imported_overlap_ns) +
+                      ",\"imported_groups_by_size\":[";
+            for (std::size_t size = 0; size < frame.imported_group_counts.size(); ++size)
+            {
+                if (size) output += ',';
+                output += std::to_string(frame.imported_group_counts[size]);
+            }
+            output += ']';
+#endif
+            output += ",\"dependency_edges\":" + std::to_string(frame.dependencies.size()) + ",\"batch_serials\":[";
             for (std::size_t instance = 0; instance < frame.instances.size(); ++instance)
             {
                 if (instance)

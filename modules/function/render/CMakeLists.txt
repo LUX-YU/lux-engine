@@ -353,6 +353,11 @@ if(WIN32)
 endif()
 
 target_compile_definitions(render PRIVATE LUX_RENDER_LIBRARY)
+
+option(LUX_RENDER_DEVELOPMENT_METRICS "Collect Render development metrics" OFF)
+if(LUX_RENDER_DEVELOPMENT_METRICS)
+    target_compile_definitions(render PRIVATE LUX_RENDER_DEVELOPMENT_METRICS)
+endif()
 target_compile_features(render PUBLIC cxx_std_20)
 target_link_libraries(render
     PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core

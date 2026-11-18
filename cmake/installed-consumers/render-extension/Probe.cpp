@@ -342,6 +342,13 @@ struct ProbeGraphCapability final
     using Resources = std::tuple<ProbeResource<false>>;
 };
 
+struct QualificationAuditCapability final
+{
+    using PrerequisiteCapabilities = std::tuple<>;
+    using Commands = std::tuple<>;
+    using Resources = std::tuple<>;
+};
+
 template <bool Alternate> struct ProbeFeature final
 {
     using Capability = ProbeCapability;
@@ -608,6 +615,7 @@ int main(int argc, char** argv)
     config.uploads.emplace();
     DeviceOptions device;
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") device.backend = EGraphicsBackend::D3D12;
+    const bool audit_qualification = std::getenv("LUX_RENDER_QUALIFICATION_BASELINE") != nullptr;
     auto server = take(RenderServer::create(config, *execution, device));
     // The module installs its unique declarations once; implementations reference that closure.
     take(server->registerResource<ProbeStorageType<false>>());
@@ -627,7 +635,7 @@ int main(int argc, char** argv)
     take(server->registerCapability<ProbeGraphCapability>());
     take(server->registerCapability<RejectedCapability>());
     take(server->registerCapability<UndeclaredEffectCapability>());
-    take(server->registerFeature<ProbeEffect<true>>());
+    const auto graph_feature = take(server->registerFeature<ProbeEffect<true>>());
     take(server->registerFeature<ProbeEffect<false>>());
     // Registration is metadata only. Order does not choose the requested implementation.
     take(server->registerCapabilityImplementation<ProbeFeature<true>>());
@@ -635,6 +643,15 @@ int main(int argc, char** argv)
     take(server->registerCapabilityImplementation<RejectedInstallation>());
     take(server->registerCapabilityImplementation<ProbeEffect<true>>());
     take(server->registerCapabilityImplementation<ProbeEffect<false>>());
+    CapabilityImplementationId undeclared_resource;
+    if (audit_qualification)
+    {
+        const auto audit = take(server->registerCapability<QualificationAuditCapability>());
+        auto candidate = ProbeFeature<false>::implementation();
+        candidate.implementation = "example.audit.undeclared_resource";
+        candidate.features = {graph_feature};
+        undeclared_resource = take(server->addCapabilityImplementation(audit, candidate));
+    }
     const auto duplicate_resource = server->registerResource<ProbeStorageType<false>>();
     CHECK(!duplicate_resource && duplicate_resource.error().type == kStorageMismatch);
     const auto duplicate_feature = server->registerFeature<ProbeEffect<true>>();
@@ -709,6 +726,23 @@ int main(int argc, char** argv)
     const auto graph_choice = call<ListCapabilities>(
         client, list, {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
     ).implementations.front();
+    if (audit_qualification)
+    {
+        auto qualify = [&](std::vector<EffectImplementationUse> implementations, std::string contribution)
+        {
+            CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
+            request.implementations = std::move(implementations);
+            request.definition.features.push_back({graph_feature, std::move(contribution), {}});
+            request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
+            return call<CreateEffect>(client, create_effect, std::move(request));
+        };
+        const auto owner = graph_choice.implementation_id;
+        const auto wrong_feature = qualify({{route_a, "commands"}, {owner, "output"}}, "commands/node");
+        const auto wrong_resource = qualify({{undeclared_resource, "output"}}, "output/node");
+        CHECK(!wrong_feature.error.type && !wrong_feature.effect.isNull());
+        CHECK(!wrong_resource.error.type && !wrong_resource.effect.isNull());
+        std::puts("BASELINE QUALIFICATION: accepted foreign Feature and undeclared live Resource");
+    }
     auto make_routed = [&](std::span<const CapabilityImplementationId> routes)
     {
         CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};

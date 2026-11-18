@@ -81,6 +81,8 @@ namespace lux::render::detail
             std::uint32_t remaining_batches = 0;
             bool graph_started = false;
             std::uint64_t dependency_rebuilds = 0, imported_comparisons = 0;
+            std::vector<std::uint64_t> imported_group_counts;
+            std::uint64_t imported_overlap_ns = 0;
         };
 
     public:

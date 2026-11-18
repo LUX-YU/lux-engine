@@ -506,6 +506,8 @@ int main(int argc, char** argv)
     bool material_pages = false;
     bool program_cache_probe = false;
     std::uint32_t profile_frames = 0;
+    std::uint32_t profile_warmup = 1500;
+    bool profile_samples = false;
     for (int i = 2; i < argc; ++i)
     {
         const std::string_view option = argv[i];
@@ -550,9 +552,17 @@ int main(int argc, char** argv)
         else if (option == "--profile-frames" && i + 1 < argc)
         {
             profile_frames = static_cast<std::uint32_t>(std::atoi(argv[++i]));
-            CHECK(profile_frames >= 15000);
+            CHECK(profile_frames > 0);
             CHECK(!std::getenv("LUX_DRAW_CALL_COUNTS"));
             config.validation = false;
+        }
+        else if (option == "--profile-warmup" && i + 1 < argc)
+        {
+            profile_warmup = static_cast<std::uint32_t>(std::atoi(argv[++i]));
+        }
+        else if (option == "--profile-samples")
+        {
+            profile_samples = true;
         }
         else
         {
@@ -770,9 +780,11 @@ int main(int argc, char** argv)
         }
         if (draw_probe_active && profile_frames)
         {
-            for (unsigned frame = 0; frame < 1500; ++frame) renderFrame(*client, commands, attached);
+            for (std::uint32_t frame = 0; frame < profile_warmup; ++frame)
+                renderFrame(*client, commands, attached);
             std::vector<double> intervals;
             intervals.reserve(profile_frames);
+            const auto submitted_before = server->stats().submissions;
             const auto start = Clock::now();
             auto previous = start;
             for (std::uint32_t frame = 0; frame < profile_frames; ++frame)
@@ -783,11 +795,19 @@ int main(int argc, char** argv)
                 previous = now;
             }
             const auto seconds = std::chrono::duration<double>(previous - start).count();
+            const auto submissions = server->stats().submissions - submitted_before;
+            if (profile_samples)
+            {
+                for (std::size_t frame = 0; frame < intervals.size(); ++frame)
+                    std::printf("DRAW_SAMPLE frame=%zu request_ms=%.6f\n", frame, intervals[frame]);
+            }
             std::ranges::sort(intervals);
             std::printf(
-                "DRAW_PROFILE groups=%u views=2 culling=%u frames=%u seconds=%.6f fps=%.3f "
+                "DRAW_PROFILE groups=%u views=2 culling=%u warmup=%u frames=%u submissions=%llu "
+                "seconds=%.6f fps=%.3f "
                 "p50_ms=%.6f p95_ms=%.6f p99_ms=%.6f\n",
-                draw_groups, gpu_visibility, profile_frames, seconds, profile_frames / seconds,
+                draw_groups, gpu_visibility, profile_warmup, profile_frames,
+                static_cast<unsigned long long>(submissions), seconds, profile_frames / seconds,
                 intervals[profile_frames / 2],
                 intervals[profile_frames * 95 / 100],
                 intervals[profile_frames * 99 / 100]

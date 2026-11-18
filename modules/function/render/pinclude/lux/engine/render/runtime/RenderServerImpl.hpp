@@ -1,6 +1,6 @@
 #pragma once
 
-#include <thread>
+#include <lux/engine/render/runtime/JobOutput.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -25,16 +25,18 @@
 #include <lux/engine/render/capabilities/CapabilityRegistry.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 #include <lux/engine/render/commands/CommandRegistry.hpp>
+#include <lux/engine/render/runtime/RenderJob.hpp>
+#include <deque>
+#include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/EffectBuild.hpp>
-#include <lux/engine/render/runtime/FrameSubmission.hpp>
+#include <lux/engine/render/runtime/DeviceRound.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/commands/ResponseOutbox.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
-#include <thread>
+#include <lux/engine/render/target/RenderTarget.hpp>
 
 namespace lux::render
 {
@@ -44,24 +46,12 @@ namespace lux::render
     struct RenderServer::Impl final
     {
         [[nodiscard]] RenderResult<void> initialize(DeviceOptions options) noexcept;
-        [[nodiscard]] RenderResult<void> registerBuiltinFeatures() noexcept;
         FeatureId publishFeature(FeatureEntry) noexcept;
         RenderResult<void>
         validateImplementationDescription(const CapabilityDescription&, const CapabilityImplementation&) const noexcept;
         RenderResult<void>
         validateCapabilityImplementation(const CapabilityDescription&, const CapabilityImplementation&) const noexcept;
         RenderResult<void> validateFeature(const FeatureEntry&) const noexcept;
-        RenderResult<void> validateRegistration(
-            std::span<const ResourceRegistration>,
-            std::span<const HandlerRecord>,
-            std::span<const CommandBinding> = {}
-        ) const noexcept;
-        void publishRegistration(
-            std::span<const ResourceRegistration>,
-            std::span<HandlerRecord>,
-            std::span<const CommandBinding>
-        ) noexcept;
-
         [[nodiscard]] RenderResult<void> run() noexcept;
 
         void stop() noexcept
@@ -77,59 +67,64 @@ namespace lux::render
         ipc::IpcResponder responder_;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features_;
         std::map<std::string_view, FeatureId, std::less<>> features_by_name_;
-        CommandRegistry command_registry_;
         CapabilityRegistry capability_registry_;
-        cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
-        cxx::StableSlotMap<RenderTarget, TargetTag> targets_;
-        cxx::StableSlotMap<RenderEffect, EffectTag> effects_;
-        cxx::SlotMap<EffectAttachment, AttachmentTag> attachments_;
-        cxx::SlotKeySparseSet<TargetId, std::monostate> active_targets_;
-        std::unique_ptr<detail::DeviceSession> device_;
-        std::unique_ptr<detail::ResourceUploader> uploads_;
-        std::unique_ptr<detail::FrameExecution> frames_;
-        std::optional<ResourceRegistry> resources_;
-        std::optional<ResourceSet> global_storages_;
-        ipc::ReceivedRequest deferred_request_;
-        bool structural_command_running_ = false;
-        bool paged_instances_ = false;
-
-        [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept
+        std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
+        struct DeviceDomain final
         {
-            return {*device_, uploads_.get(), config_.frames_in_flight, *resources_, paged_instances_};
-        }
+            ResourceRegistry resources_;
+            std::unique_ptr<detail::DeviceEntry> device_;
+            CommandRegistry command_registry_;
+            cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
+            cxx::StableSlotMap<VRenderTarget, TargetTag> targets_;
+            cxx::SlotKeySparseSet<TargetId, detail::JobOutput> job_outputs_;
+            cxx::StableSlotMap<RenderEffect, EffectTag> effects_;
+            cxx::StableSlotMap<RenderJob, RenderJobTag> jobs_;
+        };
+
+        // Release the window and actual device before run() returns. Reverse order keeps each borrow valid.
+        std::optional<DeviceDomain> domain_{std::in_place};
+        std::vector<RenderJobId> running_jobs_;
+        std::uint64_t next_input_layout_revision_ = 1;
 
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
         stdexec::simple_counting_scope upload_scope_;
         bool upload_progress_pending_ = false;
         cxx::execution::ManualContext server_context_;
-        ipc::RequesterId frame_source_;
-        CommandId submit_frame_command_, submit_ui_frame_command_;
-        CommandId select_binding_command_;
-        std::vector<FrameRecord> frame_inputs_;
-        std::size_t first_frame_ = 0;
-        std::size_t frame_count_ = 0;
-        bool frame_resynchronization_ = false;
+        DeviceRound round_;
+        std::deque<InputUpdate*> input_updates_;
         std::vector<detail::RenderGraphInstance*> frame_instances_;
-        std::vector<detail::SurfaceTarget*> frame_surfaces_;
+        struct FrameOutput final
+        {
+            RenderJobId job;
+            JobExecution* execution;
+            TargetId target;
+            std::vector<TargetId> reads;
+            bool submitted = false;
+        };
+
+        std::vector<FrameOutput> frame_outputs_;
+        std::vector<RenderJobId> unready_jobs_;
+        std::vector<RenderJobId> target_readiness_scratch_;
+        std::deque<detail::JobControl::Run> frame_runs_;
+        std::size_t frame_run_count_ = 0;
+        detail::SubmissionFrontiers target_frame_uses_;
         std::vector<detail::StorageFrameUse> frame_storages_;
-        std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features_;
+        std::vector<detail::SubmissionOrder> frame_job_order_;
+        std::uint64_t output_uses_revision_ = 0;
+        RenderError frame_input_error_;
+        RenderError execution_error_;
         bool active_frame_inputs_dirty_ = true;
-        std::atomic<bool> stop_requested_{false}, has_started_{false}, running_{false};
-        // Startup is single-threaded. Running catalog access is confined to the actual drive stack.
-        const std::thread::id setup_thread_ = std::this_thread::get_id();
-        static thread_local Impl* catalog_owner_;
-        std::atomic<bool> run_finished_{false};
+        enum class EState { SETUP, RUNNING, FINISHED };
+        std::atomic<EState> state_ = EState::SETUP;
+        std::atomic<bool> stop_requested_ = false;
 
         [[nodiscard]] bool canAccessCatalog() const noexcept
         {
-            if (catalog_owner_ == this) return frame_count_ == 0 && !structural_command_running_;
-            const bool is_setup_thread = setup_thread_ == std::this_thread::get_id();
-            return is_setup_thread && (!has_started_.load() || run_finished_.load());
+            return state_.load() == EState::SETUP;
         }
 
         std::atomic<std::uint64_t> ticks_{0}, commands_{0}, compiled_graphs_{0}, submissions_{0};
-        std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
         std::atomic<std::uint64_t> storages_created_{0};
         std::atomic<std::uint64_t> presentations_{0};
 
@@ -137,56 +132,72 @@ namespace lux::render
 
         template <RenderCommand C, auto Method> CommandId bindFrameworkCommand() noexcept
         {
-            return command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
+            return domain_->command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
         }
 
-        void detachAttachment(AttachmentId id) noexcept;
-        [[nodiscard]] bool canChangeAttachments(std::span<const AttachmentId>) const noexcept;
+        void bindJobCommands() noexcept;
+        void createJob(const CreateRenderJob::Request&, JobCreated&) noexcept;
+        exec::task<AckResponse> startJob(StartRenderJob::Request&&) noexcept;
+        exec::task<AckResponse> rebindJob(RebindRenderJobEffect::Request&&) noexcept;
+        void handleStopJob(const RenderJobId&, AckResponse&) noexcept;
+        void removeJob(const RenderJobId&, AckResponse&) noexcept;
+        void setJobCadence(const SetRenderJobCadence::Request&, AckResponse&) noexcept;
+        void setJobDependencies(const SetRenderJobDependencies::Request&, AckResponse&) noexcept;
+        exec::task<JobSubmitted> requestJob(RequestRenderJob::Request&&) noexcept;
+        void stopJob(RenderJob&) noexcept;
+        void retireStoppedExecution(RenderJob&) noexcept;
+        [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
+        [[nodiscard]] bool frameUsesResource(ResourceInstanceId) const noexcept;
+        [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
+        [[nodiscard]] bool resourcesAvailable(std::span<const ResourceInstanceId>) const noexcept;
+        [[nodiscard]] std::vector<detail::JobRelationEntry> jobRelations() noexcept;
+        [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
-        RenderResult<runtime_detail::EffectAttachment> prepareAttachment(
-            const runtime_detail::RenderEffect&,
-            std::unique_ptr<detail::RenderPlan>,
-            detail::TargetOutput,
-            ResourceSet& scene,
-            runtime_detail::RenderView& view,
-            const AttachmentRequest& input
+        [[nodiscard]] RenderResult<std::vector<ResourceInstanceId>>
+        resolveJobResources(const RenderEffect&, RenderView&) noexcept;
+
+        [[nodiscard]] RenderResult<void> assembleExecution(
+            JobExecution&, RenderView&, std::span<const ResourceInstanceId>, const JobBinding&
         ) noexcept;
 
-        [[nodiscard]] RenderResult<void> validateAttachment(const AttachmentRequest&) const noexcept;
-        exec::task<AttachmentCreated> attachEffect(AttachmentRequest&&) noexcept;
+        exec::task<AckResponse>
+        buildJobExecution(RenderJobId, EffectId, TargetId, JobBinding, bool rebind) noexcept;
 
-        using ResizeCandidates = std::vector<std::pair<AttachmentId, detail::RenderGraphInstance::ResizeResources>>;
+        [[nodiscard]] RenderResult<void> validateJobBinding(
+            const RenderJob&, const RenderEffect&, TargetId, const JobBinding&, const void* reservation
+        ) const noexcept;
+
+        using ResizeCandidates = std::vector<std::pair<RenderJobId, detail::RenderGraphInstance::ResizeResources>>;
         [[nodiscard]] RenderResult<ResizeCandidates>
-            prepareTargetResize(TargetId, detail::TargetOutput, std::span<const AttachmentId>) noexcept;
+        prepareTargetResize(TargetId, detail::TargetOutput, std::span<const RenderJobId>) noexcept;
 
         [[nodiscard]] bool
-            targetDependencyCycle(TargetId, std::span<const TargetImageInput>, AttachmentId) const noexcept;
+        targetDependencyCycle(TargetId, std::span<const TargetImageInput>, RenderJobId) const noexcept;
 
         void rebuildActiveFrameInputs() noexcept;
-        [[nodiscard]] RenderResult<void> applyViewCameras() noexcept;
+        [[nodiscard]] RenderResult<void> applyParameterSources(std::uint32_t slot) noexcept;
+        void prefetchFrameOutputs(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> acquireFrameOutputs(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> presentFrameOutputs() noexcept;
-        exec::task<RenderResult<void>> submitCurrentFrame(std::uint32_t slot) noexcept;
-        RenderResult<void> progressGpuCompletions() noexcept;
+        void progressTargetFlights() noexcept;
+        [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
+        [[nodiscard]] std::uint32_t outputSlot(TargetId, std::uint32_t frame_slot) const noexcept;
+        exec::task<RenderResult<void>> submitCurrentFrame() noexcept;
+        void cancelActiveFrame(RenderError) noexcept;
+        [[nodiscard]] bool serviceOperations(bool admitting) noexcept;
+        void waitForService(std::uint64_t observed) const noexcept;
         void progressUploads() noexcept;
-        void progressFrame() noexcept;
-
-        auto submitFrame(SubmitFrame::Request&&) noexcept;
-        auto submitUiFrame(SubmitUiFrame::Request&&) noexcept;
-        void queryFrameInputLayout(const AttachmentId&, QueryFrameInputLayout::Response&) noexcept;
+        [[nodiscard]] bool progressFrame() noexcept;
+        [[nodiscard]] bool progressInputUpdates() noexcept;
+        void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
+        exec::task<AckResponse> updateFrameData(UpdateFrameData::Request&&) noexcept;
+        [[nodiscard]] RenderResult<void> applyFrameData(const JobExecution&, const FrameData&) noexcept;
+        void setEffectParameters(const SetEffectParameters::Request&, AckResponse&) noexcept;
         void updateViewCamera(const UpdateViewCamera::Request&, AckResponse&) noexcept;
-        void bindSubmitFrameCommand() noexcept;
-        void admitFrame(
-            RenderFrame, void*, void (*)(void*, FrameCompletion) noexcept, std::span<const UiDrawInput> = {}
-        ) noexcept;
-        void finishFrame(FrameRecord&, FrameCompletion) noexcept;
-        void activateFrame(FrameRecord&) noexcept;
-        void applyFrameInputs(FrameRecord&) noexcept;
-        void failFrame(FrameRecord&) noexcept;
-        void submitFrameRendering(FrameRecord&) noexcept;
-        void finishFrameRendering(FrameRecord&, RenderResult<void>) noexcept;
-        void prepareFramePrograms(FrameRecord&) noexcept;
-        [[nodiscard]] exec::task<RenderResult<void>> prepareRasterPrograms() noexcept;
+        void finishFrame(RenderError) noexcept;
+        [[nodiscard]] bool beginFrame() noexcept;
+        void submitFrameRendering() noexcept;
+        void prepareFramePrograms() noexcept;
+        [[nodiscard]] exec::task<RenderResult<void>> prepareInstancePrograms() noexcept;
 
         static void NRI_CALL
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;
@@ -200,7 +211,7 @@ namespace lux::render
         void removeScene(const RemoveScene::Request&, RemoveScene::Response&) noexcept;
 
         void createView(const CreateView::Request&, CreateView::Response&) noexcept;
-        void updateAttachmentInputs(const UpdateAttachmentInputs::Request&, UpdateAttachmentInputs::Response&) noexcept;
+        void updateJobInputs(const UpdateJobInputs::Request&, AckResponse&) noexcept;
         void invalidateHistory(const InvalidateHistory::Request&, InvalidateHistory::Response&) noexcept;
 
         void removeView(const RemoveView::Request&, RemoveView::Response&) noexcept;
@@ -212,65 +223,28 @@ namespace lux::render
         void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
         using EffectBuildResult = RenderResult<RenderEffect>;
-        [[nodiscard]] exec::task<EffectCreated> adoptBuiltEffect(
-            EffectBuildResult,
-            std::vector<RenderEffect::Implementation>
-        ) noexcept;
-
-        auto buildGraphEffect(
-            GraphEffectRequest&&,
-            RenderError = {},
-            std::vector<RenderEffect::Implementation> = {},
-            std::vector<RenderEffect::ResourceDependency> = {}
-        ) noexcept;
-        auto createCapabilityEffect(CreateEffect::Request&&) noexcept;
-        [[nodiscard]] RenderResult<void>
-        buildCapabilityGraph(
-            CreateEffectRequest&,
-            GraphEffectRequest&,
-            std::vector<RenderEffect::ResourceDependency>&
-        ) noexcept;
-        [[nodiscard]] RenderResult<const ConfigValue*>
-        qualifyConfiguration(const VCapabilityConfiguration&, const CapabilityImplementation&, ConfigValue& decoded)
-            const noexcept;
-        [[nodiscard]] RenderResult<void> resolveFrameBindings(RenderEffect&, const RenderGraph&) const noexcept;
+        [[nodiscard]] exec::task<EffectCreated> adoptBuiltEffect(EffectBuildResult) noexcept;
+        auto createEffect(CreateEffect::Request&&) noexcept;
+        [[nodiscard]] RenderResult<std::vector<RenderEffect::ResourceDependency>>
+        qualifyEffectRecipe(const CreateEffectRequest&, std::vector<CommandBindingLocation>&) const noexcept;
         void bindCreateEffectCommand() noexcept;
 
-        [[nodiscard]] const CapabilityGraphDescription* capabilityGraph(CapabilityImplementationId) const noexcept;
         [[nodiscard]] static RenderError
-        capabilityOutputError(const CapabilityGraphDescription&, const EffectOutputDesc&) noexcept;
-        [[nodiscard]] RenderResult<std::vector<RenderEffect::ResourceDependency>>
-        resolveCapabilityResources(const CapabilityDescription&) const noexcept;
+        capabilityOutputError(const CapabilityImplementation&, const EffectOutputDesc&) noexcept;
 
         void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
-        void validateCapabilityConfiguration(
-            const ValidateCapabilityConfiguration::Request&,
-            ValidateCapabilityConfiguration::Response&
-        ) noexcept;
 
-        [[nodiscard]] RenderResult<ResourceInstanceId>
-        resolveEffectResource(
-            const RenderEffect&,
-            std::uint32_t capability,
-            std::uint32_t dependency,
-            const VRenderScope&
-        ) noexcept;
 
         [[nodiscard]] RenderResult<ResourceSet*> findScope(const VRenderScope&) noexcept;
 
-        [[nodiscard]] RenderResult<ResourceInstanceId> ensureResource(ResourceSet&, ResourceTypeId) noexcept;
-
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
-        void detachEffect(const Detach::Request&, Detach::Response&) noexcept;
-
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
+        void queryRenderDevice(const QueryRenderDevice::Request&, QueryRenderDevice::Response&) noexcept;
         void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
 
         void listCommands(const ListCommands::Request&, ListCommands::Response&) noexcept;
         void queryCommandIds(const QueryCommandIds::Request&, QueryCommandIds::Response&) noexcept;
-        void listCommandBindings(const ListCommandBindings::Request&, ListCommandBindings::Response&) noexcept;
-        void selectCommandBinding(const SelectCommandBinding::Request&, SelectCommandBinding::Response&) noexcept;
 
         void stopCommand(const Stop::Request&, Stop::Response&) noexcept;
 
@@ -281,6 +255,6 @@ namespace lux::render
 
         std::size_t publishResponses(std::size_t limit) noexcept;
 
-        void shutdown(RenderError cause = RenderError{kCommandCancelled}) noexcept;
+        void shutdown() noexcept;
     };
 } // namespace lux::render

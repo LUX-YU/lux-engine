@@ -8,7 +8,7 @@ namespace lux::render::InstanceCommands
     struct CreateInstance final
     {
         static constexpr std::string_view name = "lux.render.mesh3d.create_instance";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = MeshInstanceData;
 
         struct Request final
@@ -32,7 +32,7 @@ namespace lux::render::InstanceCommands
     struct CreateInstances final
     {
         static constexpr std::string_view name = "lux.render.mesh3d.create_instances";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = std::span<const MeshInstanceData>;
 
         struct Request final
@@ -56,7 +56,7 @@ namespace lux::render::InstanceCommands
     struct ReleaseInstance final
     {
         static constexpr std::string_view name = "lux.render.mesh3d.release_instance";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
         using Data = MeshInstanceId;
         struct Request final
@@ -74,7 +74,7 @@ namespace lux::render::InstanceCommands
     struct Update final
     {
         static constexpr std::string_view name = "lux.render.instance.update";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = MeshInstanceUpdate;
         struct Request final
         {

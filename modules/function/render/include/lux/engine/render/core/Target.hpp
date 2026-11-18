@@ -36,7 +36,7 @@ namespace lux::render
         rdesc::ETextureFormat format{rdesc::ETextureFormat::UNDEFINED};
         std::uint32_t samples{1};
         ETargetKind kind{ETargetKind::OFFSCREEN};
-        bool sampled = false; // Explicit same-frame producer/consumer use; not an output history.
+        bool sampled = false; // Allows graph consumers to borrow the execution layer's published output.
 
         [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validate() const noexcept;
         bool operator==(const TargetDesc&) const noexcept = default;

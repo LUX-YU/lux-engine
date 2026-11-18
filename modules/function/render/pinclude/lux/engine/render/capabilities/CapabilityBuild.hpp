@@ -6,8 +6,6 @@
 #include <lux/engine/render/resources/instance/Commands.hpp>
 
 #include <lux/engine/render/capabilities/BuiltinImplementations.hpp>
-#include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
-#include <lux/engine/render/resource/view/CameraParameters.hpp>
 #include <lux/engine/render/resources/lighting/Data.hpp>
 #include <lux/engine/render/resources/mesh/Data.hpp>
 #include <lux/engine/render/resources/instance/Data.hpp>
@@ -45,57 +43,16 @@ namespace lux::render::detail
         return result;
     }
 
-    template <class Value, auto Decode>
-    RenderResult<ConfigValue> decodeConfigurationValue(std::span<const std::byte> bytes) noexcept
-    {
-        auto result = Decode(bytes);
-        if (!result)
-        {
-            return cxx::unexpected(result.error());
-        }
-        return ConfigValue::make(std::move(*result));
-    }
-
-    inline CapabilityImplementation describeImplementation(
-        std::string_view implementation,
-        std::string_view configuration_schema,
-        std::vector<CapabilityPort> ports
-    ) noexcept
+    inline CapabilityImplementation describeImplementation(std::string_view name) noexcept
     {
         CapabilityImplementation result;
-        result.implementation = implementation;
-        result.configuration = {std::string(configuration_schema), 1};
-        CapabilityGraphDescription graph;
-        graph.ports = std::move(ports);
-        graph.target_formats = {
-            rdesc::ETextureFormat::RGBA8_UNORM,
-            rdesc::ETextureFormat::RGBA8_SRGB,
-            rdesc::ETextureFormat::BGRA8_UNORM,
-            rdesc::ETextureFormat::BGRA8_SRGB
+        result.implementation = name;
+        result.target_formats = {
+            rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA8_SRGB,
+            rdesc::ETextureFormat::BGRA8_UNORM, rdesc::ETextureFormat::BGRA8_SRGB
         };
-        graph.target_samples = {1};
-        graph.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
-        result.graph = std::move(graph);
+        result.target_samples = {1};
+        result.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
         return result;
     }
-
-    inline std::uint32_t portIndex(const CapabilityBuildInput& input, std::string_view key) noexcept
-    {
-        return static_cast<std::uint32_t>(
-            std::ranges::find(input.ports, key, &CapabilityPort::key) - input.ports.begin()
-        );
-    }
-
-    inline void mapPort(
-        CapabilityGraphContribution& result,
-        const CapabilityBuildInput& input,
-        std::string_view key,
-        std::vector<FeaturePortRef> references
-    ) noexcept
-    {
-        result.ports[portIndex(input, key)] = std::move(references);
-    }
-
-    [[nodiscard]] RenderResult<EffectDefinition> buildShadowFeatures(const CapabilityBuildInput&) noexcept;
-
 } // namespace lux::render::detail

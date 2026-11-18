@@ -6,6 +6,35 @@
 
 namespace lux::render
 {
+    ResourceSet::ResourceSet(ResourceRegistry& registry, detail::DeviceSession& device) noexcept
+        : registry_(registry), domain_(EResourceDomain::DEVICE), device_(device), parent_(nullptr)
+    {
+    }
+
+    ResourceSet::ResourceSet(ResourceSet& parent, EResourceDomain domain) noexcept
+        : registry_(parent.registry_), domain_(domain), device_(parent.device_), parent_(&parent)
+    {
+        const bool is_direct_child =
+            (parent.domain_ == EResourceDomain::DEVICE && domain_ == EResourceDomain::SCENE) ||
+            (parent.domain_ == EResourceDomain::SCENE && domain_ == EResourceDomain::VIEW);
+        if (!is_direct_child)
+        {
+            std::terminate();
+        }
+    }
+
+    ResourceSet* ResourceSet::ownerFor(EResourceDomain domain) noexcept
+    {
+        for (auto* owner = this; owner; owner = owner->parent_)
+        {
+            if (owner->domain_ == domain)
+            {
+                return owner;
+            }
+        }
+        return nullptr;
+    }
+
     ResourceSet::~ResourceSet() noexcept
     {
         clear();
@@ -28,20 +57,20 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (device_ && device_ != &context.device)
+        const bool is_foreign_context = &device_ != &context.device || &registry_ != &context.resources;
+        if (is_foreign_context)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        if (const auto id = find(type); !id.isNull())
+        {
+            return id;
         }
         if (auto qualified = registry_.qualify(type, domain_, context); !qualified)
         {
             return cxx::unexpected(qualified.error());
         }
-        const auto id = find(type);
-        if (id.isNull())
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        return id;
+        return cxx::unexpected(RenderError{kStorageIdentity});
     }
 
     RenderResult<ResourceInstanceId>
@@ -51,17 +80,11 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (device_ && device_ != &dependencies.device)
+        const bool is_foreign_context = &device_ != &dependencies.device || &registry_ != &dependencies.resources;
+        if (is_foreign_context)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        auto qualified = registry_.qualify(type, domain_, dependencies);
-        if (!qualified)
-        {
-            return cxx::unexpected(qualified.error());
-        }
-        const auto& factory = **qualified;
-        const auto& configuration = *registry_.configuration(type);
         const auto key = TypeKey{type.index, type.gen};
         if (const auto found = instances_by_type_.find(key); found != instances_by_type_.end())
         {
@@ -71,13 +94,13 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
-            if (factory.storage->compatible_config &&
-                !factory.storage->compatible_config(instance, configuration.data()))
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
             return found->second;
         }
+        if (auto qualified = registry_.qualify(type, domain_, dependencies); !qualified)
+        {
+            return cxx::unexpected(qualified.error());
+        }
+        const auto& configuration = *registry_.configuration(type);
         const auto id = registry_.reserve(*this, type);
         const auto type_position = instances_by_type_.emplace(key, id).first;
         cxx::scope_exit rollback(
@@ -95,37 +118,9 @@ namespace lux::render
             return cxx::unexpected(instance ? RenderError{kStorageFactory} : instance.error());
         }
         records_.push_back(Record{id, type_position, std::move(*instance)});
-        device_ = &dependencies.device;
         registry_.publish(id, records_.size() - 1, records_.back().instance.get());
         rollback.release();
         return id;
-    }
-
-    RenderResult<ResourceInstanceId>
-    ResourceSet::getOrCreateImpl(
-        ResourceCreateContext& dependencies,
-        const ResourceDefinition& description,
-        cxx::type_info config_type,
-        cxx::type_info ops_type
-    ) noexcept
-    {
-        const auto type = registry_.typeId(description.type);
-        const auto* factory = registry_.factory(type);
-        if (!factory)
-        {
-            return cxx::unexpected(RenderError{kStorageFactory});
-        }
-        if (auto compatible = compatibleStorage(*factory->descriptor, description); !compatible)
-        {
-            return cxx::unexpected(compatible.error());
-        }
-        const bool is_type_mismatch =
-            config_type != factory->storage->config_type || ops_type != factory->storage->ops_type;
-        if (is_type_mismatch)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        return ensure(dependencies, type);
     }
 
     RenderResult<ResourceInstanceId>

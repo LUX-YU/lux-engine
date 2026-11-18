@@ -30,7 +30,7 @@ namespace lux::render::detail
             for (std::size_t i = 0; i < jobs.size(); ++i)
             {
                 const auto& entry = jobs[i];
-                const bool is_invalid_entry = entry.id.isNull() || entry.device.isNull() || !entry.relations;
+                const bool is_invalid_entry = entry.id.isNull() || !entry.device || !entry.relations;
                 if (is_invalid_entry)
                 {
                     return cxx::unexpected(RenderError{kJobIdentity});

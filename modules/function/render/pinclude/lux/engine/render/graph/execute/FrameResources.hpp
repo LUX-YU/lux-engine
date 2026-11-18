@@ -7,6 +7,9 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <unordered_map>
+#include <atomic>
+#include <exception>
+#include <utility>
 
 namespace lux::render::detail
 {
@@ -14,6 +17,12 @@ namespace lux::render::detail
     // Stable descriptor banks are never rewritten while their prior submission is in flight.
     struct RenderGraphInstance::FrameResources final
     {
+        FrameResources() noexcept = default;
+        FrameResources(FrameResources&&) noexcept = default;
+        FrameResources& operator=(FrameResources&&) noexcept = default;
+        FrameResources(const FrameResources&) = delete;
+        FrameResources& operator=(const FrameResources&) = delete;
+
         void release(const nri::CoreInterface&) noexcept;
         void invalidateImportedBindings() noexcept;
         [[nodiscard]] static RenderResult<void> addDescriptors(nri::DescriptorPoolDesc&, const PassBindings&) noexcept;
@@ -43,10 +52,32 @@ namespace lux::render::detail
         // updates bindings and barriers separately; resource contents do not invalidate dependencies.
         std::uint64_t imported_revision = 0;
         std::vector<Pass> passes;
-        // Per FIF and compiled submission. These handles never borrow the temporary upload pool.
-        std::vector<std::array<nri::CommandAllocator*, 2>> command_allocators;
-        std::vector<std::array<nri::CommandBuffer*, 2>> command_buffers;
-        std::vector<std::uint64_t> recording_revisions, recorded_revisions;
+        // Each compiled batch owns its allocators, buffers and cache version in this FIF slice.
+        // A recording lease protects the whole batch; distinct batches never share an allocator or scratch.
+        struct CommandBatch final
+        {
+            std::array<nri::CommandAllocator*, 2> allocators{};
+            std::array<nri::CommandBuffer*, 2> commands{};
+            std::uint64_t revision = 1, recorded_revision = 0;
+            std::atomic<bool> recording{false};
+
+            CommandBatch() noexcept = default;
+            CommandBatch(const CommandBatch&) = delete;
+            CommandBatch& operator=(const CommandBatch&) = delete;
+            CommandBatch& operator=(CommandBatch&&) = delete;
+
+            CommandBatch(CommandBatch&& other) noexcept
+            {
+                // Only cold construction may relocate a batch. Published batches keep stable addresses.
+                if (other.recording.load(std::memory_order_acquire)) std::terminate();
+                allocators = std::exchange(other.allocators, {});
+                commands = std::exchange(other.commands, {});
+                revision = other.revision;
+                recorded_revision = other.recorded_revision;
+            }
+        };
+
+        std::vector<CommandBatch> command_batches;
         std::uint64_t shared_binding_revision = 0;
         std::array<nri::DescriptorSet*, 3> shared_descriptors{};
         std::array<std::uint32_t, 3> shared_descriptor_counts{};

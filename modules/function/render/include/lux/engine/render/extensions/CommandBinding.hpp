@@ -39,26 +39,20 @@ namespace lux::render
             return call_;
         }
 
-        [[nodiscard]] cxx::type_info handlerType() const noexcept
+        [[nodiscard]] cxx::basic_type_info handlerType() const noexcept
         {
             return handler_type_;
         }
 
         // Identifies the typed C/member association across registration calls in this build.
-        [[nodiscard]] cxx::type_info methodType() const noexcept
+        [[nodiscard]] cxx::basic_type_info methodType() const noexcept
         {
             return method_type_;
         }
 
-        [[nodiscard]] cxx::type_info storageType() const noexcept
+        [[nodiscard]] cxx::basic_type_info storageType() const noexcept
         {
             return storage_type_;
-        }
-
-        [[nodiscard]] bool hasSameImplementation(const CommandBinding& other) const noexcept
-        {
-            return method_type_ == other.method_type_ && storage_type_ == other.storage_type_ &&
-                   handler_type_ == other.handler_type_ && descriptor_->name == other.descriptor_->name;
         }
 
         [[nodiscard]] bool isResourceCommand() const noexcept
@@ -99,15 +93,11 @@ namespace lux::render
             }
             result.make_error_ = [](platform::ipc::IpcMessage& output, RenderError error) noexcept
             { output.emplace<typename C::Response>().error = error; };
-            if constexpr (requires(const typename C::Request& request) { C::implementationId(request); })
+            if constexpr (requires(const typename C::Request& request) { C::effectId(request); })
             {
-                result.implementation_ = [](const platform::ipc::IpcMessage& message) noexcept
-                { return C::implementationId(message.get<typename C::Request>()); };
-            }
-            if constexpr (requires(const typename C::Request& request) { C::sceneId(request); })
-            {
-                result.scene_ = [](const platform::ipc::IpcMessage& message) noexcept
-                { return C::sceneId(message.get<typename C::Request>()); };
+                static_assert(!requires(const typename C::Request& request) { C::resourceId(request); });
+                result.effect_ = [](const platform::ipc::IpcMessage& message) noexcept
+                { return C::effectId(message.get<typename C::Request>()); };
             }
             if constexpr (requires(const typename C::Request& request) { C::resourceId(request); })
             {
@@ -120,7 +110,6 @@ namespace lux::render
             if constexpr (!std::is_void_v<Storage>)
             {
                 static_assert(
-                    requires(const typename C::Request& request) { C::implementationId(request); } ||
                     requires(const typename C::Request& request) { C::resourceId(request); }
                 );
             }
@@ -140,10 +129,6 @@ namespace lux::render
                         else
                         {
                             Invocation::invoke(*static_cast<H*>(object), context.resource.get(), input, response);
-                        }
-                        if (context.structural_command_running)
-                        {
-                            *context.structural_command_running = false;
                         }
                     }
                     else
@@ -178,16 +163,11 @@ namespace lux::render
                             stdexec::then(
                                 [route,
                                  &outbox,
-                                 structural = context.structural_command_running,
                                  resource = std::move(context.resource)](typename C::Response response) mutable noexcept
                                 {
                                     resource.reset();
                                     runtime_detail::prepareResponse(outbox, route)
                                         .emplace<typename C::Response>(std::move(response));
-                                    if (structural)
-                                    {
-                                        *structural = false;
-                                    }
                                 }
                             );
                         stdexec::spawn(
@@ -238,13 +218,12 @@ namespace lux::render
         };
 
         const CommandDescriptor* descriptor_ = nullptr;
-        cxx::type_info handler_type_;
-        cxx::type_info storage_type_;
-        cxx::type_info method_type_;
+        cxx::basic_type_info handler_type_;
+        cxx::basic_type_info storage_type_;
+        cxx::basic_type_info method_type_;
         HandlerCall call_;
         void (*make_error_)(platform::ipc::IpcMessage&, RenderError) noexcept = nullptr;
-        CapabilityImplementationId (*implementation_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
-        SceneId (*scene_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
+        EffectId (*effect_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         ResourceInstanceId (*storage_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
     };
 } // namespace lux::render

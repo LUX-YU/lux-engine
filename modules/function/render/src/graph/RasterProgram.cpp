@@ -17,12 +17,13 @@ namespace lux::render::detail
         const RasterProgramKey& program
     ) noexcept
     {
+        const auto& shader = program.shader->artifact;
         const auto& graphics = program.state;
         const auto& colors = program.colors;
         const auto depth = program.depth;
         const auto samples = program.samples;
         const auto& limits = nri_core.GetDeviceDesc(device);
-        auto stages = rasterShaderStages(program.shader, graphics, limits, enabled, colors.size(), depth);
+        auto stages = rasterShaderStages(shader, graphics, limits, enabled, colors.size(), depth);
         if (!stages)
         {
             return cxx::unexpected(stages.error());
@@ -76,12 +77,12 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             const auto reflected = std::ranges::find(
-                program.shader.interface.vertex_inputs,
+                shader.interface.vertex_inputs,
                 field.location,
                 &rdesc::ShaderIoVariable::location
             );
-            const bool is_dxil = program.shader.target == rdesc::EShaderTarget::DXIL;
-            if (is_dxil && (reflected == program.shader.interface.vertex_inputs.end() || reflected->semantic.empty()))
+            const bool is_dxil = shader.target == rdesc::EShaderTarget::DXIL;
+            if (is_dxil && (reflected == shader.interface.vertex_inputs.end() || reflected->semantic.empty()))
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

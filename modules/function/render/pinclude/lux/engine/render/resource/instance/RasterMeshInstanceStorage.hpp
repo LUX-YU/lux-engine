@@ -117,6 +117,7 @@ namespace lux::render::detail
         [[nodiscard]] std::uint64_t fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
+        FrameProgress& replica_progress_;
         std::uint32_t frame_count_;
         ResourceRegistry& resources_;
 

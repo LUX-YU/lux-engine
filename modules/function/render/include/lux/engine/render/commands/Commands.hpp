@@ -7,7 +7,6 @@
 #include <lux/engine/render/commands/EffectCommands.hpp>
 #include <lux/engine/render/commands/DiscoveryCommands.hpp>
 #include <lux/engine/render/commands/ServerCommands.hpp>
-#include <lux/engine/render/commands/AttachmentCommands.hpp>
 #include <lux/engine/render/commands/ResourceCommands.hpp>
 #include <lux/engine/render/commands/JobCommands.hpp>
-#include <lux/engine/render/commands/Frame.hpp>
+#include <lux/engine/render/commands/FrameCommands.hpp>

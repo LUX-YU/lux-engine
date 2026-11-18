@@ -23,12 +23,13 @@ namespace lux::render
             using Deliver =
                 void (*)(ResponseNode&, lux::platform::ipc::IpcMessage&&, RenderError) noexcept;
             Deliver deliver;
-            cxx::type_info response_type;
+            cxx::basic_type_info response_type;
             std::shared_ptr<const void> code;
         };
 
         using CommonCommands = std::tuple<
-            QueryFrameInputLayout,
+            QueryRenderJobInputLayout,
+            UpdateFrameData,
             UpdateViewCamera,
             QueryResource,
             GetOrCreateResource,
@@ -42,19 +43,23 @@ namespace lux::render
             SetTargetActive,
             CreateEffect,
             RemoveEffect,
-            Attach,
-            Detach,
-            UpdateAttachmentInputs,
+            SetEffectParameters,
+            CreateRenderJob,
+            StartRenderJob,
+            StopRenderJob,
+            RemoveRenderJob,
+            RebindRenderJobEffect,
+            SetRenderJobCadence,
+            SetRenderJobDependencies,
+            RequestRenderJob,
+            UpdateJobInputs,
             InvalidateHistory,
             ListCapabilities,
-            ValidateCapabilityConfiguration,
             QueryExecutionProgress,
             QueryRenderStats,
-            SubmitFrame,
+            QueryRenderDevice,
             Stop,
-            ListCommands,
-            ListCommandBindings,
-            SelectCommandBinding
+            ListCommands
         >;
 
         template <class C> static consteval std::size_t commonIndex() noexcept
@@ -126,7 +131,7 @@ namespace lux::render
                     auto& operation = static_cast<Operation&>(node);
                     if (operation.borrowed_frame)
                     {
-                        operation.borrowed_frame->finishBorrow();
+                        operation.client.releaseFrame(*operation.borrowed_frame);
                         operation.borrowed_frame = nullptr;
                     }
                     if (error.type != 0)
@@ -147,10 +152,13 @@ namespace lux::render
                     if constexpr (requires { C::frameData(input); })
                     {
                         auto* packet = C::frameData(input);
-                        if (packet && !packet->beginBorrow())
+                        if (packet)
                         {
-                            RenderClient::deliver(*this, {}, {kFrameContract});
-                            return;
+                            if (auto result = client.borrowFrame(*packet); !result)
+                            {
+                                RenderClient::deliver(*this, {}, result.error());
+                                return;
+                            }
                         }
                         borrowed_frame = packet;
                     }
@@ -256,6 +264,8 @@ namespace lux::render
         explicit RenderClient(std::unique_ptr<Impl>) noexcept;
         [[nodiscard]] CommandId commonCommand(std::size_t index) const noexcept;
         [[nodiscard]] RenderResult<void> send(CommandId, lux::platform::ipc::IpcMessage&, ResponseNode&) noexcept;
+        [[nodiscard]] RenderResult<void> borrowFrame(FrameData&) noexcept;
+        void releaseFrame(FrameData&) noexcept;
         static void deliver(ResponseNode&, lux::platform::ipc::IpcMessage&&, RenderError) noexcept;
         std::unique_ptr<Impl> impl_;
     };

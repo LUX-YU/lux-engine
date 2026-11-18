@@ -141,7 +141,7 @@ int main()
         MaterialNodeCatalog catalog;
         auto input = registration();
         std::string transient_type_name(input.payload_type.name());
-        input.payload_type = cxx::type_info{input.payload_type.hash(), transient_type_name};
+        input.payload_type = cxx::basic_type_info{input.payload_type.hash(), transient_type_name};
         require(!catalog.add({&input, 1}, kMaterialNodeAbi - 1));
         require(catalog.add({&input, 1}).has_value());
         type = catalog.find(input.identity.id);

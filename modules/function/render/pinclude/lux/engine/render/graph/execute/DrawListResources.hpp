@@ -14,8 +14,7 @@ namespace lux::render::detail
         std::uint64_t vertex_capacity = 0, index_capacity = 0;
         RasterDrawList draws;
         // Reused only while this FIF slice is writable. Clear borrowed sources at completion.
-        std::vector<std::pair<std::uint64_t, std::uint32_t>> image_indices;
+        std::vector<std::byte> vertex_data, index_data;
         std::vector<BufferWrite> upload_writes;
-        std::vector<std::array<std::byte, 4>> upload_tails;
     };
 } // namespace lux::render::detail

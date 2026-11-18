@@ -12,12 +12,12 @@ namespace lux::render
 {
     struct CapabilityDescription final
     {
-        cxx::type_info type;
+        cxx::basic_type_info type;
         // Discrete operations, with their own Request/Response contracts.
         std::span<const CommandDescriptor* const> commands;
         // Resource identity and input/command contracts are declared once by each Resource.
         std::span<const ResourceDefinition* const> resources;
-        std::span<const cxx::type_info> prerequisites;
+        std::span<const cxx::basic_type_info> prerequisites;
 
         constexpr bool operator==(const CapabilityDescription& other) const noexcept
         {
@@ -67,7 +67,7 @@ namespace lux::render
 
         template <class... T> constexpr auto describeTypes(std::type_identity<std::tuple<T...>>) noexcept
         {
-            return std::array<cxx::type_info, sizeof...(T)>{cxx::make_basic_type_info<T>()...};
+            return std::array<cxx::basic_type_info, sizeof...(T)>{cxx::make_basic_type_info<T>()...};
         }
 
         template <class... R> constexpr auto describeResources(std::type_identity<std::tuple<R...>>) noexcept

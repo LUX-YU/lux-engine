@@ -763,6 +763,7 @@ namespace lux::render::detail
         }
         output_.frames = {};
         session_->deferRelease(
+            uses_,
             [views = std::move(views), core = &session_->nriCore()]() noexcept
             {
                 for (auto* view : views)

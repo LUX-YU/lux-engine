@@ -1,14 +1,26 @@
-#include "Support.hpp"
+#include "NativeDevice.hpp"
+#include "SceneCapture.hpp"
+#include <lux/engine/render/features/mesh/HzbFeature.hpp>
+#include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
+#include <lux/engine/render/frame/FrameData.hpp>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <future>
+#pragma comment(lib, "user32.lib")
+#endif
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstring>
-#include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include "FrameHarness.hpp"
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
@@ -36,8 +48,8 @@ static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer&
 
 static void graphOutput(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, 3));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, 3);
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
@@ -64,21 +76,12 @@ static void graphOutput(Validation& validation)
     auto definition = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(definition));
     const EffectOutputDesc output_description{target.format, target.samples, target.kind, target.sampled};
-    auto graph = take(GraphCompiler::compile(
-        session->device(),
-        session->nriCore(),
-        {&session->queue(EQueueRole::GRAPHICS).properties(),
-         &session->queue(EQueueRole::COMPUTE).properties(),
-         &session->queue(EQueueRole::TRANSFER).properties()},
-        definition,
-        analysis,
-        &output_description
+    auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
+        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), definition, analysis, &output_description
     ));
-    auto ready = stdexec::sync_wait(graph.preparePrograms(
-        *session, definition, lux::execution::ExecutionRuntime::instance().cpuScheduler()
-    ));
-    CHECK(ready && std::get<0>(*ready));
-    auto physical = take(OffscreenTarget::create(*session, target, frames->frameCount()));
+    CHECK(ready_result);
+    auto graph = take(std::move(std::get<0>(*ready_result)));
+    auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
     auto execution = std::make_unique<RenderGraphInstance>(*session, frames->frameCount(), graph, physical->output());
     CHECK(execution->initialize());
     auto incompatible_output = physical->output();
@@ -124,18 +127,23 @@ static void graphOutput(Validation& validation)
         }
         session->nriCore().UnmapBuffer(*output);
     }
+    auto prior_uses = session->makeFrontiers();
+    physical->appendUses(prior_uses);
     CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
+    auto last_uses = session->makeFrontiers();
+    physical->appendUses(last_uses);
+    CHECK(last_uses != prior_uses);
     execution.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
     session->nriCore().DestroyBuffer(output);
-    std::puts("Graph output: explicit external copy, correct pixels, Context detached in flight");
+    std::puts("GPU RETIREMENT PASS: readback pixels and Offscreen release use accepted frontiers");
 }
 
 static void importedIdentityReuse(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, 1));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, 1);
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
     RasterWork work;
@@ -145,20 +153,11 @@ static void importedIdentityReuse(Validation& validation)
     CHECK(builder.exportOutput({pass.written.front()}));
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = take(GraphCompiler::compile(
-        session->device(),
-        session->nriCore(),
-        {&session->queue(EQueueRole::GRAPHICS).properties(),
-         &session->queue(EQueueRole::COMPUTE).properties(),
-         &session->queue(EQueueRole::TRANSFER).properties()},
-        graph,
-        analysis,
-        nullptr
+    auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
+        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr
     ));
-    auto ready = stdexec::sync_wait(plan.preparePrograms(
-        *session, graph, lux::execution::ExecutionRuntime::instance().cpuScheduler()
-    ));
-    CHECK(ready && std::get<0>(*ready));
+    CHECK(ready_result);
+    auto plan = take(std::move(std::get<0>(*ready_result)));
     std::string dump;
     const DumpSink sink{&dump, [](void* destination, std::string_view text) noexcept
     {
@@ -239,7 +238,7 @@ static void importedIdentityReuse(Validation& validation)
 
 static void deviceLostDelivery(Validation& validation, bool enable_validation = nativeValidationEnabled())
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), enable_validation));
+    TestDevice session({}, diagnostics(validation), enable_validation);
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     nri::Buffer* buffer = nullptr;
     const nri::BufferDesc description{16, 0, nri::BufferUsageBits::NONE};
@@ -279,7 +278,7 @@ static void deviceLostDelivery(Validation& validation, bool enable_validation = 
 
 static void importedExtentContracts(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
     const auto& core = session->nriCore();
     for (const bool resolve : {false, true})
     {
@@ -306,23 +305,17 @@ static void importedExtentContracts(Validation& validation)
         else
         {
             const auto pass = take(builder.addTransferPass(
-                "copy", TransferWork{{CopyImage{{{source, 0}}, {{destination, 0}}}}}
+                "copy", TransferWork{{lux::render::CopyImage{{{source, 0}}, {{destination, 0}}}}}
             ));
             CHECK(builder.exportOutput({pass.written.front()}));
         }
         auto graph = take(std::move(builder).finish());
         auto analysis = take(analyzeRenderGraph(graph));
-        auto plan = take(GraphCompiler::compile(
-            session->device(), core,
-            {&session->queue(EQueueRole::GRAPHICS).properties(),
-             &session->queue(EQueueRole::COMPUTE).properties(),
-             &session->queue(EQueueRole::TRANSFER).properties()},
-            graph, analysis
+        auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr
         ));
-        auto prepared = stdexec::sync_wait(plan.preparePrograms(
-            *session, graph, lux::execution::ExecutionRuntime::instance().cpuScheduler()
-        ));
-        CHECK(prepared && std::get<0>(*prepared));
+        CHECK(ready_result);
+        auto plan = take(std::move(std::get<0>(*ready_result)));
         std::array<nri::Texture*, 3> images{};
         for (std::size_t i = 0; i < images.size(); ++i)
         {
@@ -364,10 +357,444 @@ static void importedExtentContracts(Validation& validation)
     }
 }
 
+struct WindowClear final
+{
+    struct Config final
+    {
+        rdesc::ETextureFormat format;
+    };
+    using Ports = WindowClear;
+    static constexpr FeatureName name{"test.window.clear"};
+
+    static RenderResult<void> describe(const void* configuration, std::string_view, FeaturePorts& ports) noexcept
+    {
+        GraphImageDesc image{64, 64, 1, 1, static_cast<const Config*>(configuration)->format};
+        image.extent.source = EImageExtentSource::TARGET;
+        FeaturePort color{"color", EFeaturePort::OUTPUT, image};
+        if (image.format == rdesc::ETextureFormat::RGBA16_SFLOAT)
+            color.semantic = "lux.color.linear-hdr.v1";
+        ports.resources.push_back(std::move(color));
+        return {};
+    }
+
+    static RenderResult<void> build(const void* configuration, std::string_view, FeatureBuildContext& context) noexcept
+    {
+        const auto color = context.resource("color");
+        const bool is_depth = static_cast<const Config*>(configuration)->format == rdesc::ETextureFormat::D32_SFLOAT;
+        const auto clear = is_depth ? ClearImage{{color, GraphImageRange{2}}, {}, .25f}
+                                    : ClearImage{{color}, {.25f, .5f, .75f, 1}};
+        auto pass = context.graph.addTransferPass("clear output", TransferWork{{clear}});
+        if (!pass) return lux::cxx::unexpected(pass.error());
+        return context.publish("color", pass->written.front());
+    }
+};
+
+static void verifyTonemapOutput(
+    ipc::IpcRequester& client,
+    const CommandList& commands,
+    SceneId scene,
+    FeatureId clear,
+    FeatureId tonemap,
+    FeatureId capture,
+    EffectOutputDesc output,
+    EColorEncoding encoding
+)
+{
+    CapturedPixels pixels;
+    CreateEffectRequest request{output};
+    request.parameters.exposure = 2;
+    auto& recipe = request.definition;
+    recipe.features.push_back({
+        clear, "hdr", take(ConfigValue::make(WindowClear::Config{rdesc::ETextureFormat::RGBA16_SFLOAT}))
+    });
+    recipe.features.push_back({
+        tonemap, "tone", take(ConfigValue::make(TonemapFeatureConfig{output, encoding})), 0, EParameterSource::VIEW
+    });
+    recipe.features.push_back({capture, "readback", take(ConfigValue::make(CaptureConfig{&pixels, output.format}))});
+    recipe.connections = {{{0, "color"}, {1, "hdr_color"}}, {{1, "color"}, {2, "color"}}};
+    recipe.outputs = {{{1, "color"}, GraphOutputRequirements{output.format, 1}}, {{2, "pixels"}, {}}};
+    const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+    const auto view = call<CreateView>(client, commands, {scene}).view;
+    const auto target = call<CreateTarget>(client, commands, {{64, 64, output.format}}).target;
+    const auto attached = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+    StartRenderJob::Request invalid_start{attached, target};
+    invalid_start.binding.inputs.parameters.resize(16);
+    CHECK(call<StartRenderJob>(client, commands, std::move(invalid_start), false).error.type == kDeviceArgument);
+    call<StartRenderJob>(client, commands, {attached, target});
+    const auto other_scene = call<CreateScene>(client, commands, {}).scene;
+    const auto other_view = call<CreateView>(client, commands, {other_scene}).view;
+    const auto other_target = call<CreateTarget>(client, commands, {{64, 64, output.format}}).target;
+    const auto other_attachment =
+        startRenderJob(client, commands, other_scene, other_view, other_target, effect);
+    const auto capture_name = CaptureDescriptor::descriptor.type;
+    const auto resource = call<QueryResource>(client, commands, {ViewRequest{scene, view}, capture_name}).resource_id;
+    const auto other_resource =
+        call<QueryResource>(client, commands, {ViewRequest{other_scene, other_view}, capture_name}).resource_id;
+    CHECK(resource != other_resource);
+    CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kRuntimeState);
+    const auto compiled = call<QueryRenderStats>(client, commands, {}).compiled_graphs;
+    const auto pipeline_layouts = call_capture_counts[1].load();
+    const auto pipelines = call_capture_counts[2].load();
+    CHECK(!call_capture_core || pipelines != 0);
+    renderFrame(client, commands, attached);
+    renderFrame(client, commands, other_attachment);
+    call<SetEffectParameters>(client, commands, {effect, {-1.F}});
+    call<SetEffectParameters>(client, commands, {effect, {-1.F}});
+    const auto invalid = std::numeric_limits<float>::quiet_NaN();
+    CHECK(call<SetEffectParameters>(client, commands, {effect, {invalid}}, false).error.type == kFrameContract);
+    renderFrame(client, commands, other_attachment);
+    renderFrame(client, commands, attached);
+    CHECK(call<QueryRenderStats>(client, commands, {}).compiled_graphs == compiled);
+    CHECK(call_capture_counts[1].load() == pipeline_layouts && call_capture_counts[2].load() == pipelines);
+    stopAndRemoveJob(client, commands, attached);
+    CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kRuntimeState);
+    stopAndRemoveJob(client, commands, other_attachment);
+    call<RemoveEffect>(client, commands, {effect});
+    CHECK(call<QueryResource>(client, commands, {ViewRequest{scene, view}, capture_name}).resource_id == resource);
+    CHECK(call<QueryResource>(client, commands, {ViewRequest{other_scene, other_view}, capture_name}).resource_id ==
+        other_resource);
+    const auto deadline = Clock::now() + 10s;
+    const auto retire_view = [&](ViewRequest location, unsigned count)
+    {
+        call<RemoveView>(client, commands, location);
+        while (pixels.ready.load(std::memory_order_acquire) != count)
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::yield();
+        }
+    };
+    retire_view({scene, view}, 1);
+    retire_view({other_scene, other_view}, 2);
+    call<RemoveTarget>(client, commands, target);
+    call<RemoveTarget>(client, commands, other_target);
+    call<RemoveScene>(client, commands, {other_scene});
+    CHECK(pixels.frames.size() == 4);
+    constexpr std::array hdr{.25, .5, .75};
+    const auto matches = [&](const auto& frame, double gain)
+    {
+        if (frame[3] != std::byte{255}) return false;
+        for (std::size_t channel = 0; channel < hdr.size(); ++channel)
+        {
+            const auto x = hdr[channel] * gain;
+            auto value = (x * (2.51 * x + .03)) / (x * (2.43 * x + .59) + .14);
+            if (encoding == EColorEncoding::SRGB)
+                value = 1.055 * std::pow(value, 1 / 2.4) - .055;
+            const auto expected = std::lround(value * 255);
+            if (std::abs(std::to_integer<long>(frame[channel]) - expected) > 2) return false;
+        }
+        return true;
+    };
+    for (std::size_t index : {0, 2})
+    {
+        const auto frames = std::span(pixels.frames).subspan(index, 2);
+        CHECK(std::ranges::count_if(frames, [&](const auto& frame) { return matches(frame, 4); }) == 1);
+        CHECK(std::ranges::count_if(frames, [&](const auto& frame) { return matches(frame, .5); }) == 1);
+    }
+    std::printf("SHARED EFFECT PASS two scenes rendered +2 EV and -1 EV, pipelines=%llu unchanged, resources retained\n",
+        static_cast<unsigned long long>(pipelines));
+}
+
+static void verifyTargetInput(
+    ipc::IpcRequester& client, const CommandList& commands, SceneId scene,
+    FeatureId clear, FeatureId tone, FeatureId capture
+)
+{
+    const auto hdr_format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+    const auto ldr_format = rdesc::ETextureFormat::RGBA8_UNORM;
+    const auto producer_view = call<CreateView>(client, commands, {scene}).view;
+    const auto consumer_view = call<CreateView>(client, commands, {scene}).view;
+    const auto source = call<CreateTarget>(
+        client, commands, {{64, 64, hdr_format, 1, ETargetKind::OFFSCREEN, true}}
+    ).target;
+    const auto target = call<CreateTarget>(client, commands, {{64, 64, ldr_format}}).target;
+    CreateEffectRequest produce{{hdr_format, 1, ETargetKind::OFFSCREEN, true}};
+    produce.definition.features.push_back({clear, "hdr", take(ConfigValue::make(WindowClear::Config{hdr_format}))});
+    produce.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{hdr_format, 1}});
+    const auto producer = call<CreateEffect>(client, commands, std::move(produce)).effect;
+
+    CapturedPixels pixels;
+    CreateEffectRequest consume{{ldr_format}};
+    consume.definition.features.push_back({
+        tone, "tone", take(ConfigValue::make(TonemapFeatureConfig{{ldr_format}, EColorEncoding::LINEAR}))
+    });
+    consume.definition.features.push_back({
+        capture, "readback", take(ConfigValue::make(CaptureConfig{&pixels, ldr_format}))
+    });
+    consume.definition.connections.push_back({{0, "color"}, {1, "color"}});
+    consume.definition.outputs = {{{0, "color"}, GraphOutputRequirements{ldr_format, 1}}, {{1, "pixels"}, {}}};
+    const FeaturePortRef input{0, "hdr_color"};
+    GraphImageDesc hdr{0, 0, 1, 1, hdr_format};
+    hdr.extent.source = EImageExtentSource::TARGET;
+    consume.definition.inputs.push_back({
+        input, {"author.hdr", hdr, EGraphOrigin::IMPORTED, {GraphImageRange{}}, EGraphUse::SAMPLED},
+        "lux.color.linear-hdr.v1"
+    });
+    const auto consumer = call<CreateEffect>(client, commands, std::move(consume)).effect;
+    const auto writer = startRenderJob(client, commands, scene, producer_view, source, producer);
+    const auto reader = call<CreateRenderJob>(client, commands, {
+        scene, consumer_view, consumer, EJobCadence::REQUESTED
+    }).job;
+    StartRenderJob::Request start{reader, target};
+    start.binding.target_images.push_back({{0, "author.hdr"}, source});
+    CHECK(call<StartRenderJob>(client, commands, start, false).error.type == kRuntimeIdentity);
+    start.binding.target_images.front().destination = input;
+    call<StartRenderJob>(client, commands, std::move(start));
+    CHECK(call<RequestRenderJob>(client, commands, {reader}, false).error.type == kRuntimeState);
+    const auto published = call<RequestRenderJob>(client, commands, {writer});
+    const auto submitted = call<RequestRenderJob>(client, commands, {reader});
+    CHECK(published.slot_index != submitted.slot_index);
+    stopAndRemoveJob(client, commands, reader);
+    call<RemoveView>(client, commands, {scene, consumer_view});
+    const auto deadline = Clock::now() + 10s;
+    while (!pixels.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < deadline);
+    CHECK(submitted.job == reader && submitted.slot_index < pixels.frames.size());
+    const auto& color = pixels.frames[submitted.slot_index];
+    const bool matches = color[0] > std::byte{0} && color[1] > color[0] && color[2] > color[1] &&
+                         color[3] == std::byte{255};
+    if (!matches)
+    {
+        std::fprintf(stderr, "Sampled Target slot %u pixel %u %u %u %u\n", submitted.slot_index,
+            std::to_integer<unsigned>(color[0]), std::to_integer<unsigned>(color[1]),
+            std::to_integer<unsigned>(color[2]), std::to_integer<unsigned>(color[3]));
+    }
+    CHECK(matches);
+    stopAndRemoveJob(client, commands, writer);
+    call<RemoveView>(client, commands, {scene, producer_view});
+    call<RemoveTarget>(client, commands, target);
+    call<RemoveTarget>(client, commands, source);
+    call<RemoveEffect>(client, commands, {consumer});
+    call<RemoveEffect>(client, commands, {producer});
+    std::puts("TARGET INPUT PASS: authored Feature port resolved to a sampled producer output");
+}
+
+static void basicFeatureOutputs(bool d3d12)
+{
+    RenderServerConfig config;
+    config.channel_name = "lux.render.test.hzb-feature";
+    config.frames_in_flight = 2;
+    config.validation = nativeValidationEnabled();
+    DeviceOptions options;
+    options.texture_descriptors = true;
+    if (d3d12) options.backend = EGraphicsBackend::D3D12;
+    auto& execution = lux::execution::ExecutionRuntime::instance();
+    auto server = take(RenderServer::create(config, execution, options));
+    const auto clear = take(server->registerFeature<WindowClear>());
+    const auto hzb = take(server->featureId("lux.render.feature.Hzb"));
+    const auto tone = take(server->featureId("lux.render.feature.TonemapFeature"));
+    take(server->registerResource<CaptureBuffer>());
+    const auto capture = take(server->registerFeature<CaptureFeature>());
+    auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(client);
+    std::thread render([&] { CHECK(server->run()); });
+    const auto commands = queryCommands(*client);
+    const auto scene = call<CreateScene>(*client, commands, {}).scene;
+    const auto view = call<CreateView>(*client, commands, {scene}).view;
+    const TargetDesc target_desc{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
+    const auto target = call<CreateTarget>(*client, commands, {target_desc}).target;
+    GraphImageDesc depth{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
+    depth.extent.source = EImageExtentSource::TARGET;
+    CapturedPixels current, previous;
+    CaptureConfig current_copy{&current, rdesc::ETextureFormat::R32_SFLOAT};
+    current_copy.mips = 4;
+    current_copy.mip = 3;
+    auto previous_copy = current_copy;
+    previous_copy.result = &previous;
+    CreateEffectRequest request{{target_desc.format}};
+    auto& recipe = request.definition;
+    recipe.features.push_back({clear, "depth", take(ConfigValue::make(WindowClear::Config{depth.format}))});
+    recipe.features.push_back({hzb, "hzb", take(ConfigValue::make(HzbFeatureConfig{depth, 4}))});
+    recipe.features.push_back({capture, "current", take(ConfigValue::make(current_copy))});
+    recipe.features.push_back({capture, "previous", take(ConfigValue::make(previous_copy))});
+    recipe.connections = {{{0, "color"}, {1, "depth"}}, {{1, "current"}, {2, "color"}}, {{1, "previous"}, {3, "color"}}};
+    recipe.outputs = {{{2, "pixels"}, {}}, {{3, "pixels"}, {}}};
+    const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+    const auto attachment = startRenderJob(*client, commands, scene, view, target, effect);
+    renderFrame(*client, commands, attachment);
+    renderFrame(*client, commands, attachment);
+    stopAndRemoveJob(*client, commands, attachment);
+    call<RemoveView>(*client, commands, {scene, view});
+    verifyTonemapOutput(*client, commands, scene, clear, tone, capture,
+        {rdesc::ETextureFormat::RGBA8_UNORM}, EColorEncoding::LINEAR);
+    verifyTonemapOutput(*client, commands, scene, clear, tone, capture,
+        {rdesc::ETextureFormat::RGBA8_UNORM}, EColorEncoding::SRGB);
+    verifyTonemapOutput(*client, commands, scene, clear, tone, capture,
+        {rdesc::ETextureFormat::RGBA8_SRGB}, EColorEncoding::SRGB);
+    verifyTargetInput(*client, commands, scene, clear, tone, capture);
+    std::printf("TONEMAP FEATURE PASS backend=%s linear, shader sRGB, target sRGB and Effect exposure\n",
+        d3d12 ? "D3D12" : "Vulkan");
+    server->stop();
+    render.join();
+    const auto values = [](const CapturedPixels& pixels)
+    {
+        CHECK(pixels.ready.load() == 1 && pixels.frames.size() == 2);
+        std::array<float, 2> result{};
+        for (std::size_t i = 0; i < result.size(); ++i)
+            std::memcpy(&result[i], pixels.frames[i].data(), sizeof(float));
+        std::ranges::sort(result);
+        return result;
+    };
+    CHECK((values(current) == std::array{.25f, .25f}));
+    CHECK((values(previous) == std::array{.25f, 1.f}));
+    CHECK(server->stats().validation_errors == 0);
+    std::printf("HZB FEATURE PASS backend=%s D32 to R32, mip 3 and previous sample\n", d3d12 ? "D3D12" : "Vulkan");
+}
+
+#ifdef _WIN32
+static HWND createProbeWindow()
+{
+    const auto instance = GetModuleHandleW(nullptr);
+    WNDCLASSW window_class{};
+    window_class.hInstance = instance;
+    window_class.lpszClassName = L"LuxRenderOutputProbe";
+    window_class.lpfnWndProc = [](HWND window, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT
+    {
+        if (message == WM_DESTROY)
+        {
+            PostQuitMessage(0);
+            return 0;
+        }
+        return DefWindowProcW(window, message, wparam, lparam);
+    };
+    CHECK(RegisterClassW(&window_class));
+    return CreateWindowExW(
+        0, window_class.lpszClassName, L"LUX Render WSI probe", WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, 320, 240, nullptr, nullptr, instance, nullptr
+    );
+}
+
+static void windowOutput(bool d3d12)
+{
+    std::promise<HWND> opened;
+    auto window_result = opened.get_future();
+    std::thread ui([&]
+    {
+        const auto window = createProbeWindow();
+        CHECK(window);
+        ShowWindow(window, SW_SHOW);
+        opened.set_value(window);
+        MSG message{};
+        while (GetMessageW(&message, nullptr, 0, 0) > 0)
+        {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    });
+    const auto window = window_result.get();
+    const auto dimensions = [&]
+    {
+        RECT client;
+        CHECK(GetClientRect(window, &client));
+        return std::pair{std::uint32_t(client.right), std::uint32_t(client.bottom)};
+    };
+    RenderServerConfig config;
+    config.channel_name = "lux.render.test.window";
+    config.frames_in_flight = 2;
+    config.validation = nativeValidationEnabled();
+    config.diagnostics.report = [](void*, const RenderDiagnostic& diagnostic) noexcept
+    {
+        std::fprintf(stderr, "WSI diagnostic %u: %.*s\n", unsigned(diagnostic.severity),
+            int(diagnostic.message.size()), diagnostic.message.data());
+    };
+    DeviceOptions options;
+    if (d3d12) options.backend = EGraphicsBackend::D3D12;
+    auto& execution = lux::execution::ExecutionRuntime::instance();
+    auto server = take(RenderServer::create(config, execution, options));
+    auto feature = take(server->registerFeature<WindowClear>());
+    auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(client);
+    std::thread render([&] { CHECK(server->run()); });
+    const auto commands = queryCommands(*client);
+    const auto [width, height] = dimensions();
+    const TargetDesc description{width, height, rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE};
+    auto target = call<CreateTarget>(*client, commands, {description, SurfaceDescription{Win32Surface{window}}});
+    CHECK(target.output_available && target.description.width == width && target.description.height == height);
+    CreateEffectRequest recipe;
+    recipe.output = {target.description.format, 1, ETargetKind::SURFACE};
+    recipe.definition.features.push_back({
+        feature, "clear", take(ConfigValue::make(WindowClear::Config{target.description.format}))
+    });
+    recipe.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{target.description.format, 1}});
+    const auto effect = call<CreateEffect>(*client, commands, std::move(recipe)).effect;
+    const auto scene = call<CreateScene>(*client, commands, {}).scene;
+    const auto view = call<CreateView>(*client, commands, {scene}).view;
+    const auto first = startRenderJob(*client, commands, scene, view, target.target, effect);
+    const auto second = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+    CHECK(call<StartRenderJob>(*client, commands, {second, target.target}, false).error.type == kTargetInUse);
+    const auto layout = call<QueryRenderJobInputLayout>(*client, commands, first).layout;
+    auto foreign = take(FrameLayout::create(layout.channels(), layout.revision()));
+    CHECK(layout == foreign && !layout.hasSameIdentity(foreign));
+    auto stale = take(FrameData::create<std::tuple<>>(foreign));
+    CHECK(stale.seal());
+    // The packet is qualified after successful Acquire and before the first GPU submission.
+    CHECK(call<RequestRenderJob>(*client, commands, {first, &stale}, false).error.type == kFrameContract);
+    CHECK(server->stats().submissions == 0);
+    stopAndRemoveJob(*client, commands, first);
+    call<StartRenderJob>(*client, commands, {second, target.target});
+    const auto waitPresented = [&](std::uint64_t count)
+    {
+        const auto deadline = Clock::now() + 15s;
+        while (server->stats().presentations < count)
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::sleep_for(1ms);
+        }
+    };
+    for (int i = 0; i < 6; ++i) renderFrame(*client, commands, second);
+    waitPresented(6);
+
+    CHECK(SetWindowPos(window, nullptr, 0, 0, 400, 300, SWP_NOMOVE | SWP_NOZORDER));
+    const auto [changed_width, changed_height] = dimensions();
+    auto requested = target.description;
+    requested.width = changed_width;
+    requested.height = changed_height;
+    const auto resized = call<ResizeTarget>(*client, commands, {target.target, requested});
+    CHECK(resized.output_available && resized.epoch == target.epoch + 1);
+    CHECK(resized.description.width == changed_width && resized.description.height == changed_height);
+    CHECK(call<SetTargetActive>(*client, commands, {target.target, true, target.epoch}, false).error.type ==
+          kRuntimeState);
+    call<SetTargetActive>(*client, commands, {target.target, true, resized.epoch});
+    call<RebindRenderJobEffect>(*client, commands, {second, effect});
+    CHECK(call<StopRenderJob>(*client, commands, first, false).error.type == kJobIdentity);
+    for (int i = 0; i < 6; ++i) renderFrame(*client, commands, second);
+    waitPresented(12);
+    const auto submitted = server->stats().submissions;
+    CHECK(call<RequestRenderJob>(*client, commands, {second, &stale}, false).error.type == kFrameContract);
+    CHECK(server->stats().submissions == submitted);
+    stale.release();
+    call<RemoveTarget>(*client, commands, target.target);
+    // Reusing the same HWND proves Remove returned the native window association.
+    target = call<CreateTarget>(*client, commands, {requested, SurfaceDescription{Win32Surface{window}}});
+    CHECK(target.output_available);
+    call<RemoveRenderJob>(*client, commands, second);
+    const auto final_job = startRenderJob(*client, commands, scene, view, target.target, effect);
+    renderFrame(*client, commands, final_job);
+    server->stop(); // The live Target is retired before the window's thread is closed.
+    render.join();
+    CHECK(server->stats().validation_errors == 0);
+    CHECK(PostMessageW(window, WM_CLOSE, 0, 0));
+    ui.join();
+    std::puts("WSI RETIREMENT PASS: READY Acquire reused after Stop and released by Remove; live Target settled at join");
+    std::printf("WSI PASS backend=%s real presents=%llu resize/writer replacement/remove/shutdown\n",
+        d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned long long>(server->stats().presentations));
+}
+#endif
+
 int main(int argc, char** argv)
 {
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
+    if (argc > 1 && std::string_view{argv[1]} == "--basic-features")
+    {
+        basicFeatureOutputs(argc > 2 && std::string_view{argv[2]} == "d3d12");
+        return 0;
+    }
+#ifdef _WIN32
+    if (argc > 1 && std::string_view{argv[1]} == "--wsi")
+    {
+        windowOutput(argc > 2 && std::string_view{argv[2]} == "d3d12");
+        return 0;
+    }
+#endif
     Validation validation;
     if (argc > 1 && std::string_view{argv[1]} == "--device-lost")
     {

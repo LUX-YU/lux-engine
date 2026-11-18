@@ -3,7 +3,6 @@
 #include <lux/engine/render/visibility.h>
 
 #include <lux/engine/render/extensions/features/EffectDefinition.hpp>
-#include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
@@ -14,11 +13,12 @@ namespace lux::render
     struct FeatureBuildInput final
     {
         FeatureName type;
-        cxx::type_info config_type;
+        cxx::basic_type_info config_type;
         const FeatureGraphOps* graph = nullptr;
         const ConfigValue* config = nullptr;
         std::string_view contribution_key;
         std::uint32_t parameter_group = 0;
+        EParameterSource parameter_source = EParameterSource::INSTANCE;
     };
 
     struct FeatureContribution final
@@ -27,6 +27,7 @@ namespace lux::render
         std::size_t first_pass;
         std::size_t pass_count;
         std::uint32_t parameter_group = 0;
+        EParameterSource parameter_source = EParameterSource::INSTANCE;
     };
 
     struct FeatureAssembly final
@@ -36,7 +37,6 @@ namespace lux::render
         GraphStorageBindings external_bindings;
         std::vector<FeatureContribution> contributions;
         std::vector<StorageArgument> arguments;
-        std::vector<detail::FeatureFrameContribution> bindings;
     };
 
     // Synchronous cold assembly. Inputs/configurations are borrowed for this call only; the result owns

@@ -10,10 +10,10 @@
 #include <lux/engine/render/resources/instance/Commands.hpp>
 #include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/features/ClusteredLightingFeature.hpp>
-#include <lux/engine/render/features/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/GBufferFeature.hpp>
-#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/features/lighting/ClusteredLightingFeature.hpp>
+#include <lux/engine/render/features/lighting/DeferredLightingFeature.hpp>
+#include <lux/engine/render/features/mesh/GBufferFeature.hpp>
+#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
 
 struct ClusterCaptureConfig
 {
@@ -125,9 +125,8 @@ struct ScanProbe
                 {FillBuffer{{context.resource("counts")}, UINT32_MAX}, FillBuffer{{context.resource("status")}, 0}}
             }
         ));
-        auto shader = kClusterScan.load(rdesc::EShaderTarget::SPIRV);
         ComputeWork work;
-        work.interface.program = take(context.graph.addProgram(std::move(shader)));
+        work.interface.program = take(context.graph.addProgram(GraphProgram{kClusterScan}));
         work.interface.resources = {
             {"counts", {initialized.written[0]}},
             {"offsets", {context.resource("offsets"), {}, EGraphAccess::WRITE}},
@@ -146,60 +145,28 @@ struct ScanProbe
 
 
 
-struct Parameters
+static CameraInput parameters(bool perspective)
 {
-    MeshViewParameters mesh;
-    DeferredLightingParameters lighting;
-    ClusteredLightingParameters cluster;
-};
-
-static auto parameters(bool perspective)
-{
-    Parameters result;
-    result.mesh.view[10] = -1;
-    result.mesh.view[14] = 2;
+    CameraInput result;
+    result.view[10] = -1;
+    result.view[14] = 2;
     const float near_z = .1F, far_z = 8, q = far_z / (far_z - near_z), r = near_z * q;
     if (perspective)
     {
-        result.mesh.projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, q, 1, 0, 0, -r, 0};
-        result.lighting
-            .inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -2 / r, -1 / r, 0, 0, 2 * q / r - 1, q / r};
+        result.projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, q, 1, 0, 0, -r, 0};
+        result.inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -2 / r, -1 / r, 0, 0, 2 * q / r - 1, q / r};
     }
     else
     {
-        result.mesh.projection[10] = 1 / (far_z - near_z);
-        result.mesh.projection[14] = -near_z / (far_z - near_z);
-        result.lighting
-            .inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, near_z - far_z, 0, 0, 0, 2 - near_z, 1};
+        result.projection[10] = 1 / (far_z - near_z);
+        result.projection[14] = -near_z / (far_z - near_z);
+        result.inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, near_z - far_z, 0, 0, 0, 2 - near_z, 1};
     }
-    result.lighting.camera_position = {0, 0, 2, 0};
-    result.cluster = {result.lighting.inverse_view_projection, {0, 0, 2, near_z}, {0, 0, -1, far_z}};
+    result.position = {0, 0, 2};
+    result.near_distance = near_z;
+    result.far_distance = far_z;
+    result.background = {0, 0, 0, 1};
     return result;
-}
-
-static auto layout()
-{
-    auto block = meshViewParameterBlock();
-    block.size = sizeof(Parameters);
-    for (auto field : deferredLightingParameterBlock().fields)
-    {
-        // Share the cluster camera's actual near plane; never publish conflicting field names.
-        if (field.path == "inverse_view_projection" || field.path == "position_near") continue;
-        field.offset += offsetof(Parameters, lighting);
-        block.fields.push_back(std::move(field));
-    }
-    for (auto field : clusteredLightingParameterBlock().fields)
-    {
-        field.offset += offsetof(Parameters, cluster);
-        block.fields.push_back(std::move(field));
-    }
-    return block;
-}
-
-static std::vector<std::byte> bytes(const Parameters& parameters)
-{
-    const auto data = std::as_bytes(std::span(&parameters, 1));
-    return {data.begin(), data.end()};
 }
 
 template <class T> static T load(const std::vector<std::byte>& data, std::size_t at)
@@ -324,29 +291,30 @@ using ClusterProbeConfiguration = std::tuple<
     ClusterCaptureConfig, CaptureConfig
 >;
 
-static RenderResult<CapabilityGraphContribution> lowerClusterProbe(const CapabilityBuildInput& input) noexcept
+static RenderResult<EffectDefinition> lowerClusterProbe(
+    const EffectOutputDesc& output, const ClusterProbeConfiguration& configuration, std::span<const FeatureId> features
+) noexcept
 {
     const auto& [surface, reference, clustered, list_capture, capture_diff] =
-        *static_cast<const ClusterProbeConfiguration*>(input.configuration.data());
+        configuration;
     const auto& grid = clustered.grid;
-    const auto& block = surface.input_layout;
     auto optimized = reference;
     optimized.clusters = ClusterLightListShape{static_cast<std::uint32_t>(grid.count()), grid.index_capacity};
     optimized.external_lights = true;
-    const auto gbuffer = input.features[0], lighting = input.features[1], cluster = input.features[2];
-    const auto compare = input.features[3], capture = input.features[4], cluster_capture = input.features[5];
-    const auto visibility = input.features[6];
-    CapabilityGraphContribution request;
-    request.definition.features.push_back({gbuffer, "surface", take(ConfigValue::make(surface))});
-    request.definition.features.push_back({lighting, "reference", take(ConfigValue::make(reference))});
-    request.definition.features.push_back({cluster, "cluster", take(ConfigValue::make(clustered))});
-    request.definition.features.push_back({lighting, "optimized", take(ConfigValue::make(optimized))});
-    request.definition.features.push_back({compare, "compare", {}});
-    request.definition.features.push_back({capture, "differences", take(ConfigValue::make(capture_diff))});
-    request.definition.features.push_back(
+    const auto gbuffer = features[0], lighting = features[1], cluster = features[2];
+    const auto compare = features[3], capture = features[4], cluster_capture = features[5];
+    const auto visibility = features[6];
+    EffectDefinition request;
+    request.features.push_back({gbuffer, "surface", take(ConfigValue::make(surface))});
+    request.features.push_back({lighting, "reference", take(ConfigValue::make(reference))});
+    request.features.push_back({cluster, "cluster", take(ConfigValue::make(clustered))});
+    request.features.push_back({lighting, "optimized", take(ConfigValue::make(optimized))});
+    request.features.push_back({compare, "compare", {}});
+    request.features.push_back({capture, "differences", take(ConfigValue::make(capture_diff))});
+    request.features.push_back(
         {cluster_capture, "lists", take(ConfigValue::make(list_capture))}
     );
-    auto& connections = request.definition.connections;
+    auto& connections = request.connections;
     for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
     {
         connections.push_back({{0, name}, {1, name}});
@@ -367,34 +335,34 @@ static RenderResult<CapabilityGraphContribution> lowerClusterProbe(const Capabil
     connections.push_back({{1, "hdr_color"}, {4, "reference"}});
     connections.push_back({{3, "hdr_color"}, {4, "candidate"}});
     connections.push_back({{4, "differences"}, {5, "color"}});
-    request.definition.outputs = {{{5, "pixels"}, {}}, {{6, "pixels"}, {}}};
+    request.outputs = {{{5, "pixels"}, {}}, {{6, "pixels"}, {}}};
     MeshVisibilityFeatureConfig main_visibility;
-    main_visibility.view_parameters = block;
-    const auto visibility_index = static_cast<std::uint32_t>(request.definition.features.size());
-    request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
+    main_visibility.camera_view = true;
+    const auto visibility_index = static_cast<std::uint32_t>(request.features.size());
+    request.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
     );
     for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
     {
         connections.push_back({{visibility_index, port}, {0, port}});
     }
-    publishProbeOutputs(request, input);
     return request;
 }
 
 using ScanProbeConfiguration = std::array<CaptureConfig, 2>;
 
-static RenderResult<CapabilityGraphContribution> lowerScanProbe(const CapabilityBuildInput& input) noexcept
+static RenderResult<EffectDefinition> lowerScanProbe(
+    const EffectOutputDesc& output, const ScanProbeConfiguration& configuration, std::span<const FeatureId> features
+) noexcept
 {
     const auto& [offset_config, status_config] =
-        *static_cast<const ScanProbeConfiguration*>(input.configuration.data());
-    const auto scan_probe = input.features[0], capture = input.features[1];
-    CapabilityGraphContribution scan_request;
-    scan_request.definition.features.push_back({scan_probe, "scan", {}});
-    scan_request.definition.features.push_back({capture, "offsets", take(ConfigValue::make(offset_config))});
-    scan_request.definition.features.push_back({capture, "status", take(ConfigValue::make(status_config))});
-    scan_request.definition.connections = {{{0, "offsets"}, {1, "color"}}, {{0, "status"}, {2, "color"}}};
-    scan_request.definition.outputs = {{{1, "pixels"}, {}}, {{2, "pixels"}, {}}};
-    publishProbeOutputs(scan_request, input);
+        configuration;
+    const auto scan_probe = features[0], capture = features[1];
+    EffectDefinition scan_request;
+    scan_request.features.push_back({scan_probe, "scan", {}});
+    scan_request.features.push_back({capture, "offsets", take(ConfigValue::make(offset_config))});
+    scan_request.features.push_back({capture, "status", take(ConfigValue::make(status_config))});
+    scan_request.connections = {{{0, "offsets"}, {1, "color"}}, {{0, "status"}, {2, "color"}}};
+    scan_request.outputs = {{{1, "pixels"}, {}}, {{2, "pixels"}, {}}};
     return scan_request;
 }
 
@@ -403,9 +371,9 @@ int main(int argc, char** argv)
     const unsigned fif = argc > 1 ? unsigned(std::atoi(argv[1])) : 3;
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
-    RenderServerConfig config{"test.clustered", true};
+    RenderServerConfig config{"test.clustered", nativeValidationEnabled()};
     config.frames_in_flight = fif;
-    config.uploads = TransferOptions{65536, 2, 2 * 1024 * 1024};
+    config.uploads = TransferOptions{1024 * 1024, 4, 16 * 1024 * 1024};
     DeviceOptions device;
     device.texture_descriptors = true;
     device.multiple_queues = true;
@@ -420,6 +388,10 @@ int main(int argc, char** argv)
     if (argc > 2 && std::string_view(argv[2]) == "--paged")
     {
         device.buffer_device_address = true;
+    }
+    if (argc > 2 && std::string_view(argv[2]) == "--d3d12")
+    {
+        device.backend = EGraphicsBackend::D3D12;
     }
     auto server = take(RenderServer::create(config, **execution, device));
     auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
@@ -441,7 +413,6 @@ int main(int argc, char** argv)
 
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
-    CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
     const auto meshes = call<GetOrCreateResource>(
@@ -484,7 +455,9 @@ int main(int argc, char** argv)
     const auto albedo = material_test::add(author, MaterialParameter{0, EValueType::VEC4});
     CHECK(material_test::connect(author, albedo, 0, output, 0));
     constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER};
-    auto compiled = deriveFixtureMaterial(author, purposes);
+    const auto shader_target = device.backend == EGraphicsBackend::D3D12
+        ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+    auto compiled = deriveFixtureMaterial(author, purposes, shader_target);
     CHECK(compiled);
     const auto material = call<MaterialCommands::Create>(
                               *client,
@@ -492,7 +465,6 @@ int main(int argc, char** argv)
                               {materials, {compiled->material.programs, MaterialParameters{{.5F, .6F, .7F, 1}}}}
     ).material;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN};
-    const auto block = layout();
     for (unsigned scenario = 0; scenario < 6; ++scenario)
     {
         const bool perspective = scenario % 2 != 0;
@@ -538,14 +510,11 @@ int main(int argc, char** argv)
         CapturedPixels differences, lists;
         GBufferFeatureConfig surface{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
         surface.front_counter_clockwise = false;
-        surface.input_layout = block;
         DeferredLightingFeatureConfig reference;
         reference.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         reference.extent.extent.source = EImageExtentSource::TARGET;
-        reference.input_layout = block;
         ClusteredLightingFeatureConfig clustered;
         clustered.grid = grid;
-        clustered.input_layout = block;
         CaptureConfig capture_diff{&differences};
         capture_diff.bytes = 64 * 64 * 4;
         auto request = probeRequest(
@@ -554,25 +523,24 @@ int main(int argc, char** argv)
             {"differences", "lists"}
         );
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
-        std::array<AttachmentId, 2> attachments;
+        std::array<RenderJobId, 2> attachments;
         for (unsigned i = 0; i < 2; ++i)
         {
             auto input = parameters(perspective);
             if (i)
             {
-                input.mesh.view[12] = -.3F;
-                input.lighting.camera_position[0] = .3F;
+                input.view[12] = -.3F;
+                input.position[0] = .3F;
                 for (unsigned c = 0; c < 4; ++c)
                 {
-                    input.lighting.inverse_view_projection[c * 4] +=
-                        .3F * input.lighting.inverse_view_projection[c * 4 + 3];
+                    input.inverse_view_projection[c * 4] +=
+                        .3F * input.inverse_view_projection[c * 4 + 3];
                 }
-                input.cluster.inverse_view_projection = input.lighting.inverse_view_projection;
-                input.cluster.position_near[0] = .3F;
             }
             auto view = call<CreateView>(*client, commands, {scene}).view;
             auto output = call<CreateTarget>(*client, commands, {target}).target;
-            attachments[i] = call<Attach>(*client, commands, {scene, view, output, effect, bytes(input)}).attachment;
+            call<UpdateViewCamera>(*client, commands, {{scene, view}, input});
+            attachments[i] = startRenderJob(*client, commands, scene, view, output, effect);
         }
         const auto deadline = Clock::now() + 30s;
         for (auto attachment : attachments)
@@ -580,11 +548,11 @@ int main(int argc, char** argv)
             while (call<QueryExecutionProgress>(*client, commands, attachment)
                        .progress.count(EExecutionOutcome::EXECUTED) < fif + 2)
             {
-                renderFrame(*client, commands);
+                renderFrame(*client, commands, attachment);
                 CHECK(Clock::now() < deadline);
                 std::this_thread::yield();
             }
-            detach(*client, commands, attachment);
+            stopAndRemoveJob(*client, commands, attachment);
         }
         call<RemoveScene>(*client, commands, {scene});
         while (differences.ready.load() != 2 || lists.ready.load() != 2)
@@ -609,16 +577,16 @@ int main(int argc, char** argv)
     auto scan_scene = call<CreateScene>(*client, commands, {}).scene;
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
     auto scan_target = call<CreateTarget>(*client, commands, {target}).target;
-    auto attachment = call<Attach>(*client, commands, {scan_scene, scan_view, scan_target, scan_effect, {}}).attachment;
+    auto attachment = startRenderJob(*client, commands, scan_scene, scan_view, scan_target, scan_effect);
     const auto deadline = Clock::now() + 20s;
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) <
            fif + 2)
     {
-        renderFrame(*client, commands);
+        renderFrame(*client, commands, attachment);
         CHECK(Clock::now() < deadline);
         std::this_thread::yield();
     }
-    detach(*client, commands, attachment);
+    stopAndRemoveJob(*client, commands, attachment);
     call<RemoveScene>(*client, commands, {scan_scene});
     while (!offsets.ready.load() || !status.ready.load())
     {

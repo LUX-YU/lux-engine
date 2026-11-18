@@ -249,10 +249,7 @@ namespace lux::render::detail
 
     RenderResult<void> IndexedTriangleMeshStorage::release(MeshId id) noexcept
     {
-        if (uploads_.resourcesFrozen())
-        {
-            return cxx::unexpected(RenderError{kDeviceBusy});
-        }
+
         auto* entry = findEntry(id);
         if (!entry)
         {

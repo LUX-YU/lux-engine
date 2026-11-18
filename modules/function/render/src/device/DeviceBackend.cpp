@@ -35,9 +35,9 @@ namespace lux::render::detail
     {
         if (description().graphicsAPI == nri::GraphicsAPI::D3D12)
         {
-            // DXGI acquires no binary semaphore. Present has returned, accepted GPU uses were settled by the caller,
-            // and DXGI retains its own presentation references when the application releases this swap chain.
-            return nri::Result::SUCCESS;
+            // DXGI enqueues presentation work on the creation queue after the render signal.
+            // At retirement only, wait for a queue signal placed after the last native Present.
+            return nriCore().QueueWaitIdle(&queue().native());
         }
         return backend_->vulkan.RetireSwapChainVK(swap_chain, unconsumed_acquire, timeout_ns);
     }

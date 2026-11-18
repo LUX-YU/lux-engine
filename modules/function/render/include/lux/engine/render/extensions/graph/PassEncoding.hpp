@@ -28,6 +28,7 @@ namespace lux::render::detail
 namespace lux::render
 {
     struct PassInterface;
+    struct GraphResource;
 
     // Compile-duration format facts. A State must copy any data it retains.
     struct PassRenderingInfo final
@@ -47,6 +48,12 @@ namespace lux::render
         std::span<const rdesc::ShaderProgramArtifact> programs;
         PassDescriptorBindings bindings;
         std::optional<PassRenderingInfo> rendering;
+        std::span<const GraphResource> resources;
+        // Borrowed from the sole device cache for this Plan lifetime. A State must not destroy it.
+        nri::Pipeline* pipeline = nullptr;
+        std::uint32_t* indexed_list_count = nullptr;
+        std::uint32_t* raster_list_count = nullptr;
+        std::span<const std::uint8_t> materialized_resources;
     };
 
     enum class EPassEncodingScope : std::uint8_t
@@ -232,7 +239,7 @@ namespace lux::render
         void* state_ = nullptr;
         void (*destroy_)(void*) noexcept = nullptr;
         void (*move_)(void*, void*) noexcept = nullptr;
-        cxx::type_info type_;
+        cxx::basic_type_info type_;
         Record record_ = nullptr;
         PassEncodingPolicy policy_;
     };

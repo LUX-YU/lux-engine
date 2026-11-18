@@ -75,8 +75,7 @@ namespace lux::render::detail
         for (auto& pass : recording.passes)
         {
             const auto& source = graph.passes()[pass.source_pass];
-            const auto* compute = source.work.getIf<ComputeWork>();
-            if (!compute || !compute->allow_async_compute || queues[0] == queues[1])
+            if (!source.allow_async_compute || queues[0] == queues[1])
             {
                 continue;
             }
@@ -128,12 +127,12 @@ namespace lux::render::detail
     ) noexcept
     {
         std::vector<std::uint32_t> pass_batches(graph.passes().size(), kGraphInvalidIndex);
-        // History initialization and shared preparation copies have a real Graphics submission.
-        // Normally it also contains the first recording interval, so the existing one-submit path stays one.
+        // History initialization and the graph's initial boundary belong to Graphics.
+        // Frame replica copies are submitted separately by the Uploader.
         batches.push_back({});
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
-            const auto& pass = recording.passes[p];
+            auto& pass = recording.passes[p];
             if (batches.back().queue != pass.queue)
             {
                 batches.push_back({pass.queue, p});
@@ -141,6 +140,18 @@ namespace lux::render::detail
             const auto batch = static_cast<std::uint32_t>(batches.size() - 1);
             recording.passes[p].submission = batch;
             ++batches.back().pass_count;
+            if (const auto* raster = pass.work.getIf<RasterCommands>())
+            {
+                auto& reads = batches.back().shared_draw_reads;
+                const auto add = [&](SubmissionBatch::DrawRead source) noexcept
+                {
+                    if (std::ranges::find(reads, source) == reads.end()) reads.push_back(source);
+                };
+                if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
+                    add({dynamic->data_index, false});
+                if (const auto* streamed = std::get_if<IndexedListCommands>(&raster->draw))
+                    add({streamed->data_index, true});
+            }
             pass_batches[pass.source_pass] = batch;
             for (const auto& use : graph.passes()[pass.source_pass].uses)
             {
@@ -158,7 +169,9 @@ namespace lux::render::detail
                         imports.push_back({resource, use.range, write, batch, batch, use.whole_resource});
                     }
                 };
-                add(use.version.resource, use.access != EGraphAccess::READ);
+                const bool write = use.access != EGraphAccess::READ;
+                pass.writes_output |= write && use.version.resource.index == output;
+                add(use.version.resource, write);
                 if (use.access == EGraphAccess::READ && use.fallback)
                 {
                     add(use.fallback->resource, false);

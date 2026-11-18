@@ -165,7 +165,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void*> append(std::size_t, std::size_t) noexcept;
         [[nodiscard]] RenderResult<void> reserve(std::size_t, std::size_t) noexcept;
         void requireUnsealed() const noexcept;
-        [[nodiscard]] std::size_t findChannel(cxx::type_info, cxx::type_info) const noexcept;
+        [[nodiscard]] std::size_t findChannel(cxx::basic_type_info, cxx::basic_type_info) const noexcept;
 
         template <class Resource, class T> [[nodiscard]] std::size_t channel() const noexcept
         {

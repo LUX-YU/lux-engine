@@ -1,6 +1,8 @@
 #include <lux/engine/render/capabilities/CapabilityBuild.hpp>
+#include <lux/engine/render/capabilities/FeatureRecipes.hpp>
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/Lighting3dCapability.hpp>
+#include <lux/engine/render/features/lighting/LightPorts.hpp>
 
 #include <cmath>
 
@@ -76,151 +78,111 @@ namespace lux::render
 
     namespace detail
     {
-        namespace
+        RenderResult<LightingPorts>
+        appendLightingFeatures(
+            EffectDefinition& destination,
+            std::span<const FeatureId> features,
+            const EffectOutputDesc& output,
+            const DeferredLightingConfiguration& settings,
+            std::string_view key
+        ) noexcept
         {
-            constexpr std::array surface_names{"albedo_metallic", "normal_roughness", "emissive_ao", "depth"};
-            constexpr std::array light_names{"directional_lights", "point_lights", "spot_lights", "light_counts"};
-
-            RenderResult<CapabilityGraphContribution> lowerLighting(const CapabilityBuildInput& input) noexcept
+            if (!validRecipeFeatures(features, 6)) return cxx::unexpected(RenderError{kFeatureContract});
+            if (!settings.valid()) return cxx::unexpected(RenderError{kInvalidConfig});
+            EffectDefinition graph;
+            DeferredLightingFeatureConfig lighting;
+            lighting.extent = {0, 0, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
+            lighting.extent.extent.source = EImageExtentSource::TARGET;
+            lighting.environment = settings.environment;
+            std::optional<ShadowPorts> shadows;
+            if (settings.shadows)
             {
-                const auto& settings = *input.configuration.borrow<DeferredLightingConfiguration>();
-                CapabilityGraphContribution result;
-                result.ports.resize(input.ports.size());
-                auto& graph = result.definition;
-                DeferredLightingFeatureConfig lighting;
-                lighting.extent = {0, 0, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-                lighting.extent.extent.source = EImageExtentSource::TARGET;
-                lighting.environment = settings.environment;
-                lighting.input_layout = cameraParameterLayout();
-                std::uint32_t shadow_depth = 0;
-                if (settings.shadows)
+                auto ports = appendShadowFeatures(graph, features.subspan(3, 3), settings.shadow);
+                if (!ports)
                 {
-                    auto configuration = ConfigValue::make(settings.shadow);
-                    if (!configuration)
-                    {
-                        return cxx::unexpected(configuration.error());
-                    }
-                    auto shadows =
-                        buildShadowFeatures({input.output, *configuration, {}, {}, input.features.subspan(3, 3)});
-                    if (!shadows)
-                    {
-                        return cxx::unexpected(shadows.error());
-                    }
-                    lighting.shadows = shadows->features.front().config.borrow<ShadowMapFeatureConfig>()->shape;
-                    lighting.external_lights = true;
-                    shadow_depth = static_cast<std::uint32_t>(shadows->features.size() - 1);
-                    graph = std::move(*shadows);
+                    return cxx::unexpected(ports.error());
                 }
-                std::uint32_t cluster_index = 0;
-                if (settings.clustered)
-                {
-                    ClusteredLightingFeatureConfig clusters;
-                    clusters.grid = settings.clusters;
-                    clusters.input_layout = cameraParameterLayout();
-                    clusters.external_lights = settings.shadows;
-                    auto configuration = ConfigValue::make(std::move(clusters));
-                    if (!configuration)
-                    {
-                        return cxx::unexpected(configuration.error());
-                    }
-                    cluster_index = static_cast<std::uint32_t>(graph.features.size());
-                    graph.features.push_back({input.features[2], "clusters", std::move(*configuration)});
-                    lighting.clusters = ClusterLightListShape{
-                        static_cast<std::uint32_t>(settings.clusters.count()),
-                        settings.clusters.index_capacity
-                    };
-                    if (settings.shadows)
-                    {
-                        for (auto name : light_names)
-                        {
-                            graph.connections.push_back({{0, name}, {cluster_index, name}});
-                        }
-                    }
-                }
-                auto configuration = ConfigValue::make(std::move(lighting));
+                lighting.shadows = ports->shape;
+                lighting.external_lights = true;
+                shadows = std::move(*ports);
+            }
+            std::uint32_t cluster_index = 0;
+            if (settings.clustered)
+            {
+                ClusteredLightingFeatureConfig clusters;
+                clusters.grid = settings.clusters;
+                clusters.external_lights = settings.shadows;
+                auto configuration = ConfigValue::make(std::move(clusters));
                 if (!configuration)
                 {
                     return cxx::unexpected(configuration.error());
                 }
-                const auto lighting_index = static_cast<std::uint32_t>(graph.features.size());
-                graph.features.push_back({input.features[0], "lighting", std::move(*configuration)});
-                for (auto name : surface_names)
+                cluster_index = static_cast<std::uint32_t>(graph.features.size());
+                graph.features.push_back({features[2], "clusters", std::move(*configuration)});
+                lighting.clusters = ClusterLightListShape{
+                    static_cast<std::uint32_t>(settings.clusters.count()),
+                    settings.clusters.index_capacity
+                };
+                if (shadows)
                 {
-                    mapPort(result, input, name, {{lighting_index, name}});
-                }
-                if (settings.shadows)
-                {
-                    for (auto [source, destination] :
-                         {std::pair{"views", "shadow_views"},
-                          {"slices", "shadow_slices"},
-                          {"light_ranges", "shadow_ranges"}})
+                    for (auto name : kLightPorts)
                     {
-                        graph.connections.push_back({{0, source}, {lighting_index, destination}});
-                    }
-                    graph.connections.push_back({{shadow_depth, "depth"}, {lighting_index, "shadow_depth"}});
-                    for (auto name : light_names)
-                    {
-                        graph.connections.push_back({{0, name}, {lighting_index, name}});
+                        graph.connections.push_back({{shadows->projection, name}, {cluster_index, name}});
                     }
                 }
-                if (settings.clustered)
-                {
-                    for (auto name : {"grid", "offsets", "indices", "status"})
-                    {
-                        graph.connections.push_back(
-                            {{cluster_index, name}, {lighting_index, "cluster_" + std::string(name)}}
-                        );
-                    }
-                }
-                auto tone =
-                    ConfigValue::make(TonemapFeatureConfig{input.output, settings.encoding, cameraParameterLayout()});
-                if (!tone)
-                {
-                    return cxx::unexpected(tone.error());
-                }
-                const auto display_index = static_cast<std::uint32_t>(graph.features.size());
-                graph.features.push_back({input.features[1], "display", std::move(*tone)});
-                graph.connections.push_back({{lighting_index, "hdr_color"}, {display_index, "hdr_color"}});
-                mapPort(result, input, "color", {{display_index, "color"}});
-                return result;
             }
-        } // namespace
+            auto configuration = ConfigValue::make(std::move(lighting));
+            if (!configuration)
+            {
+                return cxx::unexpected(configuration.error());
+            }
+            const auto lighting_index = static_cast<std::uint32_t>(graph.features.size());
+            graph.features.push_back({features[0], "lighting", std::move(*configuration)});
+            if (shadows)
+            {
+                for (auto [source, destination] :
+                     {std::pair{"views", "shadow_views"},
+                      {"slices", "shadow_slices"},
+                      {"light_ranges", "shadow_ranges"}})
+                {
+                    graph.connections.push_back({{shadows->projection, source}, {lighting_index, destination}});
+                }
+                graph.connections.push_back({shadows->depth, {lighting_index, "shadow_depth"}});
+                for (auto name : kLightPorts)
+                {
+                    graph.connections.push_back({{shadows->projection, name}, {lighting_index, name}});
+                }
+            }
+            if (settings.clustered)
+            {
+                for (auto name : {"grid", "offsets", "indices", "status"})
+                {
+                    graph.connections.push_back(
+                        {{cluster_index, name}, {lighting_index, "cluster_" + std::string(name)}}
+                    );
+                }
+            }
+            auto tone =
+                ConfigValue::make(TonemapFeatureConfig{output, settings.encoding});
+            if (!tone)
+            {
+                return cxx::unexpected(tone.error());
+            }
+            const auto display_index = static_cast<std::uint32_t>(graph.features.size());
+            graph.features.push_back({features[1], "display", std::move(*tone)});
+            graph.connections.push_back({{lighting_index, "hdr_color"}, {display_index, "hdr_color"}});
+            auto offset = appendFeatureRecipe(destination, std::move(graph), key);
+            if (!offset) return cxx::unexpected(offset.error());
+            LightingPorts ports;
+            for (std::size_t i = 0; i < kGBufferPorts.size(); ++i)
+                ports.surface[i] = {*offset + lighting_index, std::string(kGBufferPorts[i])};
+            ports.color = {*offset + display_index, "color"};
+            return ports;
+        }
 
         CapabilityImplementation DeferredLight::implementation() noexcept
         {
-            static const auto result = []
-            {
-                std::vector<CapabilityPort> ports;
-                for (std::size_t i = 0; i < surface_names.size(); ++i)
-                {
-                    ports.push_back(
-                        {surface_names[i],
-                         ECapabilityPortDirection::INPUT,
-                         std::string(rdesc::GBufferLayout::semantic) + "." + surface_names[i],
-                         CapabilityImageShape{
-                             i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i],
-                             1,
-                             1
-                         },
-                         "lux.coordinates.world.forward-z"}
-                    );
-                }
-                ports.push_back(
-                    {"color",
-                     ECapabilityPortDirection::OUTPUT,
-                     "lux.color.display.v1",
-                     CapabilityImageShape{std::nullopt, 1, 1},
-                     "lux.coordinates.viewport"}
-                );
-                auto support =
-                    describeImplementation(name.name(), kDeferredLightingConfigurationSchema, std::move(ports));
-                support.project_parameters = projectCameraInput;
-                support.view_parameter_type = cxx::make_basic_type_info<CameraInput>();
-                support.decode_configuration =
-                    decodeConfigurationValue<DeferredLightingConfiguration, decodeDeferredLightingConfiguration>;
-                support.build_graph = lowerLighting;
-                return support;
-            }();
+            auto result = describeImplementation(name.name());
             return result;
         }
     } // namespace detail

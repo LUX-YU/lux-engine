@@ -2,10 +2,11 @@
 
 #include <array>
 #include <lux/cxx/compile_time/type_info.hpp>
-#include <lux/engine/render/extensions/graph/PassEncoding.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
+#include <lux/engine/render/extensions/graph/ParameterSource.hpp>
+#include <lux/engine/render/extensions/graph/PassEncoding.hpp>
 
 namespace lux::render
 {
@@ -47,6 +48,7 @@ namespace lux::render
         std::vector<DeviceParameter> device_fields;
         // Explicitly zero-initialize any reflected tail beyond the supplied constant bytes.
         bool zero_fill_tail = false;
+        EParameterSource source = EParameterSource::INSTANCE;
     };
 
     struct SamplerParameter final
@@ -65,6 +67,8 @@ namespace lux::render
         std::vector<ResourceParameter> resources;
         ParameterBinding parameters;
         std::vector<SamplerParameter> samplers;
+        // Shaderless typed UAV writes (R32_UINT), in private descriptor order.
+        std::vector<ResourceAccess> typed_buffer_writes;
     };
 
     enum class EAttachmentLoad : std::uint8_t
@@ -126,7 +130,10 @@ namespace lux::render
 
     struct RasterScope
     {
-        [[nodiscard]] bool hasAttachments() const noexcept { return !colors.empty() || depth.has_value(); }
+        [[nodiscard]] bool hasAttachments() const noexcept
+        {
+            return !colors.empty() || depth.has_value();
+        }
 
         std::vector<RasterAttachment> colors;
         std::optional<RasterAttachment> depth;
@@ -239,10 +246,15 @@ namespace lux::render
         std::vector<VTransferOperation> operations;
     };
 
-    class RenderGraphBuilder;
+    // Compile-duration projection of an operation's real native access, not an owning handle.
+    struct PassNativeAccess final
+    {
+        nri::AccessBits access;
+        nri::StageBits stages;
+        nri::Layout layout = nri::Layout::UNDEFINED;
+    };
 
-    // Immutable CPU recipe, shared only when a logical graph is copied. No native handle owner.
-    // New operation types do not extend a central variant or register in a Kernel directory.
+    // Immutable typed author recipe. New operations need no central variant or Kernel directory.
     class PassWork final
     {
         using Compile = RenderResult<PassEncoding> (*)(const void*, PassCompileContext&, PassEncodingPolicy) noexcept;
@@ -262,17 +274,23 @@ namespace lux::render
             result.compile_ = [](const void* value, PassCompileContext& context, PassEncodingPolicy policy) noexcept
             { return compilePass<Feature>(*static_cast<const Config*>(value), context, policy); };
             result.policy_ = policy;
+            if constexpr (requires {
+                              Feature::access(
+                                  config, std::declval<const ResourceAccess&>(),
+                                  std::declval<const VGraphResourceDesc&>(), nri::GraphicsAPI::VK
+                              );
+                          })
+            {
+                result.access_ = [](const void* value, const ResourceAccess& use, const VGraphResourceDesc& description,
+                                    nri::GraphicsAPI backend) noexcept
+                { return Feature::access(*static_cast<const Config*>(value), use, description, backend); };
+            }
             return result;
         }
 
         [[nodiscard]] bool valid() const noexcept
         {
             return data_ != nullptr;
-        }
-
-        [[nodiscard]] bool builtin() const noexcept
-        {
-            return valid() && compile_ == nullptr;
         }
 
         [[nodiscard]] PassEncodingPolicy policy() const noexcept
@@ -289,35 +307,26 @@ namespace lux::render
             return compile_(data_.get(), context, policy_);
         }
 
-        template <class T> [[nodiscard]] const T* getIf() const noexcept
+        [[nodiscard]] std::optional<PassNativeAccess> access(
+            const ResourceAccess& use, const VGraphResourceDesc& description, nri::GraphicsAPI backend
+        ) const noexcept
         {
-            return builtin() && type_ == cxx::make_basic_type_info<T>() ? static_cast<const T*>(data_.get()) : nullptr;
-        }
-
-        template <class T> [[nodiscard]] const T& get() const noexcept
-        {
-            const auto* value = getIf<T>();
-            if (!value)
-            {
-                std::terminate();
-            }
-            return *value;
+            return access_ ? access_(data_.get(), use, description, backend) : std::nullopt;
         }
 
     private:
-        friend class RenderGraphBuilder;
-
         template <class T> static PassWork store(T value) noexcept
         {
             PassWork result;
             result.data_ = std::make_shared<const T>(std::move(value));
-            result.type_ = cxx::make_basic_type_info<T>();
             return result;
         }
 
         std::shared_ptr<const void> data_;
-        cxx::type_info type_;
         Compile compile_ = nullptr;
+        std::optional<PassNativeAccess> (*access_)(
+            const void*, const ResourceAccess&, const VGraphResourceDesc&, nri::GraphicsAPI
+        ) noexcept = nullptr;
         PassEncodingPolicy policy_;
     };
 
@@ -329,6 +338,8 @@ namespace lux::render
         std::vector<ResourceAccess> accesses;
         PassInterface interface;
         std::optional<RasterScope> rendering;
+        std::optional<GraphicsState> graphics;
+        bool allow_async_compute = false;
     };
 
     enum class EConditionSource : std::uint8_t

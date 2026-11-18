@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/ConfigValue.hpp>
+#include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 
@@ -12,12 +13,15 @@ namespace lux::render
         std::string contribution_key;
         ConfigValue config;
         std::uint32_t parameter_group = 0;
+        EParameterSource parameter_source = EParameterSource::INSTANCE;
     };
 
     struct FeaturePortRef final
     {
         std::uint32_t contribution = 0;
         std::string port;
+
+        bool operator==(const FeaturePortRef&) const noexcept = default;
     };
 
     struct FeatureConnection final

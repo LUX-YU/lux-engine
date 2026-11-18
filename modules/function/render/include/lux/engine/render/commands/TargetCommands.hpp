@@ -9,7 +9,7 @@ namespace lux::render
     struct CreateTargetRequest final
     {
         TargetDesc description{};
-        std::optional<SurfaceDescription> surface;
+        std::optional<SurfaceDescription> surface; // Required for a swapchain, absent for Offscreen.
     };
 
     struct ResizeTargetRequest final
@@ -32,7 +32,6 @@ namespace lux::render
     struct CreateTarget final
     {
         static constexpr std::string_view name{"render.target.create"};
-        static constexpr bool requires_frame_boundary = false;
         using Request = CreateTargetRequest;
         using Response = TargetCreated;
     };
@@ -42,7 +41,6 @@ namespace lux::render
     struct ResizeTarget final
     {
         static constexpr std::string_view name{"render.target.resize"};
-        static constexpr bool requires_frame_boundary = true;
         using Request = ResizeTargetRequest;
         using Response = TargetCreated;
     };
@@ -51,7 +49,6 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "render.target.remove";
-        static constexpr bool requires_frame_boundary = true;
         using Request = TargetId;
         using Response = AckResponse;
     };
@@ -59,7 +56,6 @@ namespace lux::render
     struct SetTargetActive final
     {
         static constexpr std::string_view name = "render.target.set_active";
-        static constexpr bool requires_frame_boundary = true;
 
         struct Request final
         {

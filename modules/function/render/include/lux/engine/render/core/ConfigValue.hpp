@@ -23,28 +23,13 @@ namespace lux::render
 
     // One immutable, exclusively owned configuration. Borrowed views last only as long as this value.
     // type_info compares semantic C++ identity, not a portable serialization/DLL ABI. The defining module
-    // supplies equality/destruction code and must remain loaded until this value is destroyed.
+    // supplies destruction code and must remain loaded until this value is destroyed.
     class ConfigValue final
     {
     public:
-        [[nodiscard]] cxx::type_info type() const noexcept
+        [[nodiscard]] cxx::basic_type_info type() const noexcept
         {
-            return type_ ? type_->identity : cxx::type_info{};
-        }
-
-        // Cold semantic agreement only. No object representation/padding comparison and no hash shortcut.
-        [[nodiscard]] bool operator==(const ConfigValue& other) const noexcept
-        {
-            const bool is_type_mismatch = type() != other.type() || type().name() != other.type().name();
-            if (is_type_mismatch)
-            {
-                return false;
-            }
-            if (value_.get() == other.value_.get())
-            {
-                return true;
-            }
-            return type_ && type_->equal && type_->equal(value_.get(), other.value_.get());
+            return type_ ? *type_ : cxx::basic_type_info{};
         }
 
         ConfigValue() noexcept = default;
@@ -93,7 +78,7 @@ namespace lux::render
                 new const Value(std::forward<T>(value)),
                 [](const void* object) noexcept { delete static_cast<const Value*>(object); }
             };
-            static constexpr Metadata type{cxx::make_basic_type_info<Value>(), equality<Value>()};
+            static constexpr auto type = cxx::make_basic_type_info<Value>();
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
             return result;
@@ -122,32 +107,9 @@ namespace lux::render
         }
 
     private:
-        using Equal = bool (*)(const void*, const void*) noexcept;
-
-        struct Metadata final
-        {
-            cxx::type_info identity;
-            Equal equal;
-        }; 
-
-        template <class T> static constexpr Equal equality() noexcept
-        {
-            if constexpr (requires(const T& a, const T& b) {
-                              { a == b } noexcept -> std::convertible_to<bool>;
-                          })
-            {
-                return [](const void* a, const void* b) noexcept
-                { return *static_cast<const T*>(a) == *static_cast<const T*>(b); };
-            }
-            else
-            {
-                return nullptr;
-            }
-        }
-
         using ConfigObject = std::unique_ptr<const void, void (*)(const void*) noexcept>;
         ConfigObject value_{nullptr, nullptr};
-        const Metadata* type_ = nullptr;
+        const cxx::basic_type_info* type_ = nullptr;
         std::size_t retained_bytes_ = 0;
     };
 } // namespace lux::render

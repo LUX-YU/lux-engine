@@ -1,6 +1,5 @@
 #pragma once
 
-#include <limits>
 #include <lux/engine/render/commands/DiscoveryCommands.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
@@ -13,8 +12,8 @@ namespace lux::render::runtime_detail
     {
         HandlerId handler;
         HandlerCall call;
-        cxx::type_info method_type;
-        cxx::type_info storage_type;
+        cxx::basic_type_info method_type;
+        cxx::basic_type_info storage_type;
 
         [[nodiscard]] bool callable() const noexcept
         {
@@ -24,15 +23,11 @@ namespace lux::render::runtime_detail
 
     struct CommandRecord final
     {
-        static constexpr std::size_t kUnbound = std::numeric_limits<std::size_t>::max();
-
         // Command definitions and their error constructors have module lifetime.
         const CommandDescriptor* description;
         void (*make_error)(platform::ipc::IpcMessage&, RenderError) noexcept;
         std::vector<HandlerBinding> bindings;
-        std::size_t selected_binding = kUnbound;
-        CapabilityImplementationId (*implementation)(const platform::ipc::IpcMessage&) noexcept = nullptr;
-        SceneId (*scene)(const platform::ipc::IpcMessage&) noexcept = nullptr;
+        EffectId (*effect)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         ResourceInstanceId (*storage)(const platform::ipc::IpcMessage&) noexcept = nullptr;
 
         [[nodiscard]] const HandlerBinding* binding(std::uint32_t index) const noexcept
@@ -40,10 +35,6 @@ namespace lux::render::runtime_detail
             return index < bindings.size() ? &bindings[index] : nullptr;
         }
 
-        [[nodiscard]] const HandlerBinding* selectedBinding() const noexcept
-        {
-            return selected_binding == kUnbound ? nullptr : &bindings[selected_binding];
-        }
     };
 
     class CommandRegistry final
@@ -51,22 +42,21 @@ namespace lux::render::runtime_detail
     public:
         CommandId registerCommand(CommandBinding) noexcept;
         [[nodiscard]] RenderResult<void>
-        validateStaticBindings(std::span<const CommandBinding>, bool capability = false) const noexcept;
+        validateStaticBindings(std::span<const CommandBinding>) const noexcept;
         void publishStaticBindings(std::span<const CommandBinding>) noexcept;
         [[nodiscard]] RenderResult<void> validateResourceBindings(std::span<const CommandBinding>) const noexcept;
         [[nodiscard]] CommandBindingLocation publishResourceBinding(const CommandBinding&) noexcept;
         RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
-        RenderResult<HandlerId> findHandler(cxx::type_info, std::string_view) const noexcept;
-        // Validation is used only for external declarations. Publication is shared with built-ins.
+        RenderResult<HandlerId> findHandler(cxx::basic_type_info, std::string_view) const noexcept;
+        // Builtin and external definitions share qualification and publication.
         RenderResult<void>
         validateHandler(const HandlerRecord&, std::span<const CommandBinding>)
             const noexcept;
         HandlerId publishHandler(HandlerRecord) noexcept;
         CommandBindingLocation publishBinding(HandlerId, const CommandBinding&) noexcept;
         [[nodiscard]] RenderResult<CommandBindingLocation>
-        findBinding(const CommandBinding&, HandlerId) const noexcept;
+        findBinding(CommandId, cxx::basic_type_info method, HandlerId) const noexcept;
         [[nodiscard]] const HandlerBinding* binding(CommandBindingLocation) const noexcept;
-        [[nodiscard]] HandlerId handlerId(cxx::type_info, std::string_view) const noexcept;
         void activateHandlers(ResourceRegistry&) noexcept;
         CommandList listCommands() const noexcept;
         void queryCommandIds(const QueryCommandIds::Request&, QueryCommandIds::Response&) const noexcept;
@@ -94,20 +84,11 @@ namespace lux::render::runtime_detail
             return entry ? entry->get() : nullptr;
         }
 
-        void listCommandBindings(const ListCommandBindings::Request&, ListCommandBindings::Response&) noexcept;
-        void
-        selectHandler(
-            const SelectCommandBinding::Request&,
-            SelectCommandBinding::Response&,
-            ResourceRegistry&
-        ) noexcept;
-
-        void clear() noexcept;
 
     private:
         void activateHandler(HandlerId, ResourceRegistry&) noexcept;
 
-        // Handler records have stable addresses; these views borrow their owned names until clear().
+        // Handler records have stable addresses; these views borrow their owned names.
         // Setup and Server-owner access only; runtime discovery is an IPC command.
         using HandlerName = std::pair<std::string_view, std::string_view>;
         cxx::SlotMap<CommandRecord, CommandTag> commands_;

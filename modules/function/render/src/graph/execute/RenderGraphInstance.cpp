@@ -1,3 +1,5 @@
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>
 #include <algorithm>
@@ -5,7 +7,6 @@
 #include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/resources/texture/Commands.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
@@ -14,7 +15,6 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <numeric>
@@ -24,12 +24,23 @@ namespace lux::render::detail
     RenderResult<std::span<nri::CommandBuffer* const>>
     RenderGraphInstance::recordBatch(std::uint32_t frame_slot, std::uint32_t batch) noexcept
     {
+        if (const auto error = session_->terminalError(); error.type) return cxx::unexpected(error);
+        return recordFrozenBatch(frame_slot, batch);
+    }
+
+    RenderResult<std::span<nri::CommandBuffer* const>>
+    RenderGraphInstance::recordFrozenBatch(std::uint32_t frame_slot, std::uint32_t batch) noexcept
+    {
         const bool is_invalid_slot = frame_slot >= frames_.size();
         const bool is_invalid_batch = batch >= plan_->submissions().size();
         const bool is_invalid_recording = is_invalid_slot || is_invalid_batch;
         if (is_invalid_recording) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& frame = frames_[frame_slot];
         if (!frame.record_ready) return cxx::unexpected(RenderError{kDeviceArgument});
+        auto& recording = frame.command_batches[batch];
+        if (recording.recording.exchange(true, std::memory_order_acquire))
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        cxx::scope_exit release([&]() noexcept { recording.recording.store(false, std::memory_order_release); });
         const FrameRecordInput input{
             *plan_, frame.record_resources, frame.record_passes, frame.history_initializations,
             frame.enabled_regions, frame.history_valid, frame.final_images, frame.final_buffers,
@@ -43,10 +54,10 @@ namespace lux::render::detail
         for (auto part = first_part; part < end_part; ++part)
         {
             const bool reusable = part == 0 && description.reusable_recording;
-            if (reusable && frame.recording_revisions[batch] == frame.recorded_revisions[batch]) continue;
-            if (part == 0) frame.recorded_revisions[batch] = 0;
-            auto* command = frame.command_buffers[batch][part];
-            auto result = device.resetCommandAllocator(*frame.command_allocators[batch][part]);
+            if (reusable && recording.revision == recording.recorded_revision) continue;
+            if (part == 0) recording.recorded_revision = 0;
+            auto* command = recording.commands[part];
+            auto result = device.resetCommandAllocator(*recording.allocators[part]);
             if (result == nri::Result::SUCCESS) result = device.beginCommandBuffer(*command, reusable);
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
             BindingState bindings;
@@ -56,10 +67,10 @@ namespace lux::render::detail
             result = device.nriCore().EndCommandBuffer(*command);
             if (!encoded) return cxx::unexpected(encoded.error());
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
-            if (reusable) frame.recorded_revisions[batch] = frame.recording_revisions[batch];
+            if (reusable) recording.recorded_revision = recording.revision;
         }
         return std::span<nri::CommandBuffer* const>{
-            frame.command_buffers[batch].data() + first_part, end_part - first_part
+            recording.commands.data() + first_part, end_part - first_part
         };
     }
 
@@ -85,7 +96,7 @@ namespace lux::render::detail
         const RenderPlan& plan,
         TargetOutput output
     ) noexcept
-        : session_(&session), plan_(&plan), output_(output)
+        : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), output_(output)
     {
         instance_values_.resize(plan.descriptor_plan_->instance_parameter_bytes);
         condition_values_.resize(plan.condition_count_);
@@ -146,10 +157,65 @@ namespace lux::render::detail
         }
     }
 
+    std::uint32_t RenderGraphInstance::frameCount() const noexcept
+    { return static_cast<std::uint32_t>(frames_.size()); }
+
+    RenderResult<void> RenderGraphInstance::createData(
+        const RenderGraph&, ResourceRegistry& resources, std::span<const ResourceInstanceId> resolved
+    ) noexcept
+    {
+        resources_ = &resources;
+        if (!data_.empty()) return cxx::unexpected(RenderError{kDeviceArgument});
+        for (const auto* recipe : plan_->instanceData())
+        {
+            const auto [offset, bytes] = plan_->parameterRegion(recipe->parameter_group, recipe->parameter_source);
+            if (recipe->parameter_bytes > bytes) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            auto created = recipe->create(*session_, resources, *this, resolved, recipe->configuration.data());
+            if (!created) return cxx::unexpected(created.error());
+            data_.push_back({recipe, std::move(*created), offset, bytes, {}});
+            data_.back().inputs.resize(recipe->inputs.size());
+        }
+        return {};
+    }
+
+    RenderResult<bool> RenderGraphInstance::prepareData(
+        std::uint32_t slot, ResourceUploader& uploads, Preparation& preparation
+    ) noexcept
+    {
+        for (auto& data : data_)
+        {
+            for (std::size_t i = 0; i < data.inputs.size(); ++i)
+                data.inputs[i] = resourceInput(data.recipe->inputs[i], slot);
+            const InstanceInputs input{slot,
+                instanceParameters().subspan(data.parameter_offset, data.parameter_bytes), data.inputs};
+            auto ready = data.value->prepare(input, uploads, preparation);
+            if (!ready || !*ready) return ready;
+        }
+        return true;
+    }
+
+    bool RenderGraphInstance::requiresDataPrograms() const noexcept
+    {
+        return std::ranges::any_of(data_, [](const auto& data) { return data.value->requiresPrograms(); });
+    }
+
+    exec::task<RenderResult<void>> RenderGraphInstance::prepareDataPrograms(execution::CpuScheduler cpu) noexcept
+    {
+        for (auto& data : data_)
+        {
+            if (!data.value->requiresPrograms()) continue;
+            auto compiled = co_await data.value->preparePrograms(cpu);
+            if (!compiled) co_return compiled;
+        }
+        co_return RenderResult<void>{};
+    }
+
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
+        while (!data_.empty()) data_.pop_back();
         // Physical cleanup is owned by the Session; it never calls back into this instance.
         session_->deferRelease(
+            uses_,
             [frames = std::move(frames_), histories = std::move(histories_), nri_core = &session_->nriCore()](
             ) mutable noexcept
             {
@@ -167,12 +233,13 @@ namespace lux::render::detail
 
     void RenderGraphInstance::bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept
     {
-        auto& binding = frames_[slot].bindings[resource.index];
-        if (binding.image != &image)
+        auto binding = resourceInput(resource, slot);
+        if (binding.image == &image)
         {
-            frames_[slot].invalidateImportedBindings();
+            return;
         }
         binding.image = &image;
+        setResource(resource.index, slot, binding);
     }
 
     RenderResult<void>
@@ -382,7 +449,6 @@ namespace lux::render::detail
         for (auto& list : frames_[slot].draw_lists)
         {
             list.upload_writes.clear();
-            list.upload_tails.clear();
             if (!accepted)
             {
                 list.draws.packets.clear();
@@ -1772,9 +1838,9 @@ namespace lux::render::detail
                 [](auto sum, const auto& allocation) { return sum + allocation.bytes; }
             );
             std::size_t command_count = 0;
-            for (const auto& batch : frame.command_buffers)
+            for (const auto& batch : frame.command_batches)
                 command_count += std::ranges::count_if(
-                    batch, [](auto* command) noexcept { return command != nullptr; }
+                    batch.commands, [](auto* command) noexcept { return command != nullptr; }
                 );
             output += "{\"slot\":" + std::to_string(i) +
                       ",\"imported_revision\":" + std::to_string(frame.imported_revision) +
@@ -2051,88 +2117,92 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::setParameterInput(
-        std::span<const std::byte> input,
-        const ParameterProjection& projection
+    bool RenderGraphInstance::usesParameterSource(EParameterSource source) const noexcept
+    {
+        return std::ranges::any_of(plan_->descriptor_plan_->parameter_regions,
+            [&](const auto& region) { return region.source == source && region.layout.size != 0; });
+    }
+
+    RenderResult<void> RenderGraphInstance::bindParameterSource(
+        EParameterSource source, const rdesc::ShaderBlock& layout
     ) noexcept
     {
-        auto destination = std::span(instance_values_).subspan(projection.offset, projection.bytes);
-        auto applied = projection.apply(projection.type, input, destination);
-        if (applied)
+        const auto index = static_cast<std::size_t>(source);
+        if (index >= source_sizes_.size() || source == EParameterSource::INSTANCE)
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        std::vector<SourceCopy> copies;
+        for (const auto& region : plan_->descriptor_plan_->parameter_regions)
         {
-            markInstanceParameters(projection.offset, projection.bytes);
+            if (region.source != source) continue;
+            for (const auto& field : region.layout.fields)
+            {
+                const auto found = std::ranges::find(layout.fields, field.path, &rdesc::ShaderMember::path);
+                if (found == layout.fields.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                const bool mismatch = field.scalar != found->scalar || field.rows != found->rows ||
+                    field.columns != found->columns || field.array_stride != found->array_stride ||
+                    field.matrix_stride != found->matrix_stride;
+                const auto bytes = std::uint64_t(field.rows) * 4 +
+                    (field.columns ? std::uint64_t(field.columns - 1) * field.matrix_stride : 0);
+                const bool invalid_range = bytes == 0 || bytes > UINT32_MAX ||
+                    std::uint64_t(found->offset) + bytes > layout.size ||
+                    std::uint64_t(field.offset) + bytes > region.layout.size;
+                if (mismatch || invalid_range) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                copies.push_back({source, found->offset, region.offset + field.offset, std::uint32_t(bytes)});
+            }
         }
-        return applied;
+        std::erase_if(source_copies_, [&](const auto& copy) { return copy.source == source; });
+        source_copies_.insert(source_copies_.end(), copies.begin(), copies.end());
+        source_sizes_[index] = layout.size;
+        return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::setParameterSource(
+        EParameterSource source, std::span<const std::byte> bytes
+    ) noexcept
+    {
+        const auto index = static_cast<std::size_t>(source);
+        if (index >= source_sizes_.size() || bytes.size() != source_sizes_[index])
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        for (const auto& copy : source_copies_)
+        {
+            if (copy.source != source) continue;
+            std::memcpy(
+                instance_values_.data() + copy.destination_offset, bytes.data() + copy.source_offset, copy.bytes
+            );
+            markInstanceParameters(copy.destination_offset, copy.bytes);
+        }
+        return {};
     }
 
     RenderResult<void> RenderGraphInstance::setInputs(
         std::span<const std::byte> parameters,
-        std::span<const std::uint8_t> conditions,
-        cxx::type_info parameter_type,
-        std::span<const ParameterProjection> projections
+        std::span<const std::uint8_t> conditions
     ) noexcept
     {
-        const bool invalid_conditions = conditions.size() != condition_values_.size() ||
-                                        std::ranges::any_of(conditions, [](auto value) { return value > 1; });
-        if (invalid_conditions)
-        {
+        const auto local_bytes = plan_->descriptor_plan_->local_parameter_bytes;
+        if (parameters.size() != local_bytes)
             return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        if (parameter_type.isValid())
+        if (auto valid = setConditions(conditions); !valid) return valid;
+        if (local_bytes)
         {
-            // Initial Attach/explicit cold update is atomic across all matching capability regions.
-            // The frame path writes one qualified region directly through setParameterInput.
-            auto candidate = instance_values_;
-            bool matched = false;
-            for (const auto& projection : projections)
-            {
-                if (projection.type != parameter_type)
-                {
-                    continue;
-                }
-                auto applied = projection.apply(
-                    parameter_type,
-                    parameters,
-                    std::span(candidate).subspan(projection.offset, projection.bytes)
-                );
-                if (!applied)
-                {
-                    return applied;
-                }
-                matched = true;
-            }
-            if (!matched)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            instance_values_.swap(candidate);
+            std::memcpy(instance_values_.data(), parameters.data(), local_bytes);
+            markInstanceParameters(0, local_bytes);
         }
-        else
-        {
-            if (parameters.size() != instance_values_.size())
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            std::ranges::copy(parameters, instance_values_.begin());
-        }
-        std::ranges::copy(conditions, condition_values_.begin());
-        markInstanceParameters(0, static_cast<std::uint32_t>(instance_values_.size()));
         return {};
     }
 
     RenderResult<void> RenderGraphInstance::setConditions(std::span<const std::uint8_t> values) noexcept
     {
-        if (values.size() != condition_values_.size() ||
-            std::ranges::any_of(values, [](auto value) { return value > 1; }))
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
+        const bool is_wrong_count = values.size() != condition_values_.size();
+        const bool has_invalid_value = std::ranges::any_of(values, [](auto value) { return value > 1; });
+        if (is_wrong_count || has_invalid_value) return cxx::unexpected(RenderError{kDeviceArgument});
         std::ranges::copy(values, condition_values_.begin());
         return {};
     }
 
     RenderResult<bool> RenderGraphInstance::prepareFrame(std::uint32_t slot) noexcept
     {
+        if (const auto error = session_->terminalError(); error.type) return cxx::unexpected(error);
         if (slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
         frames_[slot].record_ready = false;
         if (submission_error_.type != 0)
@@ -2182,7 +2252,7 @@ namespace lux::render::detail
                                    ? condition_values_[condition.input] != 0
                                    : frame.history_valid[plan_->resources()[condition.input].history] != 0;
             const bool enabled = value == condition.expected;
-            if (frame.enabled_regions[r] != enabled)
+            if ((frame.enabled_regions[r] != 0) != enabled)
             {
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)
                     invalidateRecording(slot, p);
@@ -2485,11 +2555,12 @@ namespace lux::render::detail
         return {};
     }
 
-    void RenderGraphInstance::acceptedBatch(std::uint32_t batch, std::size_t queue, std::uint64_t serial) noexcept
+    void RenderGraphInstance::acceptedBatch(std::uint32_t batch, SubmissionPoint point) noexcept
     {
+        uses_.accept(point);
         const auto mark = [&](HistoryState::HistorySlot& slot)
         {
-            slot.last_use.accept(session_->submissionPoint(queue, serial));
+            slot.last_use.accept(point);
             slot.initialized = true;
         };
         if (batch == 0)
@@ -2531,3 +2602,78 @@ namespace lux::render::detail
         ++progress_.counts[static_cast<std::size_t>(EExecutionOutcome::EXECUTED)];
     }
 } // namespace lux::render::detail
+
+namespace lux::render::detail
+{
+    std::vector<TargetId> RenderGraphInstance::sampledTargets() const noexcept
+    {
+        std::vector<TargetId> result;
+        for (const auto& item : data_)
+            for (auto target : item.value->sampledTargets())
+                if (std::ranges::find(result, target) == result.end()) result.push_back(target);
+        return result;
+    }
+
+    RenderResult<void> RenderGraphInstance::setIndexedDrawData(
+        GraphPassId id, std::uint32_t slot, const IndexedDrawData& input
+    ) noexcept
+    {
+        const auto* pass = compiledPass(id);
+        const auto* raster = pass ? pass->work.getIf<RasterCommands>() : nullptr;
+        const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
+        const bool has_layout = list && raster->vertices.size() == 1;
+        const bool is_matching_layout = has_layout && input.vertex_stride == raster->vertices[0].stride &&
+            input.index_stride == (list->type == EIndexType::UINT16 ? 2u : 4u) &&
+            input.parameters.size() <= pass->parameter_size;
+        if (!is_matching_layout || slot >= frames_.size() || !resources_)
+            return cxx::unexpected(RenderError{kFrameContract,
+                {input.vertex_stride, has_layout ? raster->vertices[0].stride : 0, pass ? pass->parameter_size : 0}});
+        auto prepared = prepareDrawList(
+            id, slot, std::max((input.vertices.size() + 3) & ~std::size_t{3}, std::size_t{input.vertex_stride}),
+            std::max((input.indices.size() + 3) & ~std::size_t{3}, std::size_t{4})
+        );
+        if (!prepared) return cxx::unexpected(prepared.error());
+        auto& physical = **prepared;
+        physical.vertex_data.assign(input.vertices.begin(), input.vertices.end());
+        physical.index_data.assign(input.indices.begin(), input.indices.end());
+        physical.vertex_data.resize((physical.vertex_data.size() + 3) & ~std::size_t{3});
+        physical.index_data.resize((physical.index_data.size() + 3) & ~std::size_t{3});
+        physical.upload_writes.clear();
+        if (!physical.vertex_data.empty())
+        {
+            physical.upload_writes.push_back({physical.vertices, 0, physical.vertex_data});
+        }
+        if (!physical.index_data.empty()) physical.upload_writes.push_back({physical.indices, 0, physical.index_data});
+        auto& draws = physical.draws;
+        draws.reads.clear();
+        std::fill(draws.parameters.begin(), draws.parameters.end(), std::byte{});
+        std::ranges::copy(input.parameters, draws.parameters.begin());
+        for (const auto& command : input.draws)
+        {
+            if (command.image >= input.images.size()) return cxx::unexpected(RenderError{kFrameContract});
+            auto image = resources_->sampledImage(input.images[command.image], slot);
+            if (!image) return cxx::unexpected(image.error());
+            const RasterDrawList::Read read{image->image, GraphImageRange{1, 0, 1, 0, 1}, EGraphUse::SAMPLED, 2};
+            if (std::ranges::find(draws.reads, read) == draws.reads.end()) draws.reads.push_back(read);
+            const auto offset = draws.parameters.size();
+            const auto bytes = list->partial_parameters ? sizeof(std::uint32_t) : pass->parameter_size;
+            draws.parameters.resize(offset + bytes);
+            auto* destination = draws.parameters.data() + offset;
+            if (!list->partial_parameters)
+            {
+                std::memcpy(destination, draws.parameters.data(), pass->parameter_size);
+                destination += list->selection_offset;
+            }
+            std::memcpy(destination, &image->descriptor, sizeof(image->descriptor));
+            RasterDrawPacket packet;
+            packet.parameter_offset = static_cast<std::uint32_t>(offset);
+            packet.parameter_size = static_cast<std::uint32_t>(bytes);
+            packet.parameter_destination = list->partial_parameters ? list->selection_offset : 0;
+            packet.scissor = command.scissor;
+            packet.draw = command.draw;
+            draws.packets.push_back(packet);
+        }
+        invalidateRecordings(slot);
+        return {};
+    }
+}

@@ -5,21 +5,20 @@
 #include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/execution/TargetOutput.hpp>
+#include <lux/engine/render/target/TargetOutput.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
-#include <lux/engine/render/extensions/features/CapabilityLowering.hpp>
+#include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 
 namespace lux::render::detail
 {
     class DeviceSession;
-    class FrameExecution;
     struct DrawListResources;
     struct RasterDrawList;
     struct PassBindings;
 
-    class LUX_RENDER_PUBLIC RenderGraphInstance final
+    class LUX_RENDER_PUBLIC RenderGraphInstance final : public InstanceAccess
     {
     public:
         RenderGraphInstance(
@@ -28,6 +27,17 @@ namespace lux::render::detail
             const RenderPlan&,
             TargetOutput = {}
         ) noexcept;
+        [[nodiscard]] std::uint32_t frameCount() const noexcept;
+        [[nodiscard]] RenderResult<void>
+        createData(const RenderGraph&, ResourceRegistry&, std::span<const ResourceInstanceId>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareData(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
+        [[nodiscard]] bool requiresDataPrograms() const noexcept;
+        [[nodiscard]] RenderResult<void>
+        setIndexedDrawData(GraphPassId, std::uint32_t, const IndexedDrawData&) noexcept override;
+        [[nodiscard]] std::vector<TargetId> sampledTargets() const noexcept;
+        [[nodiscard]] bool hasData() const noexcept { return !data_.empty(); }
+        [[nodiscard]] exec::task<RenderResult<void>> prepareDataPrograms(execution::CpuScheduler) noexcept;
+
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         // Caller holds the writable FIF until recording and all accepted GPU uses are complete.
         // Each batch part has an exclusive allocator; encoders only borrow its prepared data.
@@ -54,7 +64,7 @@ namespace lux::render::detail
         void commitResize(ResizeResources&&) noexcept;
         // After accepted uses complete, withdraw borrowed SwapChain objects before their presentation owner closes.
         void releaseOutputReferences() noexcept;
-        // The caller first acquires the existing FrameExecution write segment. This only
+        // The caller first reserves the reusable physical replica. This only
         // prepares that reusable slice; the professional Handler performs its data conversion/upload.
         [[nodiscard]] RenderResult<DrawListResources*>
         prepareDrawList(GraphPassId, std::uint32_t slot, std::size_t vertex_bytes, std::size_t index_bytes) noexcept;
@@ -115,15 +125,15 @@ namespace lux::render::detail
             return output_.description;
         }
 
-        [[nodiscard]] RenderResult<void>
-        setParameterInput(std::span<const std::byte>, const ParameterProjection&) noexcept;
-        [[nodiscard]] RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
+        [[nodiscard]] RenderResult<void> bindParameterSource(EParameterSource, const rdesc::ShaderBlock&) noexcept;
+        [[nodiscard]] RenderResult<void> setParameterSource(EParameterSource, std::span<const std::byte>) noexcept;
+        [[nodiscard]] bool usesParameterSource(EParameterSource) const noexcept;
         [[nodiscard]] RenderResult<void> setInputs(
             std::span<const std::byte>,
-            std::span<const std::uint8_t>,
-            cxx::type_info = {},
-            std::span<const ParameterProjection> = {}
+            std::span<const std::uint8_t>
         ) noexcept;
+
+        [[nodiscard]] RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
 
         [[nodiscard]] std::span<const std::uint8_t> conditions() const noexcept
         {
@@ -149,7 +159,7 @@ namespace lux::render::detail
             return viewport_;
         }
 
-        // FrameExecution selects the reusable slot and owns the recording/submission segment.
+        // FrameProgress selects the reusable slot. The round joins recording before submission.
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
@@ -168,9 +178,12 @@ namespace lux::render::detail
         void invalidateRasterDraws(GraphPassId, std::uint32_t frame_slot) noexcept;
 
     private:
-        friend class FrameExecution;
+        friend class FrameOperation;
+        friend class SubmissionOperation;
+        [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
+        recordFrozenBatch(std::uint32_t, std::uint32_t) noexcept;
         void submitted(std::uint32_t slot) noexcept;
-        void acceptedBatch(std::uint32_t batch, std::size_t queue, std::uint64_t serial) noexcept;
+        void acceptedBatch(std::uint32_t batch, SubmissionPoint point) noexcept;
         void failedSubmission(RenderError error) noexcept;
         [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<void> growRasterDescriptorPool(std::uint32_t slot) noexcept;
@@ -249,6 +262,17 @@ namespace lux::render::detail
         };
 
         DeviceSession* session_;
+        SubmissionFrontiers uses_;
+        ResourceRegistry* resources_ = nullptr;
+
+        struct Data final
+        {
+            const InstanceDataRecipe* recipe;
+            std::unique_ptr<InstanceData> value;
+            std::uint32_t parameter_offset, parameter_bytes;
+            std::vector<ResourceInput> inputs;
+        };
+        std::vector<Data> data_;
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
         const RenderPlan* plan_;
@@ -264,6 +288,13 @@ namespace lux::render::detail
 
         std::vector<SamplerInput> samplers_;
         std::vector<std::vector<ParameterCopy>> parameter_copies_;
+        struct SourceCopy final
+        {
+            EParameterSource source;
+            std::uint32_t source_offset, destination_offset, bytes;
+        };
+        std::vector<SourceCopy> source_copies_;
+        std::array<std::uint32_t, 3> source_sizes_{};
         std::vector<std::byte> instance_values_;
         std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;

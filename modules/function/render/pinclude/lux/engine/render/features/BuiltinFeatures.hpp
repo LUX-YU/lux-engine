@@ -1,16 +1,15 @@
 #pragma once
 
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/ClusteredLightingFeature.hpp>
-#include <lux/engine/render/features/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/GBufferFeature.hpp>
-#include <lux/engine/render/features/HzbFeature.hpp>
-#include <lux/engine/render/features/MeshShadowFeature.hpp>
-#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
-#include <lux/engine/render/features/RasterMeshParameters.hpp>
-#include <lux/engine/render/features/ShadowMapFeature.hpp>
-#include <lux/engine/render/features/TonemapFeature.hpp>
-#include <lux/engine/render/features/UiRasterFeature.hpp>
+#include <lux/engine/render/features/lighting/ClusteredLightingFeature.hpp>
+#include <lux/engine/render/features/lighting/DeferredLightingFeature.hpp>
+#include <lux/engine/render/features/mesh/GBufferFeature.hpp>
+#include <lux/engine/render/features/mesh/HzbFeature.hpp>
+#include <lux/engine/render/features/shadow/MeshShadowFeature.hpp>
+#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
+#include <lux/engine/render/features/shadow/ShadowMapFeature.hpp>
+#include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
 
 namespace lux::render::detail
 {
@@ -24,7 +23,6 @@ namespace lux::render::detail
             static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
         };
 
-        template <bool Paged>
         static RenderResult<void> build(const Config*, std::string_view, FeatureBuildContext&) noexcept;
     };
 
@@ -37,7 +35,6 @@ namespace lux::render::detail
             static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
         };
 
-        template <bool Paged>
         static RenderResult<void> build(const Config*, std::string_view, FeatureBuildContext&) noexcept;
     };
 
@@ -62,7 +59,6 @@ namespace lux::render::detail
             static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
         };
 
-        template <bool Paged>
         static RenderResult<void> build(const Config*, std::string_view, FeatureBuildContext&) noexcept;
     };
 
@@ -111,7 +107,6 @@ namespace lux::render::detail
             static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
         };
 
-        template <bool Paged>
         static RenderResult<void> build(const Config*, std::string_view, FeatureBuildContext&) noexcept;
     };
 
@@ -124,7 +119,6 @@ namespace lux::render::detail
             static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
         };
 
-        template <bool Paged>
         static RenderResult<void> build(const Config*, std::string_view, FeatureBuildContext&) noexcept;
     };
 
@@ -132,18 +126,6 @@ namespace lux::render::detail
     {
         using Config = TonemapFeatureConfig;
         static constexpr FeatureName name{"lux.render.feature.TonemapFeature"};
-        struct Ports final
-        {
-            static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
-        };
-
-        static RenderResult<void> build(const Config*, std::string_view, FeatureBuildContext&) noexcept;
-    };
-
-    struct UiRasterFeature final
-    {
-        using Config = UiRasterFeatureConfig;
-        static constexpr FeatureName name{"lux.render.feature.UiRasterFeature"};
         struct Ports final
         {
             static RenderResult<void> describe(const Config*, std::string_view, FeaturePorts&) noexcept;
@@ -162,7 +144,6 @@ namespace lux::render::detail
         ClusteredLightingFeature,
         MeshVisibilityFeature,
         MeshShadowFeature,
-        TonemapFeature,
-        UiRasterFeature
+        TonemapFeature
     >;
 } // namespace lux::render::detail

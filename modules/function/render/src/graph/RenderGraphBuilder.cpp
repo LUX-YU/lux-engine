@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 
 #include <bit>
@@ -295,7 +296,7 @@ namespace lux::render
         std::string key, PassDeclaration declaration, PassWork operation, GraphPassOptions options
     ) noexcept
     {
-        const bool is_invalid_operation = !operation.valid() || operation.builtin();
+        const bool is_invalid_operation = !operation.valid();
         const bool is_invalid_declaration = declaration.kind > EGraphPassKind::TRANSFER ||
             declaration.stages == nri::StageBits::NONE;
         const bool has_no_declared_effect = declaration.accesses.empty() &&
@@ -306,8 +307,14 @@ namespace lux::render
             operation.policy().scope == EPassEncodingScope::MANAGED && !declaration.rendering;
         const bool has_unqualified_attachment = std::ranges::any_of(declaration.accesses, [](const auto& access) noexcept
         { return access.usage == EGraphUse::COLOR_ATTACHMENT || access.usage == EGraphUse::DEPTH_ATTACHMENT; });
-        const bool is_invalid_pass = is_invalid_operation || is_invalid_declaration || has_no_declared_effect ||
-            is_empty_scope || is_scope_kind_mismatch || is_missing_managed_scope || has_unqualified_attachment;
+        const bool is_invalid_queue = declaration.allow_async_compute && declaration.kind != EGraphPassKind::COMPUTE;
+        const bool is_invalid_graphics = declaration.graphics && declaration.kind != EGraphPassKind::GRAPHICS;
+        const bool has_mixed_bindings = declaration.interface.program != kGraphInvalidIndex &&
+            !declaration.interface.typed_buffer_writes.empty();
+        const bool is_invalid_pass = is_invalid_queue || is_invalid_graphics || has_mixed_bindings ||
+                                     is_invalid_operation || is_invalid_declaration || has_no_declared_effect ||
+                                     is_empty_scope || is_scope_kind_mismatch || is_missing_managed_scope ||
+                                     has_unqualified_attachment;
         if (is_invalid_pass) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         const auto kind = declaration.kind;
         return addWork(std::move(key), DeclaredWork{std::move(declaration), std::move(operation)}, kind, options);
@@ -380,7 +387,10 @@ namespace lux::render
         };
         const auto interface = [&](PassInterface& input) noexcept
         {
-            if (input.program >= candidate_.programs_.size())
+            const bool is_unknown_program = input.program >= candidate_.programs_.size();
+            const bool has_shaderless_views = !input.typed_buffer_writes.empty();
+            const bool is_invalid_interface = is_unknown_program || has_shaderless_views;
+            if (is_invalid_interface)
             {
                 failure = graphError(kGraphInvalidDescriptor);
                 return;
@@ -758,6 +768,16 @@ namespace lux::render
                             !input.parameters.fields.empty() || input.parameters.instance_layout.size != 0;
                         if (has_unbound_interface) failure = graphError(kGraphInvalidDescriptor);
                     }
+                    for (auto& access : declaration.interface.typed_buffer_writes)
+                    {
+                        const bool is_buffer = access.version.resource.index < candidate_.resources_.size() &&
+                                               std::holds_alternative<GraphBufferDesc>(
+                                                   candidate_.resources_[access.version.resource.index].description
+                                               );
+                        if (!is_buffer) { failure = graphError(kGraphInvalidDescriptor); break; }
+                        access.access = EGraphAccess::WRITE;
+                        append(access, EGraphUse::TRANSFER_DESTINATION);
+                    }
                     for (auto& access : declaration.accesses)
                     {
                         if (access.usage == EGraphUse::UNSPECIFIED)
@@ -766,13 +786,50 @@ namespace lux::render
                     }
                     if (declaration.rendering) rasterScope(*declaration.rendering);
                     pass.rendering = std::move(declaration.rendering);
-                    pass.encoding_interface = std::move(declaration.interface);
-                    pass.encoding_stages = declaration.stages;
+                    pass.interface = std::move(declaration.interface);
+                    pass.shader_stages = declaration.stages;
+                    pass.graphics = std::move(declaration.graphics);
+                    pass.allow_async_compute = declaration.allow_async_compute;
+                    if (pass.kind == EGraphPassKind::GRAPHICS && pass.interface.program != kGraphInvalidIndex &&
+                        !pass.graphics)
+                    {
+                        pass.graphics.emplace();
+                    }
                     pass.work = std::move(value.operation);
                 }
                 if constexpr (!std::is_same_v<Work, DeclaredWork>)
                 {
-                    pass.work = PassWork::store(std::move(value));
+                    RenderResult<PassWork> compiled;
+                    if constexpr (std::is_same_v<Work, RasterWork>)
+                    {
+                        pass.rendering = static_cast<const RasterScope&>(value);
+                        const auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
+                        pass.interface = fixed ? fixed->interface : PassInterface{};
+                        if (fixed) pass.graphics = fixed->graphics;
+                        else pass.interface.parameters = std::get<RasterPassTemplate>(value.program).parameters;
+                        const bool exclusive = !fixed || std::holds_alternative<DrawIndexedList>(fixed->draw);
+                        compiled = PassWork::create<detail::RasterPass>(std::move(value),
+                            {exclusive ? EPassEncodingScope::EXCLUSIVE : EPassEncodingScope::MANAGED, exclusive});
+                    }
+                    else if constexpr (std::is_same_v<Work, ComputeWork>)
+                    {
+                        pass.interface = value.interface;
+                        pass.allow_async_compute = value.allow_async_compute;
+                        compiled = PassWork::create<detail::ComputePass>(std::move(value));
+                    }
+                    else
+                    {
+                        pass.interface = {};
+                        for (const auto& operation : value.operations)
+                        {
+                            const auto* fill = std::get_if<FillBuffer>(&operation);
+                            if (fill && fill->value) pass.interface.typed_buffer_writes.push_back(fill->destination);
+                        }
+                        compiled = PassWork::create<detail::TransferPass>(std::move(value),
+                            {EPassEncodingScope::MANAGED, true});
+                    }
+                    if (!compiled) failure = compiled.error();
+                    else pass.work = std::move(*compiled);
                 }
             },
             work

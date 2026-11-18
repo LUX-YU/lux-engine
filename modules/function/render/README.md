@@ -35,20 +35,20 @@ Server creation registers built-in construction/call entries. A public capabilit
 metadata. Resource declarations alone own their commands and per-frame element types; Capability implementations
 cannot redirect those calls or substitute another Resource identity. Composition deduplicates Resource requirements
 across selected capabilities. `ListCapabilities` discovers concrete implementations by capability type name and implementation name;
-results contain the public declaration, configuration qualification and logical final output names, not resource schemas.
+results contain the public declaration, implementation identity, Feature IDs and device eligibility.
 The saved composition keeps names and actual configuration bytes; generational IDs belong only to this Server.
 
 Resource upload is independent of Effect creation. `GetOrCreateResource` selects an instance in a real
 domain, and create/upload commands carry its resource_id. Item commands carry complete parent/local IDs.
 `CreateEffect` selects the graph composition and output contract. FrameData identifies a Resource declaration
-and element type; Attachment resolves the graph's declared Resource requirements.
+and element type. Job assembly resolves the graph's declared Resource requirements.
 
 Views share an immutable logical Effect and the device program cache. Each execution owns its native Plan
 and graph instance. Mesh/material IDs, grouping, shadow
 layers and UI images are live instance/frame data, not Effect compilation inputs. Late material programs prepare
-on the shared CPU scheduler and are adopted on RenderThread before recording a frame. A failed frame preserves
-the previous program cache but does not promise to roll back already adopted resource inputs; its completion
-reports the required resynchronization. Only DeviceSession's cleanup scope retires accepted physical uses.
+on the shared CPU scheduler and are adopted on RenderThread before recording a frame. The Job receipt reports
+the actual submission outcome. Already adopted Resource inputs remain in effect and are applied only once.
+DeviceSession's cleanup scope retires accepted physical uses.
 
 One dynamic Raster pass consumes zero or more prepared Draws/Pipelines. Its per-FIF arrays, descriptors and
 parameters belong to the instance. Actual external reads include sampled Target images, material texture tables
@@ -57,28 +57,44 @@ and BDA-addressed buffers; binding changes rebuild the combined submission depen
 Resource definitions declare their Commands. Each Resource registration supplies the corresponding static typed thunks;
 CommandRegistry owns those calls and ResourceRegistry records their locations by declaration and CommandId.
 Capability `Bindings` contains only independent capability methods. Mesh upload consumes `rdesc::Mesh`; clients do not produce Native GPU layouts.
-Handlers use the existing professional Storage Senders and ResourceUploader. Transform and light elements use Resource-declared PerFrameData in one frame batch. Camera uses a View command;
-UI uses an explicit borrowed-array submission command. Resource inputs never generate per-item Requests or Responses.
+Handlers use the professional Storage Senders and ResourceUploader. Transform and light elements use
+Resource-declared `PerFrameData` in one frame batch. Camera uses a View command. The independent Editor UI
+extension supplies its own snapshot command. Resource inputs never generate per-item Requests or Responses.
 
-An implementation declares `using Capability = ...`, `Features`, `Storages`, `Bindings`, and its
-configuration type. `registerCapabilityImplementation<I>()` checks the external declaration before publishing factories
-and exact methods. Registry membership owns the capability-to-implementation relation; implementation records do not
-repeat CapabilityId or CapabilityDescription. Cold add/replace/remove calls reject active execution and invalid entries;
-replacement creates a fresh generation. Callback/type metadata must outlive the Server. No plugin lifetime service is added.
+A module registers each Resource, Capability, Feature, Handler and static method once using the same setup
+APIs as builtins. `register` accepts a new definition; duplicate identities are errors even when the supplied
+payload is identical. Keep the returned IDs, or query the catalog on its owner, to reference existing definitions.
+Each successful registration is its own transaction; install shared dependencies once before publishing implementations.
+
+An implementation declares `using Capability = ...`, `Features` and `Bindings`.
+`registerCapabilityImplementation<I>()` references registered dependencies and their exact method locations;
+it does not resubmit factories or overwrite configurations. Resource commands share one protocol record but retain
+separate call locations for each Resource declaration, even when they use the same Storage class. The directory
+records each implementation's parent CapabilityId; its own ID is already the container key. Cold add/replace/remove
+calls reject active execution and invalid entries; replacement creates a fresh generation. Resource configuration
+is immutable after registration. GetOrCreate reuses the same-domain instance by ResourceTypeId without comparing
+that unchanged configuration. Callback/type metadata must outlive the Server and all accepted work.
 
 One capability can use several graph Features. The built-in Lighting3d implementation connects shadow projection,
 shadow rasterization, Clustered Lighting, deferred lighting and Tonemap inside one EffectDefinition. These algorithms
 are not separately advertised capabilities. `DeferredLightingConfiguration` owns their actual switches/settings;
 `ClusterGrid`, shadow settings and color encoding are data, not additional configuration services.
 
-`CreateEffect` lowers all selected contributions to the existing Graph/Analysis without receiving a native Device,
-Core interface or queues. Attach/replacement currently provides the execution-candidate boundary: Compile and native
-program preparation finish before the candidate is adopted. Typed cold values are
-owned once and referenced by index. Resource port semantics, shapes and compatibility remain in the extension-only
-`CapabilityGraph.hpp` compiler interface. The ordinary directory does not publish that graph metadata. Engine recipes
-collect data by the static capability type, not by inspecting internal ports or selecting a payload schema.
+`CreateEffect` accepts one owned `EffectDefinition` and optional implementation identity references. The typed
+`makeDeferredRenderEffect` and `makeUiRenderEffect` author functions form defaults, Feature uses, connections and
+actual output references before submission. Extension authors construct the same definition. Server performs one
+`composeFeatures` pass; it has no Capability port/shape solver, graph callback, default factory, configuration decoder
+or `ValidateCapabilityConfiguration` command. Saved composition bytes remain author data: the owning module decodes
+them to its concrete configuration before calling its typed author function. Existing files/codecs are retained.
 
-Command/configuration/binding identity uses `cxx::type_info` from `make_basic_type_info`. It is C++ type agreement for
+Feature registration is device independent. Address-based Mesh programs are retained as logical program alternatives
+and selected during device Compile against the Device's resource representation. Material draws select their encoding
+during native preparation. Both continuous and BDA Mesh algorithms remain; D3D12 consumes its DXIL/reflected layout.
+
+Camera inputs belong to View and exposure belongs to Effect. The external UI extension submits its own Resource
+command and uses the generic indexed draw and sampled output contracts.
+
+Command/configuration/binding identity uses `cxx::basic_type_info` from `make_basic_type_info`. It is C++ type agreement for
 compatible builds, not cross-compiler serialization. Actual file codecs preserve their own format identity. Type metadata,
 callbacks and destructors must remain loaded until every dependent operation/value has been cleared.
 
@@ -89,27 +105,43 @@ carry their exact range and final use. Concrete graph building remains in the pr
 
 ## Requests and execution
 
-Framework commands are split by Scene, View, Target, Effect, Discovery and Server responsibilities.
-`commands/Commands.hpp` is their aggregate; the remaining Attachment lifecycle protocol is separate.
+Framework commands are split by Scene, View, Target, Effect, Job, Discovery and Server responsibilities.
+`commands/Commands.hpp` is their aggregate. A Job owns its logical Scene, View and Effect relationship from Create
+to Remove. Start selects the Target and builds a private device execution. Stop closes future frame admission and
+returns writer eligibility while an admitted Run retains its execution through native acceptance. Remove requires
+those borrows to settle. Rebind checks a candidate before publishing a new Effect or Target on the same JobId.
 Mesh and Instance commands have independent namespaces under `resources/mesh` and `resources/instance`.
 
-Server catalog setup belongs to the thread that created the Server. The host completes setup before starting
-`run()` and joins it before post-run inspection or destruction. During `run()`, catalog access belongs to its
-actual owner stack; unrelated threads are rejected before any mutable directory read. Handler and stateless
-command installation additionally require no active frame or structural command. Runtime clients discover IDs
-through `QueryCommandIds` (fixed bootstrap ID); `RenderClient::create` uses that IPC path. Names are cold lookup
-keys; accepted commands use IDs and the declaration-specific binding from one Resource qualification.
+The host serializes catalog setup before calling `run()`. The call seals registration and transfers the
+catalog to the Server thread through shutdown. Runtime clients discover IDs through the fixed
+`QueryCommandIds` bootstrap; `RenderClient::create` uses that IPC path. Accepted commands use IDs and retain
+the binding qualified for the actual Resource.
+
+A Resource command declaring `requires_idle_resource` is exclusive for that instance. A conflicting
+operation returns Busy, and Jobs that need a Resource with an exclusive command in flight wait for its
+terminal delivery. Unrelated IPC, Jobs and transfers can proceed.
 
 Use `registerCommands` with `CommandBinding::declare<C, function>()` for stateless typed sync/async functions.
 Capability `Bindings` also accepts such functions, selecting their exact implementation without a dummy owner.
 Stateful Handlers retain constructor-injected dependencies. All forms use the existing request operation,
 Resource borrow and ResponseOutbox; an async request's source bytes remain borrowed until its real response.
 
-An Attachment owns its professional Feature bindings and Storage subscriptions. The graph instance receives borrowed
-`ResourceInput` values; it does not discover Storage, own Feature objects or call their preparation functions.
-FrameExecution prepares the Attachment's borrowed work at the reusable FIF slot. ResourceUploader records its
-preparation copies before FrameExecutor records graph work. Detach and replacement disconnect the professional
-objects and subscriptions before destroying the graph instance; physical cleanup still uses the Session scope.
+`JobExecution` owns CPU input bindings and Resource subscriptions. The graph instance owns the derived
+`InstanceData` objects created from immutable graph recipes and the actual per-FIF GPU bindings. Cold assembly
+resolves Resource borrows once; instance preparation uses those borrows and contributes copies to `Preparation`.
+After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
+Resources and instance data and submits preparation copies before graph work. Destruction releases derived objects
+in reverse order. Physical cleanup uses the Session scope.
+
+Each FIF command batch owns its allocators, command buffers and recording versions. A batch recording lease rejects
+concurrent recording of the same batch; independent batches have separate allocators and per-pass scratch. The caller
+must join record workers before preparing, resizing or destroying the instance. The round retains the slice until
+every accepted queue frontier completes; a device terminal prevents further preparation or recording. Direct internal
+recording callers must enforce the same completion boundary. The recording lease does not replace GPU completion.
+
+`prepareFrame()` copies parameter bytes and freezes resolved native views into instance-owned FIF storage. Client
+vector mutations do not alter those bytes. FrameExecutor only traverses the Plan and calls typed encodings with
+stable slices; it performs no resource discovery, compilation or submission.
 
 Image/Buffer copies distinguish capacity from initialized content. With fixed dimensions and an explicit row pitch,
 only actual row bytes become defined; padding remains undefined. A destination `READ_WRITE` explicitly preserves
@@ -118,7 +150,7 @@ instantiation. Count and indirect argument accesses retain their actual offsets 
 Buffer barriers operate on the whole physical buffer.
 
 Graph/plan JSON and DOT describe dependencies, resource ranges, layouts, rendering attachments and barrier provenance.
-`FrameExecution::dumpSubmissions` separately reports the latest accepted batch per FIF slot and current frame queue
+`SubmissionOperation::Workspace::dumpSubmissions` separately reports the latest accepted batch per FIF slot and current frame queue
 frontiers. These are bounded submission facts, not GPU timing or a continuous trace.
 
 Applications use Platform IPC directly. They discover CommandId, attach it with `commandTag()`, send a typed
@@ -126,27 +158,37 @@ Request and consume the corresponding Response. Responses contain `RenderError e
 zero `error.type` means success. Internal fallible functions use `RenderResult<T>` where an error is recoverable.
 The library returns structured diagnostics and never chooses a terminal or logging destination.
 
-Before `run()`, the application selects one IPC Link with `setFrameSource()`. That Client sends a sealed
-`SubmitFrame`: a RenderFrame borrowing one sealed FrameData and naming its existing Attachment execution.
-`QueryFrameInputLayout` reads that execution's already assembled schema; it creates neither Resources nor execution.
-Admission checks the exact layout/revision and mutable instance identities before any apply. Each Resource's immutable
-record holds its actual target, callback and column indices; one synchronous apply receives all of its element spans.
-There is no phase protocol, capability ordinal destination, payload codec or external input clock.
-After all started inputs settle the Server prepares/submits the frame and publishes one root FrameCompletion.
-An empty packet explicitly renders unchanged state; an empty IPC queue does not generate frames.
+## Running a Job from the installed SDK
 
-The Client reserves one of `max_frames_ahead + 1` stable input carriers before preparing a game frame.
-`FrameCompletion` ends the input borrow and describes accepted rendering submissions, not GPU or presentation
-completion. Physical FIF slices are reused only after all their real Queue frontiers complete. A failed frame
-can have accepted updates; the Client must provide an explicit resynchronization frame before normal frames
-resume. Asset Clients do not bypass this visible-state boundary, and disconnect does not end source borrows.
+1. Create a RenderServer, register extensions and run it on the host's render thread. Open an IPC requester
+   and bootstrap a RenderClient. The host drives `dispatchResponses()` at its completion points.
+2. Use `QueryRenderDevice` and `ListCapabilities` for the open device. `QueryResource` observes an existing
+   instance. `GetOrCreateResource` is the explicit creation command. Asset commands use that instance's ID.
+   Upload meshes and textures before any Job exists, and await their typed replies before using the resulting IDs.
+3. Create the Scene, View and Target, then use `CreateEffect` with the logical Feature recipe. Create the Job
+   with the Scene, View and Effect IDs, and call `StartRenderJob` with its Target to prepare the device execution.
+   Bind a sampled producer Target to an authored external `FeaturePortRef` in `JobBinding::target_images`.
+4. Use `QueryRenderJobInputLayout` to construct two stable `FrameData` slots. Seal a slot and call
+   `UpdateFrameData{job, &packet}` to apply it without granting an execution credit. Use
+   `RequestRenderJob{job, &packet}` to apply it and request one submission. An exact request can omit the packet
+   to use persistent state. A continuous Job schedules itself when ready.
+5. Reuse a slot on its terminal reply. An update reply confirms input application. A successful exact Job
+   reply confirms native submission acceptance. Actual GPU completion governs physical FIF reuse and Target
+   retirement. For window Targets, presentation is a separate native outcome.
+
+Both operations use the same typed columns. The Server checks the shared layout identity and mutable Resource
+identities before applying nonempty columns once per Resource. An exact request that fails has its own terminal
+and can be retried after its cause is resolved. A continuous Job with a failed round exposes `last_run_error`
+through `QueryExecutionProgress`. An explicit request, execution input change or cadence change can retry it.
+The [installed UI consumer fixture](../../../editor/ui/render/test/FramePacket.cpp) drives the SDK and verifies
+texture upload, typed updates, exact Jobs, and GPU output without an Engine host.
 
 Synchronous Handlers fill the Response directly in the Outbox message. Asynchronous Handlers return a concrete
 Sender. `counting_scope + spawn` owns connected operation states. Errors and stopped completions become typed
 Responses, and `continues_on` delivers them to the RenderThread's `ResponseOutbox`. The schedule operation
 guarantees this final handoff even during shutdown, preserving failures and unknown outcomes. No separate
 result record or hand-written completion callback owns the Response. The RenderThread publishes IPC replies.
-Each asynchronous Command, including SubmitFrame, still has stdexec's operation-state allocation. Allocation-free
+Each asynchronous Command, including RequestRenderJob, still has stdexec's operation-state allocation. Allocation-free
 steady recording is a narrower claim than allocation-free Client-to-Server frame submission.
 The service loop adopts ready CPU results before dispatch, runs continuations made ready by GPU completion/write
 admission before frame preparation, then delivers terminals produced by the frame. These three explicit safe points
@@ -154,9 +196,9 @@ also remain active while the Command Scope drains. GPU polling itself does not d
 open until accepted operations, publisher tails and required cleanup have settled.
 Outbox service counts settled records, including replies discarded for closed destinations; it is not a delivery
 acknowledgement. The wakeable idle revisit remains bounded because one IPC receive examines only part of the Links.
-The CommandRegistry owns one Command directory, stable Handler objects and one selected binding index per
-Command. External installation validates its entries before publishing. Framework handler selection affects future framework dispatch. Capability requests use their exact bound method;
-an operation already started never changes its Handler.
+The CommandRegistry owns the command directory and installed Handler objects. A framework command has
+one concrete binding. Resource commands use their ResourceInstanceId, and Effect commands use their EffectId
+to select the binding qualified at Effect creation. An accepted operation retains the installed call it borrowed.
 
 Upload sources are borrowed. After successful submission, the Client keeps their addresses, extents and contents
 valid until Response, including failure or cancellation. Failed submission takes no borrow. Abandon or connection
@@ -229,13 +271,25 @@ implementation dependencies. Ordinary clients select capabilities and semantic p
 draws, compilation lowers them, and execution records them. No Feature build callback or graph analysis runs in a
 stable frame. Cooked shader reflection remains the source of parameter layouts.
 
-`GraphCompiler::compile` consumes the immutable graph and its analysis, without a Storage registry or Feature
-factory. `ShaderBindingPlan` determines target binding placement, PipelineLayout and Descriptor writes together.
-Private descriptor arrays retain their actual type/count/stages; the shared image/sampler table always uses its
-complete allocation shape. Ordinary sampler inputs are separate dense graph-local input slots: supply borrowed
-samplers through `RenderGraphInstance::bindSampler` before initialization. They do not create image hazards.
+`GraphCompiler::compile(session, cpu, graph, analysis, ...)` is the sole asynchronous device entry. It returns
+only a complete candidate: target/layout selection, shared cached programs, typed PassEncoding, and
+Barrier/Submission/Physical/Conditional/Rendering plans are ready together. Its CPU work and native pipeline
+creation return to the caller's owner scheduler before cache publication. There is no public second
+`RenderPlan::preparePrograms` step and no built-in/custom execution switch.
 
-The Effect keeps Storage requirements and cold Feature creation data. Attach resolves those inputs and creates
+Every logical Pass has one interface, rendering scope and queue declaration. Raster/Compute/Transfer values remain
+convenience frontends for resource-version normalization, then call the same `PassWork::create<Operation>` mechanism
+as external authors. Shaderless typed storage views and operation-specific native access facts also flow through
+that common declaration/compile boundary. Analysis and binding planning never recover an operation type from Work.
+
+The compiler supplies `PassCompileContext::pipeline` as a borrowed pipeline from DeviceSession's sole
+`CompiledPrograms` cache; a State must not destroy it. Graphics authors declare their GraphicsState explicitly,
+including depth behavior. MANAGED/EXCLUSIVE recording and binding invalidation remain PassEncoding contracts.
+Shader reflection determines target binding placement, layouts and descriptor writes. Image and sampler bindings
+remain separate on both SPIR-V and DXIL. Samplers are dense graph-local inputs bound before initialization and do
+not create artificial image hazards. Graph construction never creates a native pipeline.
+
+The Effect keeps Storage requirements and cold Feature creation data. Start or Rebind resolves those inputs and creates
 professional bindings before initializing the `RenderGraphInstance`. The instance allocates graph resources and
 descriptors per existing FIF slot; it neither discovers Storage nor runs factories. Standalone project GPU consumers
 can bind physical inputs directly without creating a Registry or Server.
@@ -261,7 +315,7 @@ The default cold allocation strategy reuses identical transient objects, then al
 the original submission dependencies and physical Queue FIFO prove all earlier uses precede all later uses.
 Imported resources, History, exports, conditional resources, initial contents and opaque shared tables are excluded.
 Project callers can explicitly select independent allocation or object reuse without Memory aliasing.
-Attach resolves actual NRI memory requirements. Dedicated allocations, incompatible memory types and activation
+Start resolves actual NRI memory requirements. Dedicated allocations, incompatible memory types and activation
 inside a merged rendering scope remain separate. Aliased members share offset zero within one resource kind;
 this is not a general mixed Buffer/Texture heap packer. No dependency or CPU wait is added to make reuse possible.
 
@@ -270,7 +324,7 @@ before the new object's layout/access transitions. Cleanup releases descriptors,
 exactly once through the existing Session cleanup scope. Plan diagnostics report logical-to-physical mappings;
 instance resource diagnostics report actual Memory groups, requested bytes and placement rejection reasons.
 
-FrameExecution advances a frozen submission window across Queue capacity limits. Each accepted batch records its
+SubmissionOperation advances an ordered, frozen submission window across Queue capacity limits. Each accepted batch records its
 actual queue serial; dependencies wait for that producer, never an unrelated later submission. Compatible ready
 intervals from multiple instances share a submit. Shared imported reads remain independent; overlapping writes
 preserve instance order. NRI concurrent graph resources use semaphore memory dependencies and consumer-side
@@ -295,7 +349,8 @@ Preparation-copy completion and complete-instance publication are separate. Acce
 upload Senders before the graph finishes submitting. History publishes only after the instance's required batches
 are accepted; partial failure stops that instance until replacement. FIF reuse waits for every accepted physical
 queue. Root parameters, viewport, conditions and History inputs stay fixed throughout a suspended CPU window.
-Destroy/Detach/Resize of an instance still in that window returns busy. Professional physical release also returns
+Remove and Resize return busy while an execution is borrowed. Stop closes future admission while the admitted
+execution settles. Professional physical release also returns
 busy while such a window exists; it does not destroy objects referenced by future batches. Standalone callers must
 finish or cancel that window before destroying its borrowed inputs. These checks end at CPU submission completion,
 not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope_.
@@ -304,7 +359,7 @@ not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope
 including inherited mip ranges. Distance 1 is supported. Image initial values are explicit; Buffer history currently
 starts at zero and requires a multiple-of-four byte size. The instance owns F+1 physical slots, chooses a free write
 slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
-does not publish a sample. Descriptor views are created at Attach, not on each rotation. Resize replaces only
+does not publish a sample. Descriptor views are created at Start, not on each rotation. Resize replaces only
 History banks whose physical extent changed; other banks retain their allocation and invalidate their samples.
 `InvalidateHistory` invalidates the selected attachment histories at the next preparation boundary.
 An individual Previous read can name a compatible non-History resource as its first-sample fallback.
@@ -328,7 +383,7 @@ checks the replied epoch so an older queued frame cannot resume resized output. 
 physical output remains available, including an unavailable SwapChain after failed replacement.
 
 `declareCondition` declares a dense Boolean input; `PassCondition` selects that input or History validity.
-Attachment conditions are zero/one bytes and are sampled once during preparation. Conditional writes require
+Job conditions are zero/one bytes and are sampled once during preparation. Conditional writes require
 an available predecessor fallback. Consecutive passes sharing a predicate form one non-nested ConditionalRegion
 and sample it once. Both paths record the same compiled transitions; the false path preserves predecessor content.
 Rendering groups may merge within a region but never across its boundary. There are no predicate callbacks or
@@ -347,13 +402,12 @@ execution counters.
 
 DeviceSession contains the device, immutable capability facts, unique physical Queue collection, shared
 DescriptorTable and `cleanup_scope_`. The selected backend's extension table is private to its implementation.
-ResourceUploader owns staging, upload batches, admitted resource write borrows and copy-acceptance callbacks.
-FrameExecution owns frame-slot rotation and preparation/submission phases; it opens the Uploader's write window
-only for the actual reusable slice. ResourceCreateContext contains DeviceSession, ResourceUploader, frame count,
-ResourceRegistry and the addressing choice; it contains no FrameExecution pointer or erased executor callback.
-Device, Scene and View each own a ResourceSet whose records directly contain StorageOwner. ResourceRegistry
-keeps the sole declaration directory and a non-owning generational index. Effect owns its compiled graph. Attachment owns the execution instance and borrows the Target's output. The Client settles uploads
-and detaches consumers before deleting Storage; arbitrary early deletion is not a cancellation API.
+ResourceUploader owns staging, upload batches and copy-acceptance callbacks. FrameProgress selects the next strict
+FIF slot and owns its accepted frontiers. Structural Resource commands borrow a reusable physical replica and
+return their accepted transfer frontiers to that slot. ResourceCreateContext supplies these device services to factories.
+Device, Scene and View own their ResourceSets. ResourceRegistry keeps the sole declaration directory and a
+non-owning generational index. Effect owns its logical graph. JobExecution owns the device plan and instance and
+borrows the Target output. The Client settles uploads and stops consuming Jobs before deleting their resources.
 
 DescriptorTable maintains independent image and sampler indices. Identical sampler descriptions reuse one
 device-lifetime sampler. Texture references carry both indices and explicit flags; the material sampling code
@@ -392,14 +446,14 @@ Failed preparation or submission retains dirty revisions. Large stable sources a
 bounded transient projections use `stageInlineBuffer` to freeze their scratch bytes before the callback returns.
 A fully prepared replacement waits for actual acceptance before publishing its binding. This can precede graph
 recording, but never splits the replacement to compensate for insufficient staging. Descriptor publication and dirty
-adoption stay on the control owner. FrameExecution owns frame command resources;
+adoption stay on the control owner. The Uploader owns the copy command windows;
 ResourceUploader owns its independent per-physical-queue upload command windows and StagingArena. Queue owns neither.
 The host settles accepted GPU use before destroying either command owner; destruction checks this contract and never
 hides an outstanding use with a wait.
 
-The Runtime rebuilds its non-owning Storage preparation list when Attachment membership or RenderGraphInstance identity
+The Server rebuilds its non-owning Storage preparation list when running Jobs or GraphInstance identities
 changes. Project GPU consumers collect the actual `StorageFrameUse` borrows at those changes and supply their span
-to `FrameExecution::render`; each entry names its storage and `StorageBindingOps`. Preparation callbacks are synchronous:
+to the connected FrameOperation; each entry names its storage and `StorageBindingOps`. Preparation callbacks are synchronous:
 they do not submit, suspend or dispatch completion callbacks. Stable frames neither rebuild this list nor sort
 Storage relationships.
 Qualified entries can supply their existing ResourceInstanceId and a borrowed preparation revision. Each FIF slice then
@@ -418,10 +472,10 @@ One `BindingState` belongs to each actual CommandBuffer recording, including mer
 physical descriptor sets can be retained across Passes; a new Layout/BindPoint, clear helper or CommandBuffer
 invalidates that cache. Logical vertex-resource indices remain local to an instance and are not shared by this cache.
 
-When GPU work prevents progress, the loop first waits on the conditions preventing the next frame slot's reuse,
-then rotates other in-flight physical Queues. IPC, ready work and stop are checked between waits. The default
-`gpu_wait_ns` remains 1 ms; it bounds the requested GPU wait, not end-to-end Command latency. Fully idle operation
-uses the existing wakeable IPC wait.
+The Server runs bounded IPC and ManualContext passes around GPU completion, retirement, ready Jobs and
+uploads. When no work can advance, IPC, continuations and stop wake the same retained notification. The
+default `gpu_wait_ns` of 1 ms bounds the idle deadline for polling native GPU completion. The ManualContext
+budget counts adopted nodes. Each continuation is responsible for returning promptly.
 
 Buffers and ordinary sampled textures use the backend's concurrent sharing across discovered
 queue families; frame-local attachments use exclusive sharing. Execution dependencies and access
@@ -459,8 +513,8 @@ observed only by SubmissionQueue; a frontier proves neither CPU borrow completio
 The private `FrameProgress` leaf acquires only `frame_index % frames_in_flight`. A busy next slot applies backpressure
 without consuming an index or selecting another slot. Its embedded Round borrow spans Prepare through Server adoption
 of native results, independent of Record worker count. Accepted submission prefixes remain in the slot after failure.
-The later FrameOperation/DeviceEntry composition must embed and retain that Round; the existing FrameExecution still
-serves the current Attachment lifecycle. No second frame pool or GPU completion engine is introduced.
+DeviceEntry owns FrameProgress and recyclable workspace. The connected FrameOperation holds the Round and joins parallel
+Record work before SubmissionOperation uses the native queue.
 
 ## Complete Resource preparation contracts
 
@@ -489,37 +543,29 @@ These contracts are compiled leaves for the later Uploader/FrameOperation and pr
 Instance/Light/Material dirty-window callbacks remain the sole active path until that migration replaces them; the new
 leaves are not attached as a second dirty/accepted authority. Large Mesh/Texture upload tasks keep their multi-window path.
 
-## Output identity and swapchain flight contracts
+## Output identity and swapchain flights
 
-`JobOutput` stores only Target identity, physical image index, replacement epoch and publication frame. It owns no
-Image/View. `OutputImage` is metadata for a Target's existing physical image entry: one content stamp and the accepted
-GPU uses of every reader and writer. Identity comparison includes the replacement epoch, so native pointer reuse after
-Resize cannot revive an old output. A write attempt never reuses a previous frame stamp, including after failure.
+The Server stores Offscreen and Swapchain Targets as values. Each Target reserves its writer before asynchronous
+attachment compilation and releases that reservation on the same operation's return. An existing writer's detach
+only releases its own identity. Target operations check the writer and in-flight reads before changing the binding.
 
-`OutputWrite::reserve` selects the physical destination before waiting for existing CPU readers and GPU uses to drain.
-This reservation blocks new latest-output readers without invalidating the old pixels. Cancelling it reopens reads;
-starting the actual write invalidates the old stamp. Planned consumers may hold a CPU borrow during producer recording,
-but cannot accept their submission until the producer's required submissions have been adopted and published. A failed
-write retains its accepted prefix in the image's frontiers and leaves its content unpublished. Physical entries may
-move only while no CPU read/write operation borrows them; moving transfers the metadata without owning native objects.
+Offscreen owns the image, its views and the physical last-use frontiers. Same-frame consumers use graph submission
+dependencies. Consumers of a paused producer resolve the last JobOutput by Target generation, epoch, image index
+and content revision. They wait for its writer, and their accepted reads join its reuse frontier. Accepting a write
+invalidates that image's old revision. Publication requires all producing submissions to be accepted. Preparation-only
+submissions and disabled passes leave the previous publication intact. Target image dependencies derive from the
+actual consumer bindings when needed.
 
-`SwapchainFlight` associates one Target-owned Acquire, Submit, Present and retirement path. Each real connected native
-operation embeds a stable `Operation` node through Server delivery. No Job or frame slot is needed for pre-Run Acquire:
-a successful late result becomes READY for the same Target's next eligible writer. NOT_READY publishes no acquired
-index; a Present not yet enqueued retains its image/signal association for retry. Failed or unknown submissions require
-retirement, not replay. Present acceptance and GPU completion never authorize native WSI object destruction; only the
-backend retirement result settles the flight. Destroying an unsettled flight or live native operation is fatal in all
-build configurations.
-
-These private leaves are compiled control contracts, not yet connected to the native Target implementation. Existing
-SurfaceTarget presentation/retirement and Attachment consumer relations remain the active runtime path until Target
-composition replaces them together. No second live Target table, image owner or last-valid manager is installed.
+SwapchainTarget owns a single flight. Acquire and Present run on NativeExecution and return to the Server. A READY
+image can be acquired before a FIF slot and kept through writer replacement. NOT_READY leaves the image index and
+semaphore association unchanged. Queue acceptance of the acquire wait protects reuse of that acquire semaphore.
+The Target settles native borrows before replacement. Accepted GPU uses and backend presentation retirement
+protect destruction, including release of any acquired image whose wait was never submitted.
 
 ## Job control contracts
 
-`JobCommands.hpp` declares creation, start, stop, removal, dependency/cadence changes, exact execution requests
-and Effect rebinding. These values are not yet registered Server handlers; the current Attachment API remains the
-runtime entry point until Job composition supplies its actual owners and execution handlers.
+`JobCommands.hpp` exposes creation, start, stop, removal, dependency and cadence changes, exact execution
+requests and Effect rebinding. `RenderServer` routes these commands to the Job and its current execution.
 
 The private `JobControl` leaf borrows stable Start, Run and Request nodes owned by connected operations.
 Stop closes admission and cancels an unadmitted request, while an admitted Run retains its exact request until
@@ -540,10 +586,17 @@ both. Start composition must call the same sorter before publishing admission. N
 
 ## Build
 
-Use the existing Render bootstrap or the product configuration. Build `all -j 4 -- -k 0`; after configuration changes
-the second build must report no work. The formal sample uses the installed public surface. The explicit output
-copy diagnostic uses project GPU contracts and is not a production Readback Command. Whole-product, platform and
-performance qualification remain separate from successful compilation or an individual sample.
+Use `cmake/render-v2-bootstrap` to configure Render and its source dependencies independently of Engine/Editor
+products. Build `all -j 4 -- -k 0`, install to a fresh prefix, and use `cmake/installed-consumers/render-extension`
+to check that prefix with SDK-only consumers. The bootstrap option `LUX_RENDER_BUILD_PROBES` adds the Render
+and Material test targets, including GPU output readback. Build `editor/ui/render` separately against the installed
+Render SDK and ImGui fork.
+
+Engine/Editor product integration still needs to migrate old frame submission to `UpdateFrameData` and
+`RequestRenderJob`, model attachment lifetimes as Jobs and Targets, route commands by Resource/Effect identity,
+and use the independent UI extension for capture and snapshot submission. The old Engine material toolchain
+requires a separate migration. Centralized transforms, cross-channel ordering for overlapping writes, capacity
+shrinking and advanced history remain deferred.
 
 
 ## Deferred material composition
@@ -552,9 +605,11 @@ performance qualification remain separate from successful compilation or an indi
 GBuffer supports Unlit and metallic-roughness PBR; Shadow computes only AlphaMask coverage. Unrequested uses are not
 compiled, and unsupported Forward lighting/Toon requests fail. Lighting and shadow-map sampling belong to features.
 `MaterialProgramSet` owns the selected fragment uses, one reflected material record, parameter defaults and raster
-state. Shader ABI 4 removes implicit mesh transition varyings; re-cook older material assets. Render consumes
-compiled metadata; it does not recompute the material record from a parameter count. The shared shader build inputs live in
-`modules/function/material/shaders`; the Material compiler remains a tool/test dependency, not a Render dependency.
+state. The Material compiler emits Slang directly from author nodes and uses the shared shader compiler to
+produce SPIR-V and DXIL with per-target reflection. Retain author MaterialSource assets and recook from them.
+The retired v10 IR format cannot be read as a current material program. Preserve IR-only originals and use a
+fixed older tool to export what can be recovered. The shared shader build inputs live in
+`modules/function/material/shaders`. The Material compiler is a tool and test dependency.
 
 If none of the requested uses reads a material record, the Cooked runtime parameter/texture lists are empty.
 The author graph retains its slots; compiling another purpose can consume them later. Storage never invents
@@ -565,16 +620,15 @@ Connect the GBuffer's `albedo_metallic`, `normal_roughness`, `emissive_ao` and `
 then its `hdr_color` to Tonemap. Port encoding identities supplement size/format matching: two equal-format images
 with different channel meanings cannot be interchanged. GBuffer is linear RGBA8 + RGBA16F + RGBA16F and forward-Z D32.
 
-`GBufferFeatureConfig::groups` holds each mesh/material Draw description. Position, UV, world normal and tangent
+GBuffer receives the draw groups and visibility streams from MeshVisibility. Position, UV, world normal and tangent
 requirements come from the chosen Cooked fragment's stage inputs. Lit geometry supplies normals; normal maps also
 require a tangent including handedness. Nonuniform and mirrored transforms use inverse-transpose normals and
 orthogonalized linear-transform tangents. Double-sided state and explicit front winding belong to the group/material.
 AlphaMask uses the same Cooked coverage in GBuffer and Shadow; transparent BLEND is rejected by this path.
 
-Each feature's `input_layout` describes the application's attachment parameter block. When composing them, supply
-one common block layout to all features; each pass selects only its own named fields. Mesh consumes view/projection,
-lighting consumes inverse view-projection, camera position, normalized viewport, background and explicit environment,
-and Tonemap consumes exposure in EV stops. Runtime and View do not own a Camera or infer these values.
+GBuffer, main-view culling, lighting and shadow projection read the same View snapshot. `UpdateViewCamera` updates that
+View through a semantic `CameraInput`, and Prepare applies the new revision. Tonemap reads exposure in EV from the
+Effect. `makeDeferredRenderEffect` connects these Features for the four Shadow and Clustered combinations.
 
 `LightResource` supplies Scene-local directional, finite-range point and spot arrays. Client Commands
 borrow unique input records through Response and return stable LightIds. Dense GPU arrays keep a GPU-format replica
@@ -590,21 +644,20 @@ explicitly supplied environment term. Tonemap applies ACES and an explicit linea
 The private shadow-map, visibility and mesh-shadow Features compose the selected lit-scene implementation.
 None installs or calls another Feature. Their common inputs are plain geometry, light and resource-port contracts:
 
-- ShadowMap contributes zero raster passes. Its Attachment data calculates explicit directional cascades, six point
+- ShadowMap contributes zero raster passes. Its GraphInstance data calculates explicit directional cascades, six point
   views or one spot view, plus dense light-to-slice ranges. It supplies `views`, `slices`, `light_ranges`, `raster_states`
   and the same `directional_lights`, `point_lights`, `spot_lights`, `light_counts` snapshot consumed by lighting.
 - MeshVisibility reads `views` and the selected instance/geometry tables. Graph Reset/Cull/Compact passes produce
-  `gN.visible`, `gN.commands` and `gN.counts`; the CPU never generates final visible counts. Candidate capacity is an
-  explicit compiled workload limit; overflow fails preparation before drawing instead of silently dropping instances.
-- MeshShadow reads `views`, `raster_states` and each group's visible/command/count ports (`gN.members` is its visible
-  input). It alone declares and writes `depth`. Shadow-purpose materials provide opaque/AlphaMask coverage.
+  the visible members and indexed indirect commands. Preparation checks the workload against device capacity.
+- MeshShadow reads `views`, `raster_states` and the mesh draw input ports. It declares and writes `depth`.
+  Shadow-purpose materials provide opaque/AlphaMask coverage.
 - Set `DeferredLightingFeatureConfig::shadows` and connect the four light ports plus `shadow_views`, `shadow_slices`,
-  `shadow_ranges` and `shadow_depth`. Its immutable comparison sampler is installed through the ordinary Attach path.
+  `shadow_ranges` and `shadow_depth`. Its immutable comparison sampler is installed through the ordinary Job start path.
   Geometry groups and view counts must agree across the explicit connections; there is no sibling-Feature lookup.
 
 `ShadowMapShape` selects equal-resolution 2D-array slices, one layer per view. It never reduces quality or drops lights
 to fit a hidden atlas budget. Cascades use absolute camera-view distances; their last distance explicitly ends shadow
-coverage. `ShadowCamera` is supplied at `camera_offset` in the attachment parameter block. Runtime owns no Camera.
+coverage. Projection reads the inverse view-projection and camera bounds from the frozen View snapshot.
 The projection uses forward Z in [0,1] and the selected positive-height viewport; sampling uses the same Y convention.
 Raster winding is declared in framebuffer coordinates, including any mirrored instance group.
 
@@ -618,7 +671,7 @@ missing bounds mean conservative visibility. Transformed AABB support handles mi
 Preparation resolves multiple outputs in port order, copies only changed projection data into the reusable FIF slice,
 and returns before recording begins. Graph passes perform GPU culling and rendering, with declared barriers and queue
 dependencies. Raster state is a prepared parameter input; the Executor applies its viewport, scissor and depth bias
-without knowing shadows. Every Attachment/FIF slice has independent writable shadow images. Unchanged CPU projections
+without knowing shadows. Every GraphInstance/FIF slice has independent writable shadow images. Unchanged CPU projections
 still redraw current depth; a cache hit is not a proof of valid GPU contents. Physical release uses the existing single
 Session cleanup scope. Clustered lighting composes through the ports described below. EVSM, HZB occlusion,
 deformation bounds and VSM/Nanite remain separate capabilities.
@@ -631,8 +684,8 @@ AlphaMask coverage. These output probes do not add a production Readback command
 
 The private `ClusteredLightingFeature` contributes Reset/Build/Count/Scan/Fill graph work;
 it does not call DeferredLighting, ShadowMap or GBuffer. `ClusterGrid` declares XYZ cells, linear/logarithmic depth
-slices and an explicit index capacity. `ClusteredLightingParameters` supplies the finite forward-Z inverse projection,
-camera position/near distance and unit forward/far distance through the attachment parameter block.
+slices and an explicit index capacity. Build reads the finite forward-Z inverse projection, camera position and
+near/far distances from the same View snapshot used by shading.
 
 With `external_lights=false`, ClusteredLighting resolves its Scene `DirectLighting` storage and exposes the four light
 ports. With `external_lights=true`, connect the same light ports supplied to shading and shadow projection. Connect
@@ -652,8 +705,8 @@ There is no CPU readback/wait for this decision. Status can be inspected with an
 Buffers and their barriers, queue dependencies, FIF instances and cleanup remain ordinary Graph resources.
 
 The initial implementation rebuilds transient bounds/lists each execution. Count/Fill cost is proportional to cells
-times finite lights, Scan to cells, and normal shading to the selected list. Reset initializes the declared index
-capacity. This is not a claim of sparse construction, cached GPU bounds or a measured speedup; specialized performance
+times finite lights, Scan to cells, and normal shading to the selected list. Reset clears the status buffer;
+Fill writes the range determined by Scan. Specialized performance
 and any larger-grid scan/range optimization require equivalent-workload evidence.
 
 `render_clustered_scene` compares actual pre-Tonemap RGBA16F pixels, copies one coherent frame of cluster data for an
@@ -669,14 +722,10 @@ it is not a filter for just that MaterialId. A group selects its Mesh/submesh an
 table. Each instance's GPU material index selects its own parameters. Configure one group for that Mesh/submesh/table,
 even when many MaterialIds share it. Listing those materials as separate groups repeats the same draws.
 
-Set `GBufferFeatureConfig::visible_capacity` to the capacity of the connected visibility producer. Connect its
-`gN.visible/commands/counts` outputs to GBuffer's `groupN.members/commands/counts` inputs. GBuffer does not instantiate
-or query another Feature. With capacity zero it retains the all-candidate reference path.
-
-`MeshVisibilityFeatureConfig::view_parameters` optionally supplies the Attachment parameter layout containing
-`view` and `projection`. In that mode one Compute pass produces the geometric view and six homogeneous clip planes;
-each Attachment/FIF slot has its own ordinary Graph buffers. Without this layout, the composition connects the
-`views` input explicitly, as for shadow slices. No Camera owner, CPU readback or extra synchronization service exists.
+Connect MeshVisibility's group, instance and visibility ports to GBuffer. Setting `frustum_culling` to false keeps
+the all-candidate reference path. With `camera_view` enabled, a Compute pass derives the geometric view and clip
+planes from View. For shadows, the composition connects the projected `views` input. Each GraphInstance owns its
+own FIF buffers.
 
 Visible members, commands and counts contain two streams per view: positive transform determinant, then negative.
 Raster Features use the corresponding front-face state, including for double-sided material normal orientation.
@@ -723,7 +772,7 @@ auto uploaded = co_await client.request<TextureCommands::Upload>(
 ```
 
 `QueryResource` never creates an instance. A Scene/View query can resolve a Resource in its actual
-ancestor domain; it cannot select an unspecified View or an Attachment. Existing item IDs contain the
+ancestor domain. Lookups of View resources require a View identity. Existing item IDs contain the
 parent ResourceInstanceId and local generation. Upload/create requests use resource_id, while item
 updates and releases use the complete item ID; neither repeats an Effect implementation or Scene route.
 The request source remains borrowed through the terminal response. A failed execution candidate does
@@ -732,7 +781,7 @@ not delete a Resource that has already been published into its domain.
 Creation configuration is registered with the Resource, independent of Effect parameters. A non-void creation config
 must be installed through `registerResource` before a capability reuses that declaration. Query and GetOrCreate
 share declaration/domain/device qualification; Query never constructs. Cold graph compilation resolves names to
-ResourceTypeId requirements. Attach reuses that same creation path and retains no extra Resource owner. A failed
+ResourceTypeId requirements. Start reuses that same creation path and retains no extra Resource owner. A failed
 attachment candidate does not remove already published resources. Preparation deduplicates ResourceInstanceId.
 
 Different declarations can share the exact StorageMeta and Factory while owning separate instances and Command
@@ -743,7 +792,7 @@ through terminal delivery; Scene/View removal returns Busy while such a borrow e
 before destruction, and dense record moves repair the index. References are allowed only within the same actual
 owning domain or its real ancestors on the same device.
 
-The remaining Attachment/FrameExecution lifecycle continues to serve its existing execution responsibilities.
+JobExecution supplies the frozen instances selected for the current FrameOperation.
 
 ## Native execution and return delivery
 
@@ -758,11 +807,11 @@ runs on the CPU pool; NRI pipeline creation runs on the native worker. Native va
 normalized before delivery to the originating control scheduler. Program-cache publication and business-state changes
 happen after that return. Installed command/frame dispatch contracts carry only the real Server delivery scheduler.
 
-Shutdown settles admitted scopes while Server delivery remains open, closes and joins the native host, then destroys
-native dependencies. Joining includes callback-stack and publisher tails, even when the logical operation has already
-reported its terminal. Closed native scheduling reports a structured error on the starting thread; rejecting required
-return delivery is a fatal host-lifetime violation. The wakeup storage outlives its Context and worker. Context allocation
-capacity is a hint; actual Frame, Job, Uploader and Queue admission limits remain their owners' responsibility.
+Shutdown closes admission and keeps Server delivery open through accepted command, frame, transfer and WSI returns.
+It waits for both Contexts to become idle, including callback-stack and publisher tails, then settles the GPU
+frontiers. The device domain releases Jobs, Targets, Resources and DeviceSession in dependency order. Target retirement
+also settles the window borrow before `run()` returns. DeviceSession cleanup finishes before the NativeExecution worker
+closes and joins. Context allocation capacity is a hint. Frame, Job, Uploader and Queue owners set admission limits.
 
 Queue submission freezes its descriptors in the connected task and permits one unconfirmed call per physical queue.
 Only successful native return advances the submitted frontier. Known rejection preserves earlier accepted work;
@@ -798,13 +847,11 @@ D3D12 requires Shader Model 6.6 and loads the deployed Agility SDK beside the Re
 It uses the existing contiguous instance-buffer path, with per-draw member offsets when
 first-instance semantics are unavailable. Vulkan's optional physical-pointer paged variants
 remain SPIR-V specializations; requesting buffer device addresses on D3D12 returns unsupported.
-Both backends retain the same ordinary mesh, shadow, lighting, postprocess and UI features.
+Both backends retain the same ordinary mesh, shadow, lighting and postprocess features.
 This backend integration does not establish WSI, rendering-output or performance qualification.
 
-ImGui is pinned to fork commit `ad75bbcb15ba47f921dca082b1377cca9907ae98`
-(1.91.9 WIP, 16-bit ImDrawIdx, 64-bit ImTextureID). Lux owns UI GPU uploads and
-encoding; NRIImgui remains disabled. A later UI migration must replace that owner,
-not add a second active upload path.
+The [Editor UI extension](../../../editor/ui/render/README.md) owns the ImGui dependency and its shaders.
+Render provides the same generic indexed stream, staging and descriptor ownership to all extensions.
 
 ## Mesh and Texture Resources
 
@@ -854,7 +901,7 @@ Engine's decision to derive a new purpose remains separate integration work.
 `resources/instance/Resource.hpp` and `resources/lighting/Resource.hpp` declare Scene-owned data. Their implementations
 and static command/frame adapters live in `resource/instance` and `resource/lighting`. Use
 `FrameData::appendData<InstanceResource, TransformUpdate>()`, the `MeshInstanceUpdate` column, and
-`FrameData::appendData<LightResource, DirectLightUpdate>()`. Targets resolve during Attachment construction.
+`FrameData::appendData<LightResource, DirectLightUpdate>()`. Targets resolve during Job assembly.
 Standalone `InstanceCommands::Update` and `LightingCommands::Update` use the same algorithms without an Effect.
 Empty spans mean no update. Dynamic entries are checked before mutation; a multi-Resource packet is not a rollback
 transaction. Mesh/material associations, regrouping observers and buffer-growth subscriptions remain
@@ -865,16 +912,22 @@ ResourceInstanceId; preparation tracks the source revision separately for each p
 does not acknowledge dirty data. Accepted replacement buffers publish to all subscribers before subsequent use.
 There is no Job-owned copy of the Scene transform table or second dirty/accepted owner.
 
-Use `UpdateViewCamera` with a ViewRequest and CameraInput. Each View owns its camera and revision, including before any
-Effect is attached. Attachment creation and frame preparation project that View value into the selected shader
-regions; these are execution copies. Effect configurations retain algorithm parameters. CameraInput is no longer
-accepted as an attachment parameter update. Engine camera controls and the later Job/Effect control migration are
-separate work.
+Use `UpdateViewCamera` with a `ViewRequest` and `CameraInput`. Each View owns its camera and revision. Job assembly
+and frame preparation project that View value into the selected shader regions. Effect configurations retain algorithm
+parameters. Engine camera controls still need to adopt the View command.
 
-UI processing lives in `resource/ui`. `SubmitUiFrame` carries explicit borrowed vertex/index/command spans plus
-an optional RenderFrame column packet. It enters the same FrameSubmission control and holds all UI sources through
-terminal upload consumption. An explicit empty UI snapshot can clear draws; an empty Resource column cannot clear data.
-GPU staging and FIF reuse still follow Uploader/Queue frontiers. UI layout checks and target-specific padding remain.
+UI rendering belongs to the standalone `editor/ui/render` extension. Register it explicitly with `registerUi()`;
+its ordinary Feature recipe consumes a View-domain `UiResource`. `SubmitDrawData` copies a complete snapshot before
+replying, including vertices, indices, draw order and image identities. Empty snapshots replace prior geometry.
+Later executions of the UI Job reuse that snapshot; FrameData empty columns retain their no-update contract.
+The Render core owns the generic indexed stream buffers, staging and native encoding, with no ImGui dependency.
+Sampled Target identities participate in producer ordering, resize/removal and accepted GPU read lifetimes.
+
+Camera and exposure have separate authorities: `UpdateViewCamera` updates View bytes; `SetEffectParameters` updates
+shared Effect exposure in stops (negative values are valid). Feature recipes declare their parameter source, and
+Instance resolves the selected layout once before copying changed source bytes during preparation.
+`InstanceDataRecipe` belongs to the immutable Graph and is selected by Plan liveness; actual derived preparation
+objects belong to GraphInstance and are destroyed in reverse construction order before its native resources.
 
 ## CPU input columns
 
@@ -898,10 +951,10 @@ A second request cannot borrow the same in-flight slot. Sending or cancelling an
 Raw IPC callers must retain the sealed owner and call `release()` only after the actual response or host settlement.
 Element metadata and code remain loaded until the packet owner is destroyed.
 
-Obtain the live layout with `QueryFrameInputLayout(attachment)`, initialize two FrameData owners from it, fill one,
-seal it and send `RenderFrame{attachment, &packet}`. Reuse only the returned slot. Capacity changes do not affect the
-layout identity. Replacing the Attachment publishes a different identity; old layouts fail before applying anything.
-The current Attachment owns these cold bindings until JobExecution takes over the same responsibility.
+Obtain the live layout with `QueryRenderJobInputLayout`, create two FrameData owners from it, and reuse
+each one on its terminal reply. RenderClient admits at most two packet borrows per endpoint. Failed IPC
+publication releases any local borrow before returning the request. A stale layout fails before applying data.
+JobExecution holds the layout and its qualified bindings.
 
 ## Shared copy recording and preparation settlement
 
@@ -916,16 +969,14 @@ by the frame owner through `recordPreservingCopies`, including its existing sour
 Uploader continues to own staging pages and transfer command windows; GraphInstance owns graph command resources.
 Both submit through the existing SubmissionQueue and NativeExecution with the same accepted/rejected/unknown facts.
 
-Each physical frame owns a `Preparation`. Resource and Feature preparation receive it alongside the actual
-Uploader, and register replica settlement with `Preparation::onSubmitted`. Uploader first commits/cancels its
+The active round borrows the device’s reusable Preparation workspace. Resource and Feature preparation receive it
+alongside the Uploader, and register replica settlement with `Preparation::onSubmitted`. Uploader first commits/cancels its
 staging ranges; the frame owner then delivers the native result through `finishCallbacks`. Callbacks appended
 during delivery wait for a subsequent settlement. Reentrant settlement and destruction with pending callbacks
 are ownership errors. The existing frozen ResourcePreparation API still settles its snapshots explicitly.
 
-Write-window admission, source-byte credits, background-transfer gating and staging reservations remain in the
-Uploader while the active FrameExecution publishes the physical slice. These are live admission/lifetime facts,
-not another submission-result authority. No replacement owner currently takes over those gates. Standalone
-Mesh/Texture uploads still progress without a running Job; each accepted prefix keeps its real queue frontier,
+Uploader retains source-byte credits, staging reservations and transfer command windows. Independent Mesh and Texture
+uploads progress during recording and when no Job is ready. Each accepted prefix keeps its queue frontier.
 CPU sources end at their operation terminal, and staging pages wait for their GPU completion callbacks.
 
 ## Device-independent Feature construction

@@ -5,6 +5,7 @@
 namespace lux::render::detail
 {
     class DeviceSession;
+    class FrameProgress;
     class ResourceUploader;
 } // namespace lux::render::detail
 
@@ -19,6 +20,6 @@ namespace lux::render
         detail::ResourceUploader* uploads;
         std::uint32_t frame_count;
         ResourceRegistry& resources;
-        bool paged_instances = false;
+        detail::FrameProgress* replica_progress = nullptr;
     };
 } // namespace lux::render

@@ -12,7 +12,7 @@ namespace lux::render
         ResourceInstanceId id,
         void* instance,
         CommandBindingLocation binding,
-        cxx::type_info implementation
+        cxx::basic_type_info implementation
     ) noexcept
         : registry_(&registry), id_(id), instance_(instance), binding_(binding), implementation_(implementation)
     {
@@ -54,7 +54,7 @@ namespace lux::render
     }
 
     RenderResult<ResourceCommandUse>
-    ResourceRegistry::acquireCommand(ResourceInstanceId id, CommandId command) noexcept
+    ResourceRegistry::acquireCommand(ResourceInstanceId id, CommandId command, bool exclusive) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || !entry->instance)
@@ -67,8 +67,14 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
+        const bool conflicting_command = entry->exclusive_command || (exclusive && entry->command_uses != 0);
+        if (conflicting_command)
+        {
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        }
         if (entry->command_uses == UINT32_MAX) std::terminate();
         ++entry->command_uses;
+        entry->exclusive_command = exclusive;
         return ResourceCommandUse{
             *this, id, entry->instance, *location, definition.factory.storage->implementation_type
         };
@@ -80,6 +86,12 @@ namespace lux::render
         return entry && entry->command_uses != 0;
     }
 
+    bool ResourceRegistry::hasExclusiveCommand(ResourceInstanceId id) const noexcept
+    {
+        const auto* entry = entries_.find(id);
+        return entry && entry->exclusive_command;
+    }
+
     bool ResourceRegistry::canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept
     {
         const auto* target = entries_.find(owner);
@@ -89,7 +101,7 @@ namespace lux::render
         {
             return false;
         }
-        if (target->storage_set->device_ != source->storage_set->device_)
+        if (&target->storage_set->device_ != &source->storage_set->device_)
         {
             return false;
         }
@@ -110,7 +122,10 @@ namespace lux::render
         {
             std::terminate();
         }
-        --entry->command_uses;
+        if (--entry->command_uses == 0)
+        {
+            entry->exclusive_command = false;
+        }
     }
 
     ResourceRegistry::~ResourceRegistry() noexcept
@@ -214,30 +229,13 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
-        if (auto valid = validateResourceRegistration(*factory.descriptor, factory); !valid)
+        if (auto valid = validateResourceRegistration(factory); !valid)
         {
             return cxx::unexpected(valid.error());
         }
-        const auto& type = *factory.descriptor;
-        const auto existing = typeId(type.type);
-        if (!existing.isNull())
+        if (!typeId(factory.descriptor->type).isNull())
         {
-            const auto& previous = *types_.find(existing);
-            if (auto valid = compatibleStorage(*previous.factory.descriptor, type); !valid)
-            {
-                return valid;
-            }
-            const bool is_command_mismatch = !std::ranges::equal(
-                previous.factory.commands,
-                factory.commands,
-                [](const auto& a, const auto& b) noexcept { return a.hasSameImplementation(b); }
-            );
-            const bool is_factory_mismatch = *previous.factory.storage != *factory.storage || is_command_mismatch ||
-                previous.factory.frame_call != factory.frame_call;
-            if (is_factory_mismatch)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
+            return cxx::unexpected(RenderError{kStorageMismatch});
         }
         return {};
     }
@@ -250,12 +248,10 @@ namespace lux::render
         {
             return valid;
         }
-        const auto existing = typeId(factory.descriptor->type);
         const bool is_missing_config = factory.storage->config_type.isValid() && !configuration;
         if (is_missing_config) return cxx::unexpected(RenderError{kStorageContract});
         const bool is_wrong_config_type = configuration && factory.storage->config_type != configuration.type();
-        const bool is_default_mismatch = !existing.isNull() && types_.find(existing)->configuration != configuration;
-        if (is_wrong_config_type || is_default_mismatch)
+        if (is_wrong_config_type)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
@@ -264,13 +260,7 @@ namespace lux::render
 
     ResourceTypeId ResourceRegistry::publishFactory(ResourceRegistration factory, ConfigValue configuration) noexcept
     {
-        const auto existing = typeId(factory.descriptor->type);
-        if (!existing.isNull())
-        {
-            return existing;
-        }
-        const auto id = types_.emplace(Type{{}, std::move(factory), std::move(configuration)});
-        types_.find(id)->id = id;
+        const auto id = types_.emplace(Type{std::move(factory), std::move(configuration)});
         types_by_name_.emplace(std::string(types_.find(id)->factory.descriptor->type.name()), id);
         return id;
     }
@@ -337,3 +327,24 @@ namespace lux::render
     }
 
 } // namespace lux::render
+
+#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
+
+namespace lux::render
+{
+    RenderResult<ResourceRegistry::SampledImage>
+    ResourceRegistry::sampledImage(SampledImageReference input, std::uint32_t slot) const noexcept
+    {
+        if (!input.texture.isNull() && input.target.isNull())
+        {
+            auto storage =
+                borrow<detail::SampledTexture2DStorage>(extension_detail::ResourceIdentity::parent(input.texture));
+            const auto* value = storage ? (*storage)->find(input.texture) : nullptr;
+            if (!value) return cxx::unexpected(RenderError{kStorageIdentity});
+            return SampledImage{&value->image(), value->gpuReference().image_index};
+        }
+        if (input.texture.isNull() && !input.target.isNull() && resolve_output_)
+            return resolve_output_(output_owner_, input.target, slot);
+        return cxx::unexpected(RenderError{kFrameContract});
+    }
+}

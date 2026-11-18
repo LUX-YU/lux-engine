@@ -23,9 +23,7 @@ namespace lux::render
         Describe describe_ports = nullptr;
         Build build = nullptr;
 
-        bool operator==(const FeatureGraphOps&) const noexcept = default;
-
-        template <class Feature, bool Paged = false> static constexpr FeatureGraphOps make() noexcept
+        template <class Feature> static constexpr FeatureGraphOps make() noexcept
         {
             return {
                 [](const void* config, std::string_view key, FeaturePorts& ports) noexcept
@@ -35,25 +33,12 @@ namespace lux::render
                 [](const void* config, std::string_view key, FeatureBuildContext& context) noexcept
                 {
                     const auto* typed = static_cast<const typename Feature::Config*>(config);
-                    if constexpr (requires { Feature::template build<Paged>(typed, key, context); })
-                        return Feature::template build<Paged>(typed, key, context);
-                    else
-                        return Feature::build(typed, key, context);
+                    return Feature::build(typed, key, context);
                 }
             };
         }
 
     };
-
-    namespace runtime_detail
-    {
-        template <class Feature> const FeatureGraphOps& featureGraphOps(bool paged) noexcept
-        {
-            static constexpr auto contiguous = FeatureGraphOps::make<Feature>();
-            static constexpr auto paged_ops = FeatureGraphOps::make<Feature, true>();
-            return paged ? paged_ops : contiguous;
-        }
-    }
 
     // Arguments: canonical feature index, resource/group index, related index.
     inline constexpr auto kFeatureContract = error::errorId("lux.render.feature.contract");

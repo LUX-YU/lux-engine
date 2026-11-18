@@ -56,6 +56,7 @@ namespace lux::render::detail
         };
         bool delivering_ = false;
         std::vector<std::pair<void*, Submitted>> receivers_;
+        std::vector<const ResourceBinding*> order_;
         std::vector<ResourceBinding> selected_;
         std::vector<ResourcePreparation> frozen_;
         std::size_t capacity_;

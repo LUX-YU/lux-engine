@@ -8,8 +8,8 @@
 ## 1. 先明确“渲染出画面”的边界
 
 当前 Render 能从资源、材质和 Effect 声明生成真正的 GPU 图像，支持主视图剔除、GBuffer、基础阴影、
-Clustered Lighting 和 Tonemap。当前生产输出包括 OffscreenTarget 纹理和 SurfaceTarget 的 Swapchain 呈现。
-两者由 Target 独占物理资源，Attachment/Instance 借用输出；Acquire 图像索引与 FIF 切片索引不同。
+Clustered Lighting 和 Tonemap。当前生产输出包括 OffscreenTarget 纹理和 SwapchainTarget 呈现。
+两种 Target 各自拥有物理资源，JobExecution 的 GraphInstance 借用输出。Acquire 图像索引与 FIF 切片索引独立。
 测试中的 Copy、映射和图片导出用于观察输出，不是生产 Readback Command。
 
 不能把以下四件事视为同一时刻：
@@ -19,7 +19,7 @@ Clustered Lighting 和 Tonemap。当前生产输出包括 OffscreenTarget 纹理
 | 上传 Response 成功 | 源 CPU 读取结束，必要 Copy/Acquire 已接纳，资源已发布且后续使用顺序成立 |
 | 图批次提交成功 | Native Queue 接纳了该批命令；GPU 可能尚未执行 |
 | Queue 完成前沿推进 | 该物理 Queue 对应提交已完成，可以解除相应复用/清理条件 |
-| 窗口显示图像 | SurfaceTarget 执行呈现；不能由 CPU 回复或队列接纳推断已经显示 |
+| 窗口显示图像 | SwapchainTarget 执行呈现，呈现有独立的完成条件 |
 
 本文中的 `detail::` 是 Render 项目内实现命名空间，不是另一个模块。Render 是一个库，目标为
 `lux::engine::function::render`；目录是职责分区，不能按目录理解为一串动态库调用。
@@ -34,9 +34,9 @@ flowchart TD
     Dispatch --> Upload[专业 Storage Sender / ResourceUploader]
     Dispatch --> Compile[CPU：Feature 装配与 GraphCompiler]
     Compile --> Adopt[RenderThread：采用 RenderEffect]
-    Adopt --> Attach[Attach：Storage 解析与 RenderGraphInstance]
-    Upload --> Attach
-    Attach --> Prepare[FrameExecution：Storage / Feature / Instance 准备]
+    Adopt --> Start[Start/Rebind：解析 Resource 并建立 JobExecution]
+    Upload --> Start
+    Start --> Prepare[FrameOperation：Resource 和 Instance 准备]
     Prepare --> Record[RenderExecutor：按 RenderPlan 录制]
     Record --> Queue[SubmissionQueue：合并提交与 GPU 依赖]
     Queue --> Target[OffscreenTarget 的当前 FIF 输出]
@@ -54,7 +54,7 @@ flowchart TD
 | 单 RenderThread | 请求派发、逻辑发布、帧准备、录制提交、完成回调 | 在依赖本线程推进的异步工作上阻塞 join |
 | GPU 物理 Queue | Copy、Compute、Raster、Queue 间等待 | 决定 Client 的业务关系 |
 
-`ExecutionRuntime` 是 CPU 执行资源；`RunLoop` 是由所属线程主动推进的就绪队列，**不创建线程池**。
+`ExecutionRuntime` 提供 CPU 执行资源。`ManualContext` 由所属线程主动推进回程节点。
 RenderThread 由应用启动并 join。Frame slot 是 GPU 数据复用单元，不是新的线程。
 
 ## 3. 装配与设备：先有真实依赖，再发布目录
@@ -70,7 +70,7 @@ ExecutionRuntime::create（应用已有）
     → Impl::initialize
       → DeviceSession::create → DeviceBackend::initialize
       → ResourceUploader::create（配置 uploads 时）
-      → FrameExecution::create（1～3 个实际帧槽）
+      → FrameProgress 和每槽提交工作区（1～3 个槽）
       → ResourceRegistry + Global ResourceSet
   → Impl::registerBuiltinFeatures
     → 私有 Storages / Commands tuple → 直接登记构造入口与调用入口
@@ -82,7 +82,7 @@ ExecutionRuntime::create（应用已有）
 
 | 类型 | 实际责任与所有权 | 关键源码 |
 |---|---|---|
-| `RenderServer` / `Impl` | 唯一运行对象；拥有目录、Scene/Target/Effect/Attachment、执行设施和回复出口 | `runtime/RenderServer{,Impl}.cpp` |
+| `RenderServer` / `Impl` | 唯一运行对象，拥有目录、Scene、Target、Effect、Job、执行设施和回复出口 | `runtime/RenderServer{,Impl}.cpp` |
 | `CommandRegistry` | Command 描述、支持绑定及当前选择；稳定 Handler 对象独占拥有，调用项借用它 | [CommandRegistry.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/CommandRegistry.hpp) |
 | `BuiltinFeatures` | 私有编译期类型清单；Feature 用 tuple 声明 Storage 和 Command 依赖，不持有实例 | `pinclude/.../features/BuiltinFeatures.hpp` |
 | `HandlerRecord` | 保存构造入口和唯一实例；登记时对象为空，激活后供 Command 借用 | `include/.../runtime/detail/HandlerRecord.hpp` |
@@ -101,7 +101,7 @@ ExecutionRuntime::create（应用已有）
 `run()` 创建当前选中的 Handler；首次切换到其他实现时在控制安全点创建。外部目录改动仅允许在启动前或完整停止清偿后进行；能力请求使用装配得到的准确方法，不按全局 active 重选。
 
 Feature 的 Storage 依赖与 Effect 的资源端口连接是两件事：前者登记实现，后者决定同一张图的数据依赖。
-GetOrCreateResource 或 Attach 在实际作用域准备 Resource；ResourceSet 唯一拥有实例。构建函数依据已启用的分页路径冷态选定，
+GetOrCreateResource 或 Start 在实际作用域准备 Resource；ResourceSet 唯一拥有实例。构建函数依据已启用的分页路径冷态选定，
 编译任务借用稳定 FeatureEntry，热帧不重选。新增 Handler 不抢占当前绑定，旧实例保留到异步工作清偿之后。
 
 Command、配置和绑定选择的 C++ 身份直接使用 `cxx::type_info`。Token 比较完整类型名及 hash，
@@ -134,8 +134,8 @@ Client 才消费真实回复并完成 Receiver。完成前先移除 correlation�
 不增加一个 exec::task 转发层。Client 不自动深拷贝 span，也不隐式拥有借用的 System。
 运行中的 operation 由现有 stdexec 执行状态拥有，Engine 的对象任务清偿保证业务 Owner 存活。
 
-RenderFrameSubmission 单独保留 L+1 帧载体、领先帧数、帧回执与重同步。它借用 Client 发送 SubmitFrame，
-不承担通用命令关联。CPU 帧借用归还不等于 GPU 完成；真实 FIF 和 cleanup_scope_ 保持原合同。
+Client 同时最多借出两份已封存的 FrameData。`UpdateFrameData` 的回执结束 CPU 输入借用，
+`RequestRenderJob` 的成功回执还确认该 Job 已被提交。物理 FIF 和资源退休由 GPU 队列前沿独立决定。
 
 关闭时先清偿 Scene、帧载体与资产用途，再停止并 join Server。Main 调用 `serverStopped()`，先交付
 已发布回复，再以不确定结果终结剩余请求；随后取消回复 CompletionWork、销毁 Client 与 Server。
@@ -153,7 +153,7 @@ Client RequestSender::start → IpcMessage → IpcRequester::trySend
 |---|---|---|
 | `IpcMessage` | 真实 C++ 对象构造、移动、析构和 SBO；不理解 Render | 消息转移；入队失败保留原消息 |
 | `CommandBinding` | 编译期约束 Handler；生成同步或异步调用 thunk | 冷绑定后按函数指针调用 |
-| `CommandDispatchContext` | 当前请求、来源路由、Outbox、Scope、RunLoop 的短期借用 | 仅派发使用 |
+| `CommandDispatchContext` | 当前请求、来源路由、Outbox、Scope、ManualContext scheduler 的短期借用 | 仅派发使用 |
 | `command_scope_` | `counting_scope + spawn` 管已接纳异步 Command 的 OperationState | Server 停服时请求停止并异步 join |
 | stdexec 组合 OperationState | 保存异步 Response、原路由和调度操作 | 由 counting_scope + spawn 管理，交付终态后结束 |
 | `ResponseOutbox` | 唯一回复出口；维持背压下的待发送值，不重跑 Handler | 发送、连接失效或关闭结算 |
@@ -176,8 +176,8 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 
 [ResourceSet](../../modules/function/render/sinclude/lux/engine/render/resource/ResourceSet.hpp) 独占实际 Storage；
 [ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/resource/ResourceRegistry.hpp) 拥有类型目录、
-生成式 ResourceInstanceId 和非拥有实例定位。Global ResourceSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
-普通客户端先 CreateEffect，随后以 EffectId、能力项序号和作用域调用公开 Command／帧数据；Attach 只返回关联身份。
+ResourceInstanceId 带代际，目录提供非拥有定位。DeviceEntry、Scene 和 View 各自拥有对应域的 ResourceSet。
+客户端先 CreateEffect 和 CreateRenderJob，再以 JobId 启动执行和查询帧输入布局。
 普通 Client 通过 QueryResource/GetOrCreateResource 取得 ResourceInstanceId；上传创建使用该实例身份，
 已有条目操作使用父 Resource 身份与本地代际。具体 Storage 和创建算法仍属于扩展及模块内部。
 
@@ -210,7 +210,7 @@ Client 管 Texture→Material→Instance 的业务顺序。无效 Texture 引用
 typed CommandHandler
   → render::upload / StorageTraits 或专业 Storage 的 create/update Sender
     → 准备候选 / 验证本批身份与 revision
-    → FrameExecution::whenWritable（需要动态 slice 时）
+    → FrameProgress::acquireReplica（结构性写入需要可复用副本时）
     → ResourceUploader::writeBuffers / writeImage
       → 有界 StagingArena；必要 CPU 工作使用已有 CpuScheduler
       → BatchSender/submitReadyTransfers；Copy 和必要 Acquire 批处理
@@ -270,7 +270,7 @@ Impl::createEffect
 ```
 
 编译 Worker 不查找 Server 的可变 Registry；采用失败/停止不发布候选 ID。请求独占配置，编译同步借用其内容；
-Effect 留下不可变计划和 Attach 所需数据，不需要实例化一个可以逐帧动态派发的 Feature 对象。
+Effect 留下不可变计划和 Start/Rebind 所需数据，不需要实例化一个可以逐帧动态派发的 Feature 对象。
 
 | 类型/算法 | 责任 | 源码 |
 |---|---|---|
@@ -297,16 +297,17 @@ Storage 解决已有专业数据的供给，**不是 Feature 间所有协作的�
 
 | Feature | 输出/责任 | 主要消费者 |
 |---|---|---|
-| `MeshVisibilityFeature` | 主视图或外部多视图的 Bounds→Cull→Compact→indirect/count | GBuffer、MeshShadow |
+| `MeshVisibilityFeature` | 从共享 View 快照或外部阴影视图执行 Reset、Cull 和 Compact，生成间接绘制参数 | GBuffer、MeshShadow |
 | `GBufferFeature` | 使用实例/几何/材质表，写 GBuffer 和 Depth | Cluster、DeferredLighting |
 | `ShadowMapFeature` | 阴影视图/投影和采样参数 Buffer；CPU 派生参数由 `ShadowProjectionBinding` 准备，不创建阴影深度图 | MeshVisibility、MeshShadow、DeferredLighting |
 | `MeshShadowFeature` | 按阴影视图录制 Mesh coverage 深度绘制 | 阴影图的后续读者 |
-| `ClusteredLightingFeature` | Depth/Light 输入→Cluster 灯索引及溢出信息 | DeferredLighting |
+| `ClusteredLightingFeature` | 从 View 快照构造分桶，生成光源索引及溢出信息 | DeferredLighting |
 | `DeferredLightingFeature` | 读取 GBuffer、光源、可选 Cluster/Shadow 端口，求值 HDR 光照 | Tonemap |
 | `TonemapFeature` | HDR→约定输出编码 | Target |
 | `HzbFeature` | Depth 降采样和可选 History 接缝 | 明确接线的遮挡消费者；不是所有场景默认开启 |
 
 阴影 Depth 图由 MeshShadowFeature 声明为 Graph 输出，实际物理存储由 RenderGraphInstance 的帧资源按计划分配。
+`ShadowProjectionBinding` 在 Prepare 读取同一份 View 快照，与主视图裁剪、GBuffer、Cluster 和 Deferred 共用相机来源。Tonemap 从 Effect 读取曝光。
 它不是某个永久 ShadowStorage 中的隐含全局资源。ShadowMapFeature 的名称容易让人误以为它拥有这张图，审查时应按上述实际职责理解。
 
 实现入口位于 [src/features](../../modules/function/render/src/features)，正式组合示例见
@@ -322,47 +323,35 @@ Light + GBuffer Depth → Clustered Lighting ───────────�
                                                      Deferred Lighting → Tonemap → Target
 ```
 
-主视图 GPU 剔除通过 GBuffer 的 `visible_capacity` 和显式端口接入；零容量是全候选参考路径。
+主视图通过显式的可见性端口接入 GBuffer。关闭视锥筛选时仍执行渲染资格和绕序检查，可作为对照路径。
 Visibility 将同一几何视图拆成正/负行列式两个 stream，Raster/Shadow 使用对应 front-face Pipeline；
 Transform 运行期变号不依赖 CPU 符号缓存。奇异变换不产生有效可见实例。
 
-`MeshInstanceDrawGroup::material_table_source` 选择 Cooked 程序表，不表示“这个组只画这个 MaterialId”。
-相同 Mesh/submesh/程序表组成一组，各实例使用自己的材质槽。按每个材质再建相同组会重复绘制。
-`RasterMeshDraws` 属于 Feature 派生准备数据；Storage 不创建 indirect 命令。最终 `RenderExecutor` 才调用 Native draw。
-其选择/变更处理见 [RasterMeshDraws.hpp](../../modules/function/render/pinclude/lux/engine/render/features/RasterMeshDraws.hpp)
-及同名源文件；`RasterMesh.cpp` 则负责冷态声明、Shader 选择和 Work 构造。
+`MeshInstanceDrawGroup::material_source` 提供已安装的程序表身份。相同 Mesh、submesh 和程序表组成一组，各实例使用自己的材质槽。
+多个视图借用 Scene 的 InstanceResource。各自的 GraphInstance 持有分组、可见结果和 FIF 绘制包。
+图中的 GPU Compute 写入可见结果和间接命令，`RasterMeshDraws` 在 Prepare 冻结绑定，录制阶段直接编码间接绘制。
+其选择/变更处理见 [RasterMeshDraws.hpp](../../modules/function/render/pinclude/lux/engine/render/features/mesh/RasterMeshDraws.hpp)
+及同名源文件。`features/mesh/RasterMesh.cpp` 提供几何端口、图 Pass 声明和材质 Shader 变体组合。
 
-## 8. Attach：把符号资源落实为真实输入
+## 8. Job：从逻辑配方到实际执行
 
-主要类型集中在 [runtime/Scene.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/Scene.hpp)。
-
-| 类型 | 拥有 | 借用/关系 |
-|---|---|---|
-| `RenderScene` | Scene ResourceSet、View 集合 | 非 Engine ECS Scene |
-| `RenderView` | View ResourceSet、AttachmentId 索引 | 没有通用 Camera 类型 |
-| `RenderEffect` | RenderPlan、原 Graph/Analysis、Storage 要求、冷绑定数据 | 可被多个 Attachment 使用 |
-| `RenderTarget` | OffscreenTarget、描述和 epoch | 当前只允许一个 Attachment 写入 |
-| `EffectAttachment` | Attachment ResourceSet、RenderGraphInstance、FeatureBinding、Storage 输入订阅节点 | Scene/View/Effect/Target ID |
-| `RenderGraphInstance` | 每 FIF FrameResources、Descriptor/参数/条件/History 与动态绑定 | 不可变 RenderPlan、输出 Target、外部专业输入 |
+[RenderJob.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/RenderJob.hpp) 记录 Scene、View、Effect 和运行资格。
+[JobExecution.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/JobExecution.hpp) 按构造次序拥有 RenderPlan 和
+RenderGraphInstance，以及 FrameLayout、紧凑的 Resource apply 记录和 Storage 订阅。设备、Scene 与 View 的 ResourceSet
+继续独立拥有各域资源。
 
 ```text
-Attach Request
-  → Impl::attachEffect：查身份/Target 兼容性
-  → prepareAttachment
-    → 从活图和 Feature 准备依赖求必要输入闭包
-    → 按 global/scene/view/attachment 分组 ResourceSet::getOrCreate
-    → StorageBindingOps::resolve → 普通 ResourceInput → Instance::setResource
-    → 创建 FeatureBinding（RasterMeshDraws/ShadowProjection 等实际派生数据）
-    → 安装 Sampler → RenderGraphInstance::initialize
-  → 完整候选采用 → 建立关联索引 → 返回 AttachmentId + Storage 对照
+CreateRenderJob → 校验 Scene/View/Effect，建立逻辑身份
+StartRenderJob / RebindRenderJobEffect
+  → 预留 Target writer，解析 ResourceTypeId 到实际域实例
+  → 在 View 所在设备编译 Plan、构造 Instance、绑定输入
+  → 在 Server 检查 Job 和 Target 预留仍有效，采用完整候选
+StopRenderJob → 关闭未来 Run，已接纳的 Run 保留执行借用
+RemoveRenderJob → 借用清偿后移除逻辑身份和关系
 ```
 
-Pipeline 的位置在编译时已经确定，Attach 填入实际 Buffer/Image/参数，所以不要求编译时已创建设备资源实例。
-`StorageSubscription` 是 Attachment 持有的非拥有变更关系，用于刷新内部物理地址，不是 Storage 保活或跨资源业务依赖。
-它与已经删除的 `PreparedStorageBinding` 长期混合包不是同一职责。
-
-Detach 先断开 Feature/Storage 借用，再移交 Instance 物理资源清理。Resize 创建完整 Target/Attachment 候选后采用，
-失败保留旧值。当前 CPU 正在推进的提交窗口不能被途中改写；实际已提交 GPU 工作由完成条件保护。
+Rebind 失败时保留旧执行及 writer，已发布的 Resource 继续归实际域。输入 schema 或绑定目标发生变化时，旧 FrameData
+因布局身份失配被拒绝。Stop 后仍在完成的原生调用只能清偿其自身的借用，不能撤销新 Job 的 writer。
 
 ## 9. 稳定渲染循环、FIF 和合并提交
 
@@ -370,66 +359,38 @@ Detach 先断开 Feature/Storage 借用，再移交 Instance 物理资源清理�
 
 ```text
 Impl::run
-  → RunLoop::executeReady
-  → 有限请求接纳/dispatch → Outbox.flushTo
-  → progressCompletions
-    → DeviceSession::pollQueues / dispatchQueueCompletions
-    → FrameExecution::dispatchWrites
-    → RunLoop::executeReady
-  → progressUploads → ResourceUploader::submitReadyTransfers
-  → progressFrame（只推进最早的完整 SubmitFrame）
-    → beginFrame 取得可复用 FIF 槽
-    → 分组派发子 Command，全部必需更新终态后冻结输入
-    → submitCurrentFrame：活动 Instance、Storage/Feature 准备列表 → FrameExecution::render
+  → 有界接收和派发 IPC 请求
+  → ManualContext::run_ready → DeviceSession::progressCompletions
+  → 就绪 Job 与 Target 推进
+  → 推进已采纳的输入更新和设备轮次
+    → 预取 Target，选出就绪 Job，由 FrameProgress 接纳严格 FIF 槽
+    → 按 Resource 通道应用更新，准备并冻结本轮输入
+    → submitCurrentFrame：候选 Job 与去重后的 Resource 列表 → FrameOperation
     → 提交结果明确后 FrameCompletion；GPU 完成仍独立决定物理复用
-  → RunLoop::executeReady / Outbox.flushTo
-  → 无进展时：GPU 有工作则有界 waitForProgress，否则 IPC epoch 可唤醒等待
+  → progressUploads → ResourceUploader::submitReadyTransfers
+  → ManualContext::run_ready → Outbox.flushTo
+  → 无进展时等 IPC epoch，并在 GPU 完成轮询期限到达时复查
 ```
 
-没有无条件每帧 sleep。当前 GPU 等待上限可配置至 1ms；无 GPU 工作的 IPC 等待也有有限复查期限，
-不能把这段调度等待记为单次 IPC 队列操作成本。
-请求领取批量仅用于服务公平性，不再定义帧边界。没有 SubmitFrame 不重复绘制旧状态；
-主帧来源、输入借用与 `max_frames_ahead + 1` 载体和物理 FIF 分开。详见公开 `commands/Frame.hpp`。
+IPC、ManualContext 和停止请求共用现有通知。GPU 有在途工作时，空闲轮询期限可配置至 1 ms。
+接收和回程预算限制每次推进的节点数。挂起的独占 Resource 命令只影响借用该实例的 Job；
+Job 和 Target 的结构状态由各自的生命周期和实际借用决定。关闭沿用同一组步骤清偿已接纳的操作。
+客户端输入借用和物理 FIF 分属不同 owner。公开输入协议在 `commands/FrameCommands.hpp`。
 
-### 9.2 FrameExecution 的职责链
+### 9.2 帧准备、并行录制与有序提交
 
-[FrameExecution.cpp](../../modules/function/render/src/execution/FrameExecution.cpp) 负责决定帧槽可写、准备顺序和提交进展；
-[RenderGraphInstance.cpp](../../modules/function/render/src/execution/RenderGraphInstance.cpp) 负责该实例的动态输入；
-[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) 只录制已准备的批次。
+Server 在 Target 预取后选出本轮就绪 Job，暂时不可用的 Target 及其依赖者留到后续轮次。
+[FrameOperation.cpp](../../modules/function/render/src/runtime/FrameOperation.cpp) 为本轮取得严格 FIF 槽，
+按 ResourceInstanceId 准备副本。Uploader 使用自身命令窗口提交准备拷贝。设备回程接纳后，FrameOperation
+冻结每个 Job 的录制输入，并通过现有 CPU scheduler 并行录制。每个批次独占其 allocator 和 command buffer。
 
-```text
-FrameExecution::render
-  → 若已有 SUBMITTING 窗口，继续 advanceSubmissions，不重取输入
-  → 选择可复用 slot；pending CPU writes 必须已结束
-  → 检查实际来源的 revision；仅对未应用的 slice 调 StorageBindingOps::prepareFrame
-  → FeatureBinding::prepare（按 revision 更新；真实逐帧来源继续执行）
-  → RenderGraphInstance::prepareFrame（描述符、参数、条件、History 冻结）
-  → prepareSubmissions：实例顺序/绑定版本改变时重建该 slot 的依赖索引
-  → advanceSubmissions
-    → 从每物理 Queue 的就绪堆取得批次及已累计的等待前沿
-    → 同物理 Queue 且等待条件相同的可就绪批次合并
-    → SubmissionQueue::recordAndSubmit
-      → recordFrameCopies / Feature copies（首准备提交）
-      → RenderExecutor::recordBatch × 本次可合并实例
-    → acceptedBatch；完整实例 submitted；finishPreparation（仅准备 Copy 采用）
-  → sealFrame；所有参与 Queue 完成后 slot 才 FREE
-```
-
-如果资源准备尚不齐但有可提交 Copy，可以只提交准备批；这不意味着整图已执行，也不推进 History。
-Queue 满时保留冻结窗口及逐批实际 serial，不重新执行已接受批次。
-
-ImportedAccess 保留消费批次与状态恢复边界。FrameSlot 按实例顺序及每 slice 的物理绑定 revision 复用依赖索引；
-内容更新不重新排序或相交。绑定变化时重建这个 slot 的索引，冷态同资源组仍可能有平方级冲突比较，
-并未实现只修改一个资源组的局部增量编辑。不同句柄的外部 Memory Alias 没有声明关系，当前不支持该跨实例用法。
-就绪批次按实际物理 Queue 与等待条件维护；Submit 接纳只推动后继边，不从头扫描所有批次。
-
-每个实际 CommandBuffer 共享一份 BindingState，跳过相同 Layout/BindPoint/DescriptorSet 的重复绑定。
-参数是每 FIF 一份连续区；变化源按预编译反向索引标脏。没有 revision 承诺的借用参数仍逐帧读取。
-Storage/Feature 的来源版本检查仍为线性遍历；相应 callback 可以跳过，不等于准备阶段完全没有循环或间接调用。
+[SubmissionOperation.cpp](../../modules/function/render/src/runtime/SubmissionOperation.cpp) 组合编译产生的图内依赖、
+实际共享导入区间以及 Job 边界，按物理队列选择已就绪批次。兼容批次合并，WSI wait 和 signal 保留独立边界。
+每次 QueueSubmit 的真实回程更新接受前沿；部分失败保留前缀，尾部停发。FrameProgress 保存每槽前沿供下轮复用判断。
 
 ### 9.3 FIF 的物理含义
 
-`FrameExecution::FrameSlot` 保存本帧在各物理 Queue 接纳的前沿；
+`FrameProgress` 保存各物理 Queue 接纳的每槽前沿；
 `RenderGraphInstance::FrameResources` 保存独立动态资源和记录；Storage slice、Target image 与之对应。
 FIF 复用必须同时满足 CPU 写入结束和所有实际 GPU 使用完成，不靠轮转下标、帧号或 Queue 三个提交槽猜测。
 Shader/Pipeline/Cooked 布局可以共享不可变数据，不复制成每帧业务对象。
@@ -459,16 +420,16 @@ message/file/line，保留错误计数。回调可发生在编译 worker，应�
 Render 不决定日志落点、不依赖 lux::log，不允许 sink 重入 Server。
 
 该 sink **不是所有业务失败的自动广播**：Command 错误看 Response，`run()` 返回运行失败，
-`QueryExecutionProgress` 查看 Attachment 跳过/执行原因。图、计划、物理资源和提交 dump 是冷态诊断，不应每帧请求。
+`QueryExecutionProgress` 查看 Job 跳过与执行原因。图、计划、物理资源和提交 dump 用于冷态诊断。
 
 ```text
 停止新准入 → command_scope_.close/request_stop
-  → 启动 join，但 RenderThread 继续推进 RunLoop、Queue、上传和回复
-  → join 完成 + RunLoop 排空 + activePublishers 尾栈结束
+  → 启动 join，RenderThread 沿用 ManualContext、Queue、上传和回程推进步骤
+  → join 完成，ManualContext 节点和发布尾栈清偿
   → 最后 flush/clear Outbox → responder.reset
-  → Detach 全部关联 → 移交 Plan/Target/Storage 物理释放
+  → 停止并清偿全部 Job → 移交 Plan/Target/Storage 物理释放
   → device.drain（仍保有 Frame 回调节点和 Staging）
-  → 销毁 FrameExecution / ResourceUploader
+  → 销毁帧工作区与 ResourceUploader
   → DeviceSession::close：关闭 cleanup 准入、推进并 join、清 Descriptor/Queue/Device
 ```
 
@@ -479,26 +440,21 @@ Scope join 不替代外部 Producer 退栈或代码模块寿命证明。
 
 ### 一个首次渲染场景的实际顺序
 
-1. 应用创建唯一 ExecutionRuntime、诊断目标和 RenderServer；登记内置声明及需要的外部扩展。
-2. 建立主帧与 Asset 的独立 IpcRequester，冷态 setFrameSource；再启动唯一 RenderThread。
-3. 查询目录；CreateScene/View/Target 和 CreateEffect 处理不改变已有可见状态的冷准备。
-4. Asset Client 可独立 CreateTexture/CreateMesh；收到成功后才使用其返回 ID。
-5. CreateMaterial、CreateMeshInstances、CreateDirectLights 等共享表更新放进主来源 SubmitFrame。
-   初始化可以先提交 NO_DRAW 帧；需要前一条请求返回的新 ID 时，在后续完整载体中使用，不能中途改写已借出的数组。
-6. CreateEffect 使用 Cooked 程序、Feature 配置及端口连接；CPU 编译，RenderThread 采用后返回 EffectId。
-7. 后续 SubmitFrame 内 Attach 指定 Scene/View/Effect/Target；同一载体中的组显式表达已知数据依赖。
-8. Client 先取得有限载体，再准备本帧数据和变化命令。Server 等最早完整帧的组全部结算，再冻结/录制/提交。
-   活动 Target 本身不自动制造新帧；无变化也用一个空 SubmitFrame 明确请求渲染。
-9. FrameCompletion 归还 CPU 输入借用；GPU 前沿独立决定 FIF 复用。失败要求重同步时，由 Client 提交恢复帧。
-10. 测试消费者用显式图 Copy 检验输出；窗口呈现仍待实现，图像 index 不等于 FrameSlot index。
-11. Detach/可见资源释放同样通过完整帧；随后清偿所有请求、Scope、Producer 和 GPU，最后关闭共享 ExecutionRuntime。
+1. 应用创建 ExecutionRuntime、诊断目标和 RenderServer，安装扩展，再启动 RenderThread。
+2. 创建 IpcRequester 和 RenderClient。查设备支持与能力目录。创建 Scene、View 和 Target。
+3. 通过 GetOrCreateResource 获取资源实例，独立上传纹理、Mesh，等待返回可用的标识。
+4. CreateEffect 采用逻辑配方并返回 EffectId。CreateRenderJob 保存 Scene、View 和 Effect，StartRenderJob 绑定 Target 并编译设备计划。
+5. QueryRenderJobInputLayout 返回冷装配布局。Client 写入并封存 FrameData，以 UpdateFrameData 更新共享数据，或附在 RequestRenderJob 上明确请求一次执行。
+6. Server 为就绪 Job 采样共享数据，准备、冻结并录制同一轮。持续模式独立推进，精确请求以实际提交接纳为成功回执。
+7. Client 在终态回程后复用 CPU 输入槽。队列前沿控制 GPU 复用，WSI 图像索引与 FIF 槽各自独立。
+8. Stop/Remove 与可见资源释放遵循实际借用寿命。Server 停止并清偿后，宿主 join 线程并交付剩余回程。
 
 这些命令的失败由 Response 显式报告，不能跳过失败后继续使用默认空 ID。不同独立资源上传可以并发；
 依赖关系由 Client 保持，不能拿上述顺序中的一次成功替代另一项资源的实际发布。
 
 ### 源码审查重点
 
-建议按 Request→Handler→Storage/编译→Attachment→FrameExecution→Queue→cleanup 顺序读源码，逐段核对：
+建议按 Request → Handler → Resource/编译 → JobExecution → FrameOperation → Queue → cleanup 顺序读源码，逐段核对：
 
 1. Source 借用何时结束，Response 是否准确，旧 revision 是否错误确认了新状态。
 2. 冷态 Feature/Graph/Shader 工作是否泄入稳定帧。
@@ -517,11 +473,11 @@ EffectOutputDesc 只含 format、samples、kind、sampled。CreateEffect 和能�
 RenderPlan 保存该静态输出合同、尺寸规则及 Graph 显式的固定输出限制，不保存首次 Target 分辨率。
 FIXED 图像保留绝对尺寸；TARGET/IMPORTED 图像在图构建时规范化掉无意义的初始宽高，保留比例、对齐和子资源声明。
 
-Target 与 Effect 都准备好后才 Attach。Instance 根据实际 Target/导入图像创建中间资源及 view，核对 mip、
+Target 与 Effect 都准备好后启动 Job。Instance 根据实际 Target/导入图像创建中间资源及 view，核对 mip、
 附件尺寸、Copy 容量和设备限制，并准备 Dispatch/绑定。Resize 重新准备受影响资源并沿用原 Plan。
 Shadow 的固定分辨率仍来自能力配置；不是所有 Graph 图像都随窗口改变。
 
-每帧先取得可复用 FIF 切片，再 Acquire/选择实际输出；Instance 绑定本帧 image/view，Executor 录制准备好的数据。
+Swapchain 先预取图像，再为本轮选择可复用 FIF 切片。Instance 绑定本帧 image/view，Executor 录制准备好的数据。
 Executor 不承担 Acquire、资源分配或退休。当前 kind/sampled 仍决定编译期输出边界状态，所以跨分辨率共享
 要求输出合同兼容，不表示同一个 Plan 可以任意混用于 Surface 和可采样 Offscreen。
 
@@ -536,7 +492,7 @@ Instance 的已采用规格唯一来自 TargetOutput.description，不另存 Tar
 需要最终输出或 TARGET 相对资源的图拒绝空 Resize 输出；完全固定/导入资源图允许没有输出。
 Surface 退出仍通过 releaseOutputReferences 显式撤销图像借用，不使用空 Resize 代替该操作。
 
-Attach、Resize 准备及等待后的采用复核统一检查实际附件和 Resolve 尺寸，以及 CopyImage 的源/目的 mip、
+Start/Rebind、Resize 准备及等待后的采用复核统一检查实际附件和 Resolve 尺寸，以及 CopyImage 的源/目的 mip、
 区域尺寸。没有显式区域的图像复制要求对应完整子资源尺寸一致；局部复制显式声明两端区域，避免把部分写入
 宣称为整个目的子资源已初始化。无效候选不会交给 Executor。
 

@@ -28,7 +28,7 @@ int main(int argc, char** argv)
     {
         std::fputs(
             "usage: lux_shader_compile source entry vertex|fragment|compute spirv|dxil|bundle output [-Ipath] "
-            "[-Dname=value] [--symbol=name] [--physical-pointers]\n",
+            "[-Dname=value] [--symbol=name] [--physical-pointers] [--spirv-only|--dxil-only]\n",
             stderr
         );
         return 2;
@@ -53,7 +53,7 @@ int main(int argc, char** argv)
     }
     std::string source, symbol;
     std::vector<std::string_view> includes;
-    bool physical_pointers = false;
+    bool spirv_only = false, dxil_only = false;
     for (int index = 6; index < argc; ++index)
     {
         std::string_view option(argv[index]);
@@ -79,14 +79,22 @@ int main(int argc, char** argv)
         {
             symbol = option.substr(9);
         }
-        else if (option == "--physical-pointers")
+        else if (option == "--physical-pointers" || option == "--spirv-only")
         {
-            physical_pointers = true;
+            spirv_only = true;
+        }
+        else if (option == "--dxil-only")
+        {
+            dxil_only = true;
         }
         else
         {
             return 2;
         }
+    }
+    if (spirv_only && dxil_only)
+    {
+        return 2;
     }
     if (bundle &&
         (symbol.empty() || symbol.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
@@ -108,7 +116,7 @@ int main(int argc, char** argv)
         if (!report.diagnostic.empty()) std::fputs(report.diagnostic.c_str(), stderr);
         return result;
     };
-    auto first = compile(target_name == "dxil" ? EShaderTarget::DXIL : EShaderTarget::SPIRV);
+    auto first = compile(target_name == "dxil" || dxil_only ? EShaderTarget::DXIL : EShaderTarget::SPIRV);
     if (!first)
     {
         std::fprintf(stderr, "%s\n", first.error().diagnostic.c_str());
@@ -118,8 +126,15 @@ int main(int argc, char** argv)
     {
         std::ofstream output(argv[5], std::ios::binary);
         output << "#pragma once\n#include <lux/engine/description/EmbeddedShader.hpp>\n";
-        emit(output, symbol + "Spirv", *first);
-        if (!physical_pointers)
+        if (!dxil_only)
+        {
+            emit(output, symbol + "Spirv", *first);
+        }
+        if (dxil_only)
+        {
+            emit(output, symbol + "Dxil", *first);
+        }
+        else if (!spirv_only)
         {
             auto second = compile(EShaderTarget::DXIL);
             if (!second)
@@ -133,8 +148,16 @@ int main(int argc, char** argv)
                << (stage == EShaderType::VERTEX     ? "VERTEX"
                    : stage == EShaderType::FRAGMENT ? "FRAGMENT"
                                                     : "COMPUTE")
-               << ", {" << symbol << "SpirvWords," << symbol << "SpirvMetadata},";
-        if (physical_pointers)
+               << ",";
+        if (dxil_only)
+        {
+            output << "{},";
+        }
+        else
+        {
+            output << "{" << symbol << "SpirvWords," << symbol << "SpirvMetadata},";
+        }
+        if (spirv_only)
         {
             output << "{}";
         }

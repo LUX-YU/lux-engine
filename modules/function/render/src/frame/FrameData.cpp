@@ -102,7 +102,7 @@ namespace lux::render
         return impl_->layout;
     }
 
-    std::size_t FrameData::findChannel(cxx::type_info declaration, cxx::type_info element) const noexcept
+    std::size_t FrameData::findChannel(cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept
     {
         return impl_ ? impl_->layout.find(declaration, element) : SIZE_MAX;
     }

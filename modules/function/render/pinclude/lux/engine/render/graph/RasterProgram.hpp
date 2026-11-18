@@ -4,22 +4,45 @@
 #include <array>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
+#include <memory>
 #include <span>
+#include <utility>
 
 namespace lux::render::detail
 {
     struct EnabledDeviceFeatures;
 
+    struct PreparedShader final
+    {
+        explicit PreparedShader(rdesc::ShaderProgramArtifact value) noexcept
+            : artifact(std::move(value)), digest(artifact.binaryDigest())
+        {
+        }
+
+        const rdesc::ShaderProgramArtifact artifact;
+        const std::size_t digest;
+
+        [[nodiscard]] bool matches(const PreparedShader& other) const noexcept
+        {
+            return this == &other || (digest == other.digest && artifact == other.artifact);
+        }
+    };
+
     // Exact pipeline identity after layout relocation. Shader includes entry points and reflected ABI.
     // Device/table capacities are fixed by the Device; resource IDs/addresses are not PSO identity.
     struct RasterProgramKey final
     {
-        rdesc::ShaderProgramArtifact shader;
+        std::shared_ptr<const PreparedShader> shader;
         GraphicsState state;
         std::vector<nri::Format> colors;
         nri::Format depth = nri::Format::UNKNOWN;
         std::uint32_t samples = 1;
-        bool operator==(const RasterProgramKey&) const noexcept = default;
+        [[nodiscard]] bool matches(const RasterProgramKey& other) const noexcept
+        {
+            const bool same_state = samples == other.samples && depth == other.depth &&
+                colors == other.colors && state == other.state;
+            return same_state && shader->matches(*other.shader);
+        }
     };
 
     // Creates one physical pipeline from an immutable candidate; the caller adopts its ownership.

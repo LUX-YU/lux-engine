@@ -66,9 +66,9 @@ if(TARGET shader_compiler)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/MaterialCompiler.cmake")
 endif()
 
-if(BUILD_TESTING)
+if(BUILD_TESTING OR LUX_RENDER_BUILD_PROBES)
     if(NOT TARGET material_compiler)
-        message(FATAL_ERROR "Material compiler contracts require LUX_BUILD_MATERIAL_COMPILER=ON")
+        message(FATAL_ERROR "Material compiler contracts require the shared shader compiler target")
     endif()
 
     add_executable(material_registered_graph_test test/registered_graph.cpp)

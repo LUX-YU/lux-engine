@@ -33,7 +33,6 @@ struct ScalarResponse final
 struct Increment final
 {
     static constexpr std::string_view name = "ipc.increment";
-    static constexpr bool requires_frame_boundary = false;
     using Request = Scalar;
     using Response = ScalarResponse;
 };
@@ -47,7 +46,6 @@ struct AssetRequest final
 struct AssetIncrement final
 {
     static constexpr std::string_view name = "ipc.asset.increment";
-    static constexpr bool requires_frame_boundary = false;
     using Request = AssetRequest;
     using Response = ScalarResponse;
 };
@@ -148,8 +146,8 @@ namespace
         conflict.response = lux::cxx::make_basic_type_info<Ack>();
         check(!compatibleCommands(descriptor, conflict), "response type rejected by pure protocol");
         conflict = descriptor;
-        conflict.requires_frame_boundary = !descriptor.requires_frame_boundary;
-        check(!compatibleCommands(descriptor, conflict), "frame admission policy is part of the cold contract");
+        conflict.requires_idle_resource = !descriptor.requires_idle_resource;
+        check(!compatibleCommands(descriptor, conflict), "Resource access policy is part of the cold contract");
         conflict = descriptor;
 
         struct alignas(64) AlignedRequest
@@ -162,7 +160,7 @@ namespace
         conflict.request = {};
         check(!validateCommand(conflict), "missing request type rejected");
         conflict = descriptor;
-        conflict.request = lux::cxx::type_info(conflict.request.hash(), "collision.other");
+        conflict.request = lux::cxx::basic_type_info(conflict.request.hash(), "collision.other");
         check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
 
         auto& core = IpcCore::instance();

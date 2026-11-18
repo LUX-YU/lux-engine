@@ -9,7 +9,6 @@ namespace lux::render::TextureCommands
     struct Upload final
     {
         static constexpr std::string_view name = "lux.render.image.upload";
-        static constexpr bool requires_frame_boundary = false;
         using Data = TextureData;
 
         struct Request final
@@ -34,7 +33,6 @@ namespace lux::render::TextureCommands
     struct CloneRegion final
     {
         static constexpr std::string_view name = "lux.render.image.clone_region";
-        static constexpr bool requires_frame_boundary = false;
         using Data = TexturePatchData;
         // The source texture and source bytes remain valid until the terminal Response.
         struct Request final
@@ -57,7 +55,7 @@ namespace lux::render::TextureCommands
     struct Release final
     {
         static constexpr std::string_view name = "lux.render.image.release";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
         using Data = TextureId;
         // Client ends Material/Attachment references first. Active source clones reject release as busy.

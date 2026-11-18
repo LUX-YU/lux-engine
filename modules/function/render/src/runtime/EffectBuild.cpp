@@ -1,14 +1,13 @@
 #include <algorithm>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/EffectBuild.hpp>
-#include <map>
 #include <ranges>
 
 namespace lux::render::runtime_detail
 {
     RenderResult<RenderEffect> buildEffect(
         std::span<const ResourceDeclaration> declarations,
-        const GraphEffectRequest& request,
+        const CreateEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
         std::size_t max_config_bytes,
         std::vector<RenderEffect::ResourceDependency> resource_dependencies
@@ -28,7 +27,7 @@ namespace lux::render::runtime_detail
                  &registration->graph,
                  selection.config ? &selection.config : nullptr,
                  selection.contribution_key,
-                 selection.parameter_group}
+                 selection.parameter_group, selection.parameter_source}
             );
         }
         auto assembly = composeFeatures(
@@ -58,15 +57,11 @@ namespace lux::render::runtime_detail
         {
             live_passes[pass.index] = true;
         }
-        for (auto& binding : assembly->bindings)
-        {
-            std::erase_if(binding.passes, [&](auto pass) { return !live_passes[pass.index]; });
-        }
         // Keep preparation-only inputs of live outputs or passes, just as Attach does.
         // Dead contributions cannot introduce allocations or conflicts into the dependency set.
-        for (const auto& binding : assembly->bindings | std::views::reverse)
+        for (const auto& binding : assembly->definition.instanceData() | std::views::reverse)
         {
-            const bool is_live = !binding.passes.empty() ||
+            const bool is_live = std::ranges::any_of(binding.passes, [&](auto id) { return live_passes[id.index]; }) ||
                 std::ranges::any_of(binding.outputs, [&](auto id) { return live_resources[id.index]; });
             if (is_live)
             {
@@ -88,8 +83,6 @@ namespace lux::render::runtime_detail
             }
             arguments[index] = &argument;
         }
-        const auto public_count = resource_dependencies.size();
-        std::vector<bool> used_types(public_count);
         const auto resolve = [&](auto& group, EResourceDomain scope) noexcept -> RenderResult<void>
         {
             for (auto& binding : group)
@@ -106,22 +99,16 @@ namespace lux::render::runtime_detail
                     name,
                     [](const ResourceDeclaration& type, std::string_view name) { return type.name.name() < name; }
                 );
-                if (factory == declarations.end() || factory->name.name() != name)
+                const bool has_binding = factory != declarations.end() && factory->name.name() == name &&
+                    factory->binds_graph;
+                if (!has_binding)
                 {
                     return cxx::unexpected(RenderError{kStorageFactory});
                 }
-                if (static_cast<unsigned>(scope) != static_cast<unsigned>(factory->domain))
+                if (scope != factory->domain)
                     return cxx::unexpected(RenderError{kStorageMismatch});
-                for (std::size_t i = 0; i < public_count; ++i)
-                {
-                    used_types[i] = used_types[i] || resource_dependencies[i].declaration == factory->id;
-                }
-                auto dependency = std::ranges::find_if(
-                    resource_dependencies,
-                    [&](const auto& value) noexcept
-                    {
-                        return value.declaration == factory->id;
-                    }
+                auto dependency = std::ranges::find(
+                    resource_dependencies, factory->id, &RenderEffect::ResourceDependency::declaration
                 );
                 if (dependency == resource_dependencies.end())
                 {
@@ -144,15 +131,39 @@ namespace lux::render::runtime_detail
                 return cxx::unexpected(resolved.error());
             }
         }
-        for (std::size_t i = 0; i < public_count; ++i)
+
+        std::vector<FrameChannel> channels;
+        std::vector<std::span<const FrameChannel>> dependency_channels;
+        dependency_channels.reserve(resource_dependencies.size());
+        for (const auto& dependency : resource_dependencies)
         {
-            // An upload-only input may legitimately be unused in an empty Effect. If its Storage
-            // type is consumed, however, the public destination must be one of those actual bindings.
-            if (used_types[i] && resource_dependencies[i].bindings.empty())
+            const auto declaration = std::ranges::find(declarations, dependency.declaration, &ResourceDeclaration::id);
+            if (declaration == declarations.end())
             {
-                return cxx::unexpected(RenderError{kStorageMismatch});
+                return cxx::unexpected(RenderError{kStorageIdentity});
+            }
+            dependency_channels.push_back(declaration->channels);
+            channels.insert(channels.end(), declaration->channels.begin(), declaration->channels.end());
+        }
+        auto schema = FrameLayout::create(channels, 1);
+        if (!schema)
+        {
+            return cxx::unexpected(schema.error());
+        }
+        if (schema->channels().size() > UINT32_MAX)
+        {
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        }
+        for (std::size_t i = 0; i < resource_dependencies.size(); ++i)
+        {
+            auto& columns = resource_dependencies[i].columns;
+            columns.reserve(dependency_channels[i].size());
+            for (const auto& channel : dependency_channels[i])
+            {
+                columns.push_back(static_cast<std::uint32_t>(schema->find(channel.declaration, channel.element)));
             }
         }
+
         std::vector<std::uint32_t> parameter_groups(assembly->definition.passes().size());
         for (const auto& contribution : assembly->contributions)
         {
@@ -162,29 +173,22 @@ namespace lux::render::runtime_detail
                 contribution.parameter_group
             );
         }
-        auto required = live_resources;
-        for (const auto& binding : assembly->bindings | std::views::reverse)
+        RenderEffect result(request.parameters);
+        const auto graph_resources = assembly->definition.resources();
+        for (const auto& external : input->definition.inputs)
         {
-            const bool live = !binding.passes.empty() ||
-                std::ranges::any_of(binding.outputs, [&](auto id) { return required[id.index]; });
-            if (live)
-            {
-                for (auto id : binding.inputs) required[id.index] = true;
-            }
+            if (!std::holds_alternative<GraphImageDesc>(external.resource.description)) continue;
+            const auto found = std::ranges::find(graph_resources, external.resource.key, &GraphResource::key);
+            if (found == graph_resources.end()) std::terminate();
+            const GraphResourceId id{static_cast<std::uint32_t>(found - graph_resources.begin())};
+            result.external_images.push_back({external.destination, id});
         }
-        std::erase_if(assembly->bindings, [&](const auto& binding)
-        {
-            return binding.passes.empty() &&
-                std::ranges::none_of(binding.outputs, [&](auto id) { return required[id.index]; });
-        });
-        RenderEffect result;
         result.graph = std::move(assembly->definition);
         result.analysis = std::move(assembly->analysis);
         result.output = input->output;
         result.parameter_groups = std::move(parameter_groups);
         result.resource_dependencies = std::move(resource_dependencies);
-        result.bindings = std::move(assembly->bindings);
-        result.samplers.assign(result.graph.samplers().begin(), result.graph.samplers().end());
+        result.input_schema = std::move(*schema);
         return result;
     }
 

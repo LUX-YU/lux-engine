@@ -91,6 +91,7 @@ namespace lux::render::detail
         void publish(std::uint32_t kind, std::uint32_t frame) noexcept;
         DeviceSession& device_;
         ResourceUploader& uploads_;
+        FrameProgress& replica_progress_;
         std::uint32_t frame_count_;
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;

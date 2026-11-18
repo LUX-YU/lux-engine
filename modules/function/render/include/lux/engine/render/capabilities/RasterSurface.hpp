@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/capabilities/Mesh3dCapability.hpp>
 
-#include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
+#include <lux/engine/render/capabilities/CapabilityComposition.hpp>
 
 namespace lux::render
 {

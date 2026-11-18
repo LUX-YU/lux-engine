@@ -4,15 +4,21 @@
 
 namespace lux::render::detail
 {
-    JobControl::JobControl(RenderJobId id, EJobCadence cadence) noexcept : id_(id), cadence_(cadence)
+    JobControl::JobControl(EJobCadence cadence) noexcept : cadence_(cadence)
     {
-        const bool is_invalid_identity = id.isNull();
-        const bool is_invalid_cadence = !isValidJobCadence(cadence);
-        const bool is_invalid_control = is_invalid_identity || is_invalid_cadence;
-        if (is_invalid_control)
+        if (!isValidJobCadence(cadence))
         {
             std::terminate();
         }
+    }
+
+    void JobControl::setId(RenderJobId id) noexcept
+    {
+        if (!id_.isNull() || id.isNull())
+        {
+            std::terminate();
+        }
+        id_ = id;
     }
 
     RenderResult<void> JobControl::setCadence(EJobCadence cadence) noexcept
@@ -40,43 +46,27 @@ namespace lux::render::detail
         {
             std::terminate();
         }
-        if (reservation_)
-        {
-            *reservation_ = false;
-        }
     }
 
-    RenderResult<void> JobControl::beginStart(TargetId target, bool& using_target, Start& out) noexcept
+    RenderResult<void> JobControl::beginStart(TargetId target, bool rebind, Start& out) noexcept
     {
-        const bool is_invalid_start = out.active() || target.isNull();
-        if (is_invalid_start)
+        const bool invalid = out.active() || target.isNull();
+        if (invalid)
         {
             return cxx::unexpected(RenderError{kJobState});
         }
-        const bool has_live_operation = running() || starting_ || admitted_;
-        if (has_live_operation)
+        if (starting_ || admitted_)
         {
             return cxx::unexpected(RenderError{kJobBusy});
         }
-        if (using_target)
+        if (running_ != rebind)
         {
-            return cxx::unexpected(RenderError{kTargetInUse});
+            return cxx::unexpected(RenderError{kJobState});
         }
-        using_target = true;
         out.job_ = this;
         out.target_ = target;
-        out.reservation_ = &using_target;
         starting_ = &out;
         return {};
-    }
-
-    void JobControl::Start::cancel() noexcept
-    {
-        if (reservation_)
-        {
-            *reservation_ = false;
-            reservation_ = nullptr;
-        }
     }
 
     JobControl::Start::~Start() noexcept
@@ -85,7 +75,6 @@ namespace lux::render::detail
         {
             return;
         }
-        cancel();
         if (job_->starting_ != this)
         {
             std::terminate();
@@ -106,12 +95,11 @@ namespace lux::render::detail
         }
         job.starting_ = nullptr;
         job_ = nullptr;
-        if (!reservation_)
+        if (cancelled_)
         {
             return cxx::unexpected(RenderError{kJobStopped});
         }
-        job.target_ = target_;
-        job.reservation_ = std::exchange(reservation_, nullptr);
+        job.running_ = true;
         return {};
     }
 
@@ -119,20 +107,21 @@ namespace lux::render::detail
     {
         if (starting_)
         {
-            starting_->cancel();
+            starting_->cancelled_ = true;
         }
-        if (reservation_)
-        {
-            *reservation_ = false;
-            reservation_ = nullptr;
-        }
+        running_ = false;
+        rejectUnadmitted(RenderError{kJobStopped});
+    }
+
+    void JobControl::rejectUnadmitted(RenderError error) noexcept
+    {
         // Everything below is set before calling arbitrary response code.
         const bool has_unadmitted_request = requested_ && (!admitted_ || admitted_->request_ != requested_);
         if (has_unadmitted_request)
         {
             Request* request = std::exchange(requested_, nullptr);
             request->owner_ = nullptr;
-            request->complete(request->receiver, cxx::unexpected(RenderError{kJobStopped}));
+            request->complete(request->receiver, cxx::unexpected(error));
             // A completion may destroy this Job. No further member access.
         }
     }
@@ -160,6 +149,11 @@ namespace lux::render::detail
     bool JobControl::eligible() const noexcept
     {
         return running() && !admitted_ && (cadence_ == EJobCadence::CONTINUOUS || requested_);
+    }
+
+    const FrameData* JobControl::takeRequestedData() noexcept
+    {
+        return requested_ ? std::exchange(requested_->data, nullptr) : nullptr;
     }
 
     bool JobControl::tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index, Run& out) noexcept

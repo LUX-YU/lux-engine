@@ -22,7 +22,6 @@ namespace lux::render
     struct QueryResource final
     {
         static constexpr std::string_view name = "lux.render.resource.query";
-        static constexpr bool requires_frame_boundary = false;
         using Request = ResourceRequest;
         using Response = ResourceResponse;
     };
@@ -30,7 +29,6 @@ namespace lux::render
     struct GetOrCreateResource final
     {
         static constexpr std::string_view name = "lux.render.resource.get_or_create";
-        static constexpr bool requires_frame_boundary = true;
         using Request = ResourceRequest;
         using Response = ResourceResponse;
     };

@@ -53,7 +53,7 @@ namespace lux::render
         });
     }
 
-    std::size_t FrameLayout::find(cxx::type_info declaration, cxx::type_info element) const noexcept
+    std::size_t FrameLayout::find(cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept
     {
         const auto position = std::ranges::find_if(channels(), [&](const auto& channel) noexcept
         {

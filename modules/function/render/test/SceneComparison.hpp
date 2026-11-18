@@ -29,9 +29,8 @@ struct SceneComparison
         FeatureBuildContext& context
     ) noexcept
     {
-        auto shader = kClusterCompare.load(rdesc::EShaderTarget::SPIRV);
         ComputeWork work;
-        work.interface.program = take(context.graph.addProgram(std::move(shader)));
+        work.interface.program = take(context.graph.addProgram(GraphProgram{kClusterCompare}));
         work.interface.resources = {
             {"reference_image", {context.resource("reference")}},
             {"candidate_image", {context.resource("candidate")}},

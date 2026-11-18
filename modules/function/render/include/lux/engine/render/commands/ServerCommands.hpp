@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render
 {
@@ -16,7 +17,6 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.stop"};
-        static constexpr bool requires_frame_boundary = false;
         using Request = EmptyRequest;
         using Response = AckResponse;
     };
@@ -25,8 +25,23 @@ namespace lux::render
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.stats.query"};
-        static constexpr bool requires_frame_boundary = false;
         using Request = EmptyRequest;
         using Response = RenderStatsSnapshot;
+    };
+
+    struct QueryRenderDevice final
+    {
+        static constexpr std::string_view name = "render.device.query";
+        static constexpr bool failure_safe = true;
+        using Request = EmptyRequest;
+        struct Response final
+        {
+            RenderError error{};
+            EGraphicsBackend backend{};
+            std::uint32_t resource_capabilities = 0;
+            std::uint32_t max_attachment_dimension = 0;
+            std::uint32_t physical_queues = 0;
+            std::uint32_t frames_in_flight = 0;
+        };
     };
 } // namespace lux::render

@@ -81,7 +81,7 @@ namespace lux::render
             return result;
         }
 
-        [[nodiscard]] cxx::type_info type() const noexcept
+        [[nodiscard]] cxx::basic_type_info type() const noexcept
         {
             return type_;
         }
@@ -100,7 +100,7 @@ namespace lux::render
     private:
         using Value = std::unique_ptr<const void, void (*)(const void*) noexcept>;
         Value value_{nullptr, nullptr};
-        cxx::type_info type_{};
+        cxx::basic_type_info type_{};
         bool (*equal_)(const void*, const void*) noexcept = nullptr;
     };
 

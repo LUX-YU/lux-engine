@@ -17,12 +17,10 @@ namespace lux::render
     {
         const void* ops;
         RenderResult<StorageOwner> (*create)(ResourceCreateContext&, ResourceInstanceId, const void*) noexcept;
-        bool (*compatible_config)(const void*, const void*) noexcept;
         const void* binding_ops;
-        cxx::type_info config_type;
-        cxx::type_info ops_type;
-        cxx::type_info implementation_type;
-        bool operator==(const StorageMeta&) const noexcept = default;
+        cxx::basic_type_info config_type;
+        cxx::basic_type_info ops_type;
+        cxx::basic_type_info implementation_type;
     };
 
     struct ResourceRegistration final
@@ -33,7 +31,7 @@ namespace lux::render
         FrameDataCall frame_call;
     };
 
-    template <class Declaration> [[nodiscard]] constexpr cxx::type_info storageOpsType() noexcept
+    template <class Declaration> [[nodiscard]] constexpr cxx::basic_type_info storageOpsType() noexcept
     {
         if constexpr (std::is_void_v<typename Declaration::Ops>)
         {
@@ -49,11 +47,11 @@ namespace lux::render
     using StorageOpsArgument =
         std::conditional_t<std::is_void_v<Ops>, std::nullptr_t, std::add_lvalue_reference_t<std::add_const_t<Ops>>>;
 
-    template <class Config, class Ops, class Implementation, auto Create, auto Compatible>
+    template <class Config, class Ops, class Implementation, auto Create>
     [[nodiscard]] const StorageMeta* makeStorageMeta(StorageOpsArgument<Ops> ops, const void* binding_ops) noexcept
     {
         constexpr bool has_config = !std::is_void_v<Config>;
-        constexpr cxx::type_info config_type = []() noexcept
+        constexpr cxx::basic_type_info config_type = []() noexcept
         {
             if constexpr (has_config)
             {
@@ -61,28 +59,7 @@ namespace lux::render
             }
             else
             {
-                return cxx::type_info{};
-            }
-        }();
-        constexpr auto compatible = []() noexcept -> bool (*)(const void*, const void*) noexcept
-        {
-            if constexpr (has_config)
-            {
-                static_assert(std::same_as<
-                              decltype(Compatible),
-                              bool (*)(const Implementation&, const Config&) noexcept>);
-                return [](const void* instance, const void* config) noexcept
-                {
-                    return Compatible(
-                        *static_cast<const Implementation*>(instance),
-                        *static_cast<const Config*>(config)
-                    );
-                };
-            }
-            else
-            {
-                static_assert(Compatible == nullptr);
-                return nullptr;
+                return cxx::basic_type_info{};
             }
         }();
         const void* ops_pointer = nullptr;
@@ -123,14 +100,13 @@ namespace lux::render
                     [](void* value) noexcept { delete static_cast<Implementation*>(value); }
                 };
             },
-            compatible,
             binding_ops,
             config_type,
             []() noexcept
             {
                 if constexpr (std::is_void_v<Ops>)
                 {
-                    return cxx::type_info{};
+                    return cxx::basic_type_info{};
                 }
                 else
                 {
@@ -143,7 +119,7 @@ namespace lux::render
         return is_different_operations ? nullptr : &metadata;
     }
 
-    template <class Declaration, class Implementation, auto Create, auto Compatible = nullptr>
+    template <class Declaration, class Implementation, auto Create>
     [[nodiscard]] ResourceRegistration makeResourceRegistration(
         StorageOpsArgument<typename Declaration::Ops> ops,
         const void* binding_ops = nullptr,
@@ -157,13 +133,12 @@ namespace lux::render
                 typename Declaration::Config,
                 typename Declaration::Ops,
                 Implementation,
-                Create,
-                Compatible>(ops, binding_ops),
+                Create>(ops, binding_ops),
             commands,
             frame_call
         };
     }
 
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void>
-    validateResourceRegistration(const ResourceDefinition&, const ResourceRegistration&) noexcept;
+    validateResourceRegistration(const ResourceRegistration&) noexcept;
 } // namespace lux::render

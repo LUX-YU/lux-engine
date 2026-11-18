@@ -26,19 +26,19 @@ namespace lux::render
         }
 
         [[nodiscard]] CommandBindingLocation binding() const noexcept { return binding_; }
-        [[nodiscard]] cxx::type_info implementationType() const noexcept { return implementation_; }
+        [[nodiscard]] cxx::basic_type_info implementationType() const noexcept { return implementation_; }
 
         void reset() noexcept;
 
     private:
         friend class ResourceRegistry;
         ResourceCommandUse(
-            ResourceRegistry&, ResourceInstanceId, void*, CommandBindingLocation, cxx::type_info
+            ResourceRegistry&, ResourceInstanceId, void*, CommandBindingLocation, cxx::basic_type_info
         ) noexcept;
         ResourceRegistry* registry_ = nullptr;
         ResourceInstanceId id_;
         void* instance_ = nullptr;
         CommandBindingLocation binding_;
-        cxx::type_info implementation_;
+        cxx::basic_type_info implementation_;
     };
 } // namespace lux::render

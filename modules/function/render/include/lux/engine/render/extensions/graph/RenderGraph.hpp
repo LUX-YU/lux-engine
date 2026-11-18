@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/InstanceData.hpp>
 #include <lux/engine/render/extensions/graph/GraphProgram.hpp>
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
 #include <lux/engine/render/visibility.h>
@@ -15,13 +16,14 @@ namespace lux::render
         PassWork work;
         bool side_effect = false;
         std::optional<PassCondition> condition;
-        std::optional<PassInterface> encoding_interface;
-        nri::StageBits encoding_stages = nri::StageBits::NONE;
+        PassInterface interface;
+        nri::StageBits shader_stages = nri::StageBits::NONE;
         std::optional<RasterScope> rendering;
+        std::optional<GraphicsState> graphics;
+        bool allow_async_compute = false;
 
         [[nodiscard]] const RasterScope* rasterScope() const noexcept
         {
-            if (const auto* raster = work.getIf<RasterWork>()) return raster;
             return rendering ? &*rendering : nullptr;
         }
     };
@@ -31,6 +33,14 @@ namespace lux::render
     class RenderGraph final
     {
     public:
+        RenderGraph() noexcept = default;
+        RenderGraph(RenderGraph&&) noexcept = default;
+        RenderGraph& operator=(RenderGraph&&) noexcept = default;
+        RenderGraph(const RenderGraph&) = delete;
+        RenderGraph& operator=(const RenderGraph&) = delete;
+
+        [[nodiscard]] std::span<const InstanceDataRecipe> instanceData() const noexcept { return instance_data_; }
+
         [[nodiscard]] std::span<const GraphResource> resources() const noexcept
         {
             return resources_;
@@ -73,6 +83,7 @@ namespace lux::render
 
     private:
         friend class RenderGraphBuilder;
+        std::vector<InstanceDataRecipe> instance_data_;
         std::vector<GraphProgram> programs_;
         std::vector<SamplerDescription> samplers_;
         std::vector<GraphResource> resources_;

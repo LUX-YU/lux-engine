@@ -1,13 +1,10 @@
 #pragma once
 
 #include <cmath>
-#include <lux/engine/description/LightDescription.hpp>
-#include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/resources/lighting/Data.hpp>
+#include <cstdint>
 
 namespace lux::render
 {
-
     struct MeshShadowsConfiguration final
     {
         std::uint32_t resolution = 1024;
@@ -21,14 +18,4 @@ namespace lux::render
             return valid_resolution && std::isfinite(distance) && distance > 0;
         }
     };
-
-    struct ShadowLightInput final
-    {
-        LightId light;
-        rdesc::LightDescription description;
-        bool operator==(const ShadowLightInput&) const noexcept = default;
-    };
-
-    // Cold selection and clipping used to compile shadow slices. Moving lights and
-    // camera pose remain frame data; they do not recreate the Effect.
 } // namespace lux::render

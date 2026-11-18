@@ -30,7 +30,7 @@ int main()
     auto handler = probe::install(**server);
     check(bool(handler));
     auto second = probe::install(**server);
-    check(bool(second));
+    check(!second && second.error().type == kCommandContract);
     auto client = ipc::IpcCore::instance().createRequester("spatial.external");
     check(bool(client));
     std::thread render([&]() { check(bool((*server)->run())); });

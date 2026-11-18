@@ -10,6 +10,7 @@
 
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/RasterSurface.hpp>
+#include <lux/engine/render/capabilities/RenderPresets.hpp>
 
 #include "Support.hpp"
 #include <atomic>
@@ -18,7 +19,6 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
@@ -505,57 +505,64 @@ inline void endCallCapture() noexcept
 // No Graph description is carried in its public Commands or frame protocol.
 
 
-inline std::vector<CapabilityPort>
+inline std::vector<std::string>
 probePorts(std::initializer_list<std::string_view> images, std::initializer_list<std::string_view> buffers)
 {
-    std::vector<CapabilityPort> ports;
-    for (auto key : images)
-        ports.push_back({std::string(key), ECapabilityPortDirection::OUTPUT, "test.image", CapabilityImageShape{}});
-    for (auto key : buffers)
-        ports.push_back(
-            {std::string(key), ECapabilityPortDirection::OUTPUT, "test.readback", CapabilityBufferShape{1}}
-        );
-    return ports;
+    std::vector<std::string> names;
+    for (auto key : images) names.emplace_back(key);
+    for (auto key : buffers) names.emplace_back(key);
+    return names;
 }
 
+template <class Configuration, class Capability = RenderProbeCapability> struct RenderProbe final
+{
+    using Build = RenderResult<EffectDefinition> (*)(
+        const EffectOutputDesc&, const Configuration&, std::span<const FeatureId>
+    ) noexcept;
+    CapabilityImplementationId implementation;
+    std::vector<FeatureId> features;
+    std::vector<std::string> outputs;
+    Build build;
+};
+
 template <class Configuration, class Capability = RenderProbeCapability>
-CapabilityImplementationId registerRenderProbe(
-    RenderServer& server, std::string name, std::vector<FeatureId> features, std::vector<CapabilityPort> ports,
-    RenderResult<CapabilityGraphContribution> (*build)(const CapabilityBuildInput&) noexcept
+RenderProbe<Configuration, Capability> registerRenderProbe(
+    RenderServer& server, std::string name, std::vector<FeatureId> features, std::vector<std::string> outputs,
+    typename RenderProbe<Configuration, Capability>::Build build
 )
 {
     CapabilityImplementation implementation;
     implementation.implementation = std::move(name);
-    implementation.features = std::move(features);
-    implementation.config_type = lux::cxx::make_basic_type_info<Configuration>();
-    implementation.build_graph = build;
-    implementation.graph.ports = std::move(ports);
-    implementation.graph.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA16_SFLOAT};
-    implementation.graph.target_samples = {1};
-    implementation.graph.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
-    const auto capability = take(server.registerCapability<Capability>());
-    return take(server.addCapabilityImplementation(capability, implementation));
-}
-
-// Each implementation declares these output ports in the same order as its fixed graph outputs.
-inline void publishProbeOutputs(CapabilityGraphContribution& graph, const CapabilityBuildInput& input)
-{
-    CHECK(graph.definition.outputs.size() == input.ports.size());
-    for (const auto& output : graph.definition.outputs) graph.ports.push_back({output.source});
+    implementation.features = features;
+    implementation.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM, rdesc::ETextureFormat::RGBA16_SFLOAT};
+    implementation.target_samples = {1};
+    implementation.target_kinds = {ETargetKind::OFFSCREEN, ETargetKind::SURFACE};
+    auto capability = server.capabilityId(lux::cxx::make_basic_type_info<Capability>());
+    if (!capability && capability.error().type == kRuntimeIdentity)
+        capability = server.registerCapability<Capability>();
+    const auto id = take(server.addCapabilityImplementation(take(std::move(capability)), implementation));
+    return {id, std::move(features), std::move(outputs), build};
 }
 
 template <class Configuration, class Capability = RenderProbeCapability>
 CreateEffectRequest probeRequest(
-    TargetDesc target, CapabilityImplementationId implementation, Configuration configuration,
+    TargetDesc target, const RenderProbe<Configuration, Capability>& probe, Configuration configuration,
     std::initializer_list<std::string_view> outputs
 )
 {
     CreateEffectRequest request{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
-    request.composition.contributions.push_back(
-        {"probe", lux::cxx::make_basic_type_info<Capability>(), implementation,
-         take(ConfigValue::make(std::move(configuration)))}
-    );
-    for (auto port : outputs) request.composition.outputs.push_back({"probe", std::string(port)});
+    request.definition = take(probe.build(request.output, configuration, probe.features));
+    CHECK(request.definition.outputs.size() == probe.outputs.size());
+    std::vector<FeatureExport> selected;
+    for (auto name : outputs)
+    {
+        const auto found = std::ranges::find(probe.outputs, name);
+        CHECK(found != probe.outputs.end());
+        selected.push_back(request.definition.outputs[found - probe.outputs.begin()]);
+    }
+    request.definition.outputs = std::move(selected);
+    for (auto& feature : request.definition.features) feature.contribution_key = "probe/" + feature.contribution_key;
+    request.implementations.push_back({probe.implementation, "probe"});
     return request;
 }
 
@@ -574,6 +581,7 @@ struct CaptureConfig
     rdesc::ETextureFormat format = rdesc::ETextureFormat::RGBA8_UNORM;
     std::uint32_t layers = 1, layer = 0, bytes = 0;
     bool target_relative = true;
+    std::uint32_t mips = 1, mip = 0;
     bool operator==(const CaptureConfig&) const noexcept = default;
 };
 
@@ -693,6 +701,7 @@ struct CaptureFeature
         const auto& config = *static_cast<const CaptureConfig*>(value);
         image.format = config.format;
         image.layers = config.layers;
+        image.mips = config.mips;
         image.extent.source = config.target_relative ? EImageExtentSource::TARGET : EImageExtentSource::FIXED;
         ports.resources.push_back(
             {"color",
@@ -740,7 +749,7 @@ struct CaptureFeature
         {
             const auto aspects = rdesc::textureAspectMask(config.format);
             copy.operations.push_back(CopyImageBuffer{
-                {context.resource("color"), GraphImageRange{aspects, 0, 1, config.layer, 1}},
+                {context.resource("color"), GraphImageRange{aspects, config.mip, 1, config.layer, 1}},
                 {initialized->written.front(), {}, EGraphAccess::READ_WRITE}
             });
         }
@@ -810,24 +819,37 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
     return response;
 }
 
-static void renderFrame(ipc::IpcRequester& client, const CommandList& commands)
+static void renderFrame(ipc::IpcRequester& client, const CommandList& commands, RenderJobId job)
 {
-    const auto response = call<SubmitFrame>(client, commands, {});
-    CHECK(response.outcome == EFrameOutcome::SUBMITTED);
+    CHECK(call<RequestRenderJob>(client, commands, {job}).job == job);
 }
 
-static void detach(ipc::IpcRequester& client, const CommandList& commands, AttachmentId attachment)
+static RenderJobId startRenderJob(
+    ipc::IpcRequester& client,
+    const CommandList& commands,
+    SceneId scene,
+    ViewId view,
+    TargetId target,
+    EffectId effect
+)
 {
+    const auto job = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+    call<StartRenderJob>(client, commands, {job, target});
+    return job;
+}
+
+static void stopAndRemoveJob(ipc::IpcRequester& client, const CommandList& commands, RenderJobId job)
+{
+    call<StopRenderJob>(client, commands, job);
     const auto deadline = Clock::now() + 20s;
     for (;;)
     {
-        const auto response = call<Detach>(client, commands, attachment, false);
+        const auto response = call<RemoveRenderJob>(client, commands, job, false);
         if (!response.error.type)
         {
             return;
         }
-        // A graph can be between accepted batches. Retry admission, never bypass its lifetime boundary.
-        CHECK(response.error.type == kDeviceBusy && Clock::now() < deadline);
+        CHECK(response.error.type == kJobBusy && Clock::now() < deadline);
         std::this_thread::yield();
     }
 }
@@ -847,8 +869,7 @@ struct SceneInputRoutes final
 {
     ResourceInstanceId instances, lights;
     VRenderScope scope;
-    std::vector<CapabilityDescription> capabilities;
-    std::vector<CapabilityImplementationId> implementations;
+    std::vector<CapabilityImplementationInfo> recipes;
 };
 
 static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandList& commands, VRenderScope scope)
@@ -862,8 +883,7 @@ static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandLi
             [name](const auto& value) { return value.capability.type.name() == name; }
         );
         CHECK(found != choices.implementations.end());
-        routes.capabilities.push_back(found->capability);
-        routes.implementations.push_back(found->implementation_id);
+        routes.recipes.push_back(*found);
     }
     if (!std::holds_alternative<GlobalRenderScope>(scope))
     {
@@ -873,21 +893,16 @@ static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandLi
     return routes;
 }
 
-// Explicit commands also work without a Job/Attachment. These scene fixtures use that route
-// for edits between frames; the column-packet integration fixture covers Attachment cold bindings.
+// Professional commands also work without a running Job.
 template <class Target, class T>
-static FrameCompletion updateSceneData(
-    ipc::IpcRequester& client, const CommandList& commands, Target target, const T& input,
-    bool success = true, bool resynchronize = false
+static AckResponse updateSceneData(
+    ipc::IpcRequester& client, const CommandList& commands, Target target, const T& input, bool success = true
 )
 {
-    AckResponse applied;
     if constexpr (std::same_as<Target, ViewRequest>)
-        applied = call<UpdateViewCamera>(client, commands, {target, input}, success);
+        return call<UpdateViewCamera>(client, commands, {target, input}, success);
     else if constexpr (std::same_as<T, std::span<const DirectLightUpdate>>)
-        applied = call<LightingCommands::Update>(client, commands, {target, input}, success);
+        return call<LightingCommands::Update>(client, commands, {target, input}, success);
     else
-        applied = call<InstanceCommands::Update>(client, commands, {target, {}, input}, success);
-    if (applied.error.type != 0) return {applied.error, EFrameOutcome::REJECTED};
-    return call<SubmitFrame>(client, commands, {{}, nullptr, resynchronize}, success);
+        return call<InstanceCommands::Update>(client, commands, {target, {}, input}, success);
 }

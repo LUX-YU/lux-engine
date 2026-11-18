@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <lux/engine/render/device/NativeExecution.hpp>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
@@ -29,7 +28,10 @@ namespace lux::render::detail
         };
     } // namespace
 
-    DeviceSession::DeviceSession() noexcept : descriptor_table_(*this) {}
+    DeviceSession::DeviceSession(cxx::execution::ManualContext::Scheduler native_scheduler) noexcept
+        : native_scheduler_(native_scheduler), descriptor_table_(*this)
+    {
+    }
 
     RenderResult<std::vector<nri::AdapterDesc>> DeviceSession::enumerateAdapters() noexcept
     {
@@ -55,25 +57,24 @@ namespace lux::render::detail
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
-        bool validation
+        bool validation,
+        cxx::execution::ManualContext::Scheduler native_scheduler
     ) noexcept
     {
-        auto result = std::unique_ptr<DeviceSession>(new DeviceSession);
+        auto result = std::unique_ptr<DeviceSession>(new DeviceSession(native_scheduler));
         auto initialized = DeviceBackend::initialize(*result, options, diagnostic, validation);
         if (!initialized)
         {
             return cxx::unexpected(initialized.error());
         }
-        auto native = NativeExecution::create();
-        if (!native) return cxx::unexpected(native.error());
-        result->native_execution_ = std::move(*native);
+        result->use_device_addresses_ = options.buffer_device_address;
         result->programs_ = std::make_unique<CompiledPrograms>(*result, options.cached_unused_programs);
         return result;
     }
 
-    cxx::execution::ManualContext::Scheduler DeviceSession::nativeScheduler() noexcept
+    cxx::execution::ManualContext::Scheduler DeviceSession::nativeScheduler() const noexcept
     {
-        return native_execution_->scheduler();
+        return native_scheduler_;
     }
 
     RenderError DeviceSession::terminalError() const noexcept
@@ -115,28 +116,18 @@ namespace lux::render::detail
         std::terminate(); // Internal submissions always belong to this device.
     }
 
-    DeviceSession::~DeviceSession() noexcept
-    {
-        close();
-    }
-
     void DeviceSession::requireCleanupComplete(const RenderResult<void>& result) noexcept
     {
         const bool device_lost = !result && isNativeFailure(result.error(), nri::Result::DEVICE_LOST);
-        const bool retired_unknown =
-            !result && result.error().type == kOutcomeUnknown && terminalError().type == kOutcomeUnknown;
+        const bool retired_unknown = !result && result.error().type == kOutcomeUnknown;
         if (!result && !device_lost && !retired_unknown)
         {
             std::terminate();
         }
     }
 
-    void DeviceSession::close() noexcept
+    DeviceSession::~DeviceSession() noexcept
     {
-        if (closed_)
-        {
-            return;
-        }
         // Members that can produce cleanup are emptied while admission is still open.
         if (programs_) programs_->clear();
         cleanup_scope_.close();
@@ -147,9 +138,6 @@ namespace lux::render::detail
         {
             requireCleanupComplete(drain());
         } while (!joined);
-        // Domain scopes have settled and passive GPU cleanup has drained. Join the native
-        // consumer stack before destroying Device/Queue/descriptor facts borrowed by it.
-        if (native_execution_) native_execution_->closeAndJoin();
         programs_.reset();
         descriptor_table_.clear();
         physical_queues_.clear();
@@ -158,7 +146,6 @@ namespace lux::render::detail
             nri::nriDestroyDevice(std::exchange(device_, nullptr));
         }
         releaseBackendData();
-        closed_ = true;
     }
 
     std::uint32_t DeviceSession::resourceCapabilities() const noexcept

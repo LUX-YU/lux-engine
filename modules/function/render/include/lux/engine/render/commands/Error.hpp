@@ -17,8 +17,6 @@ namespace lux::render
     inline constexpr auto kRuntimeIdentity = error::errorId("lux.render.runtime.identity");
     inline constexpr auto kRuntimeUnsupported = error::errorId("lux.render.runtime.unsupported");
     inline constexpr auto kFrameContract = error::errorId("lux.render.frame.contract");
-    inline constexpr auto kFrameSource = error::errorId("lux.render.frame.source");
-    inline constexpr auto kFrameResynchronization = error::errorId("lux.render.frame.resynchronization");
 
     [[nodiscard]] inline std::span<const error::ErrorDescriptor> renderRuntimeErrorDescriptors() noexcept
     {
@@ -35,8 +33,6 @@ namespace lux::render
             {"lux.render.runtime.identity", "Stale or foreign runtime identity"},
             {"lux.render.runtime.unsupported", "Unsupported runtime command"},
             {"lux.render.frame.contract", "Invalid frame data contract"},
-            {"lux.render.frame.source", "Frame submitted by a different IPC source"},
-            {"lux.render.frame.resynchronization", "Frame state requires explicit Client resynchronization"}
         };
         return descriptors;
     }

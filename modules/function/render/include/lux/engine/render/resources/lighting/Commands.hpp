@@ -8,7 +8,7 @@ namespace lux::render::LightingCommands
     struct CreateLights final
     {
         static constexpr std::string_view name = "lux.render.lighting3d.create_lights";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = LightData;
 
         struct Request final
@@ -33,7 +33,7 @@ namespace lux::render::LightingCommands
     struct ReleaseLight final
     {
         static constexpr std::string_view name = "lux.render.lighting3d.release_light";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
         using Data = LightId;
 
@@ -57,7 +57,7 @@ namespace lux::render::LightingCommands
     struct Update final
     {
         static constexpr std::string_view name = "lux.render.lighting.update";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = DirectLightUpdate;
         struct Request final
         {

@@ -23,7 +23,6 @@ namespace lux::render::detail
 {
     struct DeviceBackend;
     class CompiledPrograms;
-    class NativeExecution;
     struct StorageBindingOps;
     struct StorageFrameUse;
 
@@ -57,12 +56,15 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC DeviceSession final
     {
     public:
+        [[nodiscard]] bool usesDeviceAddresses() const noexcept { return use_device_addresses_; }
+
         // Cold query values; an explicit DeviceOptions index uses this same NRI enumeration order.
         [[nodiscard]] static RenderResult<std::vector<nri::AdapterDesc>> enumerateAdapters() noexcept;
         [[nodiscard]] static RenderResult<std::unique_ptr<DeviceSession>> create(
             const DeviceOptions& options,
             const nri::CallbackInterface& diagnostic,
-            bool validation = false
+            bool validation,
+            cxx::execution::ManualContext::Scheduler native_scheduler
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
@@ -72,10 +74,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> drain() noexcept;
         // Shared by all logical queue roles in this Session's native host domain. Start only
         // from the control owner; CPU workers must first deliver back to that owner.
-        [[nodiscard]] cxx::execution::ManualContext::Scheduler nativeScheduler() noexcept;
+        [[nodiscard]] cxx::execution::ManualContext::Scheduler nativeScheduler() const noexcept;
         [[nodiscard]] RenderError terminalError() const noexcept;
-        // External Context/Storage owners and upload producers must be settled before final close.
-        void close() noexcept;
 
         // Start on the device thread. Capture all accepted frontiers now and settle every queue before release.
         // No resource is retained by the queue itself.
@@ -116,6 +116,15 @@ namespace lux::render::detail
         [[nodiscard]] SubmissionFrontiers makeFrontiers() const noexcept
         {
             return {this, queueCount()};
+        }
+
+        void readCompleted(SubmissionFrontiers& completed) const noexcept
+        {
+            completed.clear();
+            for (std::size_t queue = 0; queue < queueCount(); ++queue)
+            {
+                completed.accept(submissionPoint(queue, physicalQueue(queue).completed()));
+            }
         }
 
         [[nodiscard]] SubmissionPoint submissionPoint(std::size_t queue, std::uint64_t serial) const noexcept
@@ -248,13 +257,14 @@ namespace lux::render::detail
         [[nodiscard]] bool pendingGpuWork() const noexcept;
 
     private:
+        bool use_device_addresses_ = false;
         friend struct DeviceBackend;
         void requireCleanupComplete(const RenderResult<void>&) noexcept;
-        DeviceSession() noexcept;
+        explicit DeviceSession(cxx::execution::ManualContext::Scheduler native_scheduler) noexcept;
         void releaseBackendData() noexcept;
         struct BackendData;
 
-        std::unique_ptr<NativeExecution> native_execution_;
+        cxx::execution::ManualContext::Scheduler native_scheduler_;
         // Declared before all dependent members, destroyed after their complete cleanup.
         nri::Device* device_ = nullptr;
         nri::CoreInterface nri_core_{};
@@ -269,6 +279,5 @@ namespace lux::render::detail
         DescriptorTable descriptor_table_;
         std::unique_ptr<CompiledPrograms> programs_;
         stdexec::simple_counting_scope cleanup_scope_;
-        bool closed_ = false;
     };
 } // namespace lux::render::detail

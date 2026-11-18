@@ -1,17 +1,10 @@
 add_executable(render_output_test Output.cpp)
-target_link_libraries(render_output_test PRIVATE render_extensions)
+
 add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 
 add_test(NAME render.native.device_lost_completion COMMAND render_output_test --device-lost)
 set_tests_properties(render.native.device_lost_completion PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
-
-# Explicit project GPU diagnostic surface, never inherited by an installed application.
-target_include_directories(render_output_test PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude"
-)
-target_link_libraries(render_output_test PRIVATE NRI)
 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
@@ -33,21 +26,33 @@ endforeach()
 
 add_executable(render_graph_chain GraphChain.cpp ${graph_shader_headers})
 target_include_directories(render_graph_chain PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
     "${CMAKE_CURRENT_BINARY_DIR}/shaders"
     "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
 )
-target_link_libraries(render_graph_chain PRIVATE render_extensions NRI)
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
 # The combined matrix creates 74 independent devices. ASan + validation exceeds 90 seconds;
 # per-scenario progress assertions remain unchanged by this outer process budget.
 set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180)
 
 add_executable(render_deferred_scene DeferredScene.cpp)
-target_include_directories(render_deferred_scene PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
-target_link_libraries(render_deferred_scene PRIVATE render NRI lux::engine::core::core_execution
-    lux::engine::function::material_compiler lux::engine::function::material_graph)
-target_link_libraries(render_deferred_scene PRIVATE render_extensions)
+
+target_link_libraries(render_deferred_scene PRIVATE
+    lux::engine::function::material_compiler lux::engine::function::material_graph
+)
+
+# The GPU probes instantiate the production native host through its private header.
+add_library(render_native_probe_host STATIC "${CMAKE_CURRENT_SOURCE_DIR}/../src/device/NativeExecution.cpp")
+
+target_include_directories(render_native_probe_host PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude")
+
+target_link_libraries(render_native_probe_host PUBLIC render_extensions)
+
+foreach(probe IN ITEMS render_output_test render_graph_chain render_deferred_scene)
+    target_include_directories(${probe} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+
+    target_link_libraries(${probe} PRIVATE render_native_probe_host NRI)
+endforeach()
+
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
 

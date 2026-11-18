@@ -26,8 +26,12 @@ namespace lux::render::detail
             using Complete = void (*)(void*, RenderResult<JobReceipt>) noexcept;
             void* receiver;
             Complete complete;
+            const FrameData* data;
 
-            explicit Request(void* object, Complete done) noexcept : receiver(object), complete(done) {}
+            explicit Request(void* object, Complete done, const FrameData* packet = nullptr) noexcept
+                : receiver(object), complete(done), data(packet)
+            {
+            }
 
             ~Request() noexcept;
             Request(const Request&) = delete;
@@ -38,33 +42,34 @@ namespace lux::render::detail
             JobControl* owner_ = nullptr;
         };
 
-        explicit JobControl(RenderJobId id, EJobCadence cadence) noexcept;
+        explicit JobControl(EJobCadence cadence) noexcept;
+        void setId(RenderJobId) noexcept;
         ~JobControl() noexcept;
         JobControl(const JobControl&) = delete;
         JobControl& operator=(const JobControl&) = delete;
 
         // External Scene/Target device compatibility is checked once before this call.
-        [[nodiscard]] RenderResult<void> beginStart(TargetId target, bool& is_using, Start& output) noexcept;
+        [[nodiscard]] RenderResult<void> beginStart(TargetId target, bool rebind, Start& output) noexcept;
         void stop() noexcept; // closes admission NOW; already admitted Run may finish
+        void rejectUnadmitted(RenderError) noexcept;
         [[nodiscard]] RenderResult<void> request(Request& request) noexcept;
         [[nodiscard]] bool tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index, Run& output) noexcept;
 
         [[nodiscard]] bool running() const noexcept
         {
-            return reservation_ != nullptr;
+            return running_;
         }
 
+        [[nodiscard]] Start* pendingStart() const noexcept { return starting_; }
+        [[nodiscard]] bool hasRun() const noexcept { return admitted_ != nullptr; }
+        [[nodiscard]] bool hasRequest() const noexcept { return requested_ != nullptr; }
+        [[nodiscard]] const FrameData* takeRequestedData() noexcept;
         [[nodiscard]] bool eligible() const noexcept;
         [[nodiscard]] bool canRemove() const noexcept;
 
         [[nodiscard]] RenderJobId id() const noexcept
         {
             return id_;
-        }
-
-        [[nodiscard]] TargetId target() const noexcept
-        {
-            return target_;
         }
 
         [[nodiscard]] EJobCadence cadence() const noexcept
@@ -82,8 +87,7 @@ namespace lux::render::detail
             Start(const Start&) = delete;
             Start& operator=(const Start&) = delete;
             // Call only after candidate graph/pipeline construction has succeeded.
-            // Cancellation releases this operation's reservation once; a late result
-            // cannot clear a different Job's newer reservation.
+            // The Server validates ownership of the actual Target reservation before publication.
             [[nodiscard]] RenderResult<void> publish() noexcept;
 
             [[nodiscard]] bool active() const noexcept
@@ -91,12 +95,14 @@ namespace lux::render::detail
                 return job_ != nullptr;
             }
 
+            [[nodiscard]] TargetId target() const noexcept { return target_; }
+            [[nodiscard]] bool cancelled() const noexcept { return cancelled_; }
+
         private:
             friend class JobControl;
-            void cancel() noexcept;
             JobControl* job_ = nullptr;
             TargetId target_{};
-            bool* reservation_ = nullptr;
+            bool cancelled_ = false;
         };
 
         class Run final
@@ -128,9 +134,8 @@ namespace lux::render::detail
 
     private:
         RenderJobId id_;
-        TargetId target_{};
         EJobCadence cadence_;
-        bool* reservation_ = nullptr;
+        bool running_ = false;
         Start* starting_ = nullptr; // addresses of real connected operations
         Run* admitted_ = nullptr;
         Request* requested_ = nullptr; // one exact request credit per Job; never silently coalesced

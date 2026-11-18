@@ -20,9 +20,7 @@ namespace lux::render::detail
         NativeExecution(const NativeExecution&) = delete;
         NativeExecution& operator=(const NativeExecution&) = delete;
         [[nodiscard]] Scheduler scheduler() noexcept;
-        // After domain scopes/producers settle, seal, drain and join actual callback-stack tails.
-        // Caller still retains Context/scheduler borrowers until their own start calls return.
-        void closeAndJoin() noexcept;
+        [[nodiscard]] bool idle() const noexcept { return context_.is_idle(); }
 
     private:
         explicit NativeExecution(cxx::execution::ManualContextConfig config) noexcept;

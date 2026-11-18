@@ -112,57 +112,24 @@ namespace lux::render::detail
         ) noexcept
         {
             auto current = accessFor(use, program);
-            if (const auto* image = std::get_if<GraphImageDesc>(&description))
+            if (const auto override = pass.work.access(use, description, backend))
             {
-                if (const auto* transfer = pass.work.getIf<TransferWork>())
-                {
-                    for (const auto& operation : transfer->operations)
-                    {
-                        const auto* clear = std::get_if<ClearImage>(&operation);
-                        if (clear && clear->destination.version.resource.index == resource)
-                        {
-                            const bool depth = rdesc::textureAspectMask(image->format) != 1;
-                            current.access = depth ? nri::AccessBits::DEPTH_STENCIL_ATTACHMENT
-                                                   : nri::AccessBits::COLOR_ATTACHMENT;
-                            current.stages = depth ? nri::StageBits::DEPTH_STENCIL_ATTACHMENT
-                                                   : nri::StageBits::COLOR_ATTACHMENT;
-                            current.layout =
-                                depth ? nri::Layout::DEPTH_STENCIL_ATTACHMENT : nri::Layout::COLOR_ATTACHMENT;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if (const auto* transfer = pass.work.getIf<TransferWork>())
-                {
-                    for (const auto& operation : transfer->operations)
-                    {
-                        const auto* fill = std::get_if<FillBuffer>(&operation);
-                        if (fill && fill->destination.version.resource.index == resource)
-                        {
-                            current.stages = zeroBufferStages(backend);
-                            if (fill->value)
-                            {
-                                current.access = nri::AccessBits::CLEAR_STORAGE;
-                                current.stages = nri::StageBits::CLEAR_STORAGE;
-                            }
-                        }
-                    }
-                }
+                current.access = override->access;
+                current.stages = override->stages;
+                if (std::holds_alternative<GraphImageDesc>(description)) current.layout = override->layout;
             }
             const bool is_shader_use = use.usage == EGraphUse::SAMPLED || use.usage == EGraphUse::STORAGE_READ ||
                 use.usage == EGraphUse::STORAGE_WRITE || use.usage == EGraphUse::STORAGE_READ_WRITE;
-            if (pass.encoding_interface && is_shader_use)
+            if (is_shader_use && pass.shader_stages != nri::StageBits::NONE)
             {
                 // A pass-wide shader union must not broaden attachment/copy/index barriers to
                 // incompatible D3D12 sync/access pairs. Fixed-function uses keep their own stages.
                 const bool storage_access = (current.access & nri::AccessBits::SHADER_RESOURCE_STORAGE) != 0;
                 const auto allowed = storage_access
                     ? nri::StageBits::ALL_SHADERS | nri::StageBits::CLEAR_STORAGE : nri::StageBits::ALL_SHADERS;
-                const auto selected = static_cast<std::uint32_t>(pass.encoding_stages) &
+                const auto selected = static_cast<std::uint32_t>(pass.shader_stages) &
                     static_cast<std::uint32_t>(allowed);
-                if (pass.encoding_stages == nri::StageBits::ALL) current.stages = nri::StageBits::ALL;
+                if (pass.shader_stages == nri::StageBits::ALL) current.stages = nri::StageBits::ALL;
                 else if (selected != 0)
                 {
                     const auto declared = static_cast<nri::StageBits>(selected);

@@ -4,6 +4,16 @@
 
 namespace lux::render
 {
+    // File payload only. The owning author module decodes this to its concrete configuration.
+    // CreateEffect never accepts or interprets serialized configuration.
+    struct SerializedRenderConfiguration final
+    {
+        std::string schema;
+        std::uint32_t version = 1;
+        std::vector<std::byte> bytes;
+        bool operator==(const SerializedRenderConfiguration&) const noexcept = default;
+    };
+
     // A final observable output from a selected capability occurrence. Internal Feature ports
     // and connections are resolved by the implementation and are not ordinary client input.
     struct CapabilityOutput final
@@ -11,22 +21,6 @@ namespace lux::render
         std::string contribution;
         std::string name;
         bool operator==(const CapabilityOutput&) const noexcept = default;
-    };
-
-    struct CapabilityContribution final
-    {
-        std::string key;
-        cxx::type_info capability;
-        CapabilityImplementationId implementation_id;
-        VCapabilityConfiguration configuration;
-    };
-
-    // Cold authoring input only. Lowered into the existing EffectDefinition; it is
-    // never retained as a second executable graph or a Feature instance directory.
-    struct CapabilityComposition final
-    {
-        std::vector<CapabilityContribution> contributions;
-        std::vector<CapabilityOutput> outputs;
     };
 
     struct CapabilityContributionDescription final

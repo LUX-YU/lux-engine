@@ -1,8 +1,9 @@
 #pragma once
 
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/capabilities/CapabilityComposition.hpp>
+#include <lux/engine/render/core/EffectParameters.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/extensions/features/EffectDefinition.hpp>
 
 namespace lux::render
 {
@@ -17,25 +18,46 @@ namespace lux::render
         EffectId effect{};
     };
 
+    struct EffectImplementationUse final
+    {
+        CapabilityImplementationId implementation;
+        std::string contribution;
+    };
+
     struct CreateEffectRequest final
     {
         EffectOutputDesc output;
-        CapabilityComposition composition;
+        EffectDefinition definition;
+        std::vector<EffectImplementationUse> implementations;
+        EffectParameters parameters;
     };
 
+    // Builds a reusable logical recipe. The selected execution compiles its device plan separately.
     struct CreateEffect final
     {
         static constexpr std::string_view name{"render.effect.create"};
-        static constexpr bool requires_frame_boundary = false;
         using Request = CreateEffectRequest;
         using Response = EffectCreated;
+    };
+
+    // Updates every execution of this Effect at the next Prepare. View and execution-local values are separate.
+    struct SetEffectParameters final
+    {
+        static constexpr std::string_view name{"render.effect.set_parameters"};
+
+        struct Request final
+        {
+            EffectId effect;
+            EffectParameters parameters;
+        };
+
+        using Response = AckResponse;
     };
 
     struct RemoveEffect final
     {
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.effect.remove"};
-        static constexpr bool requires_frame_boundary = true;
         using Request = EffectRequest;
         using Response = AckResponse;
     };

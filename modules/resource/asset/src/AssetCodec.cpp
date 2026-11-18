@@ -19,7 +19,7 @@ namespace lux::asset
             [[nodiscard]] AssetTypeId type() const noexcept override { return T::asset_type; }
             [[nodiscard]] std::uint32_t magic() const noexcept override { return T::primary_magic; }
 
-            [[nodiscard]] cxx::type_info dataType() const noexcept override
+            [[nodiscard]] cxx::basic_type_info dataType() const noexcept override
             {
                 return cxx::make_basic_type_info<typename T::data_type>();
             }

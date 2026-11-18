@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <exception>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <map>
@@ -18,49 +17,14 @@ namespace lux::render
     class LUX_RENDER_PUBLIC ResourceSet final
     {
     public:
-        explicit ResourceSet(
-            ResourceRegistry& registry,
-            EResourceDomain domain = EResourceDomain::SCENE,
-            const ResourceSet* parent = nullptr
-        ) noexcept
-            : registry_(registry), domain_(domain), parent_(parent)
-        {
-            const bool is_foreign_parent = parent_ && &parent_->registry_ != &registry_;
-            const bool is_wrong_parent_domain =
-                parent_ && static_cast<unsigned>(domain_) != static_cast<unsigned>(parent_->domain_) + 1;
-            const bool is_invalid_parent = is_foreign_parent || is_wrong_parent_domain;
-            if (is_invalid_parent)
-            {
-                std::terminate();
-            }
-        }
+        ResourceSet(ResourceRegistry& registry, detail::DeviceSession& device) noexcept;
+        ResourceSet(ResourceSet& parent, EResourceDomain domain) noexcept;
 
         ~ResourceSet() noexcept;
         ResourceSet(const ResourceSet&) = delete;
         ResourceSet& operator=(const ResourceSet&) = delete;
         ResourceSet(ResourceSet&&) = delete;
         ResourceSet& operator=(ResourceSet&&) = delete;
-
-        template <class T>
-        [[nodiscard]] RenderResult<ResourceInstanceId> getOrCreate(ResourceCreateContext& dependencies) noexcept
-        {
-            return getOrCreateImpl(
-                dependencies,
-                T::descriptor,
-                []() noexcept
-                {
-                    if constexpr (std::is_void_v<typename T::Config>)
-                    {
-                        return cxx::type_info{};
-                    }
-                    else
-                    {
-                        return cxx::make_basic_type_info<typename T::Config>();
-                    }
-                }(),
-                storageOpsType<T>()
-            );
-        }
 
         [[nodiscard]] RenderResult<ResourceInstanceId>
         getOrCreate(ResourceCreateContext&, ResourceTypeId type) noexcept;
@@ -75,6 +39,8 @@ namespace lux::render
         {
             return registry_;
         }
+
+        [[nodiscard]] ResourceSet* ownerFor(EResourceDomain domain) noexcept;
 
         [[nodiscard]] std::size_t size() const noexcept
         {
@@ -96,16 +62,14 @@ namespace lux::render
             StorageOwner instance;
         };
 
-        [[nodiscard]] RenderResult<ResourceInstanceId>
-        getOrCreateImpl(ResourceCreateContext&, const ResourceDefinition&, cxx::type_info, cxx::type_info) noexcept;
         [[nodiscard]] RenderResult<ResourceInstanceId> ensure(ResourceCreateContext&, ResourceTypeId) noexcept;
         void erase(std::size_t position) noexcept;
         ResourceRegistry& registry_;
         EResourceDomain domain_;
-        const ResourceSet* parent_;
+        detail::DeviceSession& device_;
+        ResourceSet* parent_;
         std::vector<Record> records_;
         TypeIndex instances_by_type_;
-        const detail::DeviceSession* device_ = nullptr;
         std::uint32_t constructing_ = 0;
         bool clearing_ = false;
     };

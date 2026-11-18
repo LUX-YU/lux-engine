@@ -17,7 +17,6 @@ namespace lux::render
         float near_distance = 0.1F, far_distance = 1000;
         std::array<float, 4> viewport{0, 0, 1, 1}; // Normalized x/y/width/height, not pixel dimensions.
         std::array<float, 4> background{};
-        float exposure = 1;
         bool operator==(const CameraInput&) const noexcept = default;
     };
 

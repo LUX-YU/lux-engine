@@ -14,7 +14,7 @@ namespace lux::render::detail
         { return std::ranges::all_of(values, [](float value) noexcept { return std::isfinite(value); }); };
         const bool has_invalid_values = !finite(input.view) || !finite(input.projection) ||
             !finite(input.inverse_view_projection) || !finite(input.position) || !finite(input.direction) ||
-            !finite(input.background) || !std::isfinite(input.exposure) || input.exposure < 0;
+            !finite(input.background);
         const bool has_invalid_planes = !std::isfinite(input.near_distance) || !std::isfinite(input.far_distance) ||
             input.near_distance <= 0 || input.far_distance <= input.near_distance;
         const auto& direction = input.direction;

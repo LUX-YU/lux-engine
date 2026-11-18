@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/device/CompiledPrograms.hpp>
+
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <exec/task.hpp>
 #include <lux/engine/render/visibility.h>
@@ -15,7 +17,6 @@
 namespace lux::render::detail
 {
     struct ShaderBindingPlan;
-    class CompiledPrograms;
     class DeviceSession;
     class RenderPlan;
     [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
@@ -172,6 +173,7 @@ namespace lux::render::detail
         PassEncoding work;
         std::optional<CompiledRasterScope> rendering;
         EGraphPassKind kind = EGraphPassKind::TRANSFER;
+        bool writes_output = false;
         nri::Pipeline* pipeline = nullptr;
         BarrierBatch before;
         std::uint32_t source_pass = kGraphInvalidIndex;
@@ -230,6 +232,13 @@ namespace lux::render::detail
 
     struct SubmissionBatch final
     {
+        struct DrawRead final
+        {
+            std::uint32_t list;
+            bool streamed;
+            bool operator==(const DrawRead&) const noexcept = default;
+        };
+
         EQueueRole queue = EQueueRole::GRAPHICS;
         std::uint32_t first_pass = 0;
         std::uint32_t pass_count = 0;
@@ -238,6 +247,7 @@ namespace lux::render::detail
         std::vector<GraphResourceId> histories;
         std::uint32_t output_begin = kGraphInvalidIndex;
         bool reusable_recording = true;
+        std::vector<DrawRead> shared_draw_reads;
     };
 
     struct ImportedAccess final
@@ -294,7 +304,13 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC RenderPlan final
     {
     public:
-        [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> parameterRegion(std::uint32_t) const noexcept;
+        [[nodiscard]] std::pair<std::uint32_t, std::uint32_t>
+        parameterRegion(std::uint32_t, EParameterSource = EParameterSource::INSTANCE) const noexcept;
+
+        [[nodiscard]] std::span<const InstanceDataRecipe* const> instanceData() const noexcept
+        {
+            return instance_data_;
+        }
         ~RenderPlan() noexcept;
         RenderPlan(RenderPlan&& other) noexcept;
         RenderPlan& operator=(RenderPlan&&) = delete;
@@ -326,11 +342,6 @@ namespace lux::render::detail
             return output_;
         }
 
-        // Unpublished plan, called once on RenderThread. Graph and Session outlive completion.
-        // Workers compile frozen inputs; publication/references return to the caller's scheduler.
-        [[nodiscard]] exec::task<RenderResult<void>>
-        preparePrograms(DeviceSession&, const RenderGraph&, execution::CpuScheduler) noexcept;
-
         [[nodiscard]] bool compatible(const TargetDesc& target) const noexcept;
 
         [[nodiscard]] std::span<const SubmissionBatch> submissions() const noexcept
@@ -344,20 +355,24 @@ namespace lux::render::detail
         }
 
     private:
+        [[nodiscard]] exec::task<RenderResult<void>>
+        prepareOperations(DeviceSession&, const RenderGraph&, execution::CpuScheduler) noexcept;
         friend class RenderGraphInstance;
         friend class GraphCompiler;
         friend class FrameExecutor;
-        friend class FrameExecution;
+        friend class SubmissionOperation;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
         RenderPlan(nri::Device& device, EffectOutputDesc output) noexcept;
+        std::vector<const InstanceDataRecipe*> instance_data_;
         std::unique_ptr<ShaderBindingPlan> descriptor_plan_;
         nri::Device* device_;
+        bool device_addresses_ = false;
         EffectOutputDesc output_description_;
         CompiledPrograms* program_cache_ = nullptr;
         DeviceSession* encoding_owner_ = nullptr;
-        std::vector<nri::Pipeline*> program_uses_;
-        std::vector<nri::PipelineLayout*> layout_uses_;
+        std::vector<CompiledPrograms::Program*> program_uses_;
+        std::vector<CompiledPrograms::Layout*> layout_uses_;
         std::vector<CompiledResource> resources_;
         std::vector<HistoryPlan> histories_;
         std::uint32_t condition_count_ = 0;

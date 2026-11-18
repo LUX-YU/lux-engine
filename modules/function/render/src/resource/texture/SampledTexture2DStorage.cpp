@@ -408,10 +408,7 @@ namespace lux::render::detail
 
     RenderResult<void> SampledTexture2DStorage::release(TextureId id) noexcept
     {
-        if (uploads_.resourcesFrozen())
-        {
-            return cxx::unexpected(RenderError{kDeviceBusy});
-        }
+
         auto* value = findEntry(id);
         if (!value)
         {

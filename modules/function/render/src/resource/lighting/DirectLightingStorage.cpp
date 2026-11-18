@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/FrameProgress.hpp>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
@@ -150,7 +151,8 @@ namespace lux::render::detail
     } // namespace
 
     DirectLightingStorage::DirectLightingStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
-        : device_(dependencies.device), uploads_(*dependencies.uploads), frame_count_(dependencies.frame_count), id_(id)
+        : device_(dependencies.device), uploads_(*dependencies.uploads),
+          replica_progress_(*dependencies.replica_progress), frame_count_(dependencies.frame_count), id_(id)
     {
         for (std::size_t kind = 0; kind < arrays_.size(); ++kind)
         {
@@ -423,16 +425,12 @@ namespace lux::render::detail
             }
             arrays_[k].records.reserve(std::max(size, arrays_[k].records.size()));
         }
-        std::uint32_t frame = 0;
-        while (!uploads_.tryBeginWrite(frame))
+        FrameProgress::ReplicaWrite replica;
+        if (auto acquired = co_await replica_progress_.acquireReplica(device_, replica); !acquired)
         {
-            if (auto ready = co_await uploads_.whenWritable(changes.size() * 64 + sizeof(header)); !ready)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
+            co_return cxx::unexpected(acquired.error());
         }
-        auto progress = device_.makeFrontiers();
-        cxx::scope_exit finish([&]() noexcept { uploads_.finishWrite(frame, progress); });
+        const auto frame = replica.slot();
         std::array<nri::Buffer*, 4> candidates{};
         std::array<std::size_t, 4> capacities{};
         cxx::scope_exit rollback(
@@ -492,7 +490,7 @@ namespace lux::render::detail
                 {candidates[3] ? candidates[3] : arrays_[3].frames[frame].buffer, 0, std::as_bytes(std::span(header))}
             );
         }
-        auto accepted = co_await uploads_.writeBuffers(writes, {}, frame, &progress);
+        auto accepted = co_await uploads_.writeBuffers(writes, {}, &replica.accepted());
         if (accepted && stop.stop_requested()) accepted = cxx::unexpected(RenderError{kUploadStopped});
         if (!accepted)
         {
@@ -745,7 +743,8 @@ namespace lux::render::detail
         using Created = RenderResult<std::unique_ptr<DirectLightingStorage>>;
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept -> Created
         {
-            if (dependencies.frame_count == 0 || dependencies.frame_count > 3 || !dependencies.uploads)
+            const bool invalid_count = dependencies.frame_count == 0 || dependencies.frame_count > 3;
+            if (invalid_count || !dependencies.uploads || !dependencies.replica_progress)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

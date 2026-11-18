@@ -8,7 +8,7 @@ namespace lux::render
 {
     RenderResult<void> CapabilityRegistry::prepare(std::size_t implementations) noexcept
     {
-        if (!implementations_.prepareInsert(implementations) || !capabilities_.prepareInsert(implementations))
+        if (!implementations_.prepareInsert(implementations))
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
@@ -53,44 +53,19 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kCapabilityDeclaration});
             }
         }
-        // Equality is type identity only. External registration must still preserve the
-        // already published static contract; this cold check never runs during dispatch.
-        if (const auto* existing = get(find(description.type)))
-        {
-            const bool changed_resources = !std::ranges::equal(
-                existing->resources, description.resources,
-                [](const auto* left, const auto* right) noexcept { return left->hasSameContract(*right); }
-            );
-            const bool changed_prerequisites = !std::ranges::equal(existing->prerequisites, description.prerequisites);
-            const bool changed_commands = !std::ranges::equal(
-                existing->commands,
-                description.commands,
-                [](const auto* left, const auto* right) noexcept
-                { return compatibleCommands(*left, *right).has_value(); }
-            );
-            if (changed_resources || changed_prerequisites || changed_commands)
-            {
-                return cxx::unexpected(RenderError{kCapabilityConflict});
-            }
-        }
         return {};
     }
 
     CapabilityImplementationId
-    CapabilityRegistry::publish(CapabilityDescription declaration, CapabilityImplementation implementation) noexcept
+    CapabilityRegistry::publish(CapabilityId id, CapabilityImplementation implementation) noexcept
     {
-        auto id = find(declaration.type);
-        if (id.isNull())
-        {
-            id = capabilities_.insert(CapabilityRecord{declaration, {}});
-            capabilities_by_type_.emplace(TypeKey{declaration.type.hash(), declaration.type.name()}, id);
-        }
-        const auto inserted = implementations_.insert(std::move(implementation));
+        const auto inserted = implementations_.insert(ImplementationRecord{id, std::move(implementation)});
         capabilities_.tryGet(id)->implementations.push_back(inserted);
         return inserted;
     }
 
-    RenderResult<CapabilityId> CapabilityRegistry::add(const CapabilityDescription& description) noexcept
+    RenderResult<CapabilityId>
+    CapabilityRegistry::add(const CapabilityDescription& description, std::vector<ResourceTypeId> resources) noexcept
     {
         if (auto valid = validate(description); !valid)
         {
@@ -98,13 +73,13 @@ namespace lux::render
         }
         if (auto existing = find(description.type); !existing.isNull())
         {
-            return existing;
+            return cxx::unexpected(RenderError{kCapabilityConflict});
         }
         if (!capabilities_.prepareInsert(1))
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
-        const auto id = capabilities_.insert(CapabilityRecord{description, {}});
+        const auto id = capabilities_.insert(CapabilityRecord{description, std::move(resources), {}});
         capabilities_by_type_.emplace(TypeKey{description.type.hash(), description.type.name()}, id);
         return id;
     }
@@ -119,10 +94,6 @@ namespace lux::render
         for (auto id : implementations(capability))
         {
             const auto& previous = *find(id);
-            if (previous == declaration)
-            {
-                return id;
-            }
             if (previous.implementation == declaration.implementation)
             {
                 return cxx::unexpected(RenderError{kCapabilityConflict});
@@ -135,10 +106,10 @@ namespace lux::render
         {
             return cxx::unexpected(prepared.error());
         }
-        return publish(*get(capability), std::move(candidate));
+        return publish(capability, std::move(candidate));
     }
 
-    CapabilityId CapabilityRegistry::find(cxx::type_info type) const noexcept
+    CapabilityId CapabilityRegistry::find(cxx::basic_type_info type) const noexcept
     {
         const auto found = capabilities_by_type_.find({type.hash(), type.name()});
         return found == capabilities_by_type_.end() ? CapabilityId{} : found->second;
@@ -150,9 +121,16 @@ namespace lux::render
         return record ? &record->description : nullptr;
     }
 
+    std::span<const ResourceTypeId> CapabilityRegistry::resources(CapabilityId id) const noexcept
+    {
+        const auto* record = capabilities_.tryGet(id);
+        return record ? std::span<const ResourceTypeId>(record->resources) : std::span<const ResourceTypeId>{};
+    }
+
     const CapabilityImplementation* CapabilityRegistry::find(CapabilityImplementationId id) const noexcept
     {
-        return implementations_.tryGet(id);
+        const auto* record = implementations_.tryGet(id);
+        return record ? &record->declaration : nullptr;
     }
 
     std::span<const CapabilityImplementationId>
@@ -165,15 +143,8 @@ namespace lux::render
 
     CapabilityId CapabilityRegistry::capabilityOf(CapabilityImplementationId implementation) const noexcept
     {
-        for (const auto id : capabilities_.keys())
-        {
-            const auto& members = capabilities_.tryGet(id)->implementations;
-            if (std::ranges::find(members, implementation) != members.end())
-            {
-                return id;
-            }
-        }
-        return {};
+        const auto* record = implementations_.tryGet(implementation);
+        return record ? record->capability : CapabilityId{};
     }
 
     RenderResult<CapabilityImplementationId> CapabilityRegistry::replaceImplementation(
@@ -205,7 +176,7 @@ namespace lux::render
         std::erase(members, previous);
         implementations_.erase(previous);
         // Keep membership in the same capability; only the implementation generation changes.
-        return publish(*get(capability), std::move(candidate));
+        return publish(capability, std::move(candidate));
     }
 
     RenderResult<void> CapabilityRegistry::removeImplementation(CapabilityImplementationId id) noexcept
@@ -261,10 +232,6 @@ namespace lux::render
         for (std::size_t i = 0; i < declarations.size(); ++i)
         {
             const auto& declaration = declarations[i].description;
-            if (auto valid = validate(declaration); !valid)
-            {
-                return valid;
-            }
             indices.emplace(TypeKey{declaration.type.hash(), declaration.type.name()}, i);
         }
         std::vector<std::size_t> pending(declarations.size());

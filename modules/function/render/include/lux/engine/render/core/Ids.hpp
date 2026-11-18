@@ -26,7 +26,6 @@ namespace lux::render
     struct ViewTag;
     struct TargetTag;
     struct EffectTag;
-    struct AttachmentTag;
     struct FeatureTag;
     struct CapabilityTag;
     struct CapabilityImplementationTag;
@@ -39,7 +38,6 @@ namespace lux::render
     using ViewId = cxx::SlotKey<ViewTag>;
     using TargetId = cxx::SlotKey<TargetTag>;
     using EffectId = cxx::SlotKey<EffectTag>;
-    using AttachmentId = cxx::SlotKey<AttachmentTag>;
     using FeatureId = cxx::SlotKey<FeatureTag>;
     using CapabilityId = cxx::SlotKey<CapabilityTag>;
     using CapabilityImplementationId = cxx::SlotKey<CapabilityImplementationTag>;

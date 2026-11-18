@@ -6,6 +6,7 @@ namespace lux::render::detail
     Preparation::Preparation(std::size_t resource_capacity) noexcept : capacity_(resource_capacity)
     {
         receivers_.reserve(resource_capacity);
+        order_.reserve(resource_capacity);
         selected_.reserve(resource_capacity);
         frozen_.reserve(resource_capacity);
     }
@@ -60,6 +61,7 @@ namespace lux::render::detail
         {
             frozen_.clear(); // Only known pre-native failures can reach this rollback.
             selected_.clear();
+            order_.clear();
             state_ = EState::IDLE;
             return cxx::unexpected(error);
         };
@@ -69,12 +71,24 @@ namespace lux::render::detail
             {
                 return fail(RenderError{kStorageContract});
             }
-            const auto previous = std::ranges::find(selected_, resource.identity, &ResourceBinding::identity);
-            if (previous != selected_.end())
+            order_.push_back(&resource);
+        }
+        std::ranges::sort(order_, {}, [](const auto* resource) noexcept
+        {
+            return std::pair{resource->identity.index, resource->identity.gen};
+        });
+        for (const auto* resource : order_)
+        {
+            if (!selected_.empty() && selected_.back().identity == resource->identity)
             {
-                if (!previous->sameResource(resource))
+                const auto& owner = selected_.back();
+                if (owner.resource != resource->resource || owner.ops != resource->ops)
                 {
                     return fail(RenderError{kStorageMismatch});
+                }
+                if (owner.capacity != resource->capacity)
+                {
+                    return fail(RenderError{kStorageCapacity});
                 }
                 continue;
             }
@@ -82,8 +96,9 @@ namespace lux::render::detail
             {
                 return fail(RenderError{kStorageCapacity});
             }
-            selected_.push_back(resource);
+            selected_.push_back(*resource);
         }
+        order_.clear();
         // Qualify the entire destination/upload/range budget before freezing any Resource.
         for (auto& resource : selected_)
         {

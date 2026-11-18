@@ -6,6 +6,8 @@
 
 namespace lux::render::detail
 {
+    class DeviceEntry;
+
     struct JobRelations final
     {
         std::vector<RenderJobId> predecessors;
@@ -16,7 +18,7 @@ namespace lux::render::detail
     struct JobRelationEntry final
     {
         RenderJobId id;
-        DeviceSessionId device;
+        const DeviceEntry* device;
         JobRelations* relations;
     };
 

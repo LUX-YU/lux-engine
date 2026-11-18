@@ -1,5 +1,8 @@
 #pragma once
 
+#include <functional>
+#include <string_view>
+
 #include <lux/engine/description/ShaderInfo.hpp>
 
 namespace lux::rdesc
@@ -24,6 +27,29 @@ namespace lux::rdesc
         std::vector<ShaderStageArtifact> stages;
         ShaderInfo interface;
         EShaderTarget target = EShaderTarget::SPIRV;
+        // Binary fingerprint for candidate selection. Reflected ABI still requires exact comparison.
+        [[nodiscard]] std::size_t binaryDigest() const noexcept
+        {
+            std::size_t result = 0;
+            const auto combine = [&]<class T>(const T& value) noexcept
+            {
+                result ^= std::hash<T>{}(value) + 0x9e3779b9u + (result << 6) + (result >> 2);
+            };
+            combine(target);
+            combine(stages.size());
+            for (const auto& stage : stages)
+            {
+                combine(stage.stage);
+                combine(stage.entry);
+                if (!stage.words.empty())
+                {
+                    const auto bytes = std::as_bytes(std::span(stage.words));
+                    combine(std::string_view{reinterpret_cast<const char*>(bytes.data()), bytes.size()});
+                }
+            }
+            return result;
+        }
+
         bool operator==(const ShaderProgramArtifact&) const noexcept = default;
     };
 

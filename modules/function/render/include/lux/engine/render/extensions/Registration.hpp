@@ -12,7 +12,7 @@
 
 namespace lux::render::runtime_detail
 {
-    template <class Declaration> constexpr cxx::type_info configurationType() noexcept
+    template <class Declaration> constexpr cxx::basic_type_info configurationType() noexcept
     {
         if constexpr (std::is_void_v<typename Declaration::Config>)
         {
@@ -21,18 +21,6 @@ namespace lux::render::runtime_detail
         else
         {
             return cxx::make_basic_type_info<typename Declaration::Config>();
-        }
-    }
-
-    template <class Declaration> RenderResult<ConfigValue> makeDefaultConfiguration() noexcept
-    {
-        if constexpr (std::is_void_v<typename Declaration::Config>)
-        {
-            return ConfigValue{};
-        }
-        else
-        {
-            return ConfigValue::make(typename Declaration::Config{});
         }
     }
 
@@ -49,33 +37,6 @@ namespace lux::render::runtime_detail
         }
     }
 
-    template <class... Methods> constexpr auto handlerTypes(std::tuple<Methods...>*) noexcept
-    {
-        if constexpr (sizeof...(Methods) == 0)
-        {
-            return std::tuple<>{};
-        }
-        else
-        {
-            return []<class... Types>(std::tuple<Types...>) noexcept
-            {
-                return std::tuple_cat(
-                    []<class H>(std::type_identity<H>) noexcept
-                    {
-                        if constexpr (std::is_void_v<H>)
-                        {
-                            return std::tuple<>{};
-                        }
-                        else
-                        {
-                            return std::tuple{std::type_identity<H>{}};
-                        }
-                    }(Types{})...
-                );
-            }(typename cxx::remove_repeated_types<std::type_identity<typename Methods::Handler>...>::tuple_type{});
-        }
-    }
-
     template <class... Methods> auto commandBindings(std::tuple<Methods...>*) noexcept
     {
         // The enclosing implementation is the sole method declaration. Signature qualification
@@ -87,20 +48,6 @@ namespace lux::render::runtime_detail
                     declare<typename Types::type::Command, Types::type::method, typename Types::type::Handler>()...
             };
         }(uniqueTypes(static_cast<std::tuple<Methods...>*>(nullptr)));
-    }
-
-    // The same typed metadata construction serves builtin and external registration.
-    // It neither constructs a Handler/Storage nor creates a second graph-factory description.
-    template <class Declaration> CapabilityImplementation makeImplementation() noexcept
-    {
-        auto result = Declaration::implementation();
-        result.config_type = configurationType<Declaration>();
-        if constexpr (std::is_void_v<typename Declaration::Config> ||
-                      std::is_nothrow_default_constructible_v<typename Declaration::Config>)
-        {
-            result.make_default_configuration = &makeDefaultConfiguration<Declaration>;
-        }
-        return result;
     }
 
     template <class Handler> HandlerRecord handlerRecord(std::string_view key) noexcept
@@ -117,15 +64,6 @@ namespace lux::render::runtime_detail
         };
     }
 
-    template <class... Types> auto handlerRecords(std::tuple<Types...>, std::string_view key = {}) noexcept
-    {
-        return std::array<HandlerRecord, sizeof...(Types)>{handlerRecord<typename Types::type>(key)...};
-    }
-
-    template <class... Types> auto storageFactories(std::tuple<Types...>) noexcept
-    {
-        return std::array<ResourceRegistration, sizeof...(Types)>{Types::type::factory()...};
-    }
 } // namespace lux::render::runtime_detail
 
 namespace lux::render
@@ -136,39 +74,59 @@ namespace lux::render
         return registerFeature(runtime_detail::FeatureEntry{
             Feature::name,
             runtime_detail::configurationType<Feature>(),
-            runtime_detail::featureGraphOps<Feature>(pagedInstances())
+            FeatureGraphOps::make<Feature>()
         });
     }
 
-    // One external publication boundary for all declared graph factories, Storage factories and methods.
-    // Constructing these values has no GPU/business side effects; all qualification precedes adoption.
+    // Reference an already registered module closure. No factory/callback payload is resubmitted.
     template <class Implementation>
     RenderResult<CapabilityImplementationId> RenderServer::registerCapabilityImplementation() noexcept
     {
-        auto factories = runtime_detail::storageFactories(
-            runtime_detail::uniqueTypes(static_cast<typename Implementation::Storages*>(nullptr))
-        );
-        auto handlers = runtime_detail::handlerRecords(
-            runtime_detail::handlerTypes(static_cast<typename Implementation::Bindings*>(nullptr))
-        );
-        const auto bindings = runtime_detail::commandBindings(static_cast<typename Implementation::Bindings*>(nullptr));
-        auto graph_features = []<class... Features>(std::tuple<Features...>, bool paged_instances) noexcept
+        auto capability = capabilityId(cxx::make_basic_type_info<typename Implementation::Capability>());
+        if (!capability) return cxx::unexpected(capability.error());
+        auto implementation = Implementation::implementation();
+        implementation.features.clear();
+        implementation.command_bindings.clear();
+        RenderResult<void> resolved;
+        std::apply([&](auto... feature) noexcept
         {
-            return std::array<runtime_detail::FeatureEntry, sizeof...(Features)>{runtime_detail::FeatureEntry{
-                Features::type::name,
-                runtime_detail::configurationType<typename Features::type>(),
-                runtime_detail::featureGraphOps<typename Features::type>(paged_instances)
-            }...};
-        }(runtime_detail::uniqueTypes(static_cast<typename Implementation::Features*>(nullptr)), pagedInstances());
-        auto implementation = runtime_detail::makeImplementation<Implementation>();
-        return registerCapabilityImplementation(
-            describeCapability<typename Implementation::Capability>(),
-            std::move(implementation),
-            graph_features,
-            factories,
-            handlers,
-            bindings
-        );
+            ([&]() noexcept
+            {
+                if (!resolved) return;
+                using Feature = typename decltype(feature)::type;
+                auto id = featureId(Feature::name.name());
+                if (!id) resolved = cxx::unexpected(id.error());
+                else implementation.features.push_back(*id);
+            }(), ...);
+        }, runtime_detail::uniqueTypes(static_cast<typename Implementation::Features*>(nullptr)));
+        std::apply([&](auto... method) noexcept
+        {
+            ([&]() noexcept
+            {
+                if (!resolved) return;
+                using Method = typename decltype(method)::type;
+                HandlerId handler;
+                if constexpr (!std::is_void_v<typename Method::Handler>)
+                {
+                    auto id = handlerId(cxx::make_basic_type_info<typename Method::Handler>());
+                    if (!id)
+                    {
+                        resolved = cxx::unexpected(id.error());
+                        return;
+                    }
+                    handler = *id;
+                }
+                auto location = commandBinding(
+                    commandDescriptor<typename Method::Command>(),
+                    cxx::make_basic_type_info<Method>(),
+                    handler
+                );
+                if (!location) resolved = cxx::unexpected(location.error());
+                else implementation.command_bindings.push_back(*location);
+            }(), ...);
+        }, runtime_detail::uniqueTypes(static_cast<typename Implementation::Bindings*>(nullptr)));
+        if (!resolved) return cxx::unexpected(resolved.error());
+        return addCapabilityImplementation(*capability, implementation);
     }
 
     template <class Storage>

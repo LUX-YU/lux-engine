@@ -45,8 +45,6 @@ if(NOT nri_revision_result EQUAL 0 OR NOT nri_actual_commit STREQUAL nri_commit)
     message(FATAL_ERROR "NRI fork must be at ${nri_commit}; found '${nri_actual_commit}'. Existing checkouts are not reset.")
 endif()
 
-get_filename_component(default_dependency_cache "${lux_render_repository}/../build/dependencies" ABSOLUTE)
-set(LUX_RENDER_DEPENDENCY_CACHE "${default_dependency_cache}" CACHE PATH "Shared Render dependency cache")
 set(FETCHCONTENT_BASE_DIR "${LUX_RENDER_DEPENDENCY_CACHE}/nri-v192-content")
 
 set(NRI_STATIC_LIBRARY ON CACHE BOOL "" FORCE)
@@ -68,4 +66,34 @@ add_subdirectory("${LUX_NRI_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/nri")
 
 set(LUX_NRI_VULKAN_HEADERS "${FETCHCONTENT_BASE_DIR}/vulkan_headers-src/include")
 set(LUX_NRI_VMA_HEADERS "${FETCHCONTENT_BASE_DIR}/vma-src/include")
-install(FILES "${LUX_NRI_SOURCE_DIR}/LICENSE.txt" DESTINATION share/lux-engine-render/licenses RENAME NRI.txt)
+install(FILES "${LUX_NRI_SOURCE_DIR}/LICENSE.txt"
+    DESTINATION share/lux-engine-render/licenses
+    RENAME NRI.txt
+    COMPONENT lux_engine_render
+)
+
+install(FILES "${FETCHCONTENT_BASE_DIR}/vma-src/LICENSE.txt"
+    DESTINATION share/lux-engine-render/licenses
+    RENAME VMA.txt
+    COMPONENT lux_engine_render
+)
+
+install(FILES "${FETCHCONTENT_BASE_DIR}/vulkan_headers-src/LICENSE.md"
+    DESTINATION share/lux-engine-render/licenses
+    RENAME Vulkan-Headers.md
+    COMPONENT lux_engine_render
+)
+
+if(WIN32)
+    install(FILES "${FETCHCONTENT_BASE_DIR}/d3d12ma-src/LICENSE.txt"
+        DESTINATION share/lux-engine-render/licenses
+        RENAME D3D12MA.txt
+        COMPONENT lux_engine_render
+    )
+
+    install(FILES "${FETCHCONTENT_BASE_DIR}/amdags-src/ags_lib/LICENSE.txt"
+        DESTINATION share/lux-engine-render/licenses
+        RENAME AMD-AGS.txt
+        COMPONENT lux_engine_render
+    )
+endif()

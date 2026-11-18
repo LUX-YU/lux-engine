@@ -1,5 +1,3 @@
-find_package(imgui REQUIRED COMPONENTS core)
-
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution)
 
 find_package(stdexec CONFIG REQUIRED GLOBAL)
@@ -34,12 +32,10 @@ set(render_sources
     src/frame/FrameLayout.cpp
     src/frame/FrameData.cpp
     src/resource/view/CameraInputHandler.cpp
-    src/resource/ui/UiInputHandler.cpp
     src/core/Target.cpp
     src/core/Error.cpp
     src/core/RasterViewport.cpp
     src/commands/Command.cpp
-    src/extensions/features/CapabilityGraph.cpp
     src/capabilities/CapabilityComposition.cpp
     src/capabilities/RasterSurface.cpp
     src/capabilities/DeferredLighting.cpp
@@ -58,27 +54,24 @@ set(render_sources
     src/graph/FeatureAssembly.cpp
     src/graph/FeatureBuildContext.cpp
     src/resource/view/CameraParameters.cpp
-    src/features/RasterMeshParameters.cpp
-    src/features/RasterMesh.cpp
-    src/features/MaterialMeshRaster.cpp
-    src/features/MeshDepthRaster.cpp
-    src/features/HzbFeature.cpp
-    src/features/GBufferFeature.cpp
-    src/features/DeferredLightingFeature.cpp
-    src/features/ClusteredLightingFeature.cpp
-    src/features/ShadowMapFeature.cpp
-    src/features/ShadowProjection.cpp
-    src/features/ShadowProjectionBinding.cpp
-    src/features/MeshVisibilityFeature.cpp
-    src/features/MeshShadowFeature.cpp
-    src/features/TonemapFeature.cpp
-    src/features/UiRasterFeature.cpp
-    src/features/UiScene.cpp
-    src/features/FullscreenRaster.cpp
-    src/features/ParameterLayout.cpp
+    src/features/mesh/RasterMesh.cpp
+    src/features/mesh/MaterialMeshRaster.cpp
+    src/features/mesh/MeshDepthRaster.cpp
+    src/features/mesh/HzbFeature.cpp
+    src/features/mesh/GBufferFeature.cpp
+    src/features/lighting/DeferredLightingFeature.cpp
+    src/features/lighting/ClusteredLightingFeature.cpp
+    src/features/shadow/ShadowMapFeature.cpp
+    src/features/shadow/ShadowProjection.cpp
+    src/features/shadow/ShadowProjectionBinding.cpp
+    src/features/mesh/MeshVisibilityFeature.cpp
+    src/features/shadow/MeshShadowFeature.cpp
+    src/features/postprocess/TonemapFeature.cpp
+    src/features/common/FullscreenRaster.cpp
+    src/features/common/ParameterLayout.cpp
     src/resource/lighting/DirectLightingStorage.cpp
-    src/features/RasterMeshDraws.cpp
-    src/features/MeshDrawGroups.cpp
+    src/features/mesh/RasterMeshDraws.cpp
+    src/features/mesh/MeshDrawGroups.cpp
     src/device/Error.cpp
     src/device/NativeExecution.cpp
     src/device/DeviceSession.cpp
@@ -86,18 +79,18 @@ set(render_sources
     src/device/DeviceBackend.cpp
     src/device/d3d12/DeviceBackend.cpp
     src/device/SubmissionQueue.cpp
-    src/execution/FrameExecution.cpp
     src/graph/execute/FrameResources.cpp
     src/graph/execute/ResizeResources.cpp
     src/graph/execute/HistoryState.cpp
-    src/execution/OffscreenTarget.cpp
-    src/execution/SurfaceTarget.cpp
+    src/target/OffscreenTarget.cpp
+    src/target/SwapchainTarget.cpp
     src/graph/execute/RenderGraphInstance.cpp
     src/graph/execute/FrameExecutor.cpp
     src/graph/execute/BuiltinPassEncoding.cpp
     src/graph/compile/RenderPlan.cpp
     src/device/CompiledPrograms.cpp
     src/graph/PlanDiagnostics.cpp
+    src/graph/compile/BuiltinPass.cpp
     src/graph/compile/GraphCompiler.cpp
     src/graph/compile/RenderingPlan.cpp
     src/graph/compile/ConditionalPlan.cpp
@@ -118,20 +111,23 @@ set(render_sources
     src/resource/mesh/IndexedTriangleMeshStorage.cpp
     src/runtime/RenderServer.cpp
     src/capabilities/CapabilityRegistry.cpp
-    src/runtime/CapabilityCompilation.cpp
     src/commands/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
     src/runtime/CapabilityCatalog.cpp
-    src/runtime/ResourceScopes.cpp
-    src/runtime/JobOutput.cpp
-    src/target/SwapchainFlight.cpp
+    src/resource/ResourceScopes.cpp
     src/runtime/FrameProgress.cpp
+    src/runtime/FrameOperation.cpp
+    src/runtime/SubmissionOperation.cpp
     src/runtime/JobControl.cpp
     src/runtime/JobRelations.cpp
+    src/runtime/JobExecution.cpp
+    src/runtime/RenderJob.cpp
+    src/runtime/DeviceEntry.cpp
     src/runtime/Scene.cpp
     src/runtime/EffectBuild.cpp
+    src/runtime/RenderEffect.cpp
     src/commands/CommandDispatchContext.cpp
-    src/runtime/FrameSubmission.cpp
+    src/runtime/DeviceRound.cpp
     src/commands/ResponseOutbox.cpp
 )
 
@@ -174,17 +170,60 @@ foreach(shader
                 string(APPEND variant "Reflected")
             endif()
             set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${variant}Vertex.hpp")
-            set(target_options)
-            if(shader MATCHES "Paged$")
-                list(APPEND target_options --physical-pointers)
-            endif()
             lux_render_shader("${header}" shaders/mesh/IndexedTriangleMeshVertex.slang vertex
-                k${variant}Vertex ${defines} ${target_options}
+                k${variant}Vertex ${defines} --spirv-only
             )
             list(APPEND mesh_shader_headers "${header}")
         endforeach()
     endforeach()
 endforeach()
+
+# DXIL requires matching signature registers for independently compiled vertex and fragment stages.
+# The direct material compiler declares the six mesh TEXCOORDs in ascending index order.
+set(dxil_mesh_vertex_includes "#pragma once\n#include <array>\n")
+set(dxil_mesh_vertex_table)
+foreach(varyings RANGE 0 63)
+    set(attributes -DMESH_VARYINGS=${varyings})
+    math(EXPR normal "${varyings} & 50")
+    math(EXPR tangent "${varyings} & 48")
+    math(EXPR uv "${varyings} & 4")
+    if(varyings EQUAL 0)
+        list(APPEND attributes -DDEPTH_ONLY=1)
+    endif()
+    if(normal)
+        list(APPEND attributes -DVERTEX_NORMALS=1)
+    endif()
+    if(tangent)
+        list(APPEND attributes -DVERTEX_TANGENTS=1)
+    endif()
+    if(NOT uv)
+        list(APPEND attributes -DVERTEX_NO_UV=1)
+    endif()
+    foreach(shadow 0 1)
+        foreach(reflected 0 1)
+            math(EXPR variant "4 * ${varyings} + 2 * ${shadow} + ${reflected}")
+            set(symbol kMeshVertexDxil${variant})
+            set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/MeshVertexDxil${variant}.hpp")
+            set(defines ${attributes})
+            if(shadow)
+                list(APPEND defines -DSHADOW_PASS=1)
+            endif()
+            if(reflected)
+                list(APPEND defines -DREFLECTED_INSTANCES=1)
+            endif()
+            lux_render_shader("${header}" shaders/mesh/IndexedTriangleMeshVertex.slang vertex
+                ${symbol} ${defines} --dxil-only
+            )
+            list(APPEND mesh_shader_headers "${header}")
+            string(APPEND dxil_mesh_vertex_includes "#include \"MeshVertexDxil${variant}.hpp\"\n")
+            string(APPEND dxil_mesh_vertex_table "    ${symbol},\n")
+        endforeach()
+    endforeach()
+endforeach()
+
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/MeshVertexDxil.hpp" CONTENT
+    "${dxil_mesh_vertex_includes}\ninline constexpr std::array kMeshVertexDxil{\n${dxil_mesh_vertex_table}};\n"
+)
 
 set(hzb_header "${CMAKE_CURRENT_BINARY_DIR}/shaders/HzbDownsample.hpp")
 lux_render_shader("${hzb_header}" shaders/hzb/Downsample.slang compute kHzbDownsample)
@@ -196,20 +235,10 @@ foreach(shader
     DeferredLighting DeferredLightingShadow
     DeferredLightingClustered DeferredLightingClusteredShadow
     TonemapLinear TonemapSrgb
-    UiRasterVertex UiRasterFragment UiOutputLinear UiOutputSrgb
 )
     set(defines)
     if(shader STREQUAL "FullscreenVertex")
-        set(source shaders/deferred/FullscreenVertex.slang)
-    elseif(shader STREQUAL "UiRasterVertex")
-        set(source shaders/ui/UiRasterVertex.slang)
-    elseif(shader STREQUAL "UiRasterFragment")
-        set(source shaders/ui/UiRasterFragment.slang)
-    elseif(shader MATCHES "^UiOutput")
-        set(source shaders/ui/UiOutputFragment.slang)
-        if(shader STREQUAL "UiOutputSrgb")
-            list(APPEND defines -DOUTPUT_SRGB=1)
-        endif()
+        set(source shaders/common/FullscreenVertex.slang)
     elseif(shader MATCHES "^DeferredLighting")
         set(source shaders/deferred/DeferredLightingFragment.slang)
         if(shader MATCHES "Shadow$")
@@ -301,6 +330,7 @@ target_include_directories(render_extensions INTERFACE
 
 install(DIRECTORY "${LUX_NRI_SOURCE_DIR}/Include/"
     DESTINATION include/lux/engine/render/nri
+    COMPONENT lux_engine_render
     FILES_MATCHING PATTERN "*.h"
 )
 
@@ -318,6 +348,7 @@ if(WIN32)
         "${LUX_RENDER_DEPENDENCY_CACHE}/nri-v192-content/agilitysdk-src/LICENSE.txt"
         "${LUX_RENDER_DEPENDENCY_CACHE}/nri-v192-content/agilitysdk-src/LICENSE-CODE.txt"
         DESTINATION share/lux-engine-render/licenses/AgilitySDK
+        COMPONENT lux_engine_render
     )
 endif()
 
@@ -328,7 +359,7 @@ target_link_libraries(render
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
         STDEXEC::stdexec lux::cxx::execution lux::engine::core::core_execution
-    PRIVATE NRI imgui::core Eigen3::Eigen lux::engine::core::math
+    PRIVATE NRI Eigen3::Eigen lux::engine::core::math
         lux::engine::core::serialization
         spirv-cross-c SPIRV-Tools-static
         lux::engine::platform::platform_process
@@ -356,6 +387,6 @@ lux_engine_install_components(
     COMPONENTS render render_extensions
 )
 
-if(BUILD_TESTING)
+if(BUILD_TESTING OR LUX_RENDER_BUILD_PROBES)
     add_subdirectory(test)
 endif()

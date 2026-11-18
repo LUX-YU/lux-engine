@@ -6,7 +6,7 @@
 #include <lux/engine/render/capabilities/MeshShadows.hpp>
 #include <lux/engine/render/capabilities/ClusterGrid.hpp>
 #include <lux/engine/render/capabilities/ColorEncoding.hpp>
-#include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
+#include <lux/engine/render/capabilities/CapabilityComposition.hpp>
 
 namespace lux::render
 {

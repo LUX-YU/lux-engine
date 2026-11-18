@@ -5,7 +5,8 @@
 
 inline lux::material::MaterialDeriveResult deriveFixtureMaterial(
     const lux::material::MaterialGraph& graph,
-    std::span<const lux::rdesc::EMaterialPurpose> purposes
+    std::span<const lux::rdesc::EMaterialPurpose> purposes,
+    lux::rdesc::EShaderTarget target = lux::rdesc::EShaderTarget::SPIRV
 ) noexcept
 {
     auto compiler = lux::shader::ShaderCompiler::create();
@@ -16,5 +17,5 @@ inline lux::material::MaterialDeriveResult deriveFixtureMaterial(
             compiler.error().diagnostic
         });
     }
-    return lux::material::deriveMaterial(**compiler, graph, {lux::rdesc::EShaderTarget::SPIRV, purposes});
+    return lux::material::deriveMaterial(**compiler, graph, {target, purposes});
 }

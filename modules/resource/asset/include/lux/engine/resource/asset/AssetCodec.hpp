@@ -16,7 +16,7 @@ namespace lux::asset
 
         [[nodiscard]] virtual AssetTypeId type() const noexcept = 0;
         [[nodiscard]] virtual std::uint32_t magic() const noexcept = 0;
-        [[nodiscard]] virtual cxx::type_info dataType() const noexcept = 0;
+        [[nodiscard]] virtual cxx::basic_type_info dataType() const noexcept = 0;
 
         [[nodiscard]] virtual cxx::expected<std::shared_ptr<const Asset>, AssetDecodeFailure>
         decode(AssetId requested, cxx::SharedBytes<> image, const AssetDecodeLimits& limits) const noexcept = 0;

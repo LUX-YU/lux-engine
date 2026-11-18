@@ -30,7 +30,15 @@ namespace lux::render::detail
 
     NativeExecution::~NativeExecution() noexcept
     {
-        closeAndJoin();
+        if (worker_.get_id() == std::this_thread::get_id())
+        {
+            std::terminate();
+        }
+        (void)context_.close();
+        if (worker_.joinable())
+        {
+            worker_.join();
+        }
     }
 
     void NativeExecution::notify(void* value) noexcept
@@ -66,19 +74,6 @@ namespace lux::render::detail
                 continue;
             }
             epoch_.wait(observed, std::memory_order_acquire);
-        }
-    }
-
-    void NativeExecution::closeAndJoin() noexcept
-    {
-        if (worker_.get_id() == std::this_thread::get_id())
-        {
-            std::terminate();
-        }
-        (void)context_.close();
-        if (worker_.joinable())
-        {
-            worker_.join();
         }
     }
 } // namespace lux::render::detail

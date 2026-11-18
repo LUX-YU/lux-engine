@@ -5,6 +5,7 @@
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 
 #include <exec/task.hpp>
+#include <unordered_map>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/render/resources/material/Binding.hpp>
@@ -81,6 +82,8 @@ namespace lux::render::detail
         void releasePage(Page&) noexcept;
         [[nodiscard]] RenderResult<Table*> table(rdesc::MaterialProgramSet&) noexcept;
 
+        void removeEmptyTable(Table&) noexcept;
+
         struct TextureInput final
         {
             TextureGpuRef reference;
@@ -94,13 +97,14 @@ namespace lux::render::detail
         [[nodiscard]] Entry* findEntry(MaterialId) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
+        FrameProgress& replica_progress_;
         std::uint32_t frame_count_;
         ResourceRegistry& resources_;
 
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
-        std::vector<std::unique_ptr<Table>> tables_;
+        std::unordered_multimap<std::size_t, std::unique_ptr<Table>> tables_;
         std::array<std::vector<Page*>, 3> dirty_pages_;
     };
 } // namespace lux::render::detail

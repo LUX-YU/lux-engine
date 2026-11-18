@@ -14,26 +14,24 @@ namespace lux::render
         // Reserve the entire publication before modifying any registration directory.
         [[nodiscard]] RenderResult<void> prepare(std::size_t implementations) noexcept;
 
-        // Compare immutable declarations before publishing an external implementation.
+        // Qualify a new capability declaration once at registration.
         [[nodiscard]] RenderResult<void> validate(const CapabilityDescription& description) const noexcept;
 
         // Called only after qualification and successful prepare(). Publishing invokes no user code.
         CapabilityImplementationId
-        publish(CapabilityDescription capability, CapabilityImplementation implementation) noexcept;
+        publish(CapabilityId capability, CapabilityImplementation implementation) noexcept;
 
-        template <CapabilityConcept C> [[nodiscard]] RenderResult<CapabilityId> add() noexcept
-        {
-            return add(describeCapability<C>());
-        }
+        [[nodiscard]] RenderResult<CapabilityId>
+        add(const CapabilityDescription& description, std::vector<ResourceTypeId> resources) noexcept;
 
-        [[nodiscard]] RenderResult<CapabilityId> add(const CapabilityDescription& description) noexcept;
+        [[nodiscard]] std::span<const ResourceTypeId> resources(CapabilityId) const noexcept;
 
         [[nodiscard]] RenderResult<CapabilityImplementationId>
         addImplementation(CapabilityId capability, const CapabilityImplementation& declaration) noexcept;
 
         [[nodiscard]] const CapabilityImplementation* find(CapabilityImplementationId id) const noexcept;
 
-        [[nodiscard]] CapabilityId find(cxx::type_info type) const noexcept;
+        [[nodiscard]] CapabilityId find(cxx::basic_type_info type) const noexcept;
 
         [[nodiscard]] const CapabilityDescription* get(CapabilityId id) const noexcept;
 
@@ -42,7 +40,7 @@ namespace lux::render
         [[nodiscard]] std::span<const CapabilityImplementationId>
         implementations(CapabilityId capability) const noexcept;
 
-        // Cold reverse lookup over the directory's sole capability membership lists.
+        // Parent membership is part of the registered record, not a reverse directory scan.
         [[nodiscard]] CapabilityId capabilityOf(CapabilityImplementationId implementation) const noexcept;
 
         // Catalog mutations only. RenderServer additionally rejects changes while execution is active.
@@ -65,11 +63,18 @@ namespace lux::render
         struct CapabilityRecord final
         {
             CapabilityDescription description;
+            std::vector<ResourceTypeId> resources;
             std::vector<CapabilityImplementationId> implementations;
         };
 
+        struct ImplementationRecord final
+        {
+            CapabilityId capability;
+            CapabilityImplementation declaration;
+        };
+
         cxx::SlotKeyAutoSparseSet<CapabilityId, CapabilityRecord> capabilities_;
-        cxx::SlotKeyAutoSparseSet<CapabilityImplementationId, CapabilityImplementation> implementations_;
+        cxx::SlotKeyAutoSparseSet<CapabilityImplementationId, ImplementationRecord> implementations_;
         std::map<TypeKey, CapabilityId> capabilities_by_type_;
     };
 } // namespace lux::render

@@ -1,10 +1,10 @@
 #include <algorithm>
 #include <limits>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/resource/view/CameraParameters.hpp>
+#include <lux/engine/render/features/common/ParameterLayout.hpp>
 #include <map>
 #include <spirv-tools/libspirv.h>
 
@@ -15,31 +15,12 @@ namespace lux::render::detail
         nri::Device& device,
         const nri::CoreInterface& core,
         const PassBindings& program,
-        const EnabledDeviceFeatures& enabled,
-        const std::array<std::uint32_t, 3>& capacities,
-        std::uint32_t color_count
+        std::span<const nri::DescriptorRangeDesc> local,
+        const std::array<nri::DescriptorRangeDesc, 3>& shared,
+        std::uint32_t color_count,
+        std::uint32_t& max_colors
     ) noexcept
     {
-        auto shared = DescriptorTable::layoutRanges(capacities, enabled.variable_descriptor_count);
-        const bool preserve_registers = core.GetDeviceDesc(device).graphicsAPI == nri::GraphicsAPI::D3D12;
-        const auto local = descriptorRanges(program.private_bindings, preserve_registers);
-        if (preserve_registers)
-        {
-            for (const auto& binding : program.bindings)
-            {
-                if (binding.count != 0)
-                {
-                    continue;
-                }
-                const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE
-                                      ? 0U
-                                      : (binding.kind == EDescriptorKind::SAMPLER ? 1U : 2U);
-                shared[kind].descriptorType =
-                    kind == 2 ? nri::DescriptorType::STRUCTURED_BUFFER : shared[kind].descriptorType;
-                shared[kind].d3dRegisterSpacePlusOne = binding.shader_space + 1;
-                shared[kind].d3dRegisterIndex = binding.shader_register;
-            }
-        }
         std::vector<nri::DescriptorSetDesc> sets;
         for (std::size_t kind = 0; kind < program.shared_sets.size(); ++kind)
         {
@@ -48,7 +29,7 @@ namespace lux::render::detail
             {
                 continue;
             }
-            if (capacities[kind] == 0)
+            if (shared[kind].descriptorNum == 0)
             {
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
@@ -97,6 +78,7 @@ namespace lux::render::detail
         };
         constexpr auto stages =
             std::array{nri::StageBits::VERTEX_SHADER, nri::StageBits::FRAGMENT_SHADER, nri::StageBits::COMPUTE_SHADER};
+        max_colors = UINT32_MAX;
         for (unsigned subset = 0; subset < 2; ++subset)
         {
             std::array<std::uint64_t, 5> totals{};
@@ -144,7 +126,7 @@ namespace lux::render::detail
             }
             for (std::size_t stage = 0; stage < stages.size(); ++stage)
             {
-                std::uint64_t resources = stage == 1 ? color_count : 0;
+                std::uint64_t resources = 0;
                 for (std::size_t kind = 0; kind < totals.size(); ++kind)
                 {
                     const auto count = per_stage[stage][kind];
@@ -163,16 +145,21 @@ namespace lux::render::detail
                     subset == 0
                         ? limits.shaderStage.resourceMaxNum
                         : std::max(limits.shaderStage.resourceMaxNum, limits.shaderStage.updateAfterSet.resourceMaxNum);
-                if (resources > limit)
+                const auto required = resources + (stage == 1 ? color_count : 0);
+                if (required > limit)
                 {
-                    return cxx::unexpected(RenderError{kDeviceCapacity, {resources, limit, stage}});
+                    return cxx::unexpected(RenderError{kDeviceCapacity, {required, limit, stage}});
+                }
+                if (stage == 1)
+                {
+                    max_colors = std::min(max_colors, static_cast<std::uint32_t>(limit - resources));
                 }
             }
         }
         const nri::RootConstantDesc parameters{0, program.parameter_bytes, program.parameter_stages};
         nri::PipelineLayoutDesc description{};
         description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
-        description.rootRegisterSpace = preserve_registers ? 255 : 0;
+        description.rootRegisterSpace = limits.graphicsAPI == nri::GraphicsAPI::D3D12 ? 255 : 0;
         description.shaderStages =
             nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
         description.descriptorSets = sets.data();
@@ -515,67 +502,39 @@ namespace lux::render::detail
         const nri::DeviceDesc& limits,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        std::span<const std::uint32_t> parameter_groups
+        std::span<const std::uint32_t> parameter_groups,
+        bool device_addresses,
+        std::span<const InstanceDataRecipe* const> instance_data
     ) noexcept
     {
         ShaderBindingPlan plan;
         plan.passes.resize(graph.passes().size());
+        const auto regionFor = [&](std::uint32_t group, EParameterSource source)
+        {
+            const auto found = std::ranges::find_if(plan.parameter_regions, [&](const auto& region)
+            { return region.group == group && region.source == source; });
+            const auto index = static_cast<std::uint32_t>(found - plan.parameter_regions.begin());
+            if (found == plan.parameter_regions.end()) plan.parameter_regions.push_back({{}, group, 0, {}, source});
+            return index;
+        };
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
-            const PassInterface* input = nullptr;
-            if (pass.encoding_interface)
+            const auto* input = &pass.interface;
+            auto& output = plan.passes[id.index];
+            for (const auto& write : input->typed_buffer_writes)
             {
-                input = &*pass.encoding_interface;
+                const auto binding = static_cast<std::uint32_t>(output.bindings.size());
+                output.bindings.push_back(
+                    {0, binding, EDescriptorKind::TYPED_STORAGE_BUFFER, 1, {}, {}, 4, EShaderAccess::WRITE_ONLY}
+                );
+                output.uses.push_back({write.version.resource.index, 0, binding,
+                    EDescriptorKind::TYPED_STORAGE_BUFFER, write.range, binding});
             }
-            else if (const auto* raster = pass.work.getIf<RasterWork>())
-            {
-                const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
-                input = fixed ? &fixed->interface : nullptr;
-            }
-            else if (const auto* compute = pass.work.getIf<ComputeWork>())
-            {
-                input = &compute->interface;
-            }
-            else
-            {
-                auto& output = plan.passes[id.index];
-                const auto& transfer = pass.work.get<TransferWork>();
-                for (const auto& operation : transfer.operations)
-                {
-                    if (const auto* fill = std::get_if<FillBuffer>(&operation))
-                    {
-                        if (!fill->value)
-                        {
-                            continue;
-                        }
-                        const auto binding = static_cast<std::uint32_t>(output.bindings.size());
-                        output.bindings.push_back(
-                            {0, binding, EDescriptorKind::TYPED_STORAGE_BUFFER, 1, {}, {}, 4, EShaderAccess::WRITE_ONLY}
-                        );
-                        output.uses.push_back(
-                            {fill->destination.version.resource.index,
-                             0,
-                             binding,
-                             EDescriptorKind::TYPED_STORAGE_BUFFER,
-                             fill->destination.range,
-                             binding}
-                        );
-                    }
-                }
-                output.private_bindings = output.bindings;
-                continue;
-            }
-            const auto* raster = pass.work.getIf<RasterWork>();
-            const auto& parameters =
-                input ? input->parameters : std::get<RasterPassTemplate>(raster->program).parameters;
+            output.private_bindings = output.bindings;
+            const auto& parameters = input->parameters;
             const auto group = parameter_groups.empty() ? 0u : parameter_groups[id.index];
-            auto found = std::ranges::find(plan.parameter_regions, group, &ShaderBindingPlan::ParameterRegion::group);
-            const auto region = static_cast<std::uint32_t>(found - plan.parameter_regions.begin());
-            if (found == plan.parameter_regions.end())
-            {
-                plan.parameter_regions.push_back({{}, group});
-            }
+            const auto region = regionFor(group, parameters.source);
             const auto& instance = parameters.instance_layout;
             auto& region_layout = plan.parameter_regions[region].layout;
             if (instance.size != 0)
@@ -595,7 +554,7 @@ namespace lux::render::detail
             }
             const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
                 ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
-            const auto* shader = graph.programs()[input->program].find(target);
+            const auto* shader = graph.programs()[input->program].find(target, device_addresses);
             if (!shader) return cxx::unexpected(RenderError{kDeviceUnsupported});
             auto program = planProgramLayout(limits, shader->interface, *input, graph.resources());
             if (!program)
@@ -605,15 +564,38 @@ namespace lux::render::detail
             program->instance_region = region;
             plan.passes[id.index] = std::move(*program);
         }
-        for (auto& region : plan.parameter_regions)
+        // A CPU preparation consumer can read a shared snapshot even without a shader using it.
+        for (const auto* recipe : instance_data)
         {
-            region.offset = plan.instance_parameter_bytes;
-            const auto extent = (std::uint64_t(region.layout.size) + 15u) & ~std::uint64_t{15};
-            if (extent > UINT32_MAX - plan.instance_parameter_bytes)
+            if (!recipe->parameter_bytes || recipe->parameter_source == EParameterSource::INSTANCE) continue;
+            const auto region = regionFor(recipe->parameter_group, recipe->parameter_source);
+            auto& layout = plan.parameter_regions[region].layout;
+            auto canonical = recipe->parameter_source == EParameterSource::VIEW ? cameraParameterLayout()
+                                                                                  : effectParameterLayout();
+            const bool incompatible_layout = layout.size != 0 && layout != canonical;
+            if (incompatible_layout || recipe->parameter_bytes > canonical.size)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
-            plan.instance_parameter_bytes += static_cast<std::uint32_t>(extent);
+            layout = std::move(canonical);
+        }
+        // The caller's byte block contains only local regions. Shared View and Effect copies
+        // use the same backing allocation, after the local prefix.
+        for (const bool local : {true, false})
+        {
+            for (auto& region : plan.parameter_regions)
+            {
+                const bool local_source = region.source == EParameterSource::INSTANCE;
+                if (local_source != local) continue;
+                region.offset = plan.instance_parameter_bytes;
+                const auto extent = (std::uint64_t(region.layout.size) + 15u) & ~std::uint64_t{15};
+                if (extent > UINT32_MAX - plan.instance_parameter_bytes)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                plan.instance_parameter_bytes += static_cast<std::uint32_t>(extent);
+            }
+            if (local) plan.local_parameter_bytes = plan.instance_parameter_bytes;
         }
         for (auto& program : plan.passes)
         {

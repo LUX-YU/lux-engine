@@ -23,9 +23,9 @@ namespace lux::render
     }
 
     template <class... Inputs>
-    [[nodiscard]] std::span<const cxx::type_info> resourceFrameTypes(std::tuple<Inputs...>*) noexcept
+    [[nodiscard]] std::span<const cxx::basic_type_info> resourceFrameTypes(std::tuple<Inputs...>*) noexcept
     {
-        static const std::array<cxx::type_info, sizeof...(Inputs)> types{cxx::make_basic_type_info<Inputs>()...};
+        static const std::array<cxx::basic_type_info, sizeof...(Inputs)> types{cxx::make_basic_type_info<Inputs>()...};
         return types;
     }
 
@@ -50,11 +50,11 @@ namespace lux::render
         ResourceNameView type;
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
-        cxx::type_info binding_type;
+        cxx::basic_type_info binding_type;
         std::string_view description;
         EResourceDomain domain = EResourceDomain::DEVICE;
         std::span<const CommandDescriptor* const> commands;
-        std::span<const cxx::type_info> frame_inputs;
+        std::span<const cxx::basic_type_info> frame_inputs;
 
         [[nodiscard]] bool supports(std::uint32_t capabilities) const noexcept
         {

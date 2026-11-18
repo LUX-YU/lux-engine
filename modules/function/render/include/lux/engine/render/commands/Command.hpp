@@ -58,17 +58,15 @@ namespace lux::render
     struct CommandDescriptor final
     {
         CommandName name;
-        cxx::type_info request;
-        cxx::type_info response;
-        // This discrete operation starts after older frames have settled. Later requests,
-        // including frame submissions, wait until its terminal response has been produced.
-        // It is never encoded as an entry in RenderFrame.
-        bool requires_frame_boundary = false;
+        cxx::basic_type_info request;
+        cxx::basic_type_info response;
+        // A Resource command with this policy excludes frame and command borrows of its instance.
+        bool requires_idle_resource = false;
         // Cleanup/query operations may run after device failure; they must not start new GPU production.
         bool failure_safe = false;
         // Business data belongs to the Command, not to a parallel capability payload declaration.
         // Framework controls have no capability data and leave this empty.
-        cxx::type_info data;
+        cxx::basic_type_info data;
         bool capability_command = false;
     };
 
@@ -78,7 +76,6 @@ namespace lux::render
             typename C::Request;
             typename C::Response;
             std::string_view{C::name};
-            std::bool_constant<C::requires_frame_boundary>{};
             { response.error } -> std::same_as<RenderError&>;
         } && std::is_nothrow_default_constructible_v<typename C::Response> &&
         std::is_nothrow_move_constructible_v<typename C::Request> &&
@@ -98,7 +95,16 @@ namespace lux::render
         CommandName(C::name),
         cxx::make_basic_type_info<typename C::Request>(),
         cxx::make_basic_type_info<typename C::Response>(),
-        C::requires_frame_boundary,
+        []() constexpr
+        {
+            if constexpr (requires { C::requires_idle_resource; })
+            {
+                static_assert(!C::requires_idle_resource ||
+                    requires(const typename C::Request& request) { C::resourceId(request); });
+                return C::requires_idle_resource;
+            }
+            return false;
+        }(),
         []() constexpr
         {
             if constexpr (requires { C::failure_safe; })
@@ -113,7 +119,7 @@ namespace lux::render
             {
                 return cxx::make_basic_type_info<typename C::Data>();
             }
-            return cxx::type_info{};
+            return cxx::basic_type_info{};
         }(),
         CapabilityCommand<C>
     };

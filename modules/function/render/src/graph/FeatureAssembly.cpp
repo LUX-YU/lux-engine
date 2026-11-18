@@ -1,6 +1,5 @@
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 
-#include <lux/engine/render/graph/FeatureBuildAccess.hpp>
 #include <algorithm>
 #include <numeric>
 #include <tuple>
@@ -29,7 +28,7 @@ namespace lux::render
             std::vector<FeatureHistory> histories;
             std::size_t first_resource = 0, resource_count = 0;
             std::size_t first_argument = 0, argument_count = 0;
-            std::size_t first_binding = 0, binding_count = 0;
+            std::size_t first_data = 0, data_count = 0;
             std::size_t first_sampler = 0, sampler_count = 0;
             bool built = false;
         };
@@ -307,7 +306,7 @@ namespace lux::render
                 const auto first = builder.passCount();
                 const auto first_output = builder.outputCount();
                 contribution.first_argument = result.arguments.size();
-                contribution.first_binding = result.bindings.size();
+                contribution.first_data = builder.instanceData().size();
                 contribution.first_sampler = builder.samplerCount();
                 contribution.first_resource = builder.resourceCount();
                 contribution.supplied.clear();
@@ -315,7 +314,7 @@ namespace lux::render
                 {
                     contribution.supplied.push_back(port.version);
                 }
-                auto context = detail::FeatureBuildAccess::context(builder, contribution.resolved, result);
+                FeatureBuildContext context{builder, contribution.resolved, result.arguments};
                 if (input.graph->build)
                 {
                     auto built = input.graph->build(
@@ -331,7 +330,7 @@ namespace lux::render
                 const bool changed_prefix =
                     builder.passCount() < first || builder.resourceCount() < contribution.first_resource ||
                     builder.outputCount() != first_output || result.arguments.size() < contribution.first_argument ||
-                    result.bindings.size() < contribution.first_binding ||
+                    builder.instanceData().size() < contribution.first_data ||
                     builder.samplerCount() < contribution.first_sampler;
                 if (changed_prefix)
                 {
@@ -339,7 +338,7 @@ namespace lux::render
                 }
                 contribution.resource_count = builder.resourceCount() - contribution.first_resource;
                 contribution.argument_count = result.arguments.size() - contribution.first_argument;
-                contribution.binding_count = result.bindings.size() - contribution.first_binding;
+                contribution.data_count = builder.instanceData().size() - contribution.first_data;
                 contribution.sampler_count = builder.samplerCount() - contribution.first_sampler;
                 for (std::size_t p = 0; p < contribution.resolved.size(); ++p)
                 {
@@ -360,11 +359,11 @@ namespace lux::render
                         }
                     }
                 }
-                for (std::size_t b = contribution.first_binding; b < result.bindings.size(); ++b)
-                {
-                    result.bindings[b].parameter_group = input.parameter_group;
-                }
-                result.contributions.push_back({i, first, builder.passCount() - first, input.parameter_group});
+                builder.setInstanceDataGroup(contribution.first_data, input.parameter_group, input.parameter_source);
+                builder.applyDefaultParameterSource(first, input.parameter_source);
+                result.contributions.push_back(
+                    {i, first, builder.passCount() - first, input.parameter_group, input.parameter_source}
+                );
                 contribution.built = true;
                 --remaining;
                 progressed = true;
@@ -451,9 +450,9 @@ namespace lux::render
                 }
                 configured[resource.index] = true;
             }
-            for (auto b = owner.first_binding; b < owner.first_binding + owner.binding_count; ++b)
+            for (auto b = owner.first_data; b < owner.first_data + owner.data_count; ++b)
             {
-                const auto& binding = result.bindings[b];
+                const auto& binding = graph->instanceData()[b];
                 const bool has_work = !binding.outputs.empty() || !binding.passes.empty();
                 if (!binding.create || !has_work)
                 {
@@ -498,31 +497,14 @@ namespace lux::render
             for (auto p = contribution.first_pass; p < contribution.first_pass + contribution.pass_count; ++p)
             {
                 const auto& pass = graph->passes()[p];
-                const PassInterface* input = nullptr;
-                const ParameterBinding* parameters = nullptr;
-                if (const auto* raster = pass.work.getIf<RasterWork>())
-                {
-                    const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
-                    input = fixed ? &fixed->interface : nullptr;
-                    parameters = fixed ? &fixed->interface.parameters
-                                       : &std::get<RasterPassTemplate>(raster->program).parameters;
-                }
+                const auto* input = &pass.interface;
+                const auto* parameters = &input->parameters;
                 const auto* scope = pass.rasterScope();
                 const bool has_state_input = scope && scope->state_input.has_value();
                 const bool is_unowned_state_input = has_state_input && !allowed({scope->state_input->resource, 0}, false);
                 if (is_unowned_state_input)
                 {
                     return cxx::unexpected(failure(kFeatureOwnership, i, p));
-                }
-                if (const auto* compute = pass.work.getIf<ComputeWork>())
-                {
-                    input = &compute->interface;
-                    parameters = &compute->interface.parameters;
-                }
-                if (pass.encoding_interface)
-                {
-                    input = &*pass.encoding_interface;
-                    parameters = &input->parameters;
                 }
                 if (input)
                 {

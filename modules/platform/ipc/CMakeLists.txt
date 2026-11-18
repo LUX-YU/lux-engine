@@ -26,9 +26,12 @@ target_compile_features(platform_ipc PUBLIC cxx_std_20)
 
 component_add_transitive_commands(platform_ipc "find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)")
 
-if(BUILD_TESTING)
+if(BUILD_TESTING OR LUX_RENDER_BUILD_PROBES)
     target_compile_definitions(platform_ipc PRIVATE LUX_IPC_TESTING)
     target_sources(platform_ipc PRIVATE test/Allocation.cpp)
     target_include_directories(platform_ipc PRIVATE test)
+endif()
+
+if(BUILD_TESTING)
     add_subdirectory(test)
 endif()

@@ -10,6 +10,7 @@ namespace lux::render
         bool operator==(const GlobalRenderScope&) const noexcept = default;
     };
 
+    // Resolve the SceneId first, then look up the ViewId in that scene.
     struct ViewRequest final
     {
         SceneId scene;
@@ -18,6 +19,6 @@ namespace lux::render
     };
 
     // Existing business ownership, not a Storage location or a new lifetime domain.
-    using VRenderScope = std::variant<GlobalRenderScope, SceneId, ViewRequest, AttachmentId>;
+    using VRenderScope = std::variant<GlobalRenderScope, SceneId, ViewRequest>;
 
 } // namespace lux::render

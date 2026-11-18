@@ -1,13 +1,13 @@
-#include "Support.hpp"
+#include "NativeDevice.hpp"
 #include <lux/engine/render/extensions/device/CopyEncoding.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <bit>
 #include <chrono>
 #include <cstring>
 #include <fstream>
-#include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include "FrameHarness.hpp"
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
@@ -69,22 +69,12 @@ static RenderPlan compile(
 {
     std::optional<EffectOutputDesc> output;
     if (target) output.emplace(target->format, target->samples, target->kind, target->sampled);
-    auto plan = take(GraphCompiler::compile(
-        session.device(),
-        session.nriCore(),
-        {&session.queue(EQueueRole::GRAPHICS).properties(),
-         &session.queue(EQueueRole::COMPUTE).properties(),
-         &session.queue(EQueueRole::TRANSFER).properties()},
-        graph,
-        analysis,
-        output ? &*output : nullptr,
-        allocation
+    auto ready = stdexec::sync_wait(GraphCompiler::compile(
+        session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis,
+        output ? &*output : nullptr, allocation
     ));
-    auto ready = stdexec::sync_wait(plan.preparePrograms(
-        session, graph, lux::execution::ExecutionRuntime::instance().cpuScheduler()
-    ));
-    CHECK(ready && std::get<0>(*ready));
-    return plan;
+    CHECK(ready);
+    return take(std::move(std::get<0>(*ready)));
 }
 
 static ResourceVersion written(const PassResult& pass, GraphResourceId resource)
@@ -94,7 +84,7 @@ static ResourceVersion written(const PassResult& pass, GraphResourceId resource)
     return *found;
 }
 
-static std::uint32_t finishSubmissions(DeviceSession& session, FrameExecution& frames)
+static std::uint32_t finishSubmissions(DeviceSession& session, FrameHarness& frames)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     std::uint32_t submitted = 0;
@@ -198,8 +188,8 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
 {
     DeviceOptions options;
     options.multiple_queues = async_compute;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     GraphImageDesc image{64, 64};
     image.extent.source = EImageExtentSource::TARGET;
@@ -279,7 +269,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     sampler_description.addressModes =
         {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
     CHECK(session->nriCore().CreateSampler(session->device(), sampler_description, sampler) == nri::Result::SUCCESS);
-    auto physical = take(OffscreenTarget::create(*session, target, fif));
+    auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical->output());
     CHECK(instance->bindSampler(0, *sampler));
     CHECK(instance->initialize());
@@ -295,7 +285,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     auto larger_target = target;
     larger_target.width = larger_target.height = 128;
     CHECK(plan.compatible(larger_target));
-    auto larger = take(OffscreenTarget::create(*session, larger_target, fif));
+    auto larger = std::optional{take(OffscreenTarget::create(*session, larger_target, fif))};
     auto second_instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, larger->output());
     CHECK(second_instance->bindSampler(0, *sampler));
     CHECK(second_instance->initialize());
@@ -351,8 +341,8 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
 
 static void indirectCounts(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, 3));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, 3);
     RenderGraphBuilder builder;
     const auto commands = take(builder.declareResource({"commands", GraphBufferDesc{128}}));
     const auto count = take(builder.declareResource({"count", GraphBufferDesc{128}}));
@@ -464,8 +454,8 @@ static void indirectCounts(Validation& validation)
 
 static void resolveAndCopy(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, 2));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, 2);
     RenderGraphBuilder builder;
     GraphImageDesc multisample{32, 32};
     multisample.samples = 4;
@@ -622,23 +612,149 @@ struct HeldCompletion final
     }
 };
 
+struct RecordingGate final
+{
+    std::atomic<unsigned> next_marker{0};
+    std::atomic<unsigned> entered{0};
+    std::atomic<bool> released{false};
+};
+
+struct RecordingProbe final
+{
+    struct State final
+    {
+        RecordingGate* gate;
+
+        RenderResult<void>
+        record(const PassRecordInput& input, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept
+        {
+            CHECK(input.scratch.size() == 64);
+            const auto marker = std::byte{static_cast<unsigned char>(gate->next_marker.fetch_add(1) + 1)};
+            std::ranges::fill(input.scratch, marker);
+            gate->entered.fetch_add(1);
+            gate->released.wait(false);
+            CHECK(std::ranges::all_of(input.scratch, [marker](auto value) { return value == marker; }));
+            return {};
+        }
+    };
+
+    static RenderResult<State> compile(RecordingGate* const& gate, PassCompileContext&) noexcept
+    {
+        return State{gate};
+    }
+};
+
+static void recordingOwnership(Validation& validation, bool d3d12)
+{
+    DeviceOptions options;
+    options.multiple_queues = true;
+    if (d3d12)
+    {
+        options.backend = EGraphicsBackend::D3D12;
+    }
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    RecordingGate gate;
+    RenderGraphBuilder builder;
+    for (bool async : {false, true})
+    {
+        PassDeclaration declaration;
+        declaration.stages = nri::StageBits::ALL;
+        declaration.allow_async_compute = async;
+        CHECK(builder.addEncodedPass(
+            async ? "async event" : "graphics event", std::move(declaration),
+            take(PassWork::create<RecordingProbe>(&gate, {EPassEncodingScope::MANAGED, false, 64})), {true}
+        ));
+    }
+    const auto graph = take(std::move(builder).finish());
+    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+    CHECK(instance->initialize());
+    CHECK(take(instance->prepareFrame(0)));
+    CHECK(take(instance->prepareFrame(1)));
+    const auto parallel_slot = plan.submissions().size() > 1 ? 0u : 1u;
+    const auto parallel_batch = plan.submissions().size() > 1 ? 1u : 0u;
+    RenderResult<std::span<nri::CommandBuffer* const>> first, second;
+    const auto waitEntered = [&](unsigned count)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (gate.entered.load() < count)
+        {
+            CHECK(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+    };
+    std::thread first_worker([&] { first = instance->recordBatch(0, 0); });
+    waitEntered(1);
+    const auto duplicate = instance->recordBatch(0, 0);
+    CHECK(!duplicate && duplicate.error().type == kDeviceBusy);
+    CHECK(gate.entered == 1);
+    std::thread second_worker([&] { second = instance->recordBatch(parallel_slot, parallel_batch); });
+    waitEntered(2); // No device-wide lock: independent allocator/scratch pairs record concurrently.
+    gate.released.store(true);
+    gate.released.notify_all();
+    first_worker.join();
+    second_worker.join();
+    CHECK(first && second && first->front() != second->front());
+
+    auto frames = std::make_unique<FrameHarness>(*session, 2);
+    const std::array instances{instance.get()};
+    auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+    HeldCompletion::original = core.GetFenceValue;
+    HeldCompletion::completed = 0;
+    core.GetFenceValue = &HeldCompletion::get;
+    CHECK(take(runTask(frames->render(instances, {}))) != 0);
+    CHECK(take(runTask(frames->render(instances, {}))) != 0);
+    const auto recorded = gate.entered.load();
+    std::uint32_t slot = UINT32_MAX;
+    CHECK(!frames->beginFrame(slot) && slot == UINT32_MAX);
+    CHECK(take(runTask(frames->render(instances, {}))) == 0);
+    CHECK(gate.entered == recorded); // Accepted use without observed completion cannot reset/re-record a FIF slot.
+    core.GetFenceValue = HeldCompletion::original;
+    CHECK(session->drain());
+    CHECK(take(runTask(frames->render(instances, {}))) != 0);
+    CHECK(gate.entered > recorded);
+    CHECK(session->drain());
+
+    // All real work is complete before injecting a terminal result on a healthy device.
+    const auto submit = core.QueueSubmit;
+    core.QueueSubmit = [](nri::Queue&, const nri::QueueSubmitDesc&) noexcept -> nri::Result
+    { return nri::Result::DEVICE_LOST; };
+    const auto lost = runTask(frames->render(instances, {}));
+    core.QueueSubmit = submit;
+    CHECK(!lost && session->deviceLost());
+    const auto after_loss = gate.entered.load();
+    CHECK(!frames->beginFrame(slot));
+    const auto rejected = runTask(frames->render(instances, {}));
+    CHECK(!rejected && rejected.error() == lost.error());
+    CHECK(!instance->prepareFrame(0));
+    CHECK(!instance->recordBatch(0, 0));
+    CHECK(gate.entered == after_loss);
+    (void)session->progressCompletions();
+    frames.reset();
+    instance.reset();
+    std::printf(
+        "RECORD OWNER PASS backend=%s: parallel batches/slices, same-batch rejection, FIF completion gate, terminal "
+        "rejection\n",
+        d3d12 ? "D3D12" : "Vulkan"
+    );
+}
+
 struct OpenCompute final
 {
     static inline std::atomic<unsigned> alive = 0;
     struct State final
     {
         nri::Pipeline* pipeline;
-        const nri::CoreInterface* core;
         PassDescriptorBindings bindings;
         bool exclusive;
 
-        State(nri::Pipeline* p, const nri::CoreInterface* c, PassDescriptorBindings b, bool e) noexcept
-            : pipeline(p), core(c), bindings(b), exclusive(e)
+        State(nri::Pipeline* p, PassDescriptorBindings b, bool e) noexcept
+            : pipeline(p), bindings(b), exclusive(e)
         {
         }
 
         State(State&& other) noexcept
-            : pipeline(std::exchange(other.pipeline, nullptr)), core(other.core), bindings(other.bindings),
+            : pipeline(std::exchange(other.pipeline, nullptr)), bindings(other.bindings),
               exclusive(other.exclusive)
         {
         }
@@ -647,7 +763,6 @@ struct OpenCompute final
         {
             if (pipeline)
             {
-                core->DestroyPipeline(pipeline);
                 --alive;
             }
         }
@@ -673,19 +788,10 @@ struct OpenCompute final
         const auto& shader = context.programs[context.interface.program];
         CHECK(shader.target == context.device.enabledFeatures().shader_target);
         CHECK(context.bindings.layout && shader.stages.size() == 1);
-        const auto& code = shader.stages.front();
-        nri::ComputePipelineDesc description{
-            context.bindings.layout,
-            {
-                nri::StageBits::COMPUTE_SHADER, code.words.data(),
-                code.words.size() * sizeof(std::uint32_t), code.entry.c_str()
-            }
-        };
-        nri::Pipeline* pipeline = nullptr;
-        const auto& core = context.device.nriCore();
-        CHECK(core.CreateComputePipeline(context.device.device(), description, pipeline) == nri::Result::SUCCESS);
+        auto* pipeline = context.pipeline;
+        CHECK(pipeline);
         ++alive;
-        return State{pipeline, &core, context.bindings, exclusive};
+        return State{pipeline, context.bindings, exclusive};
     }
 };
 
@@ -695,22 +801,21 @@ struct OpenRaster final
     struct State final
     {
         nri::Pipeline* pipeline;
-        const nri::CoreInterface* core;
         nri::PipelineLayout* layout;
         Config config;
 
-        State(nri::Pipeline* p, const nri::CoreInterface* c, nri::PipelineLayout* l, Config value) noexcept
-            : pipeline(p), core(c), layout(l), config(value)
+        State(nri::Pipeline* p, nri::PipelineLayout* l, Config value) noexcept
+            : pipeline(p), layout(l), config(value)
         {
         }
 
         State(State&& other) noexcept
-            : pipeline(std::exchange(other.pipeline, nullptr)), core(other.core), layout(other.layout),
+            : pipeline(std::exchange(other.pipeline, nullptr)), layout(other.layout),
               config(other.config)
         {
         }
 
-        ~State() noexcept { if (pipeline) core->DestroyPipeline(pipeline); }
+        ~State() noexcept = default;
 
         RenderResult<void>
         record(const PassRecordInput& input, nri::CommandBuffer& command, const nri::CoreInterface& api) const noexcept
@@ -738,38 +843,9 @@ struct OpenRaster final
     static RenderResult<State> compile(const Config& config, PassCompileContext& context) noexcept
     {
         CHECK(context.rendering && context.rendering->colors.size() == 1);
-        const auto& program = context.programs[context.interface.program];
-        CHECK(program.target == context.device.enabledFeatures().shader_target);
-        std::vector<nri::ShaderDesc> stages;
-        for (const auto& shader : program.stages)
-        {
-            stages.push_back({
-                shader.stage == rdesc::EShaderType::VERTEX
-                    ? nri::StageBits::VERTEX_SHADER : nri::StageBits::FRAGMENT_SHADER,
-                shader.words.data(), shader.words.size() * sizeof(std::uint32_t), shader.entry.c_str()
-            });
-        }
-        nri::ColorAttachmentDesc color{};
-        color.format = context.rendering->colors.front();
-        color.colorWriteMask = nri::ColorWriteBits::RGBA;
-        nri::GraphicsPipelineDesc description{};
-        description.pipelineLayout = context.bindings.layout;
-        description.inputAssembly.topology = nri::Topology::TRIANGLE_LIST;
-        description.rasterization.cullMode = nri::CullMode::NONE;
-        description.outputMerger.colors = &color;
-        description.outputMerger.colorNum = 1;
-        description.outputMerger.depthStencilFormat = context.rendering->depth;
-        description.outputMerger.depth.compareOp = context.rendering->depth != nri::Format::UNKNOWN
-            ? nri::CompareOp::ALWAYS : nri::CompareOp::NONE;
-        description.outputMerger.depth.write = context.rendering->depth != nri::Format::UNKNOWN;
-        description.shaders = stages.data();
-        description.shaderNum = static_cast<std::uint32_t>(stages.size());
-        const nri::MultisampleDesc samples{UINT32_MAX, context.rendering->samples};
-        description.multisample = context.rendering->samples > 1 ? &samples : nullptr;
-        const auto& core = context.device.nriCore();
-        nri::Pipeline* pipeline = nullptr;
-        CHECK(core.CreateGraphicsPipeline(context.device.device(), description, pipeline) == nri::Result::SUCCESS);
-        return State{pipeline, &core, context.bindings.layout, config};
+        auto* pipeline = context.pipeline;
+        CHECK(pipeline);
+        return State{pipeline, context.bindings.layout, config};
     }
 };
 
@@ -792,7 +868,7 @@ static void openRasterScopes(Validation& validation, bool d3d12)
 {
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     for (bool exclusive : {false, true})
     {
         for (bool fail : {false, true})
@@ -821,6 +897,9 @@ static void openRasterScopes(Validation& validation, bool d3d12)
             declaration.rendering->depth = RasterAttachment{
                 {{depth, 0}, GraphImageRange{2, 1, 1, 1, 1}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE
             };
+            declaration.graphics.emplace();
+            declaration.graphics->depth_test = declaration.graphics->depth_write = true;
+            declaration.graphics->depth_compare = EDepthCompare::ALWAYS;
             const auto drawn = take(builder.addEncodedPass("open raster", declaration,
                 take(PassWork::create<OpenRaster>(OpenRaster::Config{exclusive, fail}, policy))));
             RasterWork load;
@@ -838,12 +917,20 @@ static void openRasterScopes(Validation& validation, bool d3d12)
             }));
             exportRows(builder, copied.written.front(), 32, 32, 256);
             const auto graph = take(std::move(builder).finish());
-            auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+            const auto analysis = take(analyzeRenderGraph(graph));
+            auto plan = compile(*session, graph, analysis, nullptr);
             CHECK(plan.passes()[0].rendering_group == 0);
             CHECK((plan.passes()[1].rendering_group == plan.passes()[0].rendering_group) == !exclusive);
+            CHECK(plan.passes()[0].pipeline != plan.passes()[1].pipeline); // Same shader, different depth state.
+            if (!exclusive && !fail)
+            {
+                const auto duplicate = compile(*session, graph, analysis, nullptr);
+                CHECK(duplicate.passes()[0].pipeline == plan.passes()[0].pipeline);
+                CHECK(duplicate.passes()[1].pipeline == plan.passes()[1].pipeline);
+            }
             auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
             CHECK(instance->initialize());
-            auto frames = take(FrameExecution::create(*session, nullptr, 2));
+            auto frames = std::make_unique<FrameHarness>(*session, 2);
             const std::array instances{instance.get()};
             const auto before = session->queue().submitted();
             const auto outcome = runTask(frames->render(instances, {}));
@@ -881,7 +968,7 @@ static void openRasterScopes(Validation& validation, bool d3d12)
         auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
         auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
         CHECK(instance->initialize());
-        auto frames = take(FrameExecution::create(*session, nullptr, 2));
+        auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
         checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
@@ -895,13 +982,31 @@ static void openEncodings(Validation& validation, bool d3d12)
 {
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    {
+        // Dispatch extents must refer to a materialized graph image, as before the compiler unification.
+        RenderGraphBuilder builder;
+        const auto unused = take(builder.declareResource({"unused extent", GraphImageDesc{8, 8}}));
+        const auto output = take(builder.declareResource({"output", GraphImageDesc{8, 8}}));
+        ComputeWork work;
+        work.interface.program = take(builder.addProgram(GraphProgram{kGraphFill}));
+        work.interface.resources = {{"generated", {{output, 0}, {}, EGraphAccess::WRITE}}};
+        work.dispatch = ImageDispatchArguments{unused};
+        const auto pass = take(builder.addComputePass("invalid extent dependency", std::move(work)));
+        CHECK(builder.exportOutput({pass.written.front()}));
+        const auto graph = take(std::move(builder).finish());
+        const auto analysis = take(analyzeRenderGraph(graph));
+        auto rejected = stdexec::sync_wait(GraphCompiler::compile(
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis
+        ));
+        CHECK(rejected && !std::get<0>(*rejected) && std::get<0>(*rejected).error().type == kDeviceArgument);
+    }
     for (const bool exclusive : {false, true})
     {
         const auto scope = exclusive ? EPassEncodingScope::EXCLUSIVE : EPassEncodingScope::MANAGED;
         for (const unsigned failure : {0u, 1u, 2u})
         {
-            auto frames = take(FrameExecution::create(*session, nullptr, 2));
+            auto frames = std::make_unique<FrameHarness>(*session, 2);
             RenderGraphBuilder builder;
             const auto source = take(builder.declareResource({"source", GraphBufferDesc{16}}));
             const auto destination = take(builder.declareResource({"destination", GraphBufferDesc{16}}));
@@ -930,14 +1035,9 @@ static void openEncodings(Validation& validation, bool d3d12)
             CHECK(builder.exportOutput({observed.written.front()}));
             const auto graph = take(std::move(builder).finish());
             const auto analysis = take(analyzeRenderGraph(graph));
-            auto plan = take(GraphCompiler::compile(
-                session->device(), session->nriCore(),
-                {&session->queue(EQueueRole::GRAPHICS).properties(), &session->queue(EQueueRole::COMPUTE).properties(),
-                 &session->queue(EQueueRole::TRANSFER).properties()}, graph, analysis
-            ));
             CHECK(OpenCopy::compiles == 0 && OpenCopy::records == 0);
-            auto ready = stdexec::sync_wait(plan.preparePrograms(
-                *session, graph, lux::execution::ExecutionRuntime::instance().cpuScheduler()
+            auto ready = stdexec::sync_wait(GraphCompiler::compile(
+                *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis
             ));
             CHECK(ready && OpenCopy::compiles == 1);
             if (failure == 1)
@@ -945,7 +1045,7 @@ static void openEncodings(Validation& validation, bool d3d12)
                 CHECK(!std::get<0>(*ready) && std::get<0>(*ready).error().type == kDeviceUnsupported);
                 continue;
             }
-            CHECK(std::get<0>(*ready));
+            auto plan = take(std::move(std::get<0>(*ready)));
             auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
             CHECK(instance->initialize());
             const std::array instances{instance.get()};
@@ -996,7 +1096,7 @@ static void openEncodings(Validation& validation, bool d3d12)
         auto plan = std::make_unique<RenderPlan>(compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr));
         auto instance = std::make_unique<RenderGraphInstance>(*session, 2, *plan);
         CHECK(instance->initialize());
-        auto frames = take(FrameExecution::create(*session, nullptr, 2));
+        auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
@@ -1024,7 +1124,7 @@ static void openEncodings(Validation& validation, bool d3d12)
         auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
         auto instance = std::make_unique<RenderGraphInstance>(*session, 1, plan);
         CHECK(instance->initialize());
-        auto frames = take(FrameExecution::create(*session, nullptr, 1));
+        auto frames = std::make_unique<FrameHarness>(*session, 1);
         const std::array instances{instance.get()};
         OpenEvent::records = 0;
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
@@ -1041,8 +1141,8 @@ static void openEncodings(Validation& validation, bool d3d12)
 
 static void historySequence(Validation& validation, std::uint32_t fif, bool use_fallback)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
     const auto enabled = take(builder.declareCondition("update"));
@@ -1178,8 +1278,8 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
 {
     DeviceOptions options;
     options.multiple_queues = true;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     GraphImageDesc image{9, 7, 1, 1, rdesc::ETextureFormat::R32_SFLOAT};
     image.extent.source = EImageExtentSource::TARGET;
@@ -1244,7 +1344,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     const auto analysis = take(analyzeRenderGraph(graph));
     TargetDesc target{9, 7, color_description.format, 1, ETargetKind::OFFSCREEN};
     auto plan = compile(*session, graph, analysis, &target);
-    auto physical = take(OffscreenTarget::create(*session, target, fif));
+    auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical->output());
     CHECK(instance->initialize());
     for (std::uint32_t execution = 0; execution < 4; ++execution)
@@ -1256,11 +1356,11 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
             CHECK(take(runTask(frames->render(old, {}))) > 0 && !frames->submitting());
             target.width = 17;
             target.height = 11;
-            auto replacement = take(OffscreenTarget::create(*session, target, fif));
+            auto replacement = std::optional{take(OffscreenTarget::create(*session, target, fif))};
             auto candidate = std::make_unique<RenderGraphInstance>(*session, fif, plan, replacement->output());
             CHECK(candidate->initialize());
             instance = std::move(candidate);
-            physical = std::move(replacement);
+            physical.emplace(std::move(*replacement));
             CHECK(session->drain());
         }
         const std::array instances{instance.get()};
@@ -1286,8 +1386,8 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
 
 static void conditionalRegion(Validation& validation, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto input = take(builder.declareCondition("choose update"));
     const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
@@ -1341,8 +1441,8 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
 {
     DeviceOptions options;
     options.multiple_queues = true;
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, 2));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, 2);
     const auto& core = session->nriCore();
     nri::Buffer* shared = nullptr;
     CHECK(
@@ -1423,8 +1523,8 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
 
 static void multiQueueHistory(Validation& validation, DeviceOptions options, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
     const auto temporary = take(builder.declareResource({"temporary", GraphBufferDesc{16}}));
@@ -1556,8 +1656,8 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
 
 static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool alias_memory = false)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"red temporary", GraphImageDesc{16, 16}}));
     const auto extent = alias_memory ? 32u : 16u;
@@ -1621,8 +1721,8 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool a
 static void
 physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, bool ordered, bool alias_memory = false)
 {
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"first temporary", GraphBufferDesc{16}}));
     const auto b = take(builder.declareResource({"second temporary", GraphBufferDesc{alias_memory ? 32u : 16u}}));
@@ -1736,8 +1836,8 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
 
 static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), nativeValidationEnabled()));
-    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     GraphImageDesc description{32, 32};
     description.mips = 4;
@@ -1791,6 +1891,12 @@ int main(int argc, char** argv)
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     Validation validation;
+    if (argc > 1 && std::string_view(argv[1]) == "recording")
+    {
+        recordingOwnership(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");
+        CHECK(validation.errors == 0);
+        return 0;
+    }
     if (argc > 1 && std::string_view(argv[1]) == "raster")
     {
         openRasterScopes(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");

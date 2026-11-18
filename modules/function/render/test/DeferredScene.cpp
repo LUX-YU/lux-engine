@@ -1,3 +1,4 @@
+#include "NativeDevice.hpp"
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
 #include <chrono>
@@ -13,19 +14,18 @@
 #include <lux/engine/render/resources/mesh/Commands.hpp>
 #include <lux/engine/render/resources/instance/Commands.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/features/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/GBufferFeature.hpp>
-#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
-#include <lux/engine/render/features/RasterMeshParameters.hpp>
-#include <lux/engine/render/features/TonemapFeature.hpp>
+#include <lux/engine/render/features/lighting/DeferredLightingFeature.hpp>
+#include <lux/engine/render/features/mesh/GBufferFeature.hpp>
+#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
+#include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <thread>
-#include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/target/OffscreenTarget.hpp>
 
 using namespace foundation_test;
 namespace ipc = lux::platform::ipc;
@@ -33,39 +33,9 @@ namespace rdesc = lux::rdesc;
 using Clock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
 
-struct SceneParameters
-{
-    MeshViewParameters mesh;
-    DeferredLightingParameters lighting;
-    TonemapParameters tone;
-    std::array<float, 3> padding{};
-};
-
-static_assert(sizeof(SceneParameters) == 272);
-
-static rdesc::ShaderBlock parameterLayout()
-{
-    auto block = meshViewParameterBlock();
-    block.size = sizeof(SceneParameters);
-    for (auto field : deferredLightingParameterBlock().fields)
-    {
-        field.offset += offsetof(SceneParameters, lighting);
-        block.fields.push_back(std::move(field));
-    }
-    auto field = tonemapParameterBlock().fields.front();
-    field.offset += offsetof(SceneParameters, tone);
-    block.fields.push_back(std::move(field));
-    return block;
-}
-
-static std::vector<std::byte> parameterBytes(const SceneParameters& values)
-{
-    auto view = std::as_bytes(std::span(&values, 1));
-    return {view.begin(), view.end()};
-}
-
 static rdesc::MaterialProgramSet
 cook(
+    rdesc::EShaderTarget target,
     bool lit,
     bool mask = false,
     bool normal_map = false,
@@ -109,7 +79,7 @@ cook(
     }
     constexpr std::array available{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
     const auto purposes = std::span(available).subspan(shadow_only ? 1 : 0);
-    auto cooked = deriveFixtureMaterial(graph, purposes);
+    auto cooked = deriveFixtureMaterial(graph, purposes, target);
     if (!cooked)
     {
         std::fprintf(stderr, "Cook: %s\n", cooked.error().diagnostic.c_str());
@@ -121,14 +91,16 @@ cook(
     const auto& shadow_use = cooked->material.programs.find(rdesc::EMaterialPurpose::SHADOW)->shader;
     for (const auto& input : shadow_use.interface.entry_points.front().inputs)
     {
-        CHECK(input.location == 4);
+        const bool is_material = target == rdesc::EShaderTarget::DXIL
+            ? input.semantic == "TEXCOORD" && input.semantic_index == 4 : input.location == 4;
+        CHECK(is_material);
     }
     if (!mask)
     {
         CHECK(shadow_use.interface.sets.empty());
     }
     graph.render_state.alpha_mode = rdesc::EAlphaMode::BLEND;
-    CHECK(!deriveFixtureMaterial(graph, purposes));
+    CHECK(!deriveFixtureMaterial(graph, purposes, target));
     return std::move(cooked->material.programs);
 }
 
@@ -283,70 +255,71 @@ using DeferredProbeConfiguration = std::tuple<
     GBufferFeatureConfig, DeferredLightingFeatureConfig, TonemapFeatureConfig, CaptureConfig, CaptureConfig, bool
 >;
 
-static RenderResult<CapabilityGraphContribution> lowerDeferredProbe(const CapabilityBuildInput& input) noexcept
+static RenderResult<EffectDefinition> lowerDeferredProbe(
+    const EffectOutputDesc& output, const DeferredProbeConfiguration& configuration, std::span<const FeatureId> features
+) noexcept
 {
     const auto& [surface, light_config, tonemap, color_capture, command_capture, gpu_visibility] =
-        *static_cast<const DeferredProbeConfiguration*>(input.configuration.data());
-    const auto& target = input.output;
-    const auto& layout = surface.input_layout;
-    const auto gbuffer = input.features[0], lighting = input.features[1], tone = input.features[2];
-    const auto capture = input.features[3], visibility = input.features[4];
-    CapabilityGraphContribution request;
-    request.definition.features.push_back({gbuffer, "surfaces", take(ConfigValue::make(surface))});
-    request.definition.features.push_back({lighting, "lighting", take(ConfigValue::make(light_config))});
-    request.definition.features.push_back({tone, "tonemap", take(ConfigValue::make(tonemap))});
-    request.definition.features.push_back({capture, "capture", take(ConfigValue::make(color_capture))});
+        configuration;
+    const auto& target = output;
+    const auto gbuffer = features[0], lighting = features[1], tone = features[2];
+    const auto capture = features[3], visibility = features[4];
+    EffectDefinition request;
+    request.features.push_back({gbuffer, "surfaces", take(ConfigValue::make(surface))});
+    request.features.push_back({lighting, "lighting", take(ConfigValue::make(light_config))});
+    request.features.push_back({tone, "tonemap", take(ConfigValue::make(tonemap))});
+    request.features.push_back({capture, "capture", take(ConfigValue::make(color_capture))});
     for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
     {
-        request.definition.connections.push_back({{0, name}, {1, name}});
+        request.connections.push_back({{0, name}, {1, name}});
     }
-    request.definition.connections.push_back({{1, "hdr_color"}, {2, "hdr_color"}});
-    request.definition.connections.push_back({{2, "color"}, {3, "color"}});
-    request.definition.outputs.push_back({{2, "color"}, GraphOutputRequirements{target.format, 1}});
-    request.definition.outputs.push_back({{3, "pixels"}, {}});
+    request.connections.push_back({{1, "hdr_color"}, {2, "hdr_color"}});
+    request.connections.push_back({{2, "color"}, {3, "color"}});
+    request.outputs.push_back({{2, "color"}, GraphOutputRequirements{target.format, 1}});
+    request.outputs.push_back({{3, "pixels"}, {}});
     {
         MeshVisibilityFeatureConfig selection;
         selection.frustum_culling = gpu_visibility;
-        selection.view_parameters = layout;
-        request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(selection))});
+        selection.camera_view = true;
+        request.features.push_back({visibility, "main_visibility", take(ConfigValue::make(selection))});
         for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
         {
-            request.definition.connections.push_back({{4, port}, {0, port}});
+            request.connections.push_back({{4, port}, {0, port}});
         }
         auto indirect_capture = command_capture;
         indirect_capture.bytes = kMeshWindingCount * 20;
-        request.definition.features.push_back({capture, "indirect", take(ConfigValue::make(indirect_capture))});
-        request.definition.connections.push_back({{4, "commands"}, {5, "color"}});
-        request.definition.outputs.push_back({{5, "pixels"}, {}});
+        request.features.push_back({capture, "indirect", take(ConfigValue::make(indirect_capture))});
+        request.connections.push_back({{4, "commands"}, {5, "color"}});
+        request.outputs.push_back({{5, "pixels"}, {}});
     }
-    publishProbeOutputs(request, input);
     return request;
 }
 
 using CoverageProbeConfiguration = std::tuple<MeshFeatureConfig, CaptureConfig>;
 
-static RenderResult<CapabilityGraphContribution> lowerCoverageProbe(const CapabilityBuildInput& input) noexcept
+static RenderResult<EffectDefinition> lowerCoverageProbe(
+    const EffectOutputDesc& output, const CoverageProbeConfiguration& configuration, std::span<const FeatureId> features
+) noexcept
 {
     const auto& [depth_config, depth_capture] =
-        *static_cast<const CoverageProbeConfiguration*>(input.configuration.data());
-    const auto& target = input.output;
-    const auto shadow = input.features[0], capture = input.features[1], visibility = input.features[2];
-    CapabilityGraphContribution request;
-    request.definition.features.push_back({shadow, "coverage", take(ConfigValue::make(depth_config))});
-    request.definition.features.push_back(
+        configuration;
+    const auto& target = output;
+    const auto shadow = features[0], capture = features[1], visibility = features[2];
+    EffectDefinition request;
+    request.features.push_back({shadow, "coverage", take(ConfigValue::make(depth_config))});
+    request.features.push_back(
         {capture, "copy depth", take(ConfigValue::make(depth_capture))}
     );
-    request.definition.connections.push_back({{0, "depth"}, {1, "color"}});
-    request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{target.format, 1}});
-    request.definition.outputs.push_back({{1, "pixels"}, {}});
+    request.connections.push_back({{0, "depth"}, {1, "color"}});
+    request.outputs.push_back({{0, "color"}, GraphOutputRequirements{target.format, 1}});
+    request.outputs.push_back({{1, "pixels"}, {}});
     MeshVisibilityFeatureConfig selection;
-    selection.view_parameters = meshViewParameterBlock();
-    request.definition.features.push_back({visibility, "shadow_visibility", take(ConfigValue::make(selection))});
+    selection.camera_view = true;
+    request.features.push_back({visibility, "shadow_visibility", take(ConfigValue::make(selection))});
     for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
     {
-        request.definition.connections.push_back({{2, port}, {0, port}});
+        request.connections.push_back({{2, port}, {0, port}});
     }
-    publishProbeOutputs(request, input);
     return request;
 }
 
@@ -358,7 +331,7 @@ static void descriptorTables()
     options.multiple_queues = true;
     options.descriptor_layout_limits = {32, 16, 16};
     options.descriptor_initial_counts = {1, 1, 1};
-    auto session = take(DeviceSession::create(options, diagnostics(validation), nativeValidationEnabled()));
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     const auto& enabled = session->enabledFeatures();
     std::printf("Descriptor facts: buffers=%u variable=%u queues=%zu\n",
         enabled.buffer_descriptors, enabled.variable_descriptor_count, session->queueCount());
@@ -377,7 +350,7 @@ static void descriptorTables()
     target.width = target.height = 4;
     target.format = rdesc::ETextureFormat::RGBA8_UNORM;
     target.sampled = true;
-    auto image = take(OffscreenTarget::create(*session, target, 1));
+    auto image = std::optional{take(OffscreenTarget::create(*session, target, 1))};
     nri::Descriptor* view = nullptr;
     const nri::TextureViewDesc view_desc{image->frame(0).image, nri::TextureView::TEXTURE, nri::Format::RGBA8_UNORM};
     CHECK(core.CreateTextureView(view_desc, view) == nri::Result::SUCCESS);
@@ -446,7 +419,10 @@ static void descriptorTables()
     // Explicit layout requests must fail before exceeding the selected device limit.
     auto invalid_options = options;
     invalid_options.descriptor_layout_limits[1] = session->description().descriptorSet.updateAfterSet.samplerMaxNum + 1;
-    auto rejected = DeviceSession::create(invalid_options, diagnostics(validation), nativeValidationEnabled());
+    auto rejection_host = take(NativeExecution::create());
+    auto rejected = DeviceSession::create(
+        invalid_options, diagnostics(validation), nativeValidationEnabled(), rejection_host->scheduler()
+    );
     CHECK(!rejected && rejected.error().type == kDeviceCapacity);
     const auto fixed_ranges = DescriptorTable::layoutRanges({32, 16, 16}, false);
     for (const auto& range : fixed_ranges)
@@ -490,7 +466,6 @@ int main(int argc, char** argv)
         return 0;
     }
     const auto fif = argc > 1 ? unsigned(std::atoi(argv[1])) : 3u;
-    auto unlit = cook(false), pbr = cook(true), masked = cook(false, true), normal_mapped = cook(true, false, true);
     auto runtime = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(runtime);
     std::atomic<unsigned> diagnostic_count{0};
@@ -538,6 +513,10 @@ int main(int argc, char** argv)
         {
             device.buffer_device_address = true;
         }
+        else if (option == "--d3d12")
+        {
+            device.backend = EGraphicsBackend::D3D12;
+        }
         else if (option == "--single-queue")
         {
             device.multiple_queues = false;
@@ -581,6 +560,12 @@ int main(int argc, char** argv)
         }
     }
     auto server = take(RenderServer::create(config, **runtime, device));
+    const auto shader_target = device.backend == EGraphicsBackend::D3D12
+        ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+    auto unlit = cook(shader_target, false);
+    auto pbr = cook(shader_target, true);
+    auto masked = cook(shader_target, false, true);
+    auto normal_mapped = cook(shader_target, true, false, true);
     const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
     const auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
     const auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
@@ -599,7 +584,6 @@ int main(int argc, char** argv)
 
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
-    CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
@@ -684,30 +668,29 @@ int main(int argc, char** argv)
             *client, commands, {light_storage, {1, lights}}
         ).lights;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-    SceneParameters parameters;
+    CameraInput camera;
+    camera.position = {0, 0, 1};
+    camera.background = {0, 0, 0, 1};
     std::array<float, 3> expected_left{.2F, .4F, .6F}, expected_normal{0, 0, 1};
     std::vector<GraphImageDesc> normal_textures;
     std::vector<MaterialId> all_materials{left_material, unused, right_material};
     all_materials.insert(all_materials.end(), page_materials.begin(), page_materials.end());
-    const auto layout = parameterLayout();
     bool mixed_winding = false;
     bool churn_active = false;
     bool draw_probe_active = false;
     std::vector<MeshInstanceId> extra_instances;
-    std::span<const MeshInstanceUpdate> in_frame_updates;
+    std::span<const TransformUpdate> in_frame_transforms;
     std::span<const MeshInstanceId> removed_groups;
     const auto run = [&](float exposure, bool gpu_visibility = true, bool oracle = true)
     {
         CapturedPixels pixels, visible_commands;
         GBufferFeatureConfig surface{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
         surface.front_counter_clockwise = false;
-        surface.input_layout = layout;
         DeferredLightingFeatureConfig light_config;
         light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         light_config.extent.extent.source = EImageExtentSource::TARGET;
-        light_config.input_layout = layout;
         TonemapFeatureConfig tonemap{
-            EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}, EColorEncoding::LINEAR, layout
+            EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}, EColorEncoding::LINEAR
         };
         auto request = probeRequest(
             target, deferred_probe,
@@ -715,36 +698,28 @@ int main(int argc, char** argv)
                 CaptureConfig{&visible_commands}, gpu_visibility},
             {"color", "pixels", "commands"}
         );
+        request.parameters.exposure = exposure - 1;
         const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {target}).target;
-        parameters.tone.exposure = exposure;
-        const auto attached =
-            call<Attach>(*client, commands, {scene, view, output, effect, parameterBytes(parameters)}).attachment;
+        call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
+        const auto attached = startRenderJob(*client, commands, scene, view, output, effect);
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;
         const auto second_output = call<CreateTarget>(*client, commands, {target}).target;
-        auto second_parameters = parameters;
+        auto second_camera = camera;
         if (mixed_winding)
         {
-            second_parameters.mesh.view[12] = 4; // Same Effect, independently empty view.
+            second_camera.view[12] = 4; // Same Effect, independently empty view.
         }
-        const auto second = call<Attach>(
-                                *client,
-                                commands,
-                                {scene, second_view, second_output, effect, parameterBytes(second_parameters)}
-        )
-                                .attachment;
+        call<UpdateViewCamera>(*client, commands, {{scene, second_view}, second_camera});
+        const auto second = startRenderJob(*client, commands, scene, second_view, second_output, effect);
         const auto compiles = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
-        // Dynamic attachment values must not cause a new Graph/Pipeline compilation.
-        auto temporary = second_parameters;
-        temporary.tone.exposure = exposure - 1;
-        call<UpdateAttachmentInputs>(*client, commands, {second, parameterBytes(temporary)});
-        call<UpdateAttachmentInputs>(*client, commands, {second, parameterBytes(second_parameters)});
+        // The same Effect exposure feeds both Views without compiling new plans.
+        call<SetEffectParameters>(*client, commands, {effect, {exposure}});
         CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compiles);
         const auto deadline = Clock::now() + (profile_frames ? 300s : draw_groups ? 120s : 10s);
         const auto advance = [&]
         {
-            bool resynchronize = false;
             for (auto attachment : {attached, second})
             {
                 const auto before = call<QueryExecutionProgress>(*client, commands, attachment)
@@ -755,28 +730,19 @@ int main(int argc, char** argv)
                     if (churn_active)
                     {
                         const auto failures = call_capture_failed_allocations.load();
-                        RenderFrame request{};
-                        request.resynchronize = resynchronize;
-                        const auto response = call<SubmitFrame>(*client, commands, request, false);
+                        const auto response = call<RequestRenderJob>(*client, commands, {attachment}, false);
                         if (response.error.type)
                         {
                             CHECK(response.error.type == kDeviceFailure);
                             CHECK(response.error.args[0] == static_cast<std::uint32_t>(nri::Result::OUT_OF_MEMORY));
                             CHECK(call_capture_failed_allocations.load() == failures + 1);
-                            // No frame data was applied: the authoritative input remains unchanged.
-                            // Retry through the real explicit resynchronization admission contract.
-                            resynchronize = response.requires_resynchronization;
                             std::puts("DESCRIPTOR FAILURE delivered; retrying unchanged frame inputs");
                         }
-                        else
-                        {
-                            CHECK(response.outcome == EFrameOutcome::SUBMITTED);
-                            resynchronize = false;
-                        }
+
                     }
                     else
                     {
-                        renderFrame(*client, commands);
+                        renderFrame(*client, commands, attachment);
                     }
                     CHECK(Clock::now() < deadline);
                     std::this_thread::sleep_for(1ms);
@@ -804,14 +770,14 @@ int main(int argc, char** argv)
         }
         if (draw_probe_active && profile_frames)
         {
-            for (unsigned frame = 0; frame < 1500; ++frame) renderFrame(*client, commands);
+            for (unsigned frame = 0; frame < 1500; ++frame) renderFrame(*client, commands, attached);
             std::vector<double> intervals;
             intervals.reserve(profile_frames);
             const auto start = Clock::now();
             auto previous = start;
             for (std::uint32_t frame = 0; frame < profile_frames; ++frame)
             {
-                renderFrame(*client, commands);
+                renderFrame(*client, commands, attached);
                 const auto now = Clock::now();
                 intervals.push_back(std::chrono::duration<double, std::milli>(now - previous).count());
                 previous = now;
@@ -859,18 +825,18 @@ int main(int argc, char** argv)
             }
             std::puts("DESCRIPTOR REUSE PASS stable=zero_create shared_material_churn=zero_sets failures=recovered");
         }
-        if (!in_frame_updates.empty())
+        if (!in_frame_transforms.empty())
         {
-            updateSceneData(
-                *client,
-                commands,
-                        instance_updates,
-                std::span<const MeshInstanceUpdate>{in_frame_updates}
-            );
+            const auto schema = call<QueryRenderJobInputLayout>(*client, commands, attached).layout;
+            auto packet = take(FrameData::create<std::tuple<InstanceResource, LightResource>>(schema));
+            for (const auto& update : in_frame_transforms) CHECK(packet.addData<InstanceResource>(update));
+            CHECK(packet.seal());
+            CHECK(call<RequestRenderJob>(*client, commands, {attached, &packet}).job == attached);
+            packet.release(); // The raw requester has received the terminal response.
             advance();
         }
-        detach(*client, commands, attached);
-        detach(*client, commands, second);
+        stopAndRemoveJob(*client, commands, attached);
+        stopAndRemoveJob(*client, commands, second);
         call<RemoveView>(*client, commands, {scene, view});
         call<RemoveView>(*client, commands, {scene, second_view});
         while (pixels.ready.load(std::memory_order_acquire) != 2 ||
@@ -909,13 +875,14 @@ int main(int argc, char** argv)
                     ++observed;
                 }
             }
-            CHECK(observed != 0 && empty_views != 0);
+            CHECK(observed == fif && empty_views == fif);
         }
         call<RemoveEffect>(*client, commands, {effect});
         for (const auto& frame : pixels.frames)
         {
             if (frame[32 * pixels.pitch + (mixed_winding ? 48 : 16) * 4 + (mixed_winding ? 0 : 3)] != std::byte{})
             {
+                if (!in_frame_transforms.empty()) CHECK(std::ranges::count(pixels.frames, frame) == fif);
                 return frame;
             }
         }
@@ -982,13 +949,24 @@ int main(int argc, char** argv)
             // Resource frame routes own no hidden Effect or cached compute-program use.
             CHECK(call_capture_counts[40].load() > compute);
         }
+        std::printf("PROGRAM CACHE PASS unused_limit=%u\n", device.cached_unused_programs);
     }
     if (material_pages)
     {
+        auto invalid_abi = pbr;
+        invalid_abi.programs.front().shader.interface.entry_points.front().name += "_invalid";
+        const auto rejected = call<MaterialCommands::Create>(
+            *client, commands, {materials, {std::move(invalid_abi), right_values}}, false
+        );
+        CHECK(rejected.error.type == kStorageContract);
+
         // Replacing a record with the same program must refresh the reads source without regrouping.
         const auto previous_material = right_material;
+        auto same_table = pbr;
+        CHECK(!same_table.parameter_defaults.empty());
+        same_table.parameter_defaults.front()[0] += 1;
         right_material = call<MaterialCommands::Create>(
-            *client, commands, {materials, {pbr, right_values}}
+            *client, commands, {materials, {std::move(same_table), right_values}}
         ).material;
         all_materials.push_back(right_material);
         values[1].material = right_material;
@@ -1020,8 +998,7 @@ int main(int argc, char** argv)
     const std::array invalid_light{DirectLightUpdate{stale, lights.front()}};
     auto rejected =
         updateSceneData(*client, commands, light_updates, std::span<const DirectLightUpdate>{invalid_light}, false);
-    CHECK(rejected.error.type && !rejected.requires_resynchronization);
-    CHECK(rejected.outcome == EFrameOutcome::REJECTED);
+    CHECK(rejected.error.type);
     // The Resource command rejected the stale identity before a frame was submitted.
     // No frame recovery is needed; the following valid edit still exercises the same live identities.
     std::vector<DirectLightUpdate> restored_lights;
@@ -1033,7 +1010,7 @@ int main(int argc, char** argv)
         updateSceneData(
             *client, commands, light_updates, std::span<const DirectLightUpdate>{restored_lights}
         );
-    CHECK(!light_recovery.requires_resynchronization);
+    CHECK(!light_recovery.error.type);
     // Update only one light, preserve identities and repair all FIF replicas before subsequent Draws.
     std::get<PointLightGpu>(lights[1]).position_range = {0, 0, 30, .2F};
     const std::array changes{DirectLightUpdate{light_ids[1], lights[1]}};
@@ -1100,10 +1077,17 @@ int main(int argc, char** argv)
         std::fclose(output);
     }
     CHECK(missing_uv_pixels == normal_reference);
-    const auto no_uv_program = cook(true, false, true, false, true, true);
+    const auto no_uv_program = cook(shader_target, true, false, true, false, true, true);
     const auto& no_uv_inputs = no_uv_program.find(rdesc::EMaterialPurpose::GBUFFER)->shader.interface.entry_points;
     for (const auto& entry : no_uv_inputs)
-        CHECK(std::ranges::none_of(entry.inputs, [](const auto& input) { return input.location == 3; }));
+    {
+        const auto is_uv = [shader_target](const rdesc::ShaderIoVariable& input) noexcept
+        {
+            return shader_target == rdesc::EShaderTarget::DXIL
+                ? input.semantic == "TEXCOORD" && input.semantic_index == 3 : input.location == 3;
+        };
+        CHECK(std::ranges::none_of(entry.inputs, is_uv));
+    }
     const auto no_uv_material = call<MaterialCommands::Create>(
         *client, commands, {materials, {no_uv_program, right_values, {normal_texture}}}
     ).material;
@@ -1124,7 +1108,7 @@ int main(int argc, char** argv)
     // Both face modes must support mixed signs within one group and nonuniform normal-mapped transforms.
     for (bool two_sided : {false, true})
     {
-        pbr = cook(true, false, true, false, two_sided);
+        pbr = cook(shader_target, true, false, true, false, two_sided);
         right_material = call<MaterialCommands::Create>(
                              *client,
                              commands,
@@ -1198,14 +1182,15 @@ int main(int argc, char** argv)
         additions[0].transform[0] *= -1;
         additions[1].transform[0] *= -1;
         const std::array flips{
-            MeshInstanceUpdate{extra_instances[0], additions[0]},
-            MeshInstanceUpdate{extra_instances[1], additions[1]}
+            TransformUpdate{extra_instances[0], additions[0].transform},
+            TransformUpdate{extra_instances[1], additions[1].transform}
         };
-        in_frame_updates = flips;
+        in_frame_transforms = flips;
         const auto changed_pixels = run(0, true, false);
-        in_frame_updates = {};
+        in_frame_transforms = {};
         CHECK(changed_pixels == run(0, false, false));
         CHECK(changed_pixels != culled);
+        std::printf("GPU MESH PASS views=2 FIF=%u indirect_instances=1/2,0/0 transform_packet=1\n", fif);
         for (auto instance : extra_instances)
         {
             call<InstanceCommands::ReleaseInstance>(
@@ -1229,42 +1214,44 @@ int main(int argc, char** argv)
     // Resources may upload successfully before a particular Effect prepares their program.
     // A material without GBuffer output fails that visible frame, retaining the old cache entries.
     // Derive the actual requested purpose so unused author parameters/textures are normalized.
-    auto incompatible_program = cook(true, false, true, true);
+    auto incompatible_program = cook(shader_target, true, false, true, true);
     const auto incompatible_material = call<MaterialCommands::Create>(
         *client, commands, {materials, {incompatible_program, {}, {}}}
     ).material;
     const auto invalid_view = call<CreateView>(*client, commands, {scene}).view;
     const auto invalid_target = call<CreateTarget>(*client, commands, {target}).target;
-    CameraInput initial_camera;
-    initial_camera.view = parameters.mesh.view;
-    initial_camera.projection = parameters.mesh.projection;
-    CreateEffectRequest invalid_effect_request{{target.format}};
-    for (std::uint32_t i = 0; i < scene_inputs.capabilities.size(); ++i)
-    {
-        invalid_effect_request.composition.contributions.push_back(
-            {i == 0 ? "mesh" : "light", scene_inputs.capabilities[i].type, scene_inputs.implementations[i], {}}
-        );
-    }
-    invalid_effect_request.composition.outputs.push_back({"light", "color"});
+    const auto initial_camera = camera;
+    auto invalid_effect_request = take(makeDeferredRenderEffect(
+        {target.format}, scene_inputs.recipes[0], scene_inputs.recipes[1]
+    ));
     const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid_effect_request)).effect;
     updateSceneData(*client, commands, ViewRequest{scene, invalid_view}, initial_camera);
-    const auto invalid_attachment = call<Attach>(
-        *client, commands, {scene, invalid_view, invalid_target, invalid_effect}
-    ).attachment;
+    const auto invalid_attachment = startRenderJob(*client, commands, scene, invalid_view, invalid_target, invalid_effect);
+    // One Effect shares exposure while two Views keep independent cameras; neither update recompiles the Plan.
+    const auto shared_view = call<CreateView>(*client, commands, {scene}).view;
+    const auto shared_target = call<CreateTarget>(*client, commands, {target}).target;
+    auto other_camera = initial_camera;
+    other_camera.background = {.1F, .2F, .3F, 1};
+    updateSceneData(*client, commands, ViewRequest{scene, shared_view}, other_camera);
+    const auto shared_attachment = startRenderJob(*client, commands, scene, shared_view, shared_target, invalid_effect);
+    const auto compiled_before_sources = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
+    call<SetEffectParameters>(*client, commands, {invalid_effect, {-1.F}});
+    other_camera.position = {2, 0, 0};
+    call<UpdateViewCamera>(*client, commands, {{scene, shared_view}, other_camera});
+    renderFrame(*client, commands, invalid_attachment);
+    renderFrame(*client, commands, shared_attachment);
+    CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compiled_before_sources);
+    stopAndRemoveJob(*client, commands, shared_attachment);
+    call<RemoveTarget>(*client, commands, shared_target);
+    call<RemoveView>(*client, commands, {scene, shared_view});
     auto incompatible_instance = values[1];
     incompatible_instance.material = incompatible_material;
     const std::array invalid_update{MeshInstanceUpdate{ids[1], incompatible_instance}};
-    const auto rejected_frame = updateSceneData(
-        *client,
-        commands,
-        instance_updates,
-        std::span<const MeshInstanceUpdate>{invalid_update},
-        false
-    );
-    CHECK(rejected_frame.error.type == kFeatureContract && !rejected_frame.requires_resynchronization);
-    // The standalone edit was already acknowledged; this frame applied no borrowed input packet.
+    updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{invalid_update});
+    const auto rejected_frame = call<RequestRenderJob>(*client, commands, {invalid_attachment}, false);
+    CHECK(rejected_frame.error.type == kFeatureContract);
     updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored});
-    detach(*client, commands, invalid_attachment);
+    stopAndRemoveJob(*client, commands, invalid_attachment);
     call<RemoveEffect>(*client, commands, {invalid_effect});
     call<RemoveView>(*client, commands, {scene, invalid_view});
     call<RemoveTarget>(*client, commands, invalid_target);
@@ -1292,18 +1279,17 @@ int main(int argc, char** argv)
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         auto view = call<CreateView>(*client, commands, {scene}).view;
         auto output = call<CreateTarget>(*client, commands, {target}).target;
-        auto input = meshViewParameterBytes(parameters.mesh);
-        auto attachment =
-            call<Attach>(*client, commands, {scene, view, output, effect, {input.begin(), input.end()}}).attachment;
+        call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
+        auto attachment = startRenderJob(*client, commands, scene, view, output, effect);
         auto before = call<QueryRenderStats>(*client, commands, {}).submissions;
         auto deadline = Clock::now() + 10s;
         while (call<QueryRenderStats>(*client, commands, {}).submissions < before + 20)
         {
-            renderFrame(*client, commands);
+            renderFrame(*client, commands, attachment);
             CHECK(Clock::now() < deadline);
             std::this_thread::sleep_for(1ms);
         }
-        detach(*client, commands, attachment);
+        stopAndRemoveJob(*client, commands, attachment);
         call<RemoveView>(*client, commands, {scene, view});
         while (!pixels.ready.load(std::memory_order_acquire))
         {
@@ -1349,7 +1335,7 @@ int main(int argc, char** argv)
     run(0);
     // A Shadow-only cook has no surface table. Create it through the real Storage/Command path
     // and render depth, without borrowing layout from an unrequested GBuffer program.
-    unlit = cook(true, false, false, true);
+    unlit = cook(shader_target, true, false, false, true);
     CHECK(unlit.parameter_defaults.empty() && unlit.texture_count == 0);
     left_material = call<MaterialCommands::Create>(*client, commands, {materials, {unlit, {}}}).material;
     all_materials.push_back(left_material);

@@ -15,8 +15,13 @@ else()
 endif()
 
 option(BUILD_TESTING "Build optional module tests" OFF)
+option(LUX_RENDER_BUILD_PROBES "Build the Render and Material probes without other module tests" OFF)
 
 include(CTest)
+
+if(LUX_RENDER_BUILD_PROBES)
+    enable_testing()
+endif()
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 
@@ -29,7 +34,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error/cmake/Values.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
 
-set(platform_components platform_ipc gapi platform_process platform_file)
+set(platform_components platform_ipc gapi platform_process platform_file dynamic_library)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/process" platform-process)
 
@@ -45,15 +50,12 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/log" core-log)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/execution" core-execution)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/task" core-task)
 
-if(BUILD_TESTING)
-    # Real host scheduler consumers. These dependencies never enter Render production targets.
+if(BUILD_TESTING OR LUX_RENDER_BUILD_PROBES)
     find_package(lux-cxx CONFIG REQUIRED COMPONENTS core algorithm compile_time container)
-
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/dynamic_library" dynamic-library)
-
-    list(APPEND platform_components dynamic_library)
-
 endif()
+
+# The installed Material SDK example loads author node plugins through this component.
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/dynamic_library" dynamic-library)
 
 # Module dependencies are configured before Render so source targets cannot fall back to an old SDK.
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/math" core-math)

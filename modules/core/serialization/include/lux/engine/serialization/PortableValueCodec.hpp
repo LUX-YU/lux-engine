@@ -24,7 +24,7 @@ namespace lux::serialization
 
     struct PortableValueCodec final
     {
-        lux::cxx::type_info type{};
+        lux::cxx::basic_type_info type{};
         EncodeDefaultPortableValueFn encode_default{};
         EncodePortableValueFn encode{};
         DecodePortableValueFn decode{};

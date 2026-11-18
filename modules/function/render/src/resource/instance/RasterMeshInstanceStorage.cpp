@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/FrameProgress.hpp>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
@@ -229,8 +230,9 @@ namespace lux::render::detail
     RasterMeshInstanceStorage::RasterMeshInstanceStorage(
         ResourceCreateContext& dependencies, ResourceInstanceId id
     ) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), frame_count_(dependencies.frame_count),
-          resources_(dependencies.resources), id_(id), paged_(dependencies.paged_instances),
+        : session_(dependencies.device), uploads_(*dependencies.uploads),
+          replica_progress_(*dependencies.replica_progress), frame_count_(dependencies.frame_count),
+          resources_(dependencies.resources), id_(id), paged_(dependencies.device.usesDeviceAddresses()),
           frames_(std::make_unique<FrameData>())
     {
     }
@@ -744,20 +746,12 @@ namespace lux::render::detail
                 dirty.grow(capacity());
             }
         }
-        std::uint32_t frame = 0;
-        while (!uploads_.tryBeginWrite(frame))
+        FrameProgress::ReplicaWrite replica;
+        if (auto acquired = co_await replica_progress_.acquireReplica(session_, replica); !acquired)
         {
-            auto ready = co_await uploads_.whenWritable(
-                descriptions.size() *
-                (sizeof(TransformMatrix) + sizeof(MeshInstanceGpuProperty) + sizeof(std::uint32_t))
-            );
-            if (!ready)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
+            co_return cxx::unexpected(acquired.error());
         }
-        auto progress = session_.makeFrontiers();
-        cxx::scope_exit finish([&]() noexcept { uploads_.finishWrite(frame, progress); });
+        const auto frame = replica.slot();
         for (const auto& description : descriptions)
         {
             auto property = resolveReferences(description, frame);
@@ -796,7 +790,7 @@ namespace lux::render::detail
                 }
             );
         }
-        if (auto accepted = co_await uploads_.writeBuffers(data.writes, {}, frame, &progress); !accepted)
+        if (auto accepted = co_await uploads_.writeBuffers(data.writes, {}, &replica.accepted()); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -967,17 +961,12 @@ namespace lux::render::detail
         updating_ = true;
         ++preparation_revision_;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
-        std::uint32_t frame = 0;
-        while (!uploads_.tryBeginWrite(frame))
+        FrameProgress::ReplicaWrite replica;
+        if (auto acquired = co_await replica_progress_.acquireReplica(session_, replica); !acquired)
         {
-            auto ready = co_await uploads_.whenWritable(sizeof(std::uint32_t));
-            if (!ready)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
+            co_return cxx::unexpected(acquired.error());
         }
-        auto progress = session_.makeFrontiers();
-        cxx::scope_exit finish([&]() noexcept { uploads_.finishWrite(frame, progress); });
+        const auto frame = replica.slot();
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -989,7 +978,7 @@ namespace lux::render::detail
             fieldOffset(record, sizeof(dead)),
             std::as_bytes(std::span(&dead, 1))
         };
-        if (auto accepted = co_await uploads_.writeBuffers(std::span(&write, 1), {}, frame, &progress); !accepted)
+        if (auto accepted = co_await uploads_.writeBuffers(std::span(&write, 1), {}, &replica.accepted()); !accepted)
         {
             mark(frame, record, 4);
             co_return cxx::unexpected(accepted.error());
@@ -1353,7 +1342,7 @@ namespace lux::render::detail
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMeshInstanceStorage>>
         {
-            if (!dependencies.uploads || dependencies.frame_count == 0 || dependencies.frame_count > 3)
+            if (!dependencies.uploads || !dependencies.replica_progress || dependencies.frame_count == 0 || dependencies.frame_count > 3)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

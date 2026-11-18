@@ -37,6 +37,7 @@ namespace lux::render
         ipc::IpcRequester requester;
         cxx::SlotMap<PendingResponse, CorrelationTag> pending;
         std::array<CommandId, std::tuple_size_v<CommonCommands>> commands;
+        std::array<FrameData*, 2> frame_borrows{};
         RenderError failure;
     };
 
@@ -98,6 +99,29 @@ namespace lux::render
     CommandId RenderClient::commonCommand(std::size_t index) const noexcept
     {
         return impl_->commands[index];
+    }
+
+    RenderResult<void> RenderClient::borrowFrame(FrameData& data) noexcept
+    {
+        auto slot = std::ranges::find(impl_->frame_borrows, nullptr);
+        if (slot == impl_->frame_borrows.end())
+        {
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        }
+        if (!data.beginBorrow())
+        {
+            return cxx::unexpected(RenderError{kFrameContract});
+        }
+        *slot = &data;
+        return {};
+    }
+
+    void RenderClient::releaseFrame(FrameData& data) noexcept
+    {
+        auto slot = std::ranges::find(impl_->frame_borrows, &data);
+        if (slot == impl_->frame_borrows.end()) std::terminate();
+        *slot = nullptr;
+        data.finishBorrow();
     }
 
     RenderResult<void> RenderClient::send(CommandId command, ipc::IpcMessage& message, ResponseNode& receiver) noexcept

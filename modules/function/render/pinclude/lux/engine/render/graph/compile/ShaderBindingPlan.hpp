@@ -9,8 +9,6 @@
 
 namespace lux::render::detail
 {
-    struct EnabledDeviceFeatures;
-
     struct DescriptorUse final
     {
         std::uint32_t resource;
@@ -67,9 +65,11 @@ namespace lux::render::detail
             rdesc::ShaderBlock layout;
             std::uint32_t group = 0, offset = 0;
             std::vector<std::uint32_t> passes;
+            EParameterSource source = EParameterSource::INSTANCE;
         };
 
         std::vector<ParameterRegion> parameter_regions;
+        std::uint32_t local_parameter_bytes = 0;
         std::uint32_t instance_parameter_bytes = 0;
         std::vector<std::vector<std::uint32_t>> parameter_uses;
         std::vector<std::uint32_t> instance_parameter_uses;
@@ -95,16 +95,19 @@ namespace lux::render::detail
         nri::Device& device,
         const nri::CoreInterface& core,
         const PassBindings& program,
-        const EnabledDeviceFeatures& enabled,
-        const std::array<std::uint32_t, 3>& capacities,
-        std::uint32_t color_count = 0
+        std::span<const nri::DescriptorRangeDesc> local,
+        const std::array<nri::DescriptorRangeDesc, 3>& shared,
+        std::uint32_t color_count,
+        std::uint32_t& max_colors
     ) noexcept;
 
     [[nodiscard]] RenderResult<ShaderBindingPlan> planLayouts(
         const nri::DeviceDesc& limits,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        std::span<const std::uint32_t> parameter_groups = {}
+        std::span<const std::uint32_t> parameter_groups = {},
+        bool device_addresses = false,
+        std::span<const InstanceDataRecipe* const> instance_data = {}
     ) noexcept;
 
     [[nodiscard]] RenderResult<rdesc::ShaderProgramArtifact>

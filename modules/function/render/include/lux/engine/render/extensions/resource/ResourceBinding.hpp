@@ -233,10 +233,5 @@ namespace lux::render::detail
             return !identity.isNull() && resource && ops && ops->requirements && ops->freeze;
         }
 
-        [[nodiscard]] bool sameResource(const ResourceBinding& other) const noexcept
-        {
-            return identity == other.identity && resource == other.resource && ops == other.ops &&
-                   capacity == other.capacity;
-        }
     };
 } // namespace lux::render::detail

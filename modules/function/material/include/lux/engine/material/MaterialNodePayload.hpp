@@ -74,11 +74,11 @@ namespace lux::material
         using Destroy = void (*)(void*) noexcept;
         using Clone = MaterialNodeResult<void*> (*)(const void*) noexcept;
 
-        MaterialNodePayload(object::CodeLease, cxx::type_info, void*, Destroy, Clone) noexcept;
+        MaterialNodePayload(object::CodeLease, cxx::basic_type_info, void*, Destroy, Clone) noexcept;
         void reset() noexcept;
 
         object::CodeLease code_{object::CodeLease::builtin()};
-        cxx::type_info type_;
+        cxx::basic_type_info type_;
         void* value_{};
         Destroy destroy_{};
         Clone clone_{};

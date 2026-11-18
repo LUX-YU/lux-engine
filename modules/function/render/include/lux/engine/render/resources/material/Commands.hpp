@@ -8,7 +8,7 @@ namespace lux::render::MaterialCommands
     struct Create final
     {
         static constexpr std::string_view name = "lux.render.material.create";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = MaterialData;
 
         struct Request final
@@ -33,7 +33,7 @@ namespace lux::render::MaterialCommands
     struct Update final
     {
         static constexpr std::string_view name = "lux.render.material.update";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         using Data = MaterialUpdate;
         // Keep the program/table slot. A different target program requires a new identity.
         struct Request final
@@ -52,7 +52,7 @@ namespace lux::render::MaterialCommands
     struct Release final
     {
         static constexpr std::string_view name = "lux.render.material.release";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
         using Data = MaterialId;
         struct Request final

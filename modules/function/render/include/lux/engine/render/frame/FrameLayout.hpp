@@ -18,8 +18,8 @@ namespace lux::render
     struct FrameChannel final
     {
         ResourceName resource;
-        cxx::type_info declaration;
-        cxx::type_info element;
+        cxx::basic_type_info declaration;
+        cxx::basic_type_info element;
         std::size_t size = 0;
         std::size_t alignment = 0;
 
@@ -49,7 +49,7 @@ namespace lux::render
         {
             return channels_ && channels_ == other.channels_ && revision_ == other.revision_;
         }
-        [[nodiscard]] std::size_t find(cxx::type_info declaration, cxx::type_info element) const noexcept;
+        [[nodiscard]] std::size_t find(cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept;
 
     private:
         std::shared_ptr<const std::vector<FrameChannel>> channels_;
@@ -73,7 +73,7 @@ namespace lux::render
         void appendChannels(std::vector<FrameChannel>& output, std::type_identity<std::tuple<Elements...>>) noexcept
         {
             static_assert((FrameElement<Elements> && ...), "Frame elements require a contiguous trivial value type");
-            constexpr std::array<cxx::type_info, sizeof...(Elements)> types{cxx::make_basic_type_info<Elements>()...};
+            constexpr std::array<cxx::basic_type_info, sizeof...(Elements)> types{cxx::make_basic_type_info<Elements>()...};
             static_assert([](const auto& values) consteval
             {
                 for (std::size_t i = 0; i < values.size(); ++i)

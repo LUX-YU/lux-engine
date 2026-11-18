@@ -7,17 +7,11 @@ namespace lux::render
     // One immutable batch entry per Resource declaration, not per element/channel or Handler object.
     struct FrameDataCall final
     {
-        cxx::type_info declaration_type;
-        cxx::type_info storage_type;
-        cxx::type_info method_type;
+        cxx::basic_type_info declaration_type;
+        cxx::basic_type_info storage_type;
+        cxx::basic_type_info method_type;
         std::span<const FrameChannel> channels;
         RenderResult<void> (*invoke)(void*, const FrameData&, std::span<const std::uint32_t>) noexcept = nullptr;
-
-        bool operator==(const FrameDataCall& other) const noexcept
-        {
-            return declaration_type == other.declaration_type && storage_type == other.storage_type &&
-                method_type == other.method_type && std::ranges::equal(channels, other.channels);
-        }
 
         template <class T> static std::span<const T> readColumn(const FrameData& data, std::uint32_t index) noexcept
         {

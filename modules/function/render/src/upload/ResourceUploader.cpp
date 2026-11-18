@@ -66,7 +66,7 @@ namespace lux::render::detail
         BatchEntry* next = nullptr;
         void* receiver = nullptr;
         void (*complete)(void*, RenderResult<void>) noexcept = nullptr;
-        std::uint32_t frame_slot = UINT32_MAX;
+        bool replica = false;
         bool (*stopping)(void*) noexcept = nullptr;
         bool acquiring = false;
         bool waiting_range = false;
@@ -122,92 +122,14 @@ namespace lux::render::detail
     ) noexcept
         : device_(device), options_(settings), cpu_scheduler_(std::move(cpu_scheduler))
     {
-        for (auto& write : writes_) write.accepted = device_.makeFrontiers();
-    }
-
-    void ResourceUploader::setWriteWindow(std::uint32_t slot, bool writable, bool frozen) noexcept
-    {
-        if (slot >= writes_.size() || (slot != write_slot_ && writes_[write_slot_].pending)) std::terminate();
-        write_slot_ = slot;
-        writes_allowed_ = writable;
-        resources_frozen_ = frozen;
-    }
-
-    bool ResourceUploader::tryBeginWrite(std::uint32_t& slot) noexcept
-    {
-        if (!writes_allowed_) return false;
-        slot = write_slot_;
-        auto& write = writes_[slot];
-        if (write.pending == UINT32_MAX) std::terminate();
-        ++write.pending;
-        write.touched = true;
-        background_allowed_ = false;
-        return true;
-    }
-
-    void ResourceUploader::finishWrite(std::uint32_t slot, const SubmissionFrontiers& accepted) noexcept
-    {
-        if (slot != write_slot_ || !writes_[slot].pending) std::terminate();
-        auto& write = writes_[slot];
-        write.accepted.merge(accepted);
-        --write.pending;
-        background_allowed_ = background_window_ && write.pending == 0;
-    }
-
-    void ResourceUploader::finishWrites(std::uint32_t slot, SubmissionFrontiers& accepted) noexcept
-    {
-        if (writes_[slot].pending) std::terminate();
-        accepted.merge(writes_[slot].accepted);
-        writes_[slot].accepted.clear();
-        writes_[slot].touched = false;
-    }
-
-    void ResourceUploader::enqueueWrite(WriteWaiter& node) noexcept
-    {
-        node.next = nullptr;
-        if (frame_waiters_tail_)
-        {
-            frame_waiters_tail_->next = &node;
-        }
-        else
-        {
-            frame_waiters_ = &node;
-        }
-        frame_waiters_tail_ = &node;
-    }
-
-    void ResourceUploader::dispatchWrites() noexcept
-    {
-        auto* frame_boundary = frame_waiters_tail_;
-        while (frame_waiters_ && frame_boundary)
-        {
-            auto* node = frame_waiters_;
-            if (!writes_allowed_ && !node->stopping(node->operation))
-            {
-                break;
-            }
-            frame_waiters_ = node->next;
-            if (!frame_waiters_)
-            {
-                frame_waiters_tail_ = nullptr;
-            }
-            if (node == frame_boundary)
-            {
-                frame_boundary = nullptr;
-            }
-            const auto complete = node->complete;
-            auto* operation = node->operation;
-            complete(operation);
-        }
     }
 
     ResourceUploader::~ResourceUploader() noexcept
     {
-        if (progressing_ || ready_head_ || range_waiters_ || frame_waiters_)
+        if (progressing_ || ready_head_ || range_waiters_)
         {
             std::terminate();
         }
-        for (const auto& write : writes_) if (write.pending) std::terminate();
         for (auto& copy : frame_copies_)
         {
             staging_arena_->cancel(copy.staging);
@@ -688,21 +610,12 @@ namespace lux::render::detail
         frame_copies_.clear();
     }
 
-    bool ResourceUploader::canStage(std::uint32_t frame_slot) const noexcept
-    {
-        if (frame_slot != UINT32_MAX)
-        {
-            return true;
-        }
-        return background_allowed_;
-    }
-
     void ResourceUploader::enqueue(BatchEntry& entry) noexcept
     {
         // Current-frame writers precede background range waiters in the same finite list.
-        // The active render workload reserves one existing page for frame preparation; an
-        // upload-only workload can use every page. Both use the same Arena and waiter list.
-        if (entry.waiting_range && entry.frame_slot != UINT32_MAX)
+        // Pending preparation can reserve one existing page. Both uses share the Arena
+        // and waiter list, and transfers can use every page after preparation settles.
+        if (entry.waiting_range && entry.replica)
         {
             entry.next = range_waiters_;
             range_waiters_ = &entry;
@@ -763,31 +676,58 @@ namespace lux::render::detail
         next_commands_[index] = (slot + 1) % options_.staging_pages;
     }
 
+    exec::task<RenderResult<std::uint64_t>> ResourceUploader::submitPreparationCopies() noexcept
+    {
+        auto& graphics = device_.queue();
+        std::uint32_t slot = 0;
+        auto recorded = beginCommands(graphics, slot);
+        if (!recorded)
+        {
+            const auto error = recorded.error();
+            if (error.type == kDeviceBusy || error.type == kDeviceCapacity) co_return 0;
+            co_return cxx::unexpected(error);
+        }
+        auto* command = *recorded;
+        recordFrameCopies(*command);
+        const auto ended = device_.nriCore().EndCommandBuffer(*command);
+        if (ended != nri::Result::SUCCESS) co_return cxx::unexpected(nativeError(ended));
+        auto accepted = co_await graphics.submit({&command, 1});
+        if (accepted)
+        {
+            acceptCommands(graphics, slot, *accepted);
+            ++statistics_.copy_submissions;
+        }
+        co_return accepted;
+    }
+
+    bool ResourceUploader::canBeginCommands(const SubmissionQueue& queue) const noexcept
+    {
+        const auto index = device_.queueIndex(queue);
+        const auto& window = command_windows_[index * options_.staging_pages + next_commands_[index]];
+        return queue.terminalError().type || (!queue.submitting() && window.serial <= queue.completed());
+    }
+
+    bool ResourceUploader::canSubmitPreparationCopies() const noexcept
+    {
+        return canBeginCommands(device_.queue());
+    }
+
     bool ResourceUploader::canProgressTransfers() const noexcept
     {
         if (progressing_)
         {
             return false;
         }
-        if (ready_head_)
+        if (ready_head_ && canBeginCommands(ready_head_->acquiring ? device_.queue() : *ready_head_->queue))
         {
-            auto& queue = ready_head_->acquiring ? device_.queue() : *ready_head_->queue;
-            const auto index = device_.queueIndex(queue);
-            const auto& window = command_windows_[index * options_.staging_pages + next_commands_[index]];
-            const bool has_terminal = queue.terminalError().type != 0;
-            const bool is_window_available = !queue.submitting() && window.serial <= queue.completed();
-            if (has_terminal || is_window_available)
-            {
-                return true;
-            }
+            return true;
         }
         if (!range_waiters_) return false;
         const bool is_stopped = range_waiters_->stopping(range_waiters_->receiver);
         const bool has_terminal = device_.terminalError().type != 0;
         if (is_stopped || has_terminal) return true;
-        const bool reserve_frame = range_waiters_->frame_slot == UINT32_MAX && reserve_frame_staging_;
-        return canStage(range_waiters_->frame_slot) &&
-            staging_arena_->canAcquire(range_waiters_->minimum_range, reserve_frame);
+        const bool reserve_frame = !range_waiters_->replica && preparation_reserved_;
+        return staging_arena_->canAcquire(range_waiters_->minimum_range, reserve_frame);
     }
 
     ResourceUploader::Task ResourceUploader::submitReadyTransfers() noexcept
@@ -1137,10 +1077,7 @@ namespace lux::render::detail
             auto* entry = range_waiters_;
             const bool stopping = entry->stopping(entry->receiver);
             if (!stopping && !device_.terminalError().type &&
-                (!canStage(entry->frame_slot) || !staging_arena_->canAcquire(
-                                                     entry->minimum_range,
-                                                     entry->frame_slot == UINT32_MAX && reserve_frame_staging_
-                                                 )))
+                !staging_arena_->canAcquire(entry->minimum_range, !entry->replica && preparation_reserved_))
             {
                 break;
             }
@@ -1169,11 +1106,10 @@ namespace lux::render::detail
     ResourceUploader::Task ResourceUploader::writeBuffers(
         std::span<const BufferWrite> writes,
         std::span<const BufferZero> fills,
-        std::uint32_t frame_slot,
         SubmissionFrontiers* progress
     ) noexcept
     {
-        return write(writes, fills, nullptr, {}, {}, nullptr, frame_slot, 0, 0, progress);
+        return write(writes, fills, nullptr, {}, {}, nullptr, 0, 0, progress);
     }
 
     ResourceUploader::Task ResourceUploader::writeImage(
@@ -1183,18 +1119,17 @@ namespace lux::render::detail
         const nri::Texture* clone
     ) noexcept
     {
-        return write({}, {}, &target, source, std::move(regions), clone, UINT32_MAX);
+        return write({}, {}, &target, source, std::move(regions), clone);
     }
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
         std::span<const BufferWrite> writes,
         std::uint32_t element_bytes,
         std::uint32_t source_stride,
-        std::uint32_t frame_slot,
         SubmissionFrontiers* progress
     ) noexcept
     {
-        return write(writes, {}, nullptr, {}, {}, nullptr, frame_slot, element_bytes, source_stride, progress);
+        return write(writes, {}, nullptr, {}, {}, nullptr, element_bytes, source_stride, progress);
     }
 
     ResourceUploader::Task ResourceUploader::write(
@@ -1204,7 +1139,6 @@ namespace lux::render::detail
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
         const nri::Texture* clone,
-        std::uint32_t frame_slot,
         std::uint32_t element_bytes,
         std::uint32_t source_stride,
         SubmissionFrontiers* progress
@@ -1335,7 +1269,7 @@ namespace lux::render::detail
                 co_return failure(RenderError{kUploadStopped});
             }
             copies.clear();
-            while (index < count && copies.size() < copies.capacity() && canStage(frame_slot))
+            while (index < count && copies.size() < copies.capacity())
             {
                 const auto* region = image ? &regions[index] : nullptr;
                 const auto row_bytes =
@@ -1363,7 +1297,7 @@ namespace lux::render::detail
                 auto range = staging_arena_->acquire(
                     std::min(remaining, options_.chunk_bytes),
                     region ? row_pitch : 4,
-                    frame_slot == UINT32_MAX && reserve_frame_staging_
+                    !progress && preparation_reserved_
                 );
                 if (!range)
                 {
@@ -1419,7 +1353,7 @@ namespace lux::render::detail
             {
                 BatchEntry wait{this, &copy_queue_, {}};
                 wait.waiting_range = true;
-                wait.frame_slot = frame_slot;
+                wait.replica = progress != nullptr;
                 if (image)
                 {
                     const auto& region = regions[index];
@@ -1545,7 +1479,7 @@ namespace lux::render::detail
                 co_return failure(RenderError{kUploadStopped});
             }
             BatchEntry entry{this, &copy_queue_, copies};
-            entry.frame_slot = frame_slot;
+            entry.replica = progress != nullptr;
             entry.progress = progress;
             if (!accepted_any)
             {

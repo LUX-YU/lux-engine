@@ -277,15 +277,15 @@ namespace lux::render::detail
     {
         auto& frame = frames_[frame_slot];
         frame.record_ready = false;
-        if (frame.recording_revisions.empty()) return; // Inputs can precede initialize().
+        if (frame.command_batches.empty()) return; // Inputs can precede initialize().
         const auto batch = plan_->passes()[compiled_pass].submission;
-        if (compiled_pass < plan_->submissions()[batch].output_begin) ++frame.recording_revisions[batch];
+        if (compiled_pass < plan_->submissions()[batch].output_begin) ++frame.command_batches[batch].revision;
     }
 
     void RenderGraphInstance::invalidateRecordings(std::uint32_t frame_slot) noexcept
     {
         frames_[frame_slot].record_ready = false;
-        for (auto& revision : frames_[frame_slot].recording_revisions) ++revision;
+        for (auto& batch : frames_[frame_slot].command_batches) ++batch.revision;
     }
 
     void RenderGraphInstance::invalidateRasterDraws(GraphPassId pass, std::uint32_t frame_slot) noexcept
@@ -297,10 +297,7 @@ namespace lux::render::detail
     {
         auto& frame = frames_[frame_slot];
         const auto batches = plan_->submissions();
-        frame.command_allocators.resize(batches.size());
-        frame.command_buffers.resize(batches.size());
-        frame.recording_revisions.assign(batches.size(), 1);
-        frame.recorded_revisions.resize(batches.size());
+        frame.command_batches.resize(batches.size());
         const auto& core = session_->nriCore();
         for (std::size_t batch = 0; batch < batches.size(); ++batch)
         {
@@ -311,12 +308,12 @@ namespace lux::render::detail
             for (auto part = first_part; part < end_part; ++part)
             {
                 auto result = core.CreateCommandAllocator(
-                    session_->queue(description.queue).native(), frame.command_allocators[batch][part]
+                    session_->queue(description.queue).native(), frame.command_batches[batch].allocators[part]
                 );
                 if (result == nri::Result::SUCCESS)
                 {
                     result = core.CreateCommandBuffer(
-                        *frame.command_allocators[batch][part], frame.command_buffers[batch][part]
+                        *frame.command_batches[batch].allocators[part], frame.command_batches[batch].commands[part]
                     );
                 }
                 if (result != nri::Result::SUCCESS)
@@ -330,10 +327,12 @@ namespace lux::render::detail
 
     void RenderGraphInstance::FrameResources::release(const nri::CoreInterface& nri_core) noexcept
     {
-        for (const auto& batch : command_buffers)
-            for (auto* command : batch) if (command) nri_core.DestroyCommandBuffer(command);
-        for (const auto& batch : command_allocators)
-            for (auto* allocator : batch) if (allocator) nri_core.DestroyCommandAllocator(allocator);
+        for (const auto& batch : command_batches)
+        {
+            if (batch.recording.load(std::memory_order_acquire)) std::terminate();
+            for (auto* command : batch.commands) if (command) nri_core.DestroyCommandBuffer(command);
+            for (auto* allocator : batch.allocators) if (allocator) nri_core.DestroyCommandAllocator(allocator);
+        }
         nri_core.DestroyDescriptorPool(descriptor_pool);
         for (const auto& binding : raster_bindings)
             for (auto* view : binding.views) nri_core.DestroyDescriptor(view);

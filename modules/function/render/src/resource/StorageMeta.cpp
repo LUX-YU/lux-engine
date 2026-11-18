@@ -5,18 +5,16 @@
 namespace lux::render
 {
     RenderResult<void>
-    validateResourceRegistration(const ResourceDefinition& type, const ResourceRegistration& factory) noexcept
+    validateResourceRegistration(const ResourceRegistration& factory) noexcept
     {
         if (!factory.descriptor || !factory.storage)
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
-        const bool has_config = factory.storage->config_type.isValid();
-        const bool is_invalid_config = has_config != (factory.storage->compatible_config != nullptr);
         const bool has_ops = factory.storage->ops_type.isValid();
         const bool is_invalid_ops = has_ops != (factory.storage->ops != nullptr);
         const bool invalid_factory =
-            !factory.descriptor || !factory.storage->create || is_invalid_config || is_invalid_ops;
+            !factory.descriptor || !factory.storage->create || is_invalid_ops;
         if (invalid_factory)
         {
             return cxx::unexpected(RenderError{kStorageFactory});
@@ -44,6 +42,7 @@ namespace lux::render
                 return valid;
             }
         }
+        const auto& type = *factory.descriptor;
         const auto& call = factory.frame_call;
         const bool has_inputs = !type.frame_inputs.empty();
         const bool is_invalid_call = has_inputs != (call.invoke != nullptr) ||
@@ -60,7 +59,7 @@ namespace lux::render
             const bool is_invalid_layout = channel.size == 0 || !std::has_single_bit(channel.alignment);
             if (is_wrong_type || is_invalid_layout) return cxx::unexpected(RenderError{kStorageContract});
         }
-        return compatibleStorage(type, *factory.descriptor);
+        return {};
     }
 
 } // namespace lux::render

@@ -1,4 +1,30 @@
 #include "../Common.slang"
+
+// DXIL assigns signature registers from the declared varyings. Its vertex variants export
+// the same sorted TEXCOORD subset as the selected material fragment shader.
+#ifndef MESH_VARYINGS
+    #define MESH_VARYINGS 0
+    #ifndef DEPTH_ONLY
+        #undef MESH_VARYINGS
+        #define MESH_VARYINGS (1 | 8 | MESH_NORMAL | MESH_UV | MESH_TANGENTS)
+        #ifdef VERTEX_NORMALS
+            #define MESH_NORMAL 2
+        #else
+            #define MESH_NORMAL 0
+        #endif
+        #ifdef VERTEX_NO_UV
+            #define MESH_UV 0
+        #else
+            #define MESH_UV 4
+        #endif
+        #ifdef VERTEX_TANGENTS
+            #define MESH_TANGENTS (16 | 32)
+        #else
+            #define MESH_TANGENTS 0
+        #endif
+    #endif
+#endif
+
 #ifdef PAGED_INSTANCES
 uint64_t luxAddress(uint2 words)
 {
@@ -64,7 +90,7 @@ struct PageAddresses
 [[vk::binding(8, 3)]] StructuredBuffer<Property> properties : register(t8, space3);
 [[vk::binding(9, 3)]] StructuredBuffer<Word> alive : register(t9, space3);
 #endif
-[[vk::binding(6, 2)]] StructuredBuffer<Word> members : register(t6, space2);
+[[vk::binding(6, 2)]] StructuredBuffer<Word> members : register(t6, space3);
 
 struct Camera
 {
@@ -174,31 +200,23 @@ struct LuxInput
 
 struct LuxOutput
 {
-#if !defined(DEPTH_ONLY)
-#if !defined(VERTEX_NO_UV)
-    [[vk::location(3)]] vec2 vUV : TEXCOORD3;
-#endif
-#endif
-#if !defined(DEPTH_ONLY)
+#if MESH_VARYINGS & 1
     [[vk::location(0)]] vec3 vWorldPos : TEXCOORD0;
 #endif
-#if !defined(DEPTH_ONLY)
-#if defined(VERTEX_NORMALS)
+#if MESH_VARYINGS & 2
     [[vk::location(1)]] vec3 vWorldNormal : TEXCOORD1;
 #endif
+#if MESH_VARYINGS & 4
+    [[vk::location(3)]] vec2 vUV : TEXCOORD3;
 #endif
-#if !defined(DEPTH_ONLY)
-#if defined(VERTEX_TANGENTS)
+#if MESH_VARYINGS & 8
+    [[vk::location(4)]] nointerpolation uvec2 vMaterial : TEXCOORD4;
+#endif
+#if MESH_VARYINGS & 16
     [[vk::location(5)]] vec4 vWorldTangent : TEXCOORD5;
 #endif
-#endif
-#if !defined(DEPTH_ONLY)
-#if defined(VERTEX_TANGENTS)
+#if MESH_VARYINGS & 32
     [[vk::location(6)]] vec3 vWorldBitangent : TEXCOORD6;
-#endif
-#endif
-#if !defined(DEPTH_ONLY)
-    [[vk::location(4)]] nointerpolation uvec2 vMaterial : TEXCOORD4;
 #endif
     float4 position : SV_Position;
 };
@@ -227,31 +245,23 @@ struct LuxOutput
 #endif
     luxMain();
     LuxOutput output;
-#if !defined(DEPTH_ONLY)
-#if !defined(VERTEX_NO_UV)
-    output.vUV = vUV;
-#endif
-#endif
-#if !defined(DEPTH_ONLY)
+#if MESH_VARYINGS & 1
     output.vWorldPos = vWorldPos;
 #endif
-#if !defined(DEPTH_ONLY)
-#if defined(VERTEX_NORMALS)
+#if MESH_VARYINGS & 2
     output.vWorldNormal = vWorldNormal;
 #endif
+#if MESH_VARYINGS & 4
+    output.vUV = vUV;
 #endif
-#if !defined(DEPTH_ONLY)
-#if defined(VERTEX_TANGENTS)
+#if MESH_VARYINGS & 8
+    output.vMaterial = vMaterial;
+#endif
+#if MESH_VARYINGS & 16
     output.vWorldTangent = vWorldTangent;
 #endif
-#endif
-#if !defined(DEPTH_ONLY)
-#if defined(VERTEX_TANGENTS)
+#if MESH_VARYINGS & 32
     output.vWorldBitangent = vWorldBitangent;
-#endif
-#endif
-#if !defined(DEPTH_ONLY)
-    output.vMaterial = vMaterial;
 #endif
     output.position = gl_Position;
 #ifdef LUX_TARGET_DXIL

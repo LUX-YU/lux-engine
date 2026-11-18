@@ -8,6 +8,7 @@
 #include <lux/engine/render/extensions/resource/ResourceCommandUse.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <map>
+#include <lux/engine/render/extensions/graph/IndexedDrawData.hpp>
 #include <optional>
 
 namespace lux::render
@@ -22,6 +23,23 @@ namespace lux::render
         ~ResourceRegistry() noexcept;
         ResourceRegistry(const ResourceRegistry&) = delete;
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
+
+        struct SampledImage final
+        {
+            const nri::Texture* image;
+            std::uint32_t descriptor;
+        };
+        using ResolveOutput = RenderResult<SampledImage> (*)(void*, TargetId, std::uint32_t) noexcept;
+        void setOutputResolver(void* owner, ResolveOutput resolve) noexcept
+        {
+            output_owner_ = owner;
+            resolve_output_ = resolve;
+        }
+        [[nodiscard]] RenderResult<SampledImage>
+        sampledImage(SampledImageReference, std::uint32_t slot) const noexcept;
+
+        void outputUsesChanged() noexcept { ++output_revision_; }
+        [[nodiscard]] std::uint64_t outputUsesRevision() const noexcept { return output_revision_; }
 
         // Configuration/device-thread cold transaction; no instance creation or GPU side effect.
         [[nodiscard]] RenderResult<ResourceTypeId>
@@ -42,10 +60,9 @@ namespace lux::render
         // Cold observation of the sole type directory; the visitor must not mutate it.
         template <class Visitor> void forEachType(Visitor&& visitor) const noexcept
         {
-            for (const auto& entry : types_)
+            for (const auto& [name, id] : types_by_name_)
             {
-                const auto& type = *entry.factory.descriptor;
-                visitor(entry.id, type);
+                visitor(id, *types_.find(id)->factory.descriptor);
             }
         }
 
@@ -57,8 +74,10 @@ namespace lux::render
         qualify(ResourceTypeId, EResourceDomain, const ResourceCreateContext&) const noexcept;
 
         [[nodiscard]] ResourceTypeId declarationOf(ResourceInstanceId) const noexcept;
-        [[nodiscard]] RenderResult<ResourceCommandUse> acquireCommand(ResourceInstanceId, CommandId) noexcept;
+        [[nodiscard]] RenderResult<ResourceCommandUse>
+        acquireCommand(ResourceInstanceId, CommandId, bool exclusive) noexcept;
         [[nodiscard]] bool hasCommands(ResourceInstanceId) const noexcept;
+        [[nodiscard]] bool hasExclusiveCommand(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept;
         [[nodiscard]] const CommandBindingLocation* commandBinding(ResourceTypeId, CommandId) const noexcept;
 
@@ -84,7 +103,7 @@ namespace lux::render
         }
 
         // One qualified boundary lookup for typed callers and registered command thunks alike.
-        [[nodiscard]] RenderResult<void*> borrow(ResourceInstanceId id, cxx::type_info implementation) const noexcept
+        [[nodiscard]] RenderResult<void*> borrow(ResourceInstanceId id, cxx::basic_type_info implementation) const noexcept
         {
             auto* entry = entries_.find(id);
             if (!entry || !entry->instance)
@@ -124,6 +143,9 @@ namespace lux::render
         }
 
     private:
+        std::uint64_t output_revision_ = 1;
+        void* output_owner_ = nullptr;
+        ResolveOutput resolve_output_ = nullptr;
         friend class ResourceSet;
         friend class RenderServer;
         friend class ResourceCommandUse;
@@ -148,7 +170,6 @@ namespace lux::render
 
         struct Type final
         {
-            ResourceTypeId id;
             ResourceRegistration factory;
             ConfigValue configuration;
             std::vector<CommandBindingLocation> commands;
@@ -161,6 +182,7 @@ namespace lux::render
             ResourceTypeId type;
             void* instance = nullptr;
             std::uint32_t command_uses = 0;
+            bool exclusive_command = false;
         };
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;

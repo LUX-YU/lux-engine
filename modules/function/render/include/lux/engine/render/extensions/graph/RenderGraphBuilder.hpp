@@ -11,6 +11,43 @@ namespace lux::render
     class LUX_RENDER_PUBLIC RenderGraphBuilder final
     {
     public:
+        void addInstanceData(InstanceDataRecipe recipe) noexcept
+        {
+            candidate_.instance_data_.push_back(std::move(recipe));
+        }
+
+        [[nodiscard]] std::span<const InstanceDataRecipe> instanceData() const noexcept
+        {
+            return candidate_.instanceData();
+        }
+
+        void setInstanceDataGroup(std::size_t first, std::uint32_t group, EParameterSource source) noexcept
+        {
+            for (std::size_t i = first; i < candidate_.instance_data_.size(); ++i)
+            {
+                auto& data = candidate_.instance_data_[i];
+                data.parameter_group = group;
+                if (data.parameter_source == EParameterSource::INSTANCE)
+                {
+                    data.parameter_source = source;
+                }
+            }
+        }
+
+        // A contribution supplies a default for passes that have no explicit View or Effect source.
+        void applyDefaultParameterSource(std::size_t first, EParameterSource source) noexcept
+        {
+            if (source == EParameterSource::INSTANCE) return;
+            for (std::size_t i = first; i < candidate_.passes_.size(); ++i)
+            {
+                auto& parameters = candidate_.passes_[i].interface.parameters;
+                if (parameters.source == EParameterSource::INSTANCE)
+                {
+                    parameters.source = source;
+                }
+            }
+        }
+
         [[nodiscard]] std::size_t resourceCount() const noexcept
         {
             return candidate_.resources().size();

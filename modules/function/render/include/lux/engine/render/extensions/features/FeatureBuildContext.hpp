@@ -6,12 +6,6 @@
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
 #include <lux/engine/render/extensions/resource/Binding.hpp>
 
-namespace lux::render::detail
-{
-    struct FeatureFrameContribution;
-    struct FeatureBuildAccess;
-}
-
 namespace lux::render
 {
     // Stable cold key for one Feature contribution. No Runtime lookup or registry side effect.
@@ -34,20 +28,17 @@ namespace lux::render
         // Connects a produced version to an output port. It creates no Storage or persistent Feature instance.
         [[nodiscard]] RenderResult<void> publish(std::string_view key, ResourceVersion version) noexcept;
 
-    private:
-        friend struct detail::FeatureBuildAccess;
         FeatureBuildContext(
             RenderGraphBuilder& builder,
             std::span<ResolvedResource> ports,
-            std::vector<StorageArgument>& arguments,
-            std::vector<detail::FeatureFrameContribution>& bindings
-        ) noexcept : graph(builder), ports_(ports), arguments_(arguments), bindings_(bindings)
+            std::vector<StorageArgument>& arguments
+        ) noexcept : graph(builder), ports_(ports), arguments_(arguments)
         {
         }
 
+    private:
         std::span<ResolvedResource> ports_;
         std::vector<StorageArgument>& arguments_;
-        std::vector<detail::FeatureFrameContribution>& bindings_;
 
     };
 } // namespace lux::render

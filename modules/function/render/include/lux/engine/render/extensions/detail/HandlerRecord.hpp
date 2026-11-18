@@ -17,7 +17,7 @@ namespace lux::render::runtime_detail
     {
         using Object = std::unique_ptr<void, void (*)(void*) noexcept>;
 
-        cxx::type_info type;
+        cxx::basic_type_info type;
         std::string name;
         std::string instance_name;
         void* (*create)(ResourceRegistry&) noexcept;

@@ -90,7 +90,7 @@ namespace lux::async
     template <Operation T>
     using OperationOutcome = lux::cxx::expected<typename T::Value, TOperationFailure<typename T::Error>>;
 
-    template <Operation T> [[nodiscard]] constexpr lux::cxx::type_info operationType() noexcept
+    template <Operation T> [[nodiscard]] constexpr lux::cxx::basic_type_info operationType() noexcept
     {
         return lux::cxx::make_basic_type_info<T>();
     }

@@ -8,7 +8,6 @@ namespace lux::render::MeshCommands
     struct UploadMesh final
     {
         static constexpr std::string_view name = "lux.render.mesh3d.upload_mesh";
-        static constexpr bool requires_frame_boundary = false;
         using Data = rdesc::Mesh;
 
         struct Request final
@@ -34,7 +33,7 @@ namespace lux::render::MeshCommands
     struct ReleaseMesh final
     {
         static constexpr std::string_view name = "lux.render.mesh3d.release_mesh";
-        static constexpr bool requires_frame_boundary = true;
+        static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
         using Data = MeshId;
         struct Request final

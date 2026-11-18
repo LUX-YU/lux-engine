@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/capabilities/CapabilityDeclaration.hpp>
 #include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
@@ -17,11 +18,6 @@
 namespace lux::execution
 {
     class ExecutionRuntime;
-}
-
-namespace lux::platform::ipc
-{
-    class RequesterId;
 }
 
 namespace lux::render
@@ -42,21 +38,17 @@ namespace lux::render
     {
         std::string     channel_name;
         bool            validation = false;
-        // In addition to the frame currently consumed by Render, Game may prepare/queue this many.
-        // The Client reserves one of max_frames_ahead + 1 input carriers before preparing a frame.
-        std::uint32_t   max_frames_ahead = 1;
         std::size_t     max_config_bytes = 1024 * 1024;
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
         std::uint32_t   frames_in_flight = 2;
-        std::uint64_t   gpu_wait_ns = 1'000'000; // 0..1ms; IPC/CPU/stop are checked between waits.
+        std::uint64_t   gpu_wait_ns = 1'000'000; // 0..1 ms between idle GPU polls. IPC and CPU can wake earlier.
         RenderErrorSink diagnostics;
         // Borrowed application wake hint, called on RenderThread after real reply publication.
         // It must not reenter RenderServer; its context remains valid until the rendering thread joins.
         void*           response_context = nullptr;
         void (*responses_available)(void*) noexcept = nullptr;
-        // One immutable failure notification on RenderThread. Keep consuming replies and close the
-        // Clients before stop(); device failure alone does not end the responder's lifetime.
+        // One immutable failure notification on RenderThread. Accepted replies are settled before the responder closes.
         void* failure_context = nullptr;
         void (*execution_failed)(void*, RenderError) noexcept = nullptr;
     };
@@ -69,7 +61,7 @@ namespace lux::render
         std::uint64_t presentations = 0; // Successful QueuePresent calls, not measured display scanout.
     };
 
-    // The application owns the rendering thread. only stop() and stats() may race with run().
+    // The application owns the rendering thread. Only stop() and stats() may race with run().
     // Stop and join that thread before destruction; the borrowed ExecutionRuntime must outlive this Server.
     class LUX_RENDER_PUBLIC RenderServer final
     {
@@ -77,7 +69,7 @@ namespace lux::render
         using CreateResult = RenderResult<std::unique_ptr<RenderServer>>;
 
         // Creates the device, IPC responder and supported built-in declarations, but starts no thread.
-        // Registration stores factories only. run() constructs selected Handlers; installation/Attach create Storage.
+        // Registration stores factories only. run() constructs selected Handlers; Resource owners create Storage.
         [[nodiscard]] static CreateResult create(
             RenderServerConfig config,
             execution::ExecutionRuntime& execution,
@@ -88,23 +80,24 @@ namespace lux::render
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
 
-        // Setup-thread cold lookup. Runtime applications use ListCapabilities through IPC.
+        // Setup lookup. Runtime applications use the discovery commands through IPC.
         [[nodiscard]] RenderResult<FeatureId>
         featureId(std::string_view implementation) const noexcept;
 
+        [[nodiscard]] RenderResult<CapabilityId> capabilityId(cxx::basic_type_info) const noexcept;
+        [[nodiscard]] RenderResult<HandlerId> handlerId(cxx::basic_type_info, std::string_view key = {}) const noexcept;
+
         // Extension authors include extensions/Registration.hpp for these template definitions.
-        // Metadata and callback code must outlive the Server and all accepted work. Cold catalog
-        // access belongs to the setup thread before run(), or after run() returns and is joined.
-        // Runtime Handler/static-command installation is allowed only on the Server owner at a
-        // frame boundary. Other running-thread catalog access is rejected. Query IDs through IPC.
+        // Metadata and callback code must outlive the Server and all accepted work. Serialize all
+        // direct catalog calls during setup. run() seals registration and takes over the catalog.
         template <class Feature> [[nodiscard]] RenderResult<FeatureId>
         registerFeature() noexcept;
 
+        // Dependencies are registered once by the module closure; this helper only resolves their IDs.
         template <class Implementation> [[nodiscard]] RenderResult<CapabilityImplementationId>
         registerCapabilityImplementation() noexcept;
 
-        // Catalog changes are permitted before run(), or after run() has returned and joined all work.
-        // Active execution is rejected rather than implicitly detaching another caller's resources.
+        // Register capabilities before handing the catalog to run().
         template <CapabilityConcept C> [[nodiscard]] RenderResult<CapabilityId> registerCapability() noexcept
         {
             return registerCapability(describeCapability<C>());
@@ -129,7 +122,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}) noexcept;
 
         // Stateless typed functions use the same command directory without a dummy Handler owner.
-        // Register on the setup thread, or at a Server-owner frame boundary. Query IDs through IPC.
+        // Install these bindings during serialized setup. Query IDs through IPC while running.
         [[nodiscard]] RenderResult<void> registerCommands(std::span<const CommandBinding>) noexcept;
 
         // Installs the Resource definition, creation policy and its declaration-owned static command thunks.
@@ -142,18 +135,13 @@ namespace lux::render
         registerResource() noexcept;
 
         // Registers a Handler factory and its typed methods, without constructing the Handler.
-        // Repeating a compatible (type, key) reuses the identity and preserves selected bindings.
+        // A repeated (type, key) is a conflict; references use handlerId without another factory payload.
         template <class Handler, class Bindings> [[nodiscard]] RenderResult<HandlerId>
         registerHandler(std::string_view key = {}) noexcept;
 
         // Runs once, blocking the calling thread. Drains accepted work and replies before returning.
         [[nodiscard]] RenderResult<void>
         run() noexcept;
-
-        // Cold, before run(). Only this physical IPC Link may submit frames. Other Clients may
-        // query and prepare unreferenced assets, but cannot mutate visible state outside a frame.
-        [[nodiscard]] RenderResult<void>
-        setFrameSource(platform::ipc::RequesterId requester) noexcept;
 
         // Thread-safe stop request. It does not join the rendering thread or cancel accepted GPU work.
         void stop() noexcept;
@@ -165,20 +153,13 @@ namespace lux::render
         [[nodiscard]] RenderResult<FeatureId>
         registerFeature(runtime_detail::FeatureEntry) noexcept;
 
-        [[nodiscard]] RenderResult<CapabilityImplementationId>
-        registerCapabilityImplementation(
-            CapabilityDescription,
-            CapabilityImplementation,
-            std::span<runtime_detail::FeatureEntry>,
-            std::span<const ResourceRegistration>,
-            std::span<runtime_detail::HandlerRecord>,
-            std::span<const CommandBinding>
-        ) noexcept;
+        [[nodiscard]] RenderResult<void> registerBuiltins() noexcept;
+        [[nodiscard]] RenderResult<CommandBindingLocation>
+        commandBinding(const CommandDescriptor&, cxx::basic_type_info method, HandlerId) const noexcept;
 
         [[nodiscard]] RenderResult<HandlerId>
         registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 
-        [[nodiscard]] bool pagedInstances() const noexcept;
 
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

@@ -1,54 +1,59 @@
-#include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/capabilities/CapabilityBuild.hpp>
-#include <lux/engine/render/capabilities/MeshShadows.hpp>
-#include <lux/engine/render/resources/lighting/Commands.hpp>
-
-#include <cmath>
+#include <lux/engine/render/capabilities/FeatureRecipes.hpp>
+#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/features/shadow/MeshShadowFeature.hpp>
+#include <lux/engine/render/features/shadow/ShadowMapFeature.hpp>
 
 namespace lux::render
 {
     namespace detail
     {
-        RenderResult<EffectDefinition> buildShadowFeatures(const CapabilityBuildInput& input) noexcept
+        RenderResult<ShadowPorts>
+        appendShadowFeatures(
+            EffectDefinition& graph,
+            std::span<const FeatureId> features,
+            const MeshShadowsConfiguration& configuration
+        ) noexcept
         {
-            const auto& configuration = *static_cast<const MeshShadowsConfiguration*>(input.configuration.data());
+            if (!validRecipeFeatures(features, 3)) return cxx::unexpected(RenderError{kFeatureContract});
+            const bool invalid_recipe = !configuration.valid() || graph.features.size() > UINT32_MAX - features.size();
+            if (invalid_recipe) return cxx::unexpected(RenderError{kInvalidConfig});
             ShadowMapFeatureConfig projection;
             projection.shape.resolution = configuration.resolution;
-            projection.camera_offset = offsetof(CameraParameters, inverse_view_projection);
             projection.pcf_radius = configuration.filter_radius;
             projection.distance = configuration.distance;
             MeshShadowFeatureConfig shadow{projection.shape};
-            EffectDefinition result;
+            const auto shape = projection.shape;
             auto project = ConfigValue::make(std::move(projection));
             if (!project)
             {
                 return cxx::unexpected(project.error());
             }
-            result.features.push_back({input.features[0], "projection", std::move(*project)});
             MeshVisibilityFeatureConfig visible;
-            visible.view_parameters.reset();
             visible.shadow_pass = true;
             auto visibility = ConfigValue::make(std::move(visible));
             if (!visibility)
             {
                 return cxx::unexpected(visibility.error());
             }
-            result.features.push_back({input.features[2], "visibility", std::move(*visibility)});
-            result.connections.push_back({{0, "views"}, {1, "views"}});
-            for (const auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
-            {
-                result.connections.push_back({{1, port}, {2, port}});
-            }
-            const auto raster = static_cast<std::uint32_t>(result.features.size());
             auto mesh = ConfigValue::make(std::move(shadow));
             if (!mesh)
             {
                 return cxx::unexpected(mesh.error());
             }
-            result.features.push_back({input.features[1], "depth", std::move(*mesh)});
-            result.connections.push_back({{0, "views"}, {raster, "views"}});
-            result.connections.push_back({{0, "raster_states"}, {raster, "raster_states"}});
-            return result;
+            const auto first = static_cast<std::uint32_t>(graph.features.size());
+            const auto culling = first + 1;
+            const auto raster = first + 2;
+            graph.features.push_back({features[0], "projection", std::move(*project)});
+            graph.features.push_back({features[2], "visibility", std::move(*visibility)});
+            graph.features.push_back({features[1], "depth", std::move(*mesh)});
+            graph.connections.push_back({{first, "views"}, {culling, "views"}});
+            for (const auto port : kMeshDrawInputPorts)
+            {
+                graph.connections.push_back({{culling, port}, {raster, port}});
+            }
+            graph.connections.push_back({{first, "views"}, {raster, "views"}});
+            graph.connections.push_back({{first, "raster_states"}, {raster, "raster_states"}});
+            return ShadowPorts{shape, first, {raster, "depth"}};
         }
     } // namespace detail
 } // namespace lux::render

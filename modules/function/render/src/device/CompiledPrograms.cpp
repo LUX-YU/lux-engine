@@ -31,23 +31,25 @@ namespace lux::render::detail
             seed ^= std::hash<T>{}(value) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
         }
 
-        std::size_t programHash(const rdesc::ShaderProgramArtifact& shader) noexcept
+        std::size_t keyDigest(const std::shared_ptr<const PreparedShader>& key) noexcept
         {
-            std::size_t result = 0;
-            combineHash(result, shader.target);
-            for (const auto& stage : shader.stages)
-            {
-                combineHash(result, stage.stage);
-                combineHash(result, stage.entry);
-                for (auto word : stage.words) combineHash(result, word);
-            }
-            // Exact comparison includes reflected ABI, even when identical code hashes into this bucket.
-            return result;
+            return key->digest;
         }
 
-        std::size_t programHash(const RasterProgramKey& key) noexcept
+        bool matches(const std::shared_ptr<const PreparedShader>& stored,
+                     const std::shared_ptr<const PreparedShader>& candidate) noexcept
         {
-            auto result = programHash(key.shader);
+            return stored->matches(*candidate);
+        }
+
+        bool matches(const RasterProgramKey& stored, const RasterProgramKey& candidate) noexcept
+        {
+            return stored.matches(candidate);
+        }
+
+        std::size_t keyDigest(const RasterProgramKey& key) noexcept
+        {
+            auto result = key.shader->digest;
             for (const auto& binding : key.state.vertex_bindings)
             {
                 combineHash(result, binding.binding);
@@ -83,61 +85,106 @@ namespace lux::render::detail
 
     struct CompiledPrograms::Program final
     {
-        using VKey = std::variant<rdesc::ShaderProgramArtifact, RasterProgramKey>;
+        using VKey = std::variant<std::shared_ptr<const PreparedShader>, RasterProgramKey>;
         VKey key;
         nri::Pipeline* pipeline;
         Layout* layout;
         std::uint32_t users = 0;
         std::uint64_t last_acquired = 0;
+        std::size_t digest;
+        std::uint64_t publication;
         SubmissionFrontiers last_uses;
     };
 
+    namespace
+    {
+        struct LayoutKey final
+        {
+            std::vector<nri::DescriptorRangeDesc> ranges;
+            std::uint32_t parameter_bytes;
+            nri::StageBits parameter_stages;
+            std::uint32_t private_set;
+            std::array<std::uint32_t, 3> shared_sets;
+            std::array<nri::DescriptorRangeDesc, 3> shared;
+
+            [[nodiscard]] bool matches(const LayoutKey& other) const noexcept
+            {
+                const bool same_placement = parameter_bytes == other.parameter_bytes &&
+                    parameter_stages == other.parameter_stages && private_set == other.private_set &&
+                    shared_sets == other.shared_sets;
+                const auto same_range = [](const auto& a, const auto& b) noexcept
+                {
+                    return a.baseRegisterIndex == b.baseRegisterIndex && a.descriptorNum == b.descriptorNum &&
+                        a.descriptorType == b.descriptorType && a.shaderStages == b.shaderStages && a.flags == b.flags &&
+                        a.d3dRegisterSpacePlusOne == b.d3dRegisterSpacePlusOne && a.d3dRegisterIndex == b.d3dRegisterIndex;
+                };
+                return same_placement && std::ranges::equal(shared, other.shared, same_range) &&
+                    std::ranges::equal(ranges, other.ranges, same_range);
+            }
+
+            [[nodiscard]] std::size_t contentDigest() const noexcept
+            {
+                std::size_t result = 0;
+                combineHash(result, parameter_bytes);
+                combineHash(result, parameter_stages);
+                combineHash(result, private_set);
+                for (auto set : shared_sets) combineHash(result, set);
+                const auto hash_range = [&](const nri::DescriptorRangeDesc& range) noexcept
+                {
+                    combineHash(result, range.baseRegisterIndex);
+                    combineHash(result, range.descriptorNum);
+                    combineHash(result, range.descriptorType);
+                    combineHash(result, range.shaderStages);
+                    combineHash(result, range.flags);
+                    combineHash(result, range.d3dRegisterSpacePlusOne);
+                    combineHash(result, range.d3dRegisterIndex);
+                };
+                for (const auto& range : shared) hash_range(range);
+                for (const auto& range : ranges) hash_range(range);
+                return result;
+            }
+        };
+
+        LayoutKey layoutKey(DeviceSession& session, const PassBindings& bindings) noexcept
+        {
+            constexpr std::array kinds{
+                nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
+            };
+            std::array<std::uint32_t, 3> capacities{};
+            for (std::size_t kind = 0; kind < kinds.size(); ++kind)
+            {
+                if (bindings.shared_sets[kind] != kGraphInvalidIndex)
+                    capacities[kind] = session.descriptors().capacity(kinds[kind]);
+            }
+            const auto& enabled = session.enabledFeatures();
+            const bool d3d12 = enabled.shader_target == rdesc::EShaderTarget::DXIL;
+            auto shared = DescriptorTable::layoutRanges(capacities, enabled.variable_descriptor_count);
+            if (d3d12)
+            {
+                for (const auto& binding : bindings.bindings)
+                {
+                    if (binding.count != 0) continue;
+                    const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0U :
+                        (binding.kind == EDescriptorKind::SAMPLER ? 1U : 2U);
+                    if (kind == 2) shared[kind].descriptorType = nri::DescriptorType::STRUCTURED_BUFFER;
+                    shared[kind].d3dRegisterSpacePlusOne = binding.shader_space + 1;
+                    shared[kind].d3dRegisterIndex = binding.shader_register;
+                }
+            }
+            return {
+                descriptorRanges(bindings.private_bindings, d3d12), bindings.parameter_bytes, bindings.parameter_stages,
+                bindings.private_bindings.empty() ? 0u : bindings.private_set, bindings.shared_sets, shared
+            };
+        }
+    } // namespace
+
     struct CompiledPrograms::Layout final
     {
-        std::vector<nri::DescriptorRangeDesc> ranges;
-        std::uint32_t parameter_bytes;
-        nri::StageBits parameter_stages;
-        std::array<std::uint32_t, 3> capacities;
-        std::array<std::pair<std::uint32_t, std::uint32_t>, 3> shared_registers{};
-        nri::PipelineLayout* native = nullptr;
-        std::uint32_t references = 0;
-
-        bool operator==(const Layout& other) const noexcept
-        {
-            const bool same_parameters = parameter_bytes == other.parameter_bytes &&
-                parameter_stages == other.parameter_stages;
-            const bool same_ranges = std::ranges::equal(ranges, other.ranges, [](const auto& a, const auto& b) noexcept
-            {
-                return a.baseRegisterIndex == b.baseRegisterIndex && a.descriptorNum == b.descriptorNum &&
-                    a.descriptorType == b.descriptorType && a.shaderStages == b.shaderStages && a.flags == b.flags &&
-                    a.d3dRegisterSpacePlusOne == b.d3dRegisterSpacePlusOne && a.d3dRegisterIndex == b.d3dRegisterIndex;
-            });
-            return same_parameters && capacities == other.capacities && shared_registers == other.shared_registers && same_ranges;
-        }
-
-        std::size_t hash() const noexcept
-        {
-            std::size_t result = 0;
-            combineHash(result, parameter_bytes);
-            combineHash(result, parameter_stages);
-            for (auto capacity : capacities) combineHash(result, capacity);
-            for (const auto& location : shared_registers)
-            {
-                combineHash(result, location.first);
-                combineHash(result, location.second);
-            }
-            for (const auto& range : ranges)
-            {
-                combineHash(result, range.baseRegisterIndex);
-                combineHash(result, range.descriptorNum);
-                combineHash(result, range.descriptorType);
-                combineHash(result, range.shaderStages);
-                combineHash(result, range.flags);
-                combineHash(result, range.d3dRegisterSpacePlusOne);
-                combineHash(result, range.d3dRegisterIndex);
-            }
-            return result;
-        }
+        LayoutKey key;
+        nri::PipelineLayout* native;
+        std::uint32_t references;
+        std::uint32_t max_colors;
+        std::size_t digest;
     };
 
     CompiledPrograms::CompiledPrograms(DeviceSession& session, std::uint32_t unused_limit) noexcept
@@ -148,193 +195,149 @@ namespace lux::render::detail
     CompiledPrograms::~CompiledPrograms() noexcept
     {
         // clear() transfers GPU objects to Session cleanup before its admission closes.
-        if (!programs_.empty() || !layouts_.empty()) std::terminate();
+        if (!programs_.empty() || !layout_index_.empty()) std::terminate();
     }
 
-    CompiledPrograms::Layout CompiledPrograms::layoutKey(const PassBindings& bindings) const noexcept
-    {
-        constexpr std::array kinds{nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER,
-            nri::DescriptorType::STRUCTURED_BUFFER};
-        Layout result{descriptorRanges(bindings.private_bindings, session_.description().graphicsAPI == nri::GraphicsAPI::D3D12), bindings.parameter_bytes,
-            bindings.parameter_stages, {}};
-        for (std::size_t kind = 0; kind < kinds.size(); ++kind)
-            if (bindings.shared_sets[kind] != kGraphInvalidIndex)
-                result.capacities[kind] = session_.descriptors().capacity(kinds[kind]);
-        if (session_.description().graphicsAPI == nri::GraphicsAPI::D3D12)
-        {
-            for (const auto& binding : bindings.bindings)
-            {
-                if (binding.count != 0) continue;
-                const auto kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE ? 0U :
-                    (binding.kind == EDescriptorKind::SAMPLER ? 1U : 2U);
-                result.shared_registers[kind] = {binding.shader_space, binding.shader_register};
-            }
-        }
-        return result;
-    }
-
-    RenderResult<nri::PipelineLayout*>
+    RenderResult<CompiledPrograms::Layout*>
     CompiledPrograms::acquireLayout(PassBindings& bindings, std::uint32_t color_count) noexcept
     {
         prepareDeviceParameters(bindings, session_.enabledFeatures());
-        auto candidate = layoutKey(bindings);
-        for (std::size_t kind = 0; kind < candidate.capacities.size(); ++kind)
-            if (bindings.shared_sets[kind] != kGraphInvalidIndex && candidate.capacities[kind] == 0)
-                return cxx::unexpected(RenderError{kDeviceUnsupported});
-        // A new raster program may reuse a Layout but add more color attachments.
-        // Those attachments participate in fragment limits without becoming Layout identity.
-        std::uint64_t ordinary = color_count;
-        for (const auto& binding : bindings.private_bindings)
-            if (binding.kind != EDescriptorKind::SAMPLER && (binding.stages & 2u) != 0) ordinary += binding.count;
-        const auto combined = ordinary + candidate.capacities[0] + candidate.capacities[2];
-        const auto& limits = session_.description().shaderStage;
-        const auto combined_limit = std::max(limits.resourceMaxNum, limits.updateAfterSet.resourceMaxNum);
-        const bool excessive_resources = ordinary > limits.resourceMaxNum || combined > combined_limit;
-        if (excessive_resources)
-            return cxx::unexpected(RenderError{kDeviceCapacity, {combined, combined_limit, ordinary}});
-        const auto hash = candidate.hash();
-        const auto bucket = layout_index_.find(hash);
-        if (bucket != layout_index_.end()) for (auto* layout : bucket->second)
+        auto key = layoutKey(session_, bindings);
+        const auto digest = key.contentDigest();
+        const auto [first, last] = layout_index_.equal_range(digest);
+        for (auto item = first; item != last; ++item)
         {
-            if (*layout == candidate)
-            {
-                ++layout->references;
-                bindings.layout = layout->native;
-                return layout->native;
-            }
+            auto& layout = *item->second;
+            if (!layout.key.matches(key)) continue;
+            if (color_count > layout.max_colors)
+                return cxx::unexpected(RenderError{kDeviceCapacity, {color_count, layout.max_colors}});
+            ++layout.references;
+            bindings.layout = layout.native;
+            return &layout;
         }
-        auto created = createPipelineLayout(session_.device(), session_.nriCore(), bindings,
-            session_.enabledFeatures(), candidate.capacities, color_count);
+        std::uint32_t max_colors = 0;
+        auto created = createPipelineLayout(
+            session_.device(), session_.nriCore(), bindings, key.ranges, key.shared, color_count, max_colors
+        );
         if (!created) return cxx::unexpected(created.error());
-        candidate.native = *created;
-        candidate.references = 1;
-        auto value = std::make_unique<Layout>(std::move(candidate));
-        layout_index_[hash].push_back(value.get());
-        layouts_.push_back(std::move(value));
         bindings.layout = *created;
-        return *created;
+        auto value = std::make_unique<Layout>(Layout{std::move(key), *created, 1, max_colors, digest});
+        auto item = layout_index_.emplace(digest, std::move(value));
+        return item->second.get();
     }
 
     void CompiledPrograms::dropLayout(Layout& layout) noexcept
     {
         if (!layout.references) std::terminate();
         if (--layout.references != 0) return;
-        const auto hash = layout.hash();
-        auto found = layout_index_.find(hash);
-        std::erase(found->second, &layout);
-        if (found->second.empty()) layout_index_.erase(found);
-        session_.nriCore().DestroyPipelineLayout(layout.native);
-        std::erase_if(layouts_, [&](const auto& value) noexcept { return value.get() == &layout; });
+        const auto [first, last] = layout_index_.equal_range(layout.digest);
+        for (auto item = first; item != last; ++item)
+        {
+            if (item->second.get() != &layout) continue;
+            session_.nriCore().DestroyPipelineLayout(layout.native);
+            layout_index_.erase(item);
+            return;
+        }
+        std::terminate();
     }
 
-    void CompiledPrograms::releaseLayout(nri::PipelineLayout* native) noexcept
+    void CompiledPrograms::releaseLayout(Layout* layout) noexcept
     {
-        const auto found = std::ranges::find_if(layouts_, [&](const auto& layout) noexcept
-        { return layout->native == native; });
-        if (found == layouts_.end()) std::terminate();
-        dropLayout(**found);
+        dropLayout(*layout);
     }
 
-    template <class Key> nri::Pipeline* CompiledPrograms::acquire(const Key& key, PassBindings& bindings) noexcept
+    template <class Key>
+    CompiledPrograms::Program* CompiledPrograms::find(const Key& key, const Lookup& lookup, std::uint64_t after) noexcept
     {
-        prepareDeviceParameters(bindings, session_.enabledFeatures());
-        const auto shape = layoutKey(bindings);
-        auto hash = programHash(key);
-        combineHash(hash, shape.hash());
-        const auto found = program_index_.find(hash);
+        const auto found = program_index_.find(lookup.digest_);
         if (found == program_index_.end()) return nullptr;
         for (auto* program : found->second)
         {
+            if (program->publication <= after || program->layout != lookup.layout_) continue;
             const auto* stored = std::get_if<Key>(&program->key);
-            if (stored && *stored == key && *program->layout == shape)
-            {
-                ++program->users;
-                program->last_acquired = ++acquisition_serial_;
-                bindings.layout = program->layout->native;
-                return program->pipeline;
-            }
+            if (!stored || !matches(*stored, key)) continue;
+            ++program->users;
+            program->last_acquired = ++acquisition_serial_;
+            return program;
         }
         return nullptr;
     }
 
-    nri::Pipeline* CompiledPrograms::acquireRaster(const RasterProgramKey& key, PassBindings& bindings) noexcept
+    template <class Key>
+    CompiledPrograms::Lookup CompiledPrograms::lookup(const Key& key, Layout& layout) noexcept
     {
-        return acquire(key, bindings);
+        Lookup result;
+        result.digest_ = keyDigest(key);
+        combineHash(result.digest_, &layout);
+        result.layout_ = &layout;
+        result.publication_ = publication_serial_;
+        result.hit_ = find(key, result, 0);
+        return result;
     }
 
-    nri::Pipeline* CompiledPrograms::acquireCompute(const rdesc::ShaderProgramArtifact& key, PassBindings& bindings) noexcept
+    CompiledPrograms::Lookup CompiledPrograms::lookupRaster(const RasterProgramKey& key, Layout& layout) noexcept
     {
-        return acquire(key, bindings);
+        return lookup(key, layout);
+    }
+
+    CompiledPrograms::Lookup
+    CompiledPrograms::lookupCompute(const std::shared_ptr<const PreparedShader>& key, Layout& layout) noexcept
+    {
+        return lookup(key, layout);
     }
 
     template <class Key>
-    nri::Pipeline* CompiledPrograms::publish(Key key, nri::PipelineLayout* native, nri::Pipeline* pipeline) noexcept
+    CompiledPrograms::Program* CompiledPrograms::publish(Key key, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
     {
-        const auto found = std::ranges::find_if(layouts_, [&](const auto& layout) noexcept
-        { return layout->native == native; });
-        if (found == layouts_.end()) std::terminate();
-        auto* layout = found->get();
-        auto hash = programHash(key);
-        combineHash(hash, layout->hash());
-        auto& bucket = program_index_[hash];
-        for (auto* program : bucket)
+        // Only entries published while native creation was in flight can be new matches.
+        if (auto* existing = find(key, lookup, lookup.publication_))
         {
-            const auto* stored = std::get_if<Key>(&program->key);
-            if (stored && *stored == key && program->layout == layout)
-            {
-                session_.nriCore().DestroyPipeline(pipeline);
-                dropLayout(*layout);
-                ++program->users;
-                program->last_acquired = ++acquisition_serial_;
-                return program->pipeline;
-            }
+            session_.nriCore().DestroyPipeline(pipeline);
+            return existing;
         }
-        auto program = std::make_unique<Program>(Program{
-            std::move(key), pipeline, layout, 1, ++acquisition_serial_, session_.makeFrontiers()
+        auto* layout = lookup.layout_;
+        ++layout->references;
+        auto value = std::make_unique<Program>(Program{
+            std::move(key), pipeline, layout, 1, ++acquisition_serial_, lookup.digest_, ++publication_serial_,
+            session_.makeFrontiers()
         });
-        bucket.push_back(program.get());
-        programs_.push_back(std::move(program));
+        auto* program = value.get();
+        program_index_[lookup.digest_].push_back(program);
+        programs_.push_back(std::move(value));
         trim();
-        return pipeline;
+        return program;
     }
 
-    nri::Pipeline*
-    CompiledPrograms::publishRaster(RasterProgramKey key, nri::PipelineLayout* layout, nri::Pipeline* pipeline) noexcept
+    CompiledPrograms::Program*
+    CompiledPrograms::publishRaster(RasterProgramKey key, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
     {
-        return publish(std::move(key), layout, pipeline);
+        return publish(std::move(key), lookup, pipeline);
     }
 
-    nri::Pipeline*
-    CompiledPrograms::publishCompute(
-        rdesc::ShaderProgramArtifact key,
-        nri::PipelineLayout* layout,
-        nri::Pipeline* pipeline
+    CompiledPrograms::Program* CompiledPrograms::publishCompute(
+        std::shared_ptr<const PreparedShader> key, const Lookup& lookup, nri::Pipeline* pipeline
     ) noexcept
     {
-        return publish(std::move(key), layout, pipeline);
+        return publish(std::move(key), lookup, pipeline);
     }
 
-    void
-    CompiledPrograms::release(
-        std::span<nri::Pipeline* const> pipelines,
-        std::span<nri::PipelineLayout* const> direct_layouts
-    ) noexcept
+    nri::Pipeline* CompiledPrograms::native(const Program& program) noexcept
     {
+        return program.pipeline;
+    }
+
+    void CompiledPrograms::release(std::span<Program* const> programs) noexcept
+    {
+        if (programs.empty()) return;
         auto accepted = session_.makeFrontiers();
         for (std::size_t q = 0; q < session_.queueCount(); ++q)
             accepted.accept(session_.submissionPoint(q, session_.physicalQueue(q).submitted()));
-        for (auto* native : pipelines)
+        for (auto* program : programs)
         {
-            const auto found = std::ranges::find_if(programs_, [&](const auto& value) noexcept
-            { return value->pipeline == native; });
-            const bool unowned_pipeline = found == programs_.end() || !(*found)->users;
-            if (unowned_pipeline) std::terminate();
-            auto& program = **found;
-            program.last_uses.merge(accepted);
-            --program.users;
+            if (!program->users) std::terminate();
+            program->last_uses.merge(accepted);
+            --program->users;
         }
-        for (auto* native : direct_layouts)
-            session_.deferRelease(accepted, [this, native]() noexcept { releaseLayout(native); });
         trim();
     }
 
@@ -350,9 +353,7 @@ namespace lux::render::detail
         std::erase_if(programs_, [&](auto& program) noexcept
         {
             if (!removed.contains(program.get())) return false;
-            auto hash = std::visit([](const auto& key) noexcept { return programHash(key); }, program->key);
-            combineHash(hash, program->layout->hash());
-            auto position = program_index_.find(hash);
+            auto position = program_index_.find(program->digest);
             std::erase(position->second, program.get());
             if (position->second.empty()) program_index_.erase(position);
             const auto frontiers = program->last_uses;

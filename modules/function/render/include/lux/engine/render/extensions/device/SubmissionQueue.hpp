@@ -89,7 +89,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> poll() noexcept;
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] CompletionSender whenSubmittedWorkCompletes() noexcept;
-        // An accepted frontier captured by FrameExecution; excludes later unrelated submissions.
+        // An accepted frontier captured by the submitting operation; excludes later unrelated submissions.
         [[nodiscard]] CompletionSender whenSubmissionCompletes(std::uint64_t serial) noexcept;
         [[nodiscard]] bool idle() const noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;

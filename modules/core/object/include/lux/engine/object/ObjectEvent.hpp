@@ -20,7 +20,7 @@ namespace lux::object
         {
         }
 
-        [[nodiscard]] lux::cxx::type_info type() const noexcept
+        [[nodiscard]] lux::cxx::basic_type_info type() const noexcept
         {
             return type_;
         }
@@ -40,7 +40,7 @@ namespace lux::object
         }
 
     private:
-        lux::cxx::type_info type_;
+        lux::cxx::basic_type_info type_;
         void* data_{nullptr};
         bool accepted_{false};
     };

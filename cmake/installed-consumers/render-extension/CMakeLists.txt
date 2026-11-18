@@ -15,6 +15,34 @@ endif()
 
 enable_testing()
 
+find_program(LUX_PROBE_SHADER_COMPILER lux_shader_compile REQUIRED)
+
+set(render_test_sources "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/render/test")
+set(compute_source "${render_test_sources}/shaders/GraphFill.slang")
+set(compute_header "${CMAKE_CURRENT_BINARY_DIR}/GraphFill.hpp")
+add_custom_command(
+    OUTPUT "${compute_header}"
+    COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${compute_source}" main compute bundle "${compute_header}"
+        --symbol=kGraphFill
+    DEPENDS "${compute_source}" "${LUX_PROBE_SHADER_COMPILER}"
+    VERBATIM
+)
+
+add_executable(compute_output ComputeOutput.cpp "${compute_header}")
+
+target_include_directories(compute_output PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${render_test_sources}")
+
+target_link_libraries(compute_output PRIVATE lux::engine::function::render_extensions)
+
+if(MSVC)
+    target_compile_options(compute_output PRIVATE /utf-8 /permissive- /Zc:__cplusplus /GR-)
+endif()
+
+add_test(NAME installed.render.compute_output_vulkan COMMAND compute_output)
+if(WIN32)
+    add_test(NAME installed.render.compute_output_d3d12 COMMAND compute_output d3d12)
+endif()
+
 foreach(header IN ITEMS PassEncoding PassRecordInput)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${header}Header.cpp")
     file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/extensions/graph/${header}.hpp>\n")
@@ -22,6 +50,31 @@ foreach(header IN ITEMS PassEncoding PassRecordInput)
     target_link_libraries(header_${header} PRIVATE lux::engine::function::render_extensions)
     target_compile_features(header_${header} PRIVATE cxx_std_20)
 endforeach()
+
+option(LUX_TEST_INSTALLED_EDITOR_UI "Run the Editor UI output probe against installed packages" OFF)
+
+if(LUX_TEST_INSTALLED_EDITOR_UI)
+    find_package(lux-editor-ui-render CONFIG REQUIRED)
+
+    set(repo "${CMAKE_CURRENT_LIST_DIR}/../../..")
+    add_executable(editor_ui_frame_packet "${repo}/editor/ui/render/test/FramePacket.cpp")
+
+    target_include_directories(editor_ui_frame_packet PRIVATE "${repo}/modules/function/render/test")
+
+    target_link_libraries(editor_ui_frame_packet PRIVATE lux::editor::ui_render lux::engine::core::core_execution)
+
+    target_compile_features(editor_ui_frame_packet PRIVATE cxx_std_20)
+
+    if(MSVC)
+        target_compile_options(editor_ui_frame_packet PRIVATE /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /GR-)
+    endif()
+
+    add_test(NAME installed.editor.ui_vulkan COMMAND editor_ui_frame_packet)
+
+    if(WIN32)
+        add_test(NAME installed.editor.ui_d3d12 COMMAND editor_ui_frame_packet d3d12)
+    endif()
+endif()
 
 add_executable(effect_build EffectBuild.cpp)
 

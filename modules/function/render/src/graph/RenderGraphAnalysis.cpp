@@ -570,27 +570,9 @@ namespace lux::render
         std::vector<bool> parameters(resources.size(), false);
         for (auto id : result.execution_order)
         {
-            const ParameterBinding* parameters_input = nullptr;
-            if (const auto* raster = passes[id.index].work.getIf<RasterWork>())
-            {
-                const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program);
-                parameters_input =
-                    fixed ? &fixed->interface.parameters : &std::get<RasterPassTemplate>(raster->program).parameters;
-            }
+            const auto* parameters_input = &passes[id.index].interface.parameters;
             if (const auto* scope = passes[id.index].rasterScope(); scope && scope->state_input)
                 parameters[scope->state_input->resource.index] = true;
-            if (const auto* compute = passes[id.index].work.getIf<ComputeWork>())
-            {
-                parameters_input = &compute->interface.parameters;
-            }
-            if (passes[id.index].encoding_interface)
-            {
-                parameters_input = &passes[id.index].encoding_interface->parameters;
-            }
-            if (!parameters_input)
-            {
-                continue;
-            }
             for (const auto& field : parameters_input->fields)
             {
                 if (field.resource.index != kGraphInvalidIndex)

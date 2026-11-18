@@ -51,7 +51,34 @@ namespace lux::rdesc
             return parameters == ShaderBlock{} && parameter_defaults.empty() && texture_count == 0;
         }
 
-        // Default values are per-material data. Their arity, the target layout and programs define the table.
+        // Default values and texture objects are material data. This digest only selects
+        // candidate tables; hasSameStructure still verifies the complete ABI and code.
+        [[nodiscard]] std::size_t structureDigest() const noexcept
+        {
+            std::size_t result = 0;
+            const auto combine = [&]<class T>(const T& value) noexcept
+            {
+                result ^= std::hash<T>{}(value) + 0x9e3779b9u + (result << 6) + (result >> 2);
+            };
+            combine(target);
+            combine(parameters.size);
+            combine(parameters.alignment);
+            combine(parameter_defaults.size());
+            combine(texture_count);
+            combine(shading_model);
+            combine(alpha_mode);
+            combine(double_sided);
+            combine(programs.size());
+            for (const auto& program : programs)
+            {
+                combine(program.purpose);
+                combine(program.output_semantic);
+                combine(program.shader.binaryDigest());
+            }
+            return result;
+        }
+
+        // Check small structural fields before comparing the reflected programs.
         [[nodiscard]] bool hasSameStructure(const MaterialProgramSet& other) const noexcept
         {
             return target == other.target && parameters == other.parameters &&

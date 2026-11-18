@@ -30,7 +30,7 @@ namespace lux::render::detail
             for (std::size_t i = 0; i < jobs.size(); ++i)
             {
                 const auto& entry = jobs[i];
-                const bool is_invalid_entry = entry.id.isNull() || !entry.device || !entry.relations;
+                const bool is_invalid_entry = entry.id.isNull() || !entry.relations;
                 if (is_invalid_entry)
                 {
                     return cxx::unexpected(RenderError{kJobIdentity});
@@ -61,10 +61,6 @@ namespace lux::render::detail
                 if (found == changed)
                 {
                     return cxx::unexpected(RenderError{kJobCycle});
-                }
-                if (jobs[found].device != jobs[changed].device)
-                {
-                    return cxx::unexpected(RenderError{kJobState});
                 }
                 if (contains(ids.first(i), ids[i]))
                 {
@@ -163,6 +159,44 @@ namespace lux::render::detail
         return result;
     }
 
+    RenderResult<void> validateJobDevices(std::span<const JobRelationEntry> jobs) noexcept
+    {
+        // A dormant intermediate Job still connects its active neighbours.
+        std::vector<std::uint8_t> seen(jobs.size());
+        std::vector<std::size_t> pending;
+        pending.reserve(jobs.size());
+        for (std::size_t root = 0; root < jobs.size(); ++root)
+        {
+            if (seen[root]) continue;
+            DeviceSessionId device;
+            pending.clear();
+            pending.push_back(root);
+            seen[root] = 1;
+            for (std::size_t i = 0; i < pending.size(); ++i)
+            {
+                const auto& job = jobs[pending[i]];
+                if (!job.device.isNull())
+                {
+                    if (!device.isNull() && device != job.device)
+                        return cxx::unexpected(RenderError{kJobState});
+                    device = job.device;
+                }
+                for (auto edges : {std::span(job.relations->predecessors), std::span(job.relations->successors)})
+                {
+                    for (auto id : edges)
+                    {
+                        const auto index = find(jobs, id);
+                        if (index == missing) return cxx::unexpected(RenderError{kJobIdentity});
+                        if (seen[index]) continue;
+                        seen[index] = 1;
+                        pending.push_back(index);
+                    }
+                }
+            }
+        }
+        return {};
+    }
+
     RenderResult<void>
     setJobDependencies(
         std::span<const JobRelationEntry> jobs,
@@ -213,6 +247,7 @@ namespace lux::render::detail
         {
             view.push_back({jobs[i].id, jobs[i].device, &candidate[i]});
         }
+        if (auto valid = validateJobDevices(view); !valid) return valid;
         auto sorted = orderRunningJobs(view, running);
         if (!sorted)
         {

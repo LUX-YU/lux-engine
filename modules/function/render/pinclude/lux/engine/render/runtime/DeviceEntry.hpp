@@ -4,6 +4,7 @@
 #include <lux/engine/render/resource/ResourceSet.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
+#include <map>
 
 namespace lux::render::detail
 {
@@ -33,6 +34,11 @@ namespace lux::render::detail
         [[nodiscard]] FrameOperation::Workspace& frameWorkspace() noexcept { return frame_workspace_; }
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;
+        [[nodiscard]] ResourceSet* scopedResources(SceneId, ViewId, bool create) noexcept;
+        [[nodiscard]] bool scopedResourceCommands(SceneId = {}, ViewId = {}) const noexcept;
+        void eraseResourceScope(SceneId, ViewId = {}) noexcept;
+        bool upload_pending = false;
+        std::uint32_t pending_starts = 0;
 
     private:
         DeviceEntry(
@@ -49,5 +55,13 @@ namespace lux::render::detail
         FrameProgress frame_progress_;
         FrameOperation::Workspace frame_workspace_;
         ResourceSet resources_;
+        using ScopeKey = std::pair<std::uint32_t, std::uint32_t>;
+        struct SceneResources final
+        {
+            explicit SceneResources(ResourceSet& parent) noexcept : resources(parent, EResourceDomain::SCENE) {}
+            ResourceSet resources;
+            std::map<ScopeKey, ResourceSet> views;
+        };
+        std::map<ScopeKey, SceneResources> scene_resources_;
     };
 } // namespace lux::render::detail

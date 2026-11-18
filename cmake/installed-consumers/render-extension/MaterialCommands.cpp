@@ -38,7 +38,7 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
-    call<CreateDeviceSession>(*client, commands, device);
+    const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const std::array current{
         CommandName{R::name}, CommandName{C::name}, CommandName{MaterialCommands::Update::name},
         CommandName{MaterialCommands::ReleaseInstance::name}, CommandName{U::name}
@@ -60,8 +60,8 @@ int main(int argc, char** argv)
         CHECK(retired.error.type == kRuntimeUnsupported && retired.ids.empty());
         std::printf("MATERIAL_COMMAND_REMOVED %.*s\n", int(name.size()), name.data());
     }
-    const auto materials = call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, kMaterialResourceName});
-    const auto textures = call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, kTextureResourceName});
+    const auto materials = call<GetOrCreateResource>(*client, commands, {session, DeviceScope{}, kMaterialResourceName});
+    const auto textures = call<GetOrCreateResource>(*client, commands, {session, DeviceScope{}, kTextureResourceName});
     auto wrong_target = program;
     wrong_target.target = shader_target == rdesc::EShaderTarget::SPIRV
         ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;

@@ -11,6 +11,7 @@ namespace lux::render::detail
     // Control-thread state attached to either physical Target alternative.
     struct TargetState final
     {
+        DeviceSessionId device;
         std::uint64_t epoch = 1;
         RenderJobId writer;
         const void* reservation = nullptr; // The connected Job start/rebind owns this reservation.

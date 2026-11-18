@@ -1,18 +1,5 @@
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
-namespace lux::render::runtime_detail
-{
-    RenderView::RenderView(RenderScene& parent) noexcept
-        : scene(parent), resources(parent.resources, EResourceDomain::VIEW)
-    {
-    }
-
-    RenderScene::RenderScene(detail::DeviceEntry& entry) noexcept
-        : device(entry), resources(entry.resources(), EResourceDomain::SCENE)
-    {
-    }
-} // namespace lux::render::runtime_detail
-
 namespace lux::render
 {
     void RenderServer::Impl::createScene(
@@ -20,13 +7,7 @@ namespace lux::render
         CreateScene::Response& output_response
     ) noexcept
     {
-        auto* device = runtime_->execution_device_;
-        if (!device)
-        {
-            output_response.error = {kRuntimeState};
-            return;
-        }
-        output_response = SceneCreated{{}, runtime_->scenes_.emplace(*device)};
+        output_response = SceneCreated{{}, runtime_->scenes_.emplace()};
     }
 
     void RenderServer::Impl::removeScene(
@@ -42,19 +23,20 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (scene->resources.hasCommands())
+        const bool has_jobs = std::ranges::any_of(scene->views, [](const auto& view) noexcept
         {
-            output_response.error = RenderError{kDeviceBusy};
+            return !view.jobs.empty();
+        });
+        const bool has_commands = std::ranges::any_of(runtime_->devices_, [scene_id](const auto& device) noexcept
+        {
+            return device->scopedResourceCommands(scene_id);
+        });
+        if (has_jobs || has_commands)
+        {
+            output_response.error = {kDeviceBusy};
             return;
         }
-        for (auto& view : scene->views)
-        {
-            if (view.resources.hasCommands() || !view.jobs.empty())
-            {
-                output_response.error = RenderError{kDeviceBusy};
-                return;
-            }
-        }
+        for (auto& device : runtime_->devices_) device->eraseResourceScope(scene_id);
         runtime_->scenes_.erase(scene_id);
         output_response = {};
     }
@@ -69,7 +51,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = ViewCreated{{}, scene->views.emplace(*scene)};
+        output_response = ViewCreated{{}, scene->views.emplace()};
     }
 
     void
@@ -83,11 +65,16 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (view->resources.hasCommands() || !view->jobs.empty())
+        const bool has_commands = std::ranges::any_of(runtime_->devices_, [&](const auto& device) noexcept
+        {
+            return device->scopedResourceCommands(input->scene, input->view);
+        });
+        if (has_commands || !view->jobs.empty())
         {
             output_response.error = RenderError{kDeviceBusy};
             return;
         }
+        for (auto& device : runtime_->devices_) device->eraseResourceScope(input->scene, input->view);
         scene->views.erase(input->view);
         output_response = {};
     }

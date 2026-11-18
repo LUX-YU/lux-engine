@@ -420,7 +420,7 @@ template <class Stats> static std::uint64_t jobInputCpuNs(const Stats& stats)
 }
 
 static void profileJobRounds(
-    RenderServer& server, ipc::IpcRequester& client, std::string_view channel, EffectId effect, unsigned job_count
+    RenderServer& server, ipc::IpcRequester& client, std::string_view channel, DeviceSessionId session, EffectId effect, unsigned job_count
 )
 {
     using Clock = std::chrono::steady_clock;
@@ -444,9 +444,9 @@ static void profileJobRounds(
         while (jobs.size() < target_count)
         {
             const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
-            const auto output = call<CreateTarget>(client, {target});
+            const auto output = call<CreateTarget>(client, {session, target});
             CHECK(!created.error.type && !output.error.type);
-            CHECK(!call<StartRenderJob>(client, {created.job, output.target}).error.type);
+            CHECK(!call<StartRenderJob>(client, {session, created.job, output.target}).error.type);
             jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
         }
         return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
@@ -496,7 +496,7 @@ static void profileJobRounds(
         std::printf("JOB_ANCESTRY native_acceptance=2,1,2 rejection=%llu same_frame_and_slot=1\n", rejected.error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {}, {}}).error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {}, {}}).error.type);
-        CHECK(!call<StartRenderJob>(client, {jobs[1].id, jobs[1].target}).error.type);
+        CHECK(!call<StartRenderJob>(client, {session, jobs[1].id, jobs[1].target}).error.type);
     };
     verify_ancestry();
     const auto setup_elapsed = initial_setup + create_jobs(job_count);
@@ -625,8 +625,10 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
         Monitor::on_server = true;
         ran = server->run();
     });
-    CHECK(!call<CreateDeviceSession>(client, device).error.type);
-    CHECK(call<GetOrCreateResource>(client, {GlobalRenderScope{}, MonitorResource::descriptor.type}).error.type == 0);
+    const auto opened = call<CreateDeviceSession>(client, device);
+    CHECK(!opened.error.type);
+    const auto session = opened.device;
+    CHECK(call<GetOrCreateResource>(client, {session, DeviceScope{}, MonitorResource::descriptor.type}).error.type == 0);
     CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
     request.definition.features.push_back({feature, "clear", {}});
         request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
@@ -635,7 +637,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(!effect.error.type);
     if (profile_jobs)
     {
-        profileJobRounds(*server, client, config.channel_name, effect.effect, profile_jobs);
+        profileJobRounds(*server, client, config.channel_name, session, effect.effect, profile_jobs);
         client.reset();
         server->stop();
         render.join();
@@ -644,15 +646,15 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     }
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
-    const auto target = call<CreateTarget>(client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
+    const auto target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto job = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED});
     CHECK(effect.error.type == 0 && job.error.type == 0);
-    CHECK(call<StartRenderJob>(client, {job.job, target}).error.type == 0);
-    const auto other_target = call<CreateTarget>(client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
+    CHECK(call<StartRenderJob>(client, {session, job.job, target}).error.type == 0);
+    const auto other_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto other_scene = call<CreateScene>(client, {}).scene;
     const auto other_view = call<CreateView>(client, {other_scene}).view;
     const auto other_job = call<CreateRenderJob>(client, {other_scene, other_view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {other_job, other_target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, other_job, other_target}).error.type == 0);
     auto park_wire = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     auto second_wire = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const std::array names{CommandName{RequestRenderJob::name}};
@@ -691,7 +693,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(accepted() == ordered_before + 2 && ClearFeature::parallel_arrivals == 2);
     ClearFeature::require_overlap.store(false);
     CHECK(call<SetRenderJobDependencies>(client, {other_job, {}, {}}).error.type == 0);
-    const auto cold = call<QueryResource>(client, {scene, ColdResource::descriptor.type}).resource_id;
+    const auto cold = call<QueryResource>(client, {session, scene, ColdResource::descriptor.type}).resource_id;
     CHECK(!cold.isNull());
     auto holding = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const auto held = send<HoldSceneResource>(holding, cold);
@@ -735,7 +737,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(ClearFeature::compiles == compiles);
     std::puts("PARALLEL RECORD PASS: two overlapping batches, merged without an edge, ordered with an edge");
 
-    const auto texture_store = call<GetOrCreateResource>(client, {GlobalRenderScope{}, kTextureResourceName});
+    const auto texture_store = call<GetOrCreateResource>(client, {session, DeviceScope{}, kTextureResourceName});
     CHECK(texture_store.error.type == 0);
     rdesc::TextureInfo info{};
     constexpr std::uint32_t width = 2048;
@@ -779,9 +781,9 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     uploads.reset();
     std::puts("INDEPENDENT UPLOAD PASS: frame recorded during held upload, 8 MiB completed across staging windows");
 
-    const auto suffix_target = call<CreateTarget>(client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
+    const auto suffix_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto suffix = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {suffix, suffix_target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, suffix, suffix_target}).error.type == 0);
     CHECK(call<SetRenderJobDependencies>(client, {suffix, {job.job}, {}}).error.type == 0);
     const auto executed = [&](RenderJobId id)
     {
@@ -834,8 +836,9 @@ static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const Dev
     const TargetDesc output{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     CHECK(call<QueryRenderDevice>(client, {}).error.type == kRuntimeIdentity);
     CHECK(call<ListCapabilities>(client, {}).error.type == kRuntimeIdentity);
-    CHECK(call<CreateScene>(client, {}).error.type == kRuntimeState);
-    CHECK(call<CreateTarget>(client, {output}).error.type == kRuntimeState);
+    const auto scene = call<CreateScene>(client, {});
+    CHECK(!scene.error.type);
+    CHECK(call<CreateTarget>(client, {{}, output}).error.type == kRuntimeIdentity);
     auto invalid = options;
     invalid.backend = static_cast<EGraphicsBackend>(255);
     const auto failed = call<CreateDeviceSession>(client, invalid);
@@ -866,11 +869,7 @@ static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const Dev
     };
     CHECK(!surface(primary.device) && surface(secondary.device) == kStorageCapability);
 
-    const auto scene = call<CreateScene>(client, {});
-    CHECK(!scene.error.type);
-    CHECK(call<RemoveDeviceSession>(client, primary.device).error.type == kDeviceBusy);
-    CHECK(!call<RemoveScene>(client, {scene.scene}).error.type);
-    const auto target = call<CreateTarget>(client, {output});
+    const auto target = call<CreateTarget>(client, {primary.device, output});
     CHECK(!target.error.type);
     CHECK(call<RemoveDeviceSession>(client, primary.device).error.type == kDeviceBusy);
     CHECK(!call<RemoveDeviceSession>(client, secondary.device).error.type);
@@ -889,20 +888,106 @@ static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const Dev
     CHECK(!call<RemoveDeviceSession>(client, primary.device).error.type);
     CHECK(call<QueryRenderDevice>(client, primary.device).error.type == kRuntimeIdentity);
 
-    const auto promoted = call<CreateTarget>(client, {output});
+    const auto promoted = call<CreateTarget>(client, {replacement.device, output});
     CHECK(!promoted.error.type && !promoted.target.isNull());
     CHECK(!call<RemoveTarget>(client, promoted.target).error.type);
     CHECK(!call<RemoveDeviceSession>(client, replacement.device).error.type);
-    CHECK(call<CreateTarget>(client, {output}).error.type == kRuntimeState);
+    CHECK(call<CreateTarget>(client, {{}, output}).error.type == kRuntimeIdentity);
     CHECK(!call<ListCommands>(client, {}).error.type);
     const auto restarted = call<CreateDeviceSession>(client, options);
     CHECK(!restarted.error.type && !restarted.device.isNull());
     std::printf(
-        "DEVICE SESSION PASS backend=%s caps=%u/%u stale_generation=%u->%u busy_scene_and_target=1 restart=1\n",
+        "DEVICE SESSION PASS backend=%s caps=%u/%u stale_generation=%u->%u busy_target=1 restart=1\n",
         first.backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan", first.resource_capabilities,
         second.resource_capabilities, secondary.device.gen, replacement.device.gen
     );
+    CHECK(!call<RemoveScene>(client, {scene.scene}).error.type);
     return restarted.device;
+}
+
+static void verifyDeviceOwnership(
+    ipc::IpcRequester& client, DeviceSessionId first, const DeviceOptions& options, EffectId effect
+)
+{
+    auto secondary_options = options;
+    secondary_options.texture_descriptors = true;
+    const auto second = call<CreateDeviceSession>(client, secondary_options);
+    CHECK(!second.error.type);
+    const auto scene = call<CreateScene>(client, {}).scene;
+    const auto view = call<CreateView>(client, {scene}).view;
+    const auto get = [&](DeviceSessionId device)
+    {
+        const auto resource = call<GetOrCreateResource>(client, {device, scene, ColdResource::descriptor.type});
+        CHECK(!resource.error.type && !resource.resource_id.isNull());
+        return resource.resource_id;
+    };
+    const auto resource_a = get(first);
+    const auto resource_b = get(second.device);
+    CHECK(resource_a != resource_b);
+    CHECK(call<QueryResource>(client, {second.device, ViewRequest{scene, view}, ColdResource::descriptor.type})
+        .resource_id == resource_b);
+
+    const TargetDesc desc{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
+    const auto a = call<CreateTarget>(client, {first, desc});
+    const auto b = call<CreateTarget>(client, {second.device, desc});
+    auto sampled = desc;
+    sampled.sampled = true;
+    const auto imported = call<CreateTarget>(client, {second.device, sampled});
+    CHECK(!a.error.type && !b.error.type && !imported.error.type);
+    const auto make_job = [&]
+    {
+        const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
+        CHECK(!created.error.type);
+        return created.job;
+    };
+    const auto job_a = make_job();
+    const auto job_b = make_job();
+    const auto dormant = make_job();
+    CHECK(call<StartRenderJob>(client, {second.device, job_a, a.target}).error.type == kJobState);
+    JobBinding foreign_image;
+    foreign_image.target_images.push_back({{0, "color"}, imported.target});
+    CHECK(call<StartRenderJob>(client, {first, job_a, a.target, foreign_image}).error.type == kJobState);
+    CHECK(!call<StartRenderJob>(client, {first, job_a, a.target}).error.type);
+    CHECK(!call<StartRenderJob>(client, {second.device, job_b, b.target}).error.type);
+    CHECK(call<RebindRenderJobEffect>(client, {second.device, job_a, effect, b.target}).error.type == kJobState);
+    CHECK(call<RebindRenderJobEffect>(client, {first, job_a, effect, a.target, foreign_image}).error.type == kJobState);
+    CHECK(call<SetRenderJobDependencies>(client, {job_b, {job_a}, {}}).error.type == kJobState);
+    CHECK(!call<SetRenderJobDependencies>(client, {dormant, {job_a}, {}}).error.type);
+    CHECK(call<SetRenderJobDependencies>(client, {job_b, {dormant}, {}}).error.type == kJobState);
+    CHECK(!call<RequestRenderJob>(client, {job_a}).error.type);
+
+    const auto textures = call<GetOrCreateResource>(client, {second.device, DeviceScope{}, kTextureResourceName});
+    CHECK(!textures.error.type);
+    rdesc::TextureInfo info{};
+    info.width = info.height = info.mip_count = 1;
+    info.channel = 4;
+    info.pixel_format = rdesc::ETexturePixelFormat::RGBA8_UNORM;
+    info.color_space = rdesc::ETextureColorSpace::DATA;
+    const std::array pixels{std::byte{255}, std::byte{}, std::byte{}, std::byte{255}};
+    info.mip_ranges[0] = {0, pixels.size(), 1, 1};
+    const auto texture = call<TextureCommands::Upload>(client, {textures.resource_id, {info, pixels}});
+    CHECK(!texture.error.type && !texture.texture.isNull());
+    CHECK(!call<TextureCommands::Release>(client, {texture.texture}).error.type);
+
+    CHECK(call<RemoveDeviceSession>(client, second.device).error.type == kDeviceBusy);
+    for (auto id : {job_a, job_b, dormant})
+    {
+        CHECK(!call<StopRenderJob>(client, id).error.type);
+        CHECK(!call<RemoveRenderJob>(client, id).error.type);
+    }
+    for (auto target : {a.target, b.target, imported.target}) CHECK(!call<RemoveTarget>(client, target).error.type);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    for (;;)
+    {
+        const auto removed = call<RemoveDeviceSession>(client, second.device);
+        if (!removed.error.type) break;
+        CHECK(removed.error.type == kDeviceBusy && std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(call<QueryResource>(client, {first, scene, ColdResource::descriptor.type}).resource_id == resource_a);
+    CHECK(call<QueryResource>(client, {second.device, scene, ColdResource::descriptor.type}).error.type ==
+        kRuntimeIdentity);
+    CHECK(!call<RemoveScene>(client, {scene}).error.type);
+    std::puts("DEVICE OWNERSHIP PASS: shared logical view, isolated scopes and upload, cross-device bindings and edges");
 }
 
 int main(int argc, char** argv)
@@ -948,7 +1033,7 @@ int main(int argc, char** argv)
         ran = server->run();
     });
     const auto session = verifyDeviceSessions(client, device);
-    CHECK(call<GetOrCreateResource>(client, {GlobalRenderScope{}, MonitorResource::descriptor.type}).error.type == 0);
+    CHECK(call<GetOrCreateResource>(client, {session, DeviceScope{}, MonitorResource::descriptor.type}).error.type == 0);
     const auto create = [&]
     {
         CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
@@ -989,16 +1074,16 @@ int main(int argc, char** argv)
     Monitor::deny.store(false);
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
-    const auto target = call<CreateTarget>(client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
-    const auto moved_target = call<CreateTarget>(client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
+    const auto target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
+    const auto moved_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto current = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
-    const ResourceRequest resource_request{scene, ColdResource::descriptor.type};
+    const ResourceRequest resource_request{session, scene, ColdResource::descriptor.type};
     CHECK(call<QueryResource>(client, resource_request).error.type == kStorageIdentity);
     Monitor::deny.store(true);
-    CHECK(call<StartRenderJob>(client, {current, target}).error.type == kDeviceUnsupported);
+    CHECK(call<StartRenderJob>(client, {session, current, target}).error.type == kDeviceUnsupported);
     const auto retained = call<QueryResource>(client, resource_request);
     CHECK(retained.error.type == 0 && !retained.resource_id.isNull());
-    CHECK(call<StartRenderJob>(client, {current, target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, current, target}).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
     CHECK(ClearFeature::compiles > native_compiles);
     CHECK(server->stats().submissions == 0);
@@ -1009,15 +1094,15 @@ int main(int argc, char** argv)
     const auto rival = call<CreateRenderJob>(client, {scene, view, replacement.effect, EJobCadence::REQUESTED}).job;
     CHECK(call<SetRenderJobDependencies>(client, {rival, {current}, {}}).error.type == 0);
     CHECK(call<SetRenderJobDependencies>(client, {current, {rival}, {rival}}).error.type == kJobCycle);
-    CHECK(call<StartRenderJob>(client, {rival, target}).error.type == kTargetInUse);
+    CHECK(call<StartRenderJob>(client, {session, rival, target}).error.type == kTargetInUse);
     const auto old_schema = call<QueryRenderJobInputLayout>(client, current).layout;
     Monitor::deny.store(true);
-    CHECK(call<RebindRenderJobEffect>(client, {current, replacement.effect}).error.type == kDeviceUnsupported);
+    CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == kDeviceUnsupported);
     CHECK(call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     CHECK(call<UpdateJobInputs>(client, {current}).error.type == 0);
-    CHECK(call<RebindRenderJobEffect>(client, {current, replacement.effect, moved_target}).error.type == 0);
+    CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect, moved_target}).error.type == 0);
     CHECK(!call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
-    CHECK(call<StartRenderJob>(client, {rival, target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, rival, target}).error.type == 0);
     CHECK(call<StopRenderJob>(client, rival).error.type == 0);
 
     auto asynchronous = take(ipc::IpcCore::instance().createRequester(config.channel_name));
@@ -1055,7 +1140,7 @@ int main(int argc, char** argv)
     CHECK(call<UpdateFrameData>(client, {current, &rejected_packet}).error.type == kJobStopped);
     rejected_packet.release();
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
-    CHECK(call<StartRenderJob>(client, {rival, moved_target}).error.type == kJobBusy);
+    CHECK(call<StartRenderJob>(client, {session, rival, moved_target}).error.type == kJobBusy);
     Monitor::hold_submit.store(false);
     Monitor::hold_submit.notify_all();
     const auto receipt = receive<RequestRenderJob>(asynchronous, run);
@@ -1066,7 +1151,7 @@ int main(int argc, char** argv)
     CHECK(receipt.frame_index == 0 && receipt.slot_index == 0);
     std::puts("STRICT FIF PASS: a frame with no ready Job did not advance the device round");
     std::puts("JOB RUN PASS: Stop closed admission while a native QueueSubmit was held");
-    CHECK(call<StartRenderJob>(client, {rival, moved_target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, rival, moved_target}).error.type == 0);
     CHECK(call<StopRenderJob>(client, current).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, current).error.type == 0);
     CHECK(call<RequestRenderJob>(client, {rival}).job == rival);
@@ -1075,11 +1160,12 @@ int main(int argc, char** argv)
     auto peer = take(RenderServer::create(peer_config, *execution));
     auto peer_client = take(ipc::IpcCore::instance().createRequester(peer_config.channel_name));
     std::thread peer_render([&]() noexcept { CHECK(peer->run()); });
-    CHECK(!call<CreateDeviceSession>(peer_client, device).error.type);
+    const auto peer_session = call<CreateDeviceSession>(peer_client, device);
+    CHECK(!peer_session.error.type);
     Monitor::hold.store(true);
-    const auto pending = send<RebindRenderJobEffect>(asynchronous, {rival, effect.effect});
+    const auto pending = send<RebindRenderJobEffect>(asynchronous, {session, rival, effect.effect});
     await(Monitor::entered);
-    const auto peer_target = call<CreateTarget>(peer_client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}});
+    const auto peer_target = call<CreateTarget>(peer_client, {peer_session.device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}});
     CHECK(peer_target.error.type == 0 && !peer_target.target.isNull());
     CHECK(call<RemoveTarget>(peer_client, peer_target.target).error.type == 0);
     std::puts("DEVICE ISOLATION PASS: a second DeviceEntry served IPC and native allocation during a held compile");
@@ -1090,7 +1176,7 @@ int main(int argc, char** argv)
     CHECK(call<StopRenderJob>(client, rival).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, rival).error.type == kJobBusy);
     const auto next = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {next, moved_target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, next, moved_target}).error.type == 0);
     Monitor::hold.store(false);
     Monitor::hold.notify_all();
     CHECK(receive<RebindRenderJobEffect>(asynchronous, pending).error.type == kJobStopped);
@@ -1099,9 +1185,11 @@ int main(int argc, char** argv)
     CHECK(call<QueryResource>(client, resource_request).resource_id == retained.resource_id);
     std::puts("JOB REBIND PASS: newer writer rendered after the cancelled candidate returned");
 
+    verifyDeviceOwnership(client, session, device, effect.effect);
+
     Monitor::entered.store(false);
     Monitor::hold.store(true);
-    const auto final_rebind = send<RebindRenderJobEffect>(asynchronous, {next, replacement.effect});
+    const auto final_rebind = send<RebindRenderJobEffect>(asynchronous, {session, next, replacement.effect});
     await(Monitor::entered);
     server->stop();
     CHECK(!Monitor::destroyed);

@@ -201,25 +201,25 @@ int main(int argc, char** argv)
     const auto update = command(UpdateFrameData::name);
     const auto scene = request<CreateScene>(*client, command(CreateScene::name), {}).scene;
     const auto view = request<CreateView>(*client, command(CreateView::name), {scene}).view;
-    const auto a = call<GetOrCreateResource>(*wire, commands, {scene, Inputs<0>::descriptor.type}).resource_id;
-    const auto b = call<GetOrCreateResource>(*wire, commands, {scene, Inputs<1>::descriptor.type}).resource_id;
+    const auto a = call<GetOrCreateResource>(*wire, commands, {session, scene, Inputs<0>::descriptor.type}).resource_id;
+    const auto b = call<GetOrCreateResource>(*wire, commands, {session, scene, Inputs<1>::descriptor.type}).resource_id;
     const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN, true};
     auto recipe = probeRequest<Configuration, FrameInputCapability>(target, implementation, Configuration{}, {"color"});
     // Both selections require the same Resource declarations. Each input channel is present once.
     recipe.implementations.push_back({implementation.implementation, "same-resource"});
     const auto effect = request<CreateEffect>(*client, command(CreateEffect::name), std::move(recipe)).effect;
-    const auto output = request<CreateTarget>(*client, command(CreateTarget::name), {target}).target;
+    const auto output = request<CreateTarget>(*client, command(CreateTarget::name), {session, target}).target;
     auto attachment = request<CreateRenderJob>(*client, command(CreateRenderJob::name), {
         scene, view, effect, EJobCadence::REQUESTED
     }).job;
-    request<StartRenderJob>(*client, command(StartRenderJob::name), {attachment, output});
+    request<StartRenderJob>(*client, command(StartRenderJob::name), {session, attachment, output});
     const auto schema = call<QueryRenderJobInputLayout>(*wire, commands, attachment).layout;
     using Resources = std::tuple<Inputs<0>, Inputs<1>, InstanceResource, LightResource>;
     CHECK(schema.hasSameChannels(take(makeFrameLayout(std::type_identity<Resources>{}, 1))));
     std::array<FrameData, 2> packets{
         take(FrameData::create<Resources>(schema)), take(FrameData::create<Resources>(schema))
     };
-    const auto light_resource = call<GetOrCreateResource>(*wire, commands, {scene, kLightResourceName}).resource_id;
+    const auto light_resource = call<GetOrCreateResource>(*wire, commands, {session, scene, kLightResourceName}).resource_id;
     const std::array<VDirectLight, 1> initial_light{DirectionalLightGpu{}};
     const auto light = call<LightingCommands::CreateLights>(*wire, commands,
         {light_resource, {0, initial_light, {}}}).lights.front();
@@ -327,14 +327,14 @@ int main(int argc, char** argv)
     ui_request.definition.outputs.push_back({{1, "pixels"}, {}});
     const auto ui_effect = call<CreateEffect>(*wire, commands, std::move(ui_request)).effect;
     const auto ui_view = call<CreateView>(*wire, commands, {scene}).view;
-    const auto ui_target = call<CreateTarget>(*wire, commands, {target}).target;
-    const auto ui_attachment = startRenderJob(*wire, commands, scene, ui_view, ui_target, ui_effect);
+    const auto ui_target = call<CreateTarget>(*wire, commands, {session, target}).target;
+    const auto ui_attachment = startRenderJob(*wire, commands, session, scene, ui_view, ui_target, ui_effect);
     const auto ui_resource = call<QueryResource>(*wire, commands,
-        {ViewRequest{scene, ui_view}, UiResource::descriptor.type}).resource_id;
+        {session, ViewRequest{scene, ui_view}, UiResource::descriptor.type}).resource_id;
     CHECK(!ui_resource.isNull());
 
     const auto texture_storage = call<GetOrCreateResource>(
-        *wire, commands, {GlobalRenderScope{}, kTextureResourceName}
+        *wire, commands, {session, DeviceScope{}, kTextureResourceName}
     ).resource_id;
     rdesc::TextureInfo texture_info{};
     texture_info.width = texture_info.height = texture_info.mip_count = 1;
@@ -390,8 +390,8 @@ int main(int argc, char** argv)
     // Replace the sampled Target while the reader and both writers keep their original bindings.
     auto green_recipe = probeRequest<Configuration, FrameInputCapability>(target, implementation, {true}, {"color"});
     const auto green_effect = call<CreateEffect>(*wire, commands, std::move(green_recipe)).effect;
-    const auto alternate = call<CreateTarget>(*wire, commands, {target});
-    const auto green_writer = startRenderJob(*wire, commands, scene, ui_view, alternate.target, green_effect);
+    const auto alternate = call<CreateTarget>(*wire, commands, {session, target});
+    const auto green_writer = startRenderJob(*wire, commands, session, scene, ui_view, alternate.target, green_effect);
     const auto before_change = server->developmentStats();
     images.front().target = alternate.target;
     request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
@@ -420,8 +420,8 @@ int main(int argc, char** argv)
 
     auto second_reader_recipe = take(makeUiRenderEffect(ui_output, *ui, loaded_ui));
     const auto reader_effect = call<CreateEffect>(*wire, commands, std::move(second_reader_recipe)).effect;
-    const auto reader_target = call<CreateTarget>(*wire, commands, {target}).target;
-    const auto reader = startRenderJob(*wire, commands, scene, ui_view, reader_target, reader_effect);
+    const auto reader_target = call<CreateTarget>(*wire, commands, {session, target}).target;
+    const auto reader = startRenderJob(*wire, commands, session, scene, ui_view, reader_target, reader_effect);
     request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
     request<RequestRenderJob>(*client, run_job, {reader}); // A second Job can use the same producer's history.
     stopAndRemoveJob(*wire, commands, reader);
@@ -432,6 +432,31 @@ int main(int argc, char** argv)
     request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
     CHECK(request<RequestRenderJob>(*client, run_job, {ui_attachment}, false).error.type == kGraphDependencyCycle);
     request<SubmitDrawData>(*client, ui_command, {ui_resource, {}});
+    const auto foreign_device = call<CreateDeviceSession>(*wire, commands, options).device;
+    const auto foreign_output = call<CreateTarget>(*wire, commands, {foreign_device, target}).target;
+    images.front().target = foreign_output;
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
+    CHECK(request<RequestRenderJob>(*client, run_job, {ui_attachment}, false).error.type == kJobState);
+    const auto foreign_store = call<GetOrCreateResource>(
+        *wire, commands, {foreign_device, DeviceScope{}, kTextureResourceName}
+    ).resource_id;
+    const auto foreign_texture = request<TextureCommands::Upload>(
+        *client, command(TextureCommands::Upload::name), {foreign_store, {texture_info, blue}}
+    ).texture;
+    images.front() = ImguiImage{9, foreign_texture, {}};
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
+    CHECK(request<RequestRenderJob>(*client, run_job, {ui_attachment}, false).error.type == kStorageMismatch);
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, {}});
+    call<TextureCommands::Release>(*wire, commands, {foreign_texture});
+    call<RemoveTarget>(*wire, commands, foreign_output);
+    const auto idle_deadline = Clock::now() + 10s;
+    for (;;)
+    {
+        const auto removed = call<RemoveDeviceSession>(*wire, commands, foreign_device, false);
+        if (!removed.error.type) break;
+        CHECK(removed.error.type == kDeviceBusy && Clock::now() < idle_deadline);
+    }
+    std::puts("UI DEVICE OWNERSHIP PASS: rejected foreign Target and Texture");
     ImGui::DestroyContext(context);
     call<SetTargetActive>(*wire, commands, {output, true});
     call<SetEffectParameters>(*wire, commands, {effect, {2.F}});
@@ -482,27 +507,27 @@ int main(int argc, char** argv)
     call<TextureCommands::Release>(*wire, commands, {texture});
     std::puts("UI PIXELS PASS: real ImGui capture, ordered texture/output draws, paused output and empty snapshot");
     call<RemoveEffect>(*wire, commands, {ui_effect});
-    const auto second_output = call<CreateTarget>(*wire, commands, {target}).target;
-    const auto second_attachment = startRenderJob(*wire, commands, scene, view, second_output, effect);
+    const auto second_output = call<CreateTarget>(*wire, commands, {session, target}).target;
+    const auto second_attachment = startRenderJob(*wire, commands, session, scene, view, second_output, effect);
     const auto second_schema = call<QueryRenderJobInputLayout>(*wire, commands, second_attachment).layout;
     auto second_packet = take(FrameData::create<Resources>(second_schema));
     const auto old_attachment = attachment;
     stopAndRemoveJob(*wire, commands, attachment);
-    attachment = startRenderJob(*wire, commands, scene, view, output, effect);
+    attachment = startRenderJob(*wire, commands, session, scene, view, output, effect);
     CHECK(attachment != old_attachment);
     CHECK(second_packet.seal());
     request<RequestRenderJob>(*client, run_job, {second_attachment, &second_packet});
     CHECK(second_packet.writable()); // Removing and starting another Job retained this execution’s layout and cold bindings.
     stopAndRemoveJob(*wire, commands, second_attachment);
     const auto restarted = call<QueryRenderJobInputLayout>(*wire, commands, attachment).layout;
-    call<RebindRenderJobEffect>(*wire, commands, {attachment, effect});
+    call<RebindRenderJobEffect>(*wire, commands, {session, attachment, effect});
     CHECK(call<QueryRenderJobInputLayout>(*wire, commands, attachment).layout.hasSameIdentity(restarted));
     auto rebound_packet = take(FrameData::create<Resources>(restarted));
-    call<RebindRenderJobEffect>(*wire, commands, {attachment, effect, second_output});
+    call<RebindRenderJobEffect>(*wire, commands, {session, attachment, effect, second_output});
     CHECK(rebound_packet.seal());
     CHECK(request<RequestRenderJob>(*client, run_job, {attachment, &rebound_packet}, false).error.type == kFrameContract);
     CHECK(rebound_packet.writable());
-    call<RebindRenderJobEffect>(*wire, commands, {attachment, effect, output});
+    call<RebindRenderJobEffect>(*wire, commands, {session, attachment, effect, output});
     call<RemoveTarget>(*wire, commands, second_output);
     packet.reset(); CHECK(packet.seal());
     CHECK(request<UpdateFrameData>(*client, update, {attachment, &packet}, false).error.type == kFrameContract);
@@ -512,7 +537,7 @@ int main(int argc, char** argv)
     CHECK(packet.seal());
     CHECK(request<UpdateFrameData>(*client, update, {attachment, &packet}, false).error.type == kJobStopped);
     CHECK(packet.writable());
-    call<StartRenderJob>(*wire, commands, {attachment, output});
+    call<StartRenderJob>(*wire, commands, {session, attachment, output});
     const auto live_layout = call<QueryRenderJobInputLayout>(*wire, commands, attachment).layout;
     auto shutdown_packet = take(FrameData::create<Resources>(live_layout));
     CHECK(shutdown_packet.addData<Inputs<0>>(Delta{1}));

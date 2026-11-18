@@ -415,12 +415,12 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
-    call<CreateDeviceSession>(*client, commands, device);
+    const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const auto meshes = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kMeshResourceName}
+        *client, commands, {session, DeviceScope{}, kMeshResourceName}
     ).resource_id;
     const auto materials = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kMaterialResourceName}
+        *client, commands, {session, DeviceScope{}, kMaterialResourceName}
     ).resource_id;
 
     struct Vertex
@@ -467,14 +467,14 @@ int main(int argc, char** argv)
     {
         const bool perspective = scenario % 2 != 0;
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
-        auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
+        auto instances = call<GetOrCreateResource>(*client, commands, {session, scene, kInstanceResourceName}).resource_id;
         const std::array descriptions{MeshInstanceData{mesh, material, 0, kIdentityTransform, true}};
         call<InstanceCommands::CreateInstances>(
             *client,
             commands,
             {instances, descriptions}
         );
-        auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
+        auto light_storage = call<GetOrCreateResource>(*client, commands, {session, scene, kLightResourceName}).resource_id;
         std::vector<VDirectLight> lights;
         if (scenario)
         {
@@ -536,9 +536,9 @@ int main(int argc, char** argv)
                 }
             }
             auto view = call<CreateView>(*client, commands, {scene}).view;
-            auto output = call<CreateTarget>(*client, commands, {target}).target;
+            auto output = call<CreateTarget>(*client, commands, {session, target}).target;
             call<UpdateViewCamera>(*client, commands, {{scene, view}, input});
-            attachments[i] = startRenderJob(*client, commands, scene, view, output, effect);
+            attachments[i] = startRenderJob(*client, commands, session, scene, view, output, effect);
         }
         const auto deadline = Clock::now() + 30s;
         for (auto attachment : attachments)
@@ -574,8 +574,8 @@ int main(int argc, char** argv)
     auto scan_effect = call<CreateEffect>(*client, commands, std::move(scan_request)).effect;
     auto scan_scene = call<CreateScene>(*client, commands, {}).scene;
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
-    auto scan_target = call<CreateTarget>(*client, commands, {target}).target;
-    auto attachment = startRenderJob(*client, commands, scan_scene, scan_view, scan_target, scan_effect);
+    auto scan_target = call<CreateTarget>(*client, commands, {session, target}).target;
+    auto attachment = startRenderJob(*client, commands, session, scan_scene, scan_view, scan_target, scan_effect);
     const auto deadline = Clock::now() + 20s;
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) <
            fif + 2)

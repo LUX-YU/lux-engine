@@ -6,8 +6,6 @@
 
 namespace lux::render::detail
 {
-    class DeviceEntry;
-
     struct JobRelations final
     {
         std::vector<RenderJobId> predecessors;
@@ -18,9 +16,11 @@ namespace lux::render::detail
     struct JobRelationEntry final
     {
         RenderJobId id;
-        const DeviceEntry* device;
+        DeviceSessionId device;
         JobRelations* relations;
     };
+
+    [[nodiscard]] RenderResult<void> validateJobDevices(std::span<const JobRelationEntry>) noexcept;
 
     [[nodiscard]] RenderResult<std::vector<RenderJobId>>
     orderRunningJobs(std::span<const JobRelationEntry> jobs, std::span<const RenderJobId> running) noexcept;

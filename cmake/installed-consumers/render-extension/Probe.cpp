@@ -526,7 +526,7 @@ auto call(ipc::IpcRequester& client, CommandId command, typename Command::Reques
     }
 }
 
-static void checkResourceDomains(ipc::IpcRequester& client, ResourceInstanceId global)
+static void checkResourceDomains(ipc::IpcRequester& client, DeviceSessionId session, ResourceInstanceId global)
 {
     const std::array names{
         CommandName{CreateScene::name}, CommandName{CreateView::name}, CommandName{RemoveScene::name},
@@ -550,7 +550,7 @@ static void checkResourceDomains(ipc::IpcRequester& client, ResourceInstanceId g
     };
     const auto ensure = [&](const VRenderScope& scope, ResourceNameView name)
     {
-        const auto reply = call<GetOrCreateResource>(client, ids[4], {scope, name});
+        const auto reply = call<GetOrCreateResource>(client, ids[4], {session, scope, name});
         CHECK(reply.error.type == 0);
         return reply.resource_id;
     };
@@ -577,7 +577,7 @@ static void checkResourceDomains(ipc::IpcRequester& client, ResourceInstanceId g
     const auto first_resource = ensure(first_view, view_name);
     const auto second_resource = ensure(second_view, view_name);
     CHECK(first_resource != second_resource && first_resource != first_scene_resource);
-    CHECK(call<QueryResource>(client, ids[5], {first, view_name}).error.type == kStorageMismatch);
+    CHECK(call<QueryResource>(client, ids[5], {session, first, view_name}).error.type == kStorageMismatch);
     CHECK(reference(first_resource, global) == 0);
     CHECK(reference(first_resource, first_scene_resource) == 0);
     CHECK(reference(first_resource, second_scene_resource) == kStorageMismatch);
@@ -587,7 +587,7 @@ static void checkResourceDomains(ipc::IpcRequester& client, ResourceInstanceId g
     CHECK(call<RemoveScene>(client, ids[2], {first}).error.type == 0);
     CHECK((DomainStorage::destroyed == std::vector{first_resource, first_scene_resource}));
     CHECK(reference(first_resource, global) == kStorageIdentity);
-    CHECK(call<QueryResource>(client, ids[5], {first_view, global_name}).error.type == kRuntimeIdentity);
+    CHECK(call<QueryResource>(client, ids[5], {session, first_view, global_name}).error.type == kRuntimeIdentity);
     CHECK(reference(second_resource, second_scene_resource) == 0);
     CHECK(call<RemoveView>(client, ids[3], second_view).error.type == 0);
     const auto replacement = make_view(second);
@@ -795,7 +795,7 @@ int main(int argc, char** argv)
     std::vector<ResourceInstanceId> resources;
     for (auto name : {ProbeResource<false>::descriptor.type, ProbeResource<true>::descriptor.type})
     {
-        const auto created = call<GetOrCreateResource>(client, ids.ids[4], {GlobalRenderScope{}, name});
+        const auto created = call<GetOrCreateResource>(client, ids.ids[4], {session, DeviceScope{}, name});
         CHECK(created.error.type == 0);
         resources.push_back(created.resource_id);
         const auto written = call<ProbeUpload>(client, upload, {created.resource_id, bytes});
@@ -839,7 +839,7 @@ int main(int argc, char** argv)
     CHECK(failed.error.type == 0 && ProbeStorage::allocations == 2);
     const auto retained = call<ProbeSize>(client, size, {resources.front()});
     CHECK(retained.error.type == 0 && retained.bytes == bytes.size());
-    checkResourceDomains(client, resources.front());
+    checkResourceDomains(client, session, resources.front());
     client.reset();
     server->stop();
     thread.join();

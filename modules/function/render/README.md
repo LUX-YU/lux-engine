@@ -170,14 +170,15 @@ The library returns structured diagnostics and never chooses a terminal or loggi
    and bootstrap a RenderClient. The host drives `dispatchResponses()` at its completion points.
 2. Send `CreateDeviceSession` with the device options. Pass the returned `DeviceSessionId`
    to `QueryRenderDevice` and `ListCapabilities`. The Server can hold multiple Sessions for device queries.
-   Scene and Target execution currently use the first Session. Removing that Session requires its Scenes,
-   Targets and in-flight work to be settled. A remaining Session can then take over that execution path.
-   `RemoveDeviceSession` revokes the ID and releases the native device. Reused slots carry a new generation.
-   QueryResource observes an existing
-   instance. `GetOrCreateResource` is the explicit creation command. Asset commands use that instance's ID.
+   `CreateTarget`, `QueryResource` and `GetOrCreateResource` qualify the device explicitly. Scene and View IDs
+   describe logical scopes. Each device owns its own Resource instances for those scopes; use `DeviceScope`
+   for a device-level declaration. Asset commands keep routing from their parent ResourceInstanceId.
+   `RemoveDeviceSession` requires the device's Targets, executions, borrows and pending work to be settled.
    Upload meshes and textures before any Job exists, and await their typed replies before using the resulting IDs.
 3. Create the Scene, View and Target, then use `CreateEffect` with the logical Feature recipe. Create the Job
-   with the Scene, View and Effect IDs, and call `StartRenderJob` with its Target to prepare the device execution.
+   with the Scene, View and Effect IDs. Pass the device and its Target to `StartRenderJob` to prepare execution.
+   A running Rebind stays on that device. Cross-device Target reads and execution dependencies are rejected.
+   Secondary devices can assemble executions and upload resources. The current frame scheduler drives one device.
    Bind a sampled producer Target to an authored external `FeaturePortRef` in `JobBinding::target_images`.
 4. Use `QueryRenderJobInputLayout` to construct two stable `FrameData` slots. Seal a slot and call
    `UpdateFrameData{job, &packet}` to apply it without granting an execution credit. Use
@@ -776,7 +777,7 @@ consume its response on later ticks before reusing that input.
 
 ## Resource lookup and commands
 
-Resource declarations and Storage implementations have separate identities. A Device, Scene or View
+Resource declarations and Storage implementations have separate identities. Each device's Device, Scene or View scope
 owns at most one instance of each declaration. Two declarations can reuse one StorageMeta and factory
 without sharing instance data. ResourceSet owns the instances; ResourceRegistry only indexes them.
 
@@ -785,7 +786,7 @@ They query or explicitly create the desired Resource before uploading:
 
 ```cpp
 auto resource = co_await client.request<GetOrCreateResource>(
-    ResourceRequest{GlobalRenderScope{}, kTextureResourceName}
+    ResourceRequest{device_session, DeviceScope{}, kTextureResourceName}
 );
 if (resource.error.type != 0) co_return resource.error;
 auto uploaded = co_await client.request<TextureCommands::Upload>(

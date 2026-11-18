@@ -8,6 +8,7 @@ namespace lux::render
 {
     struct CreateTargetRequest final
     {
+        DeviceSessionId device;
         TargetDesc description{};
         std::optional<SurfaceDescription> surface; // Required for a swapchain, absent for Offscreen.
     };

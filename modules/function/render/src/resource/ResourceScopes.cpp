@@ -3,54 +3,77 @@
 namespace lux::render
 {
     RenderResult<ResourceSet*>
-    RenderServer::Impl::resourceScope(const VRenderScope& scope, ResourceTypeId type) noexcept
+    RenderServer::Impl::resourceScope(
+        detail::DeviceEntry& device, const VRenderScope& scope, ResourceTypeId type, bool create
+    ) noexcept
     {
         const auto* factory = runtime_->resources_.factory(type);
-        if (!factory)
+        if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
+
+        SceneId scene;
+        ViewId view;
+        if (const auto* scene_scope = std::get_if<SceneId>(&scope))
         {
-            return cxx::unexpected(RenderError{kStorageFactory});
+            scene = *scene_scope;
+            if (!runtime_->scenes_.find(scene)) return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
-        auto actual = findScope(scope);
-        if (!actual)
+        if (const auto* view_scope = std::get_if<ViewRequest>(&scope))
         {
-            return cxx::unexpected(actual.error());
+            scene = view_scope->scene;
+            view = view_scope->view;
+            const auto* logical = runtime_->scenes_.find(scene);
+            if (!logical || !logical->views.find(view)) return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
-        if (auto* owner = (*actual)->ownerFor(factory->descriptor->domain))
-        {
-            return owner;
-        }
-        return cxx::unexpected(RenderError{kStorageMismatch});
+        const auto domain = factory->descriptor->domain;
+        const bool missing_owner = (domain == EResourceDomain::SCENE && scene.isNull()) ||
+            (domain == EResourceDomain::VIEW && view.isNull());
+        if (missing_owner) return cxx::unexpected(RenderError{kStorageMismatch});
+
+        if (domain == EResourceDomain::DEVICE) scene = {};
+        if (domain != EResourceDomain::VIEW) view = {};
+        if (auto* owner = device.scopedResources(scene, view, create)) return owner;
+        const auto context = device.resourceCreateContext();
+        if (auto valid = runtime_->resources_.qualify(type, domain, context); !valid)
+            return cxx::unexpected(valid.error());
+        return cxx::unexpected(RenderError{kStorageIdentity});
     }
 
     void RenderServer::Impl::queryResource(const ResourceRequest& request, ResourceResponse& response) noexcept
     {
+        auto* device = runtime_->device(request.device);
+        if (!device)
+        {
+            response.error = {kRuntimeIdentity};
+            return;
+        }
         const auto type = runtime_->resources_.typeId(request.declaration);
-        auto owner = resourceScope(request.scope, type);
+        auto owner = resourceScope(*device, request.scope, type, false);
         if (!owner)
         {
             response.error = owner.error();
             return;
         }
-        auto context = runtime_->execution_device_->resourceCreateContext();
+        const auto context = device->resourceCreateContext();
         const auto id = (*owner)->query(context, type);
-        if (!id)
-        {
-            response.error = id.error();
-            return;
-        }
-        response = {{}, type, *id};
+        response = id ? ResourceResponse{{}, type, *id} : ResourceResponse{id.error()};
     }
 
     void RenderServer::Impl::getOrCreateResource(const ResourceRequest& request, ResourceResponse& response) noexcept
     {
+        auto* device = runtime_->device(request.device);
+        if (!device)
+        {
+            response.error = {kRuntimeIdentity};
+            return;
+        }
         const auto type = runtime_->resources_.typeId(request.declaration);
-        auto owner = resourceScope(request.scope, type);
+        auto owner = resourceScope(*device, request.scope, type, true);
         if (!owner)
         {
             response.error = owner.error();
             return;
         }
-        auto context = runtime_->execution_device_->resourceCreateContext();
+        auto context = device->resourceCreateContext();
         auto instance = (*owner)->getOrCreate(context, type);
         if (!instance)
         {
@@ -60,39 +83,4 @@ namespace lux::render
         storages_created_.store(runtime_->resources_.creations(), std::memory_order_relaxed);
         response = {{}, type, *instance};
     }
-
-    RenderResult<ResourceSet*> RenderServer::Impl::findScope(const VRenderScope& scope) noexcept
-    {
-        return std::visit(
-            [&](const auto& location) noexcept -> RenderResult<ResourceSet*>
-            {
-                using T = std::remove_cvref_t<decltype(location)>;
-                if constexpr (std::same_as<T, GlobalRenderScope>)
-                {
-                    auto* device = runtime_->execution_device_;
-                    if (!device) return cxx::unexpected(RenderError{kRuntimeState});
-                    return &device->resources();
-                }
-                else if constexpr (std::same_as<T, SceneId>)
-                {
-                    if (auto* scene = runtime_->scenes_.find(location))
-                    {
-                        return &scene->resources;
-                    }
-                }
-                else if constexpr (std::same_as<T, ViewRequest>)
-                {
-                    auto* scene = runtime_->scenes_.find(location.scene);
-                    auto* view = scene ? scene->views.find(location.view) : nullptr;
-                    if (view)
-                    {
-                        return &view->resources;
-                    }
-                }
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            },
-            scope
-        );
-    }
-
 } // namespace lux::render

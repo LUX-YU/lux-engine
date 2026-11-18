@@ -74,7 +74,7 @@ namespace lux::render
         {
             ResourceRegistry resources_;
             cxx::StableSlotMap<std::unique_ptr<detail::DeviceEntry>, DeviceSessionTag> devices_;
-            // The existing Target/Scene execution path uses one session until those commands take a DeviceSessionId.
+            // One device drives the existing round until each entry has its own scheduler state.
             detail::DeviceEntry* execution_device_ = nullptr;
 
             [[nodiscard]] detail::DeviceEntry* device(DeviceSessionId id) const noexcept
@@ -98,7 +98,6 @@ namespace lux::render
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
         stdexec::simple_counting_scope upload_scope_;
-        bool upload_progress_pending_ = false;
         cxx::execution::ManualContext server_context_;
         DeviceRound round_;
         std::deque<InputUpdate*> input_updates_;
@@ -174,16 +173,17 @@ namespace lux::render
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
         [[nodiscard]] RenderResult<std::vector<ResourceInstanceId>>
-        resolveJobResources(const RenderEffect&, RenderView&) noexcept;
+        resolveJobResources(const RenderEffect&, detail::DeviceEntry&, ViewRequest) noexcept;
 
         [[nodiscard]] RenderResult<void> assembleExecution(
             JobExecution&, RenderView&, std::span<const ResourceInstanceId>, const JobBinding&
         ) noexcept;
 
         exec::task<AckResponse>
-        buildJobExecution(RenderJobId, EffectId, TargetId, JobBinding, bool rebind) noexcept;
+        buildJobExecution(DeviceSessionId, RenderJobId, EffectId, TargetId, JobBinding, bool rebind) noexcept;
 
         [[nodiscard]] RenderResult<void> validateJobBinding(
+            DeviceSessionId,
             const RenderJob&, const RenderEffect&, TargetId, const JobBinding&, const void* reservation
         ) const noexcept;
 
@@ -207,7 +207,7 @@ namespace lux::render
         void cancelActiveFrame(RenderError) noexcept;
         [[nodiscard]] bool serviceOperations(bool admitting) noexcept;
         void waitForService(std::uint64_t observed) const noexcept;
-        void progressUploads() noexcept;
+        void progressUploads(detail::DeviceEntry&) noexcept;
         [[nodiscard]] bool progressFrame() noexcept;
         [[nodiscard]] bool progressInputUpdates() noexcept;
         [[nodiscard]] bool progressProgramPreparations() noexcept;
@@ -226,7 +226,8 @@ namespace lux::render
 
         void queryResource(const ResourceRequest&, ResourceResponse&) noexcept;
         void getOrCreateResource(const ResourceRequest&, ResourceResponse&) noexcept;
-        [[nodiscard]] RenderResult<ResourceSet*> resourceScope(const VRenderScope&, ResourceTypeId) noexcept;
+        [[nodiscard]] RenderResult<ResourceSet*>
+        resourceScope(detail::DeviceEntry&, const VRenderScope&, ResourceTypeId, bool create) noexcept;
 
         void createScene(const CreateScene::Request&, CreateScene::Response&) noexcept;
 
@@ -257,7 +258,6 @@ namespace lux::render
         void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
 
 
-        [[nodiscard]] RenderResult<ResourceSet*> findScope(const VRenderScope&) noexcept;
 
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 

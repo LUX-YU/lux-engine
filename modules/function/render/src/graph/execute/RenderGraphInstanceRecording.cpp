@@ -419,7 +419,7 @@ namespace lux::render::detail
         for (const auto& command : input.draws)
         {
             if (command.image >= input.images.size()) return cxx::unexpected(RenderError{kFrameContract});
-            auto image = resources_->sampledImage(input.images[command.image], slot);
+            auto image = resources_->sampledImage(*session_, input.images[command.image], slot);
             if (!image) return cxx::unexpected(image.error());
             const RasterDrawList::Read read{image->image, GraphImageRange{1, 0, 1, 0, 1}, EGraphUse::SAMPLED, 2};
             if (std::ranges::find(draws.reads, read) == draws.reads.end()) draws.reads.push_back(read);

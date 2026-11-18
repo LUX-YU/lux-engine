@@ -80,6 +80,7 @@ namespace lux::render
 
         struct Request final
         {
+            DeviceSessionId device;
             RenderJobId job;
             TargetId target;
             JobBinding binding;
@@ -152,6 +153,7 @@ namespace lux::render
 
         struct Request final
         {
+            DeviceSessionId device; // Null for recipe-only changes to a stopped Job.
             RenderJobId job;
             EffectId effect;
             TargetId target; // Null retains the running output target.

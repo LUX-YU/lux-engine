@@ -13,13 +13,14 @@ namespace lux::render::runtime_detail
 
     JobExecution::JobExecution(
         RenderEffect& effect,
+        DeviceSessionId session,
         detail::DeviceSession& device,
         std::uint32_t frame_count,
         detail::RenderPlan&& compiled,
         TargetId output,
         detail::TargetOutput physical
     ) noexcept
-        : recipe{effect}, target(output), plan(std::move(compiled)), instance(device, frame_count, plan, physical)
+        : recipe{effect}, device(session), target(output), plan(std::move(compiled)), instance(device, frame_count, plan, physical)
     {
     }
 
@@ -70,18 +71,15 @@ namespace lux::render::runtime_detail
 namespace lux::render
 {
     RenderResult<std::vector<ResourceInstanceId>>
-    RenderServer::Impl::resolveJobResources(const RenderEffect& effect, RenderView& view) noexcept
+    RenderServer::Impl::resolveJobResources(const RenderEffect& effect, detail::DeviceEntry& device, ViewRequest scope) noexcept
     {
-        auto context = view.scene.device.resourceCreateContext();
+        auto context = device.resourceCreateContext();
         std::vector<ResourceInstanceId> dependency_storages;
         dependency_storages.reserve(effect.resource_dependencies.size());
         for (const auto& dependency : effect.resource_dependencies)
         {
-            auto* owner = view.resources.ownerFor(dependency.scope);
-            if (!owner)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
+            auto* owner = dependency.scope == EResourceDomain::DEVICE ? &device.resources() :
+                device.scopedResources(scope.scene, dependency.scope == EResourceDomain::VIEW ? scope.view : ViewId{}, true);
             auto instance = owner->getOrCreate(context, dependency.declaration);
             if (!instance)
             {
@@ -103,7 +101,7 @@ namespace lux::render
         const auto& plan = candidate.plan;
         const auto target_images = std::span(binding.target_images);
         const auto& input = binding.inputs;
-        auto& entry = view.scene.device;
+        auto& entry = *runtime_->device(candidate.device);
         candidate.resources.assign(dependency_storages.begin(), dependency_storages.end());
         for (std::size_t i = 0; i < dependency_storages.size(); ++i)
         {

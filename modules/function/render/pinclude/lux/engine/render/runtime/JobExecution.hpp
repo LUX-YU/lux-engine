@@ -15,7 +15,7 @@ namespace lux::render::runtime_detail
     struct JobExecution final
     {
         JobExecution(
-            RenderEffect&, detail::DeviceSession&, std::uint32_t frame_count,
+            RenderEffect&, DeviceSessionId, detail::DeviceSession&, std::uint32_t frame_count,
             detail::RenderPlan&&, TargetId, detail::TargetOutput
         ) noexcept;
         ~JobExecution() noexcept;
@@ -28,6 +28,7 @@ namespace lux::render::runtime_detail
             ~RecipeUse() noexcept;
         };
         RecipeUse recipe;
+        DeviceSessionId device;
         TargetId target;
         detail::RenderPlan plan;
         detail::RenderGraphInstance instance;

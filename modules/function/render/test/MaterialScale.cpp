@@ -335,7 +335,7 @@ namespace
     };
 
     RasterSample sampleRaster(
-        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands,
+        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
         const RenderProbe<RasterProbeConfig>& probe, EMaterialPurpose purpose, SceneId scene,
         const InstanceSwitch* change = nullptr
     )
@@ -346,9 +346,9 @@ namespace
             {"color", "pixels"});
         const auto effect = call<CreateEffect>(ipc, commands, std::move(request)).effect;
         const auto view = call<CreateView>(ipc, commands, {scene}).view;
-        const auto output = call<CreateTarget>(ipc, commands, {kTarget}).target;
+        const auto output = call<CreateTarget>(ipc, commands, {session, kTarget}).target;
         call<UpdateViewCamera>(ipc, commands, {{scene, view}, {}});
-        const auto job = startRenderJob(ipc, commands, scene, view, output, effect);
+        const auto job = startRenderJob(ipc, commands, session, scene, view, output, effect);
         const auto before = server.developmentStats();
         CHECK(before);
         for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(ipc, commands, job);
@@ -392,7 +392,7 @@ namespace
     }
 
     void verifyPurposes(
-        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, const Probes& probes,
+        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session, const Probes& probes,
         SceneId scene, ResourceInstanceId materials, ResourceInstanceId instances, MeshId mesh,
         std::span<const TextureId, 2> textures, lux::shader::ShaderCompiler& compiler,
         rdesc::EShaderTarget target
@@ -406,9 +406,9 @@ namespace
         MeshInstanceData input{mesh, material};
         input.render_enabled = true;
         const auto instance = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
-        const auto forward = sampleRaster(server, ipc, commands, probes[0], purposes[0], scene);
-        const auto gbuffer = sampleRaster(server, ipc, commands, probes[1], purposes[1], scene);
-        const auto shadow = sampleRaster(server, ipc, commands, probes[2], purposes[2], scene);
+        const auto forward = sampleRaster(server, ipc, commands, session, probes[0], purposes[0], scene);
+        const auto gbuffer = sampleRaster(server, ipc, commands, session, probes[1], purposes[1], scene);
+        const auto shadow = sampleRaster(server, ipc, commands, session, probes[2], purposes[2], scene);
         CHECK(std::abs(std::to_integer<int>(forward.center[0]) - 96) <= 1);
         CHECK(std::abs(std::to_integer<int>(gbuffer.center[0]) - 64) <= 1);
         CHECK(std::to_integer<int>(forward.center[1]) == 96 && gbuffer.center[1] == forward.center[1]);
@@ -418,7 +418,7 @@ namespace
         CHECK(shadow.image_ranges == 0);
         CHECK(forward.buffer_ranges == kFif && gbuffer.buffer_ranges == kFif && shadow.buffer_ranges == kFif);
         call<MaterialCommands::Update>(ipc, commands, {{material, {{.25F, 0, 0, 0}}, {textures[0]}}});
-        const auto masked = sampleRaster(server, ipc, commands, probes[2], purposes[2], scene);
+        const auto masked = sampleRaster(server, ipc, commands, session, probes[2], purposes[2], scene);
         CHECK(std::bit_cast<float>(masked.center) == 1);
         call<MaterialCommands::Update>(ipc, commands, {{material, {{1, 0, 0, 0}}, {textures[0]}}});
         const auto other = createMaterialInstance(ipc, commands, registered, {{.75F, 0, 0, 0}}, {textures[1]});
@@ -428,7 +428,7 @@ namespace
         const auto sibling = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
         input.material = material;
         const InstanceSwitch change{instances, {sibling, input}, kFif};
-        const auto together = sampleRaster(server, ipc, commands, probes[0], purposes[0], scene, &change);
+        const auto together = sampleRaster(server, ipc, commands, session, probes[0], purposes[0], scene, &change);
         CHECK(together.buffer_ranges == kFif && together.image_ranges == 2 * kFif);
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {sibling});
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {other});
@@ -498,7 +498,7 @@ namespace
     };
 
     JobSubmitted verifyPreparationLifecycle(
-        RenderServer& server, ipc::IpcRequester& client, ipc::IpcRequester& requests, const CommandList& commands,
+        RenderServer& server, ipc::IpcRequester& client, ipc::IpcRequester& requests, const CommandList& commands, DeviceSessionId session,
         const PipelineJob& job, TargetId input, MeshId mesh, std::span<const ProbeMaterial, 3> variants
     )
     {
@@ -543,12 +543,12 @@ namespace
         Probe::gate = Probe::EGate::ARMED;
         const auto interrupted = requestFrame(requests, commands, job.job);
         Probe::waitForDriver();
-        CHECK(call<RebindRenderJobEffect>(client, commands, {job.job, job.effect}, false).error.type == kJobBusy);
+        CHECK(call<RebindRenderJobEffect>(client, commands, {session, job.job, job.effect}, false).error.type == kJobBusy);
         call<StopRenderJob>(client, commands, job.job);
         const auto stopped = receiveFrameBefore(requests, interrupted, Clock::now() + 10s);
         CHECK(stopped && stopped->error.type == kJobStopped);
-        CHECK(call<StartRenderJob>(client, commands, {job.job, job.target, job.binding}, false).error.type == kJobBusy);
-        CHECK(call<RebindRenderJobEffect>(client, commands, {job.job, job.effect}, false).error.type == kJobBusy);
+        CHECK(call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding}, false).error.type == kJobBusy);
+        CHECK(call<RebindRenderJobEffect>(client, commands, {session, job.job, job.effect}, false).error.type == kJobBusy);
         CHECK(call<RemoveRenderJob>(client, commands, job.job, false).error.type == kJobBusy);
         requireBorrowedTarget(job.target, ETextureFormat::RGBA8_UNORM);
         requireBorrowedTarget(input, ETextureFormat::RGBA16_SFLOAT);
@@ -561,8 +561,8 @@ namespace
         call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
         CHECK(Probe::created_pipelines.load() == stop_creates + 1);
         CHECK(Probe::destroyed_pipelines.load() == stop_destroys + 1);
-        call<RebindRenderJobEffect>(client, commands, {job.job, job.effect});
-        call<StartRenderJob>(client, commands, {job.job, job.target, job.binding});
+        call<RebindRenderJobEffect>(client, commands, {{}, job.job, job.effect});
+        call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding});
         renderFrame(client, commands, job.job);
 
         changeMaterial(variants[1].instance);
@@ -609,7 +609,7 @@ namespace
     }
 
     void verifyPipelineIsolation(
-        RenderServer& server, std::thread& server_thread, ipc::IpcRequester& client, const CommandList& commands,
+        RenderServer& server, std::thread& server_thread, ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session,
         std::string_view channel,
         const RenderProbe<RasterProbeConfig>& forward, std::array<SceneId, 2> scenes, ResourceInstanceId materials,
         MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
@@ -630,13 +630,13 @@ namespace
         if (expect_progress)
         {
             constexpr auto hdr = ETextureFormat::RGBA16_SFLOAT;
-            source = call<CreateTarget>(client, commands, {{64, 64, hdr, 1, ETargetKind::OFFSCREEN, true}}).target;
+            source = call<CreateTarget>(client, commands, {session, {64, 64, hdr, 1, ETargetKind::OFFSCREEN, true}}).target;
             CreateEffectRequest produce{{hdr, 1, ETargetKind::OFFSCREEN, true}};
             produce.definition.features.push_back({clear, "hdr", take(ConfigValue::make(WindowClear::Config{hdr}))});
             produce.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{hdr, 1}});
             const auto effect = call<CreateEffect>(client, commands, std::move(produce)).effect;
             const auto view = call<CreateView>(client, commands, {scenes[0]}).view;
-            const auto writer = startRenderJob(client, commands, scenes[0], view, source, effect);
+            const auto writer = startRenderJob(client, commands, session, scenes[0], view, source, effect);
             renderFrame(client, commands, writer);
             stopAndRemoveJob(client, commands, writer);
             call<RemoveView>(client, commands, {scenes[0], view});
@@ -648,7 +648,7 @@ namespace
             const auto created = createMaterial(i + 1, float(i + 1) / 8);
             job.program = created.program;
             job.material = created.instance;
-            job.instances = call<GetOrCreateResource>(client, commands, {scenes[i], kInstanceResourceName}).resource_id;
+            job.instances = call<GetOrCreateResource>(client, commands, {session, scenes[i], kInstanceResourceName}).resource_id;
             MeshInstanceData input{mesh, job.material};
             input.render_enabled = true;
             job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
@@ -681,12 +681,12 @@ namespace
             }
             job.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
             job.view = call<CreateView>(client, commands, {scenes[i]}).view;
-            job.target = call<CreateTarget>(client, commands, {kTarget}).target;
+            job.target = call<CreateTarget>(client, commands, {session, kTarget}).target;
             call<UpdateViewCamera>(client, commands, {{scenes[i], job.view}, {}});
             job.job = call<CreateRenderJob>(client, commands, {
                 scenes[i], job.view, job.effect, EJobCadence::REQUESTED
             }).job;
-            call<StartRenderJob>(client, commands, {job.job, job.target, job.binding});
+            call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding});
         }
 
         const auto warm = jobs[0].job;
@@ -788,7 +788,7 @@ namespace
         {
             variants = {createMaterial(3, .375F), createMaterial(4, .75F), createMaterial(5, .5F)};
             newest = verifyPreparationLifecycle(
-                server, client, *cold_client, commands, jobs[1], source, mesh,
+                server, client, *cold_client, commands, session, jobs[1], source, mesh,
                 variants
             );
         }
@@ -845,7 +845,7 @@ namespace
     }
 
     void verifyScale(
-        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands,
+        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
         const RenderProbe<RasterProbeConfig>& forward, SceneId scene, ResourceInstanceId materials,
         ResourceInstanceId instances, MeshId mesh, std::span<const TextureId> textures,
         lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target, unsigned count, bool varied
@@ -957,7 +957,7 @@ namespace
             );
             CHECK(created.instances.size() == active - previous);
             previous = active;
-            const auto reads = sampleRaster(server, ipc, commands, forward, purposes[0], scene);
+            const auto reads = sampleRaster(server, ipc, commands, session, forward, purposes[0], scene);
             const auto expected_pages = active == count ? pages : (varied ? sparse : 1);
             const auto expected_images = std::min<unsigned>(active, 9);
             CHECK(reads.buffer_ranges == expected_pages * kFif);
@@ -995,7 +995,7 @@ namespace
     }
 
     void profileInstances(
-        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands,
+        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
         const RenderProbe<RasterProbeConfig>& forward, SceneId scene, ResourceInstanceId materials,
         ResourceInstanceId instances, MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler,
         rdesc::EShaderTarget target
@@ -1072,7 +1072,7 @@ namespace
         std::array live{MeshInstanceData{mesh, ids.front()}, MeshInstanceData{mesh, ids.back()}};
         for (auto& instance : live) instance.render_enabled = true;
         call<InstanceCommands::CreateInstances>(ipc, commands, {instances, live});
-        const auto sampled = sampleRaster(server, ipc, commands, forward, purposes[0], scene);
+        const auto sampled = sampleRaster(server, ipc, commands, session, forward, purposes[0], scene);
         CHECK(sampled.buffer_ranges == 2 * kFif);
         CHECK(sampled.image_ranges == kFif);
         CHECK(std::abs(std::to_integer<int>(sampled.center[0]) - 96) <= 1);
@@ -1147,21 +1147,21 @@ int main(int argc, char** argv)
     CHECK(ipc);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*ipc);
-    call<CreateDeviceSession>(*ipc, commands, device);
-    call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, MaterialAllocationProbe::Descriptor::descriptor.type});
+    const auto session = call<CreateDeviceSession>(*ipc, commands, device).device;
+    call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, MaterialAllocationProbe::Descriptor::descriptor.type});
     if (pipeline_isolation.has_value())
     {
         CHECK(!count && !varied);
         call<GetOrCreateResource>(
-            *ipc, commands, {GlobalRenderScope{}, PipelineIsolationProbe::Descriptor::descriptor.type}
+            *ipc, commands, {session, DeviceScope{}, PipelineIsolationProbe::Descriptor::descriptor.type}
         );
     }
     const auto scene = call<CreateScene>(*ipc, commands, {}).scene;
-    const auto instances = call<GetOrCreateResource>(*ipc, commands, {scene, kInstanceResourceName}).resource_id;
-    const auto meshes = call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, kMeshResourceName}).resource_id;
-    const auto textures = call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, kTextureResourceName}).resource_id;
+    const auto instances = call<GetOrCreateResource>(*ipc, commands, {session, scene, kInstanceResourceName}).resource_id;
+    const auto meshes = call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, kMeshResourceName}).resource_id;
+    const auto textures = call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, kTextureResourceName}).resource_id;
     const auto materials =
-        call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, kMaterialResourceName}).resource_id;
+        call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, kMaterialResourceName}).resource_id;
     const auto quad = makeQuad();
     const auto mesh = call<MeshCommands::UploadMesh>(*ipc, commands, {meshes, &quad}).mesh;
     std::vector<TextureId> images;
@@ -1173,24 +1173,24 @@ int main(int argc, char** argv)
     {
         const auto other = call<CreateScene>(*ipc, commands, {}).scene;
         verifyPipelineIsolation(
-            *server, thread, *ipc, commands, config.channel_name, probes[0], {scene, other}, materials, mesh,
+            *server, thread, *ipc, commands, session, config.channel_name, probes[0], {scene, other}, materials, mesh,
             images.front(), **compiler, shader_target, clear, *pipeline_isolation, workers, stop_server
         );
     }
     else if (instance_profile)
     {
         CHECK(!count && !varied);
-        profileInstances(*server, *ipc, commands, probes[0], scene, materials, instances, mesh, images.front(),
+        profileInstances(*server, *ipc, commands, session, probes[0], scene, materials, instances, mesh, images.front(),
             **compiler, shader_target);
     }
     else if (count)
     {
-        verifyScale(*server, *ipc, commands, probes[0], scene, materials, instances, mesh, images, **compiler,
+        verifyScale(*server, *ipc, commands, session, probes[0], scene, materials, instances, mesh, images, **compiler,
             shader_target, count, varied);
     }
     else
     {
-        verifyPurposes(*server, *ipc, commands, probes, scene, materials, instances, mesh,
+        verifyPurposes(*server, *ipc, commands, session, probes, scene, materials, instances, mesh,
             std::span<const TextureId, 2>(images.data(), 2), **compiler, shader_target);
         call<RemoveScene>(*ipc, commands, {scene});
     }

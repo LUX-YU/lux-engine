@@ -360,6 +360,7 @@ static void importedExtentContracts(Validation& validation)
 static void verifyTonemapOutput(
     ipc::IpcRequester& client,
     const CommandList& commands,
+    DeviceSessionId session,
     SceneId scene,
     FeatureId clear,
     FeatureId tonemap,
@@ -383,21 +384,21 @@ static void verifyTonemapOutput(
     recipe.outputs = {{{1, "color"}, GraphOutputRequirements{output.format, 1}}, {{2, "pixels"}, {}}};
     const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
     const auto view = call<CreateView>(client, commands, {scene}).view;
-    const auto target = call<CreateTarget>(client, commands, {{64, 64, output.format}}).target;
+    const auto target = call<CreateTarget>(client, commands, {session, {64, 64, output.format}}).target;
     const auto attached = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    StartRenderJob::Request invalid_start{attached, target};
+    StartRenderJob::Request invalid_start{session, attached, target};
     invalid_start.binding.inputs.parameters.resize(16);
     CHECK(call<StartRenderJob>(client, commands, std::move(invalid_start), false).error.type == kDeviceArgument);
-    call<StartRenderJob>(client, commands, {attached, target});
+    call<StartRenderJob>(client, commands, {session, attached, target});
     const auto other_scene = call<CreateScene>(client, commands, {}).scene;
     const auto other_view = call<CreateView>(client, commands, {other_scene}).view;
-    const auto other_target = call<CreateTarget>(client, commands, {{64, 64, output.format}}).target;
+    const auto other_target = call<CreateTarget>(client, commands, {session, {64, 64, output.format}}).target;
     const auto other_attachment =
-        startRenderJob(client, commands, other_scene, other_view, other_target, effect);
+        startRenderJob(client, commands, session, other_scene, other_view, other_target, effect);
     const auto capture_name = CaptureDescriptor::descriptor.type;
-    const auto resource = call<QueryResource>(client, commands, {ViewRequest{scene, view}, capture_name}).resource_id;
+    const auto resource = call<QueryResource>(client, commands, {session, ViewRequest{scene, view}, capture_name}).resource_id;
     const auto other_resource =
-        call<QueryResource>(client, commands, {ViewRequest{other_scene, other_view}, capture_name}).resource_id;
+        call<QueryResource>(client, commands, {session, ViewRequest{other_scene, other_view}, capture_name}).resource_id;
     CHECK(resource != other_resource);
     CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kRuntimeState);
     const auto compiled = call<QueryRenderStats>(client, commands, {}).compiled_graphs;
@@ -418,8 +419,8 @@ static void verifyTonemapOutput(
     CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kRuntimeState);
     stopAndRemoveJob(client, commands, other_attachment);
     call<RemoveEffect>(client, commands, {effect});
-    CHECK(call<QueryResource>(client, commands, {ViewRequest{scene, view}, capture_name}).resource_id == resource);
-    CHECK(call<QueryResource>(client, commands, {ViewRequest{other_scene, other_view}, capture_name}).resource_id ==
+    CHECK(call<QueryResource>(client, commands, {session, ViewRequest{scene, view}, capture_name}).resource_id == resource);
+    CHECK(call<QueryResource>(client, commands, {session, ViewRequest{other_scene, other_view}, capture_name}).resource_id ==
         other_resource);
     const auto deadline = Clock::now() + 10s;
     const auto retire_view = [&](ViewRequest location, unsigned count)
@@ -463,7 +464,7 @@ static void verifyTonemapOutput(
 }
 
 static void verifyTargetInput(
-    ipc::IpcRequester& client, const CommandList& commands, SceneId scene,
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session, SceneId scene,
     FeatureId clear, FeatureId tone, FeatureId capture
 )
 {
@@ -472,9 +473,9 @@ static void verifyTargetInput(
     const auto producer_view = call<CreateView>(client, commands, {scene}).view;
     const auto consumer_view = call<CreateView>(client, commands, {scene}).view;
     const auto source = call<CreateTarget>(
-        client, commands, {{64, 64, hdr_format, 1, ETargetKind::OFFSCREEN, true}}
+        client, commands, {session, {64, 64, hdr_format, 1, ETargetKind::OFFSCREEN, true}}
     ).target;
-    const auto target = call<CreateTarget>(client, commands, {{64, 64, ldr_format}}).target;
+    const auto target = call<CreateTarget>(client, commands, {session, {64, 64, ldr_format}}).target;
     CreateEffectRequest produce{{hdr_format, 1, ETargetKind::OFFSCREEN, true}};
     produce.definition.features.push_back({clear, "hdr", take(ConfigValue::make(WindowClear::Config{hdr_format}))});
     produce.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{hdr_format, 1}});
@@ -498,11 +499,11 @@ static void verifyTargetInput(
         "lux.color.linear-hdr.v1"
     });
     const auto consumer = call<CreateEffect>(client, commands, std::move(consume)).effect;
-    const auto writer = startRenderJob(client, commands, scene, producer_view, source, producer);
+    const auto writer = startRenderJob(client, commands, session, scene, producer_view, source, producer);
     const auto reader = call<CreateRenderJob>(client, commands, {
         scene, consumer_view, consumer, EJobCadence::REQUESTED
     }).job;
-    StartRenderJob::Request start{reader, target};
+    StartRenderJob::Request start{session, reader, target};
     start.binding.target_images.push_back({{0, "author.hdr"}, source});
     CHECK(call<StartRenderJob>(client, commands, start, false).error.type == kRuntimeIdentity);
     start.binding.target_images.front().destination = input;
@@ -555,11 +556,11 @@ static void basicFeatureOutputs(bool d3d12)
     CHECK(client);
     std::thread render([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
-    call<CreateDeviceSession>(*client, commands, options);
+    const auto session = call<CreateDeviceSession>(*client, commands, options).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const TargetDesc target_desc{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
-    const auto target = call<CreateTarget>(*client, commands, {target_desc}).target;
+    const auto target = call<CreateTarget>(*client, commands, {session, target_desc}).target;
     GraphImageDesc depth{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
     depth.extent.source = EImageExtentSource::TARGET;
     CapturedPixels current, previous;
@@ -577,18 +578,18 @@ static void basicFeatureOutputs(bool d3d12)
     recipe.connections = {{{0, "color"}, {1, "depth"}}, {{1, "current"}, {2, "color"}}, {{1, "previous"}, {3, "color"}}};
     recipe.outputs = {{{2, "pixels"}, {}}, {{3, "pixels"}, {}}};
     const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
-    const auto attachment = startRenderJob(*client, commands, scene, view, target, effect);
+    const auto attachment = startRenderJob(*client, commands, session, scene, view, target, effect);
     renderFrame(*client, commands, attachment);
     renderFrame(*client, commands, attachment);
     stopAndRemoveJob(*client, commands, attachment);
     call<RemoveView>(*client, commands, {scene, view});
-    verifyTonemapOutput(*client, commands, scene, clear, tone, capture,
+    verifyTonemapOutput(*client, commands, session, scene, clear, tone, capture,
         {rdesc::ETextureFormat::RGBA8_UNORM}, EColorEncoding::LINEAR);
-    verifyTonemapOutput(*client, commands, scene, clear, tone, capture,
+    verifyTonemapOutput(*client, commands, session, scene, clear, tone, capture,
         {rdesc::ETextureFormat::RGBA8_UNORM}, EColorEncoding::SRGB);
-    verifyTonemapOutput(*client, commands, scene, clear, tone, capture,
+    verifyTonemapOutput(*client, commands, session, scene, clear, tone, capture,
         {rdesc::ETextureFormat::RGBA8_SRGB}, EColorEncoding::SRGB);
-    verifyTargetInput(*client, commands, scene, clear, tone, capture);
+    verifyTargetInput(*client, commands, session, scene, clear, tone, capture);
     std::printf("TONEMAP FEATURE PASS backend=%s linear, shader sRGB, target sRGB and Effect exposure\n",
         d3d12 ? "D3D12" : "Vulkan");
     server->stop();
@@ -706,11 +707,11 @@ static void windowOutput(bool d3d12)
     CHECK(client);
     std::thread render([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
-    call<CreateDeviceSession>(*client, commands, options);
-    call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, WsiFailureProbe::Descriptor::descriptor.type});
+    const auto session = call<CreateDeviceSession>(*client, commands, options).device;
+    call<GetOrCreateResource>(*client, commands, {session, DeviceScope{}, WsiFailureProbe::Descriptor::descriptor.type});
     const auto [width, height] = dimensions();
     const TargetDesc description{width, height, rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE};
-    auto target = call<CreateTarget>(*client, commands, {description, SurfaceDescription{Win32Surface{window}}});
+    auto target = call<CreateTarget>(*client, commands, {session, description, SurfaceDescription{Win32Surface{window}}});
     CHECK(target.output_available && target.description.width == width && target.description.height == height);
     CreateEffectRequest recipe;
     recipe.output = {target.description.format, 1, ETargetKind::SURFACE};
@@ -721,9 +722,9 @@ static void windowOutput(bool d3d12)
     const auto effect = call<CreateEffect>(*client, commands, std::move(recipe)).effect;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
-    const auto first = startRenderJob(*client, commands, scene, view, target.target, effect);
+    const auto first = startRenderJob(*client, commands, session, scene, view, target.target, effect);
     const auto second = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(*client, commands, {second, target.target}, false).error.type == kTargetInUse);
+    CHECK(call<StartRenderJob>(*client, commands, {session, second, target.target}, false).error.type == kTargetInUse);
     const auto layout = call<QueryRenderJobInputLayout>(*client, commands, first).layout;
     auto foreign = take(FrameLayout::create(layout.channels(), layout.revision()));
     CHECK(layout == foreign && !layout.hasSameIdentity(foreign));
@@ -733,7 +734,7 @@ static void windowOutput(bool d3d12)
     CHECK(call<RequestRenderJob>(*client, commands, {first, &stale}, false).error.type == kFrameContract);
     CHECK(server->stats().submissions == 0);
     stopAndRemoveJob(*client, commands, first);
-    call<StartRenderJob>(*client, commands, {second, target.target});
+    call<StartRenderJob>(*client, commands, {session, second, target.target});
     const auto waitPresented = [&](std::uint64_t count)
     {
         const auto deadline = Clock::now() + 15s;
@@ -764,7 +765,7 @@ static void windowOutput(bool d3d12)
     CHECK(call<SetTargetActive>(*client, commands, {target.target, true, target.epoch}, false).error.type ==
           kRuntimeState);
     call<SetTargetActive>(*client, commands, {target.target, true, resized.epoch});
-    call<RebindRenderJobEffect>(*client, commands, {second, effect});
+    call<RebindRenderJobEffect>(*client, commands, {session, second, effect});
     CHECK(call<StopRenderJob>(*client, commands, first, false).error.type == kJobIdentity);
     for (int i = 0; i < 6; ++i) renderFrame(*client, commands, second);
     waitPresented(12);
@@ -774,10 +775,10 @@ static void windowOutput(bool d3d12)
     stale.release();
     call<RemoveTarget>(*client, commands, target.target);
     // Reusing the same HWND proves Remove returned the native window association.
-    target = call<CreateTarget>(*client, commands, {requested, SurfaceDescription{Win32Surface{window}}});
+    target = call<CreateTarget>(*client, commands, {session, requested, SurfaceDescription{Win32Surface{window}}});
     CHECK(target.output_available);
     call<RemoveRenderJob>(*client, commands, second);
-    const auto final_job = startRenderJob(*client, commands, scene, view, target.target, effect);
+    const auto final_job = startRenderJob(*client, commands, session, scene, view, target.target, effect);
     renderFrame(*client, commands, final_job);
     server->stop(); // The live Target is retired before the window's thread is closed.
     render.join();

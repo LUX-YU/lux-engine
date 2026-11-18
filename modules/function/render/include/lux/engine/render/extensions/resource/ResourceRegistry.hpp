@@ -29,14 +29,14 @@ namespace lux::render
             const nri::Texture* image;
             std::uint32_t descriptor;
         };
-        using ResolveOutput = RenderResult<SampledImage> (*)(void*, TargetId, std::uint32_t) noexcept;
+        using ResolveOutput = RenderResult<SampledImage> (*)(void*, const detail::DeviceSession&, TargetId, std::uint32_t) noexcept;
         void setOutputResolver(void* owner, ResolveOutput resolve) noexcept
         {
             output_owner_ = owner;
             resolve_output_ = resolve;
         }
         [[nodiscard]] RenderResult<SampledImage>
-        sampledImage(SampledImageReference, std::uint32_t slot) const noexcept;
+        sampledImage(const detail::DeviceSession&, SampledImageReference, std::uint32_t slot) const noexcept;
 
         void outputUsesChanged() noexcept { ++output_revision_; }
         [[nodiscard]] std::uint64_t outputUsesRevision() const noexcept { return output_revision_; }

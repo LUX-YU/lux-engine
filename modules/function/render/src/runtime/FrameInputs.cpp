@@ -31,16 +31,18 @@ namespace lux::render
         inputs.jobs.clear();
         inputs.relations.clear();
         inputs.storages.clear();
-        const auto count = running_jobs_.size();
-        inputs.jobs.reserve(count);
+        inputs.jobs.reserve(running_jobs_.size());
         cxx::SlotKeySparseSet<RenderJobId, std::uint32_t> running;
         cxx::SlotKeySparseSet<TargetId, std::uint32_t> writers;
-        std::vector<std::vector<ResourceInstanceId>> storage_ids(count);
+        std::vector<std::vector<ResourceInstanceId>> storage_ids;
+        storage_ids.reserve(running_jobs_.size());
         for (auto id : running_jobs_)
         {
             const auto index = static_cast<std::uint32_t>(inputs.jobs.size());
             const auto& job = *runtime_->jobs_.find(id);
             auto& execution = *job.execution;
+            if (runtime_->device(execution.device) != runtime_->execution_device_) continue;
+            auto& ids = storage_ids.emplace_back();
             auto reads = execution.instance.sampledTargets();
             for (const auto& image : execution.target_images)
                 if (std::ranges::find(reads, image.target) == reads.end()) reads.push_back(image.target);
@@ -48,18 +50,16 @@ namespace lux::render
             running.insert(id, index);
             writers.insert(execution.target, index);
             const auto& effect = execution.recipe.effect;
-            auto& scene = *runtime_->scenes_.find(job.content.scene);
-            auto& view = *scene.views.find(job.content.view);
-            for (const auto& dependency : effect.resource_dependencies)
+            for (std::size_t i = 0; i < effect.resource_dependencies.size(); ++i)
             {
+                const auto& dependency = effect.resource_dependencies[i];
                 const auto* factory = runtime_->resources_.factory(dependency.declaration);
                 const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
                 if (!ops || !ops->prepareFrame) continue;
-                auto* owner = view.resources.ownerFor(dependency.scope);
-                const auto storage = owner ? owner->find(dependency.declaration) : ResourceInstanceId{};
+                const auto storage = execution.resources[i];
                 if (storage.isNull()) continue;
                 auto* native = runtime_->resources_.resourceInstance(storage);
-                storage_ids[index].push_back(storage);
+                ids.push_back(storage);
                 inputs.storages.push_back({
                     native, ops, storage, ops->preparationRevision ? ops->preparationRevision(native) : nullptr
                 });
@@ -68,6 +68,7 @@ namespace lux::render
         std::ranges::sort(inputs.storages, {}, [](const auto& use) noexcept { return storageOrder(use.identity); });
         const auto duplicates = std::ranges::unique(inputs.storages, {}, &detail::StorageFrameUse::identity);
         inputs.storages.erase(duplicates.begin(), duplicates.end());
+        const auto count = inputs.jobs.size();
         for (std::uint32_t consumer = 0; consumer < count; ++consumer)
         {
             auto& entry = inputs.jobs[consumer];
@@ -251,6 +252,7 @@ namespace lux::render
                     block(i, {kRuntimeIdentity});
                     inputs.selection[i].error = {kRuntimeIdentity};
                 }
+                else if (targetState(*target).device != entry.execution->device) block(i, {kJobState});
                 else if (targetState(*target).resizing) block(i);
                 else
                 {

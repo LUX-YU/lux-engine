@@ -125,7 +125,7 @@ namespace lux::render
         if (structure_changed) rebuildFrameInputs();
         if (const auto selection = selectFrameInputs(progress.nextSlot()); selection.type)
         {
-            for (auto id : running_jobs_) runtime_->jobs_.find(id)->control.rejectUnadmitted(selection);
+            for (const auto& job : inputs.jobs) runtime_->jobs_.find(job.id)->control.rejectUnadmitted(selection);
             return false;
         }
         if (frame_outputs_.empty() || !progress.canBegin(entry.session())) return false;
@@ -208,6 +208,7 @@ namespace lux::render
             auto& job = *runtime_->jobs_.find(id);
             if (!job.control.eligible()) continue;
             auto& execution = *job.execution;
+            if (runtime_->device(execution.device) != runtime_->execution_device_) continue;
             if (const auto* packet = job.control.takeRequestedData())
             {
                 const auto updated = applyFrameData(execution, *packet);
@@ -235,6 +236,7 @@ namespace lux::render
             auto& job = *runtime_->jobs_.find(running_jobs_[index]);
             if (!job.readyToRun() || job.control.pendingStart() || !jobTargetReady(job)) continue;
             auto& execution = *job.execution;
+            if (runtime_->device(execution.device) != runtime_->execution_device_) continue;
             if (execution.programsReady() || execution.programError().type) continue;
             if (execution.pending_uses || !resourcesAvailable(execution.resources)) continue;
             preparation_cursor_ = (index + 1) % count;

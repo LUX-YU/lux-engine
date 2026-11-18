@@ -599,13 +599,13 @@ int main(int argc, char** argv)
     const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto meshes = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kMeshResourceName}
+        *client, commands, {session, DeviceScope{}, kMeshResourceName}
     ).resource_id;
     const auto materials = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kMaterialResourceName}
+        *client, commands, {session, DeviceScope{}, kMaterialResourceName}
     ).resource_id;
-    const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
-    const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
+    const auto instances = call<GetOrCreateResource>(*client, commands, {session, scene, kInstanceResourceName}).resource_id;
+    const auto light_storage = call<GetOrCreateResource>(*client, commands, {session, scene, kLightResourceName}).resource_id;
     const auto scene_inputs = installInputs(*client, commands, session, scene);
     const auto instance_updates = scene_inputs.instances;
     const auto light_updates = scene_inputs.lights;
@@ -723,18 +723,18 @@ int main(int argc, char** argv)
         request.parameters.exposure = exposure - 1;
         const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
-        const auto output = call<CreateTarget>(*client, commands, {target}).target;
+        const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
-        const auto attached = startRenderJob(*client, commands, scene, view, output, effect);
+        const auto attached = startRenderJob(*client, commands, session, scene, view, output, effect);
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;
-        const auto second_output = call<CreateTarget>(*client, commands, {target}).target;
+        const auto second_output = call<CreateTarget>(*client, commands, {session, target}).target;
         auto second_camera = camera;
         if (mixed_winding)
         {
             second_camera.view[12] = 4; // Same Effect, independently empty view.
         }
         call<UpdateViewCamera>(*client, commands, {{scene, second_view}, second_camera});
-        const auto second = startRenderJob(*client, commands, scene, second_view, second_output, effect);
+        const auto second = startRenderJob(*client, commands, session, scene, second_view, second_output, effect);
         const auto compiles = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
         // The same Effect exposure feeds both Views without compiling new plans.
         call<SetEffectParameters>(*client, commands, {effect, {exposure}});
@@ -1082,7 +1082,7 @@ int main(int argc, char** argv)
     CHECK(changed_lights.error.type == 0);
     run(1);
     const auto texture_storage = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kTextureResourceName}
+        *client, commands, {session, DeviceScope{}, kTextureResourceName}
     ).resource_id;
     rdesc::TextureInfo texture_info{};
     texture_info.width = texture_info.height = texture_info.mip_count = 1;
@@ -1325,21 +1325,21 @@ int main(int argc, char** argv)
     auto incompatible_program = cook(shader_target, true, false, true, true);
     const auto incompatible_material = createInstance(registerProgram(std::move(incompatible_program)), {});
     const auto invalid_view = call<CreateView>(*client, commands, {scene}).view;
-    const auto invalid_target = call<CreateTarget>(*client, commands, {target}).target;
+    const auto invalid_target = call<CreateTarget>(*client, commands, {session, target}).target;
     const auto initial_camera = camera;
     auto invalid_effect_request = take(makeDeferredRenderEffect(
         {target.format}, scene_inputs.recipes[0], scene_inputs.recipes[1]
     ));
     const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid_effect_request)).effect;
     updateSceneData(*client, commands, ViewRequest{scene, invalid_view}, initial_camera);
-    const auto invalid_attachment = startRenderJob(*client, commands, scene, invalid_view, invalid_target, invalid_effect);
+    const auto invalid_attachment = startRenderJob(*client, commands, session, scene, invalid_view, invalid_target, invalid_effect);
     // One Effect shares exposure while two Views keep independent cameras; neither update recompiles the Plan.
     const auto shared_view = call<CreateView>(*client, commands, {scene}).view;
-    const auto shared_target = call<CreateTarget>(*client, commands, {target}).target;
+    const auto shared_target = call<CreateTarget>(*client, commands, {session, target}).target;
     auto other_camera = initial_camera;
     other_camera.background = {.1F, .2F, .3F, 1};
     updateSceneData(*client, commands, ViewRequest{scene, shared_view}, other_camera);
-    const auto shared_attachment = startRenderJob(*client, commands, scene, shared_view, shared_target, invalid_effect);
+    const auto shared_attachment = startRenderJob(*client, commands, session, scene, shared_view, shared_target, invalid_effect);
     const auto compiled_before_sources = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
     call<SetEffectParameters>(*client, commands, {invalid_effect, {-1.F}});
     other_camera.position = {2, 0, 0};
@@ -1384,9 +1384,9 @@ int main(int argc, char** argv)
         );
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         auto view = call<CreateView>(*client, commands, {scene}).view;
-        auto output = call<CreateTarget>(*client, commands, {target}).target;
+        auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
-        auto attachment = startRenderJob(*client, commands, scene, view, output, effect);
+        auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect);
         auto before = call<QueryRenderStats>(*client, commands, {}).submissions;
         auto deadline = Clock::now() + 10s;
         while (call<QueryRenderStats>(*client, commands, {}).submissions < before + 20)
@@ -1504,9 +1504,9 @@ int main(int argc, char** argv)
         auto& requester = *connection;
         std::thread worker([&] { CHECK(constant_server->run()); });
         const auto directory = queryCommands(requester);
-        call<CreateDeviceSession>(requester, directory, constant_device);
+        const auto session = call<CreateDeviceSession>(requester, directory, constant_device).device;
         const auto resource = call<GetOrCreateResource>(
-            requester, directory, {GlobalRenderScope{}, kMaterialResourceName}
+            requester, directory, {session, DeviceScope{}, kMaterialResourceName}
         ).resource_id;
         const auto program = registerMaterialProgram(requester, directory, resource, unlit);
         const auto constant = createMaterialInstance(requester, directory, program);

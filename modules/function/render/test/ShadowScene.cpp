@@ -120,8 +120,8 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
-    const auto output = call<CreateTarget>(*client, commands, {target}).target;
-    const auto attachment = startRenderJob(*client, commands, scene, view, output, effect);
+    const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
+    const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect);
     const auto deadline = Clock::now() + 10s;
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) < 4)
     {
@@ -388,9 +388,9 @@ static void verifyPresets(
 
         const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(client, commands, {scene}).view;
-        const auto image = call<CreateTarget>(client, commands, {target}).target;
+        const auto image = call<CreateTarget>(client, commands, {session, target}).target;
         call<UpdateViewCamera>(client, commands, {{scene, view}, camera});
-        const auto attached = startRenderJob(client, commands, scene, view, image, effect);
+        const auto attached = startRenderJob(client, commands, session, scene, view, image, effect);
         const auto deadline = Clock::now() + 20s;
         while (call<QueryExecutionProgress>(client, commands, attached).progress.count(EExecutionOutcome::EXECUTED)
                < fif + 2)
@@ -524,13 +524,13 @@ int main(int argc, char** argv)
     const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto meshes = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kMeshResourceName}
+        *client, commands, {session, DeviceScope{}, kMeshResourceName}
     ).resource_id;
     const auto materials = call<GetOrCreateResource>(
-        *client, commands, {GlobalRenderScope{}, kMaterialResourceName}
+        *client, commands, {session, DeviceScope{}, kMaterialResourceName}
     ).resource_id;
-    const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
-    const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
+    const auto instances = call<GetOrCreateResource>(*client, commands, {session, scene, kInstanceResourceName}).resource_id;
+    const auto light_storage = call<GetOrCreateResource>(*client, commands, {session, scene, kLightResourceName}).resource_id;
     const auto scene_inputs = installInputs(*client, commands, session, scene);
     const auto instance_updates = scene_inputs.instances;
     const auto light_updates = scene_inputs.lights;
@@ -725,16 +725,16 @@ int main(int argc, char** argv)
         request.parameters.exposure = 0;
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
-        const auto output = call<CreateTarget>(*client, commands, {target}).target;
+        const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
-        const auto attachment = startRenderJob(*client, commands, scene, view, output, effect);
+        const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect);
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;
-        const auto second_target = call<CreateTarget>(*client, commands, {target}).target;
+        const auto second_target = call<CreateTarget>(*client, commands, {session, target}).target;
         auto second_camera = camera;
         second_camera.projection[0] = 1.02F;
         second_camera.inverse_view_projection[0] = 1.F / second_camera.projection[0];
         call<UpdateViewCamera>(*client, commands, {{scene, second_view}, second_camera});
-        const auto second = startRenderJob(*client, commands, scene, second_view, second_target, effect);
+        const auto second = startRenderJob(*client, commands, session, scene, second_view, second_target, effect);
         const auto compile_count = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
         auto moving = camera;
         moving.position[0] = -.2F;

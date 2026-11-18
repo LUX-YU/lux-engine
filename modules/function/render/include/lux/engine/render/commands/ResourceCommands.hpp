@@ -8,6 +8,7 @@ namespace lux::render
 {
     struct ResourceRequest final
     {
+        DeviceSessionId device;
         VRenderScope scope;
         ResourceNameView declaration;
     };

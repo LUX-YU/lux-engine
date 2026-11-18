@@ -924,6 +924,7 @@ static void renderFrame(ipc::IpcRequester& client, const CommandList& commands, 
 static RenderJobId startRenderJob(
     ipc::IpcRequester& client,
     const CommandList& commands,
+    DeviceSessionId session,
     SceneId scene,
     ViewId view,
     TargetId target,
@@ -931,7 +932,7 @@ static RenderJobId startRenderJob(
 )
 {
     const auto job = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    call<StartRenderJob>(client, commands, {job, target});
+    call<StartRenderJob>(client, commands, {session, job, target});
     return job;
 }
 
@@ -970,9 +971,9 @@ struct SceneInputRoutes final
 };
 
 static SceneInputRoutes
-installInputs(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device, VRenderScope scope)
+installInputs(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session, VRenderScope scope)
 {
-    const auto choices = call<ListCapabilities>(client, commands, {device});
+    const auto choices = call<ListCapabilities>(client, commands, {session});
     SceneInputRoutes routes{{}, {}, scope};
     for (auto name : {kRasterSurfaceCapability, kDeferredLightingCapability})
     {
@@ -983,10 +984,10 @@ installInputs(ipc::IpcRequester& client, const CommandList& commands, DeviceSess
         CHECK(found != choices.implementations.end());
         routes.recipes.push_back(*found);
     }
-    if (!std::holds_alternative<GlobalRenderScope>(scope))
+    if (!std::holds_alternative<DeviceScope>(scope))
     {
-        routes.instances = call<GetOrCreateResource>(client, commands, {scope, kInstanceResourceName}).resource_id;
-        routes.lights = call<GetOrCreateResource>(client, commands, {scope, kLightResourceName}).resource_id;
+        routes.instances = call<GetOrCreateResource>(client, commands, {session, scope, kInstanceResourceName}).resource_id;
+        routes.lights = call<GetOrCreateResource>(client, commands, {session, scope, kLightResourceName}).resource_id;
     }
     return routes;
 }

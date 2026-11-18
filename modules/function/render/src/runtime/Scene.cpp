@@ -20,7 +20,13 @@ namespace lux::render
         CreateScene::Response& output_response
     ) noexcept
     {
-        output_response = SceneCreated{{}, runtime_->scenes_.emplace(*runtime_->device_)};
+        auto* device = runtime_->execution_device_;
+        if (!device)
+        {
+            output_response.error = {kRuntimeState};
+            return;
+        }
+        output_response = SceneCreated{{}, runtime_->scenes_.emplace(*device)};
     }
 
     void RenderServer::Impl::removeScene(

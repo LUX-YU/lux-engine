@@ -22,6 +22,13 @@ namespace lux::render
         ListCapabilities::Response& result
     ) noexcept
     {
+        const auto* device = runtime_->device(input.device);
+        if (!device)
+        {
+            result.error = {kRuntimeIdentity};
+            return;
+        }
+        const auto capabilities = device->session().resourceCapabilities();
         for (const auto id : capability_registry_.implementations())
         {
             const auto& implementation = *capability_registry_.find(id);
@@ -47,7 +54,7 @@ namespace lux::render
             {
                 const auto* factory = runtime_->resources_.factory(type);
                 const bool is_unsupported =
-                    !factory || !factory->descriptor->supports(runtime_->device_->session().resourceCapabilities());
+                    !factory || !factory->descriptor->supports(capabilities);
                 if (is_unsupported)
                 {
                     published.unavailable = RenderError{kStorageCapability};

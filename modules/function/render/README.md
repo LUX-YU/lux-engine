@@ -168,7 +168,12 @@ The library returns structured diagnostics and never chooses a terminal or loggi
 
 1. Create a RenderServer, register extensions and run it on the host's render thread. Open an IPC requester
    and bootstrap a RenderClient. The host drives `dispatchResponses()` at its completion points.
-2. Use `QueryRenderDevice` and `ListCapabilities` for the open device. `QueryResource` observes an existing
+2. Send `CreateDeviceSession` with the device options. Pass the returned `DeviceSessionId`
+   to `QueryRenderDevice` and `ListCapabilities`. The Server can hold multiple Sessions for device queries.
+   Scene and Target execution currently use the first Session. Removing that Session requires its Scenes,
+   Targets and in-flight work to be settled. A remaining Session can then take over that execution path.
+   `RemoveDeviceSession` revokes the ID and releases the native device. Reused slots carry a new generation.
+   QueryResource observes an existing
    instance. `GetOrCreateResource` is the explicit creation command. Asset commands use that instance's ID.
    Upload meshes and textures before any Job exists, and await their typed replies before using the resulting IDs.
 3. Create the Scene, View and Target, then use `CreateEffect` with the logical Feature recipe. Create the Job

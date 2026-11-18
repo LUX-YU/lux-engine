@@ -8,7 +8,6 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RenderErrorSink.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
-#include <lux/engine/render/runtime/DeviceOptions.hpp>
 #include <lux/engine/render/visibility.h>
 #include <memory>
 #include <optional>
@@ -82,13 +81,9 @@ namespace lux::render
     public:
         using CreateResult = RenderResult<std::unique_ptr<RenderServer>>;
 
-        // Creates the device, IPC responder and supported built-in declarations, but starts no thread.
+        // Opens the IPC responder and registers built-in declarations. CreateDeviceSession opens native devices.
         // Registration stores factories only. run() constructs selected Handlers; Resource owners create Storage.
-        [[nodiscard]] static CreateResult create(
-            RenderServerConfig config,
-            execution::ExecutionRuntime& execution,
-            DeviceOptions device_options = {}
-        ) noexcept;
+        [[nodiscard]] static CreateResult create(RenderServerConfig config, execution::ExecutionRuntime&) noexcept;
 
         ~RenderServer() noexcept;
         RenderServer(const RenderServer&) = delete;

@@ -607,7 +607,7 @@ int main(int argc, char** argv)
     config.uploads.emplace();
     DeviceOptions device;
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") device.backend = EGraphicsBackend::D3D12;
-    auto server = take(RenderServer::create(config, *execution, device));
+    auto server = take(RenderServer::create(config, *execution));
     // The module installs its unique declarations once; implementations reference that closure.
     take(server->registerResource<ProbeStorageType<false>>());
     take(server->registerResource<ProbeStorageType<true>>());
@@ -688,6 +688,11 @@ int main(int argc, char** argv)
     auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     RenderResult<void> ran;
     std::thread thread([&]() noexcept { ran = server->run(); });
+    const std::array device_names{CommandName{CreateDeviceSession::name}};
+    const auto create_device = call<QueryCommandIds>(client, QueryCommandIds::id, device_names).ids.front();
+    const auto created_device = call<CreateDeviceSession>(client, create_device, device);
+    CHECK(!created_device.error.type && !created_device.device.isNull());
+    const auto session = created_device.device;
     const auto handler_commands = call<QueryCommandIds>(client, QueryCommandIds::id,
         std::array{CommandName{ProbeIdentity::name}});
     CHECK(handler_commands.error.type == 0 && handler_commands.ids.size() == 1);
@@ -701,7 +706,7 @@ int main(int argc, char** argv)
     CHECK(ids.error.type == 0 && ids.ids.size() == names.size());
     const auto list = ids.ids[0], create_effect = ids.ids[1], upload = ids.ids[2], size = ids.ids[3];
     const auto choices =
-        call<ListCapabilities>(client, list, {std::string(cxx::make_basic_type_info<ProbeCapability>().name())});
+        call<ListCapabilities>(client, list, {session, std::string(cxx::make_basic_type_info<ProbeCapability>().name())});
     CHECK(choices.error.type == 0 && choices.implementations.size() == 2);
     CHECK(ProbeStorage::allocations == 0);
     const auto make_effect = [&](CapabilityImplementationId selected, ConfigValue config)
@@ -709,7 +714,7 @@ int main(int argc, char** argv)
         const auto graph = call<ListCapabilities>(
             client,
             list,
-            {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
+            {session, std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
         );
         CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
         const auto& output = graph.implementations.front();
@@ -719,7 +724,7 @@ int main(int argc, char** argv)
         return call<CreateEffect>(client, create_effect, std::move(request));
     };
     const auto graph_choice = call<ListCapabilities>(
-        client, list, {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
+        client, list, {session, std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
     ).implementations.front();
     {
         auto qualify = [&](std::vector<EffectImplementationUse> implementations, std::string contribution,
@@ -746,7 +751,7 @@ int main(int argc, char** argv)
         const EffectOutputDesc crossed{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE};
         const auto output_status = [&](EffectOutputDesc output)
         {
-            const auto options = call<ListCapabilities>(client, list, {{}, candidate.implementation, output});
+            const auto options = call<ListCapabilities>(client, list, {session, {}, candidate.implementation, output});
             CHECK(!options.error.type && options.implementations.size() == 1);
             return options.implementations.front().unavailable.type;
         };
@@ -804,7 +809,7 @@ int main(int argc, char** argv)
         const auto choice = call<ListCapabilities>(
             client,
             list,
-            {std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), name}
+            {session, std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), name}
         );
         CHECK(choice.error.type == 0 && choice.implementations.size() == 1);
         CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
@@ -827,7 +832,7 @@ int main(int argc, char** argv)
         make_effect(choices.implementations.front().implementation_id, take(ConfigValue::make(std::uint32_t{1})));
     CHECK(rejected.error.type == kInvalidConfig && ProbeStorage::allocations == 2);
     const auto failure_choice =
-        call<ListCapabilities>(client, list, {std::string(cxx::make_basic_type_info<RejectedCapability>().name())});
+        call<ListCapabilities>(client, list, {session, std::string(cxx::make_basic_type_info<RejectedCapability>().name())});
     CHECK(failure_choice.implementations.size() == 1);
     const auto failed = make_effect(failure_choice.implementations.front().implementation_id, ConfigValue{});
     // Storage factories are not called by CreateEffect. A rejected unused dependency has no allocation side effect.

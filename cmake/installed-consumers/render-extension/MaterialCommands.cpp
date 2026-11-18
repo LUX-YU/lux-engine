@@ -33,11 +33,12 @@ int main(int argc, char** argv)
     CHECK(runtime);
     RenderServerConfig config{"test.installed.material_commands", nativeValidationEnabled()};
     config.uploads.emplace();
-    auto server = take(RenderServer::create(config, **runtime, device));
+    auto server = take(RenderServer::create(config, **runtime));
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    call<CreateDeviceSession>(*client, commands, device);
     const std::array current{
         CommandName{R::name}, CommandName{C::name}, CommandName{MaterialCommands::Update::name},
         CommandName{MaterialCommands::ReleaseInstance::name}, CommandName{U::name}

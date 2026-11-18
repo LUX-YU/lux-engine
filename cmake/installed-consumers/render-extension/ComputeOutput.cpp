@@ -56,7 +56,7 @@ int main(int argc, char** argv)
     config.frames_in_flight = 1;
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
-    auto server = take(RenderServer::create(config, **execution, options));
+    auto server = take(RenderServer::create(config, **execution));
     const auto compute = take(server->registerFeature<ComputeColor>());
     take(server->registerResource<CaptureBuffer>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
@@ -64,6 +64,7 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread worker([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    call<CreateDeviceSession>(*client, commands, options);
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const auto format = rdesc::ETextureFormat::RGBA8_UNORM;

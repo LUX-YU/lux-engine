@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render
@@ -29,11 +30,30 @@ namespace lux::render
         using Response = RenderStatsSnapshot;
     };
 
+    struct CreateDeviceSession final
+    {
+        static constexpr std::string_view name = "render.device.create";
+        using Request = DeviceOptions;
+
+        struct Response final
+        {
+            RenderError error{};
+            DeviceSessionId device;
+        };
+    };
+
+    struct RemoveDeviceSession final
+    {
+        static constexpr std::string_view name = "render.device.remove";
+        using Request = DeviceSessionId;
+        using Response = AckResponse;
+    };
+
     struct QueryRenderDevice final
     {
         static constexpr std::string_view name = "render.device.query";
         static constexpr bool failure_safe = true;
-        using Request = EmptyRequest;
+        using Request = DeviceSessionId;
         struct Response final
         {
             RenderError error{};

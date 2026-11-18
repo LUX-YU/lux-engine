@@ -1122,7 +1122,7 @@ int main(int argc, char** argv)
     config.uploads.emplace();
     config.uploads->chunk_bytes = 4 * 1024 * 1024;
     config.uploads->window_regions = 8192;
-    auto server = take(RenderServer::create(config, **runtime, device));
+    auto server = take(RenderServer::create(config, **runtime));
     take(server->registerResource<MaterialAllocationProbe>());
     if (pipeline_isolation.has_value()) take(server->registerResource<PipelineIsolationProbe>());
     const auto clear = pipeline_isolation.value_or(false) ? take(server->registerFeature<WindowClear>()) : FeatureId{};
@@ -1147,6 +1147,7 @@ int main(int argc, char** argv)
     CHECK(ipc);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*ipc);
+    call<CreateDeviceSession>(*ipc, commands, device);
     call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, MaterialAllocationProbe::Descriptor::descriptor.type});
     if (pipeline_isolation.has_value())
     {

@@ -31,7 +31,7 @@ namespace lux::render
             response.error = owner.error();
             return;
         }
-        auto context = runtime_->device_->resourceCreateContext();
+        auto context = runtime_->execution_device_->resourceCreateContext();
         const auto id = (*owner)->query(context, type);
         if (!id)
         {
@@ -50,7 +50,7 @@ namespace lux::render
             response.error = owner.error();
             return;
         }
-        auto context = runtime_->device_->resourceCreateContext();
+        auto context = runtime_->execution_device_->resourceCreateContext();
         auto instance = (*owner)->getOrCreate(context, type);
         if (!instance)
         {
@@ -69,7 +69,9 @@ namespace lux::render
                 using T = std::remove_cvref_t<decltype(location)>;
                 if constexpr (std::same_as<T, GlobalRenderScope>)
                 {
-                    return &runtime_->device_->resources();
+                    auto* device = runtime_->execution_device_;
+                    if (!device) return cxx::unexpected(RenderError{kRuntimeState});
+                    return &device->resources();
                 }
                 else if constexpr (std::same_as<T, SceneId>)
                 {

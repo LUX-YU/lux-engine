@@ -109,12 +109,12 @@ Main/Asset 双 Client 的 Mesh/Material 场景。Client 翻译单元不包含后
 ### 创建与声明式安装
 
 ```cpp
-auto server = RenderServer::create(config, execution, device_options);
+auto server = RenderServer::create(config, execution);
 if (!server)
 {
     return server.error();
 }
-// Client: query ListCapabilities, select an implementation, then install its semantic inputs.
+// Client: CreateDeviceSession(device_options), then ListCapabilities for the returned DeviceSessionId.
 ```
 
 `create()` 从私有 `BuiltinFeatures` 的 tuple 清单直接登记支持的 Feature、Storage 和 Command。

@@ -95,7 +95,7 @@ struct SamplerProbe
 };
 
 
-static void verifySamplers(RenderServer& server, const RenderServerConfig& config)
+static void verifySamplers(RenderServer& server, const RenderServerConfig& config, const DeviceOptions& device)
 {
     const auto probe = take(server.registerFeature<SamplerProbe>());
     take(server.registerResource<CaptureBuffer>());
@@ -105,7 +105,8 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     CHECK(client);
     std::thread thread([&] { CHECK(server.run()); });
     const auto commands = queryCommands(*client);
-    const auto catalog = call<ListCapabilities>(*client, commands, {std::string(kRasterSurfaceCapability)});
+    const auto session = call<CreateDeviceSession>(*client, commands, device).device;
+    const auto catalog = call<ListCapabilities>(*client, commands, {session, std::string(kRasterSurfaceCapability)});
     CHECK(catalog.implementations.size() == 1);
     CHECK(catalog.implementations.front().unavailable.type == kStorageCapability);
     CapturedPixels pixels;
@@ -329,6 +330,7 @@ static RenderResult<EffectDefinition> lowerShadowProbe(
 static void verifyPresets(
     ipc::IpcRequester& client,
     const CommandList& commands,
+    DeviceSessionId session,
     SceneId scene,
     ResourceInstanceId lights,
     FeatureId capture,
@@ -339,7 +341,7 @@ static void verifyPresets(
 )
 {
     const EffectOutputDesc output{target.format};
-    const auto catalog = call<ListCapabilities>(client, commands, {{}, {}, output});
+    const auto catalog = call<ListCapabilities>(client, commands, {session, {}, {}, output});
     const auto select = [&](std::string_view name) -> const CapabilityImplementationInfo&
     {
         const auto found = std::ranges::find(catalog.implementations, name,
@@ -350,7 +352,7 @@ static void verifyPresets(
     const auto& surface = select(kRasterSurfaceCapability);
     const auto& lighting = select(kDeferredLightingCapability);
     const auto unsupported = call<ListCapabilities>(client, commands, {
-        std::string(kDeferredLightingCapability), {}, EffectOutputDesc{rdesc::ETextureFormat::RGBA16_SFLOAT}
+        session, std::string(kDeferredLightingCapability), {}, EffectOutputDesc{rdesc::ETextureFormat::RGBA16_SFLOAT}
     });
     CHECK(unsupported.implementations.size() == 1);
     CHECK(unsupported.implementations.front().unavailable.type == kRuntimeUnsupported);
@@ -482,10 +484,10 @@ int main(int argc, char** argv)
             CHECK(false);
         }
     }
-    auto server = take(RenderServer::create(config, **runtime, device));
+    auto server = take(RenderServer::create(config, **runtime));
     if (!device.texture_descriptors)
     {
-        verifySamplers(*server, config);
+        verifySamplers(*server, config, device);
         server.reset();
         runtime->reset(); // The Runtime owns its stop/join boundary.
         return 0;
@@ -519,6 +521,7 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto meshes = call<GetOrCreateResource>(
         *client, commands, {GlobalRenderScope{}, kMeshResourceName}
@@ -528,7 +531,7 @@ int main(int argc, char** argv)
     ).resource_id;
     const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
     const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
-    const auto scene_inputs = installInputs(*client, commands, scene);
+    const auto scene_inputs = installInputs(*client, commands, session, scene);
     const auto instance_updates = scene_inputs.instances;
     const auto light_updates = scene_inputs.lights;
 
@@ -603,7 +606,7 @@ int main(int argc, char** argv)
     camera.position = {0, 0, 2};
     camera.far_distance = 3;
     camera.background = {0, 0, 0, 1};
-    if (presets) verifyPresets(*client, commands, scene, light_storage, capture, capture_probe, target, camera, fif);
+    if (presets) verifyPresets(*client, commands, session, scene, light_storage, capture, capture_probe, target, camera, fif);
     std::array<unsigned, 4> reference_lit{}, reference_occluded{};
     bool masked = false;
 

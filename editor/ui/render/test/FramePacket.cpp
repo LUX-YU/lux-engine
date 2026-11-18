@@ -167,7 +167,7 @@ int main(int argc, char** argv)
     config.validation = native_validation && std::string_view(native_validation) != "0";
     DeviceOptions options; options.texture_descriptors = true; options.multiple_queues = true;
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") options.backend = EGraphicsBackend::D3D12;
-    auto server = take(RenderServer::create(config, *execution, options));
+    auto server = take(RenderServer::create(config, *execution));
     take(registerUi(*server));
     take(server->registerResource<CaptureBuffer>());
     const auto capture_feature = take(server->registerFeature<CaptureFeature>());
@@ -196,6 +196,7 @@ int main(int argc, char** argv)
     {
         return std::ranges::find(commands.commands, name, &CommandInfo::name)->id;
     };
+    const auto session = request<CreateDeviceSession>(*client, command(CreateDeviceSession::name), options).device;
     const auto run_job = command(RequestRenderJob::name);
     const auto update = command(UpdateFrameData::name);
     const auto scene = request<CreateScene>(*client, command(CreateScene::name), {}).scene;
@@ -299,10 +300,10 @@ int main(int argc, char** argv)
     camera.near_distance = -1;
     CHECK(call<UpdateViewCamera>(*wire, commands, {{scene, view}, camera}, false).error.type == kFrameContract);
 
-    const auto device = request<QueryRenderDevice>(*client, command(QueryRenderDevice::name), {});
+    const auto device = request<QueryRenderDevice>(*client, command(QueryRenderDevice::name), session);
     CHECK(device.backend == options.backend && device.frames_in_flight == 3 && device.physical_queues > 0);
 
-    const auto choices = call<ListCapabilities>(*wire, commands, {});
+    const auto choices = call<ListCapabilities>(*wire, commands, {session});
     const auto ui = std::ranges::find_if(choices.implementations, [](const auto& value)
         { return value.capability.type == lux::cxx::make_basic_type_info<UiCapability>(); });
     CHECK(ui != choices.implementations.end());

@@ -57,6 +57,8 @@ namespace lux::render
             ListCapabilities,
             QueryExecutionProgress,
             QueryRenderStats,
+            CreateDeviceSession,
+            RemoveDeviceSession,
             QueryRenderDevice,
             Stop,
             ListCommands

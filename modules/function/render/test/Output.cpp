@@ -545,7 +545,7 @@ static void basicFeatureOutputs(bool d3d12)
     options.texture_descriptors = true;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto& execution = lux::execution::ExecutionRuntime::instance();
-    auto server = take(RenderServer::create(config, execution, options));
+    auto server = take(RenderServer::create(config, execution));
     const auto clear = take(server->registerFeature<WindowClear>());
     const auto hzb = take(server->featureId("lux.render.feature.Hzb"));
     const auto tone = take(server->featureId("lux.render.feature.TonemapFeature"));
@@ -555,6 +555,7 @@ static void basicFeatureOutputs(bool d3d12)
     CHECK(client);
     std::thread render([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    call<CreateDeviceSession>(*client, commands, options);
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const TargetDesc target_desc{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
@@ -698,13 +699,14 @@ static void windowOutput(bool d3d12)
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto& execution = lux::execution::ExecutionRuntime::instance();
-    auto server = take(RenderServer::create(config, execution, options));
+    auto server = take(RenderServer::create(config, execution));
     auto feature = take(server->registerFeature<WindowClear>());
     take(server->registerResource<WsiFailureProbe>());
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     std::thread render([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    call<CreateDeviceSession>(*client, commands, options);
     call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, WsiFailureProbe::Descriptor::descriptor.type});
     const auto [width, height] = dimensions();
     const TargetDesc description{width, height, rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE};

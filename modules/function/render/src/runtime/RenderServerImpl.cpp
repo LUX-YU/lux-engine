@@ -45,10 +45,24 @@ namespace lux::render
         bindJobCommands();
         bindFrameworkCommand<Stop, &Impl::stopCommand>();
         bindFrameworkCommand<QueryRenderStats, &Impl::queryRenderStats>();
+        bindFrameworkCommand<CreateDeviceSession, &Impl::createDeviceSession>();
+        bindFrameworkCommand<RemoveDeviceSession, &Impl::removeDeviceSession>();
         bindFrameworkCommand<QueryRenderDevice, &Impl::queryRenderDevice>();
         bindFrameworkCommand<QueryExecutionProgress, &Impl::queryExecutionProgress>();
         bindFrameworkCommand<ListCapabilities, &Impl::listCapabilities>();
         bindFrameworkCommand<ListCommands, &Impl::listCommands>();
+        runtime_->resources_.setOutputResolver(this, [](void* owner, TargetId id, std::uint32_t slot) noexcept
+            -> RenderResult<ResourceRegistry::SampledImage>
+        {
+            auto& self = *static_cast<Impl*>(owner);
+            const auto* target = self.runtime_->targets_.find(id);
+            if (!target || !targetDescription(*target).sampled || targetState(*target).resizing)
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
+            const auto selected = self.outputSlot(id, slot);
+            if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
+            const auto frame = targetOutput(*target).frames[selected];
+            return ResourceRegistry::SampledImage{frame.image, frame.sampled_index};
+        });
     }
 
     void NRI_CALL RenderServer::Impl::diagnostic(
@@ -83,34 +97,6 @@ namespace lux::render
                  line}
             );
         }
-    }
-
-    RenderResult<void> RenderServer::Impl::initialize(DeviceOptions device_options) noexcept
-    {
-        const nri::CallbackInterface callbacks{Impl::diagnostic, [](void*) noexcept {}, this};
-        // Frame copies and standalone staging need a worker that cannot be held by a dynamic PSO batch.
-        auto entry = detail::DeviceEntry::create(
-            runtime_->resources_, device_options, callbacks, config_, recording_scheduler_
-        );
-        if (!entry)
-        {
-            return cxx::unexpected(entry.error());
-        }
-        runtime_->device_ = std::move(*entry);
-        target_frame_uses_ = runtime_->device_->session().makeFrontiers();
-        runtime_->resources_.setOutputResolver(this, [](void* owner, TargetId id, std::uint32_t slot) noexcept
-            -> RenderResult<ResourceRegistry::SampledImage>
-        {
-            auto& self = *static_cast<Impl*>(owner);
-            const auto* target = self.runtime_->targets_.find(id);
-            if (!target || !targetDescription(*target).sampled || targetState(*target).resizing)
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            const auto selected = self.outputSlot(id, slot);
-            if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
-            const auto frame = targetOutput(*target).frames[selected];
-            return ResourceRegistry::SampledImage{frame.image, frame.sampled_index};
-        });
-        return {};
     }
 
     bool RenderServer::Impl::targetDependencyCycle(
@@ -153,6 +139,12 @@ namespace lux::render
 
     void RenderServer::Impl::createTarget(const CreateTarget::Request& input, CreateTarget::Response& response) noexcept
     {
+        auto* entry = runtime_->execution_device_;
+        if (!entry)
+        {
+            response.error = {kRuntimeState};
+            return;
+        }
         if (auto valid = input.description.validate(); !valid)
         {
             response.error = valid.error();
@@ -167,8 +159,9 @@ namespace lux::render
         TargetId id;
         if (is_surface)
         {
-            auto physical =
-                detail::SwapchainTarget::create(runtime_->device_->session(), input.description, *input.surface, runtime_->device_->frameProgress().frameCount());
+            auto physical = detail::SwapchainTarget::create(
+                entry->session(), input.description, *input.surface, entry->frameProgress().frameCount()
+            );
             if (!physical)
             {
                 response.error = physical.error();
@@ -178,7 +171,9 @@ namespace lux::render
         }
         else
         {
-            auto physical = detail::OffscreenTarget::create(runtime_->device_->session(), input.description, runtime_->device_->frameProgress().frameCount());
+            auto physical = detail::OffscreenTarget::create(
+                entry->session(), input.description, entry->frameProgress().frameCount()
+            );
             if (!physical)
             {
                 response.error = physical.error();
@@ -255,7 +250,7 @@ namespace lux::render
         if (busy_target) co_return response(RenderError{kDeviceBusy});
         auto affected = jobsSamplingTarget(input.target);
         const bool different_kind = input.description.kind != targetDescription(*target).kind;
-        const auto maximum = runtime_->device_->session().description().dimensions.attachmentMaxDim;
+        const auto maximum = runtime_->execution_device_->session().description().dimensions.attachmentMaxDim;
         const bool oversized = input.description.width > maximum || input.description.height > maximum;
         const bool removes_sampling = !input.description.sampled && !affected.empty();
         if (different_kind || oversized || removes_sampling) co_return response(RenderError{kCommandContract});
@@ -295,22 +290,22 @@ namespace lux::render
             }
         });
 
-        auto accepted = runtime_->device_->frameWorkspace().submissions.acceptedUses(
-            runtime_->device_->session(), runtime_->device_->frameProgress(), instances
+        auto accepted = runtime_->execution_device_->frameWorkspace().submissions.acceptedUses(
+            runtime_->execution_device_->session(), runtime_->execution_device_->frameProgress(), instances
         );
         std::optional<VRenderTarget> candidate_target;
         ResizeCandidates candidates;
         if (auto* offscreen = std::get_if<detail::OffscreenTarget>(target))
         {
             offscreen->appendUses(accepted);
-            auto created = detail::OffscreenTarget::create(runtime_->device_->session(), input.description, runtime_->device_->frameProgress().frameCount());
+            auto created = detail::OffscreenTarget::create(runtime_->execution_device_->session(), input.description, runtime_->execution_device_->frameProgress().frameCount());
             if (!created) co_return response(created.error());
             candidate_target.emplace(std::move(*created));
             auto prepared = prepareTargetResize(input.target, targetOutput(*candidate_target), affected);
             if (!prepared) co_return response(prepared.error());
             candidates = std::move(*prepared);
         }
-        if (auto waited = co_await runtime_->device_->session().waitFrontiers(accepted); !waited) co_return response(waited.error());
+        if (auto waited = co_await runtime_->execution_device_->session().waitFrontiers(accepted); !waited) co_return response(waited.error());
         if (stop_requested_.load()) co_return response(RenderError{kCommandCancelled});
         if (swapchain)
         {
@@ -325,7 +320,7 @@ namespace lux::render
             auto closed = co_await swapchain->close();
             if (!closed) co_return response(closed.error());
             if (stop_requested_.load()) co_return response(RenderError{kCommandCancelled});
-            auto created = detail::SwapchainTarget::create(runtime_->device_->session(), input.description, window, runtime_->device_->frameProgress().frameCount());
+            auto created = detail::SwapchainTarget::create(runtime_->execution_device_->session(), input.description, window, runtime_->execution_device_->frameProgress().frameCount());
             if (!created) co_return response(created.error());
             candidate_target.emplace(std::move(*created));
             auto prepared = prepareTargetResize(input.target, targetOutput(*candidate_target), affected);
@@ -430,7 +425,7 @@ namespace lux::render
 
     void RenderServer::Impl::progressUploads() noexcept
     {
-        if (auto* uploader = runtime_->device_->uploader();
+        if (auto* uploader = runtime_->execution_device_->uploader();
             uploader && !upload_progress_pending_ && uploader->canProgressTransfers())
         {
             upload_progress_pending_ = true;
@@ -630,7 +625,7 @@ namespace lux::render
             co_return cxx::unexpected(error);
         }
         const auto slot = round_.slot();
-        const auto& submissions = runtime_->device_->frameWorkspace().submissions;
+        const auto& submissions = runtime_->execution_device_->frameWorkspace().submissions;
         const auto submitted_before = submissions.submittedBatches(slot);
         const auto accepted = co_await round_.operation->run(frame_instances_, frame_storages_, frame_job_order_);
         submissions_.fetch_add(submissions.submittedBatches(slot) - submitted_before, std::memory_order_relaxed);
@@ -704,11 +699,84 @@ namespace lux::render
         };
     }
 
-    void RenderServer::Impl::queryRenderDevice(
-        const QueryRenderDevice::Request&, QueryRenderDevice::Response& response
+    void RenderServer::Impl::createDeviceSession(
+        const CreateDeviceSession::Request& options, CreateDeviceSession::Response& response
     ) noexcept
     {
-        const auto& session = runtime_->device_->session();
+        const bool valid_backend = options.backend == EGraphicsBackend::VULKAN ||
+            options.backend == EGraphicsBackend::D3D12;
+        if (!valid_backend)
+        {
+            response.error = {kDeviceArgument};
+            return;
+        }
+
+        const nri::CallbackInterface callbacks{Impl::diagnostic, [](void*) noexcept {}, this};
+        // Frame copies and standalone staging use a worker independent of dynamic PSO batches.
+        auto entry = detail::DeviceEntry::create(runtime_->resources_, options, callbacks, config_, recording_scheduler_);
+        if (!entry)
+        {
+            response.error = entry.error();
+            return;
+        }
+        if (stop_requested_.load())
+        {
+            response.error = {kCommandCancelled};
+            return;
+        }
+        auto* published = entry->get();
+        const auto id = runtime_->devices_.emplace(std::move(*entry));
+        if (!runtime_->execution_device_) selectExecutionDevice(published);
+        response = {{}, id};
+    }
+
+    void RenderServer::Impl::removeDeviceSession(
+        const RemoveDeviceSession::Request& id, RemoveDeviceSession::Response& response
+    ) noexcept
+    {
+        auto* entry = runtime_->device(id);
+        if (!entry)
+        {
+            response.error = {kRuntimeIdentity};
+            return;
+        }
+        const bool is_execution_device = runtime_->execution_device_ == entry;
+        const bool has_execution_objects = !runtime_->scenes_.empty() || !runtime_->targets_.empty() ||
+            round_.operation || preparing_execution_ || upload_progress_pending_;
+        const bool has_pending_work = entry->resources().hasCommands() || !entry->nativeIdle() ||
+            entry->session().pendingGpuWork();
+        if (has_pending_work || (is_execution_device && has_execution_objects))
+        {
+            response.error = {kDeviceBusy};
+            return;
+        }
+
+        if (is_execution_device) selectExecutionDevice(nullptr);
+        runtime_->devices_.erase(id);
+        if (is_execution_device && !runtime_->devices_.empty())
+        {
+            selectExecutionDevice(runtime_->devices_.begin()->get());
+        }
+        response = {};
+    }
+
+    void RenderServer::Impl::selectExecutionDevice(detail::DeviceEntry* entry) noexcept
+    {
+        runtime_->execution_device_ = entry;
+        target_frame_uses_ = entry ? entry->session().makeFrontiers() : detail::SubmissionFrontiers{};
+    }
+
+    void RenderServer::Impl::queryRenderDevice(
+        const QueryRenderDevice::Request& input, QueryRenderDevice::Response& response
+    ) noexcept
+    {
+        const auto* entry = runtime_->device(input);
+        if (!entry)
+        {
+            response.error = {kRuntimeIdentity};
+            return;
+        }
+        const auto& session = entry->session();
         const auto& description = session.description();
         response = {
             {},
@@ -716,7 +784,7 @@ namespace lux::render
             session.resourceCapabilities(),
             description.dimensions.attachmentMaxDim,
             static_cast<std::uint32_t>(session.queueCount()),
-            runtime_->device_->frameProgress().frameCount()
+            entry->frameProgress().frameCount()
         };
     }
 
@@ -814,9 +882,10 @@ namespace lux::render
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kCommandContract});
         }
-        else if (runtime_->device_->session().terminalError().type != 0 && !entry->description->failure_safe)
+        else if (const auto* device = runtime_->execution_device_;
+                 device && device->session().terminalError().type && !entry->description->failure_safe)
         {
-            entry->make_error(response_outbox_.prepare(route), runtime_->device_->session().terminalError());
+            entry->make_error(response_outbox_.prepare(route), device->session().terminalError());
         }
         else
         {
@@ -882,7 +951,11 @@ namespace lux::render
         {
             const bool pending_operations = upload_progress_pending_ || round_.operation ||
                 !input_updates_.empty() || preparing_execution_;
-            const bool pending_contexts = !server_context_.is_idle() || !runtime_->device_->nativeIdle();
+            const bool native_pending = std::ranges::any_of(runtime_->devices_, [](const auto& device) noexcept
+            {
+                return !device->nativeIdle();
+            });
+            const bool pending_contexts = !server_context_.is_idle() || native_pending;
             return pending_operations || pending_contexts || !response_outbox_.empty();
         };
         while (!joined.load(std::memory_order_acquire) || has_pending_delivery())
@@ -919,7 +992,8 @@ namespace lux::render
             std::terminate();
         }
         // All sources of new native work have returned. Staging and native payloads can now release in owner order.
-        if (auto drained = runtime_->device_->session().drain(); !drained) failExecution(drained.error());
+        for (const auto& device : runtime_->devices_)
+            if (auto drained = device->session().drain(); !drained) failExecution(drained.error());
         runtime_.reset();
         (void)server_context_.close();
         responder_.reset();
@@ -944,18 +1018,15 @@ namespace lux::render
         const auto submitted_before = submissions_.load(std::memory_order_relaxed);
         // The budget limits adopted nodes. A continuation itself must return promptly.
         bool progressed = server_context_.run_ready(continuation_budget) != 0;
-        if (auto completed = runtime_->device_->session().progressCompletions(); !completed)
+        if (auto* device = runtime_->execution_device_)
         {
-            failExecution(completed.error());
+            if (auto completed = device->session().progressCompletions(); !completed) failExecution(completed.error());
+            if (admitting && !stop_requested_.load()) progressTargetFlights();
+            progressed |= progressInputUpdates();
+            if (admitting) progressed |= progressProgramPreparations();
+            progressed |= progressFrame();
+            progressUploads();
         }
-        if (admitting && !stop_requested_.load())
-        {
-            progressTargetFlights();
-        }
-        progressed |= progressInputUpdates();
-        if (admitting) progressed |= progressProgramPreparations();
-        progressed |= progressFrame();
-        progressUploads();
         progressed |= server_context_.run_ready(continuation_budget) != 0;
         progressed |= publishResponses(response_budget) != 0;
         return progressed || submissions_.load(std::memory_order_relaxed) != submitted_before;
@@ -965,7 +1036,9 @@ namespace lux::render
     {
         // IPC, ManualContext and stop publish the same epoch. GPU completion has no host
         // notification, and IPC scans a bounded Link prefix, so both keep a finite revisit.
-        const auto delay = runtime_->device_->session().pendingGpuWork()
+        const auto* device = runtime_->execution_device_;
+        const bool has_gpu_work = device && device->session().pendingGpuWork();
+        const auto delay = has_gpu_work
             ? std::chrono::nanoseconds(config_.gpu_wait_ns) : std::chrono::milliseconds(1);
         ipc::IpcCore::instance().waitUntil(observed, std::chrono::steady_clock::now() + delay);
     }
@@ -1003,7 +1076,8 @@ namespace lux::render
                 waitForService(observed);
             }
         }
-        if (const auto terminal = runtime_->device_->session().terminalError(); terminal.type) failExecution(terminal);
+        if (const auto* device = runtime_->execution_device_)
+            if (const auto terminal = device->session().terminalError(); terminal.type) failExecution(terminal);
         shutdown();
         if (execution_error_.type) return cxx::unexpected(execution_error_);
         return {};

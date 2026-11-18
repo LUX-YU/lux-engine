@@ -569,7 +569,7 @@ int main(int argc, char** argv)
             CHECK(false);
         }
     }
-    auto server = take(RenderServer::create(config, **runtime, device));
+    auto server = take(RenderServer::create(config, **runtime));
     const auto shader_target = device.backend == EGraphicsBackend::D3D12
         ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
     auto unlit = cook(shader_target, false);
@@ -596,6 +596,7 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto meshes = call<GetOrCreateResource>(
         *client, commands, {GlobalRenderScope{}, kMeshResourceName}
@@ -605,7 +606,7 @@ int main(int argc, char** argv)
     ).resource_id;
     const auto instances = call<GetOrCreateResource>(*client, commands, {scene, kInstanceResourceName}).resource_id;
     const auto light_storage = call<GetOrCreateResource>(*client, commands, {scene, kLightResourceName}).resource_id;
-    const auto scene_inputs = installInputs(*client, commands, scene);
+    const auto scene_inputs = installInputs(*client, commands, session, scene);
     const auto instance_updates = scene_inputs.instances;
     const auto light_updates = scene_inputs.lights;
 
@@ -1497,12 +1498,13 @@ int main(int argc, char** argv)
         RenderServerConfig constant_config{"test.material.constant", config.validation};
         DeviceOptions constant_device;
         constant_device.backend = device.backend;
-        auto constant_server = take(RenderServer::create(constant_config, **runtime, constant_device));
+        auto constant_server = take(RenderServer::create(constant_config, **runtime));
         auto connection = ipc::IpcCore::instance().createRequester(constant_config.channel_name);
         CHECK(connection);
         auto& requester = *connection;
         std::thread worker([&] { CHECK(constant_server->run()); });
         const auto directory = queryCommands(requester);
+        call<CreateDeviceSession>(requester, directory, constant_device);
         const auto resource = call<GetOrCreateResource>(
             requester, directory, {GlobalRenderScope{}, kMaterialResourceName}
         ).resource_id;

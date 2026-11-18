@@ -45,7 +45,6 @@ namespace lux::render
 
     struct RenderServer::Impl final
     {
-        [[nodiscard]] RenderResult<void> initialize(DeviceOptions options) noexcept;
         FeatureId publishFeature(FeatureEntry) noexcept;
         RenderResult<void>
         validateImplementationDescription(const CapabilityDescription&, const CapabilityImplementation&) const noexcept;
@@ -74,7 +73,15 @@ namespace lux::render
         struct RuntimeState final
         {
             ResourceRegistry resources_;
-            std::unique_ptr<detail::DeviceEntry> device_;
+            cxx::StableSlotMap<std::unique_ptr<detail::DeviceEntry>, DeviceSessionTag> devices_;
+            // The existing Target/Scene execution path uses one session until those commands take a DeviceSessionId.
+            detail::DeviceEntry* execution_device_ = nullptr;
+
+            [[nodiscard]] detail::DeviceEntry* device(DeviceSessionId id) const noexcept
+            {
+                const auto* entry = devices_.find(id);
+                return entry ? entry->get() : nullptr;
+            }
             CommandRegistry command_registry_;
             cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
             cxx::StableSlotMap<VRenderTarget, TargetTag> targets_;
@@ -255,6 +262,9 @@ namespace lux::render
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
+        void createDeviceSession(const CreateDeviceSession::Request&, CreateDeviceSession::Response&) noexcept;
+        void removeDeviceSession(const RemoveDeviceSession::Request&, RemoveDeviceSession::Response&) noexcept;
+        void selectExecutionDevice(detail::DeviceEntry*) noexcept;
         void queryRenderDevice(const QueryRenderDevice::Request&, QueryRenderDevice::Response&) noexcept;
         void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
 

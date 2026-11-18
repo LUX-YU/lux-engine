@@ -117,7 +117,7 @@ namespace lux::render
 
     bool RenderServer::Impl::beginFrame() noexcept
     {
-        auto& entry = *runtime_->device_;
+        auto& entry = *runtime_->execution_device_;
         auto& progress = entry.frameProgress();
         const auto& inputs = round_.inputs;
         const bool structure_changed = inputs.revision != job_structure_revision_ ||
@@ -177,7 +177,7 @@ namespace lux::render
             std::chrono::steady_clock::now() - slot_opened_at_
         ).count();
         slot_cpu_hold_ns_.fetch_add(held_ns, std::memory_order_relaxed);
-        const auto reads = runtime_->device_->frameWorkspace().submissions.takeRasterReads();
+        const auto reads = runtime_->execution_device_->frameWorkspace().submissions.takeRasterReads();
         raster_buffer_ranges_.fetch_add(reads.buffer_ranges, std::memory_order_relaxed);
         raster_buffer_bytes_.fetch_add(reads.buffer_bytes, std::memory_order_relaxed);
         raster_image_ranges_.fetch_add(reads.image_ranges, std::memory_order_relaxed);

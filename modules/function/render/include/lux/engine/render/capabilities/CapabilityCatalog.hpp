@@ -22,6 +22,7 @@ namespace lux::render
 
     struct CapabilityQuery final
     {
+        DeviceSessionId device;
         std::string capability;           // Empty lists all selectable implementations.
         std::string implementation;       // Explicit stable selection, never registration-order fallback.
         std::optional<EffectOutputDesc> output; // Unsupported choices remain visible with an unavailable reason.

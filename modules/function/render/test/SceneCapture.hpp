@@ -969,9 +969,10 @@ struct SceneInputRoutes final
     std::vector<CapabilityImplementationInfo> recipes;
 };
 
-static SceneInputRoutes installInputs(ipc::IpcRequester& client, const CommandList& commands, VRenderScope scope)
+static SceneInputRoutes
+installInputs(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device, VRenderScope scope)
 {
-    const auto choices = call<ListCapabilities>(client, commands, {});
+    const auto choices = call<ListCapabilities>(client, commands, {device});
     SceneInputRoutes routes{{}, {}, scope};
     for (auto name : {kRasterSurfaceCapability, kDeferredLightingCapability})
     {

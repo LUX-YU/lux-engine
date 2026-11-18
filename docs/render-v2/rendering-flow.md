@@ -65,19 +65,18 @@ RenderThread 由应用启动并 join。Frame slot 是 GPU 数据复用单元，�
 [RenderServerImpl.cpp](../../modules/function/render/src/runtime/RenderServerImpl.cpp)。
 
 ```text
-ExecutionRuntime::create（应用已有）
-  → RenderServer::create(config, execution, device_options)
-    → Impl::initialize
+ExecutionRuntime::create
+  → RenderServer::create(config, execution)
+    → 建立 IPC responder、ResourceRegistry 和内建目录
+  → 应用登记 Feature / Resource / Handler 扩展
+  → 应用启动 RenderServer::run
+    → 激活 Handler，开始分发命令
+    → CreateDeviceSession(device_options)
       → DeviceSession::create → DeviceBackend::initialize
-      → ResourceUploader::create（配置 uploads 时）
-      → FrameProgress 和每槽提交工作区（1～3 个槽）
-      → ResourceRegistry + Global ResourceSet
-  → Impl::registerBuiltinFeatures
-    → 私有 Storages / Commands tuple → 直接登记构造入口与调用入口
-  → 可选外部 registerFeature / registerStorage / registerHandler
-    → 整组验证 → 发布到同一组目录（不调用实例工厂）
-  → 应用线程调用 RenderServer::run
-    → activateSelectedHandlers → 开始分发
+      → 组装 DeviceEntry、设备 ResourceSet、FrameProgress 和每槽提交工作区
+      → 返回 DeviceSessionId
+    → QueryRenderDevice / ListCapabilities 按 DeviceSessionId 查询
+    → RemoveDeviceSession 拒绝忙碌设备，销毁空闲设备并撤销 ID
 ```
 
 | 类型 | 实际责任与所有权 | 关键源码 |

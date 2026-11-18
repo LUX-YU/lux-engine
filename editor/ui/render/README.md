@@ -5,7 +5,7 @@ installed `lux_shader_compile` executable. It has no Render private-header depen
 and call `lux::editor::ui::registerUi(server)` during setup, before starting the server. Registration owns no UI
 context. The statically linked extension stays alive through all registered callbacks and resources.
 
-Query the UI implementation from `ListCapabilities`, then call `makeUiRenderEffect` to create its ordinary Feature
+Query the UI implementation from `ListCapabilities` using the active `DeviceSessionId`, then call `makeUiRenderEffect` to create its ordinary Feature
 recipe. Its View-domain `UiResource` is created with the Effect dependencies. Resolve that Resource via `QueryResource`
 with a `ViewRequest`, then send `SubmitDrawData` to its identity. Request spans borrow the producer's ImGui draw arrays
 only until the response. A successful command owns the complete converted snapshot; later executions of the UI Job

@@ -607,7 +607,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     RenderServerConfig config{"installed.effect.open_raster", enableNativeValidation()};
     config.uploads.emplace();
     device.texture_descriptors = true;
-    auto server = take(RenderServer::create(config, execution, device));
+    auto server = take(RenderServer::create(config, execution));
     take(server->registerResource<Monitor>());
     take(server->registerResource<ColdResource>());
     take(server->registerCapability<ClearCapability>());
@@ -625,6 +625,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
         Monitor::on_server = true;
         ran = server->run();
     });
+    CHECK(!call<CreateDeviceSession>(client, device).error.type);
     CHECK(call<GetOrCreateResource>(client, {GlobalRenderScope{}, MonitorResource::descriptor.type}).error.type == 0);
     CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
     request.definition.features.push_back({feature, "clear", {}});
@@ -828,6 +829,82 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     server.reset();
 }
 
+static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const DeviceOptions& options)
+{
+    const TargetDesc output{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
+    CHECK(call<QueryRenderDevice>(client, {}).error.type == kRuntimeIdentity);
+    CHECK(call<ListCapabilities>(client, {}).error.type == kRuntimeIdentity);
+    CHECK(call<CreateScene>(client, {}).error.type == kRuntimeState);
+    CHECK(call<CreateTarget>(client, {output}).error.type == kRuntimeState);
+    auto invalid = options;
+    invalid.backend = static_cast<EGraphicsBackend>(255);
+    const auto failed = call<CreateDeviceSession>(client, invalid);
+    CHECK(failed.error.type == kDeviceArgument && failed.device.isNull());
+    invalid = options;
+    invalid.physical_device_index = UINT32_MAX - 1;
+    const auto failed_adapter = call<CreateDeviceSession>(client, invalid);
+    CHECK(failed_adapter.error.type == kDeviceArgument && failed_adapter.device.isNull());
+
+    auto descriptors = options;
+    descriptors.texture_descriptors = true;
+    const auto primary = call<CreateDeviceSession>(client, descriptors);
+    const auto secondary = call<CreateDeviceSession>(client, options);
+    CHECK(!primary.error.type && !secondary.error.type);
+    CHECK(!primary.device.isNull() && !secondary.device.isNull() && primary.device != secondary.device);
+
+    const auto first = call<QueryRenderDevice>(client, primary.device);
+    const auto second = call<QueryRenderDevice>(client, secondary.device);
+    CHECK(!first.error.type && !second.error.type);
+    CHECK(first.backend == options.backend && second.backend == options.backend);
+    CHECK(first.physical_queues > 0 && second.physical_queues > 0);
+    CHECK(first.resource_capabilities != second.resource_capabilities);
+    const auto surface = [&](DeviceSessionId device)
+    {
+        const auto choices = call<ListCapabilities>(client, {device, std::string(kRasterSurfaceCapability)});
+        CHECK(!choices.error.type && choices.implementations.size() == 1);
+        return choices.implementations.front().unavailable.type;
+    };
+    CHECK(!surface(primary.device) && surface(secondary.device) == kStorageCapability);
+
+    const auto scene = call<CreateScene>(client, {});
+    CHECK(!scene.error.type);
+    CHECK(call<RemoveDeviceSession>(client, primary.device).error.type == kDeviceBusy);
+    CHECK(!call<RemoveScene>(client, {scene.scene}).error.type);
+    const auto target = call<CreateTarget>(client, {output});
+    CHECK(!target.error.type);
+    CHECK(call<RemoveDeviceSession>(client, primary.device).error.type == kDeviceBusy);
+    CHECK(!call<RemoveDeviceSession>(client, secondary.device).error.type);
+    CHECK(call<RemoveDeviceSession>(client, secondary.device).error.type == kRuntimeIdentity);
+    CHECK(call<QueryRenderDevice>(client, secondary.device).error.type == kRuntimeIdentity);
+    const auto stale_catalog = call<ListCapabilities>(client, {secondary.device});
+    CHECK(stale_catalog.error.type == kRuntimeIdentity && stale_catalog.implementations.empty());
+    CHECK(!surface(primary.device));
+
+    const auto replacement = call<CreateDeviceSession>(client, options);
+    CHECK(!replacement.error.type && replacement.device.index == secondary.device.index);
+    CHECK(replacement.device.gen != secondary.device.gen);
+    CHECK(call<QueryRenderDevice>(client, secondary.device).error.type == kRuntimeIdentity);
+    CHECK(surface(replacement.device) == kStorageCapability);
+    CHECK(!call<RemoveTarget>(client, target.target).error.type);
+    CHECK(!call<RemoveDeviceSession>(client, primary.device).error.type);
+    CHECK(call<QueryRenderDevice>(client, primary.device).error.type == kRuntimeIdentity);
+
+    const auto promoted = call<CreateTarget>(client, {output});
+    CHECK(!promoted.error.type && !promoted.target.isNull());
+    CHECK(!call<RemoveTarget>(client, promoted.target).error.type);
+    CHECK(!call<RemoveDeviceSession>(client, replacement.device).error.type);
+    CHECK(call<CreateTarget>(client, {output}).error.type == kRuntimeState);
+    CHECK(!call<ListCommands>(client, {}).error.type);
+    const auto restarted = call<CreateDeviceSession>(client, options);
+    CHECK(!restarted.error.type && !restarted.device.isNull());
+    std::printf(
+        "DEVICE SESSION PASS backend=%s caps=%u/%u stale_generation=%u->%u busy_scene_and_target=1 restart=1\n",
+        first.backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan", first.resource_capabilities,
+        second.resource_capabilities, secondary.device.gen, replacement.device.gen
+    );
+    return restarted.device;
+}
+
 int main(int argc, char** argv)
 {
     auto execution = take(execution::ExecutionRuntime::create({4, 32, {32}}));
@@ -857,7 +934,7 @@ int main(int argc, char** argv)
         recordOpenFeature(*execution, device, profile_jobs);
         return 0;
     }
-    auto server = take(RenderServer::create(config, *execution, device));
+    auto server = take(RenderServer::create(config, *execution));
     take(server->registerResource<Monitor>());
     take(server->registerResource<ColdResource>());
     take(server->registerCapability<ClearCapability>());
@@ -870,6 +947,7 @@ int main(int argc, char** argv)
         Monitor::on_server = true;
         ran = server->run();
     });
+    const auto session = verifyDeviceSessions(client, device);
     CHECK(call<GetOrCreateResource>(client, {GlobalRenderScope{}, MonitorResource::descriptor.type}).error.type == 0);
     const auto create = [&]
     {
@@ -881,7 +959,7 @@ int main(int argc, char** argv)
     };
     Monitor::queries.store(0);
     Monitor::deny.store(true);
-    const auto choices = call<ListCapabilities>(client, {});
+    const auto choices = call<ListCapabilities>(client, {session});
     CHECK(choices.error.type == 0);
     const auto surface = std::ranges::find(choices.implementations, kRasterSurfaceCapability,
         [](const auto& entry) { return entry.capability.type.name(); });
@@ -994,9 +1072,10 @@ int main(int argc, char** argv)
     CHECK(call<RequestRenderJob>(client, {rival}).job == rival);
 
     RenderServerConfig peer_config{"installed.effect.peer"};
-    auto peer = take(RenderServer::create(peer_config, *execution, device));
+    auto peer = take(RenderServer::create(peer_config, *execution));
     auto peer_client = take(ipc::IpcCore::instance().createRequester(peer_config.channel_name));
     std::thread peer_render([&]() noexcept { CHECK(peer->run()); });
+    CHECK(!call<CreateDeviceSession>(peer_client, device).error.type);
     Monitor::hold.store(true);
     const auto pending = send<RebindRenderJobEffect>(asynchronous, {rival, effect.effect});
     await(Monitor::entered);

@@ -393,7 +393,7 @@ int main(int argc, char** argv)
     {
         device.backend = EGraphicsBackend::D3D12;
     }
-    auto server = take(RenderServer::create(config, **execution, device));
+    auto server = take(RenderServer::create(config, **execution));
     auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
     auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
     auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
@@ -415,6 +415,7 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    call<CreateDeviceSession>(*client, commands, device);
     const auto meshes = call<GetOrCreateResource>(
         *client, commands, {GlobalRenderScope{}, kMeshResourceName}
     ).resource_id;

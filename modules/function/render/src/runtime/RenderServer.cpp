@@ -22,11 +22,8 @@ namespace lux::render
         }
     }
 
-    RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(
-        RenderServerConfig config,
-        execution::ExecutionRuntime& execution,
-        DeviceOptions device_options
-    ) noexcept
+    RenderResult<std::unique_ptr<RenderServer>>
+    RenderServer::create(RenderServerConfig config, execution::ExecutionRuntime& execution) noexcept
     {
         const bool invalid =
             config.frames_in_flight == 0 ||
@@ -46,11 +43,6 @@ namespace lux::render
         }
 
         auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), execution);
-        if (auto initialized = state->initialize(device_options); !initialized)
-        {
-            return cxx::unexpected(initialized.error());
-        }
-
         auto server = std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
         if (auto registered = server->registerBuiltins(); !registered)
         {

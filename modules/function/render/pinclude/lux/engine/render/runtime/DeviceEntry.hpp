@@ -29,6 +29,7 @@ namespace lux::render::detail
         [[nodiscard]] ResourceUploader* uploader() const noexcept { return uploader_.get(); }
         [[nodiscard]] ResourceSet& resources() noexcept { return resources_; }
         [[nodiscard]] FrameProgress& frameProgress() noexcept { return frame_progress_; }
+        [[nodiscard]] const FrameProgress& frameProgress() const noexcept { return frame_progress_; }
         [[nodiscard]] FrameOperation::Workspace& frameWorkspace() noexcept { return frame_workspace_; }
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;

@@ -131,6 +131,65 @@ namespace
         nri::CoreInterface& core_;
     };
 
+    class PipelineIsolationProbe final
+    {
+    public:
+        struct Descriptor final
+        {
+            using Config = void;
+            using Ops = void;
+            static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.pipeline_gate"}, 0, 0, {}};
+        };
+
+        enum class EGate { OPEN, ARMED, HOLDING };
+        static inline std::atomic<EGate> gate = EGate::OPEN;
+        static inline std::atomic<std::uint64_t> accepted_submits = 0;
+
+        explicit PipelineIsolationProbe(const nri::CoreInterface& core) noexcept
+            : core_(const_cast<nri::CoreInterface&>(core))
+        {
+            original_ = core_;
+            core_.CreateGraphicsPipeline = [](
+                nri::Device& device, const nri::GraphicsPipelineDesc& description, nri::Pipeline*& pipeline
+            ) noexcept
+            {
+                auto armed = EGate::ARMED;
+                if (gate.compare_exchange_strong(armed, EGate::HOLDING))
+                {
+                    gate.wait(EGate::HOLDING);
+                }
+                return original_.CreateGraphicsPipeline(device, description, pipeline);
+            };
+            core_.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& description) noexcept
+            {
+                const auto result = original_.QueueSubmit(queue, description);
+                if (result == nri::Result::SUCCESS) ++accepted_submits;
+                return result;
+            };
+        }
+
+        ~PipelineIsolationProbe() noexcept
+        {
+            core_.CreateGraphicsPipeline = original_.CreateGraphicsPipeline;
+            core_.QueueSubmit = original_.QueueSubmit;
+        }
+
+        static RenderResult<std::unique_ptr<PipelineIsolationProbe>>
+        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        {
+            return std::make_unique<PipelineIsolationProbe>(context.device.nriCore());
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            return makeResourceRegistration<Descriptor, PipelineIsolationProbe, &create>(nullptr);
+        }
+
+    private:
+        static inline nri::CoreInterface original_{};
+        nri::CoreInterface& core_;
+    };
+
     using RasterProbeConfig = std::tuple<EMaterialPurpose, CaptureConfig>;
 
     RenderResult<EffectDefinition> rasterRecipe(
@@ -357,6 +416,136 @@ namespace
         );
     }
 
+    std::uint64_t requestFrame(ipc::IpcRequester& client, const CommandList& commands, RenderJobId job)
+    {
+        const auto command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
+        CHECK(command != commands.commands.end());
+        const auto request_id = nextSceneRequest();
+        ipc::IpcMessage message;
+        message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job});
+        CHECK(client.trySend(commandTag(command->id), request_id, message));
+        return request_id;
+    }
+
+    std::optional<JobSubmitted>
+    receiveFrameBefore(ipc::IpcRequester& client, std::uint64_t request_id, Clock::time_point deadline)
+    {
+        auto& notifications = ipc::IpcCore::instance();
+        for (ipc::IpcMessage message; Clock::now() < deadline;)
+        {
+            const auto epoch = notifications.workEpoch();
+            std::uint64_t correlation = 0;
+            const auto status = client.tryReceive(correlation, message);
+            CHECK(status != ipc::EIpcReceive::CLOSED);
+            if (status == ipc::EIpcReceive::RECEIVED)
+            {
+                CHECK(correlation == request_id);
+                return message.get<JobSubmitted>();
+            }
+            notifications.waitUntil(epoch, deadline);
+        }
+        return std::nullopt;
+    }
+
+    void verifyPipelineIsolation(
+        RenderServer& server, ipc::IpcRequester& client, const CommandList& commands, std::string_view channel,
+        const RenderProbe<RasterProbeConfig>& forward, std::array<SceneId, 2> scenes, ResourceInstanceId materials,
+        MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
+        bool expect_progress
+    )
+    {
+        struct Job final
+        {
+            CapturedPixels pixels;
+            MaterialId material;
+            EffectId effect;
+            RenderJobId job;
+            ViewId view;
+            TargetId target;
+        };
+        std::array<Job, 2> jobs;
+        constexpr std::array purposes{EMaterialPurpose::FORWARD};
+        for (unsigned i = 0; i < jobs.size(); ++i)
+        {
+            auto& job = jobs[i];
+            auto program = cookProgram(compiler, target, purposes, i + 1, float(i + 1) / 8);
+            auto parameters = program.parameter_defaults;
+            job.material = call<MaterialCommands::Create>(
+                client, commands, {materials, {std::move(program), std::move(parameters), {texture}}}
+            ).material;
+            const auto instances = call<GetOrCreateResource>(client, commands, {scenes[i], kInstanceResourceName});
+            MeshInstanceData input{mesh, job.material};
+            input.render_enabled = true;
+            call<InstanceCommands::CreateInstance>(client, commands, {instances.resource_id, input});
+            auto request = probeRequest(
+                kTarget, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, kTarget.format}},
+                {"color", "pixels"}
+            );
+            job.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+            job.view = call<CreateView>(client, commands, {scenes[i]}).view;
+            job.target = call<CreateTarget>(client, commands, {kTarget}).target;
+            call<UpdateViewCamera>(client, commands, {{scenes[i], job.view}, {}});
+            job.job = startRenderJob(client, commands, scenes[i], job.view, job.target, job.effect);
+        }
+
+        const auto warm = jobs[0].job;
+        const auto cold = jobs[1].job;
+        for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(client, commands, warm);
+        auto cold_client = ipc::IpcCore::instance().createRequester(channel);
+        CHECK(cold_client);
+        const auto before = server.developmentStats();
+        CHECK(before);
+        using EGate = PipelineIsolationProbe::EGate;
+        auto& gate = PipelineIsolationProbe::gate;
+        gate = EGate::ARMED;
+        const auto cold_request = requestFrame(*cold_client, commands, cold);
+        const auto gate_deadline = Clock::now() + 15s;
+        while (gate.load() != EGate::HOLDING)
+        {
+            CHECK(Clock::now() < gate_deadline);
+            std::this_thread::sleep_for(1ms);
+        }
+        const auto submits_before = PipelineIsolationProbe::accepted_submits.load();
+        const auto warm_request = requestFrame(client, commands, warm);
+        const auto early = receiveFrameBefore(client, warm_request, Clock::now() + 2s);
+        const auto accepted = PipelineIsolationProbe::accepted_submits.load() - submits_before;
+        const auto blocked = server.developmentStats();
+        gate = EGate::OPEN;
+        gate.notify_one();
+
+        const auto warm_reply = early ? early : receiveFrameBefore(client, warm_request, Clock::now() + 15s);
+        const auto cold_reply = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 15s);
+        CHECK(warm_reply && !warm_reply->error.type && warm_reply->job == warm);
+        CHECK(cold_reply && !cold_reply->error.type && cold_reply->job == cold);
+        CHECK(blocked);
+        const auto holding_slot = blocked->program_preparations_holding_slot - before->program_preparations_holding_slot;
+        std::printf(
+            "PIPELINE_ISOLATION warm_reply_while_cold_blocked=%u native_submits=%llu preparations_holding_slot=%llu\n",
+            unsigned(early.has_value()), static_cast<unsigned long long>(accepted),
+            static_cast<unsigned long long>(holding_slot)
+        );
+        CHECK(early.has_value() == expect_progress);
+        const bool was_isolated = accepted > 0 && holding_slot == 0;
+        const bool was_blocked = accepted == 0 && holding_slot > 0;
+        CHECK(expect_progress ? was_isolated : was_blocked);
+        for (unsigned i = 0; i < jobs.size(); ++i)
+        {
+            const auto& job = jobs[i];
+            stopAndRemoveJob(client, commands, job.job);
+            call<RemoveView>(client, commands, {scenes[i], job.view});
+            call<RemoveTarget>(client, commands, job.target);
+            call<RemoveEffect>(client, commands, {job.effect});
+            const auto deadline = Clock::now() + 15s;
+            while (!job.pixels.ready.load(std::memory_order_acquire))
+            {
+                CHECK(Clock::now() < deadline);
+                std::this_thread::yield();
+            }
+            call<RemoveScene>(client, commands, {scenes[i]});
+            call<MaterialCommands::Release>(client, commands, {job.material});
+        }
+    }
+
     unsigned pagesFor(unsigned records)
     {
         unsigned pages = 1;
@@ -518,12 +707,15 @@ int main(int argc, char** argv)
     unsigned count = 0;
     bool varied = false;
     bool legacy = false;
+    std::optional<bool> pipeline_isolation;
     for (int i = 1; i < argc; ++i)
     {
         const std::string_view arg = argv[i];
         if (arg == "d3d12") device.backend = EGraphicsBackend::D3D12;
         else if (arg == "--varied") varied = true;
         else if (arg == "--legacy-pages") legacy = true;
+        else if (arg == "--pipeline-isolation") pipeline_isolation = true;
+        else if (arg == "--expect-pipeline-blocking") pipeline_isolation = false;
         else
         {
             count = static_cast<unsigned>(std::atoi(argv[i]));
@@ -543,6 +735,7 @@ int main(int argc, char** argv)
     config.uploads->window_regions = 8192;
     auto server = take(RenderServer::create(config, **runtime, device));
     take(server->registerResource<MaterialAllocationProbe>());
+    if (pipeline_isolation.has_value()) take(server->registerResource<PipelineIsolationProbe>());
     take(server->registerResource<CaptureBuffer>());
     const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
     const auto capture = take(server->registerFeature<CaptureFeature>());
@@ -562,6 +755,13 @@ int main(int argc, char** argv)
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*ipc);
     call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, MaterialAllocationProbe::Descriptor::descriptor.type});
+    if (pipeline_isolation.has_value())
+    {
+        CHECK(!count && !varied && !legacy);
+        call<GetOrCreateResource>(
+            *ipc, commands, {GlobalRenderScope{}, PipelineIsolationProbe::Descriptor::descriptor.type}
+        );
+    }
     const auto scene = call<CreateScene>(*ipc, commands, {}).scene;
     const auto instances = call<GetOrCreateResource>(*ipc, commands, {scene, kInstanceResourceName}).resource_id;
     const auto meshes = call<GetOrCreateResource>(*ipc, commands, {GlobalRenderScope{}, kMeshResourceName}).resource_id;
@@ -575,7 +775,15 @@ int main(int argc, char** argv)
     {
         images.push_back(uploadTexture(*ipc, commands, textures, 64 + index));
     }
-    if (count)
+    if (pipeline_isolation.has_value())
+    {
+        const auto other = call<CreateScene>(*ipc, commands, {}).scene;
+        verifyPipelineIsolation(
+            *server, *ipc, commands, config.channel_name, probes[0], {scene, other}, materials, mesh, images.front(),
+            **compiler, shader_target, *pipeline_isolation
+        );
+    }
+    else if (count)
     {
         verifyScale(*server, *ipc, commands, probes[0], scene, materials, instances, mesh, images, **compiler,
             shader_target, count, varied, legacy);

@@ -85,6 +85,9 @@ set(render_sources
     src/target/OffscreenTarget.cpp
     src/target/SwapchainTarget.cpp
     src/graph/execute/RenderGraphInstance.cpp
+    src/graph/execute/RenderGraphInstanceResources.cpp
+    src/graph/execute/RenderGraphInstanceDescriptors.cpp
+    src/graph/execute/RenderGraphInstanceRecording.cpp
     src/graph/execute/FrameExecutor.cpp
     src/graph/execute/BuiltinPassEncoding.cpp
     src/graph/compile/RenderPlan.cpp

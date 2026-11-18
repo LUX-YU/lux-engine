@@ -96,7 +96,7 @@ namespace lux::render
             for (auto type : capability_registry_.resources(parent))
             {
                 if (!resource_ids.emplace(type.index, type.gen).second) continue;
-                const auto* factory = domain_->resources_.factory(type);
+                const auto* factory = runtime_->resources_.factory(type);
                 if (!factory) return cxx::unexpected(RenderError{kStorageIdentity});
                 recipe.resources.push_back({factory->descriptor->domain, type, {}, {}});
             }
@@ -142,10 +142,10 @@ namespace lux::render
         std::vector<ResourceDeclaration> declarations;
         if (recipe)
         {
-            domain_->resources_.forEachType(
+            runtime_->resources_.forEachType(
                 [&](ResourceTypeId id, const ResourceDefinition& definition) noexcept
                 {
-                    const auto* factory = domain_->resources_.factory(id);
+                    const auto* factory = runtime_->resources_.factory(id);
                     const auto* bindings = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
                     declarations.push_back({
                         id, definition.type, definition.domain, factory->frame_call.channels,
@@ -179,7 +179,7 @@ namespace lux::render
         if (!candidate) co_return EffectCreated{candidate.error()};
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested()) co_return EffectCreated{RenderError{kCommandCancelled}};
-        const auto id = domain_->effects_.emplace(std::move(*candidate));
+        const auto id = runtime_->effects_.emplace(std::move(*candidate));
         compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
         co_return EffectCreated{{}, id};
     }
@@ -191,7 +191,7 @@ namespace lux::render
 
     void RenderServer::Impl::setEffectParameters(const SetEffectParameters::Request& input, AckResponse& output) noexcept
     {
-        auto* effect = domain_->effects_.find(input.effect);
+        auto* effect = runtime_->effects_.find(input.effect);
         if (!effect)
         {
             output.error = {kRuntimeIdentity};
@@ -203,13 +203,13 @@ namespace lux::render
 
     void RenderServer::Impl::removeEffect(const EffectRequest& input, AckResponse& output) noexcept
     {
-        const auto* effect = domain_->effects_.find(input.effect);
+        const auto* effect = runtime_->effects_.find(input.effect);
         if (!effect)
         {
             output.error = {kRuntimeIdentity};
             return;
         }
-        const bool referenced = std::ranges::any_of(domain_->jobs_, [&](const auto& job) noexcept
+        const bool referenced = std::ranges::any_of(runtime_->jobs_, [&](const auto& job) noexcept
         {
             return job.content.effect == input.effect;
         });
@@ -218,7 +218,7 @@ namespace lux::render
             output.error = {kRuntimeState};
             return;
         }
-        domain_->effects_.erase(input.effect);
+        runtime_->effects_.erase(input.effect);
         output = {};
     }
 } // namespace lux::render

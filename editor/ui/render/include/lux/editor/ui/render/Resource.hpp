@@ -7,8 +7,6 @@
 
 namespace lux::editor::ui
 {
-    using namespace lux::render;
-
     struct SubmitDrawData final
     {
         static constexpr std::string_view name = "lux.editor.ui.submit_draw_data";
@@ -17,16 +15,16 @@ namespace lux::editor::ui
 
         struct Request final
         {
-            ResourceInstanceId resource_id;
+            render::ResourceInstanceId resource_id;
             ImguiFrameData data;
         };
 
         struct Response final
         {
-            RenderError error{};
+            render::RenderError error{};
         };
 
-        static ResourceInstanceId resourceId(const Request& request) noexcept
+        static render::ResourceInstanceId resourceId(const Request& request) noexcept
         {
             return request.resource_id;
         }
@@ -43,14 +41,14 @@ namespace lux::editor::ui
         using PerFrameData = std::tuple<>;
         using Config = void;
         using Ops = void;
-        static inline const ResourceDefinition descriptor{
-            ResourceNameView{"lux.editor.ui.draw_data"},
+        static inline const render::ResourceDefinition descriptor{
+            render::ResourceNameView{"lux.editor.ui.draw_data"},
             0,
             0,
             cxx::make_basic_type_info<UiBinding>(),
             "Owned complete UI drawing snapshot; empty replaces empty.",
-            EResourceDomain::VIEW,
-            resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+            render::EResourceDomain::VIEW,
+            render::resourceCommandDescriptors(static_cast<Commands*>(nullptr))
         };
     };
 
@@ -58,6 +56,6 @@ namespace lux::editor::ui
     {
         using PrerequisiteCapabilities = std::tuple<>;
         using Commands = std::tuple<>;
-        using Resources = std::tuple<TextureResource, UiResource>;
+        using Resources = std::tuple<render::TextureResource, UiResource>;
     };
 } // namespace lux::editor::ui

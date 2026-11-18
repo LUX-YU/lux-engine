@@ -8,7 +8,7 @@ namespace lux::render
     void
     RenderServer::Impl::queryFrameInputLayout(const RenderJobId& id, QueryRenderJobInputLayout::Response& output) noexcept
     {
-        const auto* job = domain_->jobs_.find(id);
+        const auto* job = runtime_->jobs_.find(id);
         if (!job || !job->control.running())
         {
             output.error = {job ? kJobStopped : kJobIdentity};
@@ -19,7 +19,7 @@ namespace lux::render
 
     void RenderServer::Impl::updateViewCamera(const UpdateViewCamera::Request& input, AckResponse& output) noexcept
     {
-        auto* scene = domain_->scenes_.find(input.view.scene);
+        auto* scene = runtime_->scenes_.find(input.view.scene);
         auto* view = scene ? scene->views.find(input.view.view) : nullptr;
         if (!view) { output.error = {kRuntimeIdentity}; return; }
         const auto applied = detail::CameraInputHandler::apply(view->camera, view->camera_revision, input.camera);
@@ -42,11 +42,11 @@ namespace lux::render
         for (const auto& input : execution.inputs)
         {
             if (!has_updates(input)) continue;
-            if (domain_->resources_.resourceInstance(input.identity) != input.object)
+            if (runtime_->resources_.resourceInstance(input.identity) != input.object)
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            if (domain_->resources_.hasExclusiveCommand(input.identity))
+            if (runtime_->resources_.hasExclusiveCommand(input.identity))
             {
                 return cxx::unexpected(RenderError{kDeviceBusy});
             }
@@ -61,7 +61,7 @@ namespace lux::render
 
     exec::task<AckResponse> RenderServer::Impl::updateFrameData(UpdateFrameData::Request&& input) noexcept
     {
-        auto* job = domain_->jobs_.find(input.job);
+        auto* job = runtime_->jobs_.find(input.job);
         if (!job) co_return AckResponse{RenderError{kJobIdentity}};
         if (!job->control.running()) co_return AckResponse{RenderError{kJobStopped}};
         if (!input.data) co_return AckResponse{RenderError{kFrameContract}};
@@ -99,7 +99,7 @@ namespace lux::render
         {
             auto& update = *input_updates_.front();
             input_updates_.pop_front();
-            auto& job = *domain_->jobs_.find(update.job);
+            auto& job = *runtime_->jobs_.find(update.job);
             RenderError error;
             if (stop_requested_.load()) error = {kCommandCancelled};
             else if (!job.control.running()) error = {kJobStopped};
@@ -117,15 +117,15 @@ namespace lux::render
 
     bool RenderServer::Impl::beginFrame() noexcept
     {
-        auto& entry = *domain_->device_;
+        auto& entry = *runtime_->device_;
         auto& progress = entry.frameProgress();
         const auto& inputs = round_.inputs;
         const bool structure_changed = inputs.revision != job_structure_revision_ ||
-            inputs.output_uses_revision != domain_->resources_.outputUsesRevision();
+            inputs.output_uses_revision != runtime_->resources_.outputUsesRevision();
         if (structure_changed) rebuildFrameInputs();
         if (const auto selection = selectFrameInputs(progress.nextSlot()); selection.type)
         {
-            for (auto id : running_jobs_) domain_->jobs_.find(id)->control.rejectUnadmitted(selection);
+            for (auto id : running_jobs_) runtime_->jobs_.find(id)->control.rejectUnadmitted(selection);
             return false;
         }
         if (frame_outputs_.empty() || !progress.canBegin(entry.session())) return false;
@@ -144,7 +144,7 @@ namespace lux::render
             if (!opened)
             {
                 for (const auto& output : frame_outputs_)
-                    domain_->jobs_.find(output.job)->control.rejectUnadmitted(opened.error());
+                    runtime_->jobs_.find(output.job)->control.rejectUnadmitted(opened.error());
             }
             return false;
         }
@@ -157,7 +157,7 @@ namespace lux::render
         for (auto& output : frame_outputs_)
         {
             output.submitted = false;
-            auto& control = domain_->jobs_.find(output.job)->control;
+            auto& control = runtime_->jobs_.find(output.job)->control;
             if (!control.tryAdmit(context.frame_index, context.slot_index, frame_runs_[frame_run_count_++]))
                 std::terminate();
         }
@@ -177,7 +177,7 @@ namespace lux::render
             std::chrono::steady_clock::now() - slot_opened_at_
         ).count();
         slot_cpu_hold_ns_.fetch_add(held_ns, std::memory_order_relaxed);
-        const auto reads = domain_->device_->frameWorkspace().submissions.takeRasterReads();
+        const auto reads = runtime_->device_->frameWorkspace().submissions.takeRasterReads();
         raster_buffer_ranges_.fetch_add(reads.buffer_ranges, std::memory_order_relaxed);
         raster_buffer_bytes_.fetch_add(reads.buffer_bytes, std::memory_order_relaxed);
         raster_image_ranges_.fetch_add(reads.image_ranges, std::memory_order_relaxed);
@@ -187,7 +187,7 @@ namespace lux::render
         for (std::size_t i = 0; i < frame_run_count_; ++i)
         {
             const auto& output = frame_outputs_[i];
-            auto& job = *domain_->jobs_.find(output.job);
+            auto& job = *runtime_->jobs_.find(output.job);
             const auto failure = error.type ? error : RenderError{kJobState};
             job.last_run_error = output.submitted ? RenderError{} : failure;
             frame_runs_[i].finish(output.submitted ? RenderResult<void>{} : cxx::unexpected(failure));
@@ -205,7 +205,7 @@ namespace lux::render
         // JobControl keeps the request until its one terminal response.
         for (auto id : running_jobs_)
         {
-            auto& job = *domain_->jobs_.find(id);
+            auto& job = *runtime_->jobs_.find(id);
             if (!job.control.eligible()) continue;
             auto& execution = *job.execution;
             if (const auto* packet = job.control.takeRequestedData())
@@ -232,7 +232,7 @@ namespace lux::render
         for (std::size_t offset = 0; offset < count; ++offset)
         {
             const auto index = (preparation_cursor_ + offset) % count;
-            auto& job = *domain_->jobs_.find(running_jobs_[index]);
+            auto& job = *runtime_->jobs_.find(running_jobs_[index]);
             if (!job.readyToRun() || job.control.pendingStart() || !jobTargetReady(job)) continue;
             auto& execution = *job.execution;
             if (execution.programsReady() || execution.programError().type) continue;

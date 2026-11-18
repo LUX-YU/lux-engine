@@ -22,7 +22,7 @@ namespace lux::render::detail
             }
             else
             {
-                ports.storage.scene.push_back({
+                ports.resource_bindings.scene.push_back({
                     kLightPorts[i], EFeaturePort::OUTPUT, GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED,
                     {GraphBufferRange{0, bytes}}, ResourceRequirement{ResourceName(resource)}
                 });

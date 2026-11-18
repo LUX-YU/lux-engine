@@ -12,14 +12,12 @@
 
 namespace lux::editor::ui
 {
-    using namespace lux::render;
-
     // Exactly one resource identity is set. Tokens belong to the producer, descriptors to Render.
     struct ImguiImage final
     {
         std::uint64_t token = 0;
-        TextureId texture;
-        TargetId target;
+        render::TextureId texture;
+        render::TargetId target;
     };
 
     struct ImguiDrawList final
@@ -42,7 +40,7 @@ namespace lux::editor::ui
     class DrawCapture final
     {
     public:
-        [[nodiscard]] RenderResult<ImguiFrameData>
+        [[nodiscard]] render::RenderResult<ImguiFrameData>
         capture(const ImDrawData&, std::span<const ImguiImage> images) noexcept;
 
     private:

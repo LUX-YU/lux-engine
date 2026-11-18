@@ -5,7 +5,7 @@ namespace lux::render
     RenderResult<ResourceSet*>
     RenderServer::Impl::resourceScope(const VRenderScope& scope, ResourceTypeId type) noexcept
     {
-        const auto* factory = domain_->resources_.factory(type);
+        const auto* factory = runtime_->resources_.factory(type);
         if (!factory)
         {
             return cxx::unexpected(RenderError{kStorageFactory});
@@ -24,14 +24,14 @@ namespace lux::render
 
     void RenderServer::Impl::queryResource(const ResourceRequest& request, ResourceResponse& response) noexcept
     {
-        const auto type = domain_->resources_.typeId(request.declaration);
+        const auto type = runtime_->resources_.typeId(request.declaration);
         auto owner = resourceScope(request.scope, type);
         if (!owner)
         {
             response.error = owner.error();
             return;
         }
-        auto context = domain_->device_->resourceCreateContext();
+        auto context = runtime_->device_->resourceCreateContext();
         const auto id = (*owner)->query(context, type);
         if (!id)
         {
@@ -43,21 +43,21 @@ namespace lux::render
 
     void RenderServer::Impl::getOrCreateResource(const ResourceRequest& request, ResourceResponse& response) noexcept
     {
-        const auto type = domain_->resources_.typeId(request.declaration);
+        const auto type = runtime_->resources_.typeId(request.declaration);
         auto owner = resourceScope(request.scope, type);
         if (!owner)
         {
             response.error = owner.error();
             return;
         }
-        auto context = domain_->device_->resourceCreateContext();
+        auto context = runtime_->device_->resourceCreateContext();
         auto instance = (*owner)->getOrCreate(context, type);
         if (!instance)
         {
             response.error = instance.error();
             return;
         }
-        storages_created_.store(domain_->resources_.creations(), std::memory_order_relaxed);
+        storages_created_.store(runtime_->resources_.creations(), std::memory_order_relaxed);
         response = {{}, type, *instance};
     }
 
@@ -69,22 +69,22 @@ namespace lux::render
                 using T = std::remove_cvref_t<decltype(location)>;
                 if constexpr (std::same_as<T, GlobalRenderScope>)
                 {
-                    return &domain_->device_->resources();
+                    return &runtime_->device_->resources();
                 }
                 else if constexpr (std::same_as<T, SceneId>)
                 {
-                    if (auto* scene = domain_->scenes_.find(location))
+                    if (auto* scene = runtime_->scenes_.find(location))
                     {
-                        return &scene->storages;
+                        return &scene->resources;
                     }
                 }
                 else if constexpr (std::same_as<T, ViewRequest>)
                 {
-                    auto* scene = domain_->scenes_.find(location.scene);
+                    auto* scene = runtime_->scenes_.find(location.scene);
                     auto* view = scene ? scene->views.find(location.view) : nullptr;
                     if (view)
                     {
-                        return &view->storages;
+                        return &view->resources;
                     }
                 }
                 return cxx::unexpected(RenderError{kRuntimeIdentity});

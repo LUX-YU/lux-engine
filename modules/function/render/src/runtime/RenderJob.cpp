@@ -22,9 +22,9 @@ namespace lux::render
 
     void RenderServer::Impl::createJob(const CreateRenderJob::Request& request, JobCreated& reply) noexcept
     {
-        auto* scene = domain_->scenes_.find(request.scene);
+        auto* scene = runtime_->scenes_.find(request.scene);
         auto* view = scene ? scene->views.find(request.view) : nullptr;
-        if (!view || !domain_->effects_.find(request.effect))
+        if (!view || !runtime_->effects_.find(request.effect))
         {
             reply.error = {kJobIdentity};
             return;
@@ -34,8 +34,8 @@ namespace lux::render
             reply.error = {kJobState};
             return;
         }
-        const auto id = domain_->jobs_.emplace(RenderJobContent{request.scene, request.view, request.effect}, request.cadence);
-        domain_->jobs_.find(id)->control.setId(id);
+        const auto id = runtime_->jobs_.emplace(RenderJobContent{request.scene, request.view, request.effect}, request.cadence);
+        runtime_->jobs_.find(id)->control.setId(id);
         view->jobs.push_back(id);
         ++job_structure_revision_;
         reply = {{}, id};
@@ -44,10 +44,10 @@ namespace lux::render
     std::vector<detail::JobRelationEntry> RenderServer::Impl::jobRelations() noexcept
     {
         std::vector<detail::JobRelationEntry> entries;
-        entries.reserve(domain_->jobs_.size());
-        for (auto& job : domain_->jobs_)
+        entries.reserve(runtime_->jobs_.size());
+        for (auto& job : runtime_->jobs_)
         {
-            entries.push_back({job.control.id(), &domain_->scenes_.find(job.content.scene)->device, &job.relations});
+            entries.push_back({job.control.id(), &runtime_->scenes_.find(job.content.scene)->device, &job.relations});
         }
         return entries;
     }
@@ -65,7 +65,7 @@ namespace lux::render
 
     void RenderServer::Impl::setJobCadence(const SetRenderJobCadence::Request& input, AckResponse& reply) noexcept
     {
-        auto* job = domain_->jobs_.find(input.job);
+        auto* job = runtime_->jobs_.find(input.job);
         if (!job) { reply.error = {kJobIdentity}; return; }
         const auto result = job->control.setCadence(input.cadence);
         if (result)
@@ -88,7 +88,7 @@ namespace lux::render
         const auto id = job.control.id();
         if (const auto* starting = job.control.pendingStart())
         {
-            if (auto* target = domain_->targets_.find(starting->target()))
+            if (auto* target = runtime_->targets_.find(starting->target()))
             {
                 auto& state = targetState(*target);
                 if (state.reservation == starting) state.reservation = nullptr;
@@ -97,7 +97,7 @@ namespace lux::render
         if (job.execution)
         {
             if (auto& active = job.execution->programs.active) active->stop.request_stop();
-            targetState(*domain_->targets_.find(job.execution->target)).releaseWriter(id);
+            targetState(*runtime_->targets_.find(job.execution->target)).releaseWriter(id);
         }
         if (std::erase(running_jobs_, id) != 0) ++job_structure_revision_;
         job.control.stop();
@@ -106,7 +106,7 @@ namespace lux::render
 
     void RenderServer::Impl::handleStopJob(const RenderJobId& id, AckResponse& reply) noexcept
     {
-        auto* job = domain_->jobs_.find(id);
+        auto* job = runtime_->jobs_.find(id);
         if (!job) { reply.error = {kJobIdentity}; return; }
         stopJob(*job);
         reply = {};
@@ -114,7 +114,7 @@ namespace lux::render
 
     void RenderServer::Impl::removeJob(const RenderJobId& id, AckResponse& reply) noexcept
     {
-        auto* job = domain_->jobs_.find(id);
+        auto* job = runtime_->jobs_.find(id);
         if (!job) { reply.error = {kJobIdentity}; return; }
         if (!job->control.canRemove() || job->hasExecutionBorrows())
         {
@@ -123,15 +123,15 @@ namespace lux::render
         }
         for (auto previous : job->relations.predecessors)
         {
-            std::erase(domain_->jobs_.find(previous)->relations.successors, id);
+            std::erase(runtime_->jobs_.find(previous)->relations.successors, id);
         }
         for (auto next : job->relations.successors)
         {
-            std::erase(domain_->jobs_.find(next)->relations.predecessors, id);
+            std::erase(runtime_->jobs_.find(next)->relations.predecessors, id);
         }
-        auto& view = *domain_->scenes_.find(job->content.scene)->views.find(job->content.view);
+        auto& view = *runtime_->scenes_.find(job->content.scene)->views.find(job->content.view);
         std::erase(view.jobs, id);
-        domain_->jobs_.erase(id);
+        runtime_->jobs_.erase(id);
         ++job_structure_revision_;
         reply = {};
     }
@@ -147,10 +147,10 @@ namespace lux::render
             return true;
         }
         auto& execution = *job.execution;
-        const bool output_resizing = targetState(*domain_->targets_.find(execution.target)).resizing;
+        const bool output_resizing = targetState(*runtime_->targets_.find(execution.target)).resizing;
         const bool input_resizing = std::ranges::any_of(execution.target_images, [&](const auto& input)
         {
-            return targetState(*domain_->targets_.find(input.target)).resizing;
+            return targetState(*runtime_->targets_.find(input.target)).resizing;
         });
         return !output_resizing && !input_resizing;
     }
@@ -163,9 +163,9 @@ namespace lux::render
         const void* reservation
     ) const noexcept
     {
-        const auto* target = domain_->targets_.find(target_id);
+        const auto* target = runtime_->targets_.find(target_id);
         if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        const auto& session = domain_->scenes_.find(job.content.scene)->device.session();
+        const auto& session = runtime_->scenes_.find(job.content.scene)->device.session();
         if (!targetBelongsTo(*target, session)) return cxx::unexpected(RenderError{kJobState});
         const auto& state = targetState(*target);
         if (!state.writer.isNull() && state.writer != job.control.id())
@@ -181,7 +181,7 @@ namespace lux::render
         if (auto valid = binding.inputs.viewport.validate(); !valid) return valid;
         for (const auto& input : binding.target_images)
         {
-            const auto* source = domain_->targets_.find(input.target);
+            const auto* source = runtime_->targets_.find(input.target);
             if (!source || !targetDescription(*source).sampled)
                 return cxx::unexpected(RenderError{kRuntimeIdentity});
             if (!targetBelongsTo(*source, session)) return cxx::unexpected(RenderError{kJobState});
@@ -194,7 +194,7 @@ namespace lux::render
 
     exec::task<AckResponse> RenderServer::Impl::startJob(StartRenderJob::Request&& request) noexcept
     {
-        const auto* job = domain_->jobs_.find(request.job);
+        const auto* job = runtime_->jobs_.find(request.job);
         if (!job) co_return AckResponse{RenderError{kJobIdentity}};
         co_return co_await buildJobExecution(
             request.job, job->content.effect, request.target, std::move(request.binding), false
@@ -203,8 +203,8 @@ namespace lux::render
 
     exec::task<AckResponse> RenderServer::Impl::rebindJob(RebindRenderJobEffect::Request&& request) noexcept
     {
-        auto* job = domain_->jobs_.find(request.job);
-        if (!job || !domain_->effects_.find(request.effect)) co_return AckResponse{RenderError{kJobIdentity}};
+        auto* job = runtime_->jobs_.find(request.job);
+        if (!job || !runtime_->effects_.find(request.effect)) co_return AckResponse{RenderError{kJobIdentity}};
         if (!job->control.running())
         {
             if (!job->control.canRemove() || job->hasExecutionBorrows())
@@ -223,18 +223,18 @@ namespace lux::render
         RenderJobId id, EffectId effect_id, TargetId target_id, JobBinding binding, bool rebind
     ) noexcept
     {
-        auto& job = *domain_->jobs_.find(id);
-        auto* effect = domain_->effects_.find(effect_id);
+        auto& job = *runtime_->jobs_.find(id);
+        auto* effect = runtime_->effects_.find(effect_id);
         if (!effect) co_return AckResponse{RenderError{kJobIdentity}};
         if (auto valid = validateJobBinding(job, *effect, target_id, binding, nullptr); !valid)
             co_return AckResponse{valid.error()};
         detail::JobControl::Start operation;
         if (auto begun = job.control.beginStart(target_id, rebind, operation); !begun)
             co_return AckResponse{begun.error()};
-        targetState(*domain_->targets_.find(target_id)).reservation = &operation;
+        targetState(*runtime_->targets_.find(target_id)).reservation = &operation;
         cxx::scope_exit release_target([&]() noexcept
         {
-            if (auto* target = domain_->targets_.find(target_id))
+            if (auto* target = runtime_->targets_.find(target_id))
             {
                 auto& state = targetState(*target);
                 if (state.reservation == &operation) state.reservation = nullptr;
@@ -242,10 +242,10 @@ namespace lux::render
         });
         if (!effect->tryBorrowExecution()) co_return AckResponse{RenderError{kRuntimeCapacity}};
         cxx::scope_exit release_effect([effect]() noexcept { effect->releaseExecution(); });
-        auto& view = *domain_->scenes_.find(job.content.scene)->views.find(job.content.view);
+        auto& view = *runtime_->scenes_.find(job.content.scene)->views.find(job.content.view);
         auto dependencies = resolveJobResources(*effect, view);
         if (!dependencies) co_return AckResponse{dependencies.error()};
-        storages_created_.store(domain_->resources_.creations(), std::memory_order_relaxed);
+        storages_created_.store(runtime_->resources_.creations(), std::memory_order_relaxed);
         auto& entry = view.scene.device;
         auto plan = co_await detail::GraphCompiler::compile(
             entry.session(), cpu_scheduler_, effect->graph, effect->analysis, &effect->output,
@@ -257,7 +257,7 @@ namespace lux::render
         if (auto valid = validateJobBinding(job, *effect, target_id, binding, &operation); !valid)
             co_return AckResponse{valid.error()};
         if (!resourcesAvailable(*dependencies)) co_return AckResponse{RenderError{kDeviceBusy}};
-        auto& target = *domain_->targets_.find(target_id);
+        auto& target = *runtime_->targets_.find(target_id);
         if (!plan->compatible(targetDescription(target))) co_return AckResponse{RenderError{kDeviceArgument}};
         auto candidate = std::make_unique<JobExecution>(
             *effect, entry.session(), entry.frameProgress().frameCount(), std::move(*plan), target_id, targetOutput(target)
@@ -290,7 +290,7 @@ namespace lux::render
         targetState(target).writer = id;
         if (previous && previous->target != target_id)
         {
-            targetState(*domain_->targets_.find(previous->target)).releaseWriter(id);
+            targetState(*runtime_->targets_.find(previous->target)).releaseWriter(id);
         }
         job.execution = std::move(candidate);
         job.content.effect = effect_id;
@@ -309,7 +309,7 @@ namespace lux::render
 
     void RenderServer::Impl::updateJobInputs(const UpdateJobInputs::Request& input, AckResponse& reply) noexcept
     {
-        auto* job = domain_->jobs_.find(input.job);
+        auto* job = runtime_->jobs_.find(input.job);
         if (!job) { reply.error = {kJobIdentity}; return; }
         if (!job->control.running()) { reply.error = {kJobStopped}; return; }
         if (job->control.pendingStart() || !canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
@@ -329,7 +329,7 @@ namespace lux::render
 
     void RenderServer::Impl::invalidateHistory(const InvalidateHistory::Request& input, AckResponse& reply) noexcept
     {
-        auto* job = domain_->jobs_.find(input.job);
+        auto* job = runtime_->jobs_.find(input.job);
         if (!job) { reply.error = {kJobIdentity}; return; }
         if (!job->control.running()) { reply.error = {kJobStopped}; return; }
         if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
@@ -339,7 +339,7 @@ namespace lux::render
 
     bool RenderServer::Impl::jobTargetReady(const RenderJob& job) const noexcept
     {
-        const auto& target = *domain_->targets_.find(job.execution->target);
+        const auto& target = *runtime_->targets_.find(job.execution->target);
         const auto& state = targetState(target);
         return state.enabled && !state.resizing && state.writer == job.control.id() && targetAvailable(target);
     }
@@ -351,7 +351,7 @@ namespace lux::render
         co_return co_await exec::create<stdexec::set_value_t(JobSubmitted)>(
             [this, id, data = input.data, &request](auto& context) noexcept
             {
-                auto* job = domain_->jobs_.find(id);
+                auto* job = runtime_->jobs_.find(id);
                 if (!job || !job->control.running() || !jobTargetReady(*job))
                 {
                     const auto error = job ? kJobStopped : kJobIdentity;

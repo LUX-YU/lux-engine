@@ -27,7 +27,7 @@ namespace lux::render
 #endif
         auto& inputs = round_.inputs;
         inputs.revision = job_structure_revision_;
-        inputs.output_uses_revision = domain_->resources_.outputUsesRevision();
+        inputs.output_uses_revision = runtime_->resources_.outputUsesRevision();
         inputs.jobs.clear();
         inputs.relations.clear();
         inputs.storages.clear();
@@ -39,7 +39,7 @@ namespace lux::render
         for (auto id : running_jobs_)
         {
             const auto index = static_cast<std::uint32_t>(inputs.jobs.size());
-            const auto& job = *domain_->jobs_.find(id);
+            const auto& job = *runtime_->jobs_.find(id);
             auto& execution = *job.execution;
             auto reads = execution.instance.sampledTargets();
             for (const auto& image : execution.target_images)
@@ -48,17 +48,17 @@ namespace lux::render
             running.insert(id, index);
             writers.insert(execution.target, index);
             const auto& effect = execution.recipe.effect;
-            auto& scene = *domain_->scenes_.find(job.content.scene);
+            auto& scene = *runtime_->scenes_.find(job.content.scene);
             auto& view = *scene.views.find(job.content.view);
             for (const auto& dependency : effect.resource_dependencies)
             {
-                const auto* factory = domain_->resources_.factory(dependency.declaration);
+                const auto* factory = runtime_->resources_.factory(dependency.declaration);
                 const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
                 if (!ops || !ops->prepareFrame) continue;
-                auto* owner = view.storages.ownerFor(dependency.scope);
+                auto* owner = view.resources.ownerFor(dependency.scope);
                 const auto storage = owner ? owner->find(dependency.declaration) : ResourceInstanceId{};
                 if (storage.isNull()) continue;
-                auto* native = domain_->resources_.resourceInstance(storage);
+                auto* native = runtime_->resources_.resourceInstance(storage);
                 storage_ids[index].push_back(storage);
                 inputs.storages.push_back({
                     native, ops, storage, ops->preparationRevision ? ops->preparationRevision(native) : nullptr
@@ -71,7 +71,7 @@ namespace lux::render
         for (std::uint32_t consumer = 0; consumer < count; ++consumer)
         {
             auto& entry = inputs.jobs[consumer];
-            const auto& job = *domain_->jobs_.find(entry.id);
+            const auto& job = *runtime_->jobs_.find(entry.id);
             for (auto predecessor : job.relations.predecessors)
             {
                 const auto producer = denseIndex(running, predecessor);
@@ -93,22 +93,22 @@ namespace lux::render
 
         // The full logical order keeps paths through stopped and unselected Jobs available to the projection.
         std::size_t order_capacity = 0;
-        const bool has_relations = count != 0 && std::ranges::any_of(domain_->jobs_, [](const auto& job) noexcept
+        const bool has_relations = count != 0 && std::ranges::any_of(runtime_->jobs_, [](const auto& job) noexcept
         {
             return !job.relations.predecessors.empty();
         });
         if (has_relations)
         {
             std::vector<RenderJobId> logical;
-            logical.reserve(domain_->jobs_.size());
-            for (const auto& job : domain_->jobs_) logical.push_back(job.control.id());
+            logical.reserve(runtime_->jobs_.size());
+            for (const auto& job : runtime_->jobs_) logical.push_back(job.control.id());
             const auto ordered = detail::orderRunningJobs(jobRelations(), logical);
             if (!ordered) std::terminate();
             cxx::SlotKeySparseSet<RenderJobId, std::uint32_t> indices;
             for (auto id : *ordered)
             {
                 auto& relation = inputs.relations.emplace_back(denseIndex(running, id));
-                for (auto predecessor : domain_->jobs_.find(id)->relations.predecessors)
+                for (auto predecessor : runtime_->jobs_.find(id)->relations.predecessors)
                 {
                     const auto parent = denseIndex(indices, predecessor);
                     if (parent == no_job) std::terminate();
@@ -215,7 +215,7 @@ namespace lux::render
         for (std::uint32_t i = 0; i < count; ++i)
         {
             const auto& entry = inputs.jobs[i];
-            auto& job = *domain_->jobs_.find(entry.id);
+            auto& job = *runtime_->jobs_.find(entry.id);
             if (!job.readyToRun() || !jobTargetReady(job)) continue;
             auto& state = inputs.selection[i];
             state.availability = EAvailability::READY;
@@ -224,7 +224,7 @@ namespace lux::render
                 block(i);
                 continue;
             }
-            const auto& target = *domain_->targets_.find(entry.execution->target);
+            const auto& target = *runtime_->targets_.find(entry.execution->target);
             if (const auto* surface = std::get_if<detail::SwapchainTarget>(&target))
             {
                 const auto prefetched = surface->prefetched();
@@ -245,7 +245,7 @@ namespace lux::render
             for (std::size_t read = 0; read < entry.reads.size(); ++read)
             {
                 const auto source = entry.reads[read];
-                const auto* target = domain_->targets_.find(source);
+                const auto* target = runtime_->targets_.find(source);
                 if (!target)
                 {
                     block(i, {kRuntimeIdentity});
@@ -269,7 +269,7 @@ namespace lux::render
         const auto edge_available = [&](const FrameInputs::Edge& edge) noexcept
         {
             if (edge.sampled_target.isNull()) return true;
-            const auto* target = domain_->targets_.find(edge.sampled_target);
+            const auto* target = runtime_->targets_.find(edge.sampled_target);
             return target && !targetState(*target).resizing;
         };
         const auto block_successor = [&](std::uint32_t producer, const FrameInputs::Edge& edge) noexcept
@@ -331,7 +331,7 @@ namespace lux::render
         for (std::uint32_t i = 0; i < count; ++i)
         {
             const auto& state = inputs.selection[i];
-            if (state.error.type) domain_->jobs_.find(inputs.jobs[i].id)->control.rejectUnadmitted(state.error);
+            if (state.error.type) runtime_->jobs_.find(inputs.jobs[i].id)->control.rejectUnadmitted(state.error);
         }
         if (!acyclic) return {kGraphDependencyCycle};
         const auto blocked = std::ranges::remove_if(inputs.ordered, [&](auto index) noexcept

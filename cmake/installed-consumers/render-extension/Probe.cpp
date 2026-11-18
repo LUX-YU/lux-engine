@@ -378,7 +378,7 @@ template <bool Matching> struct ProbeEffect final
 
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
-        (Matching ? ports.storage.global : ports.storage.scene).push_back(
+        (Matching ? ports.resource_bindings.device : ports.resource_bindings.scene).push_back(
             {"buffer",
              EFeaturePort::OUTPUT,
              GraphBufferDesc{4096},

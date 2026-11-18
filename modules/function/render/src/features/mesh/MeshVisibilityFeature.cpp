@@ -38,7 +38,7 @@ namespace lux::render
         constexpr std::array<std::uint64_t, 3> sizes{sizeof(TransformMatrix), sizeof(MeshInstanceGpuProperty), 8};
         for (std::size_t i = 0; i < names.size(); ++i)
         {
-            ports.storage.scene.push_back(
+            ports.resource_bindings.scene.push_back(
                 {names[i],
                  EFeaturePort::OUTPUT,
                  GraphBufferDesc{sizes[i]},

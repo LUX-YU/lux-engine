@@ -20,7 +20,7 @@ namespace lux::render::runtime_detail
         explicit RenderView(RenderScene& parent) noexcept;
 
         RenderScene& scene;
-        ResourceSet storages;
+        ResourceSet resources;
         std::vector<RenderJobId> jobs;
         CameraInput camera;
         std::uint64_t camera_revision = 1;
@@ -31,7 +31,7 @@ namespace lux::render::runtime_detail
         explicit RenderScene(detail::DeviceEntry& entry) noexcept;
 
         detail::DeviceEntry& device;
-        ResourceSet storages;
+        ResourceSet resources;
         cxx::StableSlotMap<RenderView, ViewTag> views;
     };
 } // namespace lux::render::runtime_detail

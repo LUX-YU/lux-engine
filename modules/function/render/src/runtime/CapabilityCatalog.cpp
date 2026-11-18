@@ -45,9 +45,9 @@ namespace lux::render
             published.features = implementation.features;
             for (const auto type : capability_registry_.resources(capability_id))
             {
-                const auto* factory = domain_->resources_.factory(type);
+                const auto* factory = runtime_->resources_.factory(type);
                 const bool is_unsupported =
-                    !factory || !factory->descriptor->supports(domain_->device_->session().resourceCapabilities());
+                    !factory || !factory->descriptor->supports(runtime_->device_->session().resourceCapabilities());
                 if (is_unsupported)
                 {
                     published.unavailable = RenderError{kStorageCapability};

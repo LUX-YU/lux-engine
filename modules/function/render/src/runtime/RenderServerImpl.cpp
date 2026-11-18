@@ -90,19 +90,19 @@ namespace lux::render
         const nri::CallbackInterface callbacks{Impl::diagnostic, [](void*) noexcept {}, this};
         // Frame copies and standalone staging need a worker that cannot be held by a dynamic PSO batch.
         auto entry = detail::DeviceEntry::create(
-            domain_->resources_, device_options, callbacks, config_, recording_scheduler_
+            runtime_->resources_, device_options, callbacks, config_, recording_scheduler_
         );
         if (!entry)
         {
             return cxx::unexpected(entry.error());
         }
-        domain_->device_ = std::move(*entry);
-        target_frame_uses_ = domain_->device_->session().makeFrontiers();
-        domain_->resources_.setOutputResolver(this, [](void* owner, TargetId id, std::uint32_t slot) noexcept
+        runtime_->device_ = std::move(*entry);
+        target_frame_uses_ = runtime_->device_->session().makeFrontiers();
+        runtime_->resources_.setOutputResolver(this, [](void* owner, TargetId id, std::uint32_t slot) noexcept
             -> RenderResult<ResourceRegistry::SampledImage>
         {
             auto& self = *static_cast<Impl*>(owner);
-            const auto* target = self.domain_->targets_.find(id);
+            const auto* target = self.runtime_->targets_.find(id);
             if (!target || !targetDescription(*target).sampled || targetState(*target).resizing)
                 return cxx::unexpected(RenderError{kRuntimeIdentity});
             const auto selected = self.outputSlot(id, slot);
@@ -137,9 +137,9 @@ namespace lux::render
                 continue;
             }
             visited.push_back(id);
-            const auto* target = domain_->targets_.find(id);
+            const auto* target = runtime_->targets_.find(id);
             const auto writer = target ? targetState(*target).writer : RenderJobId{};
-            const auto* job = writer != replaced ? domain_->jobs_.find(writer) : nullptr;
+            const auto* job = writer != replaced ? runtime_->jobs_.find(writer) : nullptr;
             if (job)
             {
                 for (const auto& input : job->execution->target_images)
@@ -168,25 +168,25 @@ namespace lux::render
         if (is_surface)
         {
             auto physical =
-                detail::SwapchainTarget::create(domain_->device_->session(), input.description, *input.surface, domain_->device_->frameProgress().frameCount());
+                detail::SwapchainTarget::create(runtime_->device_->session(), input.description, *input.surface, runtime_->device_->frameProgress().frameCount());
             if (!physical)
             {
                 response.error = physical.error();
                 return;
             }
-            id = domain_->targets_.emplace(std::move(*physical));
+            id = runtime_->targets_.emplace(std::move(*physical));
         }
         else
         {
-            auto physical = detail::OffscreenTarget::create(domain_->device_->session(), input.description, domain_->device_->frameProgress().frameCount());
+            auto physical = detail::OffscreenTarget::create(runtime_->device_->session(), input.description, runtime_->device_->frameProgress().frameCount());
             if (!physical)
             {
                 response.error = physical.error();
                 return;
             }
-            id = domain_->targets_.emplace(std::move(*physical));
+            id = runtime_->targets_.emplace(std::move(*physical));
         }
-        response = TargetCreated{{}, id, 1, targetDescription(*domain_->targets_.find(id)), true};
+        response = TargetCreated{{}, id, 1, targetDescription(*runtime_->targets_.find(id)), true};
     }
 
     RenderResult<RenderServer::Impl::ResizeCandidates> RenderServer::Impl::prepareTargetResize(
@@ -199,7 +199,7 @@ namespace lux::render
         candidates.reserve(affected.size());
         for (auto id : affected)
         {
-            auto& execution = *domain_->jobs_.find(id)->execution;
+            auto& execution = *runtime_->jobs_.find(id)->execution;
             std::vector<detail::RenderGraphInstance::ImageReplacement> inputs;
             for (const auto& image : execution.target_images)
             {
@@ -209,7 +209,7 @@ namespace lux::render
                 }
             }
             auto changed = execution.instance.prepareResize(
-                execution.target == target ? output : targetOutput(*domain_->targets_.find(execution.target)),
+                execution.target == target ? output : targetOutput(*runtime_->targets_.find(execution.target)),
                 inputs
             );
             if (!changed)
@@ -224,7 +224,7 @@ namespace lux::render
     std::vector<RenderJobId> RenderServer::Impl::jobsSamplingTarget(TargetId source) const noexcept
     {
         std::vector<RenderJobId> result;
-        for (const auto& job : domain_->jobs_)
+        for (const auto& job : runtime_->jobs_)
         {
             const auto* execution = job.execution.get();
             if (!execution) continue;
@@ -240,7 +240,7 @@ namespace lux::render
 
     exec::task<TargetCreated> RenderServer::Impl::resizeTarget(ResizeTarget::Request&& input) noexcept
     {
-        auto* target = domain_->targets_.find(input.target);
+        auto* target = runtime_->targets_.find(input.target);
         if (!target) co_return TargetCreated{RenderError{kRuntimeIdentity}};
         const auto response = [&](RenderError error = {}) noexcept
         {
@@ -255,7 +255,7 @@ namespace lux::render
         if (busy_target) co_return response(RenderError{kDeviceBusy});
         auto affected = jobsSamplingTarget(input.target);
         const bool different_kind = input.description.kind != targetDescription(*target).kind;
-        const auto maximum = domain_->device_->session().description().dimensions.attachmentMaxDim;
+        const auto maximum = runtime_->device_->session().description().dimensions.attachmentMaxDim;
         const bool oversized = input.description.width > maximum || input.description.height > maximum;
         const bool removes_sampling = !input.description.sampled && !affected.empty();
         if (different_kind || oversized || removes_sampling) co_return response(RenderError{kCommandContract});
@@ -265,12 +265,12 @@ namespace lux::render
         if (!state.writer.isNull())
         {
             affected.push_back(state.writer);
-            if (!domain_->jobs_.find(state.writer)->execution->plan.compatible(input.description))
+            if (!runtime_->jobs_.find(state.writer)->execution->plan.compatible(input.description))
                 co_return response(RenderError{kDeviceArgument});
         }
         const bool busy_execution = std::ranges::any_of(affected, [&](auto id)
         {
-            return !canChangeExecution(*domain_->jobs_.find(id));
+            return !canChangeExecution(*runtime_->jobs_.find(id));
         });
         if (busy_execution) co_return response(RenderError{kDeviceBusy});
         if (state.epoch == UINT64_MAX) co_return response(RenderError{kRuntimeCapacity});
@@ -279,7 +279,7 @@ namespace lux::render
         std::vector<detail::RenderGraphInstance*> instances;
         for (auto id : affected)
         {
-            auto& execution = *domain_->jobs_.find(id)->execution;
+            auto& execution = *runtime_->jobs_.find(id)->execution;
             ++execution.pending_uses;
             instances.push_back(&execution.instance);
         }
@@ -289,35 +289,35 @@ namespace lux::render
             targetState(*target).resizing = false;
             for (auto id : affected)
             {
-                auto& job = *domain_->jobs_.find(id);
+                auto& job = *runtime_->jobs_.find(id);
                 --job.execution->pending_uses;
                 retireStoppedExecution(job);
             }
         });
 
-        auto accepted = domain_->device_->frameWorkspace().submissions.acceptedUses(
-            domain_->device_->session(), domain_->device_->frameProgress(), instances
+        auto accepted = runtime_->device_->frameWorkspace().submissions.acceptedUses(
+            runtime_->device_->session(), runtime_->device_->frameProgress(), instances
         );
         std::optional<VRenderTarget> candidate_target;
         ResizeCandidates candidates;
         if (auto* offscreen = std::get_if<detail::OffscreenTarget>(target))
         {
             offscreen->appendUses(accepted);
-            auto created = detail::OffscreenTarget::create(domain_->device_->session(), input.description, domain_->device_->frameProgress().frameCount());
+            auto created = detail::OffscreenTarget::create(runtime_->device_->session(), input.description, runtime_->device_->frameProgress().frameCount());
             if (!created) co_return response(created.error());
             candidate_target.emplace(std::move(*created));
             auto prepared = prepareTargetResize(input.target, targetOutput(*candidate_target), affected);
             if (!prepared) co_return response(prepared.error());
             candidates = std::move(*prepared);
         }
-        if (auto waited = co_await domain_->device_->session().waitFrontiers(accepted); !waited) co_return response(waited.error());
+        if (auto waited = co_await runtime_->device_->session().waitFrontiers(accepted); !waited) co_return response(waited.error());
         if (stop_requested_.load()) co_return response(RenderError{kCommandCancelled});
         if (swapchain)
         {
             const auto window = swapchain->surface();
             if (!writer_at_admission.isNull())
             {
-                auto& writer = *domain_->jobs_.find(writer_at_admission);
+                auto& writer = *runtime_->jobs_.find(writer_at_admission);
                 writer.execution->instance.releaseOutputReferences();
                 writer.control.rejectUnadmitted(RenderError{kJobStopped});
             }
@@ -325,7 +325,7 @@ namespace lux::render
             auto closed = co_await swapchain->close();
             if (!closed) co_return response(closed.error());
             if (stop_requested_.load()) co_return response(RenderError{kCommandCancelled});
-            auto created = detail::SwapchainTarget::create(domain_->device_->session(), input.description, window, domain_->device_->frameProgress().frameCount());
+            auto created = detail::SwapchainTarget::create(runtime_->device_->session(), input.description, window, runtime_->device_->frameProgress().frameCount());
             if (!created) co_return response(created.error());
             candidate_target.emplace(std::move(*created));
             auto prepared = prepareTargetResize(input.target, targetOutput(*candidate_target), affected);
@@ -334,29 +334,29 @@ namespace lux::render
         }
         for (auto& [id, candidate] : candidates)
         {
-            if (auto ready = domain_->jobs_.find(id)->execution->instance.prepareResizeAdoption(candidate); !ready)
+            if (auto ready = runtime_->jobs_.find(id)->execution->instance.prepareResizeAdoption(candidate); !ready)
                 co_return response(ready.error());
         }
         for (auto& [id, candidate] : candidates)
-            domain_->jobs_.find(id)->execution->instance.commitResize(std::move(candidate));
+            runtime_->jobs_.find(id)->execution->instance.commitResize(std::move(candidate));
         auto next = state;
         ++next.epoch;
         next.enabled = false;
         if (!next.writer.isNull())
-            domain_->jobs_.find(next.writer)->control.rejectUnadmitted(RenderError{kJobStopped});
+            runtime_->jobs_.find(next.writer)->control.rejectUnadmitted(RenderError{kJobStopped});
         std::visit([&](auto& value) noexcept
         {
             using T = std::remove_cvref_t<decltype(value)>;
             value.state = next;
             target->emplace<T>(std::move(value));
         }, *candidate_target);
-        domain_->job_outputs_.erase(input.target);
+        runtime_->job_outputs_.erase(input.target);
         co_return response();
     }
 
     exec::task<AckResponse> RenderServer::Impl::removeTarget(RemoveTarget::Request&& input) noexcept
     {
-        auto* target = domain_->targets_.find(input);
+        auto* target = runtime_->targets_.find(input);
         if (!target) co_return AckResponse{RenderError{kRuntimeIdentity}};
         auto& state = targetState(*target);
         const bool busy_target = state.resizing || state.reservation ||
@@ -365,8 +365,8 @@ namespace lux::render
         if (!jobsSamplingTarget(input).empty()) co_return AckResponse{RenderError{kRuntimeState}};
         if (!state.writer.isNull())
         {
-            if (!canChangeExecution(*domain_->jobs_.find(state.writer))) co_return AckResponse{RenderError{kDeviceBusy}};
-            stopJob(*domain_->jobs_.find(state.writer));
+            if (!canChangeExecution(*runtime_->jobs_.find(state.writer))) co_return AckResponse{RenderError{kDeviceBusy}};
+            stopJob(*runtime_->jobs_.find(state.writer));
         }
         state.resizing = true;
         RenderError retired;
@@ -378,8 +378,8 @@ namespace lux::render
                 failExecution(retired);
             }
         }
-        domain_->job_outputs_.erase(input);
-        domain_->targets_.erase(input);
+        runtime_->job_outputs_.erase(input);
+        runtime_->targets_.erase(input);
         co_return AckResponse{retired};
     }
 
@@ -388,14 +388,14 @@ namespace lux::render
         SetTargetActive::Response& response
     ) noexcept
     {
-        auto* target = domain_->targets_.find(input.target);
+        auto* target = runtime_->targets_.find(input.target);
         if (!target)
         {
             response.error = RenderError{kRuntimeIdentity};
             return;
         }
         auto& state = targetState(*target);
-        const bool busy_writer = !state.writer.isNull() && !canChangeExecution(*domain_->jobs_.find(state.writer));
+        const bool busy_writer = !state.writer.isNull() && !canChangeExecution(*runtime_->jobs_.find(state.writer));
         if (state.resizing || busy_writer)
         {
             response.error = RenderError{kDeviceBusy};
@@ -409,7 +409,7 @@ namespace lux::render
         }
         state.enabled = input.active;
         if (!input.active && !state.writer.isNull())
-            domain_->jobs_.find(state.writer)->control.rejectUnadmitted(RenderError{kJobStopped});
+            runtime_->jobs_.find(state.writer)->control.rejectUnadmitted(RenderError{kJobStopped});
         response = {};
     }
 
@@ -417,7 +417,7 @@ namespace lux::render
         const QueryCommandIds::Request& names, QueryCommandIds::Response& response
     ) noexcept
     {
-        domain_->command_registry_.queryCommandIds(names, response);
+        runtime_->command_registry_.queryCommandIds(names, response);
     }
 
     void RenderServer::Impl::listCommands(
@@ -425,12 +425,12 @@ namespace lux::render
         ListCommands::Response& output_response
     ) noexcept
     {
-        output_response = domain_->command_registry_.listCommands();
+        output_response = runtime_->command_registry_.listCommands();
     }
 
     void RenderServer::Impl::progressUploads() noexcept
     {
-        if (auto* uploader = domain_->device_->uploader();
+        if (auto* uploader = runtime_->device_->uploader();
             uploader && !upload_progress_pending_ && uploader->canProgressTransfers())
         {
             upload_progress_pending_ = true;
@@ -458,13 +458,13 @@ namespace lux::render
     {
         for (const auto& output : frame_outputs_)
         {
-            const auto& content = domain_->jobs_.find(output.job)->content;
+            const auto& content = runtime_->jobs_.find(output.job)->content;
             auto& execution = *output.execution;
-            const auto& view = *domain_->scenes_.find(content.scene)->views.find(content.view);
+            const auto& view = *runtime_->scenes_.find(content.scene)->views.find(content.view);
             auto& instance = execution.instance;
             for (const auto& imported : execution.target_images)
             {
-                auto sampled = domain_->resources_.sampledImage({{}, imported.target}, slot);
+                auto sampled = runtime_->resources_.sampledImage({{}, imported.target}, slot);
                 if (!sampled) return cxx::unexpected(sampled.error());
                 instance.bindImage(imported.resource, slot, *const_cast<nri::Texture*>(sampled->image));
             }
@@ -505,8 +505,8 @@ namespace lux::render
 
     std::uint32_t RenderServer::Impl::publishedOutputSlot(TargetId target) const noexcept
     {
-        const auto* published = domain_->job_outputs_.tryGet(target);
-        const auto* offscreen = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(target));
+        const auto* published = runtime_->job_outputs_.tryGet(target);
+        const auto* offscreen = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(target));
         if (!published || !offscreen) return UINT32_MAX;
         const bool same_identity = published->target == target && published->target_epoch == offscreen->state.epoch;
         if (!same_identity || !offscreen->matches(published->image_index, published->content_revision))
@@ -516,13 +516,13 @@ namespace lux::render
 
     bool RenderServer::Impl::publishedOutputReadable(TargetId target, std::uint32_t slot) const noexcept
     {
-        const auto* offscreen = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(target));
+        const auto* offscreen = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(target));
         return offscreen && offscreen->readable(slot);
     }
 
     bool RenderServer::Impl::resourcesAvailable(std::span<const ResourceInstanceId> resources) const noexcept
     {
-        return std::ranges::none_of(resources, [&](auto id) { return domain_->resources_.hasExclusiveCommand(id); });
+        return std::ranges::none_of(resources, [&](auto id) { return runtime_->resources_.hasExclusiveCommand(id); });
     }
 
     bool RenderServer::Impl::frameUsesResource(ResourceInstanceId id) const noexcept
@@ -555,14 +555,14 @@ namespace lux::render
         {
             for (const auto source : output.reads)
             {
-                const auto* sampled = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(source));
+                const auto* sampled = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(source));
                 if (!sampled) return cxx::unexpected(RenderError{kRuntimeIdentity});
                 if (std::ranges::find(frame_outputs_, source, &FrameOutput::target) != frame_outputs_.end()) continue;
                 const auto selected = outputSlot(source, slot);
                 if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
                 if (!sampled->readable(selected)) return false;
             }
-            auto& target = *domain_->targets_.find(output.target);
+            auto& target = *runtime_->targets_.find(output.target);
             if (auto* surface = std::get_if<detail::SwapchainTarget>(&target))
             {
                 const auto ready = surface->bindImage(slot);
@@ -580,7 +580,7 @@ namespace lux::render
             {
                 const auto selected = outputSlot(input.target, slot);
                 if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
-                const auto image = targetOutput(*domain_->targets_.find(input.target)).frames[selected].image;
+                const auto image = targetOutput(*runtime_->targets_.find(input.target)).frames[selected].image;
                 execution.instance.bindImage(input.resource, slot, *image);
             }
         }
@@ -591,16 +591,16 @@ namespace lux::render
     {
         using NativeStep = detail::SwapchainTarget::ENativeStep;
         const auto delivery = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
-        for (auto& target : domain_->targets_)
+        for (auto& target : runtime_->targets_)
         {
             auto* surface = std::get_if<detail::SwapchainTarget>(&target);
             if (!surface) continue;
             const auto& writer = surface->state;
             const bool borrowed = frame_run_count_ && std::ranges::any_of(frame_outputs_, [&](const auto& output)
             {
-                return domain_->targets_.find(output.target) == &target;
+                return runtime_->targets_.find(output.target) == &target;
             });
-            const auto* job = domain_->jobs_.find(writer.writer);
+            const auto* job = runtime_->jobs_.find(writer.writer);
             const bool ready = writer.enabled && job && job->readyToRun();
             const auto step = surface->beginAdvance(borrowed || ready);
             if (step == NativeStep::NONE) continue;
@@ -630,20 +630,20 @@ namespace lux::render
             co_return cxx::unexpected(error);
         }
         const auto slot = round_.slot();
-        const auto& submissions = domain_->device_->frameWorkspace().submissions;
+        const auto& submissions = runtime_->device_->frameWorkspace().submissions;
         const auto submitted_before = submissions.submittedBatches(slot);
         const auto accepted = co_await round_.operation->run(frame_instances_, frame_storages_, frame_job_order_);
         submissions_.fetch_add(submissions.submittedBatches(slot) - submitted_before, std::memory_order_relaxed);
         for (std::size_t i = 0; i < frame_outputs_.size(); ++i)
         {
             auto& output = frame_outputs_[i];
-            auto* offscreen = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(output.target));
+            auto* offscreen = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(output.target));
             if (output.submitted) continue;
             const auto receipt = submissions.acceptedFrameUse(slot, *frame_instances_[i], target_frame_uses_);
             output.submitted = receipt.completed;
             for (auto source : output.reads)
             {
-                auto* sampled = domain_->targets_.find(source);
+                auto* sampled = runtime_->targets_.find(source);
                 const auto selected = outputSlot(source, slot);
                 if (sampled && selected != UINT32_MAX)
                 {
@@ -654,16 +654,16 @@ namespace lux::render
             if (!offscreen) continue;
             if (receipt.wrote_output) offscreen->acceptWrite(slot, target_frame_uses_);
             if (!offscreen->description().sampled || !receipt.wrote_output) continue;
-            const auto* published = domain_->job_outputs_.tryGet(output.target);
+            const auto* published = runtime_->job_outputs_.tryGet(output.target);
             if (receipt.completed)
             {
                 const auto revision = offscreen->publish(slot);
                 const detail::JobOutput publication{output.target, slot, offscreen->state.epoch, revision};
-                domain_->job_outputs_.insert(output.target, publication);
+                runtime_->job_outputs_.insert(output.target, publication);
             }
             else if (published && published->image_index == slot)
             {
-                domain_->job_outputs_.erase(output.target);
+                runtime_->job_outputs_.erase(output.target);
             }
         }
         if (!accepted) co_return cxx::unexpected(accepted.error());
@@ -675,7 +675,7 @@ namespace lux::render
         QueryExecutionProgress::Response& output_response
     ) noexcept
     {
-        const auto* job = domain_->jobs_.find(_request);
+        const auto* job = runtime_->jobs_.find(_request);
         if (!job)
         {
             output_response.error = {kJobIdentity};
@@ -708,7 +708,7 @@ namespace lux::render
         const QueryRenderDevice::Request&, QueryRenderDevice::Response& response
     ) noexcept
     {
-        const auto& session = domain_->device_->session();
+        const auto& session = runtime_->device_->session();
         const auto& description = session.description();
         response = {
             {},
@@ -716,7 +716,7 @@ namespace lux::render
             session.resourceCapabilities(),
             description.dimensions.attachmentMaxDim,
             static_cast<std::uint32_t>(session.queueCount()),
-            domain_->device_->frameProgress().frameCount()
+            runtime_->device_->frameProgress().frameCount()
         };
     }
 
@@ -761,7 +761,7 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kDeviceBusy});
             }
-            auto borrowed = domain_->resources_.acquireCommand(id, command, exclusive);
+            auto borrowed = runtime_->resources_.acquireCommand(id, command, exclusive);
             if (!borrowed) return cxx::unexpected(borrowed.error());
             const auto* selected = entry.binding(borrowed->binding().binding);
             const bool is_invalid_call = !selected || !selected->call.invoke ||
@@ -780,7 +780,7 @@ namespace lux::render
             }
             return binding->call;
         }
-        const auto* effect = domain_->effects_.find(entry.effect(request));
+        const auto* effect = runtime_->effects_.find(entry.effect(request));
         if (!effect)
         {
             return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -805,7 +805,7 @@ namespace lux::render
     {
         const ResponseRoute route{received.requesterId(), RequestId{received.correlation()}};
         const auto id = commandIdFromTag(received.tag());
-        const auto* entry = domain_->command_registry_.findCommand(id);
+        const auto* entry = runtime_->command_registry_.findCommand(id);
         if (!entry || route.request_id.isNull())
         {
             response_outbox_.emplaceResponse<AckResponse>(route, AckResponse{RenderError{kCommandContract}});
@@ -814,9 +814,9 @@ namespace lux::render
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kCommandContract});
         }
-        else if (domain_->device_->session().terminalError().type != 0 && !entry->description->failure_safe)
+        else if (runtime_->device_->session().terminalError().type != 0 && !entry->description->failure_safe)
         {
-            entry->make_error(response_outbox_.prepare(route), domain_->device_->session().terminalError());
+            entry->make_error(response_outbox_.prepare(route), runtime_->device_->session().terminalError());
         }
         else
         {
@@ -849,7 +849,7 @@ namespace lux::render
         stop_requested_.store(true);
         const auto cause = execution_error_.type ? execution_error_ : RenderError{kCommandCancelled};
         if (round_.operation && !round_.error.type) round_.error = cause;
-        for (auto& job : domain_->jobs_)
+        for (auto& job : runtime_->jobs_)
         {
             stopJob(job);
         }
@@ -882,7 +882,7 @@ namespace lux::render
         {
             const bool pending_operations = upload_progress_pending_ || round_.operation ||
                 !input_updates_.empty() || preparing_execution_;
-            const bool pending_contexts = !server_context_.is_idle() || !domain_->device_->nativeIdle();
+            const bool pending_contexts = !server_context_.is_idle() || !runtime_->device_->nativeIdle();
             return pending_operations || pending_contexts || !response_outbox_.empty();
         };
         while (!joined.load(std::memory_order_acquire) || has_pending_delivery())
@@ -919,8 +919,8 @@ namespace lux::render
             std::terminate();
         }
         // All sources of new native work have returned. Staging and native payloads can now release in owner order.
-        if (auto drained = domain_->device_->session().drain(); !drained) failExecution(drained.error());
-        domain_.reset();
+        if (auto drained = runtime_->device_->session().drain(); !drained) failExecution(drained.error());
+        runtime_.reset();
         (void)server_context_.close();
         responder_.reset();
         notifications.notifyWork(); // Wake bootstrap/reply waiters after CLOSED is published.
@@ -944,7 +944,7 @@ namespace lux::render
         const auto submitted_before = submissions_.load(std::memory_order_relaxed);
         // The budget limits adopted nodes. A continuation itself must return promptly.
         bool progressed = server_context_.run_ready(continuation_budget) != 0;
-        if (auto completed = domain_->device_->session().progressCompletions(); !completed)
+        if (auto completed = runtime_->device_->session().progressCompletions(); !completed)
         {
             failExecution(completed.error());
         }
@@ -965,7 +965,7 @@ namespace lux::render
     {
         // IPC, ManualContext and stop publish the same epoch. GPU completion has no host
         // notification, and IPC scans a bounded Link prefix, so both keep a finite revisit.
-        const auto delay = domain_->device_->session().pendingGpuWork()
+        const auto delay = runtime_->device_->session().pendingGpuWork()
             ? std::chrono::nanoseconds(config_.gpu_wait_ns) : std::chrono::milliseconds(1);
         ipc::IpcCore::instance().waitUntil(observed, std::chrono::steady_clock::now() + delay);
     }
@@ -979,7 +979,7 @@ namespace lux::render
         }
         if (!stop_requested_.load())
         {
-            domain_->command_registry_.activateHandlers(domain_->resources_);
+            runtime_->command_registry_.activateHandlers(runtime_->resources_);
         }
         auto& notifications = ipc::IpcCore::instance();
         while (!stop_requested_.load())
@@ -1003,7 +1003,7 @@ namespace lux::render
                 waitForService(observed);
             }
         }
-        if (const auto terminal = domain_->device_->session().terminalError(); terminal.type) failExecution(terminal);
+        if (const auto terminal = runtime_->device_->session().terminalError(); terminal.type) failExecution(terminal);
         shutdown();
         if (execution_error_.type) return cxx::unexpected(execution_error_);
         return {};

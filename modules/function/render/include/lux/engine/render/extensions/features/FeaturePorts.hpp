@@ -19,7 +19,7 @@ namespace lux::render
         VGraphResourceDesc description = GraphBufferDesc{};
         EGraphOrigin origin = EGraphOrigin::TRANSIENT;
         std::vector<VGraphRange> initial_ranges;
-        std::optional<ResourceRequirement> storage;
+        std::optional<ResourceRequirement> resource_requirement;
         EGraphUse initial_use = EGraphUse::UNSPECIFIED;
         std::string semantic; // Optional full encoding identity; consumers that require it compare the whole name.
     };
@@ -35,7 +35,7 @@ namespace lux::render
     struct FeaturePorts final
     {
         std::vector<FeaturePort> resources;
-        StorageGroups<FeaturePort> storage;
+        ResourceBindingGroups<FeaturePort> resource_bindings;
         std::vector<FeatureHistory> histories;
     };
 

@@ -126,7 +126,7 @@ namespace lux::render::runtime_detail
             return {};
         };
         auto& external = assembly->external_bindings;
-        const std::array groups{&external.global, &external.scene, &external.view};
+        const std::array groups{&external.device, &external.scene, &external.view};
         for (std::size_t i = 0; i < groups.size(); ++i)
         {
             if (auto resolved = resolve(*groups[i], static_cast<EResourceDomain>(i)); !resolved)

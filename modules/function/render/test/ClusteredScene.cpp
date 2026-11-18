@@ -51,7 +51,7 @@ struct ClusterCapture
         }
         CaptureConfig capture{config.pixels};
         capture.bytes = bytes;
-        ports.storage.view.push_back(
+        ports.resource_bindings.view.push_back(
             {"pixels",
              EFeaturePort::OUTPUT,
              GraphBufferDesc{bytes},

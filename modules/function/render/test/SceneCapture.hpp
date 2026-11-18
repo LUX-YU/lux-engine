@@ -788,7 +788,7 @@ struct CaptureFeature
              EFeaturePort::INPUT,
              config.bytes ? VGraphResourceDesc{GraphBufferDesc{config.bytes}} : VGraphResourceDesc{image}}
         );
-        ports.storage.view.push_back(
+        ports.resource_bindings.view.push_back(
             {"pixels",
              EFeaturePort::OUTPUT,
              GraphBufferDesc{std::max(64u * 256, config.bytes)},

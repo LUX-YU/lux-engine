@@ -8,15 +8,15 @@
 namespace lux::render
 {
     // Cold placement lists. No scope identity, parent tree or runtime authority is allocated here.
-    template <class T> struct StorageGroups final
+    template <class T> struct ResourceBindingGroups final
     {
-        std::vector<T> global;
+        std::vector<T> device;
         std::vector<T> scene;
         std::vector<T> view;
 
         [[nodiscard]] std::size_t size() const noexcept
         {
-            return global.size() + scene.size() + view.size();
+            return device.size() + scene.size() + view.size();
         }
 
         [[nodiscard]] bool empty() const noexcept
@@ -31,7 +31,7 @@ namespace lux::render
         ResourceRequirement storage;
     };
 
-    using GraphStorageBindings = StorageGroups<GraphStorageBinding>;
+    using GraphStorageBindings = ResourceBindingGroups<GraphStorageBinding>;
 
     // Effect-owned concrete arguments, resolved only at Attach; never part of immutable Native code.
     class StorageArgument final

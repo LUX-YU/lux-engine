@@ -77,7 +77,7 @@ namespace lux::render
         dependency_storages.reserve(effect.resource_dependencies.size());
         for (const auto& dependency : effect.resource_dependencies)
         {
-            auto* owner = view.storages.ownerFor(dependency.scope);
+            auto* owner = view.resources.ownerFor(dependency.scope);
             if (!owner)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
@@ -113,13 +113,13 @@ namespace lux::render
                 continue;
             }
             const auto id = dependency_storages[i];
-            const auto& call = domain_->resources_.factory(dependency.declaration)->frame_call;
-            candidate.inputs.emplace_back(id, domain_->resources_.resourceInstance(id), &call, dependency.columns);
+            const auto& call = runtime_->resources_.factory(dependency.declaration)->frame_call;
+            candidate.inputs.emplace_back(id, runtime_->resources_.resourceInstance(id), &call, dependency.columns);
         }
         candidate.target_images.reserve(target_images.size());
         for (const auto& input : target_images)
         {
-            const auto* source = domain_->targets_.find(input.target);
+            const auto* source = runtime_->targets_.find(input.target);
             if (!source || !targetDescription(*source).sampled)
             {
                 return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -173,7 +173,7 @@ namespace lux::render
              ++dependency_index)
         {
             const auto& dependency = effect.resource_dependencies[dependency_index];
-            const auto* factory = domain_->resources_.factory(dependency.declaration);
+            const auto* factory = runtime_->resources_.factory(dependency.declaration);
             const auto id = dependency_storages[dependency_index];
             for (const auto& argument : dependency.bindings)
             {
@@ -188,14 +188,14 @@ namespace lux::render
                 resolved[index] = id;
                 if (auto bound =
                         candidate
-                            .bindStorage(index, *ops, domain_->resources_.resourceInstance(id), value, entry.frameProgress().frameCount());
+                            .bindStorage(index, *ops, runtime_->resources_.resourceInstance(id), value, entry.frameProgress().frameCount());
                     !bound)
                 {
                     return cxx::unexpected(bound.error());
                 }
             }
         }
-        if (auto created = candidate.instance.createData(effect.graph, domain_->resources_, resolved); !created)
+        if (auto created = candidate.instance.createData(effect.graph, runtime_->resources_, resolved); !created)
             return cxx::unexpected(created.error());
         for (std::uint32_t input = 0; input < candidate.instance.samplerInputCount(); ++input)
         {

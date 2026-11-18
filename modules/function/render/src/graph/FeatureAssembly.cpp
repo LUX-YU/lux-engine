@@ -16,7 +16,7 @@ namespace lux::render
         struct PlacedPort final
         {
             FeaturePort declaration;
-            std::vector<GraphStorageBinding>* storage = nullptr;
+            std::vector<GraphStorageBinding>* bindings = nullptr;
         };
 
         struct Contribution final
@@ -81,7 +81,7 @@ namespace lux::render
                 return cxx::unexpected(described.error());
             }
             work[i].histories = std::move(ports.histories);
-            const auto append = [&](auto& source, std::vector<GraphStorageBinding>* storage)
+            const auto append = [&](auto& source, std::vector<GraphStorageBinding>* bindings)
             {
                 for (auto& port : source)
                 {
@@ -90,13 +90,13 @@ namespace lux::render
                     {
                         image->width = image->height = 0;
                     }
-                    work[i].declarations.push_back({std::move(port), storage});
+                    work[i].declarations.push_back({std::move(port), bindings});
                 }
             };
             append(ports.resources, nullptr);
-            append(ports.storage.global, &result.external_bindings.global);
-            append(ports.storage.scene, &result.external_bindings.scene);
-            append(ports.storage.view, &result.external_bindings.view);
+            append(ports.resource_bindings.device, &result.external_bindings.device);
+            append(ports.resource_bindings.scene, &result.external_bindings.scene);
+            append(ports.resource_bindings.view, &result.external_bindings.view);
             auto& declarations = work[i].declarations;
             std::ranges::sort(declarations, {}, [](const auto& port) { return port.declaration.key; });
             for (std::size_t p = 0; p < declarations.size(); ++p)
@@ -104,9 +104,11 @@ namespace lux::render
                 const auto& port = declarations[p];
                 const auto& d = port.declaration;
                 const bool duplicate = p != 0 && declarations[p - 1].declaration.key == d.key;
-                const bool invalid =
-                    d.key.empty() || d.direction > EFeaturePort::OPTIONAL || bool(d.storage) != bool(port.storage) ||
-                    (d.storage && (d.direction != EFeaturePort::OUTPUT || d.origin != EGraphOrigin::IMPORTED));
+                const bool invalid_port = d.key.empty() || d.direction > EFeaturePort::OPTIONAL;
+                const bool binding_mismatch = bool(d.resource_requirement) != bool(port.bindings);
+                const bool invalid_bound_port = d.resource_requirement &&
+                    (d.direction != EFeaturePort::OUTPUT || d.origin != EGraphOrigin::IMPORTED);
+                const bool invalid = invalid_port || binding_mismatch || invalid_bound_port;
                 if (duplicate || invalid)
                 {
                     return cxx::unexpected(failure(duplicate ? kFeatureDuplicate : kFeatureContract, i, p));
@@ -211,12 +213,16 @@ namespace lux::render
                 }
                 const auto& a = work[i].declarations[previous].declaration;
                 const auto& b = work[i].declarations[current].declaration;
-                const bool invalid_pair = a.direction != EFeaturePort::OUTPUT || b.direction != EFeaturePort::OUTPUT ||
-                                          a.origin != EGraphOrigin::HISTORY_PREVIOUS ||
-                                          b.origin != EGraphOrigin::HISTORY_CURRENT || a.description != b.description ||
-                                          a.storage || b.storage ||
-                                          work[i].resolved[previous].version.resource.index != kGraphInvalidIndex ||
-                                          work[i].resolved[current].version.resource.index != kGraphInvalidIndex;
+                const bool invalid_ports = a.direction != EFeaturePort::OUTPUT || b.direction != EFeaturePort::OUTPUT;
+                const bool invalid_origins =
+                    a.origin != EGraphOrigin::HISTORY_PREVIOUS || b.origin != EGraphOrigin::HISTORY_CURRENT;
+                const bool has_resource_binding = a.resource_requirement || b.resource_requirement;
+                const bool already_resolved =
+                    work[i].resolved[previous].version.resource.index != kGraphInvalidIndex ||
+                    work[i].resolved[current].version.resource.index != kGraphInvalidIndex;
+                const bool invalid_pair =
+                    invalid_ports || invalid_origins || a.description != b.description || has_resource_binding ||
+                    already_resolved;
                 if (invalid_pair)
                 {
                     return cxx::unexpected(failure(kFeatureContract, i));
@@ -264,9 +270,9 @@ namespace lux::render
                     return cxx::unexpected(resource.error());
                 }
                 work[i].resolved[p].version = {*resource, 0};
-                if (port.storage)
+                if (port.bindings)
                 {
-                    port.storage->push_back({*resource, std::move(*d.storage)});
+                    port.bindings->push_back({*resource, std::move(*d.resource_requirement)});
                 }
             }
         }
@@ -406,7 +412,7 @@ namespace lux::render
                 storage_resources[binding.resource.index] = true;
             }
         };
-        markStorage(result.external_bindings.global);
+        markStorage(result.external_bindings.device);
         markStorage(result.external_bindings.scene);
         markStorage(result.external_bindings.view);
         std::vector<bool> configured(graph->resources().size(), false), constructed(graph->resources().size(), false);

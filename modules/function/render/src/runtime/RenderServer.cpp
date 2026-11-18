@@ -170,8 +170,8 @@ namespace lux::render
         for (const auto* resource : description.resources)
         {
             if (!resource) return cxx::unexpected(RenderError{kCapabilityDeclaration});
-            const auto id = impl_->domain_->resources_.typeId(resource->type);
-            const auto* factory = impl_->domain_->resources_.factory(id);
+            const auto id = impl_->runtime_->resources_.typeId(resource->type);
+            const auto* factory = impl_->runtime_->resources_.factory(id);
             if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
             if (resource != factory->descriptor)
             {
@@ -195,15 +195,15 @@ namespace lux::render
         const auto commands = capability.commands;
         for (const auto& binding : implementation.command_bindings)
         {
-            const auto* method = domain_->command_registry_.binding(binding);
-            const auto* command = domain_->command_registry_.findCommand(binding.command);
+            const auto* method = runtime_->command_registry_.binding(binding);
+            const auto* command = runtime_->command_registry_.findCommand(binding.command);
             const bool invalid_call = !method || !method->call.invoke;
             const bool invalid_route = !command || !command->effect || (method && method->storage_type.isValid());
             if (invalid_call || invalid_route) return cxx::unexpected(RenderError{kCommandContract});
         }
         for (const auto* command : commands)
         {
-            const auto id = domain_->command_registry_.findCommand(*command);
+            const auto id = runtime_->command_registry_.findCommand(*command);
             const bool has_exact_call =
                 id && std::ranges::count_if(
                           implementation.command_bindings,
@@ -287,15 +287,15 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        if (auto valid = impl_->domain_->resources_.validateFactory(factory, configuration); !valid)
+        if (auto valid = impl_->runtime_->resources_.validateFactory(factory, configuration); !valid)
             return cxx::unexpected(valid.error());
-        if (auto valid = impl_->domain_->command_registry_.validateResourceBindings(factory.commands); !valid)
+        if (auto valid = impl_->runtime_->command_registry_.validateResourceBindings(factory.commands); !valid)
             return cxx::unexpected(valid.error());
-        const auto type = impl_->domain_->resources_.publishFactory(factory, std::move(configuration));
+        const auto type = impl_->runtime_->resources_.publishFactory(factory, std::move(configuration));
         for (const auto& command : factory.commands)
         {
-            const auto location = impl_->domain_->command_registry_.publishResourceBinding(command);
-            if (!impl_->domain_->resources_.bindCommand(type, location)) std::terminate();
+            const auto location = impl_->runtime_->command_registry_.publishResourceBinding(command);
+            if (!impl_->runtime_->resources_.bindCommand(type, location)) std::terminate();
         }
         return type;
     }
@@ -309,15 +309,15 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        if (auto valid = state.domain_->command_registry_.validateHandler(handler, bindings); !valid)
+        if (auto valid = state.runtime_->command_registry_.validateHandler(handler, bindings); !valid)
         {
             return cxx::unexpected(valid.error());
         }
         const auto handler_type = handler.type;
-        const auto id = state.domain_->command_registry_.publishHandler(std::move(handler));
+        const auto id = state.runtime_->command_registry_.publishHandler(std::move(handler));
         for (const auto& binding : bindings)
         {
-            if (binding.handlerType() == handler_type) state.domain_->command_registry_.publishBinding(id, binding);
+            if (binding.handlerType() == handler_type) state.runtime_->command_registry_.publishBinding(id, binding);
         }
         return id;
     }
@@ -326,9 +326,9 @@ namespace lux::render
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
         if (impl_->stop_requested_.load()) return cxx::unexpected(RenderError{kRuntimeState});
-        if (auto valid = impl_->domain_->command_registry_.validateStaticBindings(bindings); !valid) return valid;
-        impl_->domain_->command_registry_.reserve(bindings.size(), 0);
-        impl_->domain_->command_registry_.publishStaticBindings(bindings);
+        if (auto valid = impl_->runtime_->command_registry_.validateStaticBindings(bindings); !valid) return valid;
+        impl_->runtime_->command_registry_.reserve(bindings.size(), 0);
+        impl_->runtime_->command_registry_.publishStaticBindings(bindings);
         return {};
     }
 
@@ -343,7 +343,7 @@ namespace lux::render
     RenderResult<HandlerId> RenderServer::handlerId(cxx::basic_type_info type, std::string_view key) const noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        auto id = impl_->domain_->command_registry_.findHandler(type, key);
+        auto id = impl_->runtime_->command_registry_.findHandler(type, key);
         if (!id) return id;
         if (id->isNull()) return cxx::unexpected(RenderError{kRuntimeIdentity});
         return id;
@@ -354,9 +354,9 @@ namespace lux::render
     ) const noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        auto id = impl_->domain_->command_registry_.findCommand(command);
+        auto id = impl_->runtime_->command_registry_.findCommand(command);
         if (!id) return cxx::unexpected(id.error());
-        return impl_->domain_->command_registry_.findBinding(*id, method, handler);
+        return impl_->runtime_->command_registry_.findBinding(*id, method, handler);
     }
 
     RenderResult<FeatureId> RenderServer::featureId(std::string_view implementation) const noexcept

@@ -71,7 +71,7 @@ namespace lux::render
         std::map<std::string_view, FeatureId, std::less<>> features_by_name_;
         CapabilityRegistry capability_registry_;
         std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
-        struct DeviceDomain final
+        struct RuntimeState final
         {
             ResourceRegistry resources_;
             std::unique_ptr<detail::DeviceEntry> device_;
@@ -84,7 +84,7 @@ namespace lux::render
         };
 
         // Release the window and actual device before run() returns. Reverse order keeps each borrow valid.
-        std::optional<DeviceDomain> domain_{std::in_place};
+        std::optional<RuntimeState> runtime_{std::in_place};
         std::vector<RenderJobId> running_jobs_;
         std::uint64_t next_input_layout_revision_ = 1;
 
@@ -144,7 +144,7 @@ namespace lux::render
 
         template <RenderCommand C, auto Method> CommandId bindFrameworkCommand() noexcept
         {
-            return domain_->command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
+            return runtime_->command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
         }
 
         void bindJobCommands() noexcept;

@@ -79,7 +79,7 @@ namespace lux::editor::ui
         ports.resources.push_back({"linear_color", EFeaturePort::OUTPUT, color});
         color.format = config.output.format;
         ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
-        ports.storage.view.push_back(
+        ports.resource_bindings.view.push_back(
             {"snapshot",
              EFeaturePort::OUTPUT,
              GraphBufferDesc{4},
@@ -87,7 +87,7 @@ namespace lux::editor::ui
              {GraphBufferRange{0, 4}},
              ResourceRequirement{ResourceName(UiResource::descriptor.type.name())}}
         );
-        ports.storage.global.push_back(
+        ports.resource_bindings.device.push_back(
             {"textures",
              EFeaturePort::OUTPUT,
              GraphImageDesc{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM},

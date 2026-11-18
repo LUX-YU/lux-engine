@@ -180,13 +180,19 @@ namespace lux::render::detail
     } // namespace
 
     std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>
-    collectUseStages(const RenderGraph& graph, const ShaderBindingPlan& layouts, nri::GraphicsAPI backend) noexcept
+    collectUseStages(
+        const RenderGraph& graph,
+        std::span<const GraphPassId> order,
+        const ShaderBindingPlan& layouts,
+        nri::GraphicsAPI backend
+    ) noexcept
     {
         std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>> result(graph.passes().size());
-        for (std::uint32_t p = 0; p < graph.passes().size(); ++p)
+        for (std::size_t slot = 0; slot < order.size(); ++slot)
         {
-            const auto& pass = graph.passes()[p];
-            auto& uses = result[p];
+            const auto id = order[slot].index;
+            const auto& pass = graph.passes()[id];
+            auto& uses = result[id];
             uses.reserve(pass.uses.size());
             for (const auto& use : pass.uses)
             {
@@ -197,7 +203,7 @@ namespace lux::render::detail
                     if (resource != kGraphInvalidIndex)
                     {
                         const auto access = accessForUse(
-                            use, layouts.passes[p], pass, graph.resources()[resource].description, resource, backend
+                            use, layouts.passes[slot], pass, graph.resources()[resource].description, resource, backend
                         );
                         uses.emplace_back(resource, access.stages);
                     }

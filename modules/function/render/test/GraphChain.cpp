@@ -864,11 +864,13 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
         };
         return work;
     };
+    const auto unused = take(builder.declareResource({"unused", GraphBufferDesc{16}}));
+    CHECK(builder.addComputePass("culled", dispatch(initialized.written.front(), unused)));
     const auto next = take(builder.nextWriteVersion(intermediate));
     auto invalid = dispatch(next, result);
     invalid.interface.program = kGraphInvalidIndex;
     CHECK(!builder.addComputeSequence("invalid", {dispatch(initialized.written.front(), intermediate), invalid}));
-    CHECK(builder.passCount() == 1 && take(builder.nextWriteVersion(intermediate)) == next);
+    CHECK(builder.passCount() == 2 && take(builder.nextWriteVersion(intermediate)) == next);
     const auto sequence = take(builder.addComputeSequence(
         "two increments", {dispatch(initialized.written.front(), intermediate), dispatch(next, result)}
     ));
@@ -1213,7 +1215,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
         core.CreatePlacedBuffer(
             session->device(),
             NriDeviceHeap,
-            {32, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE},
+            {32, 4, nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE},
             shared
         ) == nri::Result::SUCCESS
     );

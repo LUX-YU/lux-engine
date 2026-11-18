@@ -470,7 +470,8 @@ namespace lux::render::detail
                 }
             }
         }
-        const auto use_stages = collectUseStages(graph, *plan.descriptor_plan_, limits.graphicsAPI);
+        const auto use_stages =
+            collectUseStages(graph, analysis.execution_order, *plan.descriptor_plan_, limits.graphicsAPI);
         planSubmissions(
             graph, analysis, plan.resources_, plan.recording_, use_stages, queues, plan.submissions_,
             plan.imported_accesses_, plan.output_

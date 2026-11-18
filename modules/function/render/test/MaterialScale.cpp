@@ -600,7 +600,7 @@ namespace
         RenderServer& server, ipc::IpcRequester& client, const CommandList& commands, std::string_view channel,
         const RenderProbe<RasterProbeConfig>& forward, std::array<SceneId, 2> scenes, ResourceInstanceId materials,
         MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
-        bool expect_progress, unsigned workers
+        FeatureId clear, bool expect_progress, unsigned workers
     )
     {
         CapturedPixels imported_pixels;
@@ -614,6 +614,22 @@ namespace
                 client, commands, {materials, {std::move(program), std::move(parameters), {texture}}}
             ).material;
         };
+        TargetId source;
+        if (expect_progress)
+        {
+            constexpr auto hdr = ETextureFormat::RGBA16_SFLOAT;
+            source = call<CreateTarget>(client, commands, {{64, 64, hdr, 1, ETargetKind::OFFSCREEN, true}}).target;
+            CreateEffectRequest produce{{hdr, 1, ETargetKind::OFFSCREEN, true}};
+            produce.definition.features.push_back({clear, "hdr", take(ConfigValue::make(WindowClear::Config{hdr}))});
+            produce.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{hdr, 1}});
+            const auto effect = call<CreateEffect>(client, commands, std::move(produce)).effect;
+            const auto view = call<CreateView>(client, commands, {scenes[0]}).view;
+            const auto writer = startRenderJob(client, commands, scenes[0], view, source, effect);
+            renderFrame(client, commands, writer);
+            stopAndRemoveJob(client, commands, writer);
+            call<RemoveView>(client, commands, {scenes[0], view});
+            call<RemoveEffect>(client, commands, {effect});
+        }
         for (unsigned i = 0; i < jobs.size(); ++i)
         {
             auto& job = jobs[i];
@@ -622,15 +638,10 @@ namespace
             MeshInstanceData input{mesh, job.material};
             input.render_enabled = true;
             job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
-            auto output = kTarget;
-            output.sampled = expect_progress;
-            const bool supplies_history = i == 0 && expect_progress;
-            if (supplies_history) output.format = ETextureFormat::RGBA16_SFLOAT;
             auto request = probeRequest(
-                output, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, output.format}},
+                kTarget, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, kTarget.format}},
                 {"color", "pixels"}
             );
-            if (supplies_history) request.definition.outputs.resize(1);
             if (i == 1 && expect_progress)
             {
                 const auto tone = static_cast<std::uint32_t>(request.definition.features.size());
@@ -638,11 +649,11 @@ namespace
                 const FeaturePortRef destination{tone, "hdr_color"};
                 request.definition.features.push_back({
                     forward.features[3], "probe/tone",
-                    take(ConfigValue::make(TonemapFeatureConfig{{output.format}, EColorEncoding::LINEAR}))
+                    take(ConfigValue::make(TonemapFeatureConfig{{kTarget.format}, EColorEncoding::LINEAR}))
                 });
                 request.definition.features.push_back({
                     forward.features[1], "probe/import",
-                    take(ConfigValue::make(CaptureConfig{&imported_pixels, output.format}))
+                    take(ConfigValue::make(CaptureConfig{&imported_pixels, kTarget.format}))
                 });
                 GraphImageDesc image{64, 64, 1, 1, ETextureFormat::RGBA16_SFLOAT};
                 image.extent.source = EImageExtentSource::TARGET;
@@ -652,11 +663,11 @@ namespace
                 });
                 request.definition.connections.push_back({{tone, "color"}, {capture, "color"}});
                 request.definition.outputs.push_back({{capture, "pixels"}, {}});
-                job.binding.target_images.push_back({destination, jobs[0].target});
+                job.binding.target_images.push_back({destination, source});
             }
             job.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
             job.view = call<CreateView>(client, commands, {scenes[i]}).view;
-            job.target = call<CreateTarget>(client, commands, {output}).target;
+            job.target = call<CreateTarget>(client, commands, {kTarget}).target;
             call<UpdateViewCamera>(client, commands, {{scenes[i], job.view}, {}});
             job.job = call<CreateRenderJob>(client, commands, {
                 scenes[i], job.view, job.effect, EJobCadence::REQUESTED
@@ -706,7 +717,7 @@ namespace
         {
             variants = {createMaterial(3, .375F), createMaterial(4, .75F), createMaterial(5, .5F)};
             newest = verifyPreparationLifecycle(
-                server, client, *cold_client, commands, jobs[1], jobs[0].target, mesh,
+                server, client, *cold_client, commands, jobs[1], source, mesh,
                 variants
             );
         }
@@ -718,7 +729,7 @@ namespace
             call<RemoveTarget>(client, commands, job.target);
             call<RemoveEffect>(client, commands, {job.effect});
             const auto deadline = Clock::now() + 15s;
-            while ((i == 1 || !expect_progress) && !job.pixels.ready.load(std::memory_order_acquire))
+            while (!job.pixels.ready.load(std::memory_order_acquire))
             {
                 CHECK(Clock::now() < deadline);
                 std::this_thread::yield();
@@ -729,6 +740,7 @@ namespace
         if (newest)
         {
             CHECK(imported_pixels.ready.load(std::memory_order_acquire));
+            call<RemoveTarget>(client, commands, source);
             const auto& frame = jobs[1].pixels.frames[newest->slot_index];
             const auto offset = 32 * jobs[1].pixels.pitch + 32 * 4;
             CHECK(std::abs(std::to_integer<int>(frame[offset]) - 192) <= 1);
@@ -930,6 +942,7 @@ int main(int argc, char** argv)
     auto server = take(RenderServer::create(config, **runtime, device));
     take(server->registerResource<MaterialAllocationProbe>());
     if (pipeline_isolation.has_value()) take(server->registerResource<PipelineIsolationProbe>());
+    const auto clear = pipeline_isolation.value_or(false) ? take(server->registerFeature<WindowClear>()) : FeatureId{};
     take(server->registerResource<CaptureBuffer>());
     const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
     const auto capture = take(server->registerFeature<CaptureFeature>());
@@ -977,7 +990,7 @@ int main(int argc, char** argv)
         const auto other = call<CreateScene>(*ipc, commands, {}).scene;
         verifyPipelineIsolation(
             *server, *ipc, commands, config.channel_name, probes[0], {scene, other}, materials, mesh, images.front(),
-            **compiler, shader_target, *pipeline_isolation, workers
+            **compiler, shader_target, clear, *pipeline_isolation, workers
         );
     }
     else if (count)

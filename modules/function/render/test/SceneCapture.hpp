@@ -735,6 +735,38 @@ private:
     std::vector<Allocation> allocations_;
 };
 
+struct WindowClear final
+{
+    struct Config final
+    {
+        rdesc::ETextureFormat format;
+    };
+    using Ports = WindowClear;
+    static constexpr FeatureName name{"test.window.clear"};
+
+    static RenderResult<void> describe(const void* configuration, std::string_view, FeaturePorts& ports) noexcept
+    {
+        GraphImageDesc image{64, 64, 1, 1, static_cast<const Config*>(configuration)->format};
+        image.extent.source = EImageExtentSource::TARGET;
+        FeaturePort color{"color", EFeaturePort::OUTPUT, image};
+        if (image.format == rdesc::ETextureFormat::RGBA16_SFLOAT)
+            color.semantic = "lux.color.linear-hdr.v1";
+        ports.resources.push_back(std::move(color));
+        return {};
+    }
+
+    static RenderResult<void> build(const void* configuration, std::string_view, FeatureBuildContext& context) noexcept
+    {
+        const auto color = context.resource("color");
+        const bool is_depth = static_cast<const Config*>(configuration)->format == rdesc::ETextureFormat::D32_SFLOAT;
+        const auto clear = is_depth ? ClearImage{{color, GraphImageRange{2}}, {}, .25f}
+                                    : ClearImage{{color}, {.25f, .5f, .75f, 1}};
+        auto pass = context.graph.addTransferPass("clear output", TransferWork{{clear}});
+        if (!pass) return lux::cxx::unexpected(pass.error());
+        return context.publish("color", pass->written.front());
+    }
+};
+
 struct CaptureFeature
 {
     using Config = CaptureConfig;

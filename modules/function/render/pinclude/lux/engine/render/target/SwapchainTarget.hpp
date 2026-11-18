@@ -14,8 +14,7 @@ namespace lux::render::detail
 {
     class DeviceSession;
 
-    // Owns presentation objects, never the platform window. All physical destruction is admitted
-    // to DeviceSession's cleanup scope; close() additionally returns the window borrow to its caller.
+    // Owns presentation objects and borrows the platform window until close() settles native retirement.
     class SwapchainTarget final
     {
     public:
@@ -85,8 +84,6 @@ namespace lux::render::detail
         }
 
         SwapchainTarget(DeviceSession&, TargetDesc, SurfaceDescription) noexcept;
-        using Completion = void (*)(void*, RenderResult<void>) noexcept;
-        void retire(void* completion = nullptr, Completion = nullptr) noexcept;
 
         [[nodiscard]] bool nativePending() const noexcept
         {
@@ -99,6 +96,21 @@ namespace lux::render::detail
             nri::Fence* native = nullptr;
             SubmissionPoint last_wait;
         };
+
+        struct Retirement final
+        {
+            DeviceSession& session;
+            nri::SwapChainInterface operations;
+            nri::SwapChain* swap_chain;
+            nri::Fence* unused_acquire;
+            std::vector<nri::Descriptor*> views;
+            std::vector<AcquireFence> acquired;
+            std::vector<nri::Fence*> released;
+
+            [[nodiscard]] RenderResult<void> release(bool lost) noexcept;
+        };
+
+        [[nodiscard]] Retirement takeRetirement() noexcept;
 
         DeviceSession& session_;
         TargetDesc description_;

@@ -112,4 +112,11 @@ namespace lux::render::detail
     {
         return native_->idle();
     }
+
+    bool DeviceEntry::hasBorrows() const noexcept
+    {
+        const bool has_uploads = upload_pending || (uploader_ && uploader_->hasPendingTransfers());
+        return pending_starts || has_uploads || resources_.hasCommands() || scopedResourceCommands() ||
+            round.operation || !round.input_updates.empty() || !nativeIdle();
+    }
 } // namespace lux::render::detail

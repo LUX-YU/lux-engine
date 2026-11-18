@@ -242,7 +242,7 @@ namespace lux::render
 
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
         void createDeviceSession(const CreateDeviceSession::Request&, CreateDeviceSession::Response&) noexcept;
-        void removeDeviceSession(const RemoveDeviceSession::Request&, RemoveDeviceSession::Response&) noexcept;
+        exec::task<AckResponse> removeDeviceSession(RemoveDeviceSession::Request&&) noexcept;
         void queryRenderDevice(const QueryRenderDevice::Request&, QueryRenderDevice::Response&) noexcept;
         void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
 

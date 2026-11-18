@@ -769,16 +769,11 @@ namespace lux::render
         response = {{}, id};
     }
 
-    void RenderServer::Impl::removeDeviceSession(
-        const RemoveDeviceSession::Request& id, RemoveDeviceSession::Response& response
-    ) noexcept
+    exec::task<AckResponse> RenderServer::Impl::removeDeviceSession(RemoveDeviceSession::Request&& id) noexcept
     {
         auto* entry = runtime_->device(id);
-        if (!entry)
-        {
-            response.error = {kRuntimeIdentity};
-            return;
-        }
+        if (!entry) co_return AckResponse{RenderError{kRuntimeIdentity}};
+        if (entry->retiring) co_return AckResponse{RenderError{kDeviceBusy}};
         const bool has_targets = std::ranges::any_of(runtime_->targets_, [id](const auto& target) noexcept
         {
             return targetState(target).device == id;
@@ -787,17 +782,32 @@ namespace lux::render
         {
             return job.execution && job.execution->device == id;
         });
-        const bool has_borrows = entry->pending_starts || entry->upload_pending || entry->resources().hasCommands() ||
-            entry->scopedResourceCommands() || entry->round.operation || !entry->round.input_updates.empty();
-        const bool has_pending_work = !entry->nativeIdle() || entry->session().pendingGpuWork();
-        if (has_targets || has_bound_jobs || has_borrows || has_pending_work)
-        {
-            response.error = {kDeviceBusy};
-            return;
-        }
+        if (has_targets || has_bound_jobs || entry->hasBorrows())
+            co_return AckResponse{RenderError{kDeviceBusy}};
 
+        entry->retiring = true;
+        auto& session = entry->session();
+        auto accepted = session.makeFrontiers();
+        for (std::size_t index = 0; index < session.queueCount(); ++index)
+        {
+            accepted.accept(session.submissionPoint(index, session.physicalQueue(index).submitted()));
+        }
+        // Deliver after completion callbacks have returned and keep the accepted removal alive during Stop.
+        const auto owner = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
+        const auto retired = co_await (
+            session.waitFrontiers(std::move(accepted)) |
+            stdexec::continues_on(owner) |
+            stdexec::write_env(stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}})
+        );
+        if (!retired)
+        {
+            const auto error = retired.error();
+            const bool safe = error.type == kOutcomeUnknown || detail::isNativeFailure(error, nri::Result::DEVICE_LOST);
+            if (!safe) std::terminate();
+        }
+        if (entry->hasBorrows()) std::terminate();
         runtime_->devices_.erase(id);
-        response = {};
+        co_return AckResponse{};
     }
 
     void RenderServer::Impl::queryRenderDevice(
@@ -819,7 +829,7 @@ namespace lux::render
             description.dimensions.attachmentMaxDim,
             static_cast<std::uint32_t>(session.queueCount()),
             entry->frameProgress().frameCount(),
-            entry->admissionError()
+            entry->failure.type ? entry->failure : session.terminalError()
         };
     }
 
@@ -846,6 +856,7 @@ namespace lux::render
         cancelActiveFrame(device, error);
         if (preparing_execution_ && preparing_execution_->device == device.id)
             preparing_execution_->programs.active->stop.request_stop();
+        if (device.retiring) return;
 
         for (auto id : running_jobs_)
         {
@@ -890,6 +901,7 @@ namespace lux::render
             });
             if (found == runtime_->devices_.end()) return cxx::unexpected(RenderError{kStorageIdentity});
             const auto& device = **found;
+            if (device.retiring) return cxx::unexpected(RenderError{kDeviceBusy});
             const auto failure = device.admissionError();
             if (failure.type && !entry.description->failure_safe) return cxx::unexpected(failure);
             const bool exclusive = entry.description->requires_idle_resource;
@@ -1052,6 +1064,32 @@ namespace lux::render
         {
             std::terminate();
         }
+
+        // Retire live swapchains on their own native workers while this owner keeps polling completion.
+        stdexec::simple_counting_scope presentations;
+        const auto delivery = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
+        for (auto& target : runtime_->targets_)
+        {
+            auto* surface = std::get_if<detail::SwapchainTarget>(&target);
+            if (!surface) continue;
+            auto retire = stdexec::starts_on(delivery, surface->close()) |
+                stdexec::then([this, id = surface->state.device](RenderResult<void> result) noexcept
+                {
+                    if (!result) failDevice(*runtime_->device(id), result.error());
+                }) |
+                stdexec::upon_error([](auto&&) noexcept { std::terminate(); }) |
+                stdexec::upon_stopped([]() noexcept { std::terminate(); });
+            stdexec::spawn(std::move(retire), presentations.get_token());
+        }
+        presentations.close();
+        std::atomic<bool> presentations_joined{false};
+        auto presentation_join = stdexec::connect(presentations.join(), Joined{&presentations_joined});
+        stdexec::start(presentation_join);
+        while (!presentations_joined.load(std::memory_order_acquire))
+        {
+            const auto observed = notifications.workEpoch();
+            if (!serviceOperations(false)) waitForService(observed);
+        }
         // All sources of new native work have returned. Staging and native payloads can now release in owner order.
         for (const auto& device : runtime_->devices_)
             if (auto drained = device->session().drain(); !drained) failDevice(*device, drained.error());
@@ -1088,12 +1126,12 @@ namespace lux::render
                 const auto completed = device.session().progressCompletions();
                 const auto failure = completed ? device.session().terminalError() : completed.error();
                 if (failure.type) failDevice(device, failure);
-                const bool can_admit = admitting && !stop_requested_.load() && !device.failure.type;
+                const bool can_admit = admitting && !stop_requested_.load() && !device.admissionError().type;
                 if (can_admit) progressTargetFlights(device);
                 progressed |= progressInputUpdates(device);
                 if (can_admit) progressed |= progressProgramPreparations(device);
                 progressed |= progressFrame(device);
-                progressUploads(device);
+                if (!device.retiring) progressUploads(device);
             };
             const auto start = next_device_ % devices.size();
             const auto turn = std::next(devices.begin(), start);

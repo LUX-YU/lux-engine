@@ -46,6 +46,11 @@ namespace lux::render
             response.error = {kRuntimeIdentity};
             return;
         }
+        if (device->retiring)
+        {
+            response.error = {kDeviceBusy};
+            return;
+        }
         const auto type = runtime_->resources_.typeId(request.declaration);
         auto owner = resourceScope(*device, request.scope, type, false);
         if (!owner)

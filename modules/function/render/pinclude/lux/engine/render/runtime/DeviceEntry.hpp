@@ -71,9 +71,13 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderError admissionError() const noexcept
         {
+            if (retiring) return {kDeviceBusy};
             return failure.type ? failure : session().terminalError();
         }
 
+        [[nodiscard]] bool hasBorrows() const noexcept;
+
+        bool retiring = false;
         bool upload_pending = false;
         std::uint32_t pending_starts = 0;
     };

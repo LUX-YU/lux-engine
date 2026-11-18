@@ -185,7 +185,11 @@ namespace lux::render::detail
 
     SwapchainTarget::~SwapchainTarget() noexcept
     {
-        retire();
+        if (!swap_chain_) return;
+        session_.deferRelease(uses_, [retirement = takeRetirement()]() mutable noexcept
+        {
+            (void)retirement.release(retirement.session.deviceLost());
+        });
     }
 
     RenderResult<bool> SwapchainTarget::prefetched() const noexcept
@@ -298,83 +302,59 @@ namespace lux::render::detail
 
     exec::task<RenderResult<void>> SwapchainTarget::close() noexcept
     {
+        const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
+        constexpr auto settle = stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}};
         if (nativePending())
         {
             // Resume after advance() and its Server-side completion have finished using the old flight.
-            const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
-            co_await (whenIdle() | stdexec::continues_on(owner));
+            co_await (whenIdle() | stdexec::continues_on(owner) | stdexec::write_env(settle));
         }
-        co_return co_await exec::create<stdexec::set_value_t(RenderResult<void>)>([this](auto& completion) noexcept
+        if (!swap_chain_) co_return RenderResult<void>{};
+        const auto completed = co_await (session_.waitFrontiers(uses_) | stdexec::write_env(settle));
+        if (!completed)
         {
-            using Completion = std::remove_reference_t<decltype(completion)>;
-            retire(
-                &completion,
-                [](void* object, RenderResult<void> result) noexcept
-                {
-                    auto& done = *static_cast<Completion*>(object);
-                    stdexec::set_value(std::move(done.receiver), result);
-                }
-            );
-        });
+            const auto error = completed.error();
+            const bool safe = error.type == kOutcomeUnknown || isNativeFailure(error, nri::Result::DEVICE_LOST);
+            if (!safe) std::terminate();
+        }
+        const bool lost = session_.deviceLost();
+        auto retirement = takeRetirement();
+        // G has completed. P/A may still wait in the driver and must only hold this device's native worker.
+        co_return co_await (
+            stdexec::schedule(session_.nativeScheduler()) |
+            stdexec::then([&retirement, lost]() noexcept { return retirement.release(lost); }) |
+            stdexec::upon_error([](auto&&) noexcept -> RenderResult<void> { std::terminate(); }) |
+            stdexec::upon_stopped([]() noexcept -> RenderResult<void> { std::terminate(); }) |
+            stdexec::continues_on(owner) |
+            stdexec::upon_error(NativeDeliveryFailure<void>{}) |
+            stdexec::write_env(settle)
+        );
     }
 
-    void SwapchainTarget::retire(void* completion, Completion complete) noexcept
+    SwapchainTarget::Retirement SwapchainTarget::takeRetirement() noexcept
     {
         if (nativePending() || idle_) std::terminate();
-        auto* swap_chain = std::exchange(swap_chain_, nullptr);
-        if (!swap_chain)
-        {
-            if (complete)
-            {
-                complete(completion, {});
-            }
-            return;
-        }
         auto* unused = acquired_image_ != UINT32_MAX && !acquire_semaphores_[acquire_slot_].last_wait.serial
             ? presentation_.acquired : nullptr;
-        auto release =
-            [
-                core = &session_.nriCore(),
-                operations = swap_chain_operations_,
-                swap_chain,
-                session = &session_,
-                views = std::move(views_),
-                acquired = std::move(acquire_semaphores_),
-                released = std::move(release_semaphores_),
-                unused_acquire = unused,
-                completion,
-                complete
-            ]() noexcept
-            {
-                // GPU frontiers prove G; native maintenance fences and image release prove P/A.
-                // One bounded cold operation retains every owner until all three facts hold.
-                const auto status = session->deviceLost() ? nri::Result::DEVICE_LOST
-                    : session->retireSwapChain(*swap_chain, unused_acquire, 1'000'000'000);
-                if (status != nri::Result::SUCCESS && status != nri::Result::DEVICE_LOST)
-                {
-                    std::terminate(); // Do not release captured handles without the retirement proof.
-                }
-                for (auto* view : views)
-                {
-                    core->DestroyDescriptor(view);
-                }
-                for (const auto& fence : acquired)
-                {
-                    core->DestroyFence(fence.native);
-                }
-                for (auto* fence : released)
-                {
-                    core->DestroyFence(fence);
-                }
-                operations.DestroySwapChain(swap_chain);
-                const auto result = status == nri::Result::SUCCESS
-                                        ? RenderResult<void>{}
-                                        : RenderResult<void>{cxx::unexpected(nativeError(status))};
-                if (complete)
-                {
-                    complete(completion, result);
-                }
-            };
-        session_.deferRelease(uses_, std::move(release));
+        return {
+            session_, swap_chain_operations_, std::exchange(swap_chain_, nullptr), unused,
+            std::move(views_), std::move(acquire_semaphores_), std::move(release_semaphores_)
+        };
+    }
+
+    RenderResult<void> SwapchainTarget::Retirement::release(bool lost) noexcept
+    {
+        const auto status = lost ? nri::Result::DEVICE_LOST
+                                 : session.retireSwapChain(*swap_chain, unused_acquire, 1'000'000'000);
+        if (status != nri::Result::SUCCESS && status != nri::Result::DEVICE_LOST)
+        {
+            std::terminate(); // Do not destroy handles without the retirement proof.
+        }
+        const auto& core = session.nriCore();
+        for (auto* view : views) core.DestroyDescriptor(view);
+        for (const auto& fence : acquired) core.DestroyFence(fence.native);
+        for (auto* fence : released) core.DestroyFence(fence);
+        operations.DestroySwapChain(swap_chain);
+        return status == nri::Result::SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(status));
     }
 } // namespace lux::render::detail

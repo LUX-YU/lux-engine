@@ -126,7 +126,7 @@ namespace lux::render::detail
 
     ResourceUploader::~ResourceUploader() noexcept
     {
-        if (progressing_ || ready_head_ || range_waiters_)
+        if (hasPendingTransfers())
         {
             std::terminate();
         }

@@ -794,7 +794,8 @@ struct CaptureFeature
              GraphBufferDesc{std::max(64u * 256, config.bytes)},
              EGraphOrigin::IMPORTED,
              {},
-             ResourceRequirement{ResourceName(CaptureDescriptor::descriptor.type.name())}}
+             ResourceRequirement{ResourceName(CaptureDescriptor::descriptor.type.name())},
+             EGraphUse::TRANSFER_DESTINATION}
         );
         return {};
     }

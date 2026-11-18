@@ -1,5 +1,9 @@
 add_executable(render_output_test Output.cpp)
 
+if(WIN32)
+    target_link_libraries(render_output_test PRIVATE Vulkan::Headers)
+endif()
+
 add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 

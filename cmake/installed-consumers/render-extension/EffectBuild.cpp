@@ -1044,6 +1044,8 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     take(server->registerResource<Monitor>());
     take(server->registerResource<AdapterProbe>());
     take(server->registerResource<ColdResource>());
+    const std::array gate_commands{CommandBinding::declare<ResumeSceneResource, &ColdResource::resume>()};
+    CHECK(server->registerCommands(gate_commands));
     take(server->registerCapability<ClearCapability>());
     const auto feature = take(server->registerFeature<ClearFeature>());
     const auto implementation = take(server->registerCapabilityImplementation<ClearImplementation>());
@@ -1099,6 +1101,19 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     CHECK(!effect.error.type);
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
+    const auto scoped_b = call<GetOrCreateResource>(client, {b.device, scene, ColdResource::descriptor.type});
+    CHECK(!scoped_b.error.type);
+    ColdResource::entered.store(false);
+    const auto borrow = send<HoldSceneResource>(pending_b, scoped_b.resource_id);
+    const auto borrow_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!ColdResource::entered.load())
+    {
+        CHECK(std::chrono::steady_clock::now() < borrow_deadline);
+        std::this_thread::yield();
+    }
+    CHECK(call<RemoveDeviceSession>(client, b.device).error.type == kDeviceBusy);
+    CHECK(!call<ResumeSceneResource>(client, {}).error.type);
+    CHECK(!receive<HoldSceneResource>(pending_b, borrow).error.type);
     const auto start = [&](DeviceSessionId device)
     {
         const auto output = call<CreateTarget>(client, {device, desc});
@@ -1144,6 +1159,10 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     CHECK(!call<StopRenderJob>(client, job_b).error.type);
     CHECK(!call<RemoveRenderJob>(client, job_b).error.type);
     CHECK(!call<RemoveTarget>(client, output_b).error.type);
+    CHECK(!call<RemoveDeviceSession>(client, b.device).error.type);
+    CHECK(call<QueryRenderDevice>(client, b.device).error.type == kRuntimeIdentity);
+    const auto after_removal = call<RequestRenderJob>(client, {job_a});
+    CHECK(!after_removal.error.type && after_removal.frame_index == 3 && after_removal.slot_index == 1);
     CHECK(!call<StopRenderJob>(client, job_a).error.type);
     CHECK(!call<RemoveRenderJob>(client, job_a).error.type);
     CHECK(!call<RemoveTarget>(client, output_a).error.type);
@@ -1151,6 +1170,7 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     render.join();
     CHECK(ran && server->stats().validation_errors == 0);
     std::puts("DEVICE ROUND PASS: A accepted before B gate release, local FIF 0/1 and 0, A accepted after B failure");
+    std::puts("DEVICE BORROW PASS: resource borrow blocked removal, failed device removed, peer accepted another frame");
     return true;
 }
 

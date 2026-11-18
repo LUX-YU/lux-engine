@@ -80,6 +80,7 @@ namespace lux::render::detail
             preparation_reserved_ = reserve;
         }
 
+        [[nodiscard]] bool hasPendingTransfers() const noexcept { return progressing_ || ready_head_ || range_waiters_; }
         [[nodiscard]] bool canProgressTransfers() const noexcept;
         [[nodiscard]] bool canSubmitPreparationCopies() const noexcept;
         [[nodiscard]] Task submitReadyTransfers() noexcept;

@@ -42,6 +42,8 @@ namespace lux::render
         };
     };
 
+    // Busy while Targets, executions or active borrows exist. An accepted request
+    // closes this device's admission and completes after its submitted work retires.
     struct RemoveDeviceSession final
     {
         static constexpr std::string_view name = "render.device.remove";

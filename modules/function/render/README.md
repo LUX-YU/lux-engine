@@ -173,7 +173,9 @@ The library returns structured diagnostics and never chooses a terminal or loggi
    `CreateTarget`, `QueryResource` and `GetOrCreateResource` qualify the device explicitly. Scene and View IDs
    describe logical scopes. Each device owns its own Resource instances for those scopes; use `DeviceScope`
    for a device-level declaration. Asset commands keep routing from their parent ResourceInstanceId.
-   `RemoveDeviceSession` requires the device's Targets, executions, borrows and pending work to be settled.
+   `RemoveDeviceSession` returns Busy while the device has a Target, execution or active borrow. Once
+   admitted, removal closes that device to new work and replies after its accepted GPU work and resources
+   have retired. The other devices continue to submit while removal is in flight.
    Upload meshes and textures before any Job exists, and await their typed replies before using the resulting IDs.
 3. Create the Scene, View and Target, then use `CreateEffect` with the logical Feature recipe. Create the Job
    with the Scene, View and Effect IDs. Pass the device and its Target to `StartRenderJob` to prepare execution.

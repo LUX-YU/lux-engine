@@ -7,7 +7,11 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <d3d12.h>
+#include <Extensions/NRIWrapperD3D12.h>
+#include <Extensions/NRIWrapperVK.h>
 #include <future>
+#include <vulkan/vulkan.h>
 #pragma comment(lib, "user32.lib")
 #endif
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
@@ -341,8 +345,8 @@ static void importedExtentContracts(Validation& validation)
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
             CHECK(instance.initialize());
-            const std::array<TargetFrame, 1> small{{{images[1]}}};
-            const RenderGraphInstance::ImageReplacement replacement{destination, small};
+            const std::array<TargetFrame, 1> smaller_frames{{{images[1]}}};
+            const RenderGraphInstance::ImageReplacement replacement{destination, smaller_frames};
             const auto rejected = instance.prepareResize({}, {&replacement, 1});
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
             // A graph with only imported resources legitimately accepts an empty output.
@@ -465,7 +469,7 @@ static void verifyTonemapOutput(
 
 static void verifyTargetInput(
     ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session, SceneId scene,
-    FeatureId clear, FeatureId tone, FeatureId capture
+    FeatureId clear, FeatureId tone, FeatureId capture, DeviceSessionId foreign_device = {}
 )
 {
     const auto hdr_format = rdesc::ETextureFormat::RGBA16_SFLOAT;
@@ -507,6 +511,17 @@ static void verifyTargetInput(
     start.binding.target_images.push_back({{0, "author.hdr"}, source});
     CHECK(call<StartRenderJob>(client, commands, start, false).error.type == kRuntimeIdentity);
     start.binding.target_images.front().destination = input;
+    if (!foreign_device.isNull())
+    {
+        const auto foreign = call<CreateTarget>(client, commands, {
+            foreign_device, {64, 64, hdr_format, 1, ETargetKind::OFFSCREEN, true}
+        }).target;
+        start.binding.target_images.front().target = foreign;
+        CHECK(call<StartRenderJob>(client, commands, start, false).error.type == kJobState);
+        call<RemoveTarget>(client, commands, foreign);
+        start.binding.target_images.front().target = source;
+        std::puts("DEVICE IMPORT PASS: rejected a sampled Target from the peer physical adapter");
+    }
     call<StartRenderJob>(client, commands, std::move(start));
     CHECK(call<RequestRenderJob>(client, commands, {reader}, false).error.type == kRuntimeState);
     const auto published = call<RequestRenderJob>(client, commands, {writer});
@@ -660,7 +675,7 @@ static HWND createProbeWindow()
         }
         return DefWindowProcW(window, message, wparam, lparam);
     };
-    CHECK(RegisterClassW(&window_class));
+    CHECK(RegisterClassW(&window_class) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS);
     return CreateWindowExW(
         0, window_class.lpszClassName, L"LUX Render WSI probe", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 320, 240, nullptr, nullptr, instance, nullptr
@@ -793,6 +808,387 @@ static void windowOutput(bool d3d12)
     std::printf("WSI PASS backend=%s real presents=%llu resize/writer replacement/remove/shutdown\n",
         d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned long long>(server->stats().presentations));
 }
+
+// A real timeline wait on the retiring GPU. The submitted work cannot retire until the host signals it.
+struct RetirementFence final
+{
+    explicit RetirementFence(DeviceSession& session) noexcept : core(session.nriCore())
+    {
+        auto& device = session.device();
+        auto* native = core.GetDeviceNativeObject(&device);
+        if (session.description().graphicsAPI == nri::GraphicsAPI::D3D12)
+        {
+            auto& dx_device = *static_cast<ID3D12Device*>(native);
+            CHECK(SUCCEEDED(dx_device.CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&dx_fence))));
+            nri::WrapperD3D12Interface wrapper{};
+            CHECK(nri::nriGetInterface(device, NRI_INTERFACE(nri::WrapperD3D12Interface), &wrapper) ==
+                nri::Result::SUCCESS);
+            CHECK(wrapper.CreateFenceD3D12(device, {dx_fence}, fence) == nri::Result::SUCCESS);
+            return;
+        }
+        vk_device = static_cast<VkDevice>(native);
+        nri::WrapperVKInterface wrapper{};
+        CHECK(nri::nriGetInterface(device, NRI_INTERFACE(nri::WrapperVKInterface), &wrapper) == nri::Result::SUCCESS);
+        const auto proc = reinterpret_cast<PFN_vkGetDeviceProcAddr>(wrapper.GetDeviceProcAddrVK(device));
+        const auto create = reinterpret_cast<PFN_vkCreateSemaphore>(proc(vk_device, "vkCreateSemaphore"));
+        destroy_vk = reinterpret_cast<PFN_vkDestroySemaphore>(proc(vk_device, "vkDestroySemaphore"));
+        signal_vk = reinterpret_cast<PFN_vkSignalSemaphore>(proc(vk_device, "vkSignalSemaphore"));
+        CHECK(create && destroy_vk && signal_vk);
+        const VkSemaphoreTypeCreateInfo timeline{
+            VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO, nullptr, VK_SEMAPHORE_TYPE_TIMELINE, 0
+        };
+        const VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &timeline, 0};
+        CHECK(create(vk_device, &info, nullptr, &vk_fence) == VK_SUCCESS);
+        const nri::FenceVKDesc native_fence{reinterpret_cast<std::uintptr_t>(vk_fence)};
+        CHECK(wrapper.CreateFenceVK(device, native_fence, fence) == nri::Result::SUCCESS);
+    }
+
+    ~RetirementFence() noexcept
+    {
+        core.DestroyFence(fence);
+        if (dx_fence) dx_fence->Release();
+        else destroy_vk(vk_device, vk_fence, nullptr);
+    }
+
+    void signal() const noexcept
+    {
+        if (dx_fence)
+        {
+            CHECK(SUCCEEDED(dx_fence->Signal(1)));
+            return;
+        }
+        const VkSemaphoreSignalInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, nullptr, vk_fence, 1};
+        CHECK(signal_vk(vk_device, &info) == VK_SUCCESS);
+    }
+
+    const nri::CoreInterface& core;
+    nri::Fence* fence = nullptr;
+    ID3D12Fence* dx_fence = nullptr;
+    VkDevice vk_device = nullptr;
+    VkSemaphore vk_fence = VK_NULL_HANDLE;
+    PFN_vkDestroySemaphore destroy_vk = nullptr;
+    PFN_vkSignalSemaphore signal_vk = nullptr;
+};
+
+struct SignalRetirementFence final
+{
+    static constexpr std::string_view name{"test.device.signal_retirement"};
+    using Request = EmptyRequest;
+    using Response = AckResponse;
+};
+
+struct DeviceRetirementProbe final
+{
+    struct Descriptor final
+    {
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{ResourceNameView{"test.device.retirement"}, 0, 0, {}};
+    };
+
+    static inline std::array<nri::AdapterDesc, 3> adapters;
+    static inline std::array<bool, 3> present_retirement{};
+    static inline std::array<std::atomic<bool>, 3> destroyed{};
+    static inline std::size_t created = 0;
+    static inline decltype(nri::CoreInterface::QueueSubmit) submit = nullptr;
+    static inline RetirementFence* gate = nullptr;
+    static inline std::atomic<bool> arm = false, held = false;
+    std::size_t index;
+    std::optional<RetirementFence> fence;
+
+    explicit DeviceRetirementProbe(DeviceSession& session) noexcept : index(created++)
+    {
+        CHECK(index < adapters.size());
+        adapters[index] = session.description().adapterDesc;
+        present_retirement[index] = session.supportsPresentRetirement();
+        if (index != 1) return;
+        fence.emplace(session);
+        gate = &*fence;
+        auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
+        submit = core.QueueSubmit;
+        core.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& input) noexcept
+        {
+            if (!arm.exchange(false)) return submit(queue, input);
+            CHECK(input.waitFenceNum == 0);
+            const nri::FenceSubmitDesc wait{gate->fence, 1, nri::StageBits::ALL};
+            auto waiting = input;
+            waiting.waitFences = &wait;
+            waiting.waitFenceNum = 1;
+            const auto result = submit(queue, waiting);
+            held.store(result == nri::Result::SUCCESS);
+            return result;
+        };
+    }
+
+    ~DeviceRetirementProbe() noexcept
+    {
+        if (fence)
+        {
+            const_cast<nri::CoreInterface&>(fence->core).QueueSubmit = submit;
+            gate = nullptr;
+            fence.reset();
+        }
+        destroyed[index].store(true);
+    }
+
+    static void signal(const EmptyRequest&, AckResponse& response) noexcept
+    {
+        CHECK(gate && held.exchange(false));
+        gate->signal();
+        response = {};
+    }
+
+    static RenderResult<std::unique_ptr<DeviceRetirementProbe>>
+    create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+    {
+        return std::make_unique<DeviceRetirementProbe>(context.device);
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
+        return makeResourceRegistration<Descriptor, DeviceRetirementProbe, &create>(nullptr);
+    }
+};
+
+static bool physicalDeviceLifecycle(bool d3d12)
+{
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    const auto backend = d3d12 ? "D3D12" : "Vulkan";
+    RenderServerConfig config{"lux.render.test.device_lifecycle", nativeValidationEnabled()};
+    config.diagnostics.report = [](void*, const RenderDiagnostic& diagnostic) noexcept
+    {
+        if (diagnostic.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE)
+            std::fprintf(stderr, "Device lifecycle diagnostic: %.*s\n",
+                int(diagnostic.message.size()), diagnostic.message.data());
+    };
+    auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
+    const auto clear = take(server->registerFeature<WindowClear>());
+    const auto tone = take(server->featureId("lux.render.feature.TonemapFeature"));
+    const auto capture = take(server->registerFeature<CaptureFeature>());
+    take(server->registerResource<CaptureBuffer>());
+    take(server->registerResource<DeviceRetirementProbe>());
+    const std::array gate_commands{CommandBinding::declare<SignalRetirementFence, &DeviceRetirementProbe::signal>()};
+    CHECK(server->registerCommands(gate_commands));
+    auto requester = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(requester);
+    auto& client = *requester;
+    std::thread render([&] { CHECK(server->run()); });
+    const auto commands = queryCommands(client);
+    DeviceOptions options;
+    options.backend = d3d12 ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
+    options.texture_descriptors = true;
+    options.physical_device_index = 0;
+    const auto a = call<CreateDeviceSession>(client, commands, options).device;
+    options.physical_device_index = 1;
+    const auto second = call<CreateDeviceSession>(client, commands, options, false);
+    if (second.error.type)
+    {
+        std::printf("PHYSICAL LIFECYCLE UNKNOWN backend=%s adapter 1 error=%llu arg=%llu\n",
+            backend, second.error.type, second.error.args[0]);
+        server->stop();
+        render.join();
+        return false;
+    }
+    const auto b = second.device;
+    const auto probe_type = DeviceRetirementProbe::Descriptor::descriptor.type;
+    const auto probe_a = call<GetOrCreateResource>(client, commands, {a, DeviceScope{}, probe_type}).resource_id;
+    const auto probe_b = call<GetOrCreateResource>(client, commands, {b, DeviceScope{}, probe_type}).resource_id;
+    const auto& adapters = DeviceRetirementProbe::adapters;
+    const bool distinct = adapters[0].uid.low != adapters[1].uid.low || adapters[0].uid.high != adapters[1].uid.high;
+    if (!distinct)
+    {
+        std::printf("PHYSICAL LIFECYCLE UNKNOWN backend=%s duplicate adapter UID\n", backend);
+        server->stop();
+        render.join();
+        return false;
+    }
+    std::printf("DEVICE LIFECYCLE ADAPTERS backend=%s A=%s uid=%llx/%llx B=%s uid=%llx/%llx\n",
+        backend, adapters[0].name, adapters[0].uid.high, adapters[0].uid.low,
+        adapters[1].name, adapters[1].uid.high, adapters[1].uid.low);
+
+    const auto scene = call<CreateScene>(client, commands, {}).scene;
+    const auto view = call<CreateView>(client, commands, {scene}).view;
+    verifyTargetInput(client, commands, a, scene, clear, tone, capture, b);
+    verifyTargetInput(client, commands, b, scene, clear, tone, capture, a);
+
+    std::promise<std::array<HWND, 2>> opened;
+    auto ready = opened.get_future();
+    std::thread ui([&]
+    {
+        std::array windows{createProbeWindow(), createProbeWindow()};
+        CHECK(windows[0] && windows[1]);
+        CHECK(SetWindowPos(windows[0], nullptr, 40, 40, 320, 240, SWP_NOZORDER));
+        CHECK(SetWindowPos(windows[1], nullptr, 420, 40, 320, 240, SWP_NOZORDER));
+        for (auto window : windows) ShowWindow(window, SW_SHOW);
+        opened.set_value(windows);
+        MSG message{};
+        while (GetMessageW(&message, nullptr, 0, 0) > 0)
+        {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    });
+    const auto windows = ready.get();
+    const auto surface_desc = [](HWND window)
+    {
+        RECT client;
+        CHECK(GetClientRect(window, &client));
+        return TargetDesc{std::uint32_t(client.right), std::uint32_t(client.bottom),
+            rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE};
+    };
+    const auto surface_a = call<CreateTarget>(
+        client, commands, {a, surface_desc(windows[0]), SurfaceDescription{Win32Surface{windows[0]}}}
+    );
+    const auto surface_b = call<CreateTarget>(
+        client, commands, {b, surface_desc(windows[1]), SurfaceDescription{Win32Surface{windows[1]}}}, false
+    );
+    const bool dual_wsi = !surface_b.error.type;
+    CHECK(surface_a.output_available);
+    if (dual_wsi)
+    {
+        CHECK(surface_b.output_available);
+    }
+    else
+    {
+        CHECK(!d3d12 && surface_b.error.type == kDeviceUnsupported && !DeviceRetirementProbe::present_retirement[1]);
+        std::printf("DUAL WSI UNKNOWN backend=%s adapter=%s missing swapchainMaintenance1 error=%llu\n",
+            backend, adapters[1].name, surface_b.error.type);
+    }
+    const auto effect_for = [&](TargetDesc description)
+    {
+        CreateEffectRequest recipe{{description.format, description.samples, description.kind, description.sampled}};
+        auto config = take(ConfigValue::make(WindowClear::Config{description.format}));
+        recipe.definition.features.push_back({clear, "clear", std::move(config)});
+        recipe.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{description.format, 1}});
+        return call<CreateEffect>(client, commands, std::move(recipe)).effect;
+    };
+    const auto surface_effect = effect_for(surface_a.description);
+    const auto surface_effect_b = dual_wsi && surface_a.description.format != surface_b.description.format
+        ? effect_for(surface_b.description) : surface_effect;
+    const auto job_a = startRenderJob(client, commands, a, scene, view, surface_a.target, surface_effect);
+    const auto present = [&](RenderJobId job)
+    {
+        const auto before = server->stats().presentations;
+        renderFrame(client, commands, job);
+        const auto deadline = Clock::now() + 10s;
+        while (server->stats().presentations == before)
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::sleep_for(1ms);
+        }
+        CHECK(server->stats().presentations == before + 1);
+    };
+    const auto resize = [&](const TargetCreated& target, TargetDesc description)
+    {
+        const auto result = call<ResizeTarget>(client, commands, {target.target, description});
+        CHECK(result.output_available && result.description == description && result.epoch == target.epoch + 1);
+        call<SetTargetActive>(client, commands, {target.target, true, result.epoch});
+    };
+    const auto resize_window = [&](const TargetCreated& target, HWND window)
+    {
+        auto description = target.description;
+        const auto extent = surface_desc(window);
+        description.width = extent.width;
+        description.height = extent.height;
+        resize(target, description);
+    };
+    present(job_a);
+    CHECK(SetWindowPos(windows[0], nullptr, 0, 0, 360, 260, SWP_NOMOVE | SWP_NOZORDER));
+    resize_window(surface_a, windows[0]);
+    present(job_a);
+    if (dual_wsi)
+    {
+        const auto job_b = startRenderJob(client, commands, b, scene, view, surface_b.target, surface_effect_b);
+        present(job_b);
+        CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
+        CHECK(SetWindowPos(windows[1], nullptr, 0, 0, 370, 270, SWP_NOMOVE | SWP_NOZORDER));
+        resize_window(surface_b, windows[1]);
+        present(job_b);
+        stopAndRemoveJob(client, commands, job_b);
+        call<RemoveTarget>(client, commands, surface_b.target);
+    }
+
+    const TargetDesc offscreen{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
+    const auto offscreen_effect = effect_for(offscreen);
+    const auto off_a = call<CreateTarget>(client, commands, {a, offscreen});
+    const auto off_b = call<CreateTarget>(client, commands, {b, offscreen});
+    const auto off_job_a = startRenderJob(client, commands, a, scene, view, off_a.target, offscreen_effect);
+    const auto off_job_b = startRenderJob(client, commands, b, scene, view, off_b.target, offscreen_effect);
+    CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
+    auto resized = offscreen;
+    resized.width = 48;
+    resize(off_a, resized);
+    resize(off_b, resized);
+    renderFrame(client, commands, off_job_a);
+    DeviceRetirementProbe::arm.store(true);
+    renderFrame(client, commands, off_job_b);
+    CHECK(DeviceRetirementProbe::held.load());
+    call<StopRenderJob>(client, commands, off_job_b);
+    CHECK(call<RequestRenderJob>(client, commands, {off_job_b}, false).error.type == kJobStopped);
+    stopAndRemoveJob(client, commands, off_job_b);
+    CHECK(call<RequestRenderJob>(client, commands, {off_job_b}, false).error.type == kJobIdentity);
+    call<RemoveTarget>(client, commands, off_b.target);
+
+    auto deleting = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(deleting);
+    auto removal = std::async(std::launch::async, [&]
+    {
+        return call<RemoveDeviceSession>(*deleting, commands, b, false);
+    });
+    const auto deadline = Clock::now() + 10s;
+    while (!call<GetOrCreateResource>(client, commands, {b, DeviceScope{}, probe_type}, false).error.type)
+    {
+        CHECK(Clock::now() < deadline);
+        std::this_thread::sleep_for(1ms);
+    }
+    CHECK(call<QueryResource>(client, commands, {b, DeviceScope{}, probe_type}, false).error.type == kDeviceBusy);
+    CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
+    CHECK(call<CreateTarget>(client, commands, {b, offscreen}, false).error.type == kDeviceBusy);
+    CHECK(removal.wait_for(0s) == std::future_status::timeout && !DeviceRetirementProbe::destroyed[1].load());
+    present(job_a);
+    renderFrame(client, commands, off_job_a);
+    CHECK(DeviceRetirementProbe::held.load());
+    call<SignalRetirementFence>(client, commands, {});
+    CHECK(!removal.get().error.type && DeviceRetirementProbe::destroyed[1].load());
+    CHECK(call<QueryRenderDevice>(client, commands, b, false).error.type == kRuntimeIdentity);
+    CHECK(call<QueryResource>(client, commands, {a, DeviceScope{}, probe_type}).resource_id == probe_a);
+    CHECK(probe_b != probe_a && !DeviceRetirementProbe::destroyed[0].load());
+    present(job_a);
+
+    const auto replacement = call<CreateDeviceSession>(client, commands, options).device;
+    CHECK(replacement != b && replacement.index == b.index);
+    call<GetOrCreateResource>(client, commands, {replacement, DeviceScope{}, probe_type});
+    CHECK(adapters[2].uid.low == adapters[1].uid.low && adapters[2].uid.high == adapters[1].uid.high);
+    if (dual_wsi)
+    {
+        const auto recreated = call<CreateTarget>(
+            client, commands, {replacement, surface_desc(windows[1]), SurfaceDescription{Win32Surface{windows[1]}}}
+        );
+        const auto final_job = startRenderJob(
+            client, commands, replacement, scene, view, recreated.target, surface_effect_b
+        );
+        present(final_job);
+    }
+    else
+    {
+        const auto recreated = call<CreateTarget>(client, commands, {replacement, offscreen});
+        const auto final_job = startRenderJob(
+            client, commands, replacement, scene, view, recreated.target, offscreen_effect
+        );
+        renderFrame(client, commands, final_job);
+    }
+    call<Stop>(client, commands, {});
+    render.join();
+    CHECK(std::ranges::all_of(DeviceRetirementProbe::destroyed, [](const auto& value) { return value.load(); }));
+    const auto presents = server->stats().presentations;
+    CHECK(server->stats().validation_errors == 0 && presents == (dual_wsi ? 7 : 4));
+    CHECK(PostMessageW(windows[0], WM_CLOSE, 0, 0));
+    ui.join();
+    std::printf("DEVICE LIFECYCLE PASS backend=%s presents=%llu dual_wsi=%u Offscreen resize/Stop/Shutdown\n",
+        backend, presents, unsigned(dual_wsi));
+    std::puts("DEVICE RETIREMENT PASS: peer submitted while GPU fence held, removal revoked only B, all borrows settled");
+    return dual_wsi;
+}
 #endif
 
 int main(int argc, char** argv)
@@ -810,6 +1206,8 @@ int main(int argc, char** argv)
         windowOutput(argc > 2 && std::string_view{argv[2]} == "d3d12");
         return 0;
     }
+    if (argc > 1 && std::string_view{argv[1]} == "--dual-device-lifecycle")
+        return physicalDeviceLifecycle(argc > 2 && std::string_view{argv[2]} == "d3d12") ? 0 : 77;
 #endif
     Validation validation;
     if (argc > 1 && std::string_view{argv[1]} == "--device-lost")

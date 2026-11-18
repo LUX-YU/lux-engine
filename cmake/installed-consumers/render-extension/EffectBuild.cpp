@@ -9,12 +9,16 @@
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/engine/render/resources/texture/Commands.hpp>
 #include <lux/engine/render/resources/texture/Resource.hpp>
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <source_location>
+#include <string_view>
 #include <thread>
+#include <vector>
 
 using namespace lux;
 using namespace lux::render;
@@ -374,7 +378,126 @@ template <class Command> auto call(ipc::IpcRequester& client, typename Command::
     return receive<Command>(client, send<Command>(client, std::move(request)));
 }
 
-static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOptions device)
+static void profileRequestedJobs(
+    RenderServer& server, ipc::IpcRequester& client, std::string_view channel, EffectId effect, unsigned job_count
+)
+{
+    using Clock = std::chrono::steady_clock;
+    constexpr unsigned warmup = 30;
+    constexpr unsigned samples = 200;
+    struct Job final
+    {
+        RenderJobId id;
+        TargetId target;
+        ipc::IpcRequester wire;
+        std::uint64_t correlation = 0;
+    };
+    const auto scene = call<CreateScene>(client, {}).scene;
+    const auto view = call<CreateView>(client, {scene}).view;
+    const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
+    std::vector<Job> jobs;
+    jobs.reserve(job_count);
+    const auto setup_begin = Clock::now();
+    for (unsigned index = 0; index < job_count; ++index)
+    {
+        const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
+        const auto output = call<CreateTarget>(client, {target});
+        CHECK(!created.error.type && !output.error.type);
+        CHECK(!call<StartRenderJob>(client, {created.job, output.target}).error.type);
+        jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
+    }
+    const auto setup_elapsed = std::chrono::duration<double, std::milli>(Clock::now() - setup_begin).count();
+    const std::array names{CommandName{RequestRenderJob::name}};
+    const auto command = call<QueryCommandIds>(client, names).ids.front();
+    const auto batch = [&](bool sparse)
+    {
+        const auto stride = sparse ? 4u : 1u;
+        const auto begin = Clock::now();
+        for (std::size_t i = 0; i < jobs.size(); i += stride)
+        {
+            auto& job = jobs[i];
+            job.correlation = sendBound<RequestRenderJob>(job.wire, command, {job.id});
+        }
+        for (std::size_t i = 0; i < jobs.size(); i += stride)
+        {
+            auto& job = jobs[i];
+            const auto submitted = receive<RequestRenderJob>(job.wire, job.correlation);
+            CHECK(!submitted.error.type && submitted.job == job.id);
+        }
+        return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+    };
+    const auto verify_ancestry = [&]
+    {
+        CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {jobs[0].id}, {}}).error.type);
+        CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {jobs[1].id}, {}}).error.type);
+        CHECK(!call<StopRenderJob>(client, jobs[1].id).error.type);
+        auto park = take(ipc::IpcCore::instance().createRequester(channel));
+        ParkDispatch::entered = false;
+        ParkDispatch::pending = true;
+        const auto parked = send<ParkDispatch>(park, {});
+        const auto deadline = Clock::now() + std::chrono::seconds(10);
+        while (!ParkDispatch::entered.load())
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        auto& first = jobs[0];
+        auto& last = jobs[2];
+        const auto accepted_before = server.stats().submissions;
+        const auto a = sendBound<RequestRenderJob>(first.wire, command, {first.id});
+        const auto c = sendBound<RequestRenderJob>(last.wire, command, {last.id});
+        ParkDispatch::pending = false;
+        ParkDispatch::pending.notify_all();
+        CHECK(!receive<ParkDispatch>(park, parked).error.type);
+        const auto submitted_a = receive<RequestRenderJob>(first.wire, a);
+        const auto submitted_c = receive<RequestRenderJob>(last.wire, c);
+        CHECK(!submitted_a.error.type && !submitted_c.error.type);
+        CHECK(submitted_a.frame_index == submitted_c.frame_index);
+        CHECK(server.stats().submissions == accepted_before + 2);
+        CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {}, {}}).error.type);
+        CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {}, {}}).error.type);
+        CHECK(!call<StartRenderJob>(client, {jobs[1].id, jobs[1].target}).error.type);
+    };
+    verify_ancestry();
+    std::printf("JOB_SETUP jobs=%u create_and_start_ms=%.6f dormant_ancestry=passed\n", job_count, setup_elapsed);
+    for (const bool sparse : {false, true})
+    {
+        for (unsigned i = 0; i < warmup; ++i) batch(sparse);
+        const auto accepted_before = server.stats().submissions;
+        const auto native_before = Monitor::accepted_submits.load();
+        const auto development_before = server.developmentStats();
+        std::array<double, samples> elapsed;
+        for (auto& value : elapsed) value = batch(sparse);
+        const auto accepted = server.stats().submissions - accepted_before;
+        CHECK(accepted >= samples);
+        CHECK(accepted == Monitor::accepted_submits.load() - native_before);
+        if (const auto after = server.developmentStats(); development_before && after)
+        {
+            const auto& before = *development_before;
+            std::printf(
+                "JOB_COUNTERS jobs=%u sparse=%u rebuilds=%llu rebuild_ns=%llu selection_ns=%llu "
+                "considered=%llu selected=%llu job_edges=%llu\n",
+                job_count, unsigned(sparse),
+                static_cast<unsigned long long>(after->input_rebuilds - before.input_rebuilds),
+                static_cast<unsigned long long>(after->input_rebuild_ns - before.input_rebuild_ns),
+                static_cast<unsigned long long>(after->job_selection_ns - before.job_selection_ns),
+                static_cast<unsigned long long>(after->jobs_considered - before.jobs_considered),
+                static_cast<unsigned long long>(after->jobs_selected - before.jobs_selected),
+                static_cast<unsigned long long>(after->dependency_edges - before.dependency_edges)
+            );
+        }
+        for (std::size_t i = 0; i < elapsed.size(); ++i)
+            std::printf("JOB_SAMPLE sparse=%u batch=%zu request_ms=%.6f\n", unsigned(sparse), i, elapsed[i]);
+        std::ranges::sort(elapsed);
+        std::printf(
+            "JOB_PROFILE jobs=%u sparse=%u warmup=%u samples=%u submissions=%llu p50_ms=%.6f p95_ms=%.6f\n",
+            job_count, unsigned(sparse), warmup, samples, static_cast<unsigned long long>(accepted),
+            elapsed[samples / 2], elapsed[samples * 95 / 100]
+        );
+    }
+}
+
+static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOptions device, unsigned profile_jobs = 0)
 {
     RenderServerConfig config{"installed.effect.open_raster", false};
     config.uploads.emplace();
@@ -403,6 +526,16 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
         request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
         request.implementations.push_back({implementation, "clear"});
     const auto effect = call<CreateEffect>(client, std::move(request));
+    CHECK(!effect.error.type);
+    if (profile_jobs)
+    {
+        profileRequestedJobs(*server, client, config.channel_name, effect.effect, profile_jobs);
+        client.reset();
+        server->stop();
+        render.join();
+        CHECK(ran && Monitor::destroyed);
+        return;
+    }
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
     const auto target = call<CreateTarget>(client, {{32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
@@ -596,7 +729,29 @@ int main(int argc, char** argv)
     RenderServerConfig config{"installed.effect.build", false};
     config.uploads.emplace();
     DeviceOptions device;
-    if (argc > 1 && std::string_view(argv[1]) == "d3d12") device.backend = EGraphicsBackend::D3D12;
+    unsigned profile_jobs = 0;
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string_view arg = argv[i];
+        if (arg == "d3d12")
+        {
+            device.backend = EGraphicsBackend::D3D12;
+        }
+        else if (arg == "--profile-jobs" && i + 1 < argc)
+        {
+            profile_jobs = static_cast<unsigned>(std::atoi(argv[++i]));
+            CHECK(profile_jobs == 32 || profile_jobs == 128);
+        }
+        else
+        {
+            CHECK(false);
+        }
+    }
+    if (profile_jobs)
+    {
+        recordOpenFeature(*execution, device, profile_jobs);
+        return 0;
+    }
     auto server = take(RenderServer::create(config, *execution, device));
     take(server->registerResource<Monitor>());
     take(server->registerResource<ColdResource>());

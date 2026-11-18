@@ -384,4 +384,9 @@ namespace lux::render
     {
         return impl_->stats();
     }
+
+    std::optional<RenderDevelopmentStats> RenderServer::developmentStats() const noexcept
+    {
+        return impl_->developmentStats();
+    }
 } // namespace lux::render

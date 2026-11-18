@@ -346,6 +346,12 @@ Resize or a different instance invalidate that slot's index; rebuilding still ha
 conflict enumeration inside a shared physical-resource group. This is not a second Graph or a GraphAnalysis run.
 `dumpSubmissions` reports the rebuild and comparison counts separately from accepted submissions.
 
+With `LUX_RENDER_DEVELOPMENT_METRICS=ON`, `RenderServer::developmentStats()` exposes cumulative Job selection,
+input rebuild and CPU round occupancy counters. The preparation interval runs from scheduling program work to
+its delivery on the Server. Slot hold time ends when the Server releases the round, before any remaining GPU
+retirement. `dumpSubmissions` also reports imported overlap time and a histogram indexed by the number of
+accesses to a physical resource. The default build disables this sampling.
+
 Imported accesses retain their consuming batch and required canonical-state release boundary. Ready batches
 are indexed per physical Queue by their actual wait conditions; accepted submission advances only their
 successors. The compiled plan explicitly preserves physical-Queue FIFO used by object reuse and memory alias

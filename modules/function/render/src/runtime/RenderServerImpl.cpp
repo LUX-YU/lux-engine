@@ -495,6 +495,9 @@ namespace lux::render
 
     void RenderServer::Impl::rebuildActiveFrameInputs() noexcept
     {
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto rebuild_started_at = std::chrono::steady_clock::now();
+#endif
         frame_input_error_ = {};
         output_uses_revision_ = domain_->resources_.outputUsesRevision();
         // Semantic conflict order is stable. Fairness rotates ready physical queues, not
@@ -510,6 +513,13 @@ namespace lux::render
                 active.push_back(id);
             }
         }
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto selection_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - rebuild_started_at
+        ).count();
+        job_selection_ns_.fetch_add(selection_ns, std::memory_order_relaxed);
+        jobs_considered_.fetch_add(running_jobs_.size(), std::memory_order_relaxed);
+#endif
         std::map<std::uint32_t, std::size_t> positions;
         std::vector<std::vector<std::size_t>> successors(active.size());
         std::vector<std::size_t> predecessors(active.size());
@@ -669,6 +679,15 @@ namespace lux::render
         const auto duplicate = std::ranges::unique(frame_storages_, {}, &detail::StorageFrameUse::identity);
         frame_storages_.erase(duplicate.begin(), duplicate.end());
         active_frame_inputs_dirty_ = false;
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto rebuild_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - rebuild_started_at
+        ).count();
+        input_rebuilds_.fetch_add(1, std::memory_order_relaxed);
+        input_rebuild_ns_.fetch_add(rebuild_ns, std::memory_order_relaxed);
+        jobs_selected_.fetch_add(frame_outputs_.size(), std::memory_order_relaxed);
+        dependency_edges_.fetch_add(frame_job_order_.size(), std::memory_order_relaxed);
+#endif
     }
 
     std::uint32_t RenderServer::Impl::outputSlot(TargetId target, std::uint32_t frame_slot) const noexcept
@@ -1213,6 +1232,26 @@ namespace lux::render
             storages_created_.load(std::memory_order_relaxed),
             presentations_.load(std::memory_order_relaxed)
         };
+    }
+
+    std::optional<RenderDevelopmentStats> RenderServer::Impl::developmentStats() const noexcept
+    {
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        return RenderDevelopmentStats{
+            input_rebuilds_.load(std::memory_order_relaxed),
+            input_rebuild_ns_.load(std::memory_order_relaxed),
+            job_selection_ns_.load(std::memory_order_relaxed),
+            jobs_considered_.load(std::memory_order_relaxed),
+            jobs_selected_.load(std::memory_order_relaxed),
+            dependency_edges_.load(std::memory_order_relaxed),
+            rounds_opened_.load(std::memory_order_relaxed),
+            slot_cpu_hold_ns_.load(std::memory_order_relaxed),
+            program_preparations_holding_slot_.load(std::memory_order_relaxed),
+            program_preparation_ns_.load(std::memory_order_relaxed)
+        };
+#else
+        return std::nullopt;
+#endif
     }
 
 } // namespace lux::render

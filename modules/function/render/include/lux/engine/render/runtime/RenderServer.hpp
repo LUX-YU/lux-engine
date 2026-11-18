@@ -61,6 +61,14 @@ namespace lux::render
         std::uint64_t presentations = 0; // Successful QueuePresent calls, not measured display scanout.
     };
 
+    struct RenderDevelopmentStats final
+    {
+        std::uint64_t input_rebuilds = 0, input_rebuild_ns = 0, job_selection_ns = 0;
+        std::uint64_t jobs_considered = 0, jobs_selected = 0, dependency_edges = 0;
+        std::uint64_t rounds_opened = 0, slot_cpu_hold_ns = 0;
+        std::uint64_t program_preparations_holding_slot = 0, program_preparation_ns = 0;
+    };
+
     // The application owns the rendering thread. Only stop() and stats() may race with run().
     // Stop and join that thread before destruction; the borrowed ExecutionRuntime must outlive this Server.
     class LUX_RENDER_PUBLIC RenderServer final
@@ -148,6 +156,9 @@ namespace lux::render
 
         // Thread-safe individual counters; the aggregate is not a coherent frame snapshot.
         [[nodiscard]] RenderServerStats stats() const noexcept;
+
+        // Available when the SDK is built with LUX_RENDER_DEVELOPMENT_METRICS.
+        [[nodiscard]] std::optional<RenderDevelopmentStats> developmentStats() const noexcept;
 
     private:
         [[nodiscard]] RenderResult<FeatureId>

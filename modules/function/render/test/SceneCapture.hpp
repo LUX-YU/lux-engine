@@ -95,6 +95,8 @@ inline std::atomic<std::uint64_t> call_capture_fail_set = 0;
 inline std::atomic<std::uint64_t> call_capture_fail_pool = 0;
 inline std::atomic<std::uint64_t> call_capture_failed_allocations = 0;
 inline std::array<std::atomic<std::uint64_t>, 45> call_capture_counts{};
+inline std::atomic<std::uint64_t> call_capture_graphics_pipeline_ns = 0;
+inline std::atomic<std::uint64_t> call_capture_compute_pipeline_ns = 0;
 
 inline void beginCallCapture(const nri::CoreInterface& input) noexcept
 {
@@ -137,14 +139,22 @@ inline void beginCallCapture(const nri::CoreInterface& input) noexcept
     ) noexcept -> nri::Result
     {
         call_capture_counts[2].fetch_add(1, std::memory_order_relaxed);
-        return call_capture_original.CreateGraphicsPipeline(device, graphicsPipelineDesc, pipeline);
+        const auto begin = Clock::now();
+        const auto result = call_capture_original.CreateGraphicsPipeline(device, graphicsPipelineDesc, pipeline);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
+        call_capture_graphics_pipeline_ns.fetch_add(elapsed, std::memory_order_relaxed);
+        return result;
     };
     core.CreateComputePipeline = [](
         nri::Device& device, const nri::ComputePipelineDesc& description, nri::Pipeline*& pipeline
     ) noexcept -> nri::Result
     {
         call_capture_counts[40].fetch_add(1, std::memory_order_relaxed);
-        return call_capture_original.CreateComputePipeline(device, description, pipeline);
+        const auto begin = Clock::now();
+        const auto result = call_capture_original.CreateComputePipeline(device, description, pipeline);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
+        call_capture_compute_pipeline_ns.fetch_add(elapsed, std::memory_order_relaxed);
+        return result;
     };
     core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
     {
@@ -406,6 +416,8 @@ inline void writeCallCounts(const char* path) noexcept
         static_cast<unsigned long long>(call_capture_counts[44].load(std::memory_order_relaxed)));
     std::fprintf(output, "  \"CreateComputePipeline\": %llu,\n",
         static_cast<unsigned long long>(call_capture_counts[40].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"compute_pipeline_native_ns\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_compute_pipeline_ns.load(std::memory_order_relaxed)));
     std::fprintf(output, "  \"DestroyPipeline\": %llu,\n",
         static_cast<unsigned long long>(call_capture_counts[41].load(std::memory_order_relaxed)));
     std::fprintf(output, "  \"DestroyPipelineLayout\": %llu,\n",
@@ -416,6 +428,8 @@ inline void writeCallCounts(const char* path) noexcept
         static_cast<unsigned long long>(call_capture_counts[1].load(std::memory_order_relaxed)));
     std::fprintf(output, "  \"CreateGraphicsPipeline\": %llu,\n",
         static_cast<unsigned long long>(call_capture_counts[2].load(std::memory_order_relaxed)));
+    std::fprintf(output, "  \"graphics_pipeline_native_ns\": %llu,\n",
+        static_cast<unsigned long long>(call_capture_graphics_pipeline_ns.load(std::memory_order_relaxed)));
     std::fprintf(output, "  \"CreateBufferView\": %llu,\n",
         static_cast<unsigned long long>(call_capture_counts[3].load(std::memory_order_relaxed)));
     std::fprintf(output, "  \"AllocateDescriptorSets\": %llu,\n",
@@ -615,7 +629,8 @@ inline CapabilityImplementationId registerCaptureProbe(RenderServer& server, Fea
     implementation.implementation = "test.capture";
     implementation.features = {feature};
     implementation.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-    return take(server.addCapabilityImplementation(take(server.registerCapability<CaptureCapability>()), implementation));
+    const auto capability = take(server.registerCapability<CaptureCapability>());
+    return take(server.addCapabilityImplementation(capability, implementation));
 }
 
 class CaptureBuffer

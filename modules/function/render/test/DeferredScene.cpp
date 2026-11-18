@@ -786,6 +786,7 @@ int main(int argc, char** argv)
             std::vector<double> intervals;
             intervals.reserve(profile_frames);
             const auto submitted_before = server->stats().submissions;
+            const auto development_before = server->developmentStats();
             const auto start = Clock::now();
             auto previous = start;
             for (std::uint32_t frame = 0; frame < profile_frames; ++frame)
@@ -797,6 +798,21 @@ int main(int argc, char** argv)
             }
             const auto seconds = std::chrono::duration<double>(previous - start).count();
             const auto submissions = server->stats().submissions - submitted_before;
+            if (const auto after = server->developmentStats(); development_before && after)
+            {
+                const auto& before = *development_before;
+                std::printf(
+                    "DRAW_COUNTERS culling=%u rounds=%llu slot_cpu_hold_ns=%llu "
+                    "program_preparations_holding_slot=%llu program_preparation_ns=%llu\n",
+                    gpu_visibility,
+                    static_cast<unsigned long long>(after->rounds_opened - before.rounds_opened),
+                    static_cast<unsigned long long>(after->slot_cpu_hold_ns - before.slot_cpu_hold_ns),
+                    static_cast<unsigned long long>(
+                        after->program_preparations_holding_slot - before.program_preparations_holding_slot
+                    ),
+                    static_cast<unsigned long long>(after->program_preparation_ns - before.program_preparation_ns)
+                );
+            }
             if (profile_samples)
             {
                 for (std::size_t frame = 0; frame < intervals.size(); ++frame)

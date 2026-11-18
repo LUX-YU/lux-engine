@@ -166,6 +166,10 @@ namespace lux::render
             return false;
         }
         const auto context = round_.operation->context();
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        slot_opened_at_ = std::chrono::steady_clock::now();
+        rounds_opened_.fetch_add(1, std::memory_order_relaxed);
+#endif
         round_.stage = DeviceRound::EStage::PREPARING;
         if (frame_runs_.size() < frame_outputs_.size()) frame_runs_.resize(frame_outputs_.size());
         for (auto& output : frame_outputs_)
@@ -186,6 +190,12 @@ namespace lux::render
             round_.operation->cancel(error);
         }
         round_.operation.reset();
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto held_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - slot_opened_at_
+        ).count();
+        slot_cpu_hold_ns_.fetch_add(held_ns, std::memory_order_relaxed);
+#endif
         round_.error = {};
         for (std::size_t i = 0; i < frame_run_count_; ++i)
         {
@@ -226,6 +236,10 @@ namespace lux::render
             return;
         }
         round_.pending = true;
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        program_preparation_started_at_ = std::chrono::steady_clock::now();
+        program_preparations_holding_slot_.fetch_add(1, std::memory_order_relaxed);
+#endif
         const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         auto prepared =
             prepareInstancePrograms() |
@@ -238,6 +252,12 @@ namespace lux::render
             stdexec::then(
                 [this](RenderResult<void> result) noexcept
                 {
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+                    const auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - program_preparation_started_at_
+                    ).count();
+                    program_preparation_ns_.fetch_add(duration_ns, std::memory_order_relaxed);
+#endif
                     round_.pending = false;
                     if (!result)
                     {

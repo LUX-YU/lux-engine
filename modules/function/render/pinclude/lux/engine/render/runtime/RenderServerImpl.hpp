@@ -61,6 +61,7 @@ namespace lux::render
         }
 
         [[nodiscard]] RenderServerStats stats() const noexcept;
+        [[nodiscard]] std::optional<RenderDevelopmentStats> developmentStats() const noexcept;
 
         RenderServerConfig config_;
         execution::CpuScheduler cpu_scheduler_; // Borrowed from the application's ExecutionRuntime.
@@ -127,6 +128,13 @@ namespace lux::render
         std::atomic<std::uint64_t> ticks_{0}, commands_{0}, compiled_graphs_{0}, submissions_{0};
         std::atomic<std::uint64_t> storages_created_{0};
         std::atomic<std::uint64_t> presentations_{0};
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        std::atomic<std::uint64_t> input_rebuilds_{0}, input_rebuild_ns_{0}, job_selection_ns_{0};
+        std::atomic<std::uint64_t> jobs_considered_{0}, jobs_selected_{0}, dependency_edges_{0};
+        std::atomic<std::uint64_t> rounds_opened_{0}, slot_cpu_hold_ns_{0};
+        std::atomic<std::uint64_t> program_preparations_holding_slot_{0}, program_preparation_ns_{0};
+        std::chrono::steady_clock::time_point slot_opened_at_, program_preparation_started_at_;
+#endif
 
         Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler);
 

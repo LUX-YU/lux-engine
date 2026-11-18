@@ -1416,6 +1416,17 @@ int main(int argc, char** argv)
     thread.join();
     endCallCapture();
     const auto stats = server->stats();
+    if (const auto development = server->developmentStats())
+    {
+        std::printf(
+            "RUN_COUNTERS rounds=%llu slot_cpu_hold_ns=%llu program_preparations_holding_slot=%llu "
+            "program_preparation_ns=%llu\n",
+            static_cast<unsigned long long>(development->rounds_opened),
+            static_cast<unsigned long long>(development->slot_cpu_hold_ns),
+            static_cast<unsigned long long>(development->program_preparations_holding_slot),
+            static_cast<unsigned long long>(development->program_preparation_ns)
+        );
+    }
     CHECK(stats.validation_errors == 0);
     server.reset();
     CHECK(diagnostic_count.load() != 0);

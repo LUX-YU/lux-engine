@@ -161,7 +161,7 @@ namespace
 
     rdesc::MaterialProgramSet cookProgram(
         lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
-        std::span<const EMaterialPurpose> purposes, unsigned parameter_count, float emissive
+        std::span<const EMaterialPurpose> purposes, unsigned parameter_count, float emissive, unsigned texture_count = 1
     )
     {
         using namespace lux::material;
@@ -174,7 +174,13 @@ namespace
         {
             graph.param_slots.push_back({"value" + std::to_string(index), EValueType::FLOAT, {1, 0, 0, 0}});
         }
-        graph.texture_slots.push_back({"color", lux::asset::AssetId{std::array<std::uint8_t, 16>{1}}});
+        for (unsigned index = 0; index < texture_count; ++index)
+        {
+            const auto binding = static_cast<std::uint8_t>(index + 1);
+            graph.texture_slots.push_back({
+                "color" + std::to_string(index), lux::asset::AssetId{std::array<std::uint8_t, 16>{binding}}
+            });
+        }
         const auto surface = material_test::add(graph, MaterialOutputSurface{});
         const auto opacity = material_test::add(graph, MaterialParameter{0, EValueType::FLOAT});
         const auto emission = material_test::add(graph, MaterialConstant{{emissive, 0, 0, 0}, EValueType::VEC3});
@@ -373,17 +379,24 @@ namespace
         const auto abi_count = varied ? std::min(count, 128u) : 1u;
         std::vector<rdesc::MaterialProgramSet> programs;
         std::set<std::size_t> binaries;
-        std::set<std::uint32_t> strides;
+        std::set<std::pair<std::size_t, std::uint32_t>> projections;
         std::uint64_t record_bytes = 0;
         for (unsigned index = 0; index < count; ++index)
         {
-            auto program = cookProgram(compiler, target, purposes, 1 + index % abi_count, float(index + 1) / 4096);
+            const auto shape = index % abi_count;
+            // DXIL limits structured records to 2048 bytes. The last shape uses one
+            // more texture and shares a stride with an existing, different ABI.
+            const bool extra_texture = shape == 127;
+            const auto parameters = extra_texture ? 1 : shape + 1;
+            const auto texture_count = extra_texture ? 2u : 1u;
+            auto program = cookProgram(compiler, target, purposes, parameters, float(index + 1) / 4096, texture_count);
             CHECK(binaries.emplace(program.programs.front().shader.binaryDigest()).second);
-            strides.insert(program.parameters.size);
+            CHECK(program.parameter_defaults.size() == parameters && program.texture_count == texture_count);
+            projections.emplace(program.parameter_defaults.size(), program.texture_count);
             record_bytes += program.parameters.size;
             programs.push_back(std::move(program));
         }
-        CHECK(strides.size() == abi_count && textures.size() == 9);
+        CHECK(projections.size() == abi_count && textures.size() == 9);
         const auto pages = legacy ? count : abi_count * pagesFor(count / abi_count);
         std::vector<MaterialId> ids;
         ids.reserve(count);
@@ -397,9 +410,10 @@ namespace
             for (std::size_t i = 0; i < programs.size(); ++i)
             {
                 const auto& program = programs[i];
-                const auto texture = textures[std::min<std::size_t>(i, textures.size() - 1)];
+                std::vector<TextureId> bindings(program.texture_count);
+                bindings.front() = textures[std::min<std::size_t>(i, textures.size() - 1)];
                 ids.push_back(call<MaterialCommands::Create>(
-                    ipc, commands, {materials, {program, program.parameter_defaults, {texture}}}
+                    ipc, commands, {materials, {program, program.parameter_defaults, std::move(bindings)}}
                 ).material);
             }
             const auto cpu_us = processCpuMicroseconds() - cpu_before;

@@ -347,7 +347,10 @@ conflict enumeration inside a shared physical-resource group. This is not a seco
 `dumpSubmissions` reports the rebuild and comparison counts separately from accepted submissions.
 
 With `LUX_RENDER_DEVELOPMENT_METRICS=ON`, `RenderServer::developmentStats()` exposes cumulative Job selection,
-input rebuild and CPU round occupancy counters. The preparation interval runs from scheduling program work to
+input rebuild and CPU round occupancy counters. The round borrows structural Job relations, Target sources and
+Resource identities until its submission terminates. Requests, cadence and completions only change the next
+round's selection. Selection and topology growth counters track backing-array allocations in those two workspaces.
+The preparation interval runs from scheduling program work to
 its delivery on the Server. Slot hold time ends when the Server releases the round, before any remaining GPU
 retirement. `dumpSubmissions` also reports imported overlap time and a histogram indexed by the number of
 accesses to a physical resource. The default build disables this sampling.

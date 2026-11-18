@@ -71,6 +71,8 @@ namespace lux::render
         std::uint64_t raster_buffer_ranges = 0, raster_buffer_bytes = 0, raster_image_ranges = 0;
         std::uint64_t raster_image_subresources = 0;
         std::uint64_t program_preparations = 0, discarded_preparations = 0;
+        // Each growth is a new backing allocation made by a selection or topology vector.
+        std::uint64_t job_selection_calls = 0, job_selection_growths = 0, job_topology_growths = 0;
     };
 
     // The application owns the rendering thread. Only stop() and stats() may race with run().

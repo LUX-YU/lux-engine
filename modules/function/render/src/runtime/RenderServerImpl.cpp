@@ -10,9 +10,7 @@
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
-#include <map>
 #include <ranges>
-#include <set>
 
 namespace lux::render
 {
@@ -286,7 +284,6 @@ namespace lux::render
             instances.push_back(&execution.instance);
         }
         state.resizing = true;
-        active_frame_inputs_dirty_ = true;
         cxx::scope_exit finish([&]() noexcept
         {
             targetState(*target).resizing = false;
@@ -296,7 +293,6 @@ namespace lux::render
                 --job.execution->pending_uses;
                 retireStoppedExecution(job);
             }
-            active_frame_inputs_dirty_ = true;
         });
 
         auto accepted = domain_->device_->frameWorkspace().submissions.acceptedUses(
@@ -414,7 +410,6 @@ namespace lux::render
         state.enabled = input.active;
         if (!input.active && !state.writer.isNull())
             domain_->jobs_.find(state.writer)->control.rejectUnadmitted(RenderError{kJobStopped});
-        active_frame_inputs_dirty_ = true;
         response = {};
     }
 
@@ -502,213 +497,6 @@ namespace lux::render
         return {};
     }
 
-    void RenderServer::Impl::rebuildActiveFrameInputs() noexcept
-    {
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        const auto rebuild_started_at = std::chrono::steady_clock::now();
-#endif
-        frame_input_error_ = {};
-        pending_history_outputs_.clear();
-        output_uses_revision_ = domain_->resources_.outputUsesRevision();
-        // Semantic conflict order is stable. Fairness rotates ready physical queues, not
-        // the order of writers of one imported resource.
-        std::vector<RenderJobId> active;
-        std::map<std::pair<std::uint32_t, std::uint32_t>, std::size_t> job_positions;
-        for (auto id : running_jobs_)
-        {
-            const auto& job = *domain_->jobs_.find(id);
-            if (job.readyToRun() && jobTargetReady(job))
-            {
-                job_positions.emplace(std::pair{id.index, id.gen}, active.size());
-                active.push_back(id);
-            }
-        }
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        const auto selection_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - rebuild_started_at
-        ).count();
-        job_selection_ns_.fetch_add(selection_ns, std::memory_order_relaxed);
-        jobs_considered_.fetch_add(running_jobs_.size(), std::memory_order_relaxed);
-#endif
-        std::map<std::uint32_t, std::size_t> positions;
-        struct ReadinessEdge final
-        {
-            std::size_t consumer;
-            bool accepts_history = false;
-        };
-        std::vector<std::vector<ReadinessEdge>> successors(active.size());
-        std::vector<std::size_t> predecessors(active.size());
-        std::vector<bool> unavailable(active.size());
-        std::vector<RenderError> input_errors(active.size());
-        for (std::size_t i = 0; i < active.size(); ++i)
-        {
-            positions.emplace(domain_->jobs_.find(active[i])->execution->target.index, i);
-        }
-        for (auto id : unready_jobs_)
-        {
-            const auto position = job_positions.find({id.index, id.gen});
-            if (position != job_positions.end()) unavailable[position->second] = true;
-        }
-        for (std::size_t i = 0; i < active.size(); ++i)
-        {
-            const auto& job = *domain_->jobs_.find(active[i]);
-            const auto& execution = *job.execution;
-            for (auto predecessor : job.relations.predecessors)
-            {
-                const auto found = job_positions.find({predecessor.index, predecessor.gen});
-                if (found != job_positions.end())
-                {
-                    successors[found->second].push_back({i});
-                    ++predecessors[i];
-                }
-            }
-            auto sources = execution.instance.sampledTargets();
-            for (const auto& input : execution.target_images)
-                if (std::ranges::find(sources, input.target) == sources.end()) sources.push_back(input.target);
-            for (auto source : sources)
-            {
-                const auto* target = domain_->targets_.find(source);
-                const auto producer = positions.find(source.index);
-                if (!target)
-                {
-                    unavailable[i] = true;
-                    input_errors[i] = {kRuntimeIdentity};
-                    continue;
-                }
-                if (targetState(*target).resizing)
-                {
-                    unavailable[i] = true;
-                    continue;
-                }
-                const auto published_slot = publishedOutputSlot(source);
-                const bool has_history = published_slot != UINT32_MAX;
-                const bool history_ready = has_history && publishedOutputReadable(source, published_slot);
-                if (has_history && !history_ready) pending_history_outputs_.emplace_back(source, published_slot);
-                if (producer == positions.end())
-                {
-                    unavailable[i] = unavailable[i] || !history_ready;
-                    if (!has_history) input_errors[i] = {kRuntimeState};
-                    continue;
-                }
-                successors[producer->second].push_back({i, history_ready});
-                ++predecessors[i];
-            }
-        }
-        std::vector<std::size_t> ready;
-        std::vector<RenderJobId> ordered;
-        ready.reserve(active.size());
-        ordered.reserve(active.size());
-        for (std::size_t i = 0; i < active.size(); ++i)
-        {
-            if (predecessors[i] == 0)
-            {
-                ready.push_back(i);
-            }
-        }
-        for (std::size_t cursor = 0; cursor < ready.size(); ++cursor)
-        {
-            const auto i = ready[cursor];
-            if (!unavailable[i])
-            {
-                ordered.push_back(active[i]);
-            }
-            else if (input_errors[i].type)
-            {
-                auto& job = *domain_->jobs_.find(active[i]);
-                job.control.rejectUnadmitted(input_errors[i]);
-            }
-            for (const auto [consumer, accepts_history] : successors[i])
-            {
-                if (unavailable[i] && !accepts_history)
-                {
-                    unavailable[consumer] = true;
-                    if (!input_errors[consumer].type) input_errors[consumer] = input_errors[i];
-                }
-                if (--predecessors[consumer] == 0)
-                {
-                    ready.push_back(consumer);
-                }
-            }
-        }
-        if (ready.size() != active.size()) frame_input_error_ = {kGraphDependencyCycle};
-        active = std::move(ordered);
-        frame_instances_.clear();
-        frame_outputs_.clear();
-        frame_storages_.clear();
-        for (auto id : active)
-        {
-            const auto& job = *domain_->jobs_.find(id);
-            auto& execution = *job.execution;
-            auto reads = execution.instance.sampledTargets();
-            for (const auto& input : execution.target_images)
-                if (std::ranges::find(reads, input.target) == reads.end()) reads.push_back(input.target);
-            frame_outputs_.push_back({id, &execution, execution.target, std::move(reads)});
-            frame_instances_.push_back(&execution.instance);
-            const auto& effect = execution.recipe.effect;
-            auto& scene = *domain_->scenes_.find(job.content.scene);
-            auto& view = *scene.views.find(job.content.view);
-            for (const auto& dependency : effect.resource_dependencies)
-            {
-                const auto* factory = domain_->resources_.factory(dependency.declaration);
-                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
-                if (!ops || !ops->prepareFrame)
-                {
-                    continue;
-                }
-                auto* owner = view.storages.ownerFor(dependency.scope);
-                const auto storage = owner ? owner->find(dependency.declaration) : ResourceInstanceId{};
-                if (!storage.isNull())
-                {
-                    auto* native = domain_->resources_.resourceInstance(storage);
-                    frame_storages_.push_back(
-                        {native, ops, storage, ops->preparationRevision ? ops->preparationRevision(native) : nullptr}
-                    );
-                }
-            }
-
-        }
-        frame_job_order_.clear();
-        job_positions.clear();
-        for (std::size_t index = 0; index < active.size(); ++index)
-            job_positions.emplace(std::pair{active[index].index, active[index].gen}, index);
-        std::vector<RenderJobId> ancestors;
-        std::vector<RenderJobId> visited;
-        for (std::uint32_t consumer = 0; consumer < active.size(); ++consumer)
-        {
-            ancestors = domain_->jobs_.find(active[consumer])->relations.predecessors;
-            visited.clear();
-            while (!ancestors.empty())
-            {
-                const auto id = ancestors.back();
-                ancestors.pop_back();
-                if (std::ranges::find(visited, id) != visited.end()) continue;
-                visited.push_back(id);
-                const auto ready = job_positions.find({id.index, id.gen});
-                if (ready != job_positions.end())
-                {
-                    frame_job_order_.push_back({static_cast<std::uint32_t>(ready->second), consumer});
-                    continue;
-                }
-                const auto& parents = domain_->jobs_.find(id)->relations.predecessors;
-                ancestors.insert(ancestors.end(), parents.begin(), parents.end());
-            }
-        }
-        std::ranges::sort(frame_storages_, {}, [](const auto& use) noexcept
-            { return std::pair{use.identity.index, use.identity.gen}; });
-        const auto duplicate = std::ranges::unique(frame_storages_, {}, &detail::StorageFrameUse::identity);
-        frame_storages_.erase(duplicate.begin(), duplicate.end());
-        active_frame_inputs_dirty_ = false;
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        const auto rebuild_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - rebuild_started_at
-        ).count();
-        input_rebuilds_.fetch_add(1, std::memory_order_relaxed);
-        input_rebuild_ns_.fetch_add(rebuild_ns, std::memory_order_relaxed);
-        jobs_selected_.fetch_add(frame_outputs_.size(), std::memory_order_relaxed);
-        dependency_edges_.fetch_add(frame_job_order_.size(), std::memory_order_relaxed);
-#endif
-    }
-
     std::uint32_t RenderServer::Impl::outputSlot(TargetId target, std::uint32_t frame_slot) const noexcept
     {
         if (std::ranges::find(frame_outputs_, target, &FrameOutput::target) != frame_outputs_.end()) return frame_slot;
@@ -730,43 +518,6 @@ namespace lux::render
     {
         const auto* offscreen = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(target));
         return offscreen && offscreen->readable(slot);
-    }
-
-    void RenderServer::Impl::prefetchFrameOutputs(std::uint32_t slot) noexcept
-    {
-        target_readiness_scratch_.clear();
-        for (auto id : running_jobs_)
-        {
-            auto& job = *domain_->jobs_.find(id);
-            if (!job.readyToRun() || !jobTargetReady(job)) continue;
-            if (!job.execution->programsReady() || !resourcesAvailable(job.execution->resources))
-            {
-                target_readiness_scratch_.push_back(id);
-                continue;
-            }
-            const auto& target = *domain_->targets_.find(job.execution->target);
-            if (const auto* surface = std::get_if<detail::SwapchainTarget>(&target))
-            {
-                const auto ready = surface->prefetched();
-                if (!ready)
-                {
-                    job.last_run_error = ready.error();
-                    job.control.rejectUnadmitted(ready.error());
-                    active_frame_inputs_dirty_ = true;
-                    continue;
-                }
-                if (!*ready) target_readiness_scratch_.push_back(id);
-            }
-            else if (!std::get<detail::OffscreenTarget>(target).writable(slot))
-            {
-                target_readiness_scratch_.push_back(id);
-            }
-        }
-        if (target_readiness_scratch_ != unready_jobs_)
-        {
-            unready_jobs_.swap(target_readiness_scratch_);
-            active_frame_inputs_dirty_ = true;
-        }
     }
 
     bool RenderServer::Impl::resourcesAvailable(std::span<const ResourceInstanceId> resources) const noexcept
@@ -1291,7 +1042,10 @@ namespace lux::render
             raster_image_ranges_.load(std::memory_order_relaxed),
             raster_image_subresources_.load(std::memory_order_relaxed),
             program_preparations_.load(std::memory_order_relaxed),
-            discarded_preparations_.load(std::memory_order_relaxed)
+            discarded_preparations_.load(std::memory_order_relaxed),
+            job_selection_calls_.load(std::memory_order_acquire),
+            job_selection_growths_.load(std::memory_order_relaxed),
+            job_topology_growths_.load(std::memory_order_relaxed)
         };
 #else
         return std::nullopt;

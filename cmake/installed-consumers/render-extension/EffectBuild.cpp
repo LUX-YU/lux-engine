@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <random>
 #include <cstdlib>
 #include <source_location>
 #include <string_view>
@@ -32,6 +33,12 @@ static void check(bool value, int line)
 }
 
 #define CHECK(...) check(static_cast<bool>((__VA_ARGS__)), __LINE__)
+
+static bool enableNativeValidation() noexcept
+{
+    const auto* option = std::getenv("LUX_NATIVE_VALIDATION");
+    return option && std::string_view(option) != "0";
+}
 
 template <class T> auto take(T value, std::source_location source = std::source_location::current())
 {
@@ -378,7 +385,41 @@ template <class Command> auto call(ipc::IpcRequester& client, typename Command::
     return receive<Command>(client, send<Command>(client, std::move(request)));
 }
 
-static void profileRequestedJobs(
+template <class Stats>
+static void checkJobSelection(const Stats& before, const Stats& after, unsigned jobs, std::string_view mode, unsigned round)
+{
+    const auto rebuilds = after.input_rebuilds - before.input_rebuilds;
+    const auto selection_ns = after.job_selection_ns - before.job_selection_ns;
+    std::uint64_t calls = 0, selection_growths = 0, topology_growths = 0;
+    constexpr bool reports_workspace = requires { after.job_selection_calls; };
+    if constexpr (reports_workspace)
+    {
+        calls = after.job_selection_calls - before.job_selection_calls;
+        selection_growths = after.job_selection_growths - before.job_selection_growths;
+        topology_growths = after.job_topology_growths - before.job_topology_growths;
+        CHECK(calls > 0 && rebuilds == 0 && selection_growths == 0 && topology_growths == 0);
+    }
+    std::printf(
+        "JOB_COUNTERS jobs=%u mode=%.*s round=%u rebuilds=%llu rebuild_ns=%llu selection_ns=%llu "
+        "selection_calls=%llu selection_growths=%llu topology_growths=%llu reports_workspace=%u "
+        "considered=%llu selected=%llu job_edges=%llu\n",
+        jobs, int(mode.size()), mode.data(), round, static_cast<unsigned long long>(rebuilds),
+        static_cast<unsigned long long>(after.input_rebuild_ns - before.input_rebuild_ns),
+        static_cast<unsigned long long>(selection_ns), static_cast<unsigned long long>(calls),
+        static_cast<unsigned long long>(selection_growths), static_cast<unsigned long long>(topology_growths),
+        unsigned(reports_workspace), static_cast<unsigned long long>(after.jobs_considered - before.jobs_considered),
+        static_cast<unsigned long long>(after.jobs_selected - before.jobs_selected),
+        static_cast<unsigned long long>(after.dependency_edges - before.dependency_edges)
+    );
+}
+
+template <class Stats> static std::uint64_t jobInputCpuNs(const Stats& stats)
+{
+    if constexpr (requires { stats.job_selection_calls; }) return stats.input_rebuild_ns + stats.job_selection_ns;
+    return stats.input_rebuild_ns; // Legacy rebuild timing includes its selection.
+}
+
+static void profileJobRounds(
     RenderServer& server, ipc::IpcRequester& client, std::string_view channel, EffectId effect, unsigned job_count
 )
 {
@@ -413,98 +454,157 @@ static void profileRequestedJobs(
     const auto initial_setup = create_jobs(3);
     const std::array names{CommandName{RequestRenderJob::name}};
     const auto command = call<QueryCommandIds>(client, names).ids.front();
-    const auto batch = [&](bool sparse)
-    {
-        const auto stride = sparse ? 4u : 1u;
-        const auto begin = Clock::now();
-        for (std::size_t i = 0; i < jobs.size(); i += stride)
-        {
-            auto& job = jobs[i];
-            job.correlation = sendBound<RequestRenderJob>(job.wire, command, {job.id});
-        }
-        for (std::size_t i = 0; i < jobs.size(); i += stride)
-        {
-            auto& job = jobs[i];
-            const auto submitted = receive<RequestRenderJob>(job.wire, job.correlation);
-            CHECK(!submitted.error.type && submitted.job == job.id);
-        }
-        return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
-    };
     const auto verify_ancestry = [&]
     {
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {jobs[0].id}, {}}).error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {jobs[1].id}, {}}).error.type);
         CHECK(!call<StopRenderJob>(client, jobs[1].id).error.type);
         auto park = take(ipc::IpcCore::instance().createRequester(channel));
-        ParkDispatch::entered = false;
-        ParkDispatch::pending = true;
-        const auto parked = send<ParkDispatch>(park, {});
-        const auto deadline = Clock::now() + std::chrono::seconds(10);
-        while (!ParkDispatch::entered.load())
-        {
-            CHECK(Clock::now() < deadline);
-            std::this_thread::yield();
-        }
         auto& first = jobs[0];
         auto& last = jobs[2];
-        const auto accepted_before = server.stats().submissions;
-        const auto a = sendBound<RequestRenderJob>(first.wire, command, {first.id});
-        const auto c = sendBound<RequestRenderJob>(first.wire, command, {last.id});
-        ParkDispatch::pending = false;
-        ParkDispatch::pending.notify_all();
-        CHECK(!receive<ParkDispatch>(park, parked).error.type);
-        const auto submitted_a = receive<RequestRenderJob>(first.wire, a);
-        const auto submitted_c = receive<RequestRenderJob>(first.wire, c);
+        const auto frame = [&]
+        {
+            ParkDispatch::entered = false;
+            ParkDispatch::pending = true;
+            const auto parked = send<ParkDispatch>(park, {});
+            const auto deadline = Clock::now() + std::chrono::seconds(10);
+            while (!ParkDispatch::entered.load())
+            {
+                CHECK(Clock::now() < deadline);
+                std::this_thread::yield();
+            }
+            // Demand arrives in reverse order. Native acceptance must still follow A -> C.
+            const auto c = sendBound<RequestRenderJob>(last.wire, command, {last.id});
+            const auto a = sendBound<RequestRenderJob>(first.wire, command, {first.id});
+            ParkDispatch::pending = false;
+            ParkDispatch::pending.notify_all();
+            CHECK(!receive<ParkDispatch>(park, parked).error.type);
+            return std::pair{receive<RequestRenderJob>(first.wire, a), receive<RequestRenderJob>(last.wire, c)};
+        };
+        const auto before = Monitor::accepted_submits.load();
+        const auto [submitted_a, submitted_c] = frame();
         CHECK(!submitted_a.error.type && !submitted_c.error.type);
-        CHECK(submitted_a.frame_index == submitted_c.frame_index);
-        CHECK(server.stats().submissions == accepted_before + 2);
+        CHECK(submitted_a.frame_index == submitted_c.frame_index && submitted_a.slot_index == submitted_c.slot_index);
+        CHECK(Monitor::accepted_submits == before + 2);
+        Monitor::injected = nri::Result::INVALID_ARGUMENT;
+        Monitor::reject_after = 2;
+        const auto [accepted, rejected] = frame();
+        CHECK(!accepted.error.type && accepted.job == first.id && rejected.error.type == kDeviceFailure);
+        CHECK(Monitor::accepted_submits == before + 3);
+        const auto [recovered_a, recovered_c] = frame();
+        CHECK(!recovered_a.error.type && !recovered_c.error.type && Monitor::accepted_submits == before + 5);
+        std::printf("JOB_ANCESTRY native_acceptance=2,1,2 rejection=%llu same_frame_and_slot=1\n", rejected.error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {}, {}}).error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {}, {}}).error.type);
         CHECK(!call<StartRenderJob>(client, {jobs[1].id, jobs[1].target}).error.type);
     };
     verify_ancestry();
     const auto setup_elapsed = initial_setup + create_jobs(job_count);
+    for (unsigned i = 1; i < job_count; ++i)
+        if (i % 16 < 4 && i % 16 != 0)
+            CHECK(!call<SetRenderJobDependencies>(client, {jobs[i].id, {jobs[i - 1].id}, {}}).error.type);
     std::printf("JOB_SETUP jobs=%u create_and_start_ms=%.6f dormant_ancestry=passed\n", job_count, setup_elapsed);
-    for (const bool sparse : {false, true})
+    struct Load final
     {
-        for (unsigned i = 0; i < warmup; ++i) batch(sparse);
-        const auto accepted_before = server.stats().submissions;
-        const auto native_before = Monitor::accepted_submits.load();
-        const auto development_before = server.developmentStats();
-        std::array<double, samples> elapsed;
-        for (auto& value : elapsed) value = batch(sparse);
-        const auto accepted = server.stats().submissions - accepted_before;
-        CHECK(accepted >= samples);
-        CHECK(accepted == Monitor::accepted_submits.load() - native_before);
-        if (const auto after = server.developmentStats(); development_before && after)
+        std::string_view name;
+        unsigned continuous_stride, request_count;
+    };
+    const std::array loads{
+        Load{"requested", 0, job_count}, Load{"continuous", 1, 1},
+        Load{"mixed", 2, job_count / 2}, Load{"sparse", 0, job_count / 4}
+    };
+    const auto input_cpu_ns = [&]
+    {
+        const auto stats = server.developmentStats();
+        CHECK(stats);
+        return jobInputCpuNs(*stats);
+    };
+    const auto executed = [&](const Job& job)
+    {
+        const auto result = call<QueryExecutionProgress>(client, job.id);
+        CHECK(!result.error.type && !result.last_run_error.type);
+        return result.progress.count(EExecutionOutcome::EXECUTED);
+    };
+    for (const auto& load : loads)
+    {
+        const auto continuous = [&](unsigned index)
         {
-            const auto& before = *development_before;
+            return load.continuous_stride != 0 && index % load.continuous_stride == 0;
+        };
+        std::vector<unsigned> requested;
+        for (unsigned index = 0; index < job_count; ++index)
+            if (!continuous(index) || load.continuous_stride == 1) requested.push_back(index);
+        for (unsigned round = 0; round < 5; ++round)
+        {
+            std::mt19937 random(0xaf300u + round);
+            for (unsigned index = 0; index < job_count; ++index)
+                if (continuous(index))
+                    CHECK(!call<SetRenderJobCadence>(client, {jobs[index].id, EJobCadence::CONTINUOUS}).error.type);
+            const auto batch = [&]
+            {
+                if (load.continuous_stride != 1) std::shuffle(requested.begin(), requested.end(), random);
+                const auto begin = Clock::now();
+                for (auto index : std::span(requested).first(load.request_count))
+                {
+                    auto& job = jobs[index];
+                    job.correlation = sendBound<RequestRenderJob>(job.wire, command, {job.id});
+                }
+                for (auto index : std::span(requested).first(load.request_count))
+                {
+                    auto& job = jobs[index];
+                    const auto submitted = receive<RequestRenderJob>(job.wire, job.correlation);
+                    CHECK(!submitted.error.type && submitted.job == job.id);
+                }
+                return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+            };
+            for (unsigned i = 0; i < warmup; ++i) batch();
+            std::vector<std::uint64_t> progress;
+            for (const auto& job : jobs) progress.push_back(executed(job));
+            const auto accepted_before = server.stats().submissions;
+            const auto native_before = Monitor::accepted_submits.load();
+            const auto development_before = server.developmentStats();
+            std::array<double, samples> elapsed, cpu_us;
+            for (std::size_t i = 0; i < elapsed.size(); ++i)
+            {
+                const auto cpu_started = input_cpu_ns();
+                elapsed[i] = batch();
+                cpu_us[i] = static_cast<double>(input_cpu_ns() - cpu_started) / 1000.;
+            }
+            for (unsigned index = 0; index < job_count; ++index)
+                if (continuous(index))
+                    CHECK(!call<SetRenderJobCadence>(client, {jobs[index].id, EJobCadence::REQUESTED}).error.type);
+            if (load.continuous_stride != 0)
+                CHECK(!call<RequestRenderJob>(client, {jobs.front().id}).error.type); // Drain the last continuous round.
+            const auto accepted = server.stats().submissions - accepted_before;
+            CHECK(accepted >= samples);
+            // A final exact request drains continuous work before comparing cumulative native receipts.
+            const auto native = Monitor::accepted_submits.load() - native_before;
+            if (load.continuous_stride == 0) CHECK(accepted == native);
+            else CHECK(server.stats().submissions == Monitor::accepted_submits.load());
+            for (unsigned index = 0; index < job_count; ++index)
+                if (continuous(index)) CHECK(executed(jobs[index]) > progress[index]);
+            if (const auto after = server.developmentStats(); development_before && after)
+                checkJobSelection(*development_before, *after, job_count, load.name, round);
+            for (std::size_t i = 0; i < elapsed.size(); ++i)
+                std::printf("JOB_SAMPLE mode=%.*s round=%u batch=%zu request_ms=%.6f input_cpu_us=%.3f\n",
+                    int(load.name.size()), load.name.data(), round, i, elapsed[i], cpu_us[i]);
+            std::ranges::sort(elapsed);
+            std::ranges::sort(cpu_us);
             std::printf(
-                "JOB_COUNTERS jobs=%u sparse=%u rebuilds=%llu rebuild_ns=%llu selection_ns=%llu "
-                "considered=%llu selected=%llu job_edges=%llu\n",
-                job_count, unsigned(sparse),
-                static_cast<unsigned long long>(after->input_rebuilds - before.input_rebuilds),
-                static_cast<unsigned long long>(after->input_rebuild_ns - before.input_rebuild_ns),
-                static_cast<unsigned long long>(after->job_selection_ns - before.job_selection_ns),
-                static_cast<unsigned long long>(after->jobs_considered - before.jobs_considered),
-                static_cast<unsigned long long>(after->jobs_selected - before.jobs_selected),
-                static_cast<unsigned long long>(after->dependency_edges - before.dependency_edges)
+                "JOB_PROFILE jobs=%u mode=%.*s round=%u warmup=%u samples=%u "
+                "submissions=%llu native=%llu p50_ms=%.6f p95_ms=%.6f cpu_p50_us=%.3f cpu_p95_us=%.3f\n",
+                job_count, int(load.name.size()), load.name.data(), round, warmup, samples,
+                static_cast<unsigned long long>(accepted), static_cast<unsigned long long>(native),
+                elapsed[samples / 2], elapsed[samples * 95 / 100], cpu_us[samples / 2], cpu_us[samples * 95 / 100]
             );
         }
-        for (std::size_t i = 0; i < elapsed.size(); ++i)
-            std::printf("JOB_SAMPLE sparse=%u batch=%zu request_ms=%.6f\n", unsigned(sparse), i, elapsed[i]);
-        std::ranges::sort(elapsed);
-        std::printf(
-            "JOB_PROFILE jobs=%u sparse=%u warmup=%u samples=%u submissions=%llu p50_ms=%.6f p95_ms=%.6f\n",
-            job_count, unsigned(sparse), warmup, samples, static_cast<unsigned long long>(accepted),
-            elapsed[samples / 2], elapsed[samples * 95 / 100]
-        );
     }
 }
 
+
 static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOptions device, unsigned profile_jobs = 0)
 {
-    RenderServerConfig config{"installed.effect.open_raster", false};
+    RenderServerConfig config{"installed.effect.open_raster", enableNativeValidation()};
     config.uploads.emplace();
     device.texture_descriptors = true;
     auto server = take(RenderServer::create(config, execution, device));
@@ -534,11 +634,11 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(!effect.error.type);
     if (profile_jobs)
     {
-        profileRequestedJobs(*server, client, config.channel_name, effect.effect, profile_jobs);
+        profileJobRounds(*server, client, config.channel_name, effect.effect, profile_jobs);
         client.reset();
         server->stop();
         render.join();
-        CHECK(ran && Monitor::destroyed);
+        CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);
         return;
     }
     const auto scene = call<CreateScene>(client, {}).scene;
@@ -722,7 +822,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     const auto [accepted_job, unknown] = batch(job.job, suffix);
     CHECK(accepted_job.job == job.job && unknown.error.type == kOutcomeUnknown);
     render.join();
-    CHECK(!ran && ran.error().type == kOutcomeUnknown);
+    CHECK(!ran && ran.error().type == kOutcomeUnknown && server->stats().validation_errors == 0);
     std::puts("UNKNOWN OUTCOME PASS: device admission stopped and accepted prefix retired");
     client.reset();
     server.reset();
@@ -731,7 +831,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
 int main(int argc, char** argv)
 {
     auto execution = take(execution::ExecutionRuntime::create({4, 32, {32}}));
-    RenderServerConfig config{"installed.effect.build", false};
+    RenderServerConfig config{"installed.effect.build", enableNativeValidation()};
     config.uploads.emplace();
     DeviceOptions device;
     unsigned profile_jobs = 0;
@@ -931,7 +1031,7 @@ int main(int argc, char** argv)
     CHECK(receive<RebindRenderJobEffect>(asynchronous, final_rebind).error.type == kCommandCancelled);
     asynchronous.reset();
     render.join();
-    CHECK(ran && Monitor::destroyed);
+    CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);
     client.reset();
     server.reset();
     recordOpenFeature(*execution, device);

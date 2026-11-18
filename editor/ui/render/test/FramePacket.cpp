@@ -68,7 +68,7 @@ namespace
                 FrameDataCall::declare<Inputs<I>, Counter, &apply>());
         }
     };
-    struct Configuration final { int unused = 0; bool operator==(const Configuration&) const noexcept = default; };
+    struct Configuration final { bool green = false; bool operator==(const Configuration&) const noexcept = default; };
     struct ClearFeature final
     {
         using Config = Configuration;
@@ -83,10 +83,12 @@ namespace
             return {};
         }
 
-        static RenderResult<void> build(const void*, std::string_view, FeatureBuildContext& context) noexcept
+        static RenderResult<void> build(const void* value, std::string_view, FeatureBuildContext& context) noexcept
         {
+            const auto green = static_cast<const Configuration*>(value)->green;
+            const std::array rgba{green ? 0.F : 1.F, green ? 1.F : 0.F, 0.F, 1.F};
             auto pass = context.graph.addTransferPass("clear", TransferWork{
-                {ClearImage{{context.resource("color")}, {1, 0, 0, 1}}}
+                {ClearImage{{context.resource("color")}, rgba}}
             });
             if (!pass) return lux::cxx::unexpected(pass.error());
             return context.publish("color", pass->written.front());
@@ -161,6 +163,8 @@ int main(int argc, char** argv)
     auto execution = std::move(*execution_result);
     RenderServerConfig config; config.channel_name = "f2.frame.packet"; config.uploads.emplace();
     config.frames_in_flight = 3;
+    const auto* native_validation = std::getenv("LUX_NATIVE_VALIDATION");
+    config.validation = native_validation && std::string_view(native_validation) != "0";
     DeviceOptions options; options.texture_descriptors = true; options.multiple_queues = true;
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, *execution, options));
@@ -173,12 +177,12 @@ int main(int argc, char** argv)
     const auto feature = take(server->registerFeature<ClearFeature>());
     const auto implementation = registerRenderProbe<Configuration, FrameInputCapability>(*server, "test.frame.columns", {feature},
         probePorts({"color"}, {}),
-        [](const EffectOutputDesc& output, const Configuration&, std::span<const FeatureId> features)
+        [](const EffectOutputDesc& output, const Configuration& config, std::span<const FeatureId> features)
             noexcept -> RenderResult<EffectDefinition>
         {
             EffectDefinition graph;
             graph.features.push_back({
-                features.front(), "clear", take(ConfigValue::make(Configuration{}))
+                features.front(), "clear", take(ConfigValue::make(config))
             });
             graph.outputs.push_back({{0, "color"}, GraphOutputRequirements{output.format, 1}});
             return graph;
@@ -312,7 +316,8 @@ int main(int argc, char** argv)
     wrong_index_type.index_type = EIndexType::UINT32;
     CHECK(!makeUiRenderEffect({target.format}, *ui, wrong_index_type));
     CapturedPixels ui_pixels;
-    auto ui_request = take(makeUiRenderEffect({target.format}, *ui, loaded_ui));
+    const EffectOutputDesc ui_output{target.format, target.samples, target.kind, target.sampled};
+    auto ui_request = take(makeUiRenderEffect(ui_output, *ui, loaded_ui));
     ui_request.implementations.push_back({capture_probe, "capture"});
     ui_request.definition.features.push_back({
         capture_feature, "capture/pixels", take(ConfigValue::make(CaptureConfig{&ui_pixels}))
@@ -321,7 +326,7 @@ int main(int argc, char** argv)
     ui_request.definition.outputs.push_back({{1, "pixels"}, {}});
     const auto ui_effect = call<CreateEffect>(*wire, commands, std::move(ui_request)).effect;
     const auto ui_view = call<CreateView>(*wire, commands, {scene}).view;
-    const auto ui_target = call<CreateTarget>(*wire, commands, {{32, 32, target.format}}).target;
+    const auto ui_target = call<CreateTarget>(*wire, commands, {target}).target;
     const auto ui_attachment = startRenderJob(*wire, commands, scene, ui_view, ui_target, ui_effect);
     const auto ui_resource = call<QueryResource>(*wire, commands,
         {ViewRequest{scene, ui_view}, UiResource::descriptor.type}).resource_id;
@@ -341,7 +346,7 @@ int main(int argc, char** argv)
         *client, command(TextureCommands::Upload::name), {texture_storage, {texture_info, blue}}
     ).texture;
 
-    const std::array images{ImguiImage{9, {}, output}, ImguiImage{10, texture, {}}};
+    std::array images{ImguiImage{9, {}, output}, ImguiImage{10, texture, {}}};
     auto* context = ImGui::CreateContext();
     auto& io = ImGui::GetIO();
     io.IniFilename = nullptr;
@@ -359,8 +364,9 @@ int main(int argc, char** argv)
     list.AddImage(10, {16, 0}, {32, 32});
     ImGui::Render();
     const auto ui_command = command(SubmitDrawData::name);
-    request<SubmitDrawData>(*client, ui_command, {ui_resource, take(capture.capture(*ImGui::GetDrawData(), images))});
-    ImGui::DestroyContext(context); // Future frames use the Server-owned snapshot.
+    const auto draw = take(capture.capture(*ImGui::GetDrawData(), images));
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
+
 
     const std::array<ImDrawVert, 3> invalid_vertices{};
     const std::array<ImDrawIdx, 3> invalid_indices{0, 1, 3};
@@ -380,8 +386,52 @@ int main(int argc, char** argv)
     CHECK(call<RemoveTarget>(*wire, commands, output, false).error.type == kRuntimeState);
     call<SetTargetActive>(*wire, commands, {output, false});
     request<RequestRenderJob>(*client, run_job, {ui_attachment}); // Uses the last accepted producer output.
-    request<SubmitDrawData>(*client, command(SubmitDrawData::name), {ui_resource, {}});
+    // Replace the sampled Target while the reader and both writers keep their original bindings.
+    auto green_recipe = probeRequest<Configuration, FrameInputCapability>(target, implementation, {true}, {"color"});
+    const auto green_effect = call<CreateEffect>(*wire, commands, std::move(green_recipe)).effect;
+    const auto alternate = call<CreateTarget>(*wire, commands, {target});
+    const auto green_writer = startRenderJob(*wire, commands, scene, ui_view, alternate.target, green_effect);
+    const auto before_change = server->developmentStats();
+    images.front().target = alternate.target;
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
+    const auto missing = request<RequestRenderJob>(*client, run_job, {ui_attachment}, false);
+    CHECK(missing.error.type == kRuntimeState);
+    if (const auto after = server->developmentStats(); after && before_change)
+        CHECK(after->input_rebuilds > before_change->input_rebuilds);
+    const auto produced = request<RequestRenderJob>(*client, run_job, {green_writer});
+    call<SetTargetActive>(*wire, commands, {alternate.target, false});
+    const auto historical = request<RequestRenderJob>(*client, run_job, {ui_attachment});
+    CHECK(historical.frame_index > produced.frame_index && historical.slot_index != produced.slot_index);
+
+    auto resized_desc = target;
+    resized_desc.width = 48;
+    const auto resized = call<ResizeTarget>(*wire, commands, {alternate.target, resized_desc});
+    CHECK(resized.epoch == alternate.epoch + 1);
+    CHECK(request<RequestRenderJob>(*client, run_job, {ui_attachment}, false).error.type == kRuntimeState);
+    CHECK(call<SetTargetActive>(*wire, commands, {alternate.target, true, alternate.epoch}, false).error.type ==
+        kRuntimeState);
+    call<SetTargetActive>(*wire, commands, {alternate.target, true, resized.epoch});
+    request<RequestRenderJob>(*client, run_job, {green_writer});
+    request<RequestRenderJob>(*client, run_job, {ui_attachment});
+
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, {}});
     request<RequestRenderJob>(*client, run_job, {ui_attachment}); // Empty snapshot replaces old geometry.
+
+    auto second_reader_recipe = take(makeUiRenderEffect(ui_output, *ui, loaded_ui));
+    const auto reader_effect = call<CreateEffect>(*wire, commands, std::move(second_reader_recipe)).effect;
+    const auto reader_target = call<CreateTarget>(*wire, commands, {target}).target;
+    const auto reader = startRenderJob(*wire, commands, scene, ui_view, reader_target, reader_effect);
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
+    request<RequestRenderJob>(*client, run_job, {reader}); // A second Job can use the same producer's history.
+    stopAndRemoveJob(*wire, commands, reader);
+    call<RemoveTarget>(*wire, commands, reader_target);
+    call<RemoveEffect>(*wire, commands, {reader_effect});
+
+    images.front().target = ui_target;
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, draw});
+    CHECK(request<RequestRenderJob>(*client, run_job, {ui_attachment}, false).error.type == kGraphDependencyCycle);
+    request<SubmitDrawData>(*client, ui_command, {ui_resource, {}});
+    ImGui::DestroyContext(context);
     call<SetTargetActive>(*wire, commands, {output, true});
     call<SetEffectParameters>(*wire, commands, {effect, {2.F}});
     CHECK(
@@ -390,12 +440,16 @@ int main(int argc, char** argv)
     );
     stopAndRemoveJob(*wire, commands, ui_attachment);
     call<RemoveTarget>(*wire, commands, ui_target);
+    stopAndRemoveJob(*wire, commands, green_writer);
+    call<RemoveTarget>(*wire, commands, alternate.target);
+    call<RemoveEffect>(*wire, commands, {green_effect});
     call<RemoveView>(*wire, commands, {scene, ui_view});
     until([&] { return ui_pixels.ready.load(std::memory_order_acquire) == 1; });
     CHECK(ui_pixels.frames.size() == 3);
     const std::array red{255u, 0u, 0u, 255u};
     const std::array blue_pixel{0u, 0u, 255u, 255u};
-    unsigned filled = 0, empty = 0;
+    const std::array green{0u, 255u, 0u, 255u};
+    unsigned first_source = 0, second_source = 0, empty = 0;
     for (const auto& bytes : ui_pixels.frames)
     {
         const auto pixel = [&](unsigned x)
@@ -406,10 +460,10 @@ int main(int argc, char** argv)
             return rgba;
         };
         const auto left = pixel(8), right = pixel(24);
-        if (left == red)
+        if (left == red || left == green)
         {
             CHECK(right == blue_pixel);
-            ++filled;
+            if (left == red) ++first_source; else ++second_source;
         }
         else
         {
@@ -418,7 +472,12 @@ int main(int argc, char** argv)
             ++empty;
         }
     }
-    CHECK(filled == 2 && empty == 1);
+    CHECK(first_source == 1 && second_source == 1 && empty == 1);
+    std::printf(
+        "UI SAMPLED TARGET PASS: source swap, cycle=%llu, missing=%llu, epoch=%llu->%llu, historical slots=%u->%u\n",
+        kGraphDependencyCycle, missing.error.type, static_cast<unsigned long long>(alternate.epoch),
+        static_cast<unsigned long long>(resized.epoch), produced.slot_index, historical.slot_index
+    );
     call<TextureCommands::Release>(*wire, commands, {texture});
     std::puts("UI PIXELS PASS: real ImGui capture, ordered texture/output draws, paused output and empty snapshot");
     call<RemoveEffect>(*wire, commands, {ui_effect});

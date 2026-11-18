@@ -72,7 +72,6 @@ namespace lux::render
             if (updated && job->last_run_error.type)
             {
                 job->last_run_error = {};
-                active_frame_inputs_dirty_ = true;
             }
             co_return AckResponse{updated ? RenderError{} : updated.error()};
         }
@@ -108,7 +107,6 @@ namespace lux::render
             if (!error.type && job.last_run_error.type)
             {
                 job.last_run_error = {};
-                active_frame_inputs_dirty_ = true;
             }
             --update.execution->pending_uses;
             retireStoppedExecution(job);
@@ -121,23 +119,13 @@ namespace lux::render
     {
         auto& entry = *domain_->device_;
         auto& progress = entry.frameProgress();
-        prefetchFrameOutputs(progress.nextSlot());
-        if (!active_frame_inputs_dirty_)
+        const auto& inputs = round_.inputs;
+        const bool structure_changed = inputs.revision != job_structure_revision_ ||
+            inputs.output_uses_revision != domain_->resources_.outputUsesRevision();
+        if (structure_changed) rebuildFrameInputs();
+        if (const auto selection = selectFrameInputs(progress.nextSlot()); selection.type)
         {
-            active_frame_inputs_dirty_ = std::ranges::any_of(pending_history_outputs_, [&](const auto& output)
-            {
-                const auto [target, slot] = output;
-                return publishedOutputSlot(target) != slot || publishedOutputReadable(target, slot);
-            });
-        }
-        if (active_frame_inputs_dirty_ || output_uses_revision_ != domain_->resources_.outputUsesRevision())
-        {
-            rebuildActiveFrameInputs();
-        }
-        if (frame_input_error_.type)
-        {
-            for (auto id : running_jobs_) domain_->jobs_.find(id)->control.rejectUnadmitted(frame_input_error_);
-            active_frame_inputs_dirty_ = true;
+            for (auto id : running_jobs_) domain_->jobs_.find(id)->control.rejectUnadmitted(selection);
             return false;
         }
         if (frame_outputs_.empty() || !progress.canBegin(entry.session())) return false;
@@ -157,7 +145,6 @@ namespace lux::render
             {
                 for (const auto& output : frame_outputs_)
                     domain_->jobs_.find(output.job)->control.rejectUnadmitted(opened.error());
-                active_frame_inputs_dirty_ = true;
             }
             return false;
         }
@@ -167,7 +154,6 @@ namespace lux::render
         rounds_opened_.fetch_add(1, std::memory_order_relaxed);
 #endif
         round_.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
-        if (frame_runs_.size() < frame_outputs_.size()) frame_runs_.resize(frame_outputs_.size());
         for (auto& output : frame_outputs_)
         {
             output.submitted = false;
@@ -205,8 +191,6 @@ namespace lux::render
             const auto failure = error.type ? error : RenderError{kJobState};
             job.last_run_error = output.submitted ? RenderError{} : failure;
             frame_runs_[i].finish(output.submitted ? RenderResult<void>{} : cxx::unexpected(failure));
-            if (job.last_run_error.type || job.control.cadence() == EJobCadence::REQUESTED)
-                active_frame_inputs_dirty_ = true;
             retireStoppedExecution(job);
         }
         frame_run_count_ = 0;
@@ -229,13 +213,11 @@ namespace lux::render
                 const auto updated = applyFrameData(execution, *packet);
                 job.last_run_error = updated ? RenderError{} : updated.error();
                 if (!updated) job.control.rejectUnadmitted(updated.error());
-                active_frame_inputs_dirty_ = true;
                 progressed = true;
             }
             if (const auto error = execution.programError(); error.type && job.control.hasRequest())
             {
                 job.control.rejectUnadmitted(error);
-                active_frame_inputs_dirty_ = true;
                 progressed = true;
             }
         }
@@ -305,7 +287,6 @@ namespace lux::render
                     programs.active.reset();
                     preparing_execution_ = nullptr;
                     preparation_targets_.clear();
-                    active_frame_inputs_dirty_ = true;
                     retireStoppedExecution(job);
                 }
             );

@@ -37,6 +37,7 @@ namespace lux::render
         const auto id = domain_->jobs_.emplace(RenderJobContent{request.scene, request.view, request.effect}, request.cadence);
         domain_->jobs_.find(id)->control.setId(id);
         view->jobs.push_back(id);
+        ++job_structure_revision_;
         reply = {{}, id};
     }
 
@@ -58,7 +59,7 @@ namespace lux::render
         const auto changed = detail::setJobDependencies(
             entries, input.job, input.predecessors, input.successors, running_jobs_
         );
-        if (changed) active_frame_inputs_dirty_ = true;
+        if (changed) ++job_structure_revision_;
         reply.error = changed ? RenderError{} : changed.error();
     }
 
@@ -70,7 +71,6 @@ namespace lux::render
         if (result)
         {
             job->last_run_error = {};
-            active_frame_inputs_dirty_ = true;
         }
         reply.error = result ? RenderError{} : result.error();
     }
@@ -99,8 +99,7 @@ namespace lux::render
             if (auto& active = job.execution->programs.active) active->stop.request_stop();
             targetState(*domain_->targets_.find(job.execution->target)).releaseWriter(id);
         }
-        std::erase(running_jobs_, id);
-        active_frame_inputs_dirty_ = true;
+        if (std::erase(running_jobs_, id) != 0) ++job_structure_revision_;
         job.control.stop();
         retireStoppedExecution(job);
     }
@@ -133,6 +132,7 @@ namespace lux::render
         auto& view = *domain_->scenes_.find(job->content.scene)->views.find(job->content.view);
         std::erase(view.jobs, id);
         domain_->jobs_.erase(id);
+        ++job_structure_revision_;
         reply = {};
     }
 
@@ -303,7 +303,7 @@ namespace lux::render
             if (!ordered) std::terminate(); // The logical relations were validated before publication.
             running_jobs_ = std::move(*ordered);
         }
-        active_frame_inputs_dirty_ = true;
+        ++job_structure_revision_;
         co_return AckResponse{};
     }
 
@@ -324,7 +324,6 @@ namespace lux::render
         execution.instance.setViewport(input.inputs.viewport);
         execution.camera_revision = 0;
         job->last_run_error = {};
-        active_frame_inputs_dirty_ = true;
         reply = {};
     }
 
@@ -376,7 +375,6 @@ namespace lux::render
                     stdexec::set_value(std::move(context.receiver), JobSubmitted{registered.error(), id});
                     return;
                 }
-                active_frame_inputs_dirty_ = true;
             }
         );
     }

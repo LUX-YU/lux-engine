@@ -128,6 +128,7 @@ set(render_sources
     src/runtime/RenderEffect.cpp
     src/commands/CommandDispatchContext.cpp
     src/runtime/DeviceRound.cpp
+    src/runtime/FrameInputs.cpp
     src/commands/ResponseOutbox.cpp
 )
 

@@ -105,23 +105,18 @@ namespace lux::render
             RenderJobId job;
             JobExecution* execution;
             TargetId target;
-            std::vector<TargetId> reads;
+            std::span<const TargetId> reads;
             bool submitted = false;
         };
 
         std::vector<FrameOutput> frame_outputs_;
-        std::vector<RenderJobId> unready_jobs_;
-        std::vector<RenderJobId> target_readiness_scratch_;
-        std::vector<std::pair<TargetId, std::uint32_t>> pending_history_outputs_;
         std::deque<detail::JobControl::Run> frame_runs_;
         std::size_t frame_run_count_ = 0;
         detail::SubmissionFrontiers target_frame_uses_;
         std::vector<detail::StorageFrameUse> frame_storages_;
         std::vector<detail::SubmissionOrder> frame_job_order_;
-        std::uint64_t output_uses_revision_ = 0;
-        RenderError frame_input_error_;
+        std::uint64_t job_structure_revision_ = 1;
         RenderError execution_error_;
-        bool active_frame_inputs_dirty_ = true;
         enum class EState { SETUP, RUNNING, FINISHED };
         std::atomic<EState> state_ = EState::SETUP;
         std::atomic<bool> stop_requested_ = false;
@@ -137,6 +132,7 @@ namespace lux::render
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         std::atomic<std::uint64_t> input_rebuilds_{0}, input_rebuild_ns_{0}, job_selection_ns_{0};
         std::atomic<std::uint64_t> jobs_considered_{0}, jobs_selected_{0}, dependency_edges_{0};
+        std::atomic<std::uint64_t> job_selection_calls_{0}, job_selection_growths_{0}, job_topology_growths_{0};
         std::atomic<std::uint64_t> rounds_opened_{0}, slot_cpu_hold_ns_{0};
         std::atomic<std::uint64_t> program_preparation_ns_{0}, program_preparations_{0}, discarded_preparations_{0};
         std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
@@ -191,9 +187,9 @@ namespace lux::render
         [[nodiscard]] bool
         targetDependencyCycle(TargetId, std::span<const TargetImageInput>, RenderJobId) const noexcept;
 
-        void rebuildActiveFrameInputs() noexcept;
+        void rebuildFrameInputs() noexcept;
+        [[nodiscard]] RenderError selectFrameInputs(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> applyParameterSources(std::uint32_t slot) noexcept;
-        void prefetchFrameOutputs(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> acquireFrameOutputs(std::uint32_t slot) noexcept;
         void progressTargetFlights() noexcept;
         [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;

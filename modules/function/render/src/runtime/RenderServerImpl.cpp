@@ -245,7 +245,8 @@ namespace lux::render
         if (auto valid = input.description.validate(); !valid) co_return response(valid.error());
 
         auto& state = targetState(*target);
-        const bool busy_target = state.resizing || state.reservation || frameUsesTarget(input.target);
+        const bool busy_target = state.resizing || state.reservation ||
+            frameUsesTarget(input.target) || preparationUsesTarget(input.target);
         if (busy_target) co_return response(RenderError{kDeviceBusy});
         auto affected = jobsSamplingTarget(input.target);
         const bool different_kind = input.description.kind != targetDescription(*target).kind;
@@ -355,7 +356,8 @@ namespace lux::render
         auto* target = domain_->targets_.find(input);
         if (!target) co_return AckResponse{RenderError{kRuntimeIdentity}};
         auto& state = targetState(*target);
-        const bool busy_target = state.resizing || state.reservation || frameUsesTarget(input);
+        const bool busy_target = state.resizing || state.reservation ||
+            frameUsesTarget(input) || preparationUsesTarget(input);
         if (busy_target) co_return AckResponse{RenderError{kDeviceBusy}};
         if (!jobsSamplingTarget(input).empty()) co_return AckResponse{RenderError{kRuntimeState}};
         if (!state.writer.isNull())
@@ -521,7 +523,12 @@ namespace lux::render
         jobs_considered_.fetch_add(running_jobs_.size(), std::memory_order_relaxed);
 #endif
         std::map<std::uint32_t, std::size_t> positions;
-        std::vector<std::vector<std::size_t>> successors(active.size());
+        struct ReadinessEdge final
+        {
+            std::size_t consumer;
+            bool accepts_history = false;
+        };
+        std::vector<std::vector<ReadinessEdge>> successors(active.size());
         std::vector<std::size_t> predecessors(active.size());
         std::vector<bool> unavailable(active.size());
         std::vector<RenderError> input_errors(active.size());
@@ -543,7 +550,7 @@ namespace lux::render
                 const auto found = job_positions.find({predecessor.index, predecessor.gen});
                 if (found != job_positions.end())
                 {
-                    successors[found->second].push_back(i);
+                    successors[found->second].push_back({i});
                     ++predecessors[i];
                 }
             }
@@ -565,16 +572,17 @@ namespace lux::render
                     unavailable[i] = true;
                     continue;
                 }
+                const bool has_history = publishedOutputSlot(source) != UINT32_MAX;
                 if (producer == positions.end())
                 {
-                    if (!domain_->job_outputs_.tryGet(source))
+                    if (!has_history)
                     {
                         unavailable[i] = true;
                         input_errors[i] = {kRuntimeState};
                     }
                     continue;
                 }
-                successors[producer->second].push_back(i);
+                successors[producer->second].push_back({i, has_history});
                 ++predecessors[i];
             }
         }
@@ -601,10 +609,13 @@ namespace lux::render
                 auto& job = *domain_->jobs_.find(active[i]);
                 job.control.rejectUnadmitted(input_errors[i]);
             }
-            for (auto consumer : successors[i])
+            for (const auto [consumer, accepts_history] : successors[i])
             {
-                unavailable[consumer] = unavailable[consumer] || unavailable[i];
-                if (!input_errors[consumer].type) input_errors[consumer] = input_errors[i];
+                if (unavailable[i] && !accepts_history)
+                {
+                    unavailable[consumer] = true;
+                    if (!input_errors[consumer].type) input_errors[consumer] = input_errors[i];
+                }
                 if (--predecessors[consumer] == 0)
                 {
                     ready.push_back(consumer);
@@ -693,6 +704,11 @@ namespace lux::render
     std::uint32_t RenderServer::Impl::outputSlot(TargetId target, std::uint32_t frame_slot) const noexcept
     {
         if (std::ranges::find(frame_outputs_, target, &FrameOutput::target) != frame_outputs_.end()) return frame_slot;
+        return publishedOutputSlot(target);
+    }
+
+    std::uint32_t RenderServer::Impl::publishedOutputSlot(TargetId target) const noexcept
+    {
         const auto* published = domain_->job_outputs_.tryGet(target);
         const auto* offscreen = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(target));
         if (!published || !offscreen) return UINT32_MAX;
@@ -709,7 +725,7 @@ namespace lux::render
         {
             auto& job = *domain_->jobs_.find(id);
             if (!job.readyToRun() || !jobTargetReady(job)) continue;
-            if (!resourcesAvailable(job.execution->resources))
+            if (!job.execution->programsReady() || !resourcesAvailable(job.execution->resources))
             {
                 target_readiness_scratch_.push_back(id);
                 continue;
@@ -761,6 +777,11 @@ namespace lux::render
         {
             return output.target == id || std::ranges::find(output.reads, id) != output.reads.end();
         });
+    }
+
+    bool RenderServer::Impl::preparationUsesTarget(TargetId id) const noexcept
+    {
+        return std::ranges::find(preparation_targets_, id) != preparation_targets_.end();
     }
 
     RenderResult<bool> RenderServer::Impl::acquireFrameOutputs(std::uint32_t slot) noexcept
@@ -900,7 +921,8 @@ namespace lux::render
             output_response.error = {kJobStopped};
             return;
         }
-        output_response = {{}, job->execution->instance.progress(), job->last_run_error};
+        const auto program_error = job->execution->programError();
+        output_response = {{}, job->execution->instance.progress(), program_error.type ? program_error : job->last_run_error};
     }
 
     void RenderServer::Impl::queryRenderStats(
@@ -1093,7 +1115,8 @@ namespace lux::render
         auto& notifications = ipc::IpcCore::instance();
         const auto has_pending_delivery = [&]() noexcept
         {
-            const bool pending_operations = upload_progress_pending_ || round_.operation || !input_updates_.empty();
+            const bool pending_operations = upload_progress_pending_ || round_.operation ||
+                !input_updates_.empty() || preparing_execution_;
             const bool pending_contexts = !server_context_.is_idle() || !domain_->device_->nativeIdle();
             return pending_operations || pending_contexts || !response_outbox_.empty();
         };
@@ -1165,6 +1188,7 @@ namespace lux::render
             progressTargetFlights();
         }
         progressed |= progressInputUpdates();
+        if (admitting) progressed |= progressProgramPreparations();
         progressed |= progressFrame();
         progressUploads();
         progressed |= server_context_.run_ready(continuation_budget) != 0;
@@ -1246,12 +1270,14 @@ namespace lux::render
             dependency_edges_.load(std::memory_order_relaxed),
             rounds_opened_.load(std::memory_order_relaxed),
             slot_cpu_hold_ns_.load(std::memory_order_relaxed),
-            program_preparations_holding_slot_.load(std::memory_order_relaxed),
+            0,
             program_preparation_ns_.load(std::memory_order_relaxed),
             raster_buffer_ranges_.load(std::memory_order_relaxed),
             raster_buffer_bytes_.load(std::memory_order_relaxed),
             raster_image_ranges_.load(std::memory_order_relaxed),
-            raster_image_subresources_.load(std::memory_order_relaxed)
+            raster_image_subresources_.load(std::memory_order_relaxed),
+            program_preparations_.load(std::memory_order_relaxed),
+            discarded_preparations_.load(std::memory_order_relaxed)
         };
 #else
         return std::nullopt;

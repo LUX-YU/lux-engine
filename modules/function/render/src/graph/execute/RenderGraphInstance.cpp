@@ -199,15 +199,35 @@ namespace lux::render::detail
         return std::ranges::any_of(data_, [](const auto& data) { return data.value->requiresPrograms(); });
     }
 
-    exec::task<RenderResult<void>> RenderGraphInstance::prepareDataPrograms(execution::CpuScheduler cpu) noexcept
+    void RenderGraphInstance::captureProgramRevisions(std::vector<std::uint64_t>& revisions) const noexcept
     {
-        for (auto& data : data_)
+        revisions.clear();
+        revisions.reserve(data_.size());
+        for (const auto& data : data_) revisions.push_back(data.value->programRevision());
+    }
+
+    bool RenderGraphInstance::matchesProgramRevisions(std::span<const std::uint64_t> revisions) const noexcept
+    {
+        return std::ranges::equal(data_, revisions, {}, [](const auto& data) noexcept
         {
-            if (!data.value->requiresPrograms()) continue;
-            auto compiled = co_await data.value->preparePrograms(cpu);
-            if (!compiled) co_return compiled;
+            return data.value->programRevision();
+        });
+    }
+
+    exec::task<RenderResult<bool>> RenderGraphInstance::prepareDataPrograms(
+        execution::CpuScheduler cpu, std::span<const std::uint64_t> revisions, stdexec::inplace_stop_token stop
+    ) noexcept
+    {
+        if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
+        for (std::size_t i = 0; i < data_.size(); ++i)
+        {
+            auto& data = *data_[i].value;
+            if (!data.requiresPrograms()) continue;
+            auto compiled = co_await data.preparePrograms(cpu, revisions[i], stop);
+            if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
+            if (!compiled || !*compiled) co_return compiled;
         }
-        co_return RenderResult<void>{};
+        co_return true;
     }
 
     RenderGraphInstance::~RenderGraphInstance() noexcept

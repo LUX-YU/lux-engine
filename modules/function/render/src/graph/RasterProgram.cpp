@@ -6,15 +6,16 @@
 
 namespace lux::render::detail
 {
-    RenderResult<nri::Pipeline*>
-    compileRasterProgram(
+    RenderResult<void> createRasterProgram(
         nri::Device& device,
         const nri::CoreInterface& nri_core,
+        const nri::DeviceDesc& limits,
         const EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
         nri::PipelineLayout& layout,
-        const RasterProgramKey& program
+        const RasterProgramKey& program,
+        nri::Pipeline*& pipeline
     ) noexcept
     {
         const auto& shader = program.shader->artifact;
@@ -22,7 +23,6 @@ namespace lux::render::detail
         const auto& colors = program.colors;
         const auto depth = program.depth;
         const auto samples = program.samples;
-        const auto& limits = nri_core.GetDeviceDesc(device);
         auto stages = rasterShaderStages(shader, graphics, limits, enabled, colors.size(), depth);
         if (!stages)
         {
@@ -180,13 +180,11 @@ namespace lux::render::detail
         description.outputMerger.depth.write = graphics.depth_write;
         description.shaders = native_stages.data();
         description.shaderNum = stage_count;
-        nri::Pipeline* pipeline = nullptr;
         const auto result = nri_core.CreateGraphicsPipeline(device, description, pipeline);
         if (result != nri::Result::SUCCESS)
         {
-            nri_core.DestroyPipeline(pipeline);
             return cxx::unexpected(nativeError(result));
         }
-        return pipeline;
+        return {};
     }
 } // namespace lux::render::detail

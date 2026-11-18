@@ -139,10 +139,18 @@ namespace lux::render::detail
         return prepared_revision_ != source_.revision;
     }
 
-    exec::task<RenderResult<void>> RasterMeshDraws::preparePrograms(execution::CpuScheduler cpu) noexcept
+    std::uint64_t RasterMeshDraws::programRevision() const noexcept
     {
+        return source_.revision;
+    }
+
+    exec::task<RenderResult<bool>> RasterMeshDraws::preparePrograms(
+        execution::CpuScheduler cpu, std::uint64_t revision, stdexec::inplace_stop_token stop
+    ) noexcept
+    {
+        const auto is_current = [&]() noexcept { return !stop.stop_requested() && revision == source_.revision; };
+        if (!is_current()) co_return false;
         const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         const auto& compiled = *instance_.compiledPass(configuration_.pass);
         const auto& raster = compiled.work.get<RasterCommands>();
         const auto& stage = std::get<RasterListCommands>(raster.draw).description;
@@ -162,245 +170,238 @@ namespace lux::render::detail
                                   .format)
                       .native
                 : nri::Format::UNKNOWN;
-        for (;;)
+        std::vector<MeshProgramInput> inputs;
+        std::vector<std::shared_ptr<const MaterialProgramRecord>> materials;
+        std::vector<CompiledPrograms::Program*> acquired;
+        cxx::scope_exit release_acquired([&]() noexcept { programs_.release(acquired); });
+        std::vector<MaterialPlacements> placements;
+        cxx::scope_exit release_layouts([&]() noexcept
         {
-            const auto revision = source_.revision;
-            std::vector<MeshProgramInput> inputs;
-            std::vector<std::shared_ptr<const MaterialProgramRecord>> materials;
-            std::vector<CompiledPrograms::Program*> acquired;
-            cxx::scope_exit release_acquired([&]() noexcept { programs_.release(acquired); });
-            std::vector<MaterialPlacements> placements;
-            cxx::scope_exit release_layouts([&]() noexcept
-            {
-                for (auto& material : placements)
-                    for (auto& placement : material)
-                        if (placement.layout) programs_.releaseLayout(placement.layout);
-            });
-            std::vector<PreparedProgram*> missing;
-            cxx::scope_exit release_candidates([&]() noexcept
-            {
-                for (auto* program : missing)
-                    if (program->unpublished) device_.nriCore().DestroyPipeline(program->unpublished);
-            });
-            // Resolve identities on the Server and retain immutable program records across scheduler hops.
-            {
-                std::map<MaterialProgramId, std::uint32_t> material_indices;
-                using InputKey = std::tuple<std::uint32_t, std::uint32_t, std::span<const MeshAttribute>>;
-                const auto less = [](const InputKey& a, const InputKey& b) noexcept
-                {
-                    if (std::get<0>(a) != std::get<0>(b)) return std::get<0>(a) < std::get<0>(b);
-                    if (std::get<1>(a) != std::get<1>(b)) return std::get<1>(a) < std::get<1>(b);
-                    return std::lexicographical_compare(
-                        std::get<2>(a).begin(), std::get<2>(a).end(),
-                        std::get<2>(b).begin(), std::get<2>(b).end(),
-                        [](const MeshAttribute& left, const MeshAttribute& right) noexcept
-                        {
-                            return std::tie(left.location, left.offset, left.format) <
-                                   std::tie(right.location, right.offset, right.format);
-                        }
-                    );
-                };
-                std::map<InputKey, std::uint32_t, decltype(less)> input_indices(less);
-                for (std::uint32_t index = 0; index < source_.groups.size(); ++index)
-                {
-                    const auto& group = source_.groups[index];
-                    if (group.record.candidate_count == 0 ||
-                        (index < groups_.size() && groups_[index].generation == group.generation))
-                    {
-                        continue;
-                    }
-                    auto meshes = resources_.borrow<IndexedTriangleMeshStorage>(
-                        extension_detail::ResourceIdentity::parent(group.mesh)
-                    );
-                    const auto* geometry = meshes ? (*meshes)->find(group.mesh) : nullptr;
-                    if (!geometry)
-                    {
-                        co_return cxx::unexpected(RenderError{kStorageIdentity});
-                    }
-                    const auto [material_entry, new_material] = material_indices.emplace(
-                        group.program, static_cast<std::uint32_t>(materials.size())
-                    );
-                    if (new_material)
-                    {
-                        const auto owner = extension_detail::ResourceIdentity::parent(group.program);
-                        auto storage = resources_.borrow<RasterMaterialStorage>(owner);
-                        auto material = storage ? (*storage)->borrowProgram(group.program) : nullptr;
-                        if (!material) co_return cxx::unexpected(RenderError{kStorageIdentity});
-                        materials.push_back(std::move(material));
-                    }
-                    InputKey key{material_entry->second, geometry->vertex_stride, geometry->attributes};
-                    const auto [entry, inserted] = input_indices.emplace(
-                        std::move(key), static_cast<std::uint32_t>(inputs.size())
-                    );
-                    if (inserted)
-                    {
-                        inputs.push_back({
-                            {}, material_entry->second, geometry->vertex_stride, geometry->attributes, {}
-                        });
-                    }
-                    inputs[entry->second].groups.emplace_back(index, group.generation);
-                }
-            }
-            if (!inputs.empty())
-            {
-                placements.resize(materials.size());
-                // Only immutable snapshots and device facts cross the CPU boundary. Registry,
-                // active Effect cache and instance data are accessed only before/after the await.
-                auto prepared = co_await (
-                    stdexec::schedule(cpu) |
-                    stdexec::then(
-                        [&inputs,
-                         &materials,
-                         &placements,
-                         limits = &device_.description(),
-                         &stage,
-                         configuration = configuration_,
-                         paged = device_.usesDeviceAddresses(),
-                         &colors,
-                         depth,
-                         samples = instance_.plan().outputDescription().samples]() noexcept
-                        {
-                            return prepareMeshPrograms(
-                                inputs, materials, placements, *limits, stage, configuration, paged, colors, depth, samples
-                            );
-                        }
-                    ) |
-                    stdexec::upon_stopped(
-                        []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
-                    ) | stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<void>{})
-                );
-                if (!prepared)
-                {
-                    co_return prepared;
-                }
-                for (auto& material : placements)
-                {
-                    for (auto& placement : material)
-                    {
-                        const auto layout = programs_.acquireLayout(
-                            placement.bindings, static_cast<std::uint32_t>(colors.size())
-                        );
-                        if (!layout) co_return cxx::unexpected(layout.error());
-                        placement.layout = *layout;
-                    }
-                }
-                for (auto& input : inputs)
-                {
-                    for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
-                    {
-                        auto& candidate = input.programs[winding];
-                        const auto& placement = placements[input.material_index][winding];
-                        candidate.native_layout = placement.bindings.layout;
-                        candidate.lookup = programs_.lookupRaster(candidate.key, *placement.layout);
-                        candidate.program = candidate.lookup.hit();
-                        if (candidate.program) acquired.push_back(candidate.program);
-                        else missing.push_back(&candidate);
-                    }
-                }
-                if (!missing.empty())
-                {
-                    if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-                    auto compiled_programs = co_await (stdexec::schedule(device_.nativeScheduler()) | stdexec::then(
-                        [&missing, device = &device_.device(), core = &device_.nriCore(),
-                         enabled = device_.enabledFeatures(), formats = device_.formatSupport(),
-                         vertex_limits = std::array{device_.vertexStrideLimit(), device_.vertexOffsetLimit()}
-                        ]() noexcept -> RenderResult<void>
-                        {
-                            for (auto* program : missing)
-                            {
-                                auto pipeline = compileRasterProgram(
-                                    *device, *core, enabled, formats, vertex_limits,
-                                    *program->native_layout, program->key
-                                );
-                                if (!pipeline) return cxx::unexpected(pipeline.error());
-                                program->unpublished = *pipeline;
-                            }
-                            return {};
-                        }
-                    ) | stdexec::upon_error(NativeScheduleFailure<void>{}) |
-                    stdexec::upon_stopped([]() noexcept -> RenderResult<void>
-                    { return cxx::unexpected(RenderError{kCommandCancelled}); }) |
-                    stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<void>{}));
-                    if (!compiled_programs) co_return compiled_programs;
-                }
-            }
-            if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-            if (revision != source_.revision)
-            {
-                continue; // Local guards return compilation borrows and discard unpublished candidates.
-            }
+            for (auto& material : placements)
+                for (auto& placement : material)
+                    if (placement.layout) programs_.releaseLayout(placement.layout);
+        });
+        std::vector<PreparedProgram*> missing;
+        cxx::scope_exit release_candidates([&]() noexcept
+        {
             for (auto* program : missing)
+                if (program->unpublished) device_.nriCore().DestroyPipeline(program->unpublished);
+        });
+        // Resolve identities on the Server and retain immutable program records across scheduler hops.
+        {
+            std::map<MaterialProgramId, std::uint32_t> material_indices;
+            using InputKey = std::tuple<std::uint32_t, std::uint32_t, std::span<const MeshAttribute>>;
+            const auto less = [](const InputKey& a, const InputKey& b) noexcept
             {
-                program->program = programs_.publishRaster(
-                    std::move(program->key), program->lookup, std::exchange(program->unpublished, nullptr)
+                if (std::get<0>(a) != std::get<0>(b)) return std::get<0>(a) < std::get<0>(b);
+                if (std::get<1>(a) != std::get<1>(b)) return std::get<1>(a) < std::get<1>(b);
+                return std::lexicographical_compare(
+                    std::get<2>(a).begin(), std::get<2>(a).end(),
+                    std::get<2>(b).begin(), std::get<2>(b).end(),
+                    [](const MeshAttribute& left, const MeshAttribute& right) noexcept
+                    {
+                        return std::tie(left.location, left.offset, left.format) <
+                               std::tie(right.location, right.offset, right.format);
+                    }
                 );
-                acquired.push_back(program->program);
-            }
-            missing.clear();
-            groups_.resize(source_.groups.size());
-            bool changed = !inputs.empty();
-            for (std::size_t index = 0; index < groups_.size(); ++index)
+            };
+            std::map<InputKey, std::uint32_t, decltype(less)> input_indices(less);
+            for (std::uint32_t index = 0; index < source_.groups.size(); ++index)
             {
-                if (source_.groups[index].record.candidate_count == 0 && groups_[index].generation != 0)
+                const auto& group = source_.groups[index];
+                if (group.record.candidate_count == 0 ||
+                    (index < groups_.size() && groups_[index].generation == group.generation))
                 {
-                    groups_[index] = {};
-                    changed = true;
+                    continue;
+                }
+                auto meshes = resources_.borrow<IndexedTriangleMeshStorage>(
+                    extension_detail::ResourceIdentity::parent(group.mesh)
+                );
+                const auto* geometry = meshes ? (*meshes)->find(group.mesh) : nullptr;
+                if (!geometry)
+                {
+                    co_return cxx::unexpected(RenderError{kStorageIdentity});
+                }
+                const auto [material_entry, new_material] = material_indices.emplace(
+                    group.program, static_cast<std::uint32_t>(materials.size())
+                );
+                if (new_material)
+                {
+                    const auto owner = extension_detail::ResourceIdentity::parent(group.program);
+                    auto storage = resources_.borrow<RasterMaterialStorage>(owner);
+                    auto material = storage ? (*storage)->borrowProgram(group.program) : nullptr;
+                    if (!material) co_return cxx::unexpected(RenderError{kStorageIdentity});
+                    materials.push_back(std::move(material));
+                }
+                InputKey key{material_entry->second, geometry->vertex_stride, geometry->attributes};
+                const auto [entry, inserted] = input_indices.emplace(
+                    std::move(key), static_cast<std::uint32_t>(inputs.size())
+                );
+                if (inserted)
+                {
+                    inputs.push_back({
+                        {}, material_entry->second, geometry->vertex_stride, geometry->attributes, {}
+                    });
+                }
+                inputs[entry->second].groups.emplace_back(index, group.generation);
+            }
+        }
+        if (!inputs.empty())
+        {
+            placements.resize(materials.size());
+            // Only immutable snapshots and device facts cross the CPU boundary. Registry,
+            // active Effect cache and instance data are accessed only before/after the await.
+            auto prepared = co_await (
+                stdexec::schedule(cpu) |
+                stdexec::then(
+                    [&inputs,
+                     &materials,
+                     &placements,
+                     limits = &device_.description(),
+                     &stage,
+                     configuration = configuration_,
+                     paged = device_.usesDeviceAddresses(),
+                     &colors,
+                     depth,
+                     samples = instance_.plan().outputDescription().samples]() noexcept
+                    {
+                        return prepareMeshPrograms(
+                            inputs, materials, placements, *limits, stage, configuration, paged, colors, depth, samples
+                        );
+                    }
+                ) |
+                stdexec::upon_stopped(
+                    []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
+                ) | stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<void>{})
+            );
+            if (!is_current()) co_return false;
+            if (!prepared) co_return cxx::unexpected(prepared.error());
+            for (auto& material : placements)
+            {
+                for (auto& placement : material)
+                {
+                    const auto layout = programs_.acquireLayout(
+                        placement.bindings, static_cast<std::uint32_t>(colors.size())
+                    );
+                    if (!layout) co_return cxx::unexpected(layout.error());
+                    placement.layout = *layout;
                 }
             }
-            std::map<CompiledPrograms::Program*, std::uint32_t, std::less<>> program_indices;
-            for (std::uint32_t i = 0; i < program_bindings_.size(); ++i)
-                if (program_bindings_[i]) program_indices.emplace(program_bindings_[i]->program, i);
             for (auto& input : inputs)
             {
-                std::array<std::uint32_t, 2> indices;
                 for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                 {
-                    auto& program = input.programs[winding];
-                    auto existing = program_indices.find(program.program);
-                    if (existing == program_indices.end())
-                    {
-                        const auto empty = std::ranges::find_if(
-                            program_bindings_, [](const auto& value) noexcept { return !value; }
-                        );
-                        const auto index = static_cast<std::uint32_t>(empty - program_bindings_.begin());
-                        if (empty == program_bindings_.end()) program_bindings_.push_back(nullptr);
-                        program_bindings_[index] = std::make_unique<Program>(
-                            Program{placements[input.material_index][winding].bindings, program.program}
-                        );
-                        existing = program_indices.emplace(program.program, index).first;
-                        // This Program metadata now owns one use; duplicate acquired uses stay in the guard.
-                        const auto use = std::ranges::find(acquired, program.program);
-                        *use = acquired.back();
-                        acquired.pop_back();
-                    }
-                    indices[winding] = existing->second;
-                }
-                for (const auto [index, generation] : input.groups)
-                {
-                    groups_[index].generation = generation;
-                    groups_[index].programs = indices;
+                    auto& candidate = input.programs[winding];
+                    const auto& placement = placements[input.material_index][winding];
+                    candidate.native_layout = placement.bindings.layout;
+                    candidate.lookup = programs_.lookupRaster(candidate.key, *placement.layout);
+                    candidate.program = candidate.lookup.hit();
+                    if (candidate.program) acquired.push_back(candidate.program);
+                    else missing.push_back(&candidate);
                 }
             }
-            std::vector<bool> used(program_bindings_.size());
-            for (const auto& group : groups_)
-                if (group.generation) for (auto index : group.programs) used[index] = true;
-            std::vector<const PassBindings*> removed;
-            for (std::size_t i = 0; i < program_bindings_.size(); ++i)
-                if (program_bindings_[i] && !used[i]) removed.push_back(&program_bindings_[i]->bindings);
-            instance_.releaseRasterBindings(removed);
-            for (std::size_t i = 0; i < program_bindings_.size(); ++i)
+            if (!missing.empty())
             {
-                if (program_bindings_[i] && !used[i])
-                {
-                    programs_.release({&program_bindings_[i]->program, 1});
-                    program_bindings_[i].reset();
-                }
+                // NRI CreateGraphicsPipeline is thread-safe. Queue work stays on NativeExecution,
+                // and cache publication and destruction of unpublished handles stay on the Server.
+                auto compiled_programs = co_await (stdexec::schedule(cpu) | stdexec::then(
+                    [&missing, stop, device = &device_.device(), core = &device_.nriCore(),
+                     limits = &device_.description(),
+                     enabled = device_.enabledFeatures(), formats = device_.formatSupport(),
+                     vertex_limits = std::array{device_.vertexStrideLimit(), device_.vertexOffsetLimit()}
+                    ]() noexcept -> RenderResult<void>
+                    {
+                        for (auto* program : missing)
+                        {
+                            if (stop.stop_requested()) break;
+                            auto created = createRasterProgram(
+                                *device, *core, *limits, enabled, formats, vertex_limits,
+                                *program->native_layout, program->key, program->unpublished
+                            );
+                            if (!created) return created;
+                        }
+                        return {};
+                    }
+                ) |
+                stdexec::upon_stopped([]() noexcept -> RenderResult<void>
+                { return cxx::unexpected(RenderError{kCpuStopped}); }) |
+                stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<void>{}));
+                if (!is_current()) co_return false;
+                if (!compiled_programs) co_return cxx::unexpected(compiled_programs.error());
             }
-            if (changed) ++draw_layout_revision_;
-            if (changed) rebuildDrawOrder();
-            prepared_revision_ = revision;
-            co_return RenderResult<void>{};
         }
+        if (!is_current()) co_return false;
+        for (auto* program : missing)
+        {
+            program->program = programs_.publishRaster(
+                std::move(program->key), program->lookup, std::exchange(program->unpublished, nullptr)
+            );
+            acquired.push_back(program->program);
+        }
+        missing.clear();
+        groups_.resize(source_.groups.size());
+        bool changed = !inputs.empty();
+        for (std::size_t index = 0; index < groups_.size(); ++index)
+        {
+            if (source_.groups[index].record.candidate_count == 0 && groups_[index].generation != 0)
+            {
+                groups_[index] = {};
+                changed = true;
+            }
+        }
+        std::map<CompiledPrograms::Program*, std::uint32_t, std::less<>> program_indices;
+        for (std::uint32_t i = 0; i < program_bindings_.size(); ++i)
+            if (program_bindings_[i]) program_indices.emplace(program_bindings_[i]->program, i);
+        for (auto& input : inputs)
+        {
+            std::array<std::uint32_t, 2> indices;
+            for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
+            {
+                auto& program = input.programs[winding];
+                auto existing = program_indices.find(program.program);
+                if (existing == program_indices.end())
+                {
+                    const auto empty = std::ranges::find_if(
+                        program_bindings_, [](const auto& value) noexcept { return !value; }
+                    );
+                    const auto index = static_cast<std::uint32_t>(empty - program_bindings_.begin());
+                    if (empty == program_bindings_.end()) program_bindings_.push_back(nullptr);
+                    program_bindings_[index] = std::make_unique<Program>(
+                        Program{placements[input.material_index][winding].bindings, program.program}
+                    );
+                    existing = program_indices.emplace(program.program, index).first;
+                    // This Program metadata now owns one use; duplicate acquired uses stay in the guard.
+                    const auto use = std::ranges::find(acquired, program.program);
+                    *use = acquired.back();
+                    acquired.pop_back();
+                }
+                indices[winding] = existing->second;
+            }
+            for (const auto [index, generation] : input.groups)
+            {
+                groups_[index].generation = generation;
+                groups_[index].programs = indices;
+            }
+        }
+        std::vector<bool> used(program_bindings_.size());
+        for (const auto& group : groups_)
+            if (group.generation) for (auto index : group.programs) used[index] = true;
+        std::vector<const PassBindings*> removed;
+        for (std::size_t i = 0; i < program_bindings_.size(); ++i)
+            if (program_bindings_[i] && !used[i]) removed.push_back(&program_bindings_[i]->bindings);
+        instance_.releaseRasterBindings(removed);
+        for (std::size_t i = 0; i < program_bindings_.size(); ++i)
+        {
+            if (program_bindings_[i] && !used[i])
+            {
+                programs_.release({&program_bindings_[i]->program, 1});
+                program_bindings_[i].reset();
+            }
+        }
+        if (changed) ++draw_layout_revision_;
+        if (changed) rebuildDrawOrder();
+        prepared_revision_ = revision;
+        co_return true;
     }
 
     void RasterMeshDraws::rebuildDrawOrder() noexcept

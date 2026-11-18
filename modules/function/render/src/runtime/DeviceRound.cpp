@@ -134,24 +134,6 @@ namespace lux::render
         }
         if (frame_outputs_.empty() || !progress.canBegin(entry.session())) return false;
 
-        bool rejected = false;
-        for (const auto& output : frame_outputs_)
-        {
-            auto& job = *domain_->jobs_.find(output.job);
-            const auto* packet = job.control.takeRequestedData();
-            if (!packet) continue;
-            if (auto updated = applyFrameData(*output.execution, *packet); !updated)
-            {
-                job.last_run_error = updated.error();
-                job.control.rejectUnadmitted(updated.error());
-                rejected = true;
-            }
-        }
-        if (rejected || output_uses_revision_ != domain_->resources_.outputUsesRevision())
-        {
-            active_frame_inputs_dirty_ = true;
-            return true;
-        }
         round_.operation.emplace(entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu_scheduler_);
         auto opened = round_.operation->tryBegin();
         if (!opened || !*opened)
@@ -170,7 +152,7 @@ namespace lux::render
         slot_opened_at_ = std::chrono::steady_clock::now();
         rounds_opened_.fetch_add(1, std::memory_order_relaxed);
 #endif
-        round_.stage = DeviceRound::EStage::PREPARING;
+        round_.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
         if (frame_runs_.size() < frame_outputs_.size()) frame_runs_.resize(frame_outputs_.size());
         for (auto& output : frame_outputs_)
         {
@@ -179,7 +161,7 @@ namespace lux::render
             if (!control.tryAdmit(context.frame_index, context.slot_index, frame_runs_[frame_run_count_++]))
                 std::terminate();
         }
-        prepareFramePrograms();
+        if (auto applied = applyParameterSources(round_.slot()); !applied) round_.error = applied.error();
         return true;
     }
 
@@ -216,63 +198,108 @@ namespace lux::render
         frame_run_count_ = 0;
     }
 
-    exec::task<RenderResult<void>> RenderServer::Impl::prepareInstancePrograms() noexcept
+    bool RenderServer::Impl::progressProgramPreparations() noexcept
     {
-        for (auto* instance : frame_instances_)
+        if (round_.operation || stop_requested_.load()) return false;
+
+        bool progressed = false;
+        // Settle every newly accepted packet before capturing any program revision.
+        // JobControl keeps the request until its one terminal response.
+        for (auto id : running_jobs_)
         {
-            auto prepared = co_await instance->prepareDataPrograms(cpu_scheduler_);
-            if (!prepared) co_return prepared;
+            auto& job = *domain_->jobs_.find(id);
+            if (!job.control.eligible()) continue;
+            auto& execution = *job.execution;
+            if (const auto* packet = job.control.takeRequestedData())
+            {
+                const auto updated = applyFrameData(execution, *packet);
+                job.last_run_error = updated ? RenderError{} : updated.error();
+                if (!updated) job.control.rejectUnadmitted(updated.error());
+                active_frame_inputs_dirty_ = true;
+                progressed = true;
+            }
+            if (const auto error = execution.programError(); error.type && job.control.hasRequest())
+            {
+                job.control.rejectUnadmitted(error);
+                active_frame_inputs_dirty_ = true;
+                progressed = true;
+            }
         }
-        co_return RenderResult<void>{};
+        if (preparing_execution_)
+        {
+            auto& programs = preparing_execution_->programs;
+            if (!preparing_execution_->instance.matchesProgramRevisions(programs.revisions))
+                programs.active->stop.request_stop();
+            return progressed;
+        }
+        const auto count = running_jobs_.size();
+        for (std::size_t offset = 0; offset < count; ++offset)
+        {
+            const auto index = (preparation_cursor_ + offset) % count;
+            auto& job = *domain_->jobs_.find(running_jobs_[index]);
+            if (!job.readyToRun() || job.control.pendingStart() || !jobTargetReady(job)) continue;
+            auto& execution = *job.execution;
+            if (execution.programsReady() || execution.programError().type) continue;
+            if (execution.pending_uses || !resourcesAvailable(execution.resources)) continue;
+            preparation_cursor_ = (index + 1) % count;
+            startProgramPreparation(job, execution);
+            return true;
+        }
+        return progressed;
     }
 
-    void RenderServer::Impl::prepareFramePrograms() noexcept
+    void RenderServer::Impl::startProgramPreparation(RenderJob& job, JobExecution& execution) noexcept
     {
-        if (auto applied = applyParameterSources(round_.slot()); !applied)
+        auto& programs = execution.programs;
+        execution.instance.captureProgramRevisions(programs.revisions);
+        programs.failure = {};
+        if (execution.pending_uses == UINT32_MAX)
         {
-            round_.error = applied.error();
+            programs.failure = {kRuntimeCapacity};
             return;
         }
-        const bool requires_programs = std::ranges::any_of(frame_instances_, [](const auto* instance) noexcept
-        { return instance->requiresDataPrograms(); });
-        if (!requires_programs)
-        {
-            round_.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
-            return;
-        }
-        round_.pending = true;
+        programs.active.emplace(execution);
+        preparing_execution_ = &execution;
+        preparation_targets_ = execution.instance.sampledTargets();
+        preparation_targets_.push_back(execution.target);
+        for (const auto& input : execution.target_images) preparation_targets_.push_back(input.target);
+        const auto stop = programs.active->stop.get_token();
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         program_preparation_started_at_ = std::chrono::steady_clock::now();
-        program_preparations_holding_slot_.fetch_add(1, std::memory_order_relaxed);
+        program_preparations_.fetch_add(1, std::memory_order_relaxed);
 #endif
         const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         auto prepared =
-            prepareInstancePrograms() |
-            stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<void> { std::terminate(); }) |
-            stdexec::upon_stopped(
-                []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCommandCancelled}); }
-            ) |
+            execution.instance.prepareDataPrograms(cpu_scheduler_, programs.revisions, stop) |
+            stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<bool> { std::terminate(); }) |
+            stdexec::upon_stopped([]() noexcept -> RenderResult<bool> { return false; }) |
             stdexec::continues_on(scheduler) |
-            stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<void> { std::terminate(); }) |
+            stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<bool> { std::terminate(); }) |
             stdexec::then(
-                [this](RenderResult<void> result) noexcept
+                [this, &job, &execution](RenderResult<bool> result) noexcept
                 {
+                    auto& programs = execution.programs;
+                    const bool discarded = programs.active->stop.stop_requested() ||
+                        !execution.instance.matchesProgramRevisions(programs.revisions);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
                     const auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::steady_clock::now() - program_preparation_started_at_
                     ).count();
                     program_preparation_ns_.fetch_add(duration_ns, std::memory_order_relaxed);
+                    if (discarded) discarded_preparations_.fetch_add(1, std::memory_order_relaxed);
 #endif
-                    round_.pending = false;
-                    if (!result)
+                    if (!discarded)
                     {
-                        round_.error = result.error();
+                        if (!result) programs.failure = result.error();
+                        else if (!*result || execution.instance.requiresDataPrograms()) programs.failure = {kFrameContract};
                     }
-                    round_.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
+                    programs.active.reset();
+                    preparing_execution_ = nullptr;
+                    preparation_targets_.clear();
+                    active_frame_inputs_dirty_ = true;
+                    retireStoppedExecution(job);
                 }
             );
-        // Accepted frames already prevent structural destruction. This uses their existing Scope;
-        // no Feature owns a connected operation or an additional shutdown mechanism.
         stdexec::spawn(
             std::move(prepared),
             command_scope_.get_token(),

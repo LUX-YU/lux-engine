@@ -96,6 +96,7 @@ namespace lux::render
         }
         if (job.execution)
         {
+            if (auto& active = job.execution->programs.active) active->stop.request_stop();
             targetState(*domain_->targets_.find(job.execution->target)).releaseWriter(id);
         }
         std::erase(running_jobs_, id);

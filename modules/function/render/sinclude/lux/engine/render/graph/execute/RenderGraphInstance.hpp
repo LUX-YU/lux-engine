@@ -36,7 +36,12 @@ namespace lux::render::detail
         setIndexedDrawData(GraphPassId, std::uint32_t, const IndexedDrawData&) noexcept override;
         [[nodiscard]] std::vector<TargetId> sampledTargets() const noexcept;
         [[nodiscard]] bool hasData() const noexcept { return !data_.empty(); }
-        [[nodiscard]] exec::task<RenderResult<void>> prepareDataPrograms(execution::CpuScheduler) noexcept;
+        void captureProgramRevisions(std::vector<std::uint64_t>&) const noexcept;
+        [[nodiscard]] bool matchesProgramRevisions(std::span<const std::uint64_t>) const noexcept;
+        [[nodiscard]] exec::task<RenderResult<bool>>
+        prepareDataPrograms(
+            execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
+        ) noexcept;
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         // Caller holds the writable FIF until recording and all accepted GPU uses are complete.

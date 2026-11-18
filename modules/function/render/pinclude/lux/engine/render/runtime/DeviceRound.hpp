@@ -12,10 +12,10 @@ namespace lux::render::runtime_detail
 {
     struct DeviceRound final
     {
-        enum class EStage : std::uint8_t { PREPARING, ACQUIRING_OUTPUTS, SUBMITTING };
+        enum class EStage : std::uint8_t { ACQUIRING_OUTPUTS, SUBMITTING };
 
         std::optional<detail::FrameOperation> operation;
-        EStage stage = EStage::PREPARING;
+        EStage stage = EStage::ACQUIRING_OUTPUTS;
         bool pending = false;
         RenderError error;
 

@@ -51,9 +51,16 @@ namespace lux::render::detail
             return false;
         }
 
-        [[nodiscard]] virtual exec::task<RenderResult<void>> preparePrograms(execution::CpuScheduler) noexcept
+        [[nodiscard]] virtual std::uint64_t programRevision() const noexcept
         {
-            co_return RenderResult<void>{};
+            return 0;
+        }
+
+        // False means the captured revision expired or preparation was cancelled.
+        [[nodiscard]] virtual exec::task<RenderResult<bool>>
+        preparePrograms(execution::CpuScheduler, std::uint64_t, stdexec::inplace_stop_token) noexcept
+        {
+            co_return true;
         }
     };
 } // namespace lux::render::detail

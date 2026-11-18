@@ -45,15 +45,17 @@ namespace lux::render::detail
         }
     };
 
-    // Creates one physical pipeline from an immutable candidate; the caller adopts its ownership.
+    // Any returned native handle belongs to the caller, including on failure.
     // The native layout is borrowed from the same cold placement used to relocate the shader.
-    [[nodiscard]] RenderResult<nri::Pipeline*> compileRasterProgram(
+    [[nodiscard]] RenderResult<void> createRasterProgram(
         nri::Device& device,
         const nri::CoreInterface& nri_core,
+        const nri::DeviceDesc& limits,
         const EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
         nri::PipelineLayout& layout,
-        const RasterProgramKey& program
+        const RasterProgramKey& program,
+        nri::Pipeline*& pipeline
     ) noexcept;
 } // namespace lux::render::detail

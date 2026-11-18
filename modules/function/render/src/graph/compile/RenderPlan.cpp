@@ -180,15 +180,23 @@ namespace lux::render::detail
                         stdexec::then(
                             [&key, layout = bindings.layout, raster = is_raster, device = &session.device(),
                              core = &session.nriCore(), enabled = session.enabledFeatures(),
+                             limits = &session.description(),
                              formats = session.formatSupport(),
                              vertex_limits =
                                  std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}]() noexcept
                             {
                                 if (raster)
                                 {
-                                    return compileRasterProgram(
-                                        *device, *core, enabled, formats, vertex_limits, *layout, key
+                                    nri::Pipeline* pipeline = nullptr;
+                                    const auto created = createRasterProgram(
+                                        *device, *core, *limits, enabled, formats, vertex_limits, *layout, key, pipeline
                                     );
+                                    if (!created)
+                                    {
+                                        if (pipeline) core->DestroyPipeline(pipeline);
+                                        return RenderResult<nri::Pipeline*>{cxx::unexpected(created.error())};
+                                    }
+                                    return RenderResult<nri::Pipeline*>{pipeline};
                                 }
                                 return compileCompute(*device, *core, enabled, *layout, key.shader->artifact);
                             }

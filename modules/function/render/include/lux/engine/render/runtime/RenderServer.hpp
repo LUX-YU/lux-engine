@@ -70,6 +70,7 @@ namespace lux::render
         // Storage and sampled ranges from dynamic raster lists in accepted batches, accumulated across rounds.
         std::uint64_t raster_buffer_ranges = 0, raster_buffer_bytes = 0, raster_image_ranges = 0;
         std::uint64_t raster_image_subresources = 0;
+        std::uint64_t program_preparations = 0, discarded_preparations = 0;
     };
 
     // The application owns the rendering thread. Only stop() and stats() may race with run().

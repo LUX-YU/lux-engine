@@ -32,6 +32,35 @@ namespace lux::render::runtime_detail
         detail::RenderPlan plan;
         detail::RenderGraphInstance instance;
         std::uint32_t pending_uses = 0;
+        struct ProgramPreparation final
+        {
+            struct Active final
+            {
+                explicit Active(JobExecution& owner) noexcept : execution(owner) { ++execution.pending_uses; }
+                ~Active() noexcept { --execution.pending_uses; }
+
+                JobExecution& execution;
+                stdexec::inplace_stop_source stop;
+            };
+
+            std::vector<std::uint64_t> revisions;
+            std::optional<Active> active;
+            RenderError failure;
+        };
+        ProgramPreparation programs;
+
+        [[nodiscard]] RenderError programError() const noexcept
+        {
+            if (programs.failure.type && instance.matchesProgramRevisions(programs.revisions))
+                return programs.failure;
+            return {};
+        }
+
+        [[nodiscard]] bool programsReady() const noexcept
+        {
+            return !programs.active && !instance.requiresDataPrograms();
+        }
+
         FrameLayout input_layout;
         // Qualified once at assembly. These identities also define which exclusive commands
         // conflict with a live Run, including resources used only for GPU bindings.

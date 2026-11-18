@@ -67,8 +67,10 @@ namespace lux::render::detail
             MeshDrawConfiguration
         ) noexcept;
         [[nodiscard]] bool requiresPrograms() const noexcept override;
+        [[nodiscard]] std::uint64_t programRevision() const noexcept override;
         void rebuildDrawOrder() noexcept;
-        [[nodiscard]] exec::task<RenderResult<void>> preparePrograms(execution::CpuScheduler) noexcept override;
+        [[nodiscard]] exec::task<RenderResult<bool>>
+        preparePrograms(execution::CpuScheduler, std::uint64_t, stdexec::inplace_stop_token) noexcept override;
         [[nodiscard]] RenderResult<bool>
         prepare(const InstanceInputs&, ResourceUploader&, detail::Preparation&) noexcept override;
         // Refreshes current FIF bindings; true means the packet structure was rebuilt and needs merging.

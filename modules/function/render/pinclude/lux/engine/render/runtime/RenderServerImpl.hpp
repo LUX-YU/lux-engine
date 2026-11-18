@@ -94,6 +94,10 @@ namespace lux::render
         cxx::execution::ManualContext server_context_;
         DeviceRound round_;
         std::deque<InputUpdate*> input_updates_;
+        // One dynamic program preparation may be away from the owner at a time.
+        JobExecution* preparing_execution_ = nullptr;
+        std::vector<TargetId> preparation_targets_;
+        std::size_t preparation_cursor_ = 0;
         std::vector<detail::RenderGraphInstance*> frame_instances_;
         struct FrameOutput final
         {
@@ -132,7 +136,7 @@ namespace lux::render
         std::atomic<std::uint64_t> input_rebuilds_{0}, input_rebuild_ns_{0}, job_selection_ns_{0};
         std::atomic<std::uint64_t> jobs_considered_{0}, jobs_selected_{0}, dependency_edges_{0};
         std::atomic<std::uint64_t> rounds_opened_{0}, slot_cpu_hold_ns_{0};
-        std::atomic<std::uint64_t> program_preparations_holding_slot_{0}, program_preparation_ns_{0};
+        std::atomic<std::uint64_t> program_preparation_ns_{0}, program_preparations_{0}, discarded_preparations_{0};
         std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
         std::atomic<std::uint64_t> raster_image_subresources_{0};
         std::chrono::steady_clock::time_point slot_opened_at_, program_preparation_started_at_;
@@ -159,6 +163,7 @@ namespace lux::render
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
         [[nodiscard]] bool frameUsesResource(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
+        [[nodiscard]] bool preparationUsesTarget(TargetId) const noexcept;
         [[nodiscard]] bool resourcesAvailable(std::span<const ResourceInstanceId>) const noexcept;
         [[nodiscard]] std::vector<detail::JobRelationEntry> jobRelations() noexcept;
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
@@ -190,6 +195,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<bool> acquireFrameOutputs(std::uint32_t slot) noexcept;
         void progressTargetFlights() noexcept;
         [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
+        [[nodiscard]] std::uint32_t publishedOutputSlot(TargetId) const noexcept;
         [[nodiscard]] std::uint32_t outputSlot(TargetId, std::uint32_t frame_slot) const noexcept;
         exec::task<RenderResult<void>> submitCurrentFrame() noexcept;
         void cancelActiveFrame(RenderError) noexcept;
@@ -198,6 +204,8 @@ namespace lux::render
         void progressUploads() noexcept;
         [[nodiscard]] bool progressFrame() noexcept;
         [[nodiscard]] bool progressInputUpdates() noexcept;
+        [[nodiscard]] bool progressProgramPreparations() noexcept;
+        void startProgramPreparation(RenderJob&, JobExecution&) noexcept;
         void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
         exec::task<AckResponse> updateFrameData(UpdateFrameData::Request&&) noexcept;
         [[nodiscard]] RenderResult<void> applyFrameData(const JobExecution&, const FrameData&) noexcept;
@@ -206,8 +214,6 @@ namespace lux::render
         void finishFrame(RenderError) noexcept;
         [[nodiscard]] bool beginFrame() noexcept;
         void submitFrameRendering() noexcept;
-        void prepareFramePrograms() noexcept;
-        [[nodiscard]] exec::task<RenderResult<void>> prepareInstancePrograms() noexcept;
 
         static void NRI_CALL
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;

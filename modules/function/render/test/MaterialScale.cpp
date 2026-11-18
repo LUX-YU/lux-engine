@@ -144,6 +144,24 @@ namespace
         enum class EGate { OPEN, ARMED, HOLDING };
         static inline std::atomic<EGate> gate = EGate::OPEN;
         static inline std::atomic<std::uint64_t> accepted_submits = 0;
+        static inline std::atomic<std::uint64_t> pipeline_calls = 0, created_pipelines = 0, destroyed_pipelines = 0;
+        static inline std::atomic<bool> fail_pipeline = false;
+
+        static void waitForDriver() noexcept
+        {
+            const auto deadline = Clock::now() + 15s;
+            while (gate.load() != EGate::HOLDING)
+            {
+                CHECK(Clock::now() < deadline);
+                std::this_thread::sleep_for(1ms);
+            }
+        }
+
+        static void releaseDriver() noexcept
+        {
+            gate = EGate::OPEN;
+            gate.notify_one();
+        }
 
         explicit PipelineIsolationProbe(const nri::CoreInterface& core) noexcept
             : core_(const_cast<nri::CoreInterface&>(core))
@@ -153,12 +171,21 @@ namespace
                 nri::Device& device, const nri::GraphicsPipelineDesc& description, nri::Pipeline*& pipeline
             ) noexcept
             {
+                ++pipeline_calls;
                 auto armed = EGate::ARMED;
                 if (gate.compare_exchange_strong(armed, EGate::HOLDING))
                 {
                     gate.wait(EGate::HOLDING);
                 }
-                return original_.CreateGraphicsPipeline(device, description, pipeline);
+                if (fail_pipeline.exchange(false)) return nri::Result::OUT_OF_MEMORY;
+                const auto result = original_.CreateGraphicsPipeline(device, description, pipeline);
+                if (result == nri::Result::SUCCESS) ++created_pipelines;
+                return result;
+            };
+            core_.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
+            {
+                if (pipeline) ++destroyed_pipelines;
+                original_.DestroyPipeline(pipeline);
             };
             core_.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& description) noexcept
             {
@@ -171,6 +198,7 @@ namespace
         ~PipelineIsolationProbe() noexcept
         {
             core_.CreateGraphicsPipeline = original_.CreateGraphicsPipeline;
+            core_.DestroyPipeline = original_.DestroyPipeline;
             core_.QueueSubmit = original_.QueueSubmit;
         }
 
@@ -416,13 +444,15 @@ namespace
         );
     }
 
-    std::uint64_t requestFrame(ipc::IpcRequester& client, const CommandList& commands, RenderJobId job)
+    std::uint64_t requestFrame(
+        ipc::IpcRequester& client, const CommandList& commands, RenderJobId job, FrameData* packet = nullptr
+    )
     {
         const auto command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
         CHECK(command != commands.commands.end());
         const auto request_id = nextSceneRequest();
         ipc::IpcMessage message;
-        message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job});
+        message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job, packet});
         CHECK(client.trySend(commandTag(command->id), request_id, message));
         return request_id;
     }
@@ -447,45 +477,180 @@ namespace
         return std::nullopt;
     }
 
+    struct PipelineJob final
+    {
+        CapturedPixels pixels;
+        MaterialId material;
+        EffectId effect;
+        RenderJobId job;
+        ViewId view;
+        TargetId target;
+        JobBinding binding;
+        ResourceInstanceId instances;
+        MeshInstanceId member;
+    };
+
+    JobSubmitted verifyPreparationLifecycle(
+        RenderServer& server, ipc::IpcRequester& client, ipc::IpcRequester& requests, const CommandList& commands,
+        const PipelineJob& job, TargetId input, MeshId mesh, std::span<const MaterialId, 3> variants
+    )
+    {
+        using Probe = PipelineIsolationProbe;
+        const auto changeMaterial = [&](MaterialId material)
+        {
+            MeshInstanceData value{mesh, material};
+            value.render_enabled = true;
+            const MeshInstanceUpdate update{job.member, value};
+            call<InstanceCommands::Update>(client, commands, {job.instances, {}, {&update, 1}});
+        };
+        const auto snapshot = [&]()
+        {
+            auto stats = server.developmentStats();
+            CHECK(stats);
+            return *stats;
+        };
+        const auto can_change = [&](TargetId id)
+        {
+            auto resized = kTarget;
+            resized.sampled = true;
+            resized.width *= 2;
+            CHECK(call<ResizeTarget>(client, commands, {id, resized}, false).error.type == kDeviceBusy);
+            CHECK(call<RemoveTarget>(client, commands, id, false).error.type == kDeviceBusy);
+        };
+        const auto waitForDiscard = [&](std::uint64_t previous)
+        {
+            const auto deadline = Clock::now() + 15s;
+            while (snapshot().discarded_preparations == previous)
+            {
+                CHECK(Clock::now() < deadline);
+                std::this_thread::sleep_for(1ms);
+            }
+            CHECK(snapshot().discarded_preparations == previous + 1);
+        };
+
+        changeMaterial(variants[0]);
+        const auto stop_before = snapshot();
+        const auto stop_creates = Probe::created_pipelines.load();
+        const auto stop_destroys = Probe::destroyed_pipelines.load();
+        Probe::gate = Probe::EGate::ARMED;
+        const auto interrupted = requestFrame(requests, commands, job.job);
+        Probe::waitForDriver();
+        CHECK(call<RebindRenderJobEffect>(client, commands, {job.job, job.effect}, false).error.type == kJobBusy);
+        call<StopRenderJob>(client, commands, job.job);
+        const auto stopped = receiveFrameBefore(requests, interrupted, Clock::now() + 10s);
+        CHECK(stopped && stopped->error.type == kJobStopped);
+        CHECK(call<StartRenderJob>(client, commands, {job.job, job.target, job.binding}, false).error.type == kJobBusy);
+        CHECK(call<RebindRenderJobEffect>(client, commands, {job.job, job.effect}, false).error.type == kJobBusy);
+        CHECK(call<RemoveRenderJob>(client, commands, job.job, false).error.type == kJobBusy);
+        can_change(job.target);
+        can_change(input);
+        Probe::releaseDriver();
+        waitForDiscard(stop_before.discarded_preparations);
+        CHECK(Probe::created_pipelines.load() == stop_creates + 1);
+        CHECK(Probe::destroyed_pipelines.load() == stop_destroys + 1);
+        call<RebindRenderJobEffect>(client, commands, {job.job, job.effect});
+        call<StartRenderJob>(client, commands, {job.job, job.target, job.binding});
+        renderFrame(client, commands, job.job);
+
+        changeMaterial(variants[1]);
+        const auto failure_before = snapshot();
+        const auto calls_before = Probe::pipeline_calls.load();
+        Probe::fail_pipeline = true;
+        const auto failed = call<RequestRenderJob>(client, commands, {job.job}, false);
+        CHECK(failed.error.type == kDeviceFailure);
+        const auto repeated = call<RequestRenderJob>(client, commands, {job.job}, false);
+        CHECK(repeated.error == failed.error);
+        CHECK(Probe::pipeline_calls.load() == calls_before + 1);
+        CHECK(snapshot().program_preparations == failure_before.program_preparations + 1);
+        changeMaterial(job.material);
+        renderFrame(client, commands, job.job);
+
+        const auto layout = call<QueryRenderJobInputLayout>(client, commands, job.job).layout;
+        auto packet = take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout));
+        MeshInstanceData value{mesh, variants[1]};
+        value.render_enabled = true;
+        CHECK(packet.addData<InstanceResource>(MeshInstanceUpdate{job.member, value}));
+        CHECK(packet.seal());
+        const auto stale_before = snapshot();
+        const auto stale_destroys = Probe::destroyed_pipelines.load();
+        Probe::gate = Probe::EGate::ARMED;
+        const auto pending = requestFrame(requests, commands, job.job, &packet);
+        Probe::waitForDriver();
+        for (unsigned update = 0; update < 2048; ++update) changeMaterial(variants[1 + (update + 1) % 2]);
+        changeMaterial(variants[2]);
+        CHECK(packet.sealed());
+        CHECK(!receiveFrameBefore(requests, pending, Clock::now() + 20ms));
+        Probe::releaseDriver();
+        const auto final = receiveFrameBefore(requests, pending, Clock::now() + 15s);
+        CHECK(final && !final->error.type && final->job == job.job);
+        packet.release();
+        CHECK(packet.writable());
+        CHECK(!receiveFrameBefore(requests, pending, Clock::now() + 20ms));
+        const auto after = snapshot();
+        CHECK(after.program_preparations == stale_before.program_preparations + 2);
+        CHECK(after.discarded_preparations == stale_before.discarded_preparations + 1);
+        CHECK(Probe::destroyed_pipelines.load() == stale_destroys + 1);
+        std::puts("PIPELINE_LIFETIME stale_revisions=2048 discarded=1 stopped=1 failure_attempts=1 terminal_replies=1");
+        return *final;
+    }
+
     void verifyPipelineIsolation(
         RenderServer& server, ipc::IpcRequester& client, const CommandList& commands, std::string_view channel,
         const RenderProbe<RasterProbeConfig>& forward, std::array<SceneId, 2> scenes, ResourceInstanceId materials,
         MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
-        bool expect_progress
+        bool expect_progress, unsigned workers
     )
     {
-        struct Job final
-        {
-            CapturedPixels pixels;
-            MaterialId material;
-            EffectId effect;
-            RenderJobId job;
-            ViewId view;
-            TargetId target;
-        };
-        std::array<Job, 2> jobs;
+        CapturedPixels imported_pixels;
+        std::array<PipelineJob, 2> jobs;
         constexpr std::array purposes{EMaterialPurpose::FORWARD};
+        const auto createMaterial = [&](unsigned shape, float emission)
+        {
+            auto program = cookProgram(compiler, target, purposes, shape, emission);
+            auto parameters = program.parameter_defaults;
+            return call<MaterialCommands::Create>(
+                client, commands, {materials, {std::move(program), std::move(parameters), {texture}}}
+            ).material;
+        };
+        auto output = kTarget;
+        output.sampled = expect_progress;
         for (unsigned i = 0; i < jobs.size(); ++i)
         {
             auto& job = jobs[i];
-            auto program = cookProgram(compiler, target, purposes, i + 1, float(i + 1) / 8);
-            auto parameters = program.parameter_defaults;
-            job.material = call<MaterialCommands::Create>(
-                client, commands, {materials, {std::move(program), std::move(parameters), {texture}}}
-            ).material;
-            const auto instances = call<GetOrCreateResource>(client, commands, {scenes[i], kInstanceResourceName});
+            job.material = createMaterial(i + 1, float(i + 1) / 8);
+            job.instances = call<GetOrCreateResource>(client, commands, {scenes[i], kInstanceResourceName}).resource_id;
             MeshInstanceData input{mesh, job.material};
             input.render_enabled = true;
-            call<InstanceCommands::CreateInstance>(client, commands, {instances.resource_id, input});
+            job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
             auto request = probeRequest(
-                kTarget, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, kTarget.format}},
+                output, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, output.format}},
                 {"color", "pixels"}
             );
+            if (i == 1 && expect_progress)
+            {
+                const auto index = static_cast<std::uint32_t>(request.definition.features.size());
+                const FeaturePortRef destination{index, "color"};
+                request.definition.features.push_back({
+                    forward.features[1], "probe/import",
+                    take(ConfigValue::make(CaptureConfig{&imported_pixels, output.format}))
+                });
+                GraphImageDesc image{64, 64, 1, 1, output.format};
+                image.extent.source = EImageExtentSource::TARGET;
+                request.definition.inputs.push_back({
+                    destination, {"pipeline_gate.import", image, EGraphOrigin::IMPORTED, {GraphImageRange{}},
+                    EGraphUse::SAMPLED}
+                });
+                request.definition.outputs.push_back({{index, "pixels"}, {}});
+                job.binding.target_images.push_back({destination, jobs[0].target});
+            }
             job.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
             job.view = call<CreateView>(client, commands, {scenes[i]}).view;
-            job.target = call<CreateTarget>(client, commands, {kTarget}).target;
+            job.target = call<CreateTarget>(client, commands, {output}).target;
             call<UpdateViewCamera>(client, commands, {{scenes[i], job.view}, {}});
-            job.job = startRenderJob(client, commands, scenes[i], job.view, job.target, job.effect);
+            job.job = call<CreateRenderJob>(client, commands, {
+                scenes[i], job.view, job.effect, EJobCadence::REQUESTED
+            }).job;
+            call<StartRenderJob>(client, commands, {job.job, job.target, job.binding});
         }
 
         const auto warm = jobs[0].job;
@@ -495,23 +660,16 @@ namespace
         CHECK(cold_client);
         const auto before = server.developmentStats();
         CHECK(before);
-        using EGate = PipelineIsolationProbe::EGate;
-        auto& gate = PipelineIsolationProbe::gate;
-        gate = EGate::ARMED;
+        using Probe = PipelineIsolationProbe;
+        Probe::gate = Probe::EGate::ARMED;
         const auto cold_request = requestFrame(*cold_client, commands, cold);
-        const auto gate_deadline = Clock::now() + 15s;
-        while (gate.load() != EGate::HOLDING)
-        {
-            CHECK(Clock::now() < gate_deadline);
-            std::this_thread::sleep_for(1ms);
-        }
-        const auto submits_before = PipelineIsolationProbe::accepted_submits.load();
+        Probe::waitForDriver();
+        const auto submits_before = Probe::accepted_submits.load();
         const auto warm_request = requestFrame(client, commands, warm);
         const auto early = receiveFrameBefore(client, warm_request, Clock::now() + 2s);
-        const auto accepted = PipelineIsolationProbe::accepted_submits.load() - submits_before;
+        const auto accepted = Probe::accepted_submits.load() - submits_before;
         const auto blocked = server.developmentStats();
-        gate = EGate::OPEN;
-        gate.notify_one();
+        Probe::releaseDriver();
 
         const auto warm_reply = early ? early : receiveFrameBefore(client, warm_request, Clock::now() + 15s);
         const auto cold_reply = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 15s);
@@ -520,15 +678,28 @@ namespace
         CHECK(blocked);
         const auto holding_slot = blocked->program_preparations_holding_slot - before->program_preparations_holding_slot;
         std::printf(
-            "PIPELINE_ISOLATION warm_reply_while_cold_blocked=%u native_submits=%llu preparations_holding_slot=%llu\n",
-            unsigned(early.has_value()), static_cast<unsigned long long>(accepted),
+            "PIPELINE_ISOLATION workers=%u warm_reply_while_cold_blocked=%u native_submits=%llu "
+            "preparations_holding_slot=%llu\n",
+            workers, unsigned(early.has_value()), static_cast<unsigned long long>(accepted),
             static_cast<unsigned long long>(holding_slot)
         );
-        CHECK(early.has_value() == expect_progress);
-        const bool was_isolated = accepted > 0 && holding_slot == 0;
-        const bool was_blocked = accepted == 0 && holding_slot > 0;
-        CHECK(expect_progress ? was_isolated : was_blocked);
-        for (unsigned i = 0; i < jobs.size(); ++i)
+        std::fflush(stdout);
+        const bool should_submit = expect_progress && workers > 1;
+        CHECK(early.has_value() == should_submit);
+        CHECK((accepted > 0) == should_submit);
+        CHECK((holding_slot == 0) == expect_progress);
+
+        std::optional<JobSubmitted> newest;
+        std::array<MaterialId, 3> variants;
+        if (expect_progress)
+        {
+            variants = {createMaterial(3, .375F), createMaterial(4, .75F), createMaterial(5, .5F)};
+            newest = verifyPreparationLifecycle(
+                server, client, *cold_client, commands, jobs[1], jobs[0].target, mesh,
+                variants
+            );
+        }
+        for (unsigned i : {1u, 0u})
         {
             const auto& job = jobs[i];
             stopAndRemoveJob(client, commands, job.job);
@@ -543,6 +714,16 @@ namespace
             }
             call<RemoveScene>(client, commands, {scenes[i]});
             call<MaterialCommands::Release>(client, commands, {job.material});
+        }
+        if (newest)
+        {
+            CHECK(imported_pixels.ready.load(std::memory_order_acquire));
+            const auto& frame = jobs[1].pixels.frames[newest->slot_index];
+            const auto offset = 32 * jobs[1].pixels.pitch + 32 * 4;
+            CHECK(std::abs(std::to_integer<int>(frame[offset]) - 192) <= 1);
+            for (auto variant : variants) call<MaterialCommands::Release>(client, commands, {variant});
+            std::printf("PIPELINE_LATEST frame=%llu red=%u\n",
+                static_cast<unsigned long long>(newest->frame_index), std::to_integer<unsigned>(frame[offset]));
         }
     }
 
@@ -708,6 +889,7 @@ int main(int argc, char** argv)
     bool varied = false;
     bool legacy = false;
     std::optional<bool> pipeline_isolation;
+    unsigned workers = 2;
     for (int i = 1; i < argc; ++i)
     {
         const std::string_view arg = argv[i];
@@ -716,6 +898,7 @@ int main(int argc, char** argv)
         else if (arg == "--legacy-pages") legacy = true;
         else if (arg == "--pipeline-isolation") pipeline_isolation = true;
         else if (arg == "--expect-pipeline-blocking") pipeline_isolation = false;
+        else if (arg == "--single-worker") workers = 1;
         else
         {
             count = static_cast<unsigned>(std::atoi(argv[i]));
@@ -726,7 +909,7 @@ int main(int argc, char** argv)
         ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
     auto compiler = lux::shader::ShaderCompiler::create();
     CHECK(compiler);
-    auto runtime = lux::execution::ExecutionRuntime::create({2, 128, {128}});
+    auto runtime = lux::execution::ExecutionRuntime::create({workers, 128, {128}});
     CHECK(runtime);
     RenderServerConfig config{"test.material.scale", nativeValidationEnabled()};
     config.frames_in_flight = kFif;
@@ -780,7 +963,7 @@ int main(int argc, char** argv)
         const auto other = call<CreateScene>(*ipc, commands, {}).scene;
         verifyPipelineIsolation(
             *server, *ipc, commands, config.channel_name, probes[0], {scene, other}, materials, mesh, images.front(),
-            **compiler, shader_target, *pipeline_isolation
+            **compiler, shader_target, *pipeline_isolation, workers
         );
     }
     else if (count)

@@ -27,7 +27,8 @@ namespace lux::render::detail
         };
 
         FrameOperation(
-            DeviceSession&, ResourceUploader*, FrameProgress&, Workspace&, execution::CpuScheduler, bool parallel_recording
+            DeviceSession&, ResourceUploader*, FrameProgress&, Workspace&, execution::CpuScheduler,
+            bool parallel_recording = true
         ) noexcept;
         ~FrameOperation() noexcept;
         FrameOperation(const FrameOperation&) = delete;

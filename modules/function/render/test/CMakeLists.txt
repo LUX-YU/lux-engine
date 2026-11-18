@@ -64,8 +64,14 @@ if(LUX_RENDER_DEVELOPMENT_METRICS)
         lux::engine::core::math
     )
     add_test(NAME render.material.purposes_vulkan COMMAND render_material_scale)
+    add_test(NAME render.material.pipeline_isolation_vulkan COMMAND render_material_scale --pipeline-isolation)
+    add_test(
+        NAME render.material.pipeline_single_worker
+        COMMAND render_material_scale --pipeline-isolation --single-worker
+    )
     if(WIN32)
         add_test(NAME render.material.purposes_d3d12 COMMAND render_material_scale d3d12)
+        add_test(NAME render.material.pipeline_isolation_d3d12 COMMAND render_material_scale --pipeline-isolation d3d12)
     endif()
 endif()
 

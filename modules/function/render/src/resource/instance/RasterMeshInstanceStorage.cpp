@@ -55,9 +55,7 @@ namespace lux::render::detail
             std::span<const MeshInstanceUpdate> instances
         ) noexcept
         {
-            if (auto applied = resource.update(transforms); !applied) return cxx::unexpected(applied.error());
-            if (auto applied = resource.update(instances); !applied) return cxx::unexpected(applied.error());
-            return {};
+            return resource.update(transforms, instances);
         }
 
         void updateInstances(
@@ -836,24 +834,28 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<std::uint32_t> RasterMeshInstanceStorage::update(std::span<const TransformUpdate> input) noexcept
+    RenderResult<void> RasterMeshInstanceStorage::update(
+        std::span<const TransformUpdate> transforms, std::span<const MeshInstanceUpdate> instances
+    ) noexcept
     {
         if (updating_)
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        const bool invalid_input =
-            input.size() > UINT32_MAX;
-        const bool has_invalid_transform = !std::ranges::all_of(input, [](const auto& value) noexcept
-        {
-            return isFiniteTransform(value.transform);
-        });
-        const bool is_invalid_batch = invalid_input || has_invalid_transform;
-        if (is_invalid_batch)
+        const bool invalid_transform_count = transforms.size() > UINT32_MAX;
+        if (invalid_transform_count)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
-        for (const auto& value : input)
+        const bool has_invalid_transform = std::ranges::any_of(transforms, [](const auto& value) noexcept
+        {
+            return !isFiniteTransform(value.transform);
+        });
+        if (has_invalid_transform)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
+        for (const auto& value : transforms)
         {
             const auto* entry = extension_detail::ResourceIdentity::parent(value.instance) == id_
                 ? entries_.find(extension_detail::ResourceIdentity::local(value.instance)) : nullptr;
@@ -862,42 +864,16 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
         }
-        bool changed = false;
-        for (std::size_t i = 0; i < input.size(); ++i)
-        {
-            const auto record = extension_detail::ResourceIdentity::local(input[i].instance).index;
-            auto& previous = pages_[record / kMeshInstancePageSlots]->transforms[record % kMeshInstancePageSlots];
-            if (previous == input[i].transform)
-            {
-                continue;
-            }
-            previous = input[i].transform;
-            for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
-            {
-                mark(frame, record, 1);
-            }
-            changed = true;
-        }
-        preparation_revision_ += changed;
-        return static_cast<std::uint32_t>(input.size());
-    }
-
-    RenderResult<std::uint32_t> RasterMeshInstanceStorage::update(std::span<const MeshInstanceUpdate> input) noexcept
-    {
-        if (updating_)
-        {
-            return cxx::unexpected(RenderError{kDeviceBusy});
-        }
-        if (input.size() > UINT32_MAX)
+        if (instances.size() > UINT32_MAX)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         auto& data = *frames_;
         data.properties.clear();
-        data.properties.reserve(input.size());
-        // Validate the whole input before changing authoritative records. The physical material
+        data.properties.reserve(instances.size());
+        // Validate both columns before changing authoritative records. The physical material
         // address is rebuilt by prepareFrame for each FIF slice; this lookup validates its identity.
-        for (const auto& value : input)
+        for (const auto& value : instances)
         {
             const auto* entry = extension_detail::ResourceIdentity::parent(value.instance) == id_
                 ? entries_.find(extension_detail::ResourceIdentity::local(value.instance)) : nullptr;
@@ -912,10 +888,27 @@ namespace lux::render::detail
             }
             data.properties.push_back(*property);
         }
-        bool changed = false;
-        for (std::size_t i = 0; i < input.size(); ++i)
+        bool transforms_changed = false;
+        for (const auto& value : transforms)
         {
-            const auto& value = input[i];
+            const auto record = extension_detail::ResourceIdentity::local(value.instance).index;
+            auto& previous = pages_[record / kMeshInstancePageSlots]->transforms[record % kMeshInstancePageSlots];
+            if (previous == value.transform)
+            {
+                continue;
+            }
+            previous = value.transform;
+            for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
+            {
+                mark(frame, record, 1);
+            }
+            transforms_changed = true;
+        }
+        preparation_revision_ += transforms_changed;
+        bool instances_changed = false;
+        for (std::size_t i = 0; i < instances.size(); ++i)
+        {
+            const auto& value = instances[i];
             auto& entry = *entries_.find(extension_detail::ResourceIdentity::local(value.instance));
             const auto previous = selection(entry);
             const bool group_changed = previous.mesh != value.description.mesh ||
@@ -935,14 +928,14 @@ namespace lux::render::detail
             {
                 mark(frame, record, fields);
             }
-            changed |= fields != 0;
+            instances_changed |= fields != 0;
             if (group_changed)
             {
                 notify(entry, false);
             }
         }
-        preparation_revision_ += changed;
-        return static_cast<std::uint32_t>(input.size());
+        preparation_revision_ += instances_changed;
+        return {};
     }
 
     exec::task<RenderResult<Ack>> RasterMeshInstanceStorage::release(MeshInstanceId input) noexcept

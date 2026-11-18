@@ -691,7 +691,8 @@ int main(int argc, char** argv)
     std::vector<MeshInstanceId> extra_instances;
     std::span<const TransformUpdate> in_frame_transforms;
     std::span<const MeshInstanceId> removed_groups;
-    const auto run = [&](float exposure, bool gpu_visibility = true, bool oracle = true)
+    const auto run = [&](float exposure, bool gpu_visibility = true, bool oracle = true,
+                         bool reject_instance_packet = false)
     {
         CapturedPixels pixels, visible_commands;
         GBufferFeatureConfig surface{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
@@ -850,8 +851,17 @@ int main(int argc, char** argv)
             const auto schema = call<QueryRenderJobInputLayout>(*client, commands, attached).layout;
             auto packet = take(FrameData::create<std::tuple<InstanceResource, LightResource>>(schema));
             for (const auto& update : in_frame_transforms) CHECK(packet.addData<InstanceResource>(update));
+            if (reject_instance_packet) CHECK(packet.addData<InstanceResource>(MeshInstanceUpdate{}));
             CHECK(packet.seal());
-            CHECK(call<RequestRenderJob>(*client, commands, {attached, &packet}).job == attached);
+            if (reject_instance_packet)
+            {
+                const auto reply = call<UpdateFrameData>(*client, commands, {attached, &packet}, false);
+                CHECK(reply.error.type == kStorageIdentity);
+            }
+            else
+            {
+                CHECK(call<RequestRenderJob>(*client, commands, {attached, &packet}).job == attached);
+            }
             packet.release(); // The raw requester has received the terminal response.
             advance();
         }
@@ -1206,6 +1216,7 @@ int main(int argc, char** argv)
             TransformUpdate{extra_instances[1], additions[1].transform}
         };
         in_frame_transforms = flips;
+        CHECK(run(0, true, false, true) == culled);
         const auto changed_pixels = run(0, true, false);
         in_frame_transforms = {};
         CHECK(changed_pixels == run(0, false, false));

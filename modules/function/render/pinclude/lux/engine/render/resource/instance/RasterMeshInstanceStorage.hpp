@@ -65,8 +65,8 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceData) noexcept;
         [[nodiscard]] exec::task<
             RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceData>) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> update(std::span<const TransformUpdate>) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> update(std::span<const MeshInstanceUpdate>) noexcept;
+        [[nodiscard]] RenderResult<void>
+        update(std::span<const TransformUpdate>, std::span<const MeshInstanceUpdate>) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
         void observe(Observer&) noexcept;
 

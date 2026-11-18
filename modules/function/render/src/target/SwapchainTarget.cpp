@@ -70,7 +70,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        if (!session.supportsPresentRetirement())
+        if (!session.description().features.swapChain)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
@@ -173,7 +173,8 @@ namespace lux::render::detail
           release_semaphores_(std::move(other.release_semaphores_)), frames_(std::move(other.frames_)),
           presentation_(other.presentation_), acquire_slot_(other.acquire_slot_),
           acquired_image_(other.acquired_image_),
-          next_present_id_(other.next_present_id_), failure_(other.failure_), uses_(std::move(other.uses_))
+          next_present_id_(other.next_present_id_), present_attempted_(other.present_attempted_),
+          failure_(other.failure_), uses_(std::move(other.uses_))
     {
         if (other.nativePending() || other.idle_) std::terminate();
         for (auto& frame : frames_)
@@ -216,6 +217,7 @@ namespace lux::render::detail
         if (presentation_.phase == EPresentationPhase::SUBMITTED)
         {
             presentation_.phase = EPresentationPhase::PRESENTING;
+            present_attempted_ = true;
             return ENativeStep::PRESENT;
         }
         if (!acquire || presentation_.phase != EPresentationPhase::IDLE) return ENativeStep::NONE;
@@ -319,7 +321,7 @@ namespace lux::render::detail
         }
         const bool lost = session_.deviceLost();
         auto retirement = takeRetirement();
-        // G has completed. P/A may still wait in the driver and must only hold this device's native worker.
+        // Presentation retirement may wait in the driver and must only hold this device's native worker.
         co_return co_await (
             stdexec::schedule(session_.nativeScheduler()) |
             stdexec::then([&retirement, lost]() noexcept { return retirement.release(lost); }) |
@@ -337,18 +339,42 @@ namespace lux::render::detail
         auto* unused = acquired_image_ != UINT32_MAX && !acquire_semaphores_[acquire_slot_].last_wait.serial
             ? presentation_.acquired : nullptr;
         return {
-            session_, swap_chain_operations_, std::exchange(swap_chain_, nullptr), unused,
+            session_, swap_chain_operations_, std::exchange(swap_chain_, nullptr), unused, present_attempted_,
             std::move(views_), std::move(acquire_semaphores_), std::move(release_semaphores_)
         };
     }
 
+    nri::Result SwapchainTarget::Retirement::waitLegacyPresentationQueue() noexcept
+    {
+        if (!present_attempted && !unused_acquire) return nri::Result::SUCCESS;
+        const auto& core = session.nriCore();
+        auto& queue = session.queue().native();
+        if (unused_acquire)
+        {
+            const nri::FenceSubmitDesc wait{unused_acquire, 0, nri::StageBits::ALL};
+            nri::QueueSubmitDesc consume{};
+            consume.waitFences = &wait;
+            consume.waitFenceNum = 1;
+            const auto status = core.QueueSubmit(queue, consume);
+            if (status != nri::Result::SUCCESS) return status;
+        }
+        // Base Vulkan drivers use a cold queue drain. It has no explicit presentation fence.
+        return core.QueueWaitIdle(&queue);
+    }
+
     RenderResult<void> SwapchainTarget::Retirement::release(bool lost) noexcept
     {
-        const auto status = lost ? nri::Result::DEVICE_LOST
-                                 : session.retireSwapChain(*swap_chain, unused_acquire, 1'000'000'000);
+        auto status = nri::Result::DEVICE_LOST;
+        if (!lost)
+        {
+            const bool uses_legacy_vulkan = session.description().graphicsAPI == nri::GraphicsAPI::VK &&
+                !session.supportsPresentRetirement();
+            status = uses_legacy_vulkan ? waitLegacyPresentationQueue()
+                                        : session.retireSwapChain(*swap_chain, unused_acquire, 1'000'000'000);
+        }
         if (status != nri::Result::SUCCESS && status != nri::Result::DEVICE_LOST)
         {
-            std::terminate(); // Do not destroy handles without the retirement proof.
+            std::terminate(); // Retirement failed while native handles may still be in use.
         }
         const auto& core = session.nriCore();
         for (auto* view : views) core.DestroyDescriptor(view);

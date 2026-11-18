@@ -587,8 +587,11 @@ actual consumer bindings when needed.
 SwapchainTarget owns a single flight. Acquire and Present run on NativeExecution and return to the Server. A READY
 image can be acquired before a FIF slot and kept through writer replacement. NOT_READY leaves the image index and
 semaphore association unchanged. Queue acceptance of the acquire wait protects reuse of that acquire semaphore.
-The Target settles native borrows before replacement. Accepted GPU uses and backend presentation retirement
-protect destruction, including release of any acquired image whose wait was never submitted.
+The Target settles native borrows and accepted GPU work before replacement. Vulkan drivers with swapchain
+maintenance support retire with presentation fences and release unconsumed acquired images. The base Vulkan
+path consumes an unused acquire semaphore with an empty submission and waits only the presentation queue
+on the owning NativeExecution worker during Resize, Remove and Shutdown. The queue drain is a driver
+compatibility path with no Vulkan guarantee for the final unfenced Present.
 
 ## Job control contracts
 

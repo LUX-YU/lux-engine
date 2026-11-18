@@ -891,8 +891,10 @@ struct DeviceRetirementProbe final
     static inline std::array<std::atomic<bool>, 3> destroyed{};
     static inline std::size_t created = 0;
     static inline decltype(nri::CoreInterface::QueueSubmit) submit = nullptr;
+    static inline decltype(nri::CoreInterface::QueueWaitIdle) wait_idle = nullptr;
     static inline RetirementFence* gate = nullptr;
     static inline std::atomic<bool> arm = false, held = false;
+    static inline std::atomic<bool> hold_queue_idle = false, queue_idle_entered = false;
     std::size_t index;
     std::optional<RetirementFence> fence;
 
@@ -906,6 +908,16 @@ struct DeviceRetirementProbe final
         gate = &*fence;
         auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
         submit = core.QueueSubmit;
+        wait_idle = core.QueueWaitIdle;
+        core.QueueWaitIdle = [](nri::Queue* queue) noexcept
+        {
+            if (hold_queue_idle.load())
+            {
+                queue_idle_entered.store(true);
+                hold_queue_idle.wait(true);
+            }
+            return wait_idle(queue);
+        };
         core.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& input) noexcept
         {
             if (!arm.exchange(false)) return submit(queue, input);
@@ -925,6 +937,7 @@ struct DeviceRetirementProbe final
         if (fence)
         {
             const_cast<nri::CoreInterface&>(fence->core).QueueSubmit = submit;
+            const_cast<nri::CoreInterface&>(fence->core).QueueWaitIdle = wait_idle;
             gate = nullptr;
             fence.reset();
         }
@@ -1040,20 +1053,13 @@ static bool physicalDeviceLifecycle(bool d3d12)
         client, commands, {a, surface_desc(windows[0]), SurfaceDescription{Win32Surface{windows[0]}}}
     );
     const auto surface_b = call<CreateTarget>(
-        client, commands, {b, surface_desc(windows[1]), SurfaceDescription{Win32Surface{windows[1]}}}, false
+        client, commands, {b, surface_desc(windows[1]), SurfaceDescription{Win32Surface{windows[1]}}}
     );
-    const bool dual_wsi = !surface_b.error.type;
-    CHECK(surface_a.output_available);
-    if (dual_wsi)
-    {
-        CHECK(surface_b.output_available);
-    }
-    else
-    {
-        CHECK(!d3d12 && surface_b.error.type == kDeviceUnsupported && !DeviceRetirementProbe::present_retirement[1]);
-        std::printf("DUAL WSI UNKNOWN backend=%s adapter=%s missing swapchainMaintenance1 error=%llu\n",
-            backend, adapters[1].name, surface_b.error.type);
-    }
+    CHECK(surface_a.output_available && surface_b.output_available);
+    if (!d3d12)
+        std::printf("VULKAN WSI RETIREMENT A=%s B=%s\n",
+            DeviceRetirementProbe::present_retirement[0] ? "present-fence" : "queue-idle",
+            DeviceRetirementProbe::present_retirement[1] ? "present-fence" : "queue-idle");
     const auto effect_for = [&](TargetDesc description)
     {
         CreateEffectRequest recipe{{description.format, description.samples, description.kind, description.sampled}};
@@ -1063,7 +1069,7 @@ static bool physicalDeviceLifecycle(bool d3d12)
         return call<CreateEffect>(client, commands, std::move(recipe)).effect;
     };
     const auto surface_effect = effect_for(surface_a.description);
-    const auto surface_effect_b = dual_wsi && surface_a.description.format != surface_b.description.format
+    const auto surface_effect_b = surface_a.description.format != surface_b.description.format
         ? effect_for(surface_b.description) : surface_effect;
     const auto job_a = startRenderJob(client, commands, a, scene, view, surface_a.target, surface_effect);
     const auto present = [&](RenderJobId job)
@@ -1078,35 +1084,63 @@ static bool physicalDeviceLifecycle(bool d3d12)
         }
         CHECK(server->stats().presentations == before + 1);
     };
-    const auto resize = [&](const TargetCreated& target, TargetDesc description)
+    const auto resized = [&](const TargetCreated& target, TargetDesc description, const TargetCreated& result)
     {
-        const auto result = call<ResizeTarget>(client, commands, {target.target, description});
-        CHECK(result.output_available && result.description == description && result.epoch == target.epoch + 1);
+        CHECK(!result.error.type && result.output_available);
+        CHECK(result.description == description && result.epoch == target.epoch + 1);
         call<SetTargetActive>(client, commands, {target.target, true, result.epoch});
     };
-    const auto resize_window = [&](const TargetCreated& target, HWND window)
+    const auto resize = [&](const TargetCreated& target, TargetDesc description)
+    {
+        resized(target, description, call<ResizeTarget>(client, commands, {target.target, description}));
+    };
+    const auto new_window_extent = [&](const TargetCreated& target, HWND window)
     {
         auto description = target.description;
         const auto extent = surface_desc(window);
         description.width = extent.width;
         description.height = extent.height;
-        resize(target, description);
+        return description;
     };
     present(job_a);
     CHECK(SetWindowPos(windows[0], nullptr, 0, 0, 360, 260, SWP_NOMOVE | SWP_NOZORDER));
-    resize_window(surface_a, windows[0]);
-    present(job_a);
-    if (dual_wsi)
+    resize(surface_a, new_window_extent(surface_a, windows[0]));
+    const auto job_b = startRenderJob(client, commands, b, scene, view, surface_b.target, surface_effect_b);
+    present(job_b);
+    CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
+    CHECK(SetWindowPos(windows[1], nullptr, 0, 0, 370, 270, SWP_NOMOVE | SWP_NOZORDER));
+    const auto new_extent = new_window_extent(surface_b, windows[1]);
+    const bool can_hold_native_wait = d3d12 || !DeviceRetirementProbe::present_retirement[1];
+    if (can_hold_native_wait)
     {
-        const auto job_b = startRenderJob(client, commands, b, scene, view, surface_b.target, surface_effect_b);
-        present(job_b);
-        CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
-        CHECK(SetWindowPos(windows[1], nullptr, 0, 0, 370, 270, SWP_NOMOVE | SWP_NOZORDER));
-        resize_window(surface_b, windows[1]);
-        present(job_b);
-        stopAndRemoveJob(client, commands, job_b);
-        call<RemoveTarget>(client, commands, surface_b.target);
+        auto resizing = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(resizing);
+        DeviceRetirementProbe::hold_queue_idle.store(true);
+        auto pending = std::async(std::launch::async, [&]
+        {
+            return call<ResizeTarget>(*resizing, commands, {surface_b.target, new_extent});
+        });
+        const auto deadline = Clock::now() + 10s;
+        while (!DeviceRetirementProbe::queue_idle_entered.load())
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::sleep_for(1ms);
+        }
+        present(job_a);
+        CHECK(pending.wait_for(0s) == std::future_status::timeout);
+        DeviceRetirementProbe::hold_queue_idle.store(false);
+        DeviceRetirementProbe::hold_queue_idle.notify_all();
+        resized(surface_b, new_extent, pending.get());
+        std::puts("WSI QUEUE ISOLATION PASS: peer presented while the resizing device held its own queue wait");
     }
+    else
+    {
+        resize(surface_b, new_extent);
+        present(job_a);
+    }
+    present(job_b);
+    stopAndRemoveJob(client, commands, job_b);
+    call<RemoveTarget>(client, commands, surface_b.target);
 
     const TargetDesc offscreen{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     const auto offscreen_effect = effect_for(offscreen);
@@ -1115,10 +1149,10 @@ static bool physicalDeviceLifecycle(bool d3d12)
     const auto off_job_a = startRenderJob(client, commands, a, scene, view, off_a.target, offscreen_effect);
     const auto off_job_b = startRenderJob(client, commands, b, scene, view, off_b.target, offscreen_effect);
     CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
-    auto resized = offscreen;
-    resized.width = 48;
-    resize(off_a, resized);
-    resize(off_b, resized);
+    auto larger_offscreen = offscreen;
+    larger_offscreen.width = 48;
+    resize(off_a, larger_offscreen);
+    resize(off_b, larger_offscreen);
     renderFrame(client, commands, off_job_a);
     DeviceRetirementProbe::arm.store(true);
     renderFrame(client, commands, off_job_b);
@@ -1159,35 +1193,41 @@ static bool physicalDeviceLifecycle(bool d3d12)
     CHECK(replacement != b && replacement.index == b.index);
     call<GetOrCreateResource>(client, commands, {replacement, DeviceScope{}, probe_type});
     CHECK(adapters[2].uid.low == adapters[1].uid.low && adapters[2].uid.high == adapters[1].uid.high);
-    if (dual_wsi)
+    const auto reopen_b = [&]
     {
-        const auto recreated = call<CreateTarget>(
+        return call<CreateTarget>(
             client, commands, {replacement, surface_desc(windows[1]), SurfaceDescription{Win32Surface{windows[1]}}}
         );
-        const auto final_job = startRenderJob(
-            client, commands, replacement, scene, view, recreated.target, surface_effect_b
-        );
-        present(final_job);
-    }
-    else
-    {
-        const auto recreated = call<CreateTarget>(client, commands, {replacement, offscreen});
-        const auto final_job = startRenderJob(
-            client, commands, replacement, scene, view, recreated.target, offscreen_effect
-        );
-        renderFrame(client, commands, final_job);
-    }
+    };
+    const auto unused_target = reopen_b();
+    const auto unused_job = startRenderJob(
+        client, commands, replacement, scene, view, unused_target.target, surface_effect_b
+    );
+    const auto layout = call<QueryRenderJobInputLayout>(client, commands, unused_job).layout;
+    auto other_layout = take(FrameLayout::create(layout.channels(), layout.revision()));
+    auto stale = take(FrameData::create<std::tuple<>>(other_layout));
+    CHECK(stale.seal());
+    // The frame rejects the stale layout after Acquire and before submitting its acquire wait.
+    CHECK(call<RequestRenderJob>(client, commands, {unused_job, &stale}, false).error.type == kFrameContract);
+    stale.release();
+    call<RemoveTarget>(client, commands, unused_target.target);
+    call<RemoveRenderJob>(client, commands, unused_job);
+    std::puts("WSI ACQUIRE PASS: removed and reopened the window after an unconsumed Acquire");
+
+    const auto recreated = reopen_b();
+    const auto final_job = startRenderJob(client, commands, replacement, scene, view, recreated.target, surface_effect_b);
+    present(final_job);
     call<Stop>(client, commands, {});
     render.join();
     CHECK(std::ranges::all_of(DeviceRetirementProbe::destroyed, [](const auto& value) { return value.load(); }));
     const auto presents = server->stats().presentations;
-    CHECK(server->stats().validation_errors == 0 && presents == (dual_wsi ? 7 : 4));
+    CHECK(server->stats().validation_errors == 0 && presents == 7);
     CHECK(PostMessageW(windows[0], WM_CLOSE, 0, 0));
     ui.join();
-    std::printf("DEVICE LIFECYCLE PASS backend=%s presents=%llu dual_wsi=%u Offscreen resize/Stop/Shutdown\n",
-        backend, presents, unsigned(dual_wsi));
+    std::printf("DEVICE LIFECYCLE PASS backend=%s presents=%llu dual_wsi=1 Offscreen resize/Stop/Shutdown\n",
+        backend, presents);
     std::puts("DEVICE RETIREMENT PASS: peer submitted while GPU fence held, removal revoked only B, all borrows settled");
-    return dual_wsi;
+    return true;
 }
 #endif
 

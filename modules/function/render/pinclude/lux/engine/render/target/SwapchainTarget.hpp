@@ -103,11 +103,13 @@ namespace lux::render::detail
             nri::SwapChainInterface operations;
             nri::SwapChain* swap_chain;
             nri::Fence* unused_acquire;
+            bool present_attempted;
             std::vector<nri::Descriptor*> views;
             std::vector<AcquireFence> acquired;
             std::vector<nri::Fence*> released;
 
             [[nodiscard]] RenderResult<void> release(bool lost) noexcept;
+            [[nodiscard]] nri::Result waitLegacyPresentationQueue() noexcept;
         };
 
         [[nodiscard]] Retirement takeRetirement() noexcept;
@@ -126,6 +128,7 @@ namespace lux::render::detail
         std::uint32_t acquire_slot_ = 0;
         std::uint32_t acquired_image_ = UINT32_MAX;
         std::uint64_t next_present_id_ = 1;
+        bool present_attempted_ = false;
         RenderError failure_;
         SubmissionFrontiers uses_;
         void* idle_context_ = nullptr;

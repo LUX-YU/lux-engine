@@ -150,6 +150,7 @@ namespace lux::render::detail
             if (!uploads_ || !replica_progress_) return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::array<bool, 3> purposes{};
+        std::array<bool, 3> samples_textures{};
         std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3> bindings;
         bool has_record_consumer = false;
         for (const auto& use : program.programs)
@@ -178,6 +179,7 @@ namespace lux::render::detail
             {
                 for (const auto& binding : set.bindings)
                 {
+                    samples_textures[purpose] |= binding.type == rdesc::EDescriptorType::SAMPLED_IMAGE;
                     if (binding.name != rdesc::kMaterialTableName)
                     {
                         continue;
@@ -209,7 +211,9 @@ namespace lux::render::detail
         const auto key = programs_.emplace();
         const auto id = extension_detail::ResourceIdentity::make<MaterialProgramId>(id_, key);
         auto* slot = programs_.find(key);
-        slot->record = std::make_shared<const MaterialProgramRecord>(MaterialProgramRecord{id, std::move(program), digest});
+        slot->record = std::make_shared<const MaterialProgramRecord>(
+            MaterialProgramRecord{id, std::move(program), digest, samples_textures}
+        );
         slot->table = table;
         programs_by_digest_.emplace(digest, key);
         return slot;
@@ -740,7 +744,11 @@ namespace lux::render::detail
         if (page && purpose_index < page->definition.bindings.size() && page->definition.bindings[purpose_index])
         {
             buffers.push_back({page->gpu[frame].parameters, 0, page->records.size()});
-            images.insert(images.end(), entry->images.begin(), entry->images.end());
+            const auto* program = programs_.find(extension_detail::ResourceIdentity::local(entry->program));
+            if (program->record->samples_textures[purpose_index])
+            {
+                images.insert(images.end(), entry->images.begin(), entry->images.end());
+            }
         }
         return {};
     }

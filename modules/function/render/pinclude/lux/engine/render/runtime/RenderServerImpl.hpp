@@ -74,9 +74,6 @@ namespace lux::render
         {
             ResourceRegistry resources_;
             cxx::StableSlotMap<std::unique_ptr<detail::DeviceEntry>, DeviceSessionTag> devices_;
-            // One device drives the existing round until each entry has its own scheduler state.
-            detail::DeviceEntry* execution_device_ = nullptr;
-
             [[nodiscard]] detail::DeviceEntry* device(DeviceSessionId id) const noexcept
             {
                 const auto* entry = devices_.find(id);
@@ -85,7 +82,6 @@ namespace lux::render
             CommandRegistry command_registry_;
             cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
             cxx::StableSlotMap<VRenderTarget, TargetTag> targets_;
-            cxx::SlotKeySparseSet<TargetId, detail::JobOutput> job_outputs_;
             cxx::StableSlotMap<RenderEffect, EffectTag> effects_;
             cxx::StableSlotMap<RenderJob, RenderJobTag> jobs_;
         };
@@ -99,28 +95,11 @@ namespace lux::render
         stdexec::counting_scope command_scope_;
         stdexec::simple_counting_scope upload_scope_;
         cxx::execution::ManualContext server_context_;
-        DeviceRound round_;
-        std::deque<InputUpdate*> input_updates_;
         // One dynamic program preparation may be away from the owner at a time.
         JobExecution* preparing_execution_ = nullptr;
+        bool program_waiting_for_recording_ = false;
         std::vector<TargetId> preparation_targets_;
-        std::size_t preparation_cursor_ = 0;
-        std::vector<detail::RenderGraphInstance*> frame_instances_;
-        struct FrameOutput final
-        {
-            RenderJobId job;
-            JobExecution* execution;
-            TargetId target;
-            std::span<const TargetId> reads;
-            bool submitted = false;
-        };
-
-        std::vector<FrameOutput> frame_outputs_;
-        std::deque<detail::JobControl::Run> frame_runs_;
-        std::size_t frame_run_count_ = 0;
-        detail::SubmissionFrontiers target_frame_uses_;
-        std::vector<detail::StorageFrameUse> frame_storages_;
-        std::vector<detail::SubmissionOrder> frame_job_order_;
+        std::size_t next_device_ = 0;
         std::uint64_t job_structure_revision_ = 1;
         RenderError execution_error_;
         enum class EState { SETUP, RUNNING, FINISHED };
@@ -143,7 +122,7 @@ namespace lux::render
         std::atomic<std::uint64_t> program_preparation_ns_{0}, program_preparations_{0}, discarded_preparations_{0};
         std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
         std::atomic<std::uint64_t> raster_image_subresources_{0};
-        std::chrono::steady_clock::time_point slot_opened_at_, program_preparation_started_at_;
+        std::chrono::steady_clock::time_point program_preparation_started_at_;
 #endif
 
         Impl(RenderServerConfig value, ipc::IpcResponder input, execution::ExecutionRuntime& execution);
@@ -165,7 +144,7 @@ namespace lux::render
         void stopJob(RenderJob&) noexcept;
         void retireStoppedExecution(RenderJob&) noexcept;
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
-        [[nodiscard]] bool frameUsesResource(ResourceInstanceId) const noexcept;
+        [[nodiscard]] bool frameUsesResource(const detail::DeviceEntry&, ResourceInstanceId) const noexcept;
         [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
         [[nodiscard]] bool preparationUsesTarget(TargetId) const noexcept;
         [[nodiscard]] bool resourcesAvailable(std::span<const ResourceInstanceId>) const noexcept;
@@ -194,32 +173,32 @@ namespace lux::render
         [[nodiscard]] bool
         targetDependencyCycle(TargetId, std::span<const TargetImageInput>, RenderJobId) const noexcept;
 
-        void rebuildFrameInputs() noexcept;
-        [[nodiscard]] RenderError selectFrameInputs(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> applyParameterSources(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<bool> acquireFrameOutputs(std::uint32_t slot) noexcept;
-        void progressTargetFlights() noexcept;
+        void rebuildFrameInputs(detail::DeviceEntry&) noexcept;
+        [[nodiscard]] RenderError selectFrameInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<void> applyParameterSources(detail::DeviceEntry&, std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<bool> acquireFrameOutputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
+        void progressTargetFlights(detail::DeviceEntry&) noexcept;
         [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
         [[nodiscard]] std::uint32_t publishedOutputSlot(TargetId) const noexcept;
         [[nodiscard]] bool publishedOutputReadable(TargetId, std::uint32_t slot) const noexcept;
-        [[nodiscard]] std::uint32_t outputSlot(TargetId, std::uint32_t frame_slot) const noexcept;
-        exec::task<RenderResult<void>> submitCurrentFrame() noexcept;
-        void cancelActiveFrame(RenderError) noexcept;
+        [[nodiscard]] std::uint32_t outputSlot(const detail::DeviceEntry&, TargetId, std::uint32_t frame_slot) const noexcept;
+        exec::task<RenderResult<void>> submitCurrentFrame(detail::DeviceEntry&) noexcept;
+        void cancelActiveFrame(detail::DeviceEntry&, RenderError) noexcept;
         [[nodiscard]] bool serviceOperations(bool admitting) noexcept;
         void waitForService(std::uint64_t observed) const noexcept;
         void progressUploads(detail::DeviceEntry&) noexcept;
-        [[nodiscard]] bool progressFrame() noexcept;
-        [[nodiscard]] bool progressInputUpdates() noexcept;
-        [[nodiscard]] bool progressProgramPreparations() noexcept;
+        [[nodiscard]] bool progressFrame(detail::DeviceEntry&) noexcept;
+        [[nodiscard]] bool progressInputUpdates(detail::DeviceEntry&) noexcept;
+        [[nodiscard]] bool progressProgramPreparations(detail::DeviceEntry&) noexcept;
         void startProgramPreparation(RenderJob&, JobExecution&) noexcept;
         void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
         exec::task<AckResponse> updateFrameData(UpdateFrameData::Request&&) noexcept;
         [[nodiscard]] RenderResult<void> applyFrameData(const JobExecution&, const FrameData&) noexcept;
         void setEffectParameters(const SetEffectParameters::Request&, AckResponse&) noexcept;
         void updateViewCamera(const UpdateViewCamera::Request&, AckResponse&) noexcept;
-        void finishFrame(RenderError) noexcept;
-        [[nodiscard]] bool beginFrame() noexcept;
-        void submitFrameRendering() noexcept;
+        void finishFrame(detail::DeviceEntry&, RenderError) noexcept;
+        [[nodiscard]] bool beginFrame(detail::DeviceEntry&) noexcept;
+        void submitFrameRendering(detail::DeviceEntry&) noexcept;
 
         static void NRI_CALL
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;
@@ -264,7 +243,6 @@ namespace lux::render
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
         void createDeviceSession(const CreateDeviceSession::Request&, CreateDeviceSession::Response&) noexcept;
         void removeDeviceSession(const RemoveDeviceSession::Request&, RemoveDeviceSession::Response&) noexcept;
-        void selectExecutionDevice(detail::DeviceEntry*) noexcept;
         void queryRenderDevice(const QueryRenderDevice::Request&, QueryRenderDevice::Response&) noexcept;
         void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
 
@@ -276,6 +254,7 @@ namespace lux::render
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
         [[nodiscard]] RenderResult<HandlerCall>
         resolveCommandCall(CommandId, const CommandRecord&, const ipc::IpcMessage&, ResourceCommandUse& resource) noexcept;
+        void failDevice(detail::DeviceEntry&, RenderError) noexcept;
         void failExecution(RenderError error) noexcept;
 
         std::size_t publishResponses(std::size_t limit) noexcept;

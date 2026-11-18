@@ -47,6 +47,17 @@ namespace lux::render::detail
             std::span<RenderGraphInstance* const>, std::span<const StorageFrameUse>,
             std::span<const SubmissionOrder> order = {}
         ) noexcept;
+        void setRecordingPolicy(execution::CpuScheduler cpu, bool parallel) noexcept
+        {
+            cpu_ = cpu;
+            parallel_recording_ = parallel;
+        }
+
+        [[nodiscard]] bool parallelRecordingPending() const noexcept
+        {
+            return parallel_recording_ && recording_pending_;
+        }
+
         void cancel(RenderError) noexcept;
 
     private:
@@ -69,6 +80,7 @@ namespace lux::render::detail
         std::optional<RenderError> cancellation_;
         std::size_t prepared_instances_ = 0;
         bool worker_pending_ = false;
+        bool recording_pending_ = false;
         bool copies_flushed_ = false;
         bool resources_ready_ = false;
         bool draw_data_ready_ = false;

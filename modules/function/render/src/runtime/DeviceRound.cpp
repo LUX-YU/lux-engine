@@ -66,7 +66,10 @@ namespace lux::render
         if (!job->control.running()) co_return AckResponse{RenderError{kJobStopped}};
         if (!input.data) co_return AckResponse{RenderError{kFrameContract}};
         auto& execution = *job->execution;
-        if (!round_.operation && input_updates_.empty())
+        auto& entry = *runtime_->device(execution.device);
+        if (const auto error = entry.admissionError(); error.type) co_return AckResponse{error};
+        auto& round = entry.round;
+        if (!round.operation && round.input_updates.empty())
         {
             const auto updated = applyFrameData(execution, *input.data);
             if (updated && job->last_run_error.type)
@@ -77,7 +80,7 @@ namespace lux::render
         }
         if (execution.pending_uses == UINT32_MAX) co_return AckResponse{RenderError{kRuntimeCapacity}};
         InputUpdate pending{input.job, input.data, &execution, nullptr, nullptr};
-        co_return co_await exec::create<stdexec::set_value_t(AckResponse)>([this, &pending](auto& context) noexcept
+        co_return co_await exec::create<stdexec::set_value_t(AckResponse)>([&round, &pending](auto& context) noexcept
         {
             using Context = std::remove_reference_t<decltype(context)>;
             ++pending.execution->pending_uses;
@@ -87,21 +90,23 @@ namespace lux::render
                 auto& context = *static_cast<Context*>(receiver);
                 stdexec::set_value(std::move(context.receiver), response);
             };
-            input_updates_.push_back(&pending);
+            round.input_updates.push_back(&pending);
         });
     }
 
-    bool RenderServer::Impl::progressInputUpdates() noexcept
+    bool RenderServer::Impl::progressInputUpdates(detail::DeviceEntry& entry) noexcept
     {
-        if (round_.operation || input_updates_.empty()) return false;
-        const auto count = std::min<std::size_t>(input_updates_.size(), 32);
+        auto& round = entry.round;
+        if (round.operation || round.input_updates.empty()) return false;
+        const auto count = std::min<std::size_t>(round.input_updates.size(), 32);
         for (std::size_t i = 0; i < count; ++i)
         {
-            auto& update = *input_updates_.front();
-            input_updates_.pop_front();
+            auto& update = *round.input_updates.front();
+            round.input_updates.pop_front();
             auto& job = *runtime_->jobs_.find(update.job);
             RenderError error;
-            if (stop_requested_.load()) error = {kCommandCancelled};
+            if (const auto failure = entry.admissionError(); failure.type) error = failure;
+            else if (stop_requested_.load()) error = {kCommandCancelled};
             else if (!job.control.running()) error = {kJobStopped};
             else if (auto result = applyFrameData(*update.execution, *update.data); !result) error = result.error();
             if (!error.type && job.last_run_error.type)
@@ -115,90 +120,86 @@ namespace lux::render
         return true;
     }
 
-    bool RenderServer::Impl::beginFrame() noexcept
+    bool RenderServer::Impl::beginFrame(detail::DeviceEntry& entry) noexcept
     {
-        auto& entry = *runtime_->execution_device_;
+        auto& round = entry.round;
         auto& progress = entry.frameProgress();
-        const auto& inputs = round_.inputs;
+        const auto& inputs = round.inputs;
         const bool structure_changed = inputs.revision != job_structure_revision_ ||
             inputs.output_uses_revision != runtime_->resources_.outputUsesRevision();
-        if (structure_changed) rebuildFrameInputs();
-        if (const auto selection = selectFrameInputs(progress.nextSlot()); selection.type)
+        if (structure_changed) rebuildFrameInputs(entry);
+        if (const auto selection = selectFrameInputs(entry, progress.nextSlot()); selection.type)
         {
             for (const auto& job : inputs.jobs) runtime_->jobs_.find(job.id)->control.rejectUnadmitted(selection);
             return false;
         }
-        if (frame_outputs_.empty() || !progress.canBegin(entry.session())) return false;
+        if (round.outputs.empty() || !progress.canBegin(entry.session())) return false;
 
-        // A parallel bulk sender joins tasks assigned to every worker. While one worker may
-        // be inside a driver call, record on the other worker with the same frozen batch path.
-        const bool parallel_recording = !preparing_execution_;
-        const auto cpu = parallel_recording ? cpu_scheduler_ : recording_scheduler_;
-        round_.operation.emplace(
-            entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu, parallel_recording
-        );
-        auto opened = round_.operation->tryBegin();
+        round.operation.emplace(entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu_scheduler_);
+        auto opened = round.operation->tryBegin();
         if (!opened || !*opened)
         {
-            round_.operation.reset();
+            round.operation.reset();
             if (!opened)
             {
-                for (const auto& output : frame_outputs_)
+                for (const auto& output : round.outputs)
                     runtime_->jobs_.find(output.job)->control.rejectUnadmitted(opened.error());
             }
             return false;
         }
-        const auto context = round_.operation->context();
+        const auto context = round.operation->context();
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        slot_opened_at_ = std::chrono::steady_clock::now();
+        round.opened_at = std::chrono::steady_clock::now();
         rounds_opened_.fetch_add(1, std::memory_order_relaxed);
 #endif
-        round_.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
-        for (auto& output : frame_outputs_)
+        round.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
+        for (auto& output : round.outputs)
         {
             output.submitted = false;
             auto& control = runtime_->jobs_.find(output.job)->control;
-            if (!control.tryAdmit(context.frame_index, context.slot_index, frame_runs_[frame_run_count_++]))
+            if (!control.tryAdmit(context.frame_index, context.slot_index, round.runs[round.run_count++]))
                 std::terminate();
         }
-        if (auto applied = applyParameterSources(round_.slot()); !applied) round_.error = applied.error();
+        if (auto applied = applyParameterSources(entry, round.slot()); !applied) round.error = applied.error();
         return true;
     }
 
-    void RenderServer::Impl::finishFrame(RenderError error) noexcept
+    void RenderServer::Impl::finishFrame(detail::DeviceEntry& entry, RenderError error) noexcept
     {
-        if (round_.operation->active())
+        auto& round = entry.round;
+        if (round.operation->active())
         {
-            round_.operation->cancel(error);
+            round.operation->cancel(error);
         }
-        round_.operation.reset();
+        round.operation.reset();
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto held_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - slot_opened_at_
+            std::chrono::steady_clock::now() - round.opened_at
         ).count();
         slot_cpu_hold_ns_.fetch_add(held_ns, std::memory_order_relaxed);
-        const auto reads = runtime_->execution_device_->frameWorkspace().submissions.takeRasterReads();
+        const auto reads = entry.frameWorkspace().submissions.takeRasterReads();
         raster_buffer_ranges_.fetch_add(reads.buffer_ranges, std::memory_order_relaxed);
         raster_buffer_bytes_.fetch_add(reads.buffer_bytes, std::memory_order_relaxed);
         raster_image_ranges_.fetch_add(reads.image_ranges, std::memory_order_relaxed);
         raster_image_subresources_.fetch_add(reads.image_subresources, std::memory_order_relaxed);
 #endif
-        round_.error = {};
-        for (std::size_t i = 0; i < frame_run_count_; ++i)
+        round.error = {};
+        for (std::size_t i = 0; i < round.run_count; ++i)
         {
-            const auto& output = frame_outputs_[i];
+            const auto& output = round.outputs[i];
             auto& job = *runtime_->jobs_.find(output.job);
             const auto failure = error.type ? error : RenderError{kJobState};
             job.last_run_error = output.submitted ? RenderError{} : failure;
-            frame_runs_[i].finish(output.submitted ? RenderResult<void>{} : cxx::unexpected(failure));
+            round.runs[i].finish(output.submitted ? RenderResult<void>{} : cxx::unexpected(failure));
             retireStoppedExecution(job);
         }
-        frame_run_count_ = 0;
+        round.run_count = 0;
     }
 
-    bool RenderServer::Impl::progressProgramPreparations() noexcept
+    bool RenderServer::Impl::progressProgramPreparations(detail::DeviceEntry& entry) noexcept
     {
-        if (round_.operation || stop_requested_.load()) return false;
+        auto& round = entry.round;
+        if (round.operation || stop_requested_.load() || entry.admissionError().type) return false;
 
         bool progressed = false;
         // Settle every newly accepted packet before capturing any program revision.
@@ -208,7 +209,7 @@ namespace lux::render
             auto& job = *runtime_->jobs_.find(id);
             if (!job.control.eligible()) continue;
             auto& execution = *job.execution;
-            if (runtime_->device(execution.device) != runtime_->execution_device_) continue;
+            if (execution.device != entry.id) continue;
             if (const auto* packet = job.control.takeRequestedData())
             {
                 const auto updated = applyFrameData(execution, *packet);
@@ -232,14 +233,24 @@ namespace lux::render
         const auto count = running_jobs_.size();
         for (std::size_t offset = 0; offset < count; ++offset)
         {
-            const auto index = (preparation_cursor_ + offset) % count;
+            const auto index = (round.preparation_cursor + offset) % count;
             auto& job = *runtime_->jobs_.find(running_jobs_[index]);
             if (!job.readyToRun() || job.control.pendingStart() || !jobTargetReady(job)) continue;
             auto& execution = *job.execution;
-            if (runtime_->device(execution.device) != runtime_->execution_device_) continue;
+            if (execution.device != entry.id) continue;
             if (execution.programsReady() || execution.programError().type) continue;
             if (execution.pending_uses || !resourcesAvailable(execution.resources)) continue;
-            preparation_cursor_ = (index + 1) % count;
+            const bool parallel_recording = std::ranges::any_of(runtime_->devices_, [](const auto& device) noexcept
+            {
+                const auto& operation = device->round.operation;
+                return operation && operation->parallelRecordingPending();
+            });
+            if (parallel_recording)
+            {
+                program_waiting_for_recording_ = true;
+                return progressed;
+            }
+            round.preparation_cursor = (index + 1) % count;
             startProgramPreparation(job, execution);
             return true;
         }
@@ -299,12 +310,13 @@ namespace lux::render
         );
     }
 
-    void RenderServer::Impl::submitFrameRendering() noexcept
+    void RenderServer::Impl::submitFrameRendering(detail::DeviceEntry& entry) noexcept
     {
-        round_.pending = true;
+        auto& round = entry.round;
+        round.pending = true;
         const auto delivery = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         stdexec::spawn(
-            stdexec::starts_on(delivery, submitCurrentFrame()) |
+            stdexec::starts_on(delivery, submitCurrentFrame(entry)) |
                 stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
                 stdexec::upon_stopped(
                     []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCommandCancelled}); }
@@ -312,43 +324,45 @@ namespace lux::render
                 stdexec::continues_on(delivery) |
                 stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
                 stdexec::then(
-                    [this](RenderResult<void> result) noexcept
+                    [this, &entry](RenderResult<void> result) noexcept
                     {
-                        round_.pending = false;
-                        if (!result) round_.error = result.error();
-                        if (round_.error.type || !round_.operation->active()) finishFrame(round_.error);
+                        auto& round = entry.round;
+                        round.pending = false;
+                        if (!result && !round.error.type) round.error = result.error();
+                        if (round.error.type || !round.operation->active()) finishFrame(entry, round.error);
                     }
                 ),
             command_scope_.get_token()
         );
     }
 
-    bool RenderServer::Impl::progressFrame() noexcept
+    bool RenderServer::Impl::progressFrame(detail::DeviceEntry& entry) noexcept
     {
-        if (!round_.operation)
+        auto& round = entry.round;
+        if (!round.operation)
         {
-            return !stop_requested_.load() && beginFrame();
+            return !stop_requested_.load() && !entry.admissionError().type && beginFrame(entry);
         }
-        if (round_.pending) return false;
-        if (round_.error.type)
+        if (round.pending) return false;
+        if (round.error.type)
         {
-            finishFrame(round_.error);
+            finishFrame(entry, round.error);
             return true;
         }
-        if (round_.stage == DeviceRound::EStage::ACQUIRING_OUTPUTS)
+        if (round.stage == DeviceRound::EStage::ACQUIRING_OUTPUTS)
         {
-            const auto acquired = acquireFrameOutputs(round_.slot());
+            const auto acquired = acquireFrameOutputs(entry, round.slot());
             if (!acquired)
             {
-                finishFrame(acquired.error());
+                finishFrame(entry, acquired.error());
                 return true;
             }
             if (!*acquired) return false;
-            round_.stage = DeviceRound::EStage::SUBMITTING;
+            round.stage = DeviceRound::EStage::SUBMITTING;
         }
-        if (round_.stage == DeviceRound::EStage::SUBMITTING && round_.operation->canRun())
+        if (round.stage == DeviceRound::EStage::SUBMITTING && round.operation->canRun())
         {
-            submitFrameRendering();
+            submitFrameRendering(entry);
             return true;
         }
         return false;

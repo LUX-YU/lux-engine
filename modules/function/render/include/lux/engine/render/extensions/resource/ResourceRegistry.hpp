@@ -76,6 +76,7 @@ namespace lux::render
         [[nodiscard]] ResourceTypeId declarationOf(ResourceInstanceId) const noexcept;
         [[nodiscard]] RenderResult<ResourceCommandUse>
         acquireCommand(ResourceInstanceId, CommandId, bool exclusive) noexcept;
+        [[nodiscard]] const detail::DeviceSession* deviceOf(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool hasCommands(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool hasExclusiveCommand(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept;

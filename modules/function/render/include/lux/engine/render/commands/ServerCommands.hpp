@@ -62,6 +62,7 @@ namespace lux::render
             std::uint32_t max_attachment_dimension = 0;
             std::uint32_t physical_queues = 0;
             std::uint32_t frames_in_flight = 0;
+            RenderError execution_error;
         };
     };
 } // namespace lux::render

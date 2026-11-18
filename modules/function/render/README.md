@@ -178,7 +178,9 @@ The library returns structured diagnostics and never chooses a terminal or loggi
 3. Create the Scene, View and Target, then use `CreateEffect` with the logical Feature recipe. Create the Job
    with the Scene, View and Effect IDs. Pass the device and its Target to `StartRenderJob` to prepare execution.
    A running Rebind stays on that device. Cross-device Target reads and execution dependencies are rejected.
-   Secondary devices can assemble executions and upload resources. The current frame scheduler drives one device.
+   Each device owns its frame slots, upload state and published output history. The Server visits ready devices
+   in rotating order. QueryRenderDevice reports a device's execution error separately from the query status.
+   A terminal device error closes its admission while healthy devices continue submitting.
    Bind a sampled producer Target to an authored external `FeaturePortRef` in `JobBinding::target_images`.
 4. Use `QueryRenderJobInputLayout` to construct two stable `FrameData` slots. Seal a slot and call
    `UpdateFrameData{job, &packet}` to apply it without granting an execution credit. Use

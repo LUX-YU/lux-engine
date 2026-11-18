@@ -72,6 +72,14 @@ namespace lux::render
     {
         auto* job = runtime_->jobs_.find(input.job);
         if (!job) { reply.error = {kJobIdentity}; return; }
+        if (job->control.running())
+        {
+            if (const auto failure = runtime_->device(job->execution->device)->admissionError(); failure.type)
+            {
+                reply.error = failure;
+                return;
+            }
+        }
         const auto result = job->control.setCadence(input.cadence);
         if (result)
         {
@@ -171,7 +179,9 @@ namespace lux::render
     {
         const auto* target = runtime_->targets_.find(target_id);
         if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (!runtime_->device(device)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        const auto* owner = runtime_->device(device);
+        if (!owner) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (const auto failure = owner->admissionError(); failure.type) return cxx::unexpected(failure);
         const bool wrong_device = targetState(*target).device != device ||
             (job.execution && job.execution->device != device);
         if (wrong_device) return cxx::unexpected(RenderError{kJobState});
@@ -325,6 +335,11 @@ namespace lux::render
         auto* job = runtime_->jobs_.find(input.job);
         if (!job) { reply.error = {kJobIdentity}; return; }
         if (!job->control.running()) { reply.error = {kJobStopped}; return; }
+        if (const auto failure = runtime_->device(job->execution->device)->admissionError(); failure.type)
+        {
+            reply.error = failure;
+            return;
+        }
         if (job->control.pendingStart() || !canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
         if (auto valid = input.inputs.viewport.validate(); !valid) { reply.error = valid.error(); return; }
         auto& execution = *job->execution;
@@ -345,6 +360,11 @@ namespace lux::render
         auto* job = runtime_->jobs_.find(input.job);
         if (!job) { reply.error = {kJobIdentity}; return; }
         if (!job->control.running()) { reply.error = {kJobStopped}; return; }
+        if (const auto failure = runtime_->device(job->execution->device)->admissionError(); failure.type)
+        {
+            reply.error = failure;
+            return;
+        }
         if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
         const auto result = job->execution->instance.invalidateHistory(input.previous);
         reply.error = result ? RenderError{} : result.error();
@@ -365,15 +385,21 @@ namespace lux::render
             [this, id, data = input.data, &request](auto& context) noexcept
             {
                 auto* job = runtime_->jobs_.find(id);
-                if (!job || !job->control.running() || !jobTargetReady(*job))
+                if (!job || !job->control.running())
                 {
                     const auto error = job ? kJobStopped : kJobIdentity;
                     stdexec::set_value(std::move(context.receiver), JobSubmitted{RenderError{error}, id});
                     return;
                 }
-                if (runtime_->device(job->execution->device) != runtime_->execution_device_)
+                const auto failure = runtime_->device(job->execution->device)->admissionError();
+                if (failure.type)
                 {
-                    stdexec::set_value(std::move(context.receiver), JobSubmitted{RenderError{kRuntimeUnsupported}, id});
+                    stdexec::set_value(std::move(context.receiver), JobSubmitted{failure, id});
+                    return;
+                }
+                if (!jobTargetReady(*job))
+                {
+                    stdexec::set_value(std::move(context.receiver), JobSubmitted{RenderError{kJobStopped}, id});
                     return;
                 }
                 auto& pending = request.emplace(

@@ -2,7 +2,9 @@
 
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
-#include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/runtime/DeviceRound.hpp>
+#include <lux/engine/render/runtime/JobOutput.hpp>
+#include <lux/cxx/container/BasicSparseSet.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <map>
 
@@ -37,9 +39,6 @@ namespace lux::render::detail
         [[nodiscard]] ResourceSet* scopedResources(SceneId, ViewId, bool create) noexcept;
         [[nodiscard]] bool scopedResourceCommands(SceneId = {}, ViewId = {}) const noexcept;
         void eraseResourceScope(SceneId, ViewId = {}) noexcept;
-        bool upload_pending = false;
-        std::uint32_t pending_starts = 0;
-
     private:
         DeviceEntry(
             ResourceRegistry&,
@@ -63,5 +62,19 @@ namespace lux::render::detail
             std::map<ScopeKey, ResourceSet> views;
         };
         std::map<ScopeKey, SceneResources> scene_resources_;
+
+    public:
+        DeviceSessionId id;
+        runtime_detail::DeviceRound round;
+        cxx::SlotKeySparseSet<TargetId, JobOutput> outputs;
+        RenderError failure;
+
+        [[nodiscard]] RenderError admissionError() const noexcept
+        {
+            return failure.type ? failure : session().terminalError();
+        }
+
+        bool upload_pending = false;
+        std::uint32_t pending_starts = 0;
     };
 } // namespace lux::render::detail

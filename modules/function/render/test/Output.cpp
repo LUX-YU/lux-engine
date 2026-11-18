@@ -590,6 +590,9 @@ static void basicFeatureOutputs(bool d3d12)
     verifyTonemapOutput(*client, commands, session, scene, clear, tone, capture,
         {rdesc::ETextureFormat::RGBA8_SRGB}, EColorEncoding::SRGB);
     verifyTargetInput(*client, commands, session, scene, clear, tone, capture);
+    const auto secondary = call<CreateDeviceSession>(*client, commands, options).device;
+    verifyTargetInput(*client, commands, secondary, scene, clear, tone, capture);
+    std::puts("DEVICE HISTORY PASS: sampled and read back published pixels on both sessions");
     std::printf("TONEMAP FEATURE PASS backend=%s linear, shader sRGB, target sRGB and Effect exposure\n",
         d3d12 ? "D3D12" : "Vulkan");
     server->stop();

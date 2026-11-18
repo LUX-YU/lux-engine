@@ -132,6 +132,7 @@ namespace lux::render::detail
         cxx::scope_exit settle([this]() noexcept
         {
             worker_pending_ = false;
+            recording_pending_ = false;
             if (cancellation_) cancel(*cancellation_);
         });
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
@@ -224,7 +225,9 @@ namespace lux::render::detail
         if (uploads_) uploads_->reservePreparationStaging(false);
         if (auto prepared = submission_->prepare(instances, order); !prepared)
             co_return cxx::unexpected(track(prepared).error());
+        recording_pending_ = true;
         auto recorded = co_await submission_->record(cpu_, parallel_recording_);
+        recording_pending_ = false;
         if (!recorded) co_return cxx::unexpected(track(recorded).error());
         auto accepted = co_await submission_->submit(cancellation_);
         if (!accepted) cancellation_ = accepted.error();

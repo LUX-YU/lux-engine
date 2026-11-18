@@ -92,6 +92,12 @@ namespace lux::render
         return entry && entry->exclusive_command;
     }
 
+    const detail::DeviceSession* ResourceRegistry::deviceOf(ResourceInstanceId id) const noexcept
+    {
+        const auto* entry = entries_.find(id);
+        return entry && entry->instance ? &entry->storage_set->device_ : nullptr;
+    }
+
     bool ResourceRegistry::canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept
     {
         const auto* target = entries_.find(owner);

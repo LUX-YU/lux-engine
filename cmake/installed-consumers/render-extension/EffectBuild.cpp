@@ -990,6 +990,170 @@ static void verifyDeviceOwnership(
     std::puts("DEVICE OWNERSHIP PASS: shared logical view, isolated scopes and upload, cross-device bindings and edges");
 }
 
+struct QueryProbeAdapter final
+{
+    static constexpr std::string_view name = "test.device.adapter";
+    using Data = ResourceInstanceId;
+    using Request = ResourceInstanceId;
+    struct Response final
+    {
+        RenderError error{};
+        std::uint64_t low = 0, high = 0;
+        std::string name;
+    };
+    static ResourceInstanceId resourceId(const Request& request) noexcept { return request; }
+};
+
+struct AdapterProbe final
+{
+    using Descriptor = AdapterProbe;
+    using Config = void;
+    using Ops = void;
+    using Commands = std::tuple<QueryProbeAdapter>;
+    using PerFrameData = std::tuple<>;
+    static inline const ResourceDefinition descriptor{
+        ResourceNameView{"test.device.adapter.identity"}, 0, 0, {}, "Reports the native test adapter identity.",
+        EResourceDomain::DEVICE, resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+    };
+
+    nri::AdapterDesc adapter;
+
+    static RenderResult<std::unique_ptr<AdapterProbe>> create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+    {
+        return std::make_unique<AdapterProbe>(AdapterProbe{context.device.description().adapterDesc});
+    }
+
+    static void read(AdapterProbe& probe, const QueryProbeAdapter::Request&, QueryProbeAdapter::Response& response)
+        noexcept
+    {
+        const auto& adapter = probe.adapter;
+        response = {{}, adapter.uid.low, adapter.uid.high, adapter.name};
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
+        static const std::array bindings{CommandBinding::declare<QueryProbeAdapter, &read>()};
+        return makeResourceRegistration<AdapterProbe, AdapterProbe, &create>(nullptr, nullptr, bindings);
+    }
+};
+
+static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, DeviceOptions options, bool physical_pair)
+{
+    RenderServerConfig config{"installed.effect.independent_devices", enableNativeValidation()};
+    auto server = take(RenderServer::create(config, execution));
+    take(server->registerResource<Monitor>());
+    take(server->registerResource<AdapterProbe>());
+    take(server->registerResource<ColdResource>());
+    take(server->registerCapability<ClearCapability>());
+    const auto feature = take(server->registerFeature<ClearFeature>());
+    const auto implementation = take(server->registerCapabilityImplementation<ClearImplementation>());
+    auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
+    auto pending_b = take(ipc::IpcCore::instance().createRequester(config.channel_name));
+    RenderResult<void> ran;
+    std::thread render([&] { ran = server->run(); });
+    const auto a = call<CreateDeviceSession>(client, options);
+    CHECK(!a.error.type);
+    if (physical_pair) options.physical_device_index = 1;
+    const auto b = call<CreateDeviceSession>(client, options);
+    if (physical_pair && b.error.type)
+    {
+        std::printf("PHYSICAL PAIR UNKNOWN: adapter 1 creation error=%llu arg=%llu\n", b.error.type, b.error.args[0]);
+        server->stop();
+        render.join();
+        CHECK(ran);
+        return false;
+    }
+    CHECK(!b.error.type && a.device != b.device);
+    const auto read_adapter = [&](DeviceSessionId device)
+    {
+        const auto id = call<GetOrCreateResource>(client, {device, DeviceScope{}, AdapterProbe::descriptor.type});
+        CHECK(!id.error.type);
+        auto adapter = call<QueryProbeAdapter>(client, id.resource_id);
+        CHECK(!adapter.error.type);
+        return adapter;
+    };
+    const auto adapter_a = read_adapter(a.device);
+    const auto adapter_b = read_adapter(b.device);
+    const bool distinct = adapter_a.low != adapter_b.low || adapter_a.high != adapter_b.high;
+    if (physical_pair && !distinct)
+    {
+        std::puts("PHYSICAL PAIR UNKNOWN: both sessions reported the same native adapter UID");
+        server->stop();
+        render.join();
+        CHECK(ran);
+        return false;
+    }
+    std::printf(
+        "DEVICE PAIR ADAPTERS backend=%s distinct=%u a=%s uid=%llx/%llx b=%s uid=%llx/%llx\n",
+        options.backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan", unsigned(distinct),
+        adapter_a.name.c_str(), adapter_a.high, adapter_a.low, adapter_b.name.c_str(), adapter_b.high, adapter_b.low
+    );
+    CHECK(!call<GetOrCreateResource>(client, {b.device, DeviceScope{}, MonitorResource::descriptor.type}).error.type);
+
+    const TargetDesc desc{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
+    CreateEffectRequest recipe{{desc.format}};
+    recipe.definition.features.push_back({feature, "clear", {}});
+    recipe.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{desc.format, 1}});
+    recipe.implementations.push_back({implementation, "clear"});
+    const auto effect = call<CreateEffect>(client, std::move(recipe));
+    CHECK(!effect.error.type);
+    const auto scene = call<CreateScene>(client, {}).scene;
+    const auto view = call<CreateView>(client, {scene}).view;
+    const auto start = [&](DeviceSessionId device)
+    {
+        const auto output = call<CreateTarget>(client, {device, desc});
+        const auto job = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED});
+        CHECK(!output.error.type && !job.error.type);
+        CHECK(!call<StartRenderJob>(client, {device, job.job, output.target}).error.type);
+        return std::pair{job.job, output.target};
+    };
+    const auto [job_a, output_a] = start(a.device);
+    const auto [job_b, output_b] = start(b.device);
+    Monitor::submitted.store(false);
+    Monitor::hold_submit.store(true);
+    const auto b_pending = send<RequestRenderJob>(pending_b, {job_b});
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!Monitor::submitted.load())
+    {
+        CHECK(std::chrono::steady_clock::now() < deadline);
+        std::this_thread::yield();
+    }
+    const auto accepted_a = call<RequestRenderJob>(client, {job_a});
+    const auto next_a = call<RequestRenderJob>(client, {job_a});
+    CHECK(Monitor::hold_submit.load());
+    CHECK(!accepted_a.error.type && !next_a.error.type);
+    CHECK(accepted_a.frame_index == 0 && accepted_a.slot_index == 0);
+    CHECK(next_a.frame_index == 1 && next_a.slot_index == 1);
+    Monitor::hold_submit.store(false);
+    Monitor::hold_submit.notify_all();
+    const auto accepted_b = receive<RequestRenderJob>(pending_b, b_pending);
+    CHECK(!accepted_b.error.type && accepted_b.frame_index == 0 && accepted_b.slot_index == 0);
+
+    Monitor::injected.store(nri::Result::FAILURE);
+    Monitor::reject_after.store(1);
+    CHECK(call<RequestRenderJob>(client, {job_b}).error.type == kOutcomeUnknown);
+    const auto failed = call<QueryRenderDevice>(client, b.device);
+    const auto healthy = call<QueryRenderDevice>(client, a.device);
+    CHECK(!failed.error.type && failed.execution_error.type == kOutcomeUnknown);
+    CHECK(!healthy.error.type && !healthy.execution_error.type);
+    CHECK(call<CreateTarget>(client, {b.device, desc}).error.type == kOutcomeUnknown);
+    CHECK(call<UpdateJobInputs>(client, {job_b}).error.type == kOutcomeUnknown);
+    CHECK(call<SetRenderJobCadence>(client, {job_b, EJobCadence::CONTINUOUS}).error.type == kOutcomeUnknown);
+    const auto after = call<RequestRenderJob>(client, {job_a});
+    CHECK(!after.error.type && after.frame_index == 2 && after.slot_index == 0);
+    CHECK(!call<StopRenderJob>(client, job_b).error.type);
+    CHECK(!call<RemoveRenderJob>(client, job_b).error.type);
+    CHECK(!call<RemoveTarget>(client, output_b).error.type);
+    CHECK(!call<StopRenderJob>(client, job_a).error.type);
+    CHECK(!call<RemoveRenderJob>(client, job_a).error.type);
+    CHECK(!call<RemoveTarget>(client, output_a).error.type);
+    server->stop();
+    render.join();
+    CHECK(ran && server->stats().validation_errors == 0);
+    std::puts("DEVICE ROUND PASS: A accepted before B gate release, local FIF 0/1 and 0, A accepted after B failure");
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     auto execution = take(execution::ExecutionRuntime::create({4, 32, {32}}));
@@ -997,12 +1161,17 @@ int main(int argc, char** argv)
     config.uploads.emplace();
     DeviceOptions device;
     unsigned profile_jobs = 0;
+    bool physical_pair = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string_view arg = argv[i];
         if (arg == "d3d12")
         {
             device.backend = EGraphicsBackend::D3D12;
+        }
+        else if (arg == "--dual-adapter")
+        {
+            physical_pair = true;
         }
         else if (arg == "--profile-jobs" && i + 1 < argc)
         {
@@ -1014,6 +1183,7 @@ int main(int argc, char** argv)
             CHECK(false);
         }
     }
+    if (physical_pair) return verifyIndependentDevices(*execution, device, true) ? 0 : 77;
     if (profile_jobs)
     {
         recordOpenFeature(*execution, device, profile_jobs);
@@ -1202,6 +1372,7 @@ int main(int argc, char** argv)
     client.reset();
     server.reset();
     recordOpenFeature(*execution, device);
+    CHECK(verifyIndependentDevices(*execution, device, false));
     execution.reset();
     std::puts("JOB LIFECYCLE PASS: Start, schema Rebind, native failure rollback, retained Resource, exact Run and writer hand-off");
 }

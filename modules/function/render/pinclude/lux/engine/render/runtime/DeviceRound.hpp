@@ -2,6 +2,9 @@
 
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/runtime/JobControl.hpp>
+#include <chrono>
+#include <deque>
 
 namespace lux::render
 {
@@ -60,6 +63,16 @@ namespace lux::render::runtime_detail
         std::vector<std::uint8_t> used_storages;
     };
 
+    // Borrowed from the connected UpdateFrameData operation until its terminal response.
+    struct InputUpdate final
+    {
+        RenderJobId job;
+        const FrameData* data;
+        JobExecution* execution;
+        void* receiver;
+        void (*complete)(void*, AckResponse) noexcept;
+    };
+
     struct DeviceRound final
     {
         enum class EStage : std::uint8_t { ACQUIRING_OUTPUTS, SUBMITTING };
@@ -70,16 +83,29 @@ namespace lux::render::runtime_detail
         RenderError error;
         FrameInputs inputs;
 
+        struct Output final
+        {
+            RenderJobId job;
+            JobExecution* execution;
+            TargetId target;
+            std::span<const TargetId> reads;
+            bool submitted = false;
+        };
+
+        std::vector<Output> outputs;
+        std::vector<detail::RenderGraphInstance*> instances;
+        std::deque<detail::JobControl::Run> runs;
+        std::size_t run_count = 0;
+        detail::SubmissionFrontiers target_uses;
+        std::vector<detail::StorageFrameUse> storages;
+        std::vector<detail::SubmissionOrder> job_order;
+        std::deque<InputUpdate*> input_updates;
+        std::size_t preparation_cursor = 0;
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        std::chrono::steady_clock::time_point opened_at;
+#endif
+
         [[nodiscard]] std::uint32_t slot() const noexcept { return operation->context().slot_index; }
     };
 
-    // Borrowed from the connected UpdateFrameData operation until its terminal response.
-    struct InputUpdate final
-    {
-        RenderJobId job;
-        const FrameData* data;
-        JobExecution* execution;
-        void* receiver;
-        void (*complete)(void*, AckResponse) noexcept;
-    };
 } // namespace lux::render::runtime_detail

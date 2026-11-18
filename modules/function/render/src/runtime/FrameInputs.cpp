@@ -20,12 +20,13 @@ namespace lux::render
         }
     } // namespace
 
-    void RenderServer::Impl::rebuildFrameInputs() noexcept
+    void RenderServer::Impl::rebuildFrameInputs(detail::DeviceEntry& device) noexcept
     {
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto started = std::chrono::steady_clock::now();
 #endif
-        auto& inputs = round_.inputs;
+        auto& round = device.round;
+        auto& inputs = round.inputs;
         inputs.revision = job_structure_revision_;
         inputs.output_uses_revision = runtime_->resources_.outputUsesRevision();
         inputs.jobs.clear();
@@ -41,7 +42,7 @@ namespace lux::render
             const auto index = static_cast<std::uint32_t>(inputs.jobs.size());
             const auto& job = *runtime_->jobs_.find(id);
             auto& execution = *job.execution;
-            if (runtime_->device(execution.device) != runtime_->execution_device_) continue;
+            if (execution.device != device.id) continue;
             auto& ids = storage_ids.emplace_back();
             auto reads = execution.instance.sampledTargets();
             for (const auto& image : execution.target_images)
@@ -140,11 +141,11 @@ namespace lux::render
         inputs.blocked.reserve(2 * count);
         inputs.ordered.reserve(count);
         inputs.used_storages.resize(inputs.storages.size());
-        frame_outputs_.reserve(count);
-        frame_instances_.reserve(count);
-        frame_storages_.reserve(inputs.storages.size());
-        frame_job_order_.reserve(order_capacity);
-        if (frame_runs_.size() < count) frame_runs_.resize(count);
+        round.outputs.reserve(count);
+        round.instances.reserve(count);
+        round.storages.reserve(inputs.storages.size());
+        round.job_order.reserve(order_capacity);
+        if (round.runs.size() < count) round.runs.resize(count);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto elapsed = std::chrono::steady_clock::now() - started;
         input_rebuilds_.fetch_add(1, std::memory_order_relaxed);
@@ -154,9 +155,10 @@ namespace lux::render
 #endif
     }
 
-    RenderError RenderServer::Impl::selectFrameInputs(std::uint32_t slot) noexcept
+    RenderError RenderServer::Impl::selectFrameInputs(detail::DeviceEntry& device, std::uint32_t slot) noexcept
     {
-        auto& inputs = round_.inputs;
+        auto& round = device.round;
+        auto& inputs = round.inputs;
         using Selection = FrameInputs::Selection;
         using EAvailability = Selection::EAvailability;
         const auto count = inputs.jobs.size();
@@ -165,11 +167,11 @@ namespace lux::render
         const auto selection_capacity = [&]() noexcept
         {
             return std::array{inputs.selection.capacity(), inputs.blocked.capacity(), inputs.used_storages.capacity(),
-                frame_outputs_.capacity(), frame_instances_.capacity(), frame_storages_.capacity()};
+                round.outputs.capacity(), round.instances.capacity(), round.storages.capacity()};
         };
         const auto topology_capacity = [&]() noexcept
         {
-            return std::array{inputs.ordered.capacity(), inputs.frontiers.capacity(), frame_job_order_.capacity()};
+            return std::array{inputs.ordered.capacity(), inputs.frontiers.capacity(), round.job_order.capacity()};
         };
         const auto selection_before = selection_capacity();
         const auto topology_before = topology_capacity();
@@ -186,8 +188,8 @@ namespace lux::render
                 std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count(), std::memory_order_relaxed
             );
             jobs_considered_.fetch_add(count, std::memory_order_relaxed);
-            jobs_selected_.fetch_add(frame_outputs_.size(), std::memory_order_relaxed);
-            dependency_edges_.fetch_add(frame_job_order_.size(), std::memory_order_relaxed);
+            jobs_selected_.fetch_add(round.outputs.size(), std::memory_order_relaxed);
+            dependency_edges_.fetch_add(round.job_order.size(), std::memory_order_relaxed);
             job_selection_growths_.fetch_add(
                 count_growths(selection_before, selection_capacity()), std::memory_order_relaxed
             );
@@ -197,10 +199,10 @@ namespace lux::render
             job_selection_calls_.fetch_add(1, std::memory_order_release);
         });
 #endif
-        frame_outputs_.clear();
-        frame_instances_.clear();
-        frame_job_order_.clear();
-        frame_storages_.clear();
+        round.outputs.clear();
+        round.instances.clear();
+        round.job_order.clear();
+        round.storages.clear();
         inputs.blocked.clear();
         inputs.ordered.clear();
         std::ranges::fill(inputs.selection, Selection{});
@@ -348,12 +350,12 @@ namespace lux::render
         for (auto index : inputs.ordered)
         {
             const auto& job = inputs.jobs[index];
-            frame_outputs_.push_back({job.id, job.execution, job.execution->target, job.reads});
-            frame_instances_.push_back(&job.execution->instance);
+            round.outputs.push_back({job.id, job.execution, job.execution->target, job.reads});
+            round.instances.push_back(&job.execution->instance);
             for (auto storage : job.storages) inputs.used_storages[storage] = 1;
         }
         for (std::size_t i = 0; i < inputs.storages.size(); ++i)
-            if (inputs.used_storages[i]) frame_storages_.push_back(inputs.storages[i]);
+            if (inputs.used_storages[i]) round.storages.push_back(inputs.storages[i]);
 
         // Project the nearest selected ancestors in one logical topological pass.
         // A dormant Job folds its own frontier into its successors.
@@ -384,11 +386,11 @@ namespace lux::render
                 for (auto bits = mask[word]; bits; bits &= bits - 1)
                 {
                     const auto producer = word * 64 + std::countr_zero(bits);
-                    frame_job_order_.push_back({inputs.selection[producer].selected, consumer});
+                    round.job_order.push_back({inputs.selection[producer].selected, consumer});
                 }
             }
         }
-        std::ranges::sort(frame_job_order_, [](const auto& left, const auto& right) noexcept
+        std::ranges::sort(round.job_order, [](const auto& left, const auto& right) noexcept
         {
             return std::tie(left.consumer, left.producer) < std::tie(right.consumer, right.producer);
         });

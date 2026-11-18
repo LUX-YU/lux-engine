@@ -18,6 +18,7 @@ namespace lux::render::detail
           frame_workspace_(frame_count, session_->queueCount(), preparation_capacity),
           resources_(registry, *session_)
     {
+        round.target_uses = session_->makeFrontiers();
     }
 
     RenderResult<std::unique_ptr<DeviceEntry>> DeviceEntry::create(

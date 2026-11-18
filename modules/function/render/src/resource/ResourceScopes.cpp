@@ -67,6 +67,11 @@ namespace lux::render
             return;
         }
         const auto type = runtime_->resources_.typeId(request.declaration);
+        if (const auto failure = device->admissionError(); failure.type)
+        {
+            response.error = failure;
+            return;
+        }
         auto owner = resourceScope(*device, request.scope, type, true);
         if (!owner)
         {

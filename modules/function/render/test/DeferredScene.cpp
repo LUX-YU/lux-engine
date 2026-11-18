@@ -1151,6 +1151,19 @@ int main(int argc, char** argv)
         CHECK(!pbr.hasSameStructure(no_uv_program) && pbr.parameters == no_uv_program.parameters);
         CHECK(call_capture_placed_buffers.load() == buffers_before);
         std::puts("MATERIAL ABI PASS: distinct programs with the same ABI shared an existing FIF page");
+
+        // The opaque Shader leaves the opacity parameter unused. A shorter projection must
+        // nevertheless use its own page, even with the same block shape and ABI hash bucket.
+        auto shorter = pbr;
+        shorter.parameter_defaults.pop_back();
+        auto shorter_values = right_values;
+        shorter_values.pop_back();
+        const auto separate = call<MaterialCommands::Create>(
+            *client, commands, {materials, {std::move(shorter), std::move(shorter_values), {normal_texture}}}
+        ).material;
+        CHECK(call_capture_placed_buffers.load() == buffers_before + fif);
+        call<MaterialCommands::Release>(*client, commands, {separate});
+        std::puts("MATERIAL PROJECTION PASS: same stride and hash bucket kept distinct ABI pages");
     }
     all_materials.push_back(no_uv_material);
     values[1].material = no_uv_material;
@@ -1226,8 +1239,19 @@ int main(int argc, char** argv)
             replacement.material = switched;
             const std::array changed_texture{MeshInstanceUpdate{extra_instances[0], replacement}};
             updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{changed_texture});
-            CHECK(run(0, true, false) != reference);
+            const auto switched_pixels = run(0, true, false);
+            CHECK(switched_pixels != reference);
             const auto pipelines = call_capture_counts[2].load();
+            auto dead_key = extension_detail::ResourceIdentity::local(alternate_normal);
+            ++dead_key.gen;
+            const auto dead_texture = extension_detail::ResourceIdentity::make<TextureId>(
+                extension_detail::ResourceIdentity::parent(alternate_normal), dead_key
+            );
+            const auto rejected = call<MaterialCommands::Update>(
+                *client, commands, {{switched, right_values, {dead_texture}}}, false
+            );
+            CHECK(rejected.error.type == kStorageIdentity);
+            CHECK(run(0, true, false) == switched_pixels);
             call<MaterialCommands::Update>(*client, commands, {{switched, left_values, {normal_texture}}});
             CHECK(run(0, true, false) == reference);
             if (program_cache_probe) CHECK(call_capture_counts[2].load() == pipelines);
@@ -1467,6 +1491,33 @@ int main(int argc, char** argv)
     }
     CHECK(stats.validation_errors == 0);
     server.reset();
+    if (material_pages)
+    {
+        RenderServerConfig constant_config{"test.material.constant", config.validation};
+        DeviceOptions constant_device;
+        constant_device.backend = device.backend;
+        auto constant_server = take(RenderServer::create(constant_config, **runtime, constant_device));
+        auto requester = take(ipc::IpcCore::instance().createRequester(constant_config.channel_name));
+        std::thread worker([&] { CHECK(constant_server->run()); });
+        const auto directory = queryCommands(requester);
+        const auto resource = call<GetOrCreateResource>(
+            requester, directory, {GlobalRenderScope{}, kMaterialResourceName}
+        ).resource_id;
+        const auto constant = call<MaterialCommands::Create>(requester, directory, {resource, {unlit, {}}}).material;
+        CHECK(!constant.isNull());
+        call<MaterialCommands::Release>(requester, directory, {constant});
+        const auto reused = call<MaterialCommands::Create>(requester, directory, {resource, {unlit, {}}}).material;
+        const auto before = extension_detail::ResourceIdentity::local(constant);
+        const auto after = extension_detail::ResourceIdentity::local(reused);
+        CHECK(before.index == after.index && before.gen != after.gen);
+        const auto stale = call<MaterialCommands::Update>(requester, directory, {{constant, {}, {}}}, false);
+        CHECK(stale.error.type == kStorageIdentity);
+        call<MaterialCommands::Release>(requester, directory, {reused});
+        constant_server->stop();
+        worker.join();
+        CHECK(constant_server->stats().validation_errors == 0);
+        std::puts("MATERIAL CONSTANT PASS: no Uploader, valid sentinel program and stale instance generation rejected");
+    }
     CHECK(diagnostic_count.load() != 0);
     runtime->reset(); // Runtime RAII settles execution after the RenderServer has been destroyed.
     std::printf(

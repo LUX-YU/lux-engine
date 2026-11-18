@@ -230,6 +230,8 @@ namespace lux::render::detail
 
         struct HistoryState;
         struct FrameResources;
+        [[nodiscard]] RenderResult<nri::BufferDesc> bufferDescription(const CompiledResource&) const noexcept;
+        [[nodiscard]] nri::Result createBufferView(nri::BufferViewDesc, nri::Descriptor*&) const noexcept;
         [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
         [[nodiscard]] RenderResult<nri::TextureDesc>
         textureDescription(const CompiledResource&, const TargetDesc&) const noexcept;

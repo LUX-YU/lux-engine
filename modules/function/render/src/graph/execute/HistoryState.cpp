@@ -158,7 +158,7 @@ namespace lux::render::detail
                     const auto& plan = plan_->descriptor_plan_->passes[pass];
                     const auto& shader = plan.bindings[plan.uses[index].field];
                     const auto input = shader.bufferView(slot.buffer, selected.offset, selected.size);
-                    result = core.CreateBufferView(input, view);
+                    result = createBufferView(input, view);
                 }
                 if (result != nri::Result::SUCCESS)
                 {

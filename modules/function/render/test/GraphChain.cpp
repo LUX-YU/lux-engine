@@ -43,17 +43,18 @@ struct RecordTextureQueries final
     }
 };
 
-static rdesc::ShaderProgramArtifact program(const rdesc::EmbeddedShader& shader)
+static rdesc::ShaderProgramArtifact program(const rdesc::EmbeddedShader& shader, EGraphicsBackend backend)
 {
-    auto result = shader.load(rdesc::EShaderTarget::SPIRV);
+    const auto target = backend == EGraphicsBackend::D3D12 ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+    auto result = shader.load(target);
     CHECK(!result.stages.empty());
     return result;
 }
 
-static rdesc::ShaderProgramArtifact rasterProgram(const rdesc::EmbeddedShader& fragment)
+static rdesc::ShaderProgramArtifact rasterProgram(const rdesc::EmbeddedShader& fragment, EGraphicsBackend backend)
 {
-    auto result = program(fragment);
-    auto vertex = program(kGraphTriangle);
+    auto result = program(fragment, backend);
+    auto vertex = program(kGraphTriangle, backend);
     result.stages.insert(result.stages.begin(), std::move(vertex.stages.front()));
     result.interface.entry_points.insert(
         result.interface.entry_points.begin(),
@@ -188,9 +189,10 @@ static void exportRows(
     }
 }
 
-static void imageChain(Validation& validation, std::uint32_t fif, bool async_compute = false)
+static void imageChain(Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool async_compute = false)
 {
     DeviceOptions options;
+    options.backend = backend;
     options.multiple_queues = async_compute;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
@@ -212,13 +214,13 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     ComputeWork compute;
     compute.allow_async_compute = async_compute;
     compute.interface.program =
-        take(builder.addProgram(program(kGraphFill)));
+        take(builder.addProgram(program(kGraphFill, backend)));
     compute.interface.resources = {{"generated", {{seed, 0}, GraphImageRange{1, 1, 1}, EGraphAccess::WRITE}}};
     compute.dispatch = DispatchArguments{{8, 8, 1}};
     const auto generated = take(builder.addComputePass("generate mip 1", std::move(compute)));
     RasterWork mrt;
     auto& fixed_mrt = mrt.fixed();
-    fixed_mrt.interface.program = take(builder.addProgram(rasterProgram(kGraphMrt)));
+    fixed_mrt.interface.program = take(builder.addProgram(rasterProgram(kGraphMrt, backend)));
     fixed_mrt.interface.resources = {
         {"source_image", {generated.written.front(), GraphImageRange{1, 1, 1}}},
         {"tint", {tint_pass.written.front()}}
@@ -230,7 +232,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     const auto raster = take(builder.addRasterPass("MRT and depth", std::move(mrt)));
     RasterWork present;
     auto& fixed_present = present.fixed();
-    fixed_present.interface.program = take(builder.addProgram(rasterProgram(kGraphPresent)));
+    fixed_present.interface.program = take(builder.addProgram(rasterProgram(kGraphPresent, backend)));
     fixed_present.interface.resources = {
         {"colors", {written(raster, first)}, {{written(raster, second)}}},
         {"depth_image", {written(raster, depth), GraphImageRange{2}}}
@@ -343,9 +345,11 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     session->nriCore().DestroyDescriptor(sampler);
 }
 
-static void indirectCounts(Validation& validation)
+static void indirectCounts(Validation& validation, EGraphicsBackend backend)
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 3);
     RenderGraphBuilder builder;
     const auto commands = take(builder.declareResource({"commands", GraphBufferDesc{128}}));
@@ -362,7 +366,7 @@ static void indirectCounts(Validation& validation)
     ));
     ComputeWork compute;
     compute.interface.program =
-        take(builder.addProgram(program(kGraphCount)));
+        take(builder.addProgram(program(kGraphCount, backend)));
     compute.interface.resources = {
         {"commands", {{commands, 0}, GraphBufferRange{32, 60}, EGraphAccess::WRITE}},
         {"count", {{count, 0}, GraphBufferRange{64, 4}, EGraphAccess::WRITE}},
@@ -374,7 +378,7 @@ static void indirectCounts(Validation& validation)
     const auto generated = take(builder.addComputePass("GPU commands and count", std::move(compute)));
     RasterWork draw;
     auto& fixed_draw = draw.fixed();
-    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed)));
+    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, backend)));
     draw.colors = {{{{color, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 0, 1}}};
     fixed_draw.draw = DrawIndexedIndirect{
         written(generated, indices),
@@ -459,9 +463,11 @@ static void indirectCounts(Validation& validation)
     CHECK(session->drain());
 }
 
-static void resolveAndCopy(Validation& validation)
+static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
     RenderGraphBuilder builder;
     GraphImageDesc multisample{32, 32};
@@ -474,7 +480,7 @@ static void resolveAndCopy(Validation& validation)
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{4352}}));
     RasterWork draw;
     auto& fixed_draw = draw.fixed();
-    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed)));
+    fixed_draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, backend)));
     RasterAttachment attachment{{{source, 0}}};
     attachment.resolve = ResourceAccess{{resolved, 0}};
     draw.colors.push_back(attachment);
@@ -946,7 +952,7 @@ public:
         }
     }
 
-    void execute()
+    void execute(std::span<const std::uint8_t> conditions = {})
     {
         const auto& program = executable_.recordingProgram();
         for (const auto& batch : executable_.submissions())
@@ -954,7 +960,12 @@ public:
             for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
             {
                 const auto& pass = program.passes[p];
-                CHECK(pass.condition_region == kGraphInvalidIndex);
+                if (pass.condition_region != kGraphInvalidIndex)
+                {
+                    const auto& predicate = program.conditions[pass.condition_region].predicate;
+                    CHECK(predicate.source == EConditionSource::INPUT && predicate.input < conditions.size());
+                    if (static_cast<bool>(conditions[predicate.input]) != predicate.expected) continue;
+                }
                 CHECK(recordBlock(program, pass.commands, [&](const auto& packet) noexcept
                 {
                     return replay(packet, pass);
@@ -963,10 +974,9 @@ public:
         }
     }
 
-    void verify(GraphResourceId readback) const
+    void verify(GraphResourceId readback, std::span<const std::uint32_t> expected) const
     {
-        CHECK(buffers_[readback.index].size() == 4);
-        CHECK(std::ranges::all_of(buffers_[readback.index], [](const auto& word) { return word == 13; }));
+        CHECK(std::ranges::equal(buffers_[readback.index], expected));
     }
 
 private:
@@ -1037,34 +1047,151 @@ private:
     std::vector<std::vector<std::optional<Word>>> buffers_;
 };
 
-static void cpuRecordingTables()
+static RenderGraphExecutable compileCpuGraph(const RenderGraph& graph)
 {
     nri::DeviceDesc capabilities{};
     capabilities.graphicsAPI = nri::GraphicsAPI::VK;
+    capabilities.dimensions.texture2DMaxDim = 4096;
+    capabilities.dimensions.textureLayerMaxNum = 256;
     capabilities.shaderStage.compute.dispatchMaxDim[0] = 1;
     capabilities.shaderStage.compute.dispatchMaxDim[1] = 1;
     capabilities.shaderStage.compute.dispatchMaxDim[2] = 1;
     const QueueProperties graphics;
-    const std::array queues{&graphics, &graphics, &graphics};
+    const QueueProperties compute{nri::QueueType::COMPUTE, 1};
+    const QueueProperties copy{nri::QueueType::COPY, 2};
+    const std::array queues{&graphics, &compute, &copy};
+    return take(GraphCompiler::compileForRecordingTest(capabilities, queues, graph, take(analyzeRenderGraph(graph))));
+}
+
+static void cpuRecordingTables()
+{
     GraphResourceId intermediate, readback;
     const auto executable = [&]
     {
         const auto fixture = computeSequenceGraph();
         intermediate = fixture.intermediate;
         readback = fixture.readback;
-        const auto analysis = take(analyzeRenderGraph(fixture.graph));
-        return take(GraphCompiler::compileForRecordingTest(capabilities, queues, fixture.graph, analysis));
+        return compileCpuGraph(fixture.graph);
     }();
     checkComputeSequence(executable, intermediate);
     ComputeSequenceRecorder recorder(executable);
     recorder.execute();
-    recorder.verify(readback);
+    recorder.verify(readback, std::array{13u, 13u, 13u, 13u});
     std::puts("CPU recording: expired source, culled dispatch, in-pass barrier and four values of 13");
 }
 
-static void historySequence(Validation& validation, std::uint32_t fif, bool use_fallback)
+static void cpuConditionalRanges()
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    RenderGraphBuilder builder;
+    const auto condition = take(builder.declareCondition("overwrite middle"));
+    const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
+    const auto readback = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
+    const auto seed = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{data, 0}}, 3}}})).written.front();
+    const auto updated = take(builder.addTransferPass(
+        "update", TransferWork{{FillBuffer{{seed, GraphBufferRange{4, 8}, EGraphAccess::WRITE, 0, seed}, 9}}},
+        {false, PassCondition{EConditionSource::INPUT, condition}}
+    )).written.front();
+    const auto copied =
+        take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{updated}, {{readback, 0}}}}}));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+    CHECK(executable.recordingProgram().conditions.size() == 1);
+    for (const std::uint8_t enabled : {0, 1})
+    {
+        ComputeSequenceRecorder recorder(executable);
+        recorder.execute({&enabled, 1});
+        const auto middle = enabled ? 9u : 3u;
+        recorder.verify(readback, std::array{3u, middle, middle, 3u});
+    }
+}
+
+static void cpuImportedBoundaries()
+{
+    {
+        RenderGraphBuilder builder;
+        const auto input = take(builder.declareResource(
+            {"unchanged", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {GraphBufferRange{4, 8}}}
+        ));
+        CHECK(builder.exportOutput({{input, 0}, GraphBufferRange{4, 8}}));
+        const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+        CHECK(executable.passes().empty());
+        CHECK(executable.recordingUnits().empty());
+        CHECK(std::ranges::all_of(executable.submissions(), [](const auto& batch) { return batch.pass_count == 0; }));
+    }
+    {
+        RenderGraphBuilder builder;
+        const GraphImageRange range{1, 1, 1};
+        const GraphImageDesc image{64, 64, 2, 1, rdesc::ETextureFormat::R32_SFLOAT};
+        const auto source = take(builder.declareResource(
+            {"partially imported", image, EGraphOrigin::IMPORTED, {range}, EGraphUse::SAMPLED}
+        ));
+        const auto destination = take(builder.declareResource({"copied", image}));
+        ComputeWork work;
+        work.allow_async_compute = true;
+        work.interface.program = take(builder.addProgram(GraphProgram{kHzbDownsample}));
+        work.interface.resources = {
+            {"uSrc", {{source, 0}, range}},
+            {"uDst", {{destination, 0}, range, EGraphAccess::WRITE}}
+        };
+        const auto written = take(builder.addComputePass("read imported subresource", std::move(work)));
+        CHECK(builder.exportOutput({written.written.front(), range}));
+        const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+        CHECK(executable.submissions().size() == 1);
+        CHECK(executable.submissions().front().queue == EQueueRole::GRAPHICS);
+        const auto& after = executable.recordingProgram().after.images;
+        const auto restored = std::ranges::find(after, source.index, &ImageTransition::resource);
+        CHECK(restored != after.end());
+        CHECK(restored->boundary == ETransitionBoundary::RESTORE_IMPORTED);
+        CHECK(restored->native.mipOffset == 1 && restored->native.mipNum == 1);
+        CHECK(restored->native.layerOffset == 0 && restored->native.layerNum == 1);
+    }
+}
+
+static void cpuRasterPackets()
+{
+    RenderGraphBuilder builder;
+    const GraphImageDesc color_desc{64, 64, 1, 2, rdesc::ETextureFormat::RGBA8_UNORM, 4};
+    const GraphImageDesc depth_desc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT, 4};
+    const auto color = take(builder.declareResource({"color", color_desc}));
+    const auto other = take(builder.declareResource({"other color", color_desc}));
+    const auto depth = take(builder.declareResource({"depth", depth_desc}));
+    const auto resolved = take(builder.declareResource({"resolved", GraphImageDesc{64, 64, 1, 2}}));
+    const GraphImageRange color_range{1, 0, 1, 1, 1};
+    const GraphImageRange depth_range{2, 0, 1, 1, 1};
+    RasterWork work;
+    work.fixed().interface.program = take(builder.addProgram(dualTargetRasterProgram()));
+    work.fixed().graphics.depth_test = work.fixed().graphics.depth_write = true;
+    work.colors = {
+        {{{color, 0}, color_range}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE},
+        {{{other, 0}, color_range}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE}
+    };
+    work.colors.front().resolve = ResourceAccess{{resolved, 0}, color_range};
+    work.depth = RasterAttachment{{{depth, 0}, depth_range}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE};
+    const auto drawn = take(builder.addRasterPass("MRT depth and resolve", std::move(work)));
+    CHECK(builder.exportOutput({written(drawn, resolved), color_range}));
+    const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+    CHECK(executable.passes().size() == 1);
+    const auto& pass = executable.passes().front();
+    const auto& recording = executable.recordingProgram();
+    CHECK(pass.commands.kernel == ERecordKernel::RASTER && recording.raster.size() == 1);
+    CHECK(recording.groups.size() == 1);
+    const auto& scope = recording.groups.front();
+    CHECK(scope.colors.size() == 2 && scope.depth);
+    CHECK(std::get<GraphImageRange>(scope.depth->access.range) == depth_range);
+    CHECK(scope.colors.front().resolve);
+    CHECK(scope.colors.front().resolve->version.resource == resolved);
+    CHECK(std::get<GraphImageRange>(scope.colors.front().resolve->range) == color_range);
+    for (const auto& attachment : scope.colors)
+    {
+        CHECK(std::get<GraphImageRange>(attachment.access.range) == color_range);
+    }
+}
+
+static void historySequence(Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool use_fallback)
+{
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
@@ -1088,7 +1215,7 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
         take(builder.addTransferPass("clear current", TransferWork{{FillBuffer{{{history.current, 0}}}}}));
     ComputeWork work;
     work.interface.program =
-        take(builder.addProgram(program(kGraphHistory)));
+        take(builder.addProgram(program(kGraphHistory, backend)));
     work.interface.resources = {
         {"previous_sample", {{history.previous, 0}, {}, EGraphAccess::READ, 0, shader_fallback}},
         {"current_sample", {cleared.written.front(), {}, EGraphAccess::WRITE, 0, cleared.written.front()}}
@@ -1099,7 +1226,7 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     CHECK(builder.publishHistory(incremented.written.front()));
     ComputeWork advancing;
     advancing.interface.program =
-        take(builder.addProgram(program(kGraphHistory)));
+        take(builder.addProgram(program(kGraphHistory, backend)));
     advancing.interface.resources = {
         {"previous_sample", {{independent.previous, 0}}},
         {"current_sample", {{independent.current, 0}, {}, EGraphAccess::WRITE}}
@@ -1197,9 +1324,10 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     CHECK(session->drain());
 }
 
-static void hzbHistory(Validation& validation, std::uint32_t fif)
+static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::uint32_t fif)
 {
     DeviceOptions options;
+    options.backend = backend;
     options.multiple_queues = true;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
@@ -1221,12 +1349,12 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     const auto color = take(builder.declareResource({"target", color_description}));
     ComputeWork seed;
     seed.interface.program =
-        take(builder.addProgram(program(kGraphDepthField)));
+        take(builder.addProgram(program(kGraphDepthField, backend)));
     seed.interface.resources = {{"generated", {{source, 0}, {}, EGraphAccess::WRITE}}};
     seed.dispatch = ImageDispatchArguments{source};
     const auto generated = take(builder.addComputePass("generate depth field", std::move(seed)));
     const auto reduce =
-        take(builder.addProgram(program(kHzbDownsample)));
+        take(builder.addProgram(program(kHzbDownsample, backend)));
     ResourceVersion current{history.current, 0};
     for (std::uint32_t mip = 0; mip < 4; ++mip)
     {
@@ -1307,9 +1435,11 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     CHECK(session->drain());
 }
 
-static void conditionalRegion(Validation& validation, std::uint32_t fif)
+static void conditionalRegion(Validation& validation, EGraphicsBackend backend, std::uint32_t fif)
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto input = take(builder.declareCondition("choose update"));
@@ -1360,9 +1490,10 @@ static void conditionalRegion(Validation& validation, std::uint32_t fif)
     CHECK(session->drain());
 }
 
-static void sharedImportedBuffer(Validation& validation, bool write_back, bool separate_ranges = false)
+static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backend, bool write_back, bool separate_ranges = false)
 {
     DeviceOptions options;
+    options.backend = backend;
     options.multiple_queues = true;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
@@ -1382,7 +1513,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
             core.CmdZeroBuffer(command, *shared, 0, 32);
             const nri::BufferBarrierDesc barrier{
                 shared,
-                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE},
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
                 {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
             };
             core.CmdBarrier(command, {nullptr, 0, &barrier, 1});
@@ -1399,7 +1530,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
     ComputeWork work;
     work.allow_async_compute = true;
     work.interface.program =
-        take(builder.addProgram(program(kGraphHistory)));
+        take(builder.addProgram(program(kGraphHistory, backend)));
     work.interface.resources = {
         {"previous_sample", {{input, 0}}},
         {"current_sample", {{current, 0}, {}, EGraphAccess::WRITE}}
@@ -1455,7 +1586,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
     const auto seeded = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{initial, 0}}, 1}}}));
     const auto shader =
-        take(builder.addProgram(program(kGraphHistory)));
+        take(builder.addProgram(program(kGraphHistory, options.backend)));
     ResourceVersion current{history.current, 0};
     ResourceVersion scratch{temporary, 0};
     for (std::uint32_t i = 0; i < 3; ++i)
@@ -1577,9 +1708,11 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     CHECK(session->drain());
 }
 
-static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool alias_memory = false)
+static void physicalImageReuse(Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool alias_memory = false)
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"red temporary", GraphImageDesc{16, 16}}));
@@ -1652,7 +1785,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     const auto output_a = take(builder.declareResource({"first result", GraphBufferDesc{16}}));
     const auto output_b = take(builder.declareResource({"second result", GraphBufferDesc{16}}));
     const auto shader =
-        take(builder.addProgram(program(kGraphHistory)));
+        take(builder.addProgram(program(kGraphHistory, options.backend)));
     const auto seed_a = take(builder.addTransferPass("seed first", TransferWork{{FillBuffer{{{a, 0}}, 3}}}));
     const auto increment = [&](std::string name, ResourceVersion input, GraphResourceId output)
     {
@@ -1757,9 +1890,11 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     CHECK(session->drain());
 }
 
-static void coalescedImageRanges(Validation& validation, std::uint32_t fif)
+static void coalescedImageRanges(Validation& validation, EGraphicsBackend backend, std::uint32_t fif)
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
     GraphImageDesc description{32, 32};
@@ -1848,6 +1983,10 @@ int main(int argc, char** argv)
     if (argc > 1 && std::string_view(argv[1]) == "cpu-recording")
     {
         cpuRecordingTables();
+        cpuConditionalRanges();
+        cpuImportedBoundaries();
+        cpuRasterPackets();
+        std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;
     }
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
@@ -1887,28 +2026,31 @@ int main(int argc, char** argv)
         CHECK(validation.errors == 0);
         return 0;
     }
+    const auto backend = argc > 2 && std::string_view(argv[2]) == "d3d12"
+        ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
     if (argc > 1 && std::string_view(argv[1]) == "copies")
     {
-        resolveAndCopy(validation);
-        coalescedImageRanges(validation, 2);
+        resolveAndCopy(validation, backend);
+        coalescedImageRanges(validation, backend, 2);
         CHECK(validation.errors == 0);
         std::puts("Graph copy focus: image/buffer/offset roundtrip and layered ranges passed");
         return 0;
     }
     for (std::uint32_t fif : {1u, 2u, 3u})
     {
-        coalescedImageRanges(validation, fif);
-        imageChain(validation, fif);
-        imageChain(validation, fif, true);
-        historySequence(validation, fif, false);
-        historySequence(validation, fif, true);
-        conditionalRegion(validation, fif);
-        hzbHistory(validation, fif);
-        physicalImageReuse(validation, fif);
-        physicalImageReuse(validation, fif, true);
+        coalescedImageRanges(validation, backend, fif);
+        imageChain(validation, backend, fif);
+        imageChain(validation, backend, fif, true);
+        historySequence(validation, backend, fif, false);
+        historySequence(validation, backend, fif, true);
+        conditionalRegion(validation, backend, fif);
+        hzbHistory(validation, backend, fif);
+        physicalImageReuse(validation, backend, fif);
+        physicalImageReuse(validation, backend, fif, true);
         for (unsigned topology = 0; topology < 3; ++topology)
         {
             DeviceOptions options;
+            options.backend = backend;
             options.multiple_queues = topology != 0;
             options.prefer_dedicated_queues = topology == 2;
             multiQueueHistory(validation, options, fif);
@@ -1918,15 +2060,16 @@ int main(int argc, char** argv)
             physicalReuse(validation, options, fif, false, true);
         }
     }
-    indirectCounts(validation);
-    resolveAndCopy(validation);
-    sharedImportedBuffer(validation, false);
-    sharedImportedBuffer(validation, true);
-    sharedImportedBuffer(validation, true, true);
+    indirectCounts(validation, backend);
+    resolveAndCopy(validation, backend);
+    sharedImportedBuffer(validation, backend, false);
+    sharedImportedBuffer(validation, backend, true);
+    sharedImportedBuffer(validation, backend, true, true);
     CHECK(validation.errors == 0);
     std::printf(
-        "Graph: Compute -> mip -> MRT/Depth -> sampled postprocess; FIF=1/2/3; GPU IndirectCount=0/1/3; errors=%u "
+        "Graph %s: Compute -> mip -> MRT/Depth -> sampled postprocess; FIF=1/2/3; GPU IndirectCount=0/1/3; errors=%u "
         "warnings=%u\n",
+        backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan",
         validation.errors.load(),
         validation.warnings.load()
     );

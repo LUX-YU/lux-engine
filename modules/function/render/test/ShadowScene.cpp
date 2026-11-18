@@ -327,7 +327,7 @@ static RenderResult<EffectDefinition> lowerShadowProbe(
     return request;
 }
 
-static void verifyPresets(
+static void runPresets(
     ipc::IpcRequester& client,
     const CommandList& commands,
     DeviceSessionId session,
@@ -337,7 +337,8 @@ static void verifyPresets(
     CapabilityImplementationId capture_probe,
     const TargetDesc& target,
     CameraInput camera,
-    unsigned fif
+    unsigned fif,
+    std::uint32_t profile_frames
 )
 {
     const EffectOutputDesc output{target.format};
@@ -367,7 +368,7 @@ static void verifyPresets(
     camera.projection[0] *= -1;
     camera.inverse_view_projection[0] *= -1;
     std::array<std::vector<std::byte>, 4> results;
-    for (std::uint32_t variant = 0; variant < results.size(); ++variant)
+    for (std::uint32_t variant = profile_frames ? 3u : 0u; variant < results.size(); ++variant)
     {
         DeferredLightingConfiguration options;
         options.shadows = (variant & 1) != 0;
@@ -379,12 +380,15 @@ static void verifyPresets(
         CHECK(request.definition.features.size() == 4u + 3u * options.shadows + options.clustered);
         request.parameters.exposure = 0;
         CapturedPixels pixels;
-        auto& recipe = request.definition;
-        const auto copy = static_cast<std::uint32_t>(recipe.features.size());
-        request.implementations.push_back({capture_probe, "capture"});
-        recipe.features.push_back({capture, "capture/pixels", take(ConfigValue::make(CaptureConfig{&pixels}))});
-        recipe.connections.push_back({recipe.outputs.front().source, {copy, "color"}});
-        recipe.outputs.push_back({{copy, "pixels"}, {}});
+        if (!profile_frames)
+        {
+            auto& recipe = request.definition;
+            const auto copy = static_cast<std::uint32_t>(recipe.features.size());
+            request.implementations.push_back({capture_probe, "capture"});
+            recipe.features.push_back({capture, "capture/pixels", take(ConfigValue::make(CaptureConfig{&pixels}))});
+            recipe.connections.push_back({recipe.outputs.front().source, {copy, "color"}});
+            recipe.outputs.push_back({{copy, "pixels"}, {}});
+        }
 
         const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(client, commands, {scene}).view;
@@ -398,10 +402,30 @@ static void verifyPresets(
             renderFrame(client, commands, attached);
             CHECK(Clock::now() < deadline);
         }
+        if (profile_frames)
+        {
+            constexpr std::uint32_t warmup_frames = 1500;
+            for (std::uint32_t frame = 0; frame < warmup_frames; ++frame)
+            {
+                renderFrame(client, commands, attached);
+            }
+            const auto submissions = call<QueryRenderStats>(client, commands, {}).submissions;
+            std::printf("PRESET_PROFILE_BEGIN frames=%u fif=%u\n", profile_frames, fif);
+            const auto start = Clock::now();
+            for (std::uint32_t frame = 0; frame < profile_frames; ++frame)
+            {
+                renderFrame(client, commands, attached);
+            }
+            const auto seconds = std::chrono::duration<double>(Clock::now() - start).count();
+            const auto submitted = call<QueryRenderStats>(client, commands, {}).submissions - submissions;
+            std::printf("PRESET_PROFILE_END seconds=%.6f submissions=%llu\n",
+                seconds, static_cast<unsigned long long>(submitted));
+        }
         stopAndRemoveJob(client, commands, attached);
         call<RemoveView>(client, commands, {scene, view});
         call<RemoveTarget>(client, commands, image);
         call<RemoveEffect>(client, commands, {effect});
+        if (profile_frames) break;
         while (!pixels.ready.load(std::memory_order_acquire))
         {
             CHECK(Clock::now() < deadline);
@@ -411,6 +435,8 @@ static void verifyPresets(
         CHECK(std::ranges::count(pixels.frames, pixels.frames.front()) == fif);
         results[variant] = std::move(pixels.frames.front());
     }
+    for (auto id : ids) call<LightingCommands::ReleaseLight>(client, commands, {id, 2});
+    if (profile_frames) return;
     CHECK(results[0] == results[2] && results[1] == results[3]);
     std::size_t shadowed = 0;
     for (std::size_t pixel = 0; pixel < results[0].size(); pixel += 4)
@@ -418,7 +444,6 @@ static void verifyPresets(
         if (results[1][pixel] < results[0][pixel]) ++shadowed;
     }
     CHECK(shadowed > 0);
-    for (auto id : ids) call<LightingCommands::ReleaseLight>(client, commands, {id, 2});
     std::printf("RENDER PRESETS PASS variants=4 FIF=%u shadowed_pixels=%zu\n", fif, shadowed);
 }
 
@@ -441,6 +466,7 @@ int main(int argc, char** argv)
     bool clustered = false;
     bool projection_revisions = false;
     bool presets = false;
+    std::uint32_t profile_frames = 0;
     DeviceOptions device;
     device.multiple_queues = true;
     device.texture_descriptors = true;
@@ -466,6 +492,11 @@ int main(int argc, char** argv)
         else if (option == "--presets")
         {
             presets = true;
+        }
+        else if (option == "--profile-frames" && i + 1 < argc)
+        {
+            profile_frames = static_cast<std::uint32_t>(std::atoi(argv[++i]));
+            CHECK(profile_frames > 0);
         }
         else if (option == "--single-queue")
         {
@@ -606,7 +637,11 @@ int main(int argc, char** argv)
     camera.position = {0, 0, 2};
     camera.far_distance = 3;
     camera.background = {0, 0, 0, 1};
-    if (presets) verifyPresets(*client, commands, session, scene, light_storage, capture, capture_probe, target, camera, fif);
+    if (presets || profile_frames)
+    {
+        runPresets(*client, commands, session, scene, light_storage, capture, capture_probe, target, camera, fif,
+                   profile_frames);
+    }
     std::array<unsigned, 4> reference_lit{}, reference_occluded{};
     bool masked = false;
 
@@ -1126,15 +1161,18 @@ int main(int argc, char** argv)
             );
         }
     };
-    for (auto kind : {EDirectLightingBuffer::DIRECTIONAL, EDirectLightingBuffer::POINT, EDirectLightingBuffer::SPOT})
+    if (!profile_frames)
     {
-        run(kind, true, 0, false);
-        run(kind, true, 0);
-        if (!projection_revisions) run(kind, false, 1);
+        for (auto kind : {EDirectLightingBuffer::DIRECTIONAL, EDirectLightingBuffer::POINT, EDirectLightingBuffer::SPOT})
+        {
+            run(kind, true, 0, false);
+            run(kind, true, 0);
+            if (!projection_revisions) run(kind, false, 1);
+        }
     }
     MaterialId masked_material;
     MaterialProgramId registered_masked;
-    if (!projection_revisions)
+    if (!projection_revisions && !profile_frames)
     {
         // Keep the light and color rendering enabled; only per-instance shadow permission is disabled.
         run(EDirectLightingBuffer::DIRECTIONAL, true, 0, true, false, false, false);
@@ -1164,7 +1202,7 @@ int main(int argc, char** argv)
         commands,
         {material_id}
     );
-    if (!projection_revisions)
+    if (!projection_revisions && !profile_frames)
     {
         call<MaterialCommands::ReleaseInstance>(*client, commands, {masked_material});
         call<MaterialCommands::UnregisterProgram>(*client, commands, {registered_masked});

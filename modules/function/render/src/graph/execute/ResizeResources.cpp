@@ -218,8 +218,12 @@ namespace lux::render::detail
                 else
                 {
                     binding.buffer_size = std::get<GraphBufferDesc>(resource.description).size;
-                    const nri::BufferDesc description{binding.buffer_size, 4, resource.buffer_usage};
-                    status = core.CreateBuffer(session.device(), description, binding.buffer);
+                    const auto description = bufferDescription(resource);
+                    if (!description)
+                    {
+                        return cxx::unexpected(description.error());
+                    }
+                    status = core.CreateBuffer(session.device(), *description, binding.buffer);
                 }
                 if (status != nri::Result::SUCCESS)
                 {
@@ -466,7 +470,7 @@ namespace lux::render::detail
                     const auto description = program.bindings[use.field].bufferView(
                         source.buffer, source.buffer_offset + range.offset, size
                     );
-                    status = core.CreateBufferView(description, descriptor);
+                    status = createBufferView(description, descriptor);
                 }
                 if (status != nri::Result::SUCCESS)
                 {

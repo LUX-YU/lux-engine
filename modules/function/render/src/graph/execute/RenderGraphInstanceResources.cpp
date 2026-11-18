@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <bit>
 #include <numeric>
+#include <limits>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
@@ -559,8 +560,12 @@ namespace lux::render::detail
                 else
                 {
                     binding.buffer_size = std::get<GraphBufferDesc>(resource.description).size;
-                    const nri::BufferDesc description{binding.buffer_size, 4, resource.buffer_usage};
-                    created = core.CreateBuffer(session.device(), description, binding.buffer);
+                    const auto description = bufferDescription(resource);
+                    if (!description)
+                    {
+                        return cxx::unexpected(description.error());
+                    }
+                    created = core.CreateBuffer(session.device(), *description, binding.buffer);
                 }
                 if (created != nri::Result::SUCCESS)
                 {
@@ -685,6 +690,28 @@ namespace lux::render::detail
         }
     }
 
+    RenderResult<nri::BufferDesc>
+    RenderGraphInstance::bufferDescription(const CompiledResource& resource) const noexcept
+    {
+        const auto& limits = session_->description();
+        auto bytes = std::get<GraphBufferDesc>(resource.description).size;
+        const bool needs_padding = limits.graphicsAPI == nri::GraphicsAPI::D3D12 &&
+            (resource.buffer_usage & nri::BufferUsageBits::CONSTANT) != 0;
+        if (needs_padding)
+        {
+            const auto alignment = limits.memoryAlignment.constantBufferOffset;
+            if (alignment == 0) return cxx::unexpected(RenderError{kDeviceUnsupported});
+            const auto padding = (alignment - bytes % alignment) % alignment;
+            if (bytes > std::numeric_limits<std::uint64_t>::max() - padding)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            // Descriptor padding is part of the native allocation, outside the graph's logical buffer range.
+            bytes += padding;
+        }
+        return nri::BufferDesc{bytes, 4, resource.buffer_usage};
+    }
+
     RenderResult<nri::TextureDesc>
     RenderGraphInstance::textureDescription(const CompiledResource& resource) const noexcept
     {
@@ -761,8 +788,12 @@ namespace lux::render::detail
         else
         {
             const auto size = std::get<GraphBufferDesc>(resource.description).size;
-            const nri::BufferDesc description{size, 4, resource.buffer_usage};
-            const auto status = core.CreatePlacedBuffer(session.device(), NriDeviceHeap, description, binding.buffer);
+            const auto description = bufferDescription(resource);
+            if (!description)
+            {
+                return cxx::unexpected(description.error());
+            }
+            const auto status = core.CreatePlacedBuffer(session.device(), NriDeviceHeap, *description, binding.buffer);
             if (status != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(status));

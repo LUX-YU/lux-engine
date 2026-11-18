@@ -36,7 +36,11 @@ target_include_directories(render_graph_chain PRIVATE
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
 # The combined matrix creates 74 independent devices. ASan + validation exceeds 90 seconds;
 # per-scenario progress assertions remain unchanged by this outer process budget.
-set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180)
+set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+if(WIN32)
+    add_test(NAME render.graph.chain_d3d12 COMMAND render_graph_chain chain d3d12)
+    set_tests_properties(render.graph.chain_d3d12 PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+endif()
 
 add_test(NAME render.graph.analysis COMMAND render_graph_chain analysis)
 add_test(NAME render.graph.cpu_recording COMMAND render_graph_chain cpu-recording)

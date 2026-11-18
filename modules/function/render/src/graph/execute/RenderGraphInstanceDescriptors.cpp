@@ -14,6 +14,31 @@
 
 namespace lux::render::detail
 {
+    nri::Result RenderGraphInstance::createBufferView(nri::BufferViewDesc view, nri::Descriptor*& descriptor)
+        const noexcept
+    {
+        const auto& core = session_->nriCore();
+        const auto& limits = session_->description();
+        if (view.type == nri::BufferView::CONSTANT_BUFFER && limits.graphicsAPI == nri::GraphicsAPI::D3D12)
+        {
+            const auto alignment = limits.memoryAlignment.constantBufferOffset;
+            const bool invalid_offset = alignment == 0 || view.offset % alignment != 0;
+            const bool invalid_size = view.size == 0 || view.size > limits.memory.constantBufferMaxRange;
+            if (invalid_offset || invalid_size)
+            {
+                return nri::Result::INVALID_ARGUMENT;
+            }
+            view.size += (alignment - view.size % alignment) % alignment;
+            const auto capacity = core.GetBufferDesc(*view.buffer).size;
+            const bool outside_buffer = view.offset > capacity || view.size > capacity - view.offset;
+            if (outside_buffer || view.size > limits.memory.constantBufferMaxRange)
+            {
+                return nri::Result::INVALID_ARGUMENT;
+            }
+        }
+        return core.CreateBufferView(view, descriptor);
+    }
+
     namespace
     {
         constexpr auto descriptor_counts = std::array{
@@ -121,7 +146,7 @@ namespace lux::render::detail
             if (unchanged) continue;
             nri::Descriptor* descriptor = nullptr;
             const auto view = bindings.bindings[use.field].bufferView(source.buffer, source.offset, source.size);
-            const auto status = core.CreateBufferView(view, descriptor);
+            const auto status = createBufferView(view, descriptor);
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             core.DestroyDescriptor(std::exchange(record.views[i], descriptor));
             record.inputs[i] = source;
@@ -739,7 +764,7 @@ namespace lux::render::detail
                     const auto description = program.bindings[use.field].bufferView(
                         source.buffer, source.buffer_offset + range.offset, size
                     );
-                    status = core.CreateBufferView(description, candidate);
+                    status = createBufferView(description, candidate);
                 }
                 if (status != nri::Result::SUCCESS)
                 {

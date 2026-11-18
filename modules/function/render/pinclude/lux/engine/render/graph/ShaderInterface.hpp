@@ -58,13 +58,15 @@ namespace lux::render::detail
             {
                 type = nri::BufferView::STORAGE_BUFFER;
             }
+            const bool is_structured =
+                type == nri::BufferView::STRUCTURED_BUFFER || type == nri::BufferView::STORAGE_STRUCTURED_BUFFER;
             return {
                 buffer,
                 type,
                 offset,
                 size,
                 kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::Format::R32_UINT : nri::Format::UNKNOWN,
-                block.size
+                is_structured ? block.size : 0
             };
         }
     };

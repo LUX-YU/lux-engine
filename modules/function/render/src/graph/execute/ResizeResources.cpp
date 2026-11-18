@@ -463,16 +463,9 @@ namespace lux::render::detail
                     const auto& source = replacement.binding;
                     const auto size =
                         use.whole_resource && use.fallback == kGraphInvalidIndex ? source.buffer_size : range.size;
-                    const nri::BufferViewDesc description{
-                        source.buffer,
-                        use.kind == EDescriptorKind::UNIFORM_BUFFER ? nri::BufferView::CONSTANT_BUFFER
-                        : use.kind == EDescriptorKind::TYPED_STORAGE_BUFFER
-                            ? nri::BufferView::STORAGE_BUFFER
-                            : nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER,
-                        source.buffer_offset + range.offset,
-                        size,
-                        use.kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::Format::R32_UINT : nri::Format::UNKNOWN
-                    };
+                    const auto description = program.bindings[use.field].bufferView(
+                        source.buffer, source.buffer_offset + range.offset, size
+                    );
                     status = core.CreateBufferView(description, descriptor);
                 }
                 if (status != nri::Result::SUCCESS)

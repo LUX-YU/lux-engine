@@ -2,17 +2,38 @@
 #include "SceneCapture.hpp"
 
 #include <bit>
+#include <ctime>
 #include <set>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/render/features/mesh/GBufferFeature.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#endif
 
 namespace
 {
     using rdesc::EMaterialPurpose;
     using rdesc::ETextureFormat;
+
+    double processCpuMicroseconds() noexcept
+    {
+#ifdef _WIN32
+        FILETIME started{}, exited{}, kernel{}, user{};
+        CHECK(GetProcessTimes(GetCurrentProcess(), &started, &exited, &kernel, &user));
+        const auto ticks = [](FILETIME time)
+        {
+            return (std::uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+        };
+        return double(ticks(kernel) + ticks(user)) / 10;
+#else
+        return double(std::clock()) * (1'000'000.0 / CLOCKS_PER_SEC);
+#endif
+    }
 
     struct MemorySample final
     {
@@ -329,11 +350,13 @@ namespace
         const auto pages = legacy ? count : abi_count * pagesFor(count / abi_count);
         std::vector<MaterialId> ids;
         ids.reserve(count);
+        std::uint64_t resident_buffer_bytes = 0;
         for (unsigned round = 0; round < 5; ++round)
         {
             const auto before = MaterialAllocationProbe::sample();
             MaterialAllocationProbe::measuring = true;
             const auto start = Clock::now();
+            const auto cpu_before = processCpuMicroseconds();
             for (std::size_t i = 0; i < programs.size(); ++i)
             {
                 const auto& program = programs[i];
@@ -342,7 +365,8 @@ namespace
                     ipc, commands, {materials, {program, program.parameter_defaults, {texture}}}
                 ).material);
             }
-            const auto create_us = std::chrono::duration<double, std::micro>(Clock::now() - start).count();
+            const auto cpu_us = processCpuMicroseconds() - cpu_before;
+            const auto wall_us = std::chrono::duration<double, std::micro>(Clock::now() - start).count();
             MaterialAllocationProbe::measuring = false;
             const auto after = MaterialAllocationProbe::sample();
             const auto allocated = after.buffers - before.buffers;
@@ -352,14 +376,15 @@ namespace
             const auto uploaded = after.upload_bytes - before.upload_bytes;
             CHECK(allocated == pages * kFif && views == allocated);
             CHECK(memory_bytes >= buffer_bytes && uploaded == record_bytes);
+            resident_buffer_bytes = buffer_bytes;
             std::printf(
                 "MATERIAL_ALLOC programs=%u abis=%u round=%u pages=%u fif_buffers=%llu descriptors=%llu "
                 "buffer_bytes=%llu native_memory_requirement_bytes=%llu upload_bytes=%llu utilization=%.6f "
-                "create_us=%.3f\n",
+                "create_wall_us=%.3f create_cpu_us=%.3f\n",
                 count, abi_count, round, pages, static_cast<unsigned long long>(allocated),
                 static_cast<unsigned long long>(views), static_cast<unsigned long long>(buffer_bytes),
                 static_cast<unsigned long long>(memory_bytes), static_cast<unsigned long long>(uploaded),
-                double(record_bytes * kFif) / double(buffer_bytes), create_us
+                double(record_bytes * kFif) / double(buffer_bytes), wall_us, cpu_us
             );
             if (round == 4) break;
             for (const auto id : ids) call<MaterialCommands::Release>(ipc, commands, {id});
@@ -392,6 +417,23 @@ namespace
             const auto expected_pages = active == count ? pages : (legacy || varied ? sparse : 1);
             const auto expected_images = legacy ? active : std::min<unsigned>(active, 9);
             CHECK(reads.buffer_ranges == expected_pages * kFif);
+            if (active == count)
+            {
+                CHECK(reads.buffer_bytes == resident_buffer_bytes);
+            }
+            else
+            {
+                std::uint64_t expected_bytes = programs.front().parameters.size * 16ull;
+                if (legacy || varied)
+                {
+                    expected_bytes = 0;
+                    for (unsigned index = 0; index < active; ++index)
+                    {
+                        expected_bytes += programs[index].parameters.size * 16ull;
+                    }
+                }
+                CHECK(reads.buffer_bytes == expected_bytes * kFif);
+            }
             CHECK(reads.image_ranges == expected_images * kFif && reads.image_ranges == reads.image_subresources);
             CHECK(reads.center[1] == std::byte{96} && reads.center[3] == std::byte{255});
             std::printf(
@@ -437,6 +479,7 @@ int main(int argc, char** argv)
     RenderServerConfig config{"test.material.scale", nativeValidationEnabled()};
     config.frames_in_flight = kFif;
     config.uploads.emplace();
+    config.uploads->chunk_bytes = 4 * 1024 * 1024;
     config.uploads->window_regions = 8192;
     auto server = take(RenderServer::create(config, **runtime, device));
     take(server->registerResource<MaterialAllocationProbe>());

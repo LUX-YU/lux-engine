@@ -61,6 +61,7 @@ if(LUX_RENDER_DEVELOPMENT_METRICS)
     target_include_directories(render_material_scale PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
     target_link_libraries(render_material_scale PRIVATE
         render_native_probe_host NRI lux::engine::function::material_compiler lux::engine::function::material_graph
+        lux::engine::core::math
     )
     add_test(NAME render.material.purposes_vulkan COMMAND render_material_scale)
     if(WIN32)

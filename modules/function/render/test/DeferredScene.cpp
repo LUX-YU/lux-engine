@@ -1497,7 +1497,9 @@ int main(int argc, char** argv)
         DeviceOptions constant_device;
         constant_device.backend = device.backend;
         auto constant_server = take(RenderServer::create(constant_config, **runtime, constant_device));
-        auto requester = take(ipc::IpcCore::instance().createRequester(constant_config.channel_name));
+        auto connection = ipc::IpcCore::instance().createRequester(constant_config.channel_name);
+        CHECK(connection);
+        auto& requester = *connection;
         std::thread worker([&] { CHECK(constant_server->run()); });
         const auto directory = queryCommands(requester);
         const auto resource = call<GetOrCreateResource>(

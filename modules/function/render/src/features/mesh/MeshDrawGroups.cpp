@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <bit>
@@ -42,8 +43,8 @@ namespace lux::render::detail
         group.members[membership.position] = last;
         memberships_[last].position = membership.position;
         group.members.pop_back();
-        bool source_changed = group.members.empty();
-        if (group.members.empty())
+        const bool source_changed = group.members.empty();
+        if (source_changed)
         {
             indices_.erase(group.key);
             group.capacity = 0;
@@ -54,9 +55,6 @@ namespace lux::render::detail
         {
             auto& description = descriptions_[membership.group];
             description.record.candidate_count = static_cast<std::uint32_t>(group.members.size());
-            const auto material = memberships_[group.members.front()].material;
-            source_changed = description.selection.material_source != material;
-            description.selection.material_source = material;
         }
         membership.group = UINT32_MAX;
         return source_changed;
@@ -72,13 +70,14 @@ namespace lux::render::detail
         }
         const auto local = extension_detail::ResourceIdentity::local(id).index;
         GroupKey key;
+        MaterialProgramId program;
         if (selection)
         {
             auto storage = resources_.borrow<RasterMaterialStorage>(
                 extension_detail::ResourceIdentity::parent(selection->material)
             );
-            const auto* program = storage ? (*storage)->program(selection->material) : nullptr;
-            if (!program)
+            if (storage) program = (*storage)->programId(selection->material);
+            if (program.isNull())
             {
                 error_ = RenderError{kStorageIdentity};
                 ++source_.revision;
@@ -96,13 +95,8 @@ namespace lux::render::detail
         {
             if (selection && groups_[membership.group].key == key)
             {
+                material_ids_dirty_ |= membership.material != selection->material;
                 membership.material = selection->material;
-                if (membership.position == 0)
-                {
-                    auto& source = descriptions_[membership.group].selection.material_source;
-                    source_.revision += source != selection->material;
-                    source = selection->material;
-                }
                 return; // Parameter-only material changes and Transform updates do not regroup.
             }
             source_changed = remove(local);
@@ -138,10 +132,12 @@ namespace lux::render::detail
                 group.capacity = std::bit_ceil(static_cast<std::uint32_t>(group.members.size()));
             }
             auto& description = descriptions_[found->second];
-            description.selection = {selection->mesh, memberships_[group.members.front()].material, selection->submesh};
+            description.mesh = selection->mesh;
+            description.program = program;
             description.record.candidate_count = static_cast<std::uint32_t>(group.members.size());
         }
         source_.revision += source_changed;
+        material_ids_dirty_ = true;
         ++data_revision_;
     }
 
@@ -150,6 +146,22 @@ namespace lux::render::detail
         if (error_.type != 0)
         {
             return cxx::unexpected(error_);
+        }
+        if (material_ids_dirty_)
+        {
+            material_ids_.clear();
+            for (const auto& group : groups_)
+            {
+                for (auto slot : group.members)
+                {
+                    material_ids_.push_back(memberships_[slot].material);
+                }
+            }
+            std::sort(material_ids_.begin(), material_ids_.end());
+            const auto duplicates = std::ranges::unique(material_ids_);
+            material_ids_.erase(duplicates.begin(), duplicates.end());
+            source_.materials = material_ids_;
+            material_ids_dirty_ = false;
         }
         if (packed_revision_ == data_revision_)
         {
@@ -208,8 +220,6 @@ namespace lux::render::detail
                 source_.view_count,
                 geometry->bounds
             };
-            const auto material = memberships_[group.members.front()].material;
-            descriptions_[index].selection = {mesh, material, section};
             descriptions_[index].record = record;
             descriptions_[index].gpu_index = gpu_index;
             candidates_.insert(candidates_.end(), group.members.begin(), group.members.end());

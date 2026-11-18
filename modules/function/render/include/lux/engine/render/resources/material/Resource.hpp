@@ -15,7 +15,7 @@ namespace lux::render
         using Config = void;
         static inline const ResourceDefinition descriptor{
             kMaterialResourceName,
-            static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY),
+            0,
             0,
             cxx::make_basic_type_info<MaterialBinding>(),
             "Reflected raster material pages with stable GPU references and sampled texture dependencies.",

@@ -28,22 +28,6 @@ namespace lux::render
         offsetof(MeshViewParameters, projection) == 64
     );
 
-    struct MeshInstanceDrawGroup final
-    {
-        MeshId mesh;
-        // Selects all instances using this material's cooked program table, not this one MaterialId.
-        MaterialId material_source;
-        std::uint32_t submesh = 0;
-        bool operator==(const MeshInstanceDrawGroup&) const noexcept = default;
-
-        bool operator<(const MeshInstanceDrawGroup& other) const noexcept
-        {
-            const auto key = [](const MeshInstanceDrawGroup& group) noexcept
-            { return std::tuple{group.mesh, group.material_source, group.submesh}; };
-            return key(*this) < key(other);
-        }
-    };
-
     struct MeshFeatureConfig final
     {
         EffectOutputDesc output;

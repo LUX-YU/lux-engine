@@ -97,6 +97,7 @@ inline std::atomic<std::uint64_t> call_capture_failed_allocations = 0;
 inline std::array<std::atomic<std::uint64_t>, 45> call_capture_counts{};
 inline std::atomic<std::uint64_t> call_capture_graphics_pipeline_ns = 0;
 inline std::atomic<std::uint64_t> call_capture_compute_pipeline_ns = 0;
+inline std::atomic<std::uint64_t> call_capture_placed_buffers = 0;
 
 inline void beginCallCapture(const nri::CoreInterface& input) noexcept
 {
@@ -173,6 +174,15 @@ inline void beginCallCapture(const nri::CoreInterface& input) noexcept
     {
         call_capture_counts[3].fetch_add(1, std::memory_order_relaxed);
         return call_capture_original.CreateBufferView(bufferViewDesc, bufferView);
+    };
+    core.CreatePlacedBuffer = [](
+        nri::Device& device, nri::Memory* memory, std::uint64_t offset,
+        const nri::BufferDesc& description, nri::Buffer*& buffer
+    ) noexcept
+    {
+        const auto result = call_capture_original.CreatePlacedBuffer(device, memory, offset, description, buffer);
+        if (result == nri::Result::SUCCESS) call_capture_placed_buffers.fetch_add(1, std::memory_order_relaxed);
+        return result;
     };
     core.AllocateDescriptorSets = [](
         nri::DescriptorPool& descriptorPool,

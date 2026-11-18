@@ -13,7 +13,6 @@
 #include <lux/engine/render/resource/ResourceSet.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
-#include <map>
 #include <utility>
 
 namespace lux::render::detail
@@ -49,13 +48,20 @@ namespace lux::render::detail
 
     struct RasterMaterialStorage::Table final
     {
-        rdesc::MaterialProgramSet program;
+        rdesc::ShaderBlock layout;
+        std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3> bindings;
+        std::uint32_t shader_abi = rdesc::kMaterialShaderAbi;
         std::size_t digest = 0;
         std::uint32_t stride = 0;
         std::vector<std::uint32_t> parameter_offsets, texture_offsets;
         std::vector<std::unique_ptr<Page>> pages;
-        std::vector<ImageUse> image_uses;
-        std::map<const nri::Texture*, std::uint32_t, std::less<>> image_indices;
+
+        [[nodiscard]] bool hasSameAbi(const Table& other) const noexcept
+        {
+            return stride == other.stride && shader_abi == other.shader_abi && layout == other.layout &&
+                parameter_offsets == other.parameter_offsets && texture_offsets == other.texture_offsets &&
+                bindings == other.bindings;
+        }
     };
 
     struct RasterMaterialStorage::Page final
@@ -81,8 +87,8 @@ namespace lux::render::detail
     };
 
     RasterMaterialStorage::RasterMaterialStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads),
-          replica_progress_(*dependencies.replica_progress), frame_count_(dependencies.frame_count),
+        : session_(dependencies.device), uploads_(dependencies.uploads),
+          replica_progress_(dependencies.replica_progress), frame_count_(dependencies.frame_count),
           resources_(dependencies.resources), id_(id)
     {
     }
@@ -107,20 +113,21 @@ namespace lux::render::detail
         return entries_.size();
     }
 
-    RenderResult<RasterMaterialStorage::Table*>
-    RasterMaterialStorage::table(rdesc::MaterialProgramSet& program) noexcept
+    RenderResult<RasterMaterialStorage::ProgramSlot*>
+    RasterMaterialStorage::qualifyProgram(rdesc::MaterialProgramSet& program) noexcept
     {
         if (program.target != session_.enabledFeatures().shader_target)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         const auto digest = program.structureDigest();
-        const auto [first, last] = tables_.equal_range(digest);
+        const auto [first, last] = programs_by_digest_.equal_range(digest);
         for (auto entry = first; entry != last; ++entry)
         {
-            if (entry->second->program.hasSameStructure(program))
+            auto* slot = programs_.find(entry->second);
+            if (slot->record->data.hasSameStructure(program))
             {
-                return entry->second.get();
+                return slot;
             }
         }
         const auto* layout = program.parameterLayout();
@@ -135,7 +142,15 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
+        if (layout)
+        {
+            constexpr auto required = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
+            const bool has_record_support = (session_.resourceCapabilities() & required) != 0;
+            if (!has_record_support) return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (!uploads_ || !replica_progress_) return cxx::unexpected(RenderError{kDeviceArgument});
+        }
         std::array<bool, 3> purposes{};
+        std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3> bindings;
         bool has_record_consumer = false;
         for (const auto& use : program.programs)
         {
@@ -175,6 +190,7 @@ namespace lux::render::detail
                         return cxx::unexpected(RenderError{kStorageContract});
                     }
                     has_table = true;
+                    bindings[purpose] = binding;
                 }
             }
             has_record_consumer |= has_table;
@@ -183,19 +199,40 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
+        Table* table = nullptr;
+        if (layout)
+        {
+            auto resolved = qualifyTable(program, *layout, std::move(bindings));
+            if (!resolved) return cxx::unexpected(resolved.error());
+            table = *resolved;
+        }
+        const auto key = programs_.emplace();
+        const auto id = extension_detail::ResourceIdentity::make<MaterialProgramId>(id_, key);
+        auto* slot = programs_.find(key);
+        slot->record = std::make_shared<const MaterialProgramRecord>(MaterialProgramRecord{id, std::move(program), digest});
+        slot->table = table;
+        programs_by_digest_.emplace(digest, key);
+        return slot;
+    }
+
+    RenderResult<RasterMaterialStorage::Table*> RasterMaterialStorage::qualifyTable(
+        const rdesc::MaterialProgramSet& program, const rdesc::ShaderBlock& layout,
+        std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3> bindings
+    ) noexcept
+    {
         auto candidate = std::make_unique<Table>();
-        candidate->stride = layout ? layout->size : 4;
+        candidate->stride = layout.size;
         const auto field = [&](std::string_view name, rdesc::EDataScalar scalar, std::uint32_t rows
                            ) -> const rdesc::ShaderMember*
         {
-            const auto found = std::ranges::find(layout->fields, name, &rdesc::ShaderMember::path);
-            if (found == layout->fields.end())
+            const auto found = std::ranges::find(layout.fields, name, &rdesc::ShaderMember::path);
+            if (found == layout.fields.end())
             {
                 return nullptr;
             }
             const bool invalid = found->scalar != scalar || found->rows != rows || found->columns != 1 ||
-                                 found->offset % 4 || found->offset > layout->size ||
-                                 rows * 4 > layout->size - found->offset;
+                                 found->offset % 4 || found->offset > layout.size ||
+                                 rows * 4 > layout.size - found->offset;
             return invalid ? nullptr : &*found;
         };
         for (std::size_t i = 0; i < program.parameter_defaults.size(); ++i)
@@ -230,8 +267,8 @@ namespace lux::render::detail
                 if (!m)
                 {
                     base = member->offset;
-                    const bool is_invalid_record = layout->size < sizeof(rdesc::MaterialTextureGpuRef) ||
-                                                   base > layout->size - sizeof(rdesc::MaterialTextureGpuRef);
+                    const bool is_invalid_record = layout.size < sizeof(rdesc::MaterialTextureGpuRef) ||
+                                                   base > layout.size - sizeof(rdesc::MaterialTextureGpuRef);
                     if (is_invalid_record)
                     {
                         return cxx::unexpected(RenderError{kStorageContract});
@@ -258,11 +295,34 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kStorageContract});
             }
         }
-        candidate->program = std::move(program);
+        candidate->layout = layout;
+        candidate->bindings = std::move(bindings);
+        // This digest only narrows candidates. Full reflection and projection settle equivalence.
+        const auto digest = (std::size_t(layout.size) * 0x9e3779b9u) ^ layout.alignment ^ layout.fields.size();
+        const auto [first, last] = tables_.equal_range(digest);
+        for (auto current = first; current != last; ++current)
+        {
+            if (current->second->hasSameAbi(*candidate)) return current->second.get();
+        }
         auto* result = candidate.get();
         candidate->digest = digest;
         tables_.emplace(digest, std::move(candidate));
         return result;
+    }
+
+    void RasterMaterialStorage::removeUnusedProgram(ProgramSlot& program) noexcept
+    {
+        if (program.instances) return;
+        const auto key = extension_detail::ResourceIdentity::local(program.record->id);
+        const auto [first, last] = programs_by_digest_.equal_range(program.record->digest);
+        for (auto current = first; current != last; ++current)
+        {
+            if (current->second != key) continue;
+            programs_by_digest_.erase(current);
+            programs_.erase(key);
+            return;
+        }
+        std::terminate();
     }
 
     void RasterMaterialStorage::removeEmptyTable(Table& table) noexcept
@@ -298,41 +358,6 @@ namespace lux::render::detail
         return TextureInput{texture->gpuReference(), &texture->image()};
     }
 
-    void RasterMaterialStorage::addImageUses(Table& table, std::span<const nri::Texture* const> images) noexcept
-    {
-        for (auto* image : images)
-        {
-            const auto [position, inserted] =
-                table.image_indices.emplace(image, static_cast<std::uint32_t>(table.image_uses.size()));
-            if (inserted)
-            {
-                table.image_uses.push_back({image, 1});
-            }
-            else
-            {
-                ++table.image_uses[position->second].records;
-            }
-        }
-    }
-
-    void RasterMaterialStorage::removeImageUses(Table& table, std::span<const nri::Texture* const> images) noexcept
-    {
-        for (auto* image : images)
-        {
-            const auto position = table.image_indices.find(image);
-            const auto index = position->second;
-            if (--table.image_uses[index].records != 0)
-            {
-                continue;
-            }
-            const auto last = table.image_uses.back();
-            table.image_uses[index] = last;
-            table.image_indices[last.image] = index;
-            table.image_uses.pop_back();
-            table.image_indices.erase(position);
-        }
-    }
-
     RenderResult<RasterMaterialStorage::Page*> RasterMaterialStorage::createPage(Table& table) noexcept
     {
         const auto maximum = session_.description().memory.storageBufferMaxRange;
@@ -357,11 +382,6 @@ namespace lux::render::detail
         {
             auto& slice = page->gpu[frame];
             slice.dirty.grow(capacity);
-            // Constant-only programs have no material-buffer consumer or GPU page.
-            if (!table.program.parameterLayout())
-            {
-                continue;
-            }
             const nri::BufferDesc description{
                 page->records.size(),
                 table.stride,
@@ -468,15 +488,15 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
         Entry* existing = nullptr;
-        Table* definition = nullptr;
+        ProgramSlot* program = nullptr;
         if constexpr (std::same_as<Input, MaterialData>)
         {
-            auto found = table(input.program);
+            auto found = qualifyProgram(input.program);
             if (!found)
             {
                 co_return cxx::unexpected(found.error());
             }
-            definition = *found;
+            program = *found;
         }
         else
         {
@@ -485,9 +505,26 @@ namespace lux::render::detail
             {
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            definition = &existing->page->definition;
+            program = programs_.find(extension_detail::ResourceIdentity::local(existing->program));
         }
-        auto& table = *definition;
+        cxx::scope_exit remove_unused_program([&]() noexcept { removeUnusedProgram(*program); });
+        if (!program->table)
+        {
+            if (!input.parameters.empty() || !input.textures.empty())
+                co_return cxx::unexpected(RenderError{kStorageContract});
+            if constexpr (std::same_as<Input, MaterialData>)
+            {
+                const auto id = entries_.emplace();
+                entries_.find(id)->program = program->record->id;
+                ++program->instances;
+                co_return extension_detail::ResourceIdentity::make<MaterialId>(id_, id);
+            }
+            else
+            {
+                co_return Ack{};
+            }
+        }
+        auto& table = *program->table;
         cxx::scope_exit remove_empty_definition([&]() noexcept { removeEmptyTable(table); });
         const bool invalid_counts = input.parameters.size() != table.parameter_offsets.size() ||
                                     input.textures.size() != table.texture_offsets.size();
@@ -575,10 +612,9 @@ namespace lux::render::detail
             }
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
-        if (table.program.parameterLayout())
         {
             FrameProgress::ReplicaWrite replica;
-            if (auto acquired = co_await replica_progress_.acquireReplica(session_, replica); !acquired)
+            if (auto acquired = co_await replica_progress_->acquireReplica(session_, replica); !acquired)
             {
                 co_return cxx::unexpected(acquired.error());
             }
@@ -586,7 +622,7 @@ namespace lux::render::detail
             auto& slice = page.gpu[frame_slot];
             cxx::scope_exit restore([&]() noexcept { markDirty(page, frame_slot, slot); });
             const BufferWrite write{slice.parameters, std::uint64_t(slot) * table.stride, values};
-            if (auto uploaded = co_await uploads_.writeBuffers({&write, 1}, {}, &replica.accepted()); !uploaded)
+            if (auto uploaded = co_await uploads_->writeBuffers({&write, 1}, {}, &replica.accepted()); !uploaded)
             {
                 co_return cxx::unexpected(uploaded.error());
             }
@@ -610,14 +646,14 @@ namespace lux::render::detail
         {
             id = extension_detail::ResourceIdentity::make<MaterialId>(id_, entries_.emplace());
             existing = entries_.find(extension_detail::ResourceIdentity::local(id));
+            existing->program = program->record->id;
             existing->page = &page;
             existing->slot = slot;
+            ++program->instances;
             page.free_slots.pop_back();
         }
         if (existing->images != images)
         {
-            removeImageUses(table, existing->images);
-            addImageUses(table, images);
             existing->images = std::move(images);
         }
         if constexpr (std::same_as<Input, MaterialData>)
@@ -664,18 +700,27 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
+        if (!entry->page) return rdesc::MaterialGpuReference{};
         return rdesc::MaterialGpuReference{entry->page->gpu[frame].slot.index, entry->slot};
     }
 
-    const rdesc::MaterialProgramSet* RasterMaterialStorage::program(MaterialId id) const noexcept
+    MaterialProgramId RasterMaterialStorage::programId(MaterialId id) const noexcept
     {
         const auto* entry = findEntry(id);
-        return entry ? &entry->page->definition.program : nullptr;
+        return entry ? entry->program : MaterialProgramId{};
+    }
+
+    std::shared_ptr<const MaterialProgramRecord> RasterMaterialStorage::borrowProgram(MaterialProgramId id) const noexcept
+    {
+        if (extension_detail::ResourceIdentity::parent(id) != id_) return {};
+        const auto* slot = programs_.find(extension_detail::ResourceIdentity::local(id));
+        return slot ? slot->record : nullptr;
     }
 
     RenderResult<void>
     RasterMaterialStorage::collectReads(
         MaterialId source,
+        rdesc::EMaterialPurpose purpose,
         std::uint32_t frame,
         std::vector<ResourceInput>& buffers,
         std::vector<const nri::Texture*>& images
@@ -690,20 +735,12 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        for (const auto& page : entry->page->definition.pages)
+        const auto purpose_index = static_cast<std::size_t>(purpose);
+        const auto* page = entry->page;
+        if (page && purpose_index < page->definition.bindings.size() && page->definition.bindings[purpose_index])
         {
-            if (page->free_slots.size() == page->capacity)
-            {
-                continue;
-            }
-            if (auto* buffer = page->gpu[frame].parameters)
-            {
-                buffers.push_back({buffer, 0, page->records.size()});
-            }
-        }
-        for (const auto& use : entry->page->definition.image_uses)
-        {
-            images.push_back(use.image);
+            buffers.push_back({page->gpu[frame].parameters, 0, page->records.size()});
+            images.insert(images.end(), entry->images.begin(), entry->images.end());
         }
         return {};
     }
@@ -716,21 +753,26 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (entry->page->updating)
+        auto* page = entry->page;
+        if (page && page->updating)
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        auto& page = *entry->page;
-        auto& table = page.definition;
+        auto& program = *programs_.find(extension_detail::ResourceIdentity::local(entry->program));
         StorageSubscription::disconnect(entry->bindings);
-        removeImageUses(table, entry->images);
-        page.free_slots.push_back(entry->slot);
-        ++preparation_revision_;
-        entries_.erase(extension_detail::ResourceIdentity::local(id));
-        if (page.free_slots.size() == page.capacity)
+        if (page)
         {
-            releasePage(page);
-            std::erase_if(table.pages, [&](const auto& value) noexcept { return value.get() == &page; });
+            page->free_slots.push_back(entry->slot);
+            ++preparation_revision_;
+        }
+        entries_.erase(extension_detail::ResourceIdentity::local(id));
+        --program.instances;
+        removeUnusedProgram(program);
+        if (page && page->free_slots.size() == page->capacity)
+        {
+            auto& table = page->definition;
+            releasePage(*page);
+            std::erase_if(table.pages, [&](const auto& value) noexcept { return value.get() == page; });
             removeEmptyTable(table);
         }
         return {};
@@ -749,6 +791,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
+        if (!entry->page) return cxx::unexpected(RenderError{kStorageMismatch});
         if (output.size() > frame_count_)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -767,8 +810,7 @@ namespace lux::render::detail
             std::ranges::fill(output, ResourceInput{});
             return {};
         }
-        const auto* layout = table.program.parameterLayout();
-        if (!layout || argument.layout != *layout)
+        if (argument.layout != table.layout)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
@@ -909,7 +951,7 @@ namespace lux::render::detail
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMaterialStorage>>
         {
-            if (!dependencies.uploads || !dependencies.replica_progress || dependencies.frame_count == 0 || dependencies.frame_count > 3)
+            if (dependencies.frame_count == 0 || dependencies.frame_count > 3)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

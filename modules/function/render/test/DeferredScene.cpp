@@ -1076,6 +1076,14 @@ int main(int argc, char** argv)
     const std::array<std::byte, 4> normal_bytes{std::byte{204}, std::byte{128}, std::byte{230}, std::byte{255}};
     auto normal_texture =
         call<TextureCommands::Upload>(*client, commands, {texture_storage, {texture_info, normal_bytes}}).texture;
+    TextureId alternate_normal;
+    if (material_pages)
+    {
+        const std::array neutral{std::byte{128}, std::byte{128}, std::byte{255}, std::byte{255}};
+        alternate_normal = call<TextureCommands::Upload>(
+            *client, commands, {texture_storage, {texture_info, neutral}}
+        ).texture;
+    }
     pbr = normal_mapped;
     right_material =
         call<MaterialCommands::Create>(*client, commands, {materials, {pbr, right_values, {normal_texture}}}).material;
@@ -1134,9 +1142,16 @@ int main(int argc, char** argv)
         };
         CHECK(std::ranges::none_of(entry.inputs, is_uv));
     }
+    const auto buffers_before = call_capture_placed_buffers.load();
     const auto no_uv_material = call<MaterialCommands::Create>(
         *client, commands, {materials, {no_uv_program, right_values, {normal_texture}}}
     ).material;
+    if (material_pages && call_capture_core)
+    {
+        CHECK(!pbr.hasSameStructure(no_uv_program) && pbr.parameters == no_uv_program.parameters);
+        CHECK(call_capture_placed_buffers.load() == buffers_before);
+        std::puts("MATERIAL ABI PASS: distinct programs with the same ABI shared an existing FIF page");
+    }
     all_materials.push_back(no_uv_material);
     values[1].material = no_uv_material;
     const std::array no_uv_input{MeshInstanceUpdate{ids[1], values[1]}};
@@ -1202,6 +1217,25 @@ int main(int argc, char** argv)
         const auto reference = run(0, false, false);
         const auto culled = run(0, true, false);
         CHECK(reference == culled);
+        if (material_pages)
+        {
+            const auto switched = call<MaterialCommands::Create>(
+                *client, commands, {materials, {pbr, left_values, {alternate_normal}}}
+            ).material;
+            auto replacement = additions[0];
+            replacement.material = switched;
+            const std::array changed_texture{MeshInstanceUpdate{extra_instances[0], replacement}};
+            updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{changed_texture});
+            CHECK(run(0, true, false) != reference);
+            const auto pipelines = call_capture_counts[2].load();
+            call<MaterialCommands::Update>(*client, commands, {{switched, left_values, {normal_texture}}});
+            CHECK(run(0, true, false) == reference);
+            if (program_cache_probe) CHECK(call_capture_counts[2].load() == pipelines);
+            const std::array restored{MeshInstanceUpdate{extra_instances[0], additions[0]}};
+            updateSceneData(*client, commands, instance_updates, std::span<const MeshInstanceUpdate>{restored});
+            call<MaterialCommands::Release>(*client, commands, {switched});
+            std::puts("MATERIAL TEXTURE PASS: same group member switch and texture update reached GPU pixels");
+        }
         // Independent interior-pixel oracle: both orientations survive hardware culling, use the
         // second material's parameters and preserve the mirrored tangent-space normal.
         for (auto [y, normal_sign] : {std::pair{48u, 1.F}, {16u, -1.F}})
@@ -1384,7 +1418,10 @@ int main(int argc, char** argv)
     // and render depth, without borrowing layout from an unrequested GBuffer program.
     unlit = cook(shader_target, true, false, false, true);
     CHECK(unlit.parameter_defaults.empty() && unlit.texture_count == 0);
+    const auto constant_buffers = call_capture_placed_buffers.load();
     left_material = call<MaterialCommands::Create>(*client, commands, {materials, {unlit, {}}}).material;
+    if (material_pages && call_capture_core)
+        CHECK(call_capture_placed_buffers.load() == constant_buffers);
     all_materials.push_back(left_material);
     values[0].material = left_material;
     const std::array shadow_update{MeshInstanceUpdate{ids[0], values[0]}};
@@ -1412,6 +1449,7 @@ int main(int argc, char** argv)
         commands,
         {normal_texture}
     );
+    if (!alternate_normal.isNull()) call<TextureCommands::Release>(*client, commands, {alternate_normal});
     server->stop();
     thread.join();
     endCallCapture();

@@ -87,7 +87,6 @@ namespace lux::render::detail
         std::vector<Group> groups_;
         std::vector<std::unique_ptr<Program>> program_bindings_;
         std::vector<std::uint32_t> draw_order_;
-        std::vector<MaterialId> material_sources_;
         std::vector<ResourceInput> read_buffers_;
         std::vector<const nri::Texture*> read_images_;
         std::array<Slice, 3> slices_;

@@ -52,7 +52,7 @@ namespace lux::render::detail
 
         RenderResult<void> prepareMeshPrograms(
             std::span<MeshProgramInput> inputs,
-            std::span<const rdesc::MaterialProgramSet> materials,
+            std::span<const std::shared_ptr<const MaterialProgramRecord>> materials,
             std::span<MaterialPlacements> shaders,
             const nri::DeviceDesc& limits,
             const RasterPassTemplate& stage,
@@ -68,7 +68,7 @@ namespace lux::render::detail
                 for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                 {
                     auto shader = buildMeshShader(
-                        materials[index], configuration.purpose, paged, winding != 0
+                        materials[index]->data, configuration.purpose, paged, winding != 0
                     );
                     if (!shader) return cxx::unexpected(shader.error());
                     auto placement = planRasterLayout(limits, shader->interface, stage);
@@ -88,7 +88,7 @@ namespace lux::render::detail
                     auto graphics = meshGraphicsState(
                         input.vertex_stride,
                         input.attributes,
-                        materials[input.material_index],
+                        materials[input.material_index]->data,
                         shader->artifact.interface,
                         configuration.front_counter_clockwise,
                         winding != 0
@@ -166,7 +166,7 @@ namespace lux::render::detail
         {
             const auto revision = source_.revision;
             std::vector<MeshProgramInput> inputs;
-            std::vector<rdesc::MaterialProgramSet> materials;
+            std::vector<std::shared_ptr<const MaterialProgramRecord>> materials;
             std::vector<CompiledPrograms::Program*> acquired;
             cxx::scope_exit release_acquired([&]() noexcept { programs_.release(acquired); });
             std::vector<MaterialPlacements> placements;
@@ -182,9 +182,9 @@ namespace lux::render::detail
                 for (auto* program : missing)
                     if (program->unpublished) device_.nriCore().DestroyPipeline(program->unpublished);
             });
-            // Lookup keys borrow only during this unsuspended freezing phase.
+            // Resolve identities on the Server and retain immutable program records across scheduler hops.
             {
-                std::map<const rdesc::MaterialProgramSet*, std::uint32_t, std::less<>> material_indices;
+                std::map<MaterialProgramId, std::uint32_t> material_indices;
                 using InputKey = std::tuple<std::uint32_t, std::uint32_t, std::span<const MeshAttribute>>;
                 const auto less = [](const InputKey& a, const InputKey& b) noexcept
                 {
@@ -210,22 +210,24 @@ namespace lux::render::detail
                         continue;
                     }
                     auto meshes = resources_.borrow<IndexedTriangleMeshStorage>(
-                        extension_detail::ResourceIdentity::parent(group.selection.mesh)
+                        extension_detail::ResourceIdentity::parent(group.mesh)
                     );
-                    auto material_storage = resources_.borrow<RasterMaterialStorage>(
-                        extension_detail::ResourceIdentity::parent(group.selection.material_source)
-                    );
-                    const auto* geometry = meshes ? (*meshes)->find(group.selection.mesh) : nullptr;
-                    const auto* material = material_storage
-                        ? (*material_storage)->program(group.selection.material_source) : nullptr;
-                    if (!geometry || !material)
+                    const auto* geometry = meshes ? (*meshes)->find(group.mesh) : nullptr;
+                    if (!geometry)
                     {
                         co_return cxx::unexpected(RenderError{kStorageIdentity});
                     }
                     const auto [material_entry, new_material] = material_indices.emplace(
-                        material, static_cast<std::uint32_t>(materials.size())
+                        group.program, static_cast<std::uint32_t>(materials.size())
                     );
-                    if (new_material) materials.push_back(*material);
+                    if (new_material)
+                    {
+                        const auto owner = extension_detail::ResourceIdentity::parent(group.program);
+                        auto storage = resources_.borrow<RasterMaterialStorage>(owner);
+                        auto material = storage ? (*storage)->borrowProgram(group.program) : nullptr;
+                        if (!material) co_return cxx::unexpected(RenderError{kStorageIdentity});
+                        materials.push_back(std::move(material));
+                    }
                     InputKey key{material_entry->second, geometry->vertex_stride, geometry->attributes};
                     const auto [entry, inserted] = input_indices.emplace(
                         std::move(key), static_cast<std::uint32_t>(inputs.size())
@@ -395,19 +397,6 @@ namespace lux::render::detail
                 }
             }
             if (changed) ++draw_layout_revision_;
-            material_sources_.clear();
-            std::map<const rdesc::MaterialProgramSet*, MaterialId, std::less<>> definitions;
-            for (const auto& group : source_.groups)
-            {
-                if (group.record.candidate_count == 0) continue;
-                const auto material = group.selection.material_source;
-                auto storage = resources_.borrow<RasterMaterialStorage>(
-                    extension_detail::ResourceIdentity::parent(material)
-                );
-                if (!storage) co_return cxx::unexpected(storage.error());
-                if (definitions.emplace((*storage)->program(material), material).second)
-                    material_sources_.push_back(material);
-            }
             if (changed) rebuildDrawOrder();
             prepared_revision_ = revision;
             co_return RenderResult<void>{};
@@ -786,7 +775,7 @@ namespace lux::render::detail
         {
             auto& group = groups_[index];
             if (group.generation == 0) continue;
-            const auto mesh = source_.groups[index].selection.mesh;
+            const auto mesh = source_.groups[index].mesh;
             const auto storage_id = extension_detail::ResourceIdentity::parent(mesh);
             if (!mesh_storage || mesh_storage_id != storage_id)
             {
@@ -813,15 +802,30 @@ namespace lux::render::detail
         // omit a changed texture merely because the material program stayed the same.
         read_buffers_.clear();
         read_images_.clear();
-        for (const auto material : material_sources_)
+        for (const auto material : source_.materials)
         {
             auto storage = resources_.borrow<RasterMaterialStorage>(
                 extension_detail::ResourceIdentity::parent(material)
             );
             if (!storage) return cxx::unexpected(storage.error());
-            auto collected = (*storage)->collectReads(material, frame.slot, read_buffers_, read_images_);
+            auto collected = (*storage)->collectReads(
+                material, configuration_.purpose, frame.slot, read_buffers_, read_images_
+            );
             if (!collected) return collected;
         }
+        std::ranges::sort(read_buffers_, [](const ResourceInput& a, const ResourceInput& b) noexcept
+        {
+            if (a.buffer != b.buffer) return std::less<>{}(a.buffer, b.buffer);
+            return std::tie(a.offset, a.size) < std::tie(b.offset, b.size);
+        });
+        const auto duplicate_buffers = std::ranges::unique(read_buffers_, {}, [](const ResourceInput& input) noexcept
+        {
+            return std::tuple{input.buffer, input.offset, input.size};
+        });
+        read_buffers_.erase(duplicate_buffers.begin(), duplicate_buffers.end());
+        std::ranges::sort(read_images_);
+        const auto duplicate_images = std::ranges::unique(read_images_);
+        read_images_.erase(duplicate_images.begin(), duplicate_images.end());
         for (const auto& buffer : read_buffers_)
             read({buffer.buffer, GraphBufferRange{buffer.offset, buffer.size}, EGraphUse::STORAGE_READ, 2});
         for (const auto* texture : read_images_)

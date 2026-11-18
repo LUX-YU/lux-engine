@@ -5,11 +5,14 @@
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 
 #include <exec/task.hpp>
+#include <memory>
+#include <optional>
 #include <unordered_map>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/render/resources/material/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/material/MaterialProgramRecord.hpp>
 #include <lux/engine/render/resources/material/Resource.hpp>
 
 namespace lux::render::detail
@@ -22,10 +25,18 @@ namespace lux::render::detail
 
         struct Entry final
         {
+            MaterialProgramId program;
             Page* page = nullptr;
             std::uint32_t slot = 0;
             StorageSubscription* bindings = nullptr;
             std::vector<const nri::Texture*> images;
+        };
+
+        struct ProgramSlot final
+        {
+            std::shared_ptr<const MaterialProgramRecord> record;
+            Table* table = nullptr;
+            std::size_t instances = 0;
         };
 
     public:
@@ -47,23 +58,17 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<rdesc::MaterialGpuReference>
         gpuReference(MaterialId, std::uint32_t frame) const noexcept;
-        // Cold immutable program borrow. Copy the selected compilation input before suspending;
-        // this borrow neither keeps a material alive nor grants access to the parameter replicas.
-        [[nodiscard]] const rdesc::MaterialProgramSet* program(MaterialId) const noexcept;
-        // Append one definition's actual page and image reads for this FIF; no descriptor/Graph ownership.
+        [[nodiscard]] MaterialProgramId programId(MaterialId) const noexcept;
+        [[nodiscard]] std::shared_ptr<const MaterialProgramRecord> borrowProgram(MaterialProgramId) const noexcept;
+        // Append the instance's physical parameter page and sampled images for this FIF.
         [[nodiscard]] RenderResult<void>
         collectReads(
-            MaterialId program_source,
+            MaterialId material,
+            rdesc::EMaterialPurpose purpose,
             std::uint32_t frame,
             std::vector<ResourceInput>& buffers,
             std::vector<const nri::Texture*>& images
         ) const noexcept;
-
-        struct ImageUse final
-        {
-            const nri::Texture* image;
-            std::uint32_t records;
-        };
 
         [[nodiscard]] RenderResult<void> release(MaterialId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
@@ -80,7 +85,12 @@ namespace lux::render::detail
         void removeDirty(Page&, std::uint32_t frame) noexcept;
         [[nodiscard]] RenderResult<Page*> createPage(Table&) noexcept;
         void releasePage(Page&) noexcept;
-        [[nodiscard]] RenderResult<Table*> table(rdesc::MaterialProgramSet&) noexcept;
+        [[nodiscard]] RenderResult<ProgramSlot*> qualifyProgram(rdesc::MaterialProgramSet&) noexcept;
+        [[nodiscard]] RenderResult<Table*> qualifyTable(
+            const rdesc::MaterialProgramSet&, const rdesc::ShaderBlock&,
+            std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3>
+        ) noexcept;
+        void removeUnusedProgram(ProgramSlot&) noexcept;
 
         void removeEmptyTable(Table&) noexcept;
 
@@ -91,19 +101,19 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] RenderResult<TextureInput> resolveTexture(TextureId) const noexcept;
-        static void addImageUses(Table&, std::span<const nri::Texture* const>) noexcept;
-        static void removeImageUses(Table&, std::span<const nri::Texture* const>) noexcept;
         [[nodiscard]] const Entry* findEntry(MaterialId) const noexcept;
         [[nodiscard]] Entry* findEntry(MaterialId) noexcept;
         DeviceSession& session_;
-        ResourceUploader& uploads_;
-        FrameProgress& replica_progress_;
+        ResourceUploader* uploads_;
+        FrameProgress* replica_progress_;
         std::uint32_t frame_count_;
         ResourceRegistry& resources_;
 
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
+        cxx::StableSlotMap<ProgramSlot, MaterialProgramTag> programs_;
+        std::unordered_multimap<std::size_t, cxx::SlotKey<MaterialProgramTag>> programs_by_digest_;
         std::unordered_multimap<std::size_t, std::unique_ptr<Table>> tables_;
         std::array<std::vector<Page*>, 3> dirty_pages_;
     };

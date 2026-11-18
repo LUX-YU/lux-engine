@@ -732,10 +732,9 @@ not as a hidden replacement for the successful non-overflow Clustered path.
 
 ## Scene composition and measurement boundaries
 
-`MeshInstanceDrawGroup::material_source` selects a material **program table** through a live material in that table;
-it is not a filter for just that MaterialId. A group selects its Mesh/submesh and all matching instances in that
-table. Each instance's GPU material index selects its own parameters. Configure one group for that Mesh/submesh/table,
-even when many MaterialIds share it. Listing those materials as separate groups repeats the same draws.
+A draw group is keyed by Mesh, submesh and the material program's generational identity. Its instances keep
+their own MaterialIds and GPU parameter addresses. The group publishes its live materials before visibility
+compaction so preparation can resolve the parameters and current textures for every potential draw.
 
 Connect MeshVisibility's group, instance and visibility ports to GBuffer. Setting `frustum_culling` to false keeps
 the all-candidate reference path. With `camera_view` enabled, a Compute pass derives the geometric view and clip
@@ -895,7 +894,9 @@ whole-mip path, for upload, clone and readback of tail mips. Vulkan keeps its lo
 
 ## Material Resources
 
-`resources/material/Resource.hpp` declares the Resource; `resource/material` owns its single material table and
+`resources/material/Resource.hpp` declares the Resource. `resource/material` owns immutable programs and shares
+parameter pages among programs with equal reflected record ABIs. Its instances retain their own page and slot.
+Programs with an empty record use the GPU sentinel and require no parameter buffer. The same Resource owns
 static typed command adapters. Inputs own shared target programs, parameter values and TextureIds. Render does
 not retain author graphs, source pointers or Slang sessions. Each program set must match the device target and
 its reflected record layout. Requested purposes must exist explicitly, including opaque Shadow programs.

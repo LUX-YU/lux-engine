@@ -3,6 +3,7 @@
 #include <lux/engine/render/extensions/graph/InstanceData.hpp>
 #include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
 #include <lux/engine/render/resource/instance/RasterMeshInstanceStorage.hpp>
+#include <lux/engine/render/resource/material/MaterialProgramRecord.hpp>
 #include <map>
 
 namespace lux::render::detail
@@ -22,7 +23,8 @@ namespace lux::render::detail
 
     struct MeshDrawGroup final
     {
-        MeshInstanceDrawGroup selection;
+        MeshId mesh;
+        MaterialProgramId program;
         MeshDrawGroupRecord record;
         std::uint64_t generation = 0;
         std::uint32_t gpu_index = UINT32_MAX; // Dense live-record address; never the logical slot identity.
@@ -33,6 +35,7 @@ namespace lux::render::detail
     struct MeshDrawGroupSource final
     {
         std::span<const MeshDrawGroup> groups;
+        std::span<const MaterialId> materials;
         std::uint64_t revision = 1;
         std::uint32_t view_count = 1;
     };
@@ -61,7 +64,7 @@ namespace lux::render::detail
         ~MeshDrawGroups() noexcept;
 
     private:
-        using GroupKey = std::tuple<MeshId, const rdesc::MaterialProgramSet*, std::uint32_t>;
+        using GroupKey = std::tuple<MeshId, MaterialProgramId, std::uint32_t>;
 
         struct Membership final
         {
@@ -100,6 +103,7 @@ namespace lux::render::detail
         std::vector<std::uint32_t> free_groups_;
         std::vector<Membership> memberships_;
         std::vector<MeshDrawGroup> descriptions_;
+        std::vector<MaterialId> material_ids_;
         std::vector<MeshDrawGroupRecord> records_;
         std::vector<std::uint32_t> candidates_;
         std::vector<std::array<std::uint32_t, 2>> chunks_;
@@ -107,6 +111,7 @@ namespace lux::render::detail
         std::array<Slice, 3> slices_;
         MeshDrawGroupSource source_;
         std::uint64_t data_revision_ = 1, packed_revision_ = 0;
+        bool material_ids_dirty_ = true;
         std::uint64_t visible_bytes_ = 4;
         RenderError error_;
     };

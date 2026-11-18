@@ -67,6 +67,7 @@ namespace lux::render
         std::uint64_t jobs_considered = 0, jobs_selected = 0, dependency_edges = 0;
         std::uint64_t rounds_opened = 0, slot_cpu_hold_ns = 0;
         std::uint64_t program_preparations_holding_slot = 0, program_preparation_ns = 0;
+        // Storage and sampled ranges from dynamic raster lists in accepted batches, accumulated across rounds.
         std::uint64_t raster_buffer_ranges = 0, raster_buffer_bytes = 0, raster_image_ranges = 0;
         std::uint64_t raster_image_subresources = 0;
     };

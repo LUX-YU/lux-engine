@@ -229,11 +229,20 @@ namespace
     {
         std::array<std::byte, 4> center;
         std::uint64_t buffer_ranges, buffer_bytes, image_ranges, image_subresources;
+        std::uint64_t switched_image_ranges;
+    };
+
+    struct InstanceSwitch final
+    {
+        ResourceInstanceId resource;
+        MeshInstanceUpdate update;
+        unsigned expected_image_ranges;
     };
 
     RasterSample sampleRaster(
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands,
-        const RenderProbe<RasterProbeConfig>& probe, EMaterialPurpose purpose, SceneId scene
+        const RenderProbe<RasterProbeConfig>& probe, EMaterialPurpose purpose, SceneId scene,
+        const InstanceSwitch* change = nullptr
     )
     {
         CapturedPixels pixels;
@@ -250,6 +259,17 @@ namespace
         for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(ipc, commands, job);
         const auto after = server.developmentStats();
         CHECK(after);
+        std::uint64_t switched_image_ranges = 0;
+        if (change)
+        {
+            call<InstanceCommands::Update>(ipc, commands, {change->resource, {}, {&change->update, 1}});
+            for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(ipc, commands, job);
+            const auto switched = server.developmentStats();
+            CHECK(switched);
+            CHECK(switched->raster_buffer_ranges - after->raster_buffer_ranges == kFif);
+            switched_image_ranges = switched->raster_image_ranges - after->raster_image_ranges;
+            CHECK(switched_image_ranges == change->expected_image_ranges);
+        }
         stopAndRemoveJob(ipc, commands, job);
         call<RemoveView>(ipc, commands, {scene, view});
         call<RemoveTarget>(ipc, commands, output);
@@ -272,21 +292,22 @@ namespace
             center, after->raster_buffer_ranges - before->raster_buffer_ranges,
             after->raster_buffer_bytes - before->raster_buffer_bytes,
             after->raster_image_ranges - before->raster_image_ranges,
-            after->raster_image_subresources - before->raster_image_subresources
+            after->raster_image_subresources - before->raster_image_subresources, switched_image_ranges
         };
     }
 
     void verifyPurposes(
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, const Probes& probes,
         SceneId scene, ResourceInstanceId materials, ResourceInstanceId instances, MeshId mesh,
-        TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target, bool legacy
+        std::span<const TextureId, 2> textures, lux::shader::ShaderCompiler& compiler,
+        rdesc::EShaderTarget target, bool legacy
     )
     {
         constexpr std::array purposes{EMaterialPurpose::FORWARD, EMaterialPurpose::GBUFFER, EMaterialPurpose::SHADOW};
         auto program = cookProgram(compiler, target, purposes, 1, .125F);
         CHECK(program.programs.size() == purposes.size());
         const auto material = call<MaterialCommands::Create>(
-            ipc, commands, {materials, {std::move(program), {{1, 0, 0, 0}}, {texture}}}
+            ipc, commands, {materials, {program, {{1, 0, 0, 0}}, {textures[0]}}}
         ).material;
         MeshInstanceData input{mesh, material};
         input.render_enabled = true;
@@ -302,15 +323,31 @@ namespace
         CHECK(forward.image_ranges == kFif && gbuffer.image_ranges == kFif);
         CHECK(shadow.image_ranges == (legacy ? kFif : 0));
         CHECK(forward.buffer_ranges == kFif && gbuffer.buffer_ranges == kFif && shadow.buffer_ranges == kFif);
-        call<MaterialCommands::Update>(ipc, commands, {{material, {{.25F, 0, 0, 0}}, {texture}}});
+        call<MaterialCommands::Update>(ipc, commands, {{material, {{.25F, 0, 0, 0}}, {textures[0]}}});
         const auto masked = sampleRaster(server, ipc, commands, probes[2], purposes[2], scene);
         CHECK(std::bit_cast<float>(masked.center) == 1);
+        call<MaterialCommands::Update>(ipc, commands, {{material, {{1, 0, 0, 0}}, {textures[0]}}});
+        const auto other = call<MaterialCommands::Create>(
+            ipc, commands, {materials, {std::move(program), {{.75F, 0, 0, 0}}, {textures[1]}}}
+        ).material;
+        input.material = other;
+        input.transform[0] = input.transform[5] = .25F;
+        input.transform[12] = .5F;
+        const auto sibling = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
+        input.material = material;
+        const InstanceSwitch change{instances, {sibling, input}, legacy ? 2 * kFif : kFif};
+        const auto together = sampleRaster(server, ipc, commands, probes[0], purposes[0], scene, &change);
+        CHECK(together.buffer_ranges == kFif && together.image_ranges == 2 * kFif);
+        call<InstanceCommands::ReleaseInstance>(ipc, commands, {sibling});
+        call<MaterialCommands::Release>(ipc, commands, {other});
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {instance});
         call<MaterialCommands::Release>(ipc, commands, {material});
         std::printf(
-            "MATERIAL_PURPOSES forward_red=%u gbuffer_red=%u shadow_depth=0.5 masked_depth=1 shadow_image_ranges=%llu\n",
+            "MATERIAL_PURPOSES forward_red=%u gbuffer_red=%u shadow_depth=0.5 masked_depth=1 shadow_image_ranges=%llu "
+            "group_image_ranges=%llu switched_image_ranges=%llu\n",
             std::to_integer<unsigned>(forward.center[0]), std::to_integer<unsigned>(gbuffer.center[0]),
-            static_cast<unsigned long long>(shadow.image_ranges)
+            static_cast<unsigned long long>(shadow.image_ranges), static_cast<unsigned long long>(together.image_ranges),
+            static_cast<unsigned long long>(together.switched_image_ranges)
         );
     }
 
@@ -520,7 +557,7 @@ int main(int argc, char** argv)
     const auto quad = makeQuad();
     const auto mesh = call<MeshCommands::UploadMesh>(*ipc, commands, {meshes, &quad}).mesh;
     std::vector<TextureId> images;
-    for (unsigned index = 0; index < (count ? 9u : 1u); ++index)
+    for (unsigned index = 0; index < (count ? 9u : 2u); ++index)
     {
         images.push_back(uploadTexture(*ipc, commands, textures, 64 + index));
     }
@@ -531,8 +568,8 @@ int main(int argc, char** argv)
     }
     else
     {
-        verifyPurposes(*server, *ipc, commands, probes, scene, materials, instances, mesh, images.front(), **compiler,
-            shader_target, legacy);
+        verifyPurposes(*server, *ipc, commands, probes, scene, materials, instances, mesh,
+            std::span<const TextureId, 2>(images.data(), 2), **compiler, shader_target, legacy);
         call<RemoveScene>(*ipc, commands, {scene});
     }
     call<MeshCommands::ReleaseMesh>(*ipc, commands, {mesh});

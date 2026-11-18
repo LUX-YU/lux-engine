@@ -151,8 +151,8 @@ namespace
         {
             recipe.connections.push_back({{2, port}, {0, port}});
         }
-        const char* color = gbuffer ? "albedo" : "color";
-        const char* captured = purpose == EMaterialPurpose::SHADOW ? "depth" : color;
+        const std::string color = gbuffer ? std::string(kGBufferPorts[0]) : "color";
+        const auto captured = purpose == EMaterialPurpose::SHADOW ? "depth" : color;
         recipe.connections.push_back({{0, captured}, {1, "color"}});
         recipe.outputs.push_back({{0, color}, GraphOutputRequirements{output.format, 1}});
         recipe.outputs.push_back({{1, "pixels"}, {}});

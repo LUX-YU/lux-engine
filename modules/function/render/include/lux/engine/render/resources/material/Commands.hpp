@@ -9,11 +9,12 @@ namespace lux::render::MaterialCommands
     {
         static constexpr std::string_view name = "lux.render.material.program.register";
         static constexpr bool requires_idle_resource = true;
+        using Data = rdesc::MaterialProgramSet;
 
         struct Request final
         {
             ResourceInstanceId resource_id;
-            rdesc::MaterialProgramSet program;
+            Data program;
         };
 
         struct Response final
@@ -41,6 +42,8 @@ namespace lux::render::MaterialCommands
             std::vector<TextureId> textures;
         };
 
+        using Data = Request;
+
         struct Response final
         {
             RenderError error{};
@@ -58,6 +61,7 @@ namespace lux::render::MaterialCommands
         static constexpr std::string_view name = "lux.render.material.instance.release";
         static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
+        using Data = MaterialId;
 
         struct Request final
         {
@@ -77,6 +81,7 @@ namespace lux::render::MaterialCommands
         static constexpr std::string_view name = "lux.render.material.program.unregister";
         static constexpr bool requires_idle_resource = true;
         static constexpr bool failure_safe = true;
+        using Data = MaterialProgramId;
 
         struct Request final
         {

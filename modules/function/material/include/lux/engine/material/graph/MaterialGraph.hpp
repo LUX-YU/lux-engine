@@ -2,7 +2,7 @@
 // =============================================================================
 //  MaterialGraph.hpp  —  Material graph container (pure data model)
 // -----------------------------------------------------------------------------
-//  Authoring source document. Runtime consumes only its cooked MaterialData.
+//  Authoring source document. Runtime consumes the cooked target program and instance values.
 // =============================================================================
 
 #include <memory>

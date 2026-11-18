@@ -11,9 +11,8 @@ namespace lux::render
     {
     public:
         using Commands = std::tuple<
-            MaterialCommands::Create, MaterialCommands::Update, MaterialCommands::Release,
-            MaterialCommands::RegisterProgram, MaterialCommands::CreateInstance, MaterialCommands::ReleaseInstance,
-            MaterialCommands::UnregisterProgram
+            MaterialCommands::RegisterProgram, MaterialCommands::CreateInstance, MaterialCommands::Update,
+            MaterialCommands::ReleaseInstance, MaterialCommands::UnregisterProgram
         >;
         using PerFrameData = std::tuple<>;
         using Config = void;

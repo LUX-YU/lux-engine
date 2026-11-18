@@ -38,6 +38,27 @@ int main(int argc, char** argv)
     CHECK(client);
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = queryCommands(*client);
+    const std::array current{
+        CommandName{R::name}, CommandName{C::name}, CommandName{MaterialCommands::Update::name},
+        CommandName{MaterialCommands::ReleaseInstance::name}, CommandName{U::name}
+    };
+    const auto directory = call<QueryCommandIds>(*client, commands, current);
+    CHECK(directory.ids.size() == current.size());
+    for (std::size_t i = 0; i < current.size(); ++i)
+    {
+        const auto entry = std::ranges::find(commands.commands, current[i].name(), &CommandInfo::name);
+        CHECK(entry != commands.commands.end() && entry->id == directory.ids[i]);
+        std::printf("MATERIAL_COMMAND %.*s index=%u generation=%u\n",
+            int(current[i].name().size()), current[i].name().data(), entry->id.index, entry->id.gen);
+    }
+    for (std::string_view name : {"lux.render.material.create", "lux.render.material.release"})
+    {
+        CHECK(std::ranges::find(commands.commands, name, &CommandInfo::name) == commands.commands.end());
+        const std::array removed{CommandName{name}};
+        const auto retired = call<QueryCommandIds>(*client, commands, removed, false);
+        CHECK(retired.error.type == kRuntimeUnsupported && retired.ids.empty());
+        std::printf("MATERIAL_COMMAND_REMOVED %.*s\n", int(name.size()), name.data());
+    }
     const auto materials = call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, kMaterialResourceName});
     const auto textures = call<GetOrCreateResource>(*client, commands, {GlobalRenderScope{}, kTextureResourceName});
     auto wrong_target = program;

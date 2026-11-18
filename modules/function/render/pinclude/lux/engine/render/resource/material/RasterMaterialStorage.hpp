@@ -37,11 +37,9 @@ namespace lux::render::detail
             std::shared_ptr<const MaterialProgramRecord> record;
             Table* table = nullptr;
             std::size_t instances = 0;
-            bool implicit = false;
         };
 
     public:
-        [[nodiscard]] exec::task<RenderResult<MaterialId>> upload(MaterialData) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
         [[nodiscard]] RenderResult<MaterialProgramId> registerProgram(rdesc::MaterialProgramSet) noexcept;
         [[nodiscard]] exec::task<RenderResult<MaterialId>>
@@ -90,14 +88,12 @@ namespace lux::render::detail
         void removeDirty(Page&, std::uint32_t frame) noexcept;
         [[nodiscard]] RenderResult<Page*> createPage(Table&) noexcept;
         void releasePage(Page&) noexcept;
-        [[nodiscard]] RenderResult<ProgramSlot*> addProgram(rdesc::MaterialProgramSet&, bool implicit) noexcept;
         [[nodiscard]] ProgramSlot* findProgram(MaterialProgramId) noexcept;
         [[nodiscard]] const ProgramSlot* findProgram(MaterialProgramId) const noexcept;
         [[nodiscard]] RenderResult<Table*> qualifyTable(
             const rdesc::MaterialProgramSet&, const rdesc::ShaderBlock&,
             std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3>
         ) noexcept;
-        void removeUnusedImplicitProgram(ProgramSlot&) noexcept;
         void removeProgram(ProgramSlot&) noexcept;
 
         void removeEmptyTable(Table&) noexcept;
@@ -121,7 +117,6 @@ namespace lux::render::detail
         std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
         cxx::StableSlotMap<ProgramSlot, MaterialProgramTag> programs_;
-        std::unordered_multimap<std::size_t, cxx::SlotKey<MaterialProgramTag>> programs_by_digest_;
         std::unordered_multimap<std::size_t, std::unique_ptr<Table>> tables_;
         std::array<std::vector<Page*>, 3> dirty_pages_;
     };

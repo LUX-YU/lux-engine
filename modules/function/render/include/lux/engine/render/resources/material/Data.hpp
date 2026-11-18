@@ -20,18 +20,8 @@ namespace lux::render
     using MaterialId = ResourceId<MaterialTag>;
     struct MaterialProgramTag;
     using MaterialProgramId = ResourceId<MaterialProgramTag>;
-    // Client-supplied finite values in the Cooked parameter order; Render checks the actual layout and count.
+    // Client-supplied finite values in the target program's parameter order.
     using MaterialParameters = std::vector<std::array<float, 4>>;
-
-    // Owned target program value. Asset identifiers have already been resolved by the caller.
-    // Render retains no author graph, generated source string or compiler Session.
-    struct MaterialData final
-    {
-        rdesc::MaterialProgramSet program;
-        MaterialParameters parameters{};
-        // Client keeps referenced textures valid and explicitly updates these fields before releasing them.
-        std::vector<TextureId> textures;
-    };
 
     struct MaterialUpdate final
     {

@@ -19,14 +19,6 @@ namespace lux::render::detail
 {
     namespace
     {
-        exec::task<MaterialCommands::Create::Response>
-        createMaterial(RasterMaterialStorage& resource, MaterialCommands::Create::Request&& input) noexcept
-        {
-            auto created = co_await resource.upload(std::move(input.data));
-            co_return created ? MaterialCommands::Create::Response{{}, *created}
-                              : MaterialCommands::Create::Response{created.error()};
-        }
-
         exec::task<MaterialCommands::Update::Response>
         updateMaterial(RasterMaterialStorage& resource, MaterialCommands::Update::Request&& input) noexcept
         {
@@ -68,16 +60,6 @@ namespace lux::render::detail
             response.error = removed ? RenderError{} : removed.error();
         }
 
-        void
-        releaseMaterial(
-            RasterMaterialStorage& resource,
-            const MaterialCommands::Release::Request& input,
-            MaterialCommands::Release::Response& response
-        ) noexcept
-        {
-            auto released = resource.release(input.data);
-            response.error = released ? RenderError{} : released.error();
-        }
     } // namespace
 
     struct RasterMaterialStorage::Table final
@@ -148,22 +130,11 @@ namespace lux::render::detail
         return entries_.size();
     }
 
-    RenderResult<RasterMaterialStorage::ProgramSlot*>
-    RasterMaterialStorage::addProgram(rdesc::MaterialProgramSet& program, bool implicit) noexcept
+    RenderResult<MaterialProgramId> RasterMaterialStorage::registerProgram(rdesc::MaterialProgramSet program) noexcept
     {
         if (program.target != session_.enabledFeatures().shader_target)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
-        }
-        const auto digest = implicit ? program.structureDigest() : 0;
-        if (implicit)
-        {
-            const auto [first, last] = programs_by_digest_.equal_range(digest);
-            for (auto entry = first; entry != last; ++entry)
-            {
-                auto* slot = programs_.find(entry->second);
-                if (slot->record->data.hasSameStructure(program)) return slot;
-            }
         }
         const auto* layout = program.parameterLayout();
         const bool empty_record = program.hasEmptyRecord();
@@ -247,20 +218,11 @@ namespace lux::render::detail
         const auto id = extension_detail::ResourceIdentity::make<MaterialProgramId>(id_, key);
         auto* slot = programs_.find(key);
         slot->record = std::make_shared<const MaterialProgramRecord>(
-            MaterialProgramRecord{id, std::move(program), digest, samples_textures}
+            MaterialProgramRecord{id, std::move(program), samples_textures}
         );
         slot->table = table;
-        slot->implicit = implicit;
         if (table) ++table->programs;
-        if (implicit) programs_by_digest_.emplace(digest, key);
-        return slot;
-    }
-
-    RenderResult<MaterialProgramId> RasterMaterialStorage::registerProgram(rdesc::MaterialProgramSet program) noexcept
-    {
-        const auto added = addProgram(program, false);
-        if (!added) return cxx::unexpected(added.error());
-        return (*added)->record->id;
+        return id;
     }
 
     RenderResult<RasterMaterialStorage::Table*> RasterMaterialStorage::qualifyTable(
@@ -358,22 +320,10 @@ namespace lux::render::detail
         return result;
     }
 
-    void RasterMaterialStorage::removeUnusedImplicitProgram(ProgramSlot& program) noexcept
-    {
-        if (program.implicit && !program.instances) removeProgram(program);
-    }
-
     void RasterMaterialStorage::removeProgram(ProgramSlot& program) noexcept
     {
         auto* table = program.table;
         const auto key = extension_detail::ResourceIdentity::local(program.record->id);
-        if (program.implicit)
-        {
-            const auto [first, last] = programs_by_digest_.equal_range(program.record->digest);
-            const auto entry = std::find_if(first, last, [&](const auto& item) noexcept { return item.second == key; });
-            if (entry == last) std::terminate();
-            programs_by_digest_.erase(entry);
-        }
         programs_.erase(key);
         if (table)
         {
@@ -385,9 +335,9 @@ namespace lux::render::detail
     RenderResult<void> RasterMaterialStorage::unregisterProgram(MaterialProgramId id) noexcept
     {
         auto* program = findProgram(id);
-        if (!program || program->implicit) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (program->instances || program->record.use_count() != 1)
-            return cxx::unexpected(RenderError{kDeviceBusy});
+        if (!program) return cxx::unexpected(RenderError{kStorageIdentity});
+        const bool has_live_uses = program->instances || program->record.use_count() != 1;
+        if (has_live_uses) return cxx::unexpected(RenderError{kDeviceBusy});
         removeProgram(*program);
         return {};
     }
@@ -540,6 +490,7 @@ namespace lux::render::detail
     exec::task<RenderResult<RasterMaterialStorage::WriteValue<Input>>>
     RasterMaterialStorage::write(Input input) noexcept
     {
+        constexpr bool creating = std::same_as<Input, MaterialCommands::CreateInstance::Request>;
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
@@ -556,7 +507,7 @@ namespace lux::render::detail
         }
         Entry* existing = nullptr;
         ProgramSlot* program = nullptr;
-        if constexpr (std::same_as<Input, MaterialCommands::CreateInstance::Request>)
+        if constexpr (creating)
         {
             program = findProgram(input.program);
             if (!program) co_return cxx::unexpected(RenderError{kStorageIdentity});
@@ -574,7 +525,7 @@ namespace lux::render::detail
         {
             if (!input.parameters.empty() || !input.textures.empty())
                 co_return cxx::unexpected(RenderError{kStorageContract});
-            if constexpr (std::same_as<Input, MaterialCommands::CreateInstance::Request>)
+            if constexpr (creating)
             {
                 const auto id = entries_.emplace();
                 entries_.find(id)->program = program->record->id;
@@ -703,7 +654,7 @@ namespace lux::render::detail
             restore.release();
         }
         MaterialId id;
-        if constexpr (std::same_as<Input, MaterialCommands::CreateInstance::Request>)
+        if constexpr (creating)
         {
             id = extension_detail::ResourceIdentity::make<MaterialId>(id_, entries_.emplace());
             existing = entries_.find(extension_detail::ResourceIdentity::local(id));
@@ -717,7 +668,7 @@ namespace lux::render::detail
         {
             existing->images = std::move(images);
         }
-        if constexpr (std::same_as<Input, MaterialCommands::CreateInstance::Request>)
+        if constexpr (creating)
         {
             co_return id;
         }
@@ -725,16 +676,6 @@ namespace lux::render::detail
         {
             co_return Ack{};
         }
-    }
-
-    exec::task<RenderResult<MaterialId>> RasterMaterialStorage::upload(MaterialData input) noexcept
-    {
-        auto program = addProgram(input.program, true);
-        if (!program) co_return cxx::unexpected(program.error());
-        cxx::scope_exit retire([&]() noexcept { removeUnusedImplicitProgram(**program); });
-        co_return co_await createInstance({
-            (*program)->record->id, std::move(input.parameters), std::move(input.textures)
-        });
     }
 
     exec::task<RenderResult<MaterialId>>
@@ -859,7 +800,6 @@ namespace lux::render::detail
             releasePage(*page);
             std::erase_if(table.pages, [&](const auto& value) noexcept { return value.get() == page; });
         }
-        removeUnusedImplicitProgram(program);
         return {};
     }
 
@@ -1014,11 +954,9 @@ namespace lux::render::detail
     {
 
         static const std::array commands{
-            CommandBinding::declare<MaterialCommands::Create, &createMaterial>(),
-            CommandBinding::declare<MaterialCommands::Update, &updateMaterial>(),
-            CommandBinding::declare<MaterialCommands::Release, &releaseMaterial>(),
             CommandBinding::declare<MaterialCommands::RegisterProgram, &handleRegisterProgram>(),
             CommandBinding::declare<MaterialCommands::CreateInstance, &handleCreateInstance>(),
+            CommandBinding::declare<MaterialCommands::Update, &updateMaterial>(),
             CommandBinding::declare<MaterialCommands::ReleaseInstance, &releaseInstance>(),
             CommandBinding::declare<MaterialCommands::UnregisterProgram, &handleUnregisterProgram>()
         };

@@ -1033,7 +1033,10 @@ int main(int argc, char** argv)
         std::erase(all_materials, previous_material);
         CHECK(all_candidates == run(0));
         if (program_cache_probe && device.cached_unused_programs >= 256)
+        {
             CHECK(call_capture_counts[2].load() == pipelines);
+            std::puts("MATERIAL_REGISTER_CACHE equal_content_distinct_ids=1 additional_psos=0");
+        }
     }
     // Flags use the existing property stream and survive all FIF replicas. Disabling frustum tests
     // must not bypass render permission; reenabling keeps the same resource/instance identities.

@@ -96,31 +96,6 @@ namespace lux::render::MaterialCommands
         }
     };
 
-    struct Create final
-    {
-        static constexpr std::string_view name = "lux.render.material.create";
-        static constexpr bool requires_idle_resource = true;
-        using Data = MaterialData;
-
-        struct Request final
-        {
-            ResourceInstanceId resource_id;
-            Data data;
-        };
-
-        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
-        {
-            return request.resource_id;
-        }
-
-        // Published material identity. Referenced textures remain the Client's responsibility.
-        struct Response final
-        {
-            RenderError error{};
-            MaterialId material{};
-        };
-    };
-
     struct Update final
     {
         static constexpr std::string_view name = "lux.render.material.update";
@@ -140,22 +115,4 @@ namespace lux::render::MaterialCommands
         using Response = AckResponse;
     };
 
-    struct Release final
-    {
-        static constexpr std::string_view name = "lux.render.material.release";
-        static constexpr bool requires_idle_resource = true;
-        static constexpr bool failure_safe = true;
-        using Data = MaterialId;
-        struct Request final
-        {
-            Data data;
-        };
-
-        [[nodiscard]] static MaterialId resourceId(const Request& request) noexcept
-        {
-            return request.data;
-        }
-
-        using Response = AckResponse;
-    };
 } // namespace lux::render::MaterialCommands

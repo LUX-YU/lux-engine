@@ -86,27 +86,45 @@ namespace lux::render::detail
              batch.local_batch + 1 == instance.plan_->submissions().size());
     }
 
-    exec::task<RenderResult<void>> SubmissionOperation::record(execution::CpuScheduler cpu) noexcept
+    exec::task<RenderResult<void>> SubmissionOperation::record(execution::CpuScheduler cpu, bool parallel) noexcept
     {
         if (slot_.batches.empty()) co_return RenderResult<void>{};
         const auto caller = co_await stdexec::read_env(stdexec::get_scheduler);
         const auto frame = slotIndex();
         slot_.recordings.assign(slot_.batches.size(), {});
-        auto recorded = co_await (
-            stdexec::schedule(cpu) |
-            stdexec::bulk(stdexec::par, slot_.batches.size(), [this, frame](std::size_t i) noexcept
-            {
-                const auto& batch = slot_.batches[i];
-                auto result = slot_.instances[batch.instance].instance->recordFrozenBatch(frame, batch.local_batch);
-                if (result) slot_.recordings[i].commands = *result;
-                else slot_.recordings[i].error = result.error();
-            }) |
-            stdexec::then([]() noexcept -> RenderResult<void> { return {}; }) |
-            stdexec::upon_stopped(
-                []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
-            ) |
-            stdexec::continues_on(caller) | stdexec::upon_error(NativeDeliveryFailure<void>{})
-        );
+        const auto record_batch = [this, frame](std::size_t i) noexcept
+        {
+            const auto& batch = slot_.batches[i];
+            auto result = slot_.instances[batch.instance].instance->recordFrozenBatch(frame, batch.local_batch);
+            if (result) slot_.recordings[i].commands = *result;
+            else slot_.recordings[i].error = result.error();
+        };
+        const auto deliver = [caller](auto sender) noexcept
+        {
+            return std::move(sender) |
+                stdexec::upon_stopped(
+                    []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
+                ) |
+                stdexec::continues_on(caller) | stdexec::upon_error(NativeDeliveryFailure<void>{});
+        };
+        RenderResult<void> recorded;
+        if (parallel)
+        {
+            recorded = co_await deliver(
+                stdexec::schedule(cpu) | stdexec::bulk(stdexec::par, slot_.batches.size(), record_batch) |
+                stdexec::then([]() noexcept -> RenderResult<void> { return {}; })
+            );
+        }
+        else
+        {
+            recorded = co_await deliver(stdexec::schedule(cpu) | stdexec::then(
+                [record_batch, count = slot_.batches.size()]() noexcept -> RenderResult<void>
+                {
+                    for (std::size_t i = 0; i < count; ++i) record_batch(i);
+                    return {};
+                }
+            ));
+        }
         if (!recorded) co_return recorded;
         for (const auto& result : slot_.recordings)
         {

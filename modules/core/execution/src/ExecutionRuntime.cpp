@@ -332,6 +332,12 @@ namespace lux::execution
         return state_->cpu_pool->get_scheduler();
     }
 
+    CpuScheduler ExecutionRuntime::cpuSchedulerOnWorker(std::size_t index) const noexcept
+    {
+        if (index >= cpuConcurrency()) std::terminate();
+        return state_->cpu_pool->get_scheduler_on_thread(index);
+    }
+
     RunLoop::Scheduler ExecutionRuntime::mainScheduler() noexcept
     {
         return state_->main_loop.scheduler();

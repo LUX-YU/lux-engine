@@ -134,7 +134,13 @@ namespace lux::render
         }
         if (frame_outputs_.empty() || !progress.canBegin(entry.session())) return false;
 
-        round_.operation.emplace(entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu_scheduler_);
+        // A parallel bulk sender joins tasks assigned to every worker. While one worker may
+        // be inside a driver call, record on the other worker with the same frozen batch path.
+        const bool parallel_recording = !preparing_execution_;
+        const auto cpu = parallel_recording ? cpu_scheduler_ : recording_scheduler_;
+        round_.operation.emplace(
+            entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu, parallel_recording
+        );
         auto opened = round_.operation->tryBegin();
         if (!opened || !*opened)
         {
@@ -270,7 +276,7 @@ namespace lux::render
 #endif
         const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         auto prepared =
-            execution.instance.prepareDataPrograms(cpu_scheduler_, programs.revisions, stop) |
+            execution.instance.prepareDataPrograms(program_scheduler_, programs.revisions, stop) |
             stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<bool> { std::terminate(); }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<bool> { return false; }) |
             stdexec::continues_on(scheduler) |

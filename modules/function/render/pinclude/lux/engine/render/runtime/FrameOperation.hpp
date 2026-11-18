@@ -26,7 +26,9 @@ namespace lux::render::detail
             SubmissionFrontiers blocked_completion;
         };
 
-        FrameOperation(DeviceSession&, ResourceUploader*, FrameProgress&, Workspace&, execution::CpuScheduler) noexcept;
+        FrameOperation(
+            DeviceSession&, ResourceUploader*, FrameProgress&, Workspace&, execution::CpuScheduler, bool parallel_recording
+        ) noexcept;
         ~FrameOperation() noexcept;
         FrameOperation(const FrameOperation&) = delete;
         FrameOperation& operator=(const FrameOperation&) = delete;
@@ -60,6 +62,7 @@ namespace lux::render::detail
         FrameProgress& progress_;
         Workspace& workspace_;
         execution::CpuScheduler cpu_;
+        bool parallel_recording_;
         FrameProgress::Round round_;
         std::optional<SubmissionOperation> submission_;
         std::optional<RenderError> cancellation_;

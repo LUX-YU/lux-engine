@@ -1,6 +1,7 @@
 #include <lux/engine/render/features/common/ParameterLayout.hpp>
 #include <lux/engine/render/resource/view/CameraParameters.hpp>
 #include <exception>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
@@ -15,8 +16,11 @@
 
 namespace lux::render
 {
-    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler scheduler)
-        : config_(std::move(value)), cpu_scheduler_(std::move(scheduler)), responder_(std::move(input)),
+    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::ExecutionRuntime& execution)
+        : config_(std::move(value)), cpu_scheduler_(execution.cpuScheduler()),
+          program_scheduler_(execution.cpuSchedulerOnWorker(0)),
+          recording_scheduler_(execution.cpuSchedulerOnWorker(execution.cpuConcurrency() > 1 ? 1 : 0)),
+          responder_(std::move(input)),
           server_context_(
               cxx::execution::default_manual_context_config(),
               {nullptr, [](void*) noexcept { ipc::IpcCore::instance().notifyWork(); }}

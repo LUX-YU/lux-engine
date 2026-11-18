@@ -45,7 +45,7 @@ namespace lux::render
             return cxx::unexpected(RenderError{kRuntimeState});
         }
 
-        auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), execution.cpuScheduler());
+        auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), execution);
         if (auto initialized = state->initialize(device_options); !initialized)
         {
             return cxx::unexpected(initialized.error());

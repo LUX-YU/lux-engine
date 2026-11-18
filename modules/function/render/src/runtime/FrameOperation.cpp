@@ -19,9 +19,11 @@ namespace lux::render::detail
         ResourceUploader* uploads,
         FrameProgress& progress,
         Workspace& workspace,
-        execution::CpuScheduler cpu
+        execution::CpuScheduler cpu,
+        bool parallel_recording
     ) noexcept
-        : device_(device), uploads_(uploads), progress_(progress), workspace_(workspace), cpu_(cpu)
+        : device_(device), uploads_(uploads), progress_(progress), workspace_(workspace), cpu_(cpu),
+          parallel_recording_(parallel_recording)
     {
     }
 
@@ -222,7 +224,7 @@ namespace lux::render::detail
         if (uploads_) uploads_->reservePreparationStaging(false);
         if (auto prepared = submission_->prepare(instances, order); !prepared)
             co_return cxx::unexpected(track(prepared).error());
-        auto recorded = co_await submission_->record(cpu_);
+        auto recorded = co_await submission_->record(cpu_, parallel_recording_);
         if (!recorded) co_return cxx::unexpected(track(recorded).error());
         auto accepted = co_await submission_->submit(cancellation_);
         if (!accepted) cancellation_ = accepted.error();

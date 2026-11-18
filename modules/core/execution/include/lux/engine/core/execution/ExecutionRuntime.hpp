@@ -80,6 +80,8 @@ namespace lux::execution
 
         // Borrowed CPU pool; settle and join all external users before destroying the Runtime.
         [[nodiscard]] CpuScheduler cpuScheduler() const noexcept;
+        // Borrows a specific existing worker. The index must be below cpuConcurrency().
+        [[nodiscard]] CpuScheduler cpuSchedulerOnWorker(std::size_t index) const noexcept;
         // Owner-thread admission fact, before shutdown/join mutates worker storage.
         [[nodiscard]] std::size_t cpuConcurrency() const noexcept;
         [[nodiscard]] TimerClient timer() const noexcept;

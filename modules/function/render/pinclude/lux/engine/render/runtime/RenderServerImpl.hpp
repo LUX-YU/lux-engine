@@ -65,6 +65,7 @@ namespace lux::render
 
         RenderServerConfig config_;
         execution::CpuScheduler cpu_scheduler_; // Borrowed from the application's ExecutionRuntime.
+        execution::CpuScheduler program_scheduler_, recording_scheduler_;
         ipc::IpcResponder responder_;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features_;
         std::map<std::string_view, FeatureId, std::less<>> features_by_name_;
@@ -142,7 +143,7 @@ namespace lux::render
         std::chrono::steady_clock::time_point slot_opened_at_, program_preparation_started_at_;
 #endif
 
-        Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler);
+        Impl(RenderServerConfig value, ipc::IpcResponder input, execution::ExecutionRuntime& execution);
 
         template <RenderCommand C, auto Method> CommandId bindFrameworkCommand() noexcept
         {

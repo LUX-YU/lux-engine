@@ -121,7 +121,7 @@ namespace lux::render::detail
         SubmissionOperation(DeviceSession&, FrameProgress::Round&, Workspace&) noexcept;
         [[nodiscard]] RenderResult<void>
         prepare(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
-        [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler) noexcept;
+        [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const std::optional<RenderError>& cancel) noexcept;
         void acceptPreparation(std::uint64_t serial) noexcept;
         void rejectSuffix(RenderError) noexcept;

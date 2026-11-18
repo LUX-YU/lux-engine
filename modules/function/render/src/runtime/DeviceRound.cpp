@@ -122,6 +122,14 @@ namespace lux::render
         auto& entry = *domain_->device_;
         auto& progress = entry.frameProgress();
         prefetchFrameOutputs(progress.nextSlot());
+        if (!active_frame_inputs_dirty_)
+        {
+            active_frame_inputs_dirty_ = std::ranges::any_of(pending_history_outputs_, [&](const auto& output)
+            {
+                const auto [target, slot] = output;
+                return publishedOutputSlot(target) != slot || publishedOutputReadable(target, slot);
+            });
+        }
         if (active_frame_inputs_dirty_ || output_uses_revision_ != domain_->resources_.outputUsesRevision())
         {
             rebuildActiveFrameInputs();

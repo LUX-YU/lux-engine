@@ -112,6 +112,7 @@ namespace lux::render
         std::vector<FrameOutput> frame_outputs_;
         std::vector<RenderJobId> unready_jobs_;
         std::vector<RenderJobId> target_readiness_scratch_;
+        std::vector<std::pair<TargetId, std::uint32_t>> pending_history_outputs_;
         std::deque<detail::JobControl::Run> frame_runs_;
         std::size_t frame_run_count_ = 0;
         detail::SubmissionFrontiers target_frame_uses_;
@@ -197,6 +198,7 @@ namespace lux::render
         void progressTargetFlights() noexcept;
         [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
         [[nodiscard]] std::uint32_t publishedOutputSlot(TargetId) const noexcept;
+        [[nodiscard]] bool publishedOutputReadable(TargetId, std::uint32_t slot) const noexcept;
         [[nodiscard]] std::uint32_t outputSlot(TargetId, std::uint32_t frame_slot) const noexcept;
         exec::task<RenderResult<void>> submitCurrentFrame() noexcept;
         void cancelActiveFrame(RenderError) noexcept;

@@ -9,6 +9,7 @@
 #include <lux/engine/render/features/mesh/GBufferFeature.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
+#include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -509,11 +510,12 @@ namespace
             CHECK(stats);
             return *stats;
         };
-        const auto can_change = [&](TargetId id)
+        const auto requireBorrowedTarget = [&](TargetId id, ETextureFormat format)
         {
             auto resized = kTarget;
             resized.sampled = true;
             resized.width *= 2;
+            resized.format = format;
             CHECK(call<ResizeTarget>(client, commands, {id, resized}, false).error.type == kDeviceBusy);
             CHECK(call<RemoveTarget>(client, commands, id, false).error.type == kDeviceBusy);
         };
@@ -542,8 +544,8 @@ namespace
         CHECK(call<StartRenderJob>(client, commands, {job.job, job.target, job.binding}, false).error.type == kJobBusy);
         CHECK(call<RebindRenderJobEffect>(client, commands, {job.job, job.effect}, false).error.type == kJobBusy);
         CHECK(call<RemoveRenderJob>(client, commands, job.job, false).error.type == kJobBusy);
-        can_change(job.target);
-        can_change(input);
+        requireBorrowedTarget(job.target, ETextureFormat::RGBA8_UNORM);
+        requireBorrowedTarget(input, ETextureFormat::RGBA16_SFLOAT);
         Probe::releaseDriver();
         waitForDiscard(stop_before.discarded_preparations);
         CHECK(Probe::created_pipelines.load() == stop_creates + 1);
@@ -612,8 +614,6 @@ namespace
                 client, commands, {materials, {std::move(program), std::move(parameters), {texture}}}
             ).material;
         };
-        auto output = kTarget;
-        output.sampled = expect_progress;
         for (unsigned i = 0; i < jobs.size(); ++i)
         {
             auto& job = jobs[i];
@@ -622,25 +622,36 @@ namespace
             MeshInstanceData input{mesh, job.material};
             input.render_enabled = true;
             job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
+            auto output = kTarget;
+            output.sampled = expect_progress;
+            const bool supplies_history = i == 0 && expect_progress;
+            if (supplies_history) output.format = ETextureFormat::RGBA16_SFLOAT;
             auto request = probeRequest(
                 output, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, output.format}},
                 {"color", "pixels"}
             );
+            if (supplies_history) request.definition.outputs.resize(1);
             if (i == 1 && expect_progress)
             {
-                const auto index = static_cast<std::uint32_t>(request.definition.features.size());
-                const FeaturePortRef destination{index, "color"};
+                const auto tone = static_cast<std::uint32_t>(request.definition.features.size());
+                const auto capture = tone + 1;
+                const FeaturePortRef destination{tone, "hdr_color"};
+                request.definition.features.push_back({
+                    forward.features[3], "probe/tone",
+                    take(ConfigValue::make(TonemapFeatureConfig{{output.format}, EColorEncoding::LINEAR}))
+                });
                 request.definition.features.push_back({
                     forward.features[1], "probe/import",
                     take(ConfigValue::make(CaptureConfig{&imported_pixels, output.format}))
                 });
-                GraphImageDesc image{64, 64, 1, 1, output.format};
+                GraphImageDesc image{64, 64, 1, 1, ETextureFormat::RGBA16_SFLOAT};
                 image.extent.source = EImageExtentSource::TARGET;
                 request.definition.inputs.push_back({
                     destination, {"pipeline_gate.import", image, EGraphOrigin::IMPORTED, {GraphImageRange{}},
-                    EGraphUse::SAMPLED}
+                    EGraphUse::SAMPLED}, "lux.color.linear-hdr.v1"
                 });
-                request.definition.outputs.push_back({{index, "pixels"}, {}});
+                request.definition.connections.push_back({{tone, "color"}, {capture, "color"}});
+                request.definition.outputs.push_back({{capture, "pixels"}, {}});
                 job.binding.target_images.push_back({destination, jobs[0].target});
             }
             job.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
@@ -707,7 +718,7 @@ namespace
             call<RemoveTarget>(client, commands, job.target);
             call<RemoveEffect>(client, commands, {job.effect});
             const auto deadline = Clock::now() + 15s;
-            while (!job.pixels.ready.load(std::memory_order_acquire))
+            while ((i == 1 || !expect_progress) && !job.pixels.ready.load(std::memory_order_acquire))
             {
                 CHECK(Clock::now() < deadline);
                 std::this_thread::yield();
@@ -924,8 +935,11 @@ int main(int argc, char** argv)
     const auto capture = take(server->registerFeature<CaptureFeature>());
     const auto probe = [&](std::string_view feature)
     {
+        std::vector features{take(server->featureId(feature)), capture, visibility};
+        if (pipeline_isolation.value_or(false))
+            features.push_back(take(server->featureId("lux.render.feature.TonemapFeature")));
         return registerRenderProbe<RasterProbeConfig>(
-            *server, std::string(feature), {take(server->featureId(feature)), capture, visibility},
+            *server, std::string(feature), std::move(features),
             {"color", "pixels"}, rasterRecipe
         );
     };

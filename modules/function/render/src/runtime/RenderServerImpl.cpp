@@ -505,6 +505,7 @@ namespace lux::render
         const auto rebuild_started_at = std::chrono::steady_clock::now();
 #endif
         frame_input_error_ = {};
+        pending_history_outputs_.clear();
         output_uses_revision_ = domain_->resources_.outputUsesRevision();
         // Semantic conflict order is stable. Fairness rotates ready physical queues, not
         // the order of writers of one imported resource.
@@ -576,17 +577,17 @@ namespace lux::render
                     unavailable[i] = true;
                     continue;
                 }
-                const bool has_history = publishedOutputSlot(source) != UINT32_MAX;
+                const auto published_slot = publishedOutputSlot(source);
+                const bool has_history = published_slot != UINT32_MAX;
+                const bool history_ready = has_history && publishedOutputReadable(source, published_slot);
+                if (has_history && !history_ready) pending_history_outputs_.emplace_back(source, published_slot);
                 if (producer == positions.end())
                 {
-                    if (!has_history)
-                    {
-                        unavailable[i] = true;
-                        input_errors[i] = {kRuntimeState};
-                    }
+                    unavailable[i] = unavailable[i] || !history_ready;
+                    if (!has_history) input_errors[i] = {kRuntimeState};
                     continue;
                 }
-                successors[producer->second].push_back({i, has_history});
+                successors[producer->second].push_back({i, history_ready});
                 ++predecessors[i];
             }
         }
@@ -720,6 +721,12 @@ namespace lux::render
         if (!same_identity || !offscreen->matches(published->image_index, published->content_revision))
             return UINT32_MAX;
         return published->image_index;
+    }
+
+    bool RenderServer::Impl::publishedOutputReadable(TargetId target, std::uint32_t slot) const noexcept
+    {
+        const auto* offscreen = std::get_if<detail::OffscreenTarget>(domain_->targets_.find(target));
+        return offscreen && offscreen->readable(slot);
     }
 
     void RenderServer::Impl::prefetchFrameOutputs(std::uint32_t slot) noexcept

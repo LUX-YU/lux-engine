@@ -1,13 +1,9 @@
 #pragma once
 
-#include <lux/engine/description/MaterialProgramSet.hpp>
-#include <lux/engine/render/core/ResourceId.hpp>
+#include <lux/engine/render/resources/material/Data.hpp>
 
 namespace lux::render::detail
 {
-    struct MaterialProgramTag;
-    using MaterialProgramId = ResourceId<MaterialProgramTag>;
-
     struct MaterialProgramRecord final
     {
         MaterialProgramId id;

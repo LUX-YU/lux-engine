@@ -10,7 +10,11 @@ namespace lux::render
     class MaterialResource final
     {
     public:
-        using Commands = std::tuple<MaterialCommands::Create, MaterialCommands::Update, MaterialCommands::Release>;
+        using Commands = std::tuple<
+            MaterialCommands::Create, MaterialCommands::Update, MaterialCommands::Release,
+            MaterialCommands::RegisterProgram, MaterialCommands::CreateInstance, MaterialCommands::ReleaseInstance,
+            MaterialCommands::UnregisterProgram
+        >;
         using PerFrameData = std::tuple<>;
         using Config = void;
         static inline const ResourceDefinition descriptor{

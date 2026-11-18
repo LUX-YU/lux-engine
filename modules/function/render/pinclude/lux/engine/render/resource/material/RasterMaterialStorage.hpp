@@ -37,11 +37,16 @@ namespace lux::render::detail
             std::shared_ptr<const MaterialProgramRecord> record;
             Table* table = nullptr;
             std::size_t instances = 0;
+            bool implicit = false;
         };
 
     public:
         [[nodiscard]] exec::task<RenderResult<MaterialId>> upload(MaterialData) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
+        [[nodiscard]] RenderResult<MaterialProgramId> registerProgram(rdesc::MaterialProgramSet) noexcept;
+        [[nodiscard]] exec::task<RenderResult<MaterialId>>
+        createInstance(MaterialCommands::CreateInstance::Request) noexcept;
+        [[nodiscard]] RenderResult<void> unregisterProgram(MaterialProgramId) noexcept;
 
         using Descriptor = MaterialResource;
         [[nodiscard]] static ResourceRegistration factory() noexcept;
@@ -75,7 +80,7 @@ namespace lux::render::detail
 
     private:
         template <class Input>
-        using WriteValue = std::conditional_t<std::same_as<Input, MaterialData>, MaterialId, Ack>;
+        using WriteValue = std::conditional_t<std::same_as<Input, MaterialUpdate>, Ack, MaterialId>;
         template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>> write(Input) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(const VGraphResourceDesc&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
@@ -85,12 +90,15 @@ namespace lux::render::detail
         void removeDirty(Page&, std::uint32_t frame) noexcept;
         [[nodiscard]] RenderResult<Page*> createPage(Table&) noexcept;
         void releasePage(Page&) noexcept;
-        [[nodiscard]] RenderResult<ProgramSlot*> qualifyProgram(rdesc::MaterialProgramSet&) noexcept;
+        [[nodiscard]] RenderResult<ProgramSlot*> addProgram(rdesc::MaterialProgramSet&, bool implicit) noexcept;
+        [[nodiscard]] ProgramSlot* findProgram(MaterialProgramId) noexcept;
+        [[nodiscard]] const ProgramSlot* findProgram(MaterialProgramId) const noexcept;
         [[nodiscard]] RenderResult<Table*> qualifyTable(
             const rdesc::MaterialProgramSet&, const rdesc::ShaderBlock&,
             std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3>
         ) noexcept;
-        void removeUnusedProgram(ProgramSlot&) noexcept;
+        void removeUnusedImplicitProgram(ProgramSlot&) noexcept;
+        void removeProgram(ProgramSlot&) noexcept;
 
         void removeEmptyTable(Table&) noexcept;
 

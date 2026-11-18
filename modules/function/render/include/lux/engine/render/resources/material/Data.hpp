@@ -18,6 +18,8 @@ namespace lux::render
 
     struct MaterialTag;
     using MaterialId = ResourceId<MaterialTag>;
+    struct MaterialProgramTag;
+    using MaterialProgramId = ResourceId<MaterialProgramTag>;
     // Client-supplied finite values in the Cooked parameter order; Render checks the actual layout and count.
     using MaterialParameters = std::vector<std::array<float, 4>>;
 

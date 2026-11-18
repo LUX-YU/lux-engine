@@ -587,11 +587,23 @@ actual consumer bindings when needed.
 SwapchainTarget owns a single flight. Acquire and Present run on NativeExecution and return to the Server. A READY
 image can be acquired before a FIF slot and kept through writer replacement. NOT_READY leaves the image index and
 semaphore association unchanged. Queue acceptance of the acquire wait protects reuse of that acquire semaphore.
-The Target settles native borrows and accepted GPU work before replacement. Vulkan drivers with swapchain
-maintenance support retire with presentation fences and release unconsumed acquired images. The base Vulkan
-path consumes an unused acquire semaphore with an empty submission and waits only the presentation queue
-on the owning NativeExecution worker during Resize, Remove and Shutdown. The queue drain is a driver
-compatibility path with no Vulkan guarantee for the final unfenced Present.
+Each Present wait semaphore follows a swapchain image. In steady state the new submission waits for the image's
+acquire signal before signaling that image's Present semaphore again.
+
+Resize, Remove and Shutdown settle native flights and accepted GPU work before retiring a Swapchain Target. For
+Vulkan devices with `swapchainMaintenance1`, retirement waits on the Present fences and releases unused acquired
+images through the extension. On base Vulkan drivers, an empty submission waits on any unconsumed acquire
+semaphore, then retirement waits on that device's Present queue. Both paths run on the owning NativeExecution
+worker so that a wait on one device leaves the Server free to advance other devices.
+
+The base Vulkan queue wait is an accepted driver compatibility boundary. It settles ordinary queue submissions,
+including the empty acquire wait. Vulkan provides no portable guarantee that this wait proves the final unfenced
+Present has released its synchronization objects. A clean validation run establishes the observed driver behavior
+on the tested devices. [Khronos swapchain semaphore reuse guide](https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html)
+
+Resize retires the current swapchain before creating another for the same window. An `oldSwapchain` handoff is
+deferred. If creation fails after retirement, the Target reports its output as unavailable. The caller can retry
+Resize on the same Target identity.
 
 ## Job control contracts
 

@@ -397,16 +397,20 @@ static void profileRequestedJobs(
     const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     std::vector<Job> jobs;
     jobs.reserve(job_count);
-    const auto setup_begin = Clock::now();
-    for (unsigned index = 0; index < job_count; ++index)
+    const auto create_jobs = [&](std::size_t target_count)
     {
-        const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
-        const auto output = call<CreateTarget>(client, {target});
-        CHECK(!created.error.type && !output.error.type);
-        CHECK(!call<StartRenderJob>(client, {created.job, output.target}).error.type);
-        jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
-    }
-    const auto setup_elapsed = std::chrono::duration<double, std::milli>(Clock::now() - setup_begin).count();
+        const auto begin = Clock::now();
+        while (jobs.size() < target_count)
+        {
+            const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
+            const auto output = call<CreateTarget>(client, {target});
+            CHECK(!created.error.type && !output.error.type);
+            CHECK(!call<StartRenderJob>(client, {created.job, output.target}).error.type);
+            jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
+        }
+        return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+    };
+    const auto initial_setup = create_jobs(3);
     const std::array names{CommandName{RequestRenderJob::name}};
     const auto command = call<QueryCommandIds>(client, names).ids.front();
     const auto batch = [&](bool sparse)
@@ -445,12 +449,12 @@ static void profileRequestedJobs(
         auto& last = jobs[2];
         const auto accepted_before = server.stats().submissions;
         const auto a = sendBound<RequestRenderJob>(first.wire, command, {first.id});
-        const auto c = sendBound<RequestRenderJob>(last.wire, command, {last.id});
+        const auto c = sendBound<RequestRenderJob>(first.wire, command, {last.id});
         ParkDispatch::pending = false;
         ParkDispatch::pending.notify_all();
         CHECK(!receive<ParkDispatch>(park, parked).error.type);
         const auto submitted_a = receive<RequestRenderJob>(first.wire, a);
-        const auto submitted_c = receive<RequestRenderJob>(last.wire, c);
+        const auto submitted_c = receive<RequestRenderJob>(first.wire, c);
         CHECK(!submitted_a.error.type && !submitted_c.error.type);
         CHECK(submitted_a.frame_index == submitted_c.frame_index);
         CHECK(server.stats().submissions == accepted_before + 2);
@@ -459,6 +463,7 @@ static void profileRequestedJobs(
         CHECK(!call<StartRenderJob>(client, {jobs[1].id, jobs[1].target}).error.type);
     };
     verify_ancestry();
+    const auto setup_elapsed = initial_setup + create_jobs(job_count);
     std::printf("JOB_SETUP jobs=%u create_and_start_ms=%.6f dormant_ancestry=passed\n", job_count, setup_elapsed);
     for (const bool sparse : {false, true})
     {

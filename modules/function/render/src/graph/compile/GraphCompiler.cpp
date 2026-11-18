@@ -94,7 +94,7 @@ namespace lux::render::detail
     } // namespace
 
     RenderResult<RenderGraphExecutable> GraphCompiler::planStructure(
-        nri::Device& device, const nri::CoreInterface& core, std::array<const QueueProperties*, 3> queues,
+        nri::Device* device, const nri::DeviceDesc& limits, std::array<const QueueProperties*, 3> queues,
         const RenderGraph& graph, const RenderGraphAnalysis& analysis, const EffectOutputDesc* target,
         ETransientAllocation allocation,
         std::span<const std::uint32_t> parameter_groups,
@@ -113,7 +113,6 @@ namespace lux::render::detail
                 return cxx::unexpected(valid.error());
             }
         }
-        const auto& limits = core.GetDeviceDesc(device);
         const bool is_invalid_address_mode =
             device_addresses && (limits.graphicsAPI != nri::GraphicsAPI::VK || !limits.shaderFeatures.nativeI64);
         if (is_invalid_address_mode)
@@ -360,6 +359,10 @@ namespace lux::render::detail
             plan.recording_.units.push_back({p, count});
             p += count;
         }
+        if (auto lowered = plan.lowerCommands(graph, analysis.execution_order, limits); !lowered)
+        {
+            return cxx::unexpected(lowered.error());
+        }
         return plan;
     }
 
@@ -584,6 +587,24 @@ namespace lux::render::detail
         return {};
     }
 
+    RenderResult<RenderGraphExecutable> GraphCompiler::compileForRecordingTest(
+        const nri::DeviceDesc& limits, std::array<const QueueProperties*, 3> queues, const RenderGraph& graph,
+        const RenderGraphAnalysis& analysis, ETransientAllocation allocation
+    ) noexcept
+    {
+        std::vector<std::uint32_t> recipes;
+        auto plan = planStructure(nullptr, limits, queues, graph, analysis, nullptr, allocation, {}, false, recipes);
+        if (!plan)
+        {
+            return cxx::unexpected(plan.error());
+        }
+        if (auto finished = finishPlan(*plan, graph, analysis, queues, limits, allocation); !finished)
+        {
+            return cxx::unexpected(finished.error());
+        }
+        return plan;
+    }
+
     exec::task<RenderResult<PreparedRenderGraph>> GraphCompiler::compile(
         DeviceSession& session, execution::CpuScheduler cpu, const RenderGraph& graph,
         const RenderGraphAnalysis& analysis, const EffectOutputDesc* target, ETransientAllocation allocation,
@@ -602,7 +623,7 @@ namespace lux::render::detail
                 [&]() noexcept
                 {
                     return planStructure(
-                        session.device(), session.nriCore(), queues, graph, analysis, target, allocation,
+                        &session.device(), session.description(), queues, graph, analysis, target, allocation,
                         parameter_groups, session.usesDeviceAddresses(), recipes
                     );
                 }

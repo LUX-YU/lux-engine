@@ -20,7 +20,7 @@ endif()
 # custom commands. This is a build-order seam only: no Runtime target links a
 # Toolchain target. Cross builds resolve the installed host executable through
 # LUX_HOST_TOOLS_PREFIX instead of configuring a target binary.
-if(NOT CMAKE_CROSSCOMPILING AND
+if(NOT LUX_BUILD_MODULES_ONLY AND NOT CMAKE_CROSSCOMPILING AND
    (LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT))
     add_subdirectory(
         "${CMAKE_SOURCE_DIR}/engine/toolchain/shader"

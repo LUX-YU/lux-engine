@@ -18,6 +18,7 @@
 namespace lux::render::detail
 {
     struct ShaderBindingPlan;
+    struct DescriptorUse;
     class DeviceSession;
     class RenderGraphExecutable;
     class NativeGraphPrograms;
@@ -405,6 +406,13 @@ namespace lux::render::detail
             return recording_.transferCommands(pass);
         }
 
+        [[nodiscard]] const RecordingProgram& recordingProgram() const noexcept
+        {
+            return recording_;
+        }
+
+        [[nodiscard]] std::span<const DescriptorUse> descriptorUses(std::uint32_t binding_slot) const noexcept;
+
         [[nodiscard]] std::uint32_t output() const noexcept
         {
             return output_;
@@ -431,13 +439,16 @@ namespace lux::render::detail
             std::span<const GraphPassId>,
             execution::CpuScheduler
         ) noexcept;
+        [[nodiscard]] RenderResult<void>
+        lowerCommands(const RenderGraph&, std::span<const GraphPassId>, const nri::DeviceDesc&) noexcept;
+
         friend class RenderGraphInstance;
         friend class GraphCompiler;
         friend class FrameExecutor;
         friend class SubmissionOperation;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
-        RenderGraphExecutable(nri::Device& device, EffectOutputDesc output) noexcept;
+        RenderGraphExecutable(nri::Device* device, EffectOutputDesc output) noexcept;
         std::unique_ptr<ShaderBindingPlan> descriptor_plan_;
         nri::Device* device_;
         bool device_addresses_ = false;

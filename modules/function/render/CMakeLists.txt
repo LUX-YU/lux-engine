@@ -362,6 +362,13 @@ option(LUX_RENDER_DEVELOPMENT_METRICS "Collect Render development metrics" OFF)
 if(LUX_RENDER_DEVELOPMENT_METRICS)
     target_compile_definitions(render PRIVATE LUX_RENDER_DEVELOPMENT_METRICS)
 endif()
+option(LUX_RENDER_GRAPH_ALLOCATION_PROBE "Count C++ allocations in Render graph probes on Windows" OFF)
+if(WIN32 AND LUX_RENDER_GRAPH_ALLOCATION_PROBE)
+    set(ipc_allocation_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../platform/ipc/test")
+    target_sources(render PRIVATE test/GraphAllocation.cpp "${ipc_allocation_dir}/Allocation.cpp")
+    target_include_directories(render PRIVATE "${ipc_allocation_dir}")
+endif()
+
 target_compile_features(render PUBLIC cxx_std_20)
 target_link_libraries(render
     PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core

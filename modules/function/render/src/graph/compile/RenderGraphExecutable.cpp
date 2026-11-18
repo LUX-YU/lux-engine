@@ -30,14 +30,19 @@ namespace lux::render::detail
         return {region.offset, region.layout.size};
     }
 
-    RenderGraphExecutable::RenderGraphExecutable(nri::Device& device, EffectOutputDesc output) noexcept
-        : device_(&device), output_description_(output)
+    RenderGraphExecutable::RenderGraphExecutable(nri::Device* device, EffectOutputDesc output) noexcept
+        : device_(device), output_description_(output)
     {
     }
 
     RenderGraphExecutable::~RenderGraphExecutable() noexcept = default;
 
     RenderGraphExecutable::RenderGraphExecutable(RenderGraphExecutable&&) noexcept = default;
+
+    std::span<const DescriptorUse> RenderGraphExecutable::descriptorUses(std::uint32_t binding_slot) const noexcept
+    {
+        return descriptor_plan_->passes[binding_slot].uses;
+    }
 
     NativeGraphPrograms::NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept
         : session_(&session), slots_(slots)
@@ -78,10 +83,6 @@ namespace lux::render::detail
         const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         auto& program_cache = session.programs();
-        std::uint32_t indexed_lists = 0, raster_lists = 0;
-        std::vector<std::uint8_t> materialized;
-        materialized.reserve(resources_.size());
-        for (const auto& resource : resources_) materialized.push_back(resource.memory_used);
         for (auto& pass : recording_.passes)
         {
             if (stop.stop_requested())
@@ -220,8 +221,36 @@ namespace lux::render::detail
             }
             native.slots_[pass.binding_slot].descriptors = bindings.recordBindings();
             bindings.layout = nullptr;
+        }
+        co_return RenderResult<void>{};
+    }
+
+    RenderResult<void> RenderGraphExecutable::lowerCommands(
+        const RenderGraph& graph, std::span<const GraphPassId> order, const nri::DeviceDesc& limits
+    ) noexcept
+    {
+        const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
+            ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+        std::uint32_t indexed_lists = 0, raster_lists = 0;
+        std::vector<std::uint8_t> materialized;
+        materialized.reserve(resources_.size());
+        for (const auto& resource : resources_) materialized.push_back(resource.memory_used);
+        for (auto& pass : recording_.passes)
+        {
+            const auto& source = graph.passes()[order[pass.binding_slot].index];
+            const auto program = source.interface.program;
+            const rdesc::ShaderInfo* shader_info = nullptr;
+            if (program != kGraphInvalidIndex)
+            {
+                const auto* shader = graph.programs()[program].find(target, device_addresses_);
+                if (!shader)
+                {
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
+                }
+                shader_info = &shader->interface;
+            }
             PassCompileContext context{
-                session, shader ? &shader->interface : nullptr, graph.resources(),
+                limits, shader_info, graph.resources(),
                 &indexed_lists, &raster_lists, materialized
             };
             const auto append = [&]<class T>(RenderResult<T> result, ERecordKernel kernel, std::vector<T>& table)
@@ -257,11 +286,11 @@ namespace lux::render::detail
             );
             if (!commands)
             {
-                co_return cxx::unexpected(commands.error());
+                return cxx::unexpected(commands.error());
             }
             pass.commands = std::move(*commands);
         }
-        co_return RenderResult<void>{};
+        return {};
     }
 
     bool RenderGraphExecutable::compatible(const TargetDesc& target) const noexcept

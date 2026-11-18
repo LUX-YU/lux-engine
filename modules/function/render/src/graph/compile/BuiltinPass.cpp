@@ -224,7 +224,7 @@ namespace lux::render::detail
     {
         const auto* raster = &value;
         const auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
-        const auto& limits = context.device.description();
+        const auto& limits = context.limits;
         RasterCommands recorded;
         if (fixed)
         {
@@ -286,7 +286,7 @@ namespace lux::render::detail
     RenderResult<ComputeCommands> ComputePass::compile(const ComputeWork& value, PassCompileContext& context) noexcept
     {
         const auto* compute = &value;
-        const auto& limits = context.device.description();
+        const auto& limits = context.limits;
         if (const auto* direct = std::get_if<DispatchArguments>(&compute->dispatch))
         {
             for (unsigned axis = 0; axis < 3; ++axis)

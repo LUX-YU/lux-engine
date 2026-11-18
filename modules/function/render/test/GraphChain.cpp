@@ -1,4 +1,7 @@
 #include "NativeDevice.hpp"
+#ifdef LUX_RENDER_GRAPH_ALLOCATION_PROBE
+#include "GraphMeasurements.hpp"
+#endif
 #include <lux/engine/render/extensions/device/CopyEncoding.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <bit>
@@ -10,6 +13,7 @@
 #include "FrameHarness.hpp"
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
+#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <string>
 #include <thread>
@@ -842,11 +846,15 @@ static void typedRecording(Validation& validation, bool d3d12)
         d3d12 ? "D3D12" : "Vulkan");
 }
 
-static void multiCommandCompute(Validation& validation, bool d3d12)
+struct ComputeSequenceFixture final
 {
-    DeviceOptions options;
-    if (d3d12) options.backend = EGraphicsBackend::D3D12;
-    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    RenderGraph graph;
+    GraphResourceId intermediate;
+    GraphResourceId readback;
+};
+
+static ComputeSequenceFixture computeSequenceGraph()
+{
     RenderGraphBuilder builder;
     const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
     const auto intermediate = take(builder.declareResource({"intermediate", GraphBufferDesc{16}}));
@@ -878,21 +886,37 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
         "readback", TransferWork{{CopyBuffer{{written(sequence, result)}, {{readback, 0}}}}}
     ));
     CHECK(builder.exportOutput({copied.written.front()}));
-    auto executable = [&]
-    {
-        const auto graph = take(std::move(builder).finish());
-        const auto analysis = take(analyzeRenderGraph(graph));
-        CHECK(analysis.execution_order.size() == 4);
-        return compile(*session, graph, analysis, nullptr);
-    }();
-    CHECK(executable.executable.recordingUnits().size() == 3);
-    CHECK(executable.executable.recordingUnits()[1].pass_count == 2);
-    const auto passes = executable.executable.passes();
+    return {take(std::move(builder).finish()), intermediate, readback};
+}
+
+static void checkComputeSequence(const RenderGraphExecutable& executable, GraphResourceId intermediate)
+{
+    CHECK(executable.recordingUnits().size() == 3);
+    CHECK(executable.recordingUnits()[1].pass_count == 2);
+    const auto passes = executable.passes();
+    CHECK(passes.size() == 4);
     CHECK(passes[1].submission == passes[2].submission);
     CHECK(std::ranges::any_of(passes[2].before.buffers, [&](const auto& barrier)
     {
         return barrier.resource == intermediate.index;
     }));
+}
+
+static void multiCommandCompute(Validation& validation, bool d3d12)
+{
+    DeviceOptions options;
+    if (d3d12) options.backend = EGraphicsBackend::D3D12;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    GraphResourceId intermediate, readback;
+    auto executable = [&]
+    {
+        const auto fixture = computeSequenceGraph();
+        intermediate = fixture.intermediate;
+        readback = fixture.readback;
+        const auto analysis = take(analyzeRenderGraph(fixture.graph));
+        return compile(*session, fixture.graph, analysis, nullptr);
+    }();
+    checkComputeSequence(executable.executable, intermediate);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 2, executable);
     CHECK(instance->initialize());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
@@ -903,6 +927,139 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
     CHECK(std::ranges::all_of(values, [](auto value) { return value == 13; }));
     instance.reset();
     CHECK(session->drain());
+}
+
+// This recorder implements the fixture's one known kernel and Buffer operations.
+class ComputeSequenceRecorder final
+{
+public:
+    explicit ComputeSequenceRecorder(const RenderGraphExecutable& executable)
+        : executable_(executable), buffers_(executable.resources().size())
+    {
+        for (std::size_t i = 0; i < buffers_.size(); ++i)
+        {
+            const auto& resource = executable.resources()[i];
+            if (!resource.memory_used) continue;
+            const auto& buffer = std::get<GraphBufferDesc>(resource.description);
+            CHECK(buffer.size % sizeof(Word) == 0);
+            buffers_[i].resize(buffer.size / sizeof(Word));
+        }
+    }
+
+    void execute()
+    {
+        const auto& program = executable_.recordingProgram();
+        for (const auto& batch : executable_.submissions())
+        {
+            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            {
+                const auto& pass = program.passes[p];
+                CHECK(pass.condition_region == kGraphInvalidIndex);
+                CHECK(recordBlock(program, pass.commands, [&](const auto& packet) noexcept
+                {
+                    return replay(packet, pass);
+                }));
+            }
+        }
+    }
+
+    void verify(GraphResourceId readback) const
+    {
+        CHECK(buffers_[readback.index].size() == 4);
+        CHECK(std::ranges::all_of(buffers_[readback.index], [](const auto& word) { return word == 13; }));
+    }
+
+private:
+    using Word = std::uint32_t;
+
+    auto words(std::uint32_t resource, const VGraphRange& range) noexcept
+    {
+        std::span result(buffers_[resource]);
+        if (std::holds_alternative<std::monostate>(range)) return result;
+        const auto& bytes = std::get<GraphBufferRange>(range);
+        CHECK(bytes.offset % sizeof(Word) == 0 && bytes.size % sizeof(Word) == 0);
+        const auto offset = bytes.offset / sizeof(Word);
+        const auto count = bytes.size / sizeof(Word);
+        CHECK(offset <= result.size() && count <= result.size() - offset);
+        return result.subspan(offset, count);
+    }
+
+    RenderResult<void> replay(const RasterCommands&, const CompiledPass&) noexcept
+    {
+        return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+    }
+
+    RenderResult<void> replay(const TransferCommands& packet, const CompiledPass&) noexcept
+    {
+        for (const auto& operation : packet.operations)
+        {
+            if (const auto* fill = std::get_if<FillBuffer>(&operation))
+            {
+                std::ranges::fill(words(fill->destination.version.resource.index, fill->destination.range), fill->value);
+                continue;
+            }
+            if (const auto* copy = std::get_if<CopyBuffer>(&operation))
+            {
+                auto source = words(copy->source.version.resource.index, copy->source.range);
+                auto destination = words(copy->destination.version.resource.index, copy->destination.range);
+                CHECK(source.size() == destination.size());
+                CHECK(std::ranges::all_of(source, [](const auto& word) { return word.has_value(); }));
+                std::ranges::copy(source, destination.begin());
+                continue;
+            }
+            return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        return {};
+    }
+
+    RenderResult<void> replay(const ComputeCommands& packet, const CompiledPass& pass) noexcept
+    {
+        const auto* dispatch = std::get_if<DispatchArguments>(&packet.dispatch);
+        CHECK(dispatch && dispatch->groups == (std::array{1u, 1u, 1u}));
+        const auto uses = executable_.descriptorUses(pass.binding_slot);
+        CHECK(uses.size() == 2);
+        // The production layout packs private fields by name, placing current_sample before previous_sample.
+        const auto output = std::ranges::find(uses, 0u, &DescriptorUse::binding);
+        const auto input = std::ranges::find(uses, 1u, &DescriptorUse::binding);
+        CHECK(input != uses.end() && output != uses.end());
+        auto previous = words(input->resource, input->whole_resource ? VGraphRange{} : input->range);
+        auto current = words(output->resource, output->whole_resource ? VGraphRange{} : output->range);
+        CHECK(previous.size() == 4 && current.size() == 4);
+        for (std::size_t i = 0; i < current.size(); ++i)
+        {
+            CHECK(previous[i]);
+            current[i] = *previous[i] + 1;
+        }
+        return {};
+    }
+
+    const RenderGraphExecutable& executable_;
+    std::vector<std::vector<std::optional<Word>>> buffers_;
+};
+
+static void cpuRecordingTables()
+{
+    nri::DeviceDesc capabilities{};
+    capabilities.graphicsAPI = nri::GraphicsAPI::VK;
+    capabilities.shaderStage.compute.dispatchMaxDim[0] = 1;
+    capabilities.shaderStage.compute.dispatchMaxDim[1] = 1;
+    capabilities.shaderStage.compute.dispatchMaxDim[2] = 1;
+    const QueueProperties graphics;
+    const std::array queues{&graphics, &graphics, &graphics};
+    GraphResourceId intermediate, readback;
+    const auto executable = [&]
+    {
+        const auto fixture = computeSequenceGraph();
+        intermediate = fixture.intermediate;
+        readback = fixture.readback;
+        const auto analysis = take(analyzeRenderGraph(fixture.graph));
+        return take(GraphCompiler::compileForRecordingTest(capabilities, queues, fixture.graph, analysis));
+    }();
+    checkComputeSequence(executable, intermediate);
+    ComputeSequenceRecorder recorder(executable);
+    recorder.execute();
+    recorder.verify(readback);
+    std::puts("CPU recording: expired source, culled dispatch, in-pass barrier and four values of 13");
 }
 
 static void historySequence(Validation& validation, std::uint32_t fif, bool use_fallback)
@@ -1688,9 +1845,28 @@ int main(int argc, char** argv)
         cpuGraphAnalysis();
         return 0;
     }
+    if (argc > 1 && std::string_view(argv[1]) == "cpu-recording")
+    {
+        cpuRecordingTables();
+        return 0;
+    }
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     Validation validation;
+#ifdef LUX_RENDER_GRAPH_ALLOCATION_PROBE
+    if (argc > 1 && std::string_view(argv[1]) == "measure")
+    {
+        DeviceOptions options;
+        if (argc > 2 && std::string_view(argv[2]) == "d3d12") options.backend = EGraphicsBackend::D3D12;
+        TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+        const auto fixture = computeSequenceGraph();
+        const auto analysis = take(analyzeRenderGraph(fixture.graph));
+        const auto candidate = compile(*session, fixture.graph, analysis, nullptr);
+        const auto status = measureGraph(*session, candidate);
+        CHECK(validation.errors == 0);
+        return status;
+    }
+#endif
     if (argc > 1 && std::string_view(argv[1]) == "recording")
     {
         recordingOwnership(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");

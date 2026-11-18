@@ -16,9 +16,15 @@ namespace lux::render::detail
             std::span<const std::uint32_t> parameter_groups = {}
         ) noexcept;
 
+        // Use native-independent compilation to exercise recording tables with declared capabilities.
+        [[nodiscard]] static RenderResult<RenderGraphExecutable> compileForRecordingTest(
+            const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
+            const RenderGraphAnalysis&, ETransientAllocation = ETransientAllocation::INDEPENDENT
+        ) noexcept;
+
     private:
         [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
-            nri::Device&, const nri::CoreInterface&, std::array<const QueueProperties*, 3>, const RenderGraph&,
+            nri::Device*, const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
             const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation, std::span<const std::uint32_t>,
             bool, std::vector<std::uint32_t>&
         ) noexcept;

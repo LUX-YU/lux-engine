@@ -290,6 +290,16 @@ checks. Only compatible LOAD successors share a rendering scope; sampling an ear
 corresponding barrier outside rendering. The NRI backend has no discard load operation, so author DISCARD is
 lowered to a clear, while discard stores remain native discard stores.
 
+The `render.graph.cpu_recording` probe compiles against declared capabilities and destroys the graph definition
+before replaying the executable's packets. It evaluates a fixture compute kernel and Buffer operations in software
+through the same packet dispatch used by NRI. The native graph probes validate the generated work on GPU.
+
+The top-level `LUX_BUILD_MODULES_ONLY=ON` option configures the reusable modules. Combine it with
+`LUX_BUILD_MATERIAL_COMPILER=ON` and `LUX_RENDER_BUILD_PROBES=ON` to register Render's probes without enabling
+other component tests. On Windows, `LUX_RENDER_GRAPH_ALLOCATION_PROBE=ON` adds the Vulkan and D3D12 measurements.
+These count Render DLL calls to C++ `operator new` on the calling thread during Prepare and Record. GPU timings
+bracket the graph command buffer on the same graphics queue. CPU submit timing includes the two timestamp commands.
+
 `RenderGraphInstance::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
 `FrameExecutor` only encodes through the supplied NRI core and a const view of prepared instance data. Shared
 descriptor handles are resolved during preparation, including Vulkan table replacement and D3D12 frame-local

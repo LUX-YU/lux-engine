@@ -14,7 +14,7 @@ namespace lux::render::detail
 
     struct PassCompileContext final
     {
-        detail::DeviceSession& device;
+        const nri::DeviceDesc& limits;
         const rdesc::ShaderInfo* shader;
         std::span<const GraphResource> resources;
         std::uint32_t* indexed_list_count = nullptr;

@@ -29,7 +29,9 @@ include(TargetClassification)
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 include(InstallComponents)
 
-if(CMAKE_CROSSCOMPILING)
+option(LUX_BUILD_MODULES_ONLY "Build the reusable modules without Engine and Editor products" OFF)
+
+if(CMAKE_CROSSCOMPILING OR LUX_BUILD_MODULES_ONLY)
     find_package(
         lux-cxx REQUIRED COMPONENTS
         core memory binary time units diagnostic abi compile_time algorithm
@@ -107,7 +109,8 @@ option(LUX_BUILD_RENDER "Build the rendering library and Engine render projectio
 option(LUX_BUILD_WINDOW "Build native window integration" ${_lux_graphics_default})
 option(LUX_BUILD_UI "Build the UI library" ${_lux_graphics_default})
 
-if(LUX_PROFILE_HAS_EDITOR AND (NOT LUX_BUILD_RENDER OR NOT LUX_BUILD_WINDOW OR NOT LUX_BUILD_UI))
+if(NOT LUX_BUILD_MODULES_ONLY AND LUX_PROFILE_HAS_EDITOR AND
+   (NOT LUX_BUILD_RENDER OR NOT LUX_BUILD_WINDOW OR NOT LUX_BUILD_UI))
     message(FATAL_ERROR "The Editor requires Render, window and UI. Headless game scenes do not disable Editor UI.")
 endif()
 
@@ -116,24 +119,29 @@ if(LUX_BUILD_UI AND NOT LUX_BUILD_WINDOW)
 endif()
 
 option(BUILD_TESTING "Build and register component tests" OFF)
-if(BUILD_TESTING)
+option(LUX_RENDER_BUILD_PROBES "Build the Render and Material probes without other module tests" OFF)
+if(BUILD_TESTING OR LUX_RENDER_BUILD_PROBES)
     enable_testing()
 endif()
 
-include(LuxPlugins)
-include(EditorTests)
+if(NOT LUX_BUILD_MODULES_ONLY)
+    include(LuxPlugins)
+    include(EditorTests)
+endif()
 
 add_subdirectory(modules)
-add_subdirectory(engine)
-if(LUX_BUILD_EDITOR_LEGACY)
-    message(FATAL_ERROR "editor_legacy is frozen reference source. Use its historical Git revision to build it.")
-endif()
-if(LUX_PROFILE_HAS_EDITOR)
-    add_subdirectory(editor)
-endif()
-include(BuiltinPlugins)
 
-lux_generate_capabilities()
+if(NOT LUX_BUILD_MODULES_ONLY)
+    add_subdirectory(engine)
+    if(LUX_BUILD_EDITOR_LEGACY)
+        message(FATAL_ERROR "editor_legacy is frozen reference source. Use its historical Git revision to build it.")
+    endif()
+    if(LUX_PROFILE_HAS_EDITOR)
+        add_subdirectory(editor)
+    endif()
+    include(BuiltinPlugins)
+    lux_generate_capabilities()
+endif()
 
 include(NoRtti)
 lux_disable_rtti("${CMAKE_CURRENT_SOURCE_DIR}")

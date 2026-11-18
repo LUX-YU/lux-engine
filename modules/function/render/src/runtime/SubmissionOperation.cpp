@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bit>
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
 #include <chrono>
 #endif
@@ -14,6 +15,11 @@
 
 namespace lux::render::detail
 {
+    SubmissionOperation::RasterReads SubmissionOperation::Workspace::takeRasterReads() noexcept
+    {
+        return std::exchange(raster_reads_, {});
+    }
+
     SubmissionOperation::Workspace::Workspace(std::uint32_t count, std::size_t queues) noexcept : slots_(count)
     {
         for (auto& slot : slots_)
@@ -441,6 +447,29 @@ namespace lux::render::detail
         batch.serial = serial;
         auto& execution = frame.instances[batch.instance];
         auto& instance = *execution.instance;
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto& lists = instance.frames_[slotIndex()].raster_draws;
+        const auto& plan = instance.plan_->submissions_[batch.local_batch];
+        for (const auto& source : plan.shared_draw_reads)
+        {
+            if (source.streamed) continue;
+            for (const auto& read : lists[source.list].reads)
+            {
+                if (read.usage == EGraphUse::STORAGE_READ)
+                {
+                    ++workspace_.raster_reads_.buffer_ranges;
+                    workspace_.raster_reads_.buffer_bytes += std::get<GraphBufferRange>(read.range).size;
+                }
+                else if (read.usage == EGraphUse::SAMPLED)
+                {
+                    const auto& range = std::get<GraphImageRange>(read.range);
+                    ++workspace_.raster_reads_.image_ranges;
+                    workspace_.raster_reads_.image_subresources +=
+                        std::uint64_t(range.mip_count) * range.layer_count * std::popcount(range.aspects);
+                }
+            }
+        }
+#endif
         const auto point = device_.submissionPoint(batch.queue, serial);
         if (!instance.output_.frames.empty())
         {

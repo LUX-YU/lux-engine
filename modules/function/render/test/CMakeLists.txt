@@ -56,6 +56,18 @@ endforeach()
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
 
+if(LUX_RENDER_DEVELOPMENT_METRICS)
+    add_executable(render_material_scale MaterialScale.cpp)
+    target_include_directories(render_material_scale PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+    target_link_libraries(render_material_scale PRIVATE
+        render_native_probe_host NRI lux::engine::function::material_compiler lux::engine::function::material_graph
+    )
+    add_test(NAME render.material.purposes_vulkan COMMAND render_material_scale)
+    if(WIN32)
+        add_test(NAME render.material.purposes_d3d12 COMMAND render_material_scale d3d12)
+    endif()
+endif()
+
 add_executable(render_shadow_scene ShadowScene.cpp ${graph_shader_headers})
 target_include_directories(render_shadow_scene PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"

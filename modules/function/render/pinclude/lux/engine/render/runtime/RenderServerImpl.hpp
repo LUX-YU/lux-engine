@@ -133,6 +133,8 @@ namespace lux::render
         std::atomic<std::uint64_t> jobs_considered_{0}, jobs_selected_{0}, dependency_edges_{0};
         std::atomic<std::uint64_t> rounds_opened_{0}, slot_cpu_hold_ns_{0};
         std::atomic<std::uint64_t> program_preparations_holding_slot_{0}, program_preparation_ns_{0};
+        std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
+        std::atomic<std::uint64_t> raster_image_subresources_{0};
         std::chrono::steady_clock::time_point slot_opened_at_, program_preparation_started_at_;
 #endif
 

@@ -195,6 +195,11 @@ namespace lux::render
             std::chrono::steady_clock::now() - slot_opened_at_
         ).count();
         slot_cpu_hold_ns_.fetch_add(held_ns, std::memory_order_relaxed);
+        const auto reads = domain_->device_->frameWorkspace().submissions.takeRasterReads();
+        raster_buffer_ranges_.fetch_add(reads.buffer_ranges, std::memory_order_relaxed);
+        raster_buffer_bytes_.fetch_add(reads.buffer_bytes, std::memory_order_relaxed);
+        raster_image_ranges_.fetch_add(reads.image_ranges, std::memory_order_relaxed);
+        raster_image_subresources_.fetch_add(reads.image_subresources, std::memory_order_relaxed);
 #endif
         round_.error = {};
         for (std::size_t i = 0; i < frame_run_count_; ++i)

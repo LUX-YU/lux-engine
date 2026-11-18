@@ -1247,7 +1247,11 @@ namespace lux::render
             rounds_opened_.load(std::memory_order_relaxed),
             slot_cpu_hold_ns_.load(std::memory_order_relaxed),
             program_preparations_holding_slot_.load(std::memory_order_relaxed),
-            program_preparation_ns_.load(std::memory_order_relaxed)
+            program_preparation_ns_.load(std::memory_order_relaxed),
+            raster_buffer_ranges_.load(std::memory_order_relaxed),
+            raster_buffer_bytes_.load(std::memory_order_relaxed),
+            raster_image_ranges_.load(std::memory_order_relaxed),
+            raster_image_subresources_.load(std::memory_order_relaxed)
         };
 #else
         return std::nullopt;

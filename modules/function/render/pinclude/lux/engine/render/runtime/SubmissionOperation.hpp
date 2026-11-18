@@ -92,6 +92,11 @@ namespace lux::render::detail
             bool completed = false;
         };
 
+        struct RasterReads final
+        {
+            std::uint64_t buffer_ranges = 0, buffer_bytes = 0, image_ranges = 0, image_subresources = 0;
+        };
+
         class LUX_RENDER_PUBLIC Workspace final
         {
         public:
@@ -104,10 +109,12 @@ namespace lux::render::detail
                 const DeviceSession&, const FrameProgress&, std::span<RenderGraphInstance* const>
             ) const noexcept;
             [[nodiscard]] bool dumpSubmissions(const FrameProgress&, DumpSink) const noexcept;
+            [[nodiscard]] RasterReads takeRasterReads() noexcept;
 
         private:
             friend class SubmissionOperation;
             std::vector<Slot> slots_;
+            RasterReads raster_reads_;
             std::uint32_t queue_cursor_ = 0;
         };
 

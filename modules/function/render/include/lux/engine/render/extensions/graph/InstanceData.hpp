@@ -51,6 +51,7 @@ namespace lux::render::detail
             return false;
         }
 
+        // Dynamic data advances this revision whenever its required programs change.
         [[nodiscard]] virtual std::uint64_t programRevision() const noexcept
         {
             return 0;

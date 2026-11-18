@@ -267,11 +267,6 @@ namespace lux::render
         auto& programs = execution.programs;
         execution.instance.captureProgramRevisions(programs.revisions);
         programs.failure = {};
-        if (execution.pending_uses == UINT32_MAX)
-        {
-            programs.failure = {kRuntimeCapacity};
-            return;
-        }
         programs.active.emplace(execution);
         preparing_execution_ = &execution;
         preparation_targets_ = execution.instance.sampledTargets();

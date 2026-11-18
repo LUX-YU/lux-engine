@@ -597,10 +597,11 @@ namespace
     }
 
     void verifyPipelineIsolation(
-        RenderServer& server, ipc::IpcRequester& client, const CommandList& commands, std::string_view channel,
+        RenderServer& server, std::thread& server_thread, ipc::IpcRequester& client, const CommandList& commands,
+        std::string_view channel,
         const RenderProbe<RasterProbeConfig>& forward, std::array<SceneId, 2> scenes, ResourceInstanceId materials,
         MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
-        FeatureId clear, bool expect_progress, unsigned workers
+        FeatureId clear, bool expect_progress, unsigned workers, bool stop_server
     )
     {
         CapturedPixels imported_pixels;
@@ -683,12 +684,57 @@ namespace
         const auto before = server.developmentStats();
         CHECK(before);
         using Probe = PipelineIsolationProbe;
+        std::optional<FrameData> stop_packet;
+        if (stop_server)
+        {
+            const auto layout = call<QueryRenderJobInputLayout>(client, commands, cold).layout;
+            stop_packet.emplace(take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout)));
+            MeshInstanceData value{mesh, jobs[1].material};
+            value.render_enabled = true;
+            CHECK(stop_packet->addData<InstanceResource>(MeshInstanceUpdate{jobs[1].member, value}));
+            CHECK(stop_packet->seal());
+        }
         Probe::gate = Probe::EGate::ARMED;
-        const auto cold_request = requestFrame(*cold_client, commands, cold);
+        const auto cold_request = requestFrame(*cold_client, commands, cold, stop_packet ? &*stop_packet : nullptr);
         Probe::waitForDriver();
+        if (expect_progress)
+        {
+            const auto held = server.developmentStats();
+            CHECK(held && held->rounds_opened == before->rounds_opened);
+            CHECK(held->program_preparations == before->program_preparations + 1);
+        }
+        if (stop_server)
+        {
+            server.stop();
+            const auto stopped = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 10s);
+            CHECK(stopped && stopped->error.type == kJobStopped);
+            stop_packet->release();
+            CHECK(stop_packet->writable());
+            const auto created = Probe::created_pipelines.load();
+            const auto destroyed = Probe::destroyed_pipelines.load();
+            Probe::releaseDriver();
+            server_thread.join();
+            const auto joined = server.developmentStats();
+            CHECK(joined && joined->discarded_preparations == before->discarded_preparations + 1);
+            CHECK(Probe::created_pipelines.load() == created + 1);
+            CHECK(Probe::destroyed_pipelines.load() >= destroyed + 1);
+            std::puts("PIPELINE_SHUTDOWN cancelled_request=1 packet_returned=1 candidate_destroyed=1 joined=1");
+            return;
+        }
         const auto submits_before = Probe::accepted_submits.load();
         const auto warm_request = requestFrame(client, commands, warm);
         const auto early = receiveFrameBefore(client, warm_request, Clock::now() + 2s);
+        if (early && expect_progress)
+        {
+            for (unsigned i = 1; i < kFif; ++i)
+            {
+                const auto next = requestFrame(client, commands, warm);
+                const auto reply = receiveFrameBefore(client, next, Clock::now() + 2s);
+                CHECK(reply && !reply->error.type && reply->job == warm);
+                CHECK(reply->frame_index == early->frame_index + i);
+                CHECK(reply->slot_index == (early->slot_index + i) % kFif);
+            }
+        }
         const auto accepted = Probe::accepted_submits.load() - submits_before;
         const auto blocked = server.developmentStats();
         Probe::releaseDriver();
@@ -744,8 +790,15 @@ namespace
             const auto& frame = jobs[1].pixels.frames[newest->slot_index];
             const auto offset = 32 * jobs[1].pixels.pitch + 32 * 4;
             CHECK(std::abs(std::to_integer<int>(frame[offset]) - 192) <= 1);
+            const auto& historical = imported_pixels.frames[newest->slot_index];
+            const auto history_offset = 32 * imported_pixels.pitch + 32 * 4;
+            const bool sampled_publication = historical[history_offset] > std::byte{0} &&
+                historical[history_offset + 1] > historical[history_offset] &&
+                historical[history_offset + 2] > historical[history_offset + 1] &&
+                historical[history_offset + 3] == std::byte{255};
+            CHECK(sampled_publication);
             for (auto variant : variants) call<MaterialCommands::Release>(client, commands, {variant});
-            std::printf("PIPELINE_LATEST frame=%llu red=%u\n",
+            std::printf("PIPELINE_LATEST frame=%llu red=%u sampled_history=1\n",
                 static_cast<unsigned long long>(newest->frame_index), std::to_integer<unsigned>(frame[offset]));
         }
     }
@@ -913,6 +966,7 @@ int main(int argc, char** argv)
     bool legacy = false;
     std::optional<bool> pipeline_isolation;
     unsigned workers = 2;
+    bool stop_server = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string_view arg = argv[i];
@@ -922,6 +976,7 @@ int main(int argc, char** argv)
         else if (arg == "--pipeline-isolation") pipeline_isolation = true;
         else if (arg == "--expect-pipeline-blocking") pipeline_isolation = false;
         else if (arg == "--single-worker") workers = 1;
+        else if (arg == "--pipeline-shutdown") { pipeline_isolation = true; stop_server = true; }
         else
         {
             count = static_cast<unsigned>(std::atoi(argv[i]));
@@ -989,8 +1044,8 @@ int main(int argc, char** argv)
     {
         const auto other = call<CreateScene>(*ipc, commands, {}).scene;
         verifyPipelineIsolation(
-            *server, *ipc, commands, config.channel_name, probes[0], {scene, other}, materials, mesh, images.front(),
-            **compiler, shader_target, clear, *pipeline_isolation, workers
+            *server, thread, *ipc, commands, config.channel_name, probes[0], {scene, other}, materials, mesh,
+            images.front(), **compiler, shader_target, clear, *pipeline_isolation, workers, stop_server
         );
     }
     else if (count)
@@ -1004,9 +1059,12 @@ int main(int argc, char** argv)
             std::span<const TextureId, 2>(images.data(), 2), **compiler, shader_target, legacy);
         call<RemoveScene>(*ipc, commands, {scene});
     }
-    call<MeshCommands::ReleaseMesh>(*ipc, commands, {mesh});
-    for (const auto image : images) call<TextureCommands::Release>(*ipc, commands, {image});
-    server->stop();
-    thread.join();
+    if (thread.joinable())
+    {
+        call<MeshCommands::ReleaseMesh>(*ipc, commands, {mesh});
+        for (const auto image : images) call<TextureCommands::Release>(*ipc, commands, {image});
+        server->stop();
+        thread.join();
+    }
     CHECK(server->stats().validation_errors == 0);
 }

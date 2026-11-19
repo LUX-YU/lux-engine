@@ -9,6 +9,7 @@
 #include <optional>
 #include <span>
 #include <stdexec/execution.hpp>
+#include <vector>
 
 namespace lux::render::detail
 {
@@ -119,6 +120,15 @@ namespace lux::render::detail
         bool submitting_ = false;
         bool terminal_retired_ = false;
         std::optional<RenderError> terminal_;
+        // Borrowed by the native call while the owner holds submitting_ across delivery.
+        struct SubmissionStorage final
+        {
+            std::vector<nri::CommandBuffer*> commands;
+            std::vector<nri::FenceSubmitDesc> waits;
+            std::vector<nri::FenceSubmitDesc> signals;
+        };
+
+        SubmissionStorage submission_storage_;
         SubmissionCallback* callbacks_ = nullptr;
         SubmissionCallback* callbacks_tail_ = nullptr;
     };

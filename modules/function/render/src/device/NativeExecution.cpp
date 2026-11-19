@@ -73,6 +73,12 @@ namespace lux::render::detail
                 std::this_thread::yield();
                 continue;
             }
+            if (context_.pending() != 0)
+            {
+                // An admitted node can still be in publication or temporarily unavailable to dequeue.
+                std::this_thread::yield();
+                continue;
+            }
             epoch_.wait(observed, std::memory_order_acquire);
         }
     }

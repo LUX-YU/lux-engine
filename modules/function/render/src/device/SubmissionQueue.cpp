@@ -175,19 +175,20 @@ namespace lux::render::detail
         submitting_ = true;
         cxx::scope_exit release([this]() noexcept { submitting_ = false; });
         const auto serial = submitted_ + 1;
-        std::vector<nri::CommandBuffer*> frozen_commands(commands.begin(), commands.end());
-        std::vector<nri::FenceSubmitDesc> frozen_waits(waits.begin(), waits.end());
-        std::vector<nri::FenceSubmitDesc> frozen_signals(signals.begin(), signals.end());
-        frozen_signals.push_back({fence_, serial, nri::StageBits::ALL});
+        auto& storage = submission_storage_;
+        storage.commands.assign(commands.begin(), commands.end());
+        storage.waits.assign(waits.begin(), waits.end());
+        storage.signals.assign(signals.begin(), signals.end());
+        storage.signals.push_back({fence_, serial, nri::StageBits::ALL});
         const nri::QueueSubmitDesc submission{
-            frozen_waits.data(),
-            static_cast<std::uint32_t>(frozen_waits.size()),
-            frozen_commands.data(),
-            static_cast<std::uint32_t>(frozen_commands.size()),
-            frozen_signals.data(),
-            static_cast<std::uint32_t>(frozen_signals.size())
+            storage.waits.data(),
+            static_cast<std::uint32_t>(storage.waits.size()),
+            storage.commands.data(),
+            static_cast<std::uint32_t>(storage.commands.size()),
+            storage.signals.data(),
+            static_cast<std::uint32_t>(storage.signals.size())
         };
-        // Device/queue facts and operation-owned frozen arrays only; no business state on the worker.
+        // The worker borrows only native facts and arrays frozen until the owner adopts the result.
         auto result = co_await (
             stdexec::schedule(session_.nativeScheduler()) |
             stdexec::then(

@@ -627,9 +627,6 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
         }
-        auto& data = *frames_;
-        data.properties.clear();
-        data.properties.reserve(descriptions.size());
         using Ids = std::conditional_t<
             std::same_as<Input, MeshInstanceData>,
             std::array<MeshInstanceId, 1>,
@@ -643,6 +640,26 @@ namespace lux::render::detail
         {
             co_return CreateValue<Input>{};
         }
+        // The batch command borrows its input. Select owned records before releasing the owner.
+        std::vector<MeshInstanceData> selected_descriptions;
+        auto selected = descriptions;
+        if constexpr (!std::same_as<Input, MeshInstanceData>)
+        {
+            selected_descriptions.assign(descriptions.begin(), descriptions.end());
+            selected = selected_descriptions;
+        }
+        auto& data = *frames_;
+        auto properties = std::move(data.properties);
+        auto writes = std::move(data.writes);
+        cxx::scope_exit recycle_upload([&]() noexcept
+        {
+            properties.clear();
+            writes.clear();
+            data.properties = std::move(properties);
+            data.writes = std::move(writes);
+        });
+        properties.clear();
+        properties.reserve(selected.size());
         updating_ = true;
         ++preparation_revision_;
         std::size_t reserved = 0;
@@ -750,14 +767,14 @@ namespace lux::render::detail
             co_return cxx::unexpected(acquired.error());
         }
         const auto frame = replica.slot();
-        for (const auto& description : descriptions)
+        for (const auto& description : selected)
         {
             auto property = resolveReferences(description, frame);
             if (!property)
             {
                 co_return cxx::unexpected(property.error());
             }
-            data.properties.push_back(*property);
+            properties.push_back(*property);
         }
         if (auto prepared = ensureFrame(frame); !prepared)
         {
@@ -768,8 +785,7 @@ namespace lux::render::detail
             capacity(),
             [&](std::size_t i) noexcept { return extension_detail::ResourceIdentity::local(ids[i]).index; }
         );
-        data.writes.clear();
-        data.writes.reserve(descriptions.size() * 3);
+        writes.reserve(selected.size() * 3);
         const std::uint32_t alive = 1;
         for (std::size_t field = 0; field < kStride.size(); ++field)
         {
@@ -777,10 +793,10 @@ namespace lux::render::detail
                 [&](std::size_t i) noexcept { return extension_detail::ResourceIdentity::local(ids[i]).index; },
                 [&](std::uint32_t record, std::size_t i) noexcept
                 {
-                    const auto bytes = field == 0   ? std::as_bytes(std::span(descriptions[i].transform))
-                                       : field == 1 ? std::as_bytes(std::span(&data.properties[i], 1))
+                    const auto bytes = field == 0   ? std::as_bytes(std::span(selected[i].transform))
+                                       : field == 1 ? std::as_bytes(std::span(&properties[i], 1))
                                                     : std::as_bytes(std::span(&alive, 1));
-                    data.writes.push_back(
+                    writes.push_back(
                         {fieldBuffer(frame, record / kMeshInstancePageSlots, field),
                          fieldOffset(record, kStride[field]),
                          bytes}
@@ -788,7 +804,7 @@ namespace lux::render::detail
                 }
             );
         }
-        if (auto accepted = co_await uploads_.writeBuffers(data.writes, {}, &replica.accepted()); !accepted)
+        if (auto accepted = co_await uploads_.writeBuffers(writes, {}, &replica.accepted()); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -798,9 +814,10 @@ namespace lux::render::detail
             const auto record = extension_detail::ResourceIdentity::local(ids[i]).index;
             auto& page = *pages_[record / kMeshInstancePageSlots];
             const auto local = record % kMeshInstancePageSlots;
-            page.transforms[local] = descriptions[i].transform;
-            page.properties[local] = data.properties[i];
-            page.selections[local] = {descriptions[i].mesh, descriptions[i].material, descriptions[i].submesh};
+            const auto& description = selected[i];
+            page.transforms[local] = description.transform;
+            page.properties[local] = properties[i];
+            page.selections[local] = {description.mesh, description.material, description.submesh};
             page.alive[local] = 1;
             entries_.find(extension_detail::ResourceIdentity::local(ids[i]))->key =
                 extension_detail::ResourceIdentity::local(ids[i]);
@@ -1019,13 +1036,11 @@ namespace lux::render::detail
                          std::vector<DirtyWordMask>& accepted,
                          std::size_t stride,
                          std::uint32_t page_records,
-                         auto source,
-                         bool transient_source = false) noexcept -> RenderResult<bool>
+                         auto source) noexcept -> RenderResult<bool>
         {
             accepted.clear();
             const auto word_limit = (uploads.windowByteLimit() / stride + 63) / 64 + uploads.windowRegionLimit();
             dirty.select(word_limit, slice.selected);
-            std::uint64_t covered = 0;
             RenderResult<void> result;
             const bool complete = DirtyRanges::visitRanges(
                 slice.selected,
@@ -1041,8 +1056,7 @@ namespace lux::render::detail
                             return false;
                         }
                         auto [write, unit] = *prepared;
-                        auto copied = transient_source ? uploads.stageInlineBuffer(write, unit)
-                                                       : uploads.stageBuffer(write, unit);
+                        auto copied = uploads.stageBuffer(write, unit);
                         if (!copied)
                         {
                             result = cxx::unexpected(copied.error());
@@ -1054,8 +1068,7 @@ namespace lux::render::detail
                             return false;
                         }
                         copied_any = true;
-                        DirtyRanges::appendRange(accepted, first, records);
-                        covered += records;
+                        dirty.detachRange(accepted, first, records);
                         first += records;
                         count -= records;
                     }
@@ -1066,7 +1079,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(result.error());
             }
-            const bool is_incomplete_snapshot = !complete || covered != dirty.recordCount();
+            const bool is_incomplete_snapshot = !complete || !dirty.empty();
             if (is_incomplete_snapshot)
             {
                 return cxx::unexpected(RenderError{kDeviceCapacity});
@@ -1210,8 +1223,7 @@ namespace lux::render::detail
                         },
                         kStride[field]
                     };
-                },
-                field == 1
+                }
             );
             if (!fields)
             {
@@ -1239,30 +1251,19 @@ namespace lux::render::detail
     void RasterMeshInstanceStorage::finishFramePreparation(std::uint32_t frame, RenderResult<void> accepted) noexcept
     {
         auto& slice = frames_->slices[frame];
-        if (accepted)
+        for (std::size_t field = 0; field < kStride.size(); ++field)
         {
-            for (std::size_t field = 0; field < kStride.size(); ++field)
-            {
-                slice.dirty[field].acknowledge(slice.accepted[field]);
-            }
-            if (slice.table)
-            {
-                slice.table->roots_dirty.acknowledge(slice.table->roots_accepted);
-                slice.table->pages_dirty.acknowledge(slice.table->pages_accepted);
-            }
-            if (std::ranges::all_of(slice.dirty, [](const auto& dirty) { return dirty.empty(); }))
-            {
-                adoptFrameBuffers(frame);
-            }
-        }
-        for (auto& masks : slice.accepted)
-        {
-            masks.clear();
+            slice.dirty[field].finishSelection(slice.accepted[field], bool(accepted));
         }
         if (slice.table)
         {
-            slice.table->roots_accepted.clear();
-            slice.table->pages_accepted.clear();
+            slice.table->roots_dirty.finishSelection(slice.table->roots_accepted, bool(accepted));
+            slice.table->pages_dirty.finishSelection(slice.table->pages_accepted, bool(accepted));
+        }
+        const bool fields_clean = std::ranges::all_of(slice.dirty, [](const auto& dirty) { return dirty.empty(); });
+        if (accepted && fields_clean)
+        {
+            adoptFrameBuffers(frame);
         }
     }
 

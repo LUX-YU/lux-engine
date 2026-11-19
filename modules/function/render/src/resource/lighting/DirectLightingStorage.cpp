@@ -341,8 +341,15 @@ namespace lux::render::detail
         auto& array = arrays_[entry->kind];
         const auto last = --counts[entry->kind];
         const auto stride = strides[entry->kind];
-        const Write replacement{entry->kind, entry->position, std::span(array.records).subspan(last * stride, stride)};
-        const auto writes = entry->position == last ? std::span<const Write>{} : std::span(&replacement, 1);
+        std::array<std::byte, sizeof(SpotLightGpu)> replacement_bytes;
+        std::array<Write, 1> replacement;
+        std::span<const Write> writes;
+        if (entry->position != last)
+        {
+            std::memcpy(replacement_bytes.data(), array.records.data() + last * stride, stride);
+            replacement[0] = {entry->kind, entry->position, std::span(replacement_bytes).first(stride)};
+            writes = replacement;
+        }
         if (auto accepted = co_await write(writes, counts); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
@@ -442,6 +449,7 @@ namespace lux::render::detail
                 }
             }
         );
+        std::array<std::vector<std::byte>, 4> existing_records;
         std::vector<BufferWrite> writes;
         writes.reserve(changes.size() + 5);
         for (std::size_t k = 0; k < arrays_.size(); ++k)
@@ -472,7 +480,8 @@ namespace lux::render::detail
                 {
                     co_return cxx::unexpected(nativeError(status));
                 }
-                writes.push_back({candidates[k], 0, array.records});
+                existing_records[k] = array.records;
+                writes.push_back({candidates[k], 0, existing_records[k]});
             }
         }
         for (const auto& change : changes)
@@ -658,7 +667,6 @@ namespace lux::render::detail
                 slice.selected
             );
             RenderResult<bool> copied = true;
-            std::uint64_t covered = 0;
             DirtyRanges::visitRanges(
                 slice.selected,
                 UINT32_MAX,
@@ -676,9 +684,8 @@ namespace lux::render::detail
                         return false;
                     }
                     const auto accepted = static_cast<std::uint32_t>(*result / strides[k]);
-                    DirtyRanges::appendRange(slice.accepted, first, accepted);
+                    slice.dirty.detachRange(slice.accepted, first, accepted);
                     progress |= accepted != 0;
-                    covered += accepted;
                     return accepted == count;
                 }
             );
@@ -686,7 +693,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(copied.error());
             }
-            if (covered != slice.dirty.recordCount())
+            if (!slice.dirty.empty())
             {
                 return cxx::unexpected(RenderError{kDeviceCapacity});
             }
@@ -700,11 +707,7 @@ namespace lux::render::detail
         for (std::uint32_t k = 0; k < arrays_.size(); ++k)
         {
             auto& slice = arrays_[k].frames[frame];
-            if (accepted)
-            {
-                slice.dirty.acknowledge(slice.accepted);
-            }
-            slice.accepted.clear();
+            slice.dirty.finishSelection(slice.accepted, bool(accepted));
             if (accepted && slice.dirty.empty() && slice.candidate)
             {
                 releaseAfterGpu(device_, slice.buffer);

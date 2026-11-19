@@ -3,6 +3,8 @@
 #include "GraphMeasurements.hpp"
 #endif
 #include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <bit>
 #include <chrono>
@@ -530,7 +532,10 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
 }
 
 template <std::size_t Count = 9>
-static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session, nri::Buffer& input)
+static std::array<std::uint32_t, Count> readHistoryResult(
+    DeviceSession& session, nri::Buffer& input,
+    nri::AccessStage before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+)
 {
     constexpr auto size = sizeof(std::array<std::uint32_t, Count>);
     nri::Buffer* read = nullptr;
@@ -544,7 +549,7 @@ static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session
         {
             const nri::BufferBarrierDesc transition{
                 &input,
-                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                before,
                 {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}
             };
             core.CmdBarrier(command, {nullptr, 0, &transition, 1});
@@ -561,6 +566,69 @@ static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session
     core.UnmapBuffer(*read);
     core.DestroyBuffer(read);
     return result;
+}
+
+static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend)
+{
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto uploads = take(ResourceUploader::create(
+        *session, TransferOptions{4096, 2}, lux::execution::ExecutionRuntime::instance().cpuScheduler()
+    ));
+    std::array<std::uint32_t, 4> source{11, 12, 13, 14};
+    const auto bytes = std::as_bytes(std::span(source));
+    nri::Buffer* target = nullptr;
+    const auto& core = session->nriCore();
+    const nri::BufferDesc description{bytes.size(), 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
+    CHECK(core.CreatePlacedBuffer(session->device(), NriDeviceHeap, description, target) == nri::Result::SUCCESS);
+    CHECK(take(uploads->stageBuffer({target, 0, bytes})) == bytes.size());
+    source.fill(99);
+    CHECK(uploads->flushFrameCopies());
+    CHECK(take(runTask(uploads->submitPreparationCopies())) != 0);
+    uploads->finishFrameCopySubmission({});
+    CHECK(session->drain());
+    const auto result = readHistoryResult<4>(
+        *session, *target, {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
+    );
+    const std::array<std::uint32_t, 4> expected{11, 12, 13, 14};
+    CHECK(result == expected);
+    core.DestroyBuffer(target);
+    std::puts("FRAME UPLOAD SNAPSHOT PASS: caller mutation after staging leaves submitted bytes unchanged");
+}
+
+static void detachedDirtyRanges()
+{
+    std::array<DirtyRanges, 3> replicas;
+    std::vector<DirtyWordMask> selected, pending;
+    for (auto& replica : replicas)
+    {
+        replica.grow(130);
+        replica.markRange(63, 3);
+    }
+    auto& first = replicas[0];
+    first.detachRange(selected, 63, 3);
+    CHECK(first.empty() && selected.size() == 2);
+    for (auto& replica : replicas)
+    {
+        replica.mark(64);
+        replica.mark(129);
+    }
+    first.finishSelection(selected, true);
+    CHECK(selected.empty() && first.recordCount() == 2);
+    first.select(3, pending);
+    CHECK(pending.size() == 2 && pending[0].word_index == 1 && pending[0].bits == 1);
+    CHECK(pending[1].word_index == 2 && pending[1].bits == 2);
+    CHECK(replicas[1].recordCount() == 4 && replicas[2].recordCount() == 4);
+
+    first.mark(63);
+    first.detachRange(selected, 63, 2);
+    first.mark(64);
+    first.finishSelection(selected, false);
+    CHECK(selected.empty() && first.recordCount() == 3);
+    first.select(3, pending);
+    CHECK(pending.size() == 3 && pending[0].bits == (std::uint64_t{1} << 63));
+    CHECK(pending[1].bits == 1 && pending[2].bits == 2);
 }
 
 struct HeldCompletion final
@@ -2123,6 +2191,7 @@ int main(int argc, char** argv)
         cpuRasterPackets();
         cpuQueueBoundaries();
         cpuQueueCandidates();
+        detachedDirtyRanges();
         std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;
     }
@@ -2199,6 +2268,7 @@ int main(int argc, char** argv)
         }
     }
     nativeQueueCandidates(validation, backend);
+    frameUploadSnapshot(validation, backend);
     indirectCounts(validation, backend);
     resolveAndCopy(validation, backend);
     sharedImportedBuffer(validation, backend, false);

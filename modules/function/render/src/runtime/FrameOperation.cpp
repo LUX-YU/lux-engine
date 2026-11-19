@@ -104,7 +104,7 @@ namespace lux::render::detail
     {
         if (!copies_flushed_)
         {
-            auto prepared = co_await uploads_->prepareFrameCopies();
+            auto prepared = uploads_->flushFrameCopies();
             if (!prepared) co_return cxx::unexpected(prepared.error());
             copies_flushed_ = true;
         }

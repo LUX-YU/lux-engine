@@ -84,7 +84,7 @@ namespace lux::render::detail
         [[nodiscard]] bool canProgressTransfers() const noexcept;
         [[nodiscard]] bool canSubmitPreparationCopies() const noexcept;
         [[nodiscard]] Task submitReadyTransfers() noexcept;
-        [[nodiscard]] Task prepareFrameCopies() noexcept;
+        [[nodiscard]] RenderResult<void> flushFrameCopies() noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint64_t>> submitPreparationCopies() noexcept;
         // Settles staging after the frame submission attempt; this does not observe GPU completion.
         void finishFrameCopySubmission(RenderResult<void>) noexcept;
@@ -114,11 +114,9 @@ namespace lux::render::detail
             const nri::Texture* clone = nullptr
         ) noexcept;
 
-        // Reserve an entire write before publication; insufficient finite capacity fails the whole
-        // preparation. CPU copying occurs after all source borrows are frozen.
+        // Reserve an entire write, then copy into owned staging before returning.
+        // Capacity failure leaves this write unstaged. Caller bytes may change after success.
         [[nodiscard]] RenderResult<std::size_t> stageBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
-        // Freeze a transient projection (at most 16 KiB) before its caller's scratch is reused.
-        [[nodiscard]] RenderResult<std::size_t> stageInlineBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
 
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
         {
@@ -139,14 +137,14 @@ namespace lux::render::detail
 
     private:
         [[nodiscard]] bool canBeginCommands(const SubmissionQueue&) const noexcept;
-        [[nodiscard]] RenderResult<std::size_t> stage(const BufferWrite&, std::size_t, bool copy_now) noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
         struct Copy;
         struct BatchEntry;
         class BatchSender;
         struct Measurement;
         void enqueue(BatchEntry&) noexcept;
-        std::vector<Copy> frame_copies_;
+        struct FrameCopy;
+        std::vector<FrameCopy> frame_copies_;
         ResourceUploader(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
             std::span<const BufferWrite>,

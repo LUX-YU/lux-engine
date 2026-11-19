@@ -3,6 +3,7 @@
 
 #include <bit>
 #include <ctime>
+#include <mutex>
 #include <set>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
@@ -145,7 +146,7 @@ namespace
 
         enum class EGate { OPEN, ARMED, HOLDING };
         static inline std::atomic<EGate> gate = EGate::OPEN;
-        static inline std::atomic<std::uint64_t> accepted_submits = 0;
+        static inline std::atomic<std::uint64_t> accepted_submits = 0, raster_submits = 0;
         static inline std::atomic<std::uint64_t> pipeline_calls = 0, created_pipelines = 0, destroyed_pipelines = 0;
         static inline std::atomic<bool> fail_pipeline = false;
 
@@ -189,10 +190,38 @@ namespace
                 if (pipeline) ++destroyed_pipelines;
                 original_.DestroyPipeline(pipeline);
             };
+            core_.BeginCommandBuffer = [](nri::CommandBuffer& command, const nri::DescriptorPool* pool) noexcept
+            {
+                {
+                    std::lock_guard lock(commands_mutex_);
+                    raster_commands_.erase(&command);
+                }
+                return original_.BeginCommandBuffer(command, pool);
+            };
+            core_.CmdBeginRendering = [](nri::CommandBuffer& command, const nri::RenderingDesc& scope) noexcept
+            {
+                {
+                    std::lock_guard lock(commands_mutex_);
+                    raster_commands_.insert(&command);
+                }
+                original_.CmdBeginRendering(command, scope);
+            };
             core_.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& description) noexcept
             {
+                bool has_raster = false;
+                {
+                    std::lock_guard lock(commands_mutex_);
+                    for (const auto* command : std::span(description.commandBuffers, description.commandBufferNum))
+                    {
+                        has_raster |= raster_commands_.contains(command);
+                    }
+                }
                 const auto result = original_.QueueSubmit(queue, description);
-                if (result == nri::Result::SUCCESS) ++accepted_submits;
+                if (result == nri::Result::SUCCESS)
+                {
+                    ++accepted_submits;
+                    if (has_raster) ++raster_submits;
+                }
                 return result;
             };
         }
@@ -201,7 +230,10 @@ namespace
         {
             core_.CreateGraphicsPipeline = original_.CreateGraphicsPipeline;
             core_.DestroyPipeline = original_.DestroyPipeline;
+            core_.BeginCommandBuffer = original_.BeginCommandBuffer;
+            core_.CmdBeginRendering = original_.CmdBeginRendering;
             core_.QueueSubmit = original_.QueueSubmit;
+            raster_commands_.clear();
         }
 
         static RenderResult<std::unique_ptr<PipelineIsolationProbe>>
@@ -217,6 +249,8 @@ namespace
 
     private:
         static inline nri::CoreInterface original_{};
+        static inline std::mutex commands_mutex_;
+        static inline std::set<const nri::CommandBuffer*> raster_commands_;
         nri::CoreInterface& core_;
     };
 
@@ -735,6 +769,7 @@ namespace
             return;
         }
         const auto submits_before = Probe::accepted_submits.load();
+        const auto raster_submits_before = Probe::raster_submits.load();
         std::optional<FrameData> warm_packet;
         if (expect_progress)
         {
@@ -760,6 +795,7 @@ namespace
             }
         }
         const auto accepted = Probe::accepted_submits.load() - submits_before;
+        const auto raster_accepted = Probe::raster_submits.load() - raster_submits_before;
         const auto blocked = server.developmentStats();
         Probe::releaseDriver();
 
@@ -772,14 +808,19 @@ namespace
         const auto holding_slot = blocked->program_preparations_holding_slot - before->program_preparations_holding_slot;
         std::printf(
             "PIPELINE_ISOLATION workers=%u warm_reply_while_cold_blocked=%u native_submits=%llu "
-            "preparations_holding_slot=%llu\n",
+            "raster_submits=%llu preparations_holding_slot=%llu\n",
             workers, unsigned(early.has_value()), static_cast<unsigned long long>(accepted),
+            static_cast<unsigned long long>(raster_accepted),
             static_cast<unsigned long long>(holding_slot)
         );
         std::fflush(stdout);
         const bool should_submit = expect_progress && workers > 1;
         CHECK(early.has_value() == should_submit);
-        CHECK((accepted > 0) == should_submit);
+        CHECK((raster_accepted > 0) == should_submit);
+        // One dirty transform can reach the native queue even while the only CPU worker is blocked.
+        const bool should_upload = expect_progress && workers == 1;
+        if (should_upload) CHECK(accepted == 1);
+        else CHECK((accepted > 0) == should_submit);
         CHECK((holding_slot == 0) == expect_progress);
 
         std::optional<JobSubmitted> newest;

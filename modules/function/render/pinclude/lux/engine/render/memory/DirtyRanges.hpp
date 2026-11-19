@@ -14,8 +14,8 @@ namespace lux::render::detail
         std::uint64_t bits;
     };
 
-    // Logical-record bits only. GPU acceptance acknowledges the exact selected masks;
-    // zero-word removal never scans the remaining dirty records.
+    // Logical pending-record bits. A staged upload detaches its own masks so later writes
+    // to the same records can independently become dirty again.
     class DirtyRanges final
     {
     public:
@@ -143,8 +143,9 @@ namespace lux::render::detail
             return flush();
         }
 
-        static void appendRange(std::vector<DirtyWordMask>& output, std::uint32_t first, std::uint32_t count) noexcept
+        void detachRange(std::vector<DirtyWordMask>& output, std::uint32_t first, std::uint32_t count) noexcept
         {
+            acknowledgeRange(first, count);
             while (count)
             {
                 const auto offset = first % 64;
@@ -184,12 +185,16 @@ namespace lux::render::detail
             }
         }
 
-        void acknowledge(std::span<const DirtyWordMask> masks) noexcept
+        void finishSelection(std::vector<DirtyWordMask>& selection, bool accepted) noexcept
         {
-            for (auto mask : masks)
+            if (!accepted)
             {
-                acknowledge(mask);
+                for (auto mask : selection)
+                {
+                    mark(mask);
+                }
             }
+            selection.clear();
         }
 
         void acknowledgeRange(std::uint64_t first, std::uint64_t count) noexcept

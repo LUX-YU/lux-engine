@@ -464,8 +464,8 @@ cannot expose a half-populated buffer. Repair failure stops rendering instead of
 
 FIF replica preparation reserves one complete snapshot across physical staging pages. Insufficient staging or
 CopyRange capacity rejects the whole preparation before submission; it does not publish a partially updated slice.
-Failed preparation or submission retains dirty revisions. Large stable sources are copied on the shared CPU scheduler;
-bounded transient projections use `stageInlineBuffer` to freeze their scratch bytes before the callback returns.
+Failed preparation or submission restores staged dirty ranges. Frame sources use `stageBuffer` to copy directly
+into owned staging before the callback returns. Later writes mark pending ranges independently of the staged selection.
 A fully prepared replacement waits for actual acceptance before publishing its binding. This can precede graph
 recording, but never splits the replacement to compensate for insufficient staging. Descriptor publication and dirty
 adoption stay on the control owner. The Uploader owns the copy command windows;

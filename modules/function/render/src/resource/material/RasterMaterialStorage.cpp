@@ -597,8 +597,10 @@ namespace lux::render::detail
             }
         );
         const auto slot = existing ? existing->slot : page.free_slots.back();
-        page.value_bytes.assign(table.stride, std::byte{});
-        const auto values = std::span(page.value_bytes);
+        auto value_bytes = std::move(page.value_bytes);
+        cxx::scope_exit recycle_values([&]() noexcept { page.value_bytes = std::move(value_bytes); });
+        value_bytes.assign(table.stride, std::byte{});
+        const auto values = std::span(value_bytes);
         for (std::size_t p = 0; p < input.parameters.size(); ++p)
         {
             std::memcpy(
@@ -888,7 +890,6 @@ namespace lux::render::detail
             }
             ++i;
             slice.accepted.clear();
-            std::uint64_t covered = 0;
             bool progress = false;
             RenderResult<void> staged;
             const auto word_limit =
@@ -909,8 +910,7 @@ namespace lux::render::detail
                         return false;
                     }
                     progress = true;
-                    DirtyRanges::appendRange(slice.accepted, first, count);
-                    covered += count;
+                    slice.dirty.detachRange(slice.accepted, first, count);
                     return true;
                 }
             );
@@ -919,7 +919,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(staged.error());
             }
-            if (covered != slice.dirty.recordCount())
+            if (!slice.dirty.empty())
             {
                 return cxx::unexpected(RenderError{kDeviceCapacity});
             }
@@ -934,11 +934,7 @@ namespace lux::render::detail
         {
             auto& table = *dirty[index];
             auto& slice = table.gpu[frame];
-            if (accepted)
-            {
-                slice.dirty.acknowledge(slice.accepted);
-            }
-            slice.accepted.clear();
+            slice.dirty.finishSelection(slice.accepted, bool(accepted));
             if (accepted && slice.dirty.empty())
             {
                 removeDirty(table, frame);

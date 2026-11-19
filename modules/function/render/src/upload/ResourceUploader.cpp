@@ -57,6 +57,13 @@ namespace lux::render::detail
         bool first = false, final = false;
     };
 
+    struct ResourceUploader::FrameCopy final
+    {
+        StagingRange staging;
+        nri::Buffer* buffer;
+        std::uint64_t offset;
+    };
+
     struct ResourceUploader::BatchEntry final
     {
         ResourceUploader* uploads;
@@ -438,21 +445,6 @@ namespace lux::render::detail
 
     RenderResult<std::size_t> ResourceUploader::stageBuffer(const BufferWrite& write, std::size_t unit) noexcept
     {
-        return stage(write, unit, false);
-    }
-
-    RenderResult<std::size_t> ResourceUploader::stageInlineBuffer(const BufferWrite& write, std::size_t unit) noexcept
-    {
-        if (write.source.size() > 16 * 1024)
-        {
-            return cxx::unexpected(RenderError{kDeviceCapacity});
-        }
-        return stage(write, unit, true);
-    }
-
-    RenderResult<std::size_t>
-    ResourceUploader::stage(const BufferWrite& write, std::size_t unit, bool copy_now) noexcept
-    {
         if (!write.target || write.source.empty())
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -469,61 +461,25 @@ namespace lux::render::detail
             {
                 std::terminate(); // Preflight and consumption are one control-owner segment.
             }
-            Copy copy{std::move(*range)};
-            copy.buffer = write.target;
-            copy.offset = write.offset + offset;
-            copy.bytes = copy.staging.bytes.size();
-            if (copy_now)
-            {
-                std::memcpy(copy.staging.bytes.data(), write.source.data() + offset, copy.bytes);
-            }
-            else
-            {
-                copy.source = write.source.subspan(offset, copy.bytes);
-            }
-            copy.final = true;
-            offset += copy.bytes;
-            frame_copies_.push_back(std::move(copy));
+            const auto bytes = range->bytes.size();
+            std::memcpy(range->bytes.data(), write.source.data() + offset, bytes);
+            frame_copies_.push_back({std::move(*range), write.target, write.offset + offset});
+            offset += bytes;
         }
         return offset;
     }
 
-    ResourceUploader::Task ResourceUploader::prepareFrameCopies() noexcept
+    RenderResult<void> ResourceUploader::flushFrameCopies() noexcept
     {
-        const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
-        auto copied = co_await (
-            stdexec::schedule(cpu_scheduler_) |
-            stdexec::then(
-                [this]() noexcept -> RenderResult<void>
-                {
-                    for (auto& copy : frame_copies_)
-                    {
-                        if (!copy.source.empty())
-                        {
-                            std::memcpy(copy.staging.bytes.data(), copy.source.data(), copy.bytes);
-                        }
-                    }
-                    return {};
-                }
-            ) |
-            stdexec::upon_stopped(
-                []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
-            ) |
-            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<void>{})
-        );
-        if (!copied)
-        {
-            co_return copied;
-        }
         for (auto& copy : frame_copies_)
         {
             if (auto flushed = staging_arena_->flush(copy.staging); !flushed)
             {
-                co_return flushed;
+                return flushed;
             }
-            statistics_.copied_bytes += copy.bytes;
+            statistics_.copied_bytes += copy.staging.bytes.size();
         }
-        co_return RenderResult<void>{};
+        return {};
     }
 
     bool ResourceUploader::hasFrameCopies() const noexcept
@@ -538,7 +494,7 @@ namespace lux::render::detail
         while (first < frame_copies_.size())
         {
             auto* target = frame_copies_[first].buffer;
-            auto end = frame_copies_[first].offset + frame_copies_[first].bytes;
+            auto end = frame_copies_[first].offset + frame_copies_[first].staging.bytes.size();
             auto last = first + 1;
             while (last < frame_copies_.size())
             {
@@ -547,7 +503,7 @@ namespace lux::render::detail
                 {
                     break;
                 }
-                end = next.offset + next.bytes;
+                end = next.offset + next.staging.bytes.size();
                 ++last;
             }
             // NRI barriers cover a whole Buffer. Disjoint, ordered writes share one transition;
@@ -563,7 +519,7 @@ namespace lux::render::detail
             for (auto i = first; i < last;)
             {
                 const auto& copy = frame_copies_[i];
-                auto bytes = copy.bytes;
+                auto bytes = copy.staging.bytes.size();
                 auto next = i + 1;
                 while (next < last)
                 {
@@ -572,7 +528,7 @@ namespace lux::render::detail
                         following.staging.buffer == copy.staging.buffer &&
                         following.staging.offset == copy.staging.offset + bytes;
                     if (!adjacent) break;
-                    bytes += following.bytes;
+                    bytes += following.staging.bytes.size();
                     ++next;
                 }
                 // Merge only the native copy. Every separately acquired range keeps its existing

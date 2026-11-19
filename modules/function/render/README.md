@@ -879,6 +879,12 @@ all bindings. Table growth rebuilds that frame's pool and invalidates affected r
 DXIL never passes through SPIR-V relocation. Runtime validation uses pinned SPIRV-Tools
 and the resolved SPIRV-Cross package; generation has no Engine toolchain or PATH/SDK fallback.
 
+Cooked fixed constant layouts record the matrix order and every enclosing fixed array's count and
+stride for each leaf. The SPIR-V verifier checks these facts against native types, including Slang's
+column-vector and array wrappers. Legacy blocks can still use structured layout checks. A typed
+constant contract requires the additional target layout evidence, so legacy blocks require recooking
+before such a contract can qualify.
+
 D3D12 requires Shader Model 6.6 and loads the deployed Agility SDK beside the Render DLL.
 It uses the existing contiguous instance-buffer path, with per-draw member offsets when
 first-instance semantics are unavailable. Vulkan's optional physical-pointer paged variants

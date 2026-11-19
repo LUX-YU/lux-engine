@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>
 
+#include "GraphConstantLayout.hpp"
 #include "GraphCount.hpp"
 #include "GraphDepthField.hpp"
 #include "GraphFill.hpp"
@@ -629,6 +630,90 @@ static void detachedDirtyRanges()
     first.select(3, pending);
     CHECK(pending.size() == 3 && pending[0].bits == (std::uint64_t{1} << 63));
     CHECK(pending[1].bits == 1 && pending[2].bits == 2);
+}
+
+static void constantLayoutEvidence(Validation& validation, EGraphicsBackend backend)
+{
+    auto shader = program(kGraphConstantLayout, backend);
+    CHECK(shader.interface.push_constants.size() == 1 && shader.interface.sets.size() == 1);
+    const auto& push = shader.interface.push_constants.front().block;
+    const auto& bindings = shader.interface.sets.front().bindings;
+    const auto uniforms = std::ranges::find(bindings, "uniforms", &rdesc::EDescriptorBindingInfo::name);
+    CHECK(uniforms != bindings.end());
+    const auto& uniform = uniforms->block;
+    CHECK(push.hasConstantLayoutEvidence() && uniform.hasConstantLayoutEvidence());
+    const auto find_field = [](const rdesc::ShaderBlock& block, std::string_view path) -> const rdesc::ShaderMember&
+    {
+        const auto member = std::ranges::find(block.fields, path, &rdesc::ShaderMember::path);
+        CHECK(member != block.fields.end());
+        return *member;
+    };
+    const auto& basis = find_field(push, "basis");
+    CHECK(basis.rows == 4 && basis.columns == 2 && basis.matrix_stride == 16);
+    CHECK(basis.matrix_order == rdesc::EShaderMatrixOrder::COLUMN_MAJOR && basis.array_dimensions.empty());
+    const auto& ids = find_field(push, "ids[1]");
+    CHECK(ids.array_dimensions == (std::vector<rdesc::ShaderArrayDimension>{{2, 16}}));
+    const auto& group = find_field(uniform, "entries[1].groups[1]");
+    CHECK(group.array_dimensions == (std::vector<rdesc::ShaderArrayDimension>{{2, 32}, {2, 16}}));
+
+    rdesc::ShaderInfo restored;
+    CHECK(rdesc::ShaderInfo::deserialize(rdesc::ShaderInfo::serialize(shader.interface), restored));
+    CHECK(restored == shader.interface);
+    auto legacy = push;
+    for (auto& member : legacy.fields)
+    {
+        member.matrix_order = rdesc::EShaderMatrixOrder::UNSPECIFIED;
+        member.array_dimensions.clear();
+    }
+    rdesc::ShaderBlock decoded;
+    CHECK(rdesc::ShaderBlock::deserialize(rdesc::ShaderBlock::serialize(legacy), decoded));
+    CHECK(decoded == legacy && decoded.hasStructuredLayout() && !decoded.hasConstantLayoutEvidence());
+    auto malformed = rdesc::ShaderBlock::serialize(push);
+    malformed.pop_back();
+    CHECK(!rdesc::ShaderBlock::deserialize(malformed, decoded) && decoded == legacy);
+
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    RenderGraphBuilder builder;
+    const auto uniform_bytes = take(builder.declareResource({"Uniform", GraphBufferDesc{256}}));
+    const auto output = take(builder.declareResource({"Result", GraphBufferDesc{16}}));
+    const auto readback = take(builder.declareResource({"Readback", GraphBufferDesc{16}}));
+    const auto initialized = take(builder.addTransferPass(
+        "UBO initialize", TransferWork{{FillBuffer{{{uniform_bytes, 0}}, 0}}}
+    ));
+    const auto selected = take(builder.addTransferPass(
+        "UBO nested field",
+        TransferWork{{FillBuffer{{written(initialized, uniform_bytes), GraphBufferRange{group.offset + 4, 4}}, 27}}}
+    ));
+    ComputeWork work;
+    work.interface.parameters.values.resize(push.size);
+    const std::uint32_t matrix_value = std::bit_cast<std::uint32_t>(2.5f);
+    const std::uint32_t array_value = 19;
+    auto* parameters = work.interface.parameters.values.data();
+    std::memcpy(parameters + basis.offset + basis.matrix_stride + 8, &matrix_value, sizeof(matrix_value));
+    std::memcpy(parameters + ids.offset + 8, &array_value, sizeof(array_value));
+    work.interface.program = take(builder.addProgram(GraphProgram{std::move(shader)}));
+    work.interface.resources = {
+        {"uniforms", {written(selected, uniform_bytes)}},
+        {"output_values", {{output, 0}, {}, EGraphAccess::WRITE}}
+    };
+    const auto computed = take(builder.addComputePass("typed ABI readback", std::move(work)));
+    const auto copied = take(builder.addTransferPass(
+        "readback", TransferWork{{CopyBuffer{{written(computed, output)}, {{readback, 0}}}}}
+    ));
+    CHECK(builder.exportOutput({written(copied, readback), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
+    auto graph = take(std::move(builder).finish());
+    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    FrameHarness frames(*session, 1);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 1, plan.executable, plan.programs);
+    CHECK(instance->initialize(plan.assembly));
+    const std::array instances{instance.get()};
+    CHECK(take(runTask(frames.render(instances, {}))) > 0);
+    CHECK(session->drain());
+    const std::array expected{matrix_value, array_value, 27u, 0u};
+    CHECK(readHistoryResult<4>(*session, *instance->nativeBuffer(readback.index, 0)) == expected);
+    std::puts("CONSTANT LAYOUT PASS: matrix order, nested array extents, legacy codec and native values");
 }
 
 struct HeldCompletion final
@@ -2229,6 +2314,7 @@ int main(int argc, char** argv)
         const bool d3d12 = argc > 2 && std::string_view(argv[2]) == "d3d12";
         typedRecording(validation, d3d12);
         multiCommandCompute(validation, d3d12);
+        constantLayoutEvidence(validation, d3d12 ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN);
         CHECK(validation.errors == 0);
         return 0;
     }

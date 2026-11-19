@@ -49,7 +49,7 @@ namespace lux::material
             key(shader::compilerVersion());
             key(options.profile);
             key(options.target == rdesc::EShaderTarget::SPIRV ? "spirv" : "dxil");
-            key("lux-material-slang-direct-2");
+            key("lux-material-slang-direct-3");
             key(std::to_string(rdesc::kMaterialShaderAbi));
             auto& programs = result.material.programs;
             programs.target = options.target;

@@ -88,7 +88,7 @@ namespace lux::shader
             std::string path,
             std::size_t offset,
             rdesc::ShaderBlock& block,
-            std::uint32_t array_stride = 0,
+            std::vector<rdesc::ShaderArrayDimension>& dimensions,
             unsigned depth = 0
         )
         {
@@ -112,7 +112,7 @@ namespace lux::shader
                             std::move(name),
                             offset + field_offset,
                             block,
-                            array_stride,
+                            dimensions,
                             depth + 1
                         ))
                     {
@@ -131,6 +131,7 @@ namespace lux::shader
                 {
                     return false;
                 }
+                dimensions.push_back({static_cast<std::uint32_t>(count), static_cast<std::uint32_t>(stride)});
                 for (std::size_t index = 0; index < count; ++index)
                 {
                     if (!fields(
@@ -138,13 +139,14 @@ namespace lux::shader
                             path + "[" + std::to_string(index) + "]",
                             offset + index * stride,
                             block,
-                            static_cast<std::uint32_t>(stride),
+                            dimensions,
                             depth + 1
                         ))
                     {
                         return false;
                     }
                 }
+                dimensions.pop_back();
                 return true;
             }
             rdesc::ShaderMember member{};
@@ -161,7 +163,12 @@ namespace lux::shader
                 member.rows = member.columns;
                 member.columns = 1;
             }
-            member.array_stride = array_stride;
+            member.array_stride = dimensions.empty() ? 0 : dimensions.back().stride;
+            if (!block.runtime_records)
+            {
+                member.array_dimensions = dimensions;
+                member.matrix_order = rdesc::EShaderMatrixOrder::NOT_MATRIX;
+            }
             if (layout.getKind() == Kind::Matrix)
             {
                 if (layout.getMatrixLayoutMode() != SLANG_MATRIX_LAYOUT_COLUMN_MAJOR)
@@ -176,6 +183,7 @@ namespace lux::shader
                     return false;
                 }
                 member.matrix_stride = static_cast<std::uint32_t>(matrix_extent / member.columns);
+                if (!block.runtime_records) member.matrix_order = rdesc::EShaderMatrixOrder::COLUMN_MAJOR;
             }
             block.fields.push_back(std::move(member));
             return true;
@@ -197,7 +205,8 @@ namespace lux::shader
             block.alignment = static_cast<std::uint32_t>(alignment);
             block.storage = rdesc::EDataLayout::TARGET_REFLECTED;
             block.runtime_records = records;
-            return fields(*layout, {}, 0, block);
+            std::vector<rdesc::ShaderArrayDimension> dimensions;
+            return fields(*layout, {}, 0, block, dimensions);
         }
 
         bool resource(slang::VariableLayoutReflection& variable, std::uint32_t stages, rdesc::ShaderInfo& info)

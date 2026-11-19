@@ -169,6 +169,9 @@ namespace lux::rdesc
         }
     };
 
+    constexpr std::uint8_t kConstantLayoutVersion = 1;
+    constexpr std::uint8_t kMaxArrayRank = 32;
+
     static void appendBlock(PayloadBuilder& output, const ShaderBlock& block)
     {
         output.put(block.size);
@@ -185,6 +188,24 @@ namespace lux::rdesc
             output.put(field.columns);
             output.put(field.array_stride);
             output.put(field.matrix_stride);
+        }
+        const bool has_evidence = std::ranges::any_of(block.fields, [](const ShaderMember& field)
+        {
+            return field.matrix_order != EShaderMatrixOrder::UNSPECIFIED || !field.array_dimensions.empty();
+        });
+        if (has_evidence)
+        {
+            output.put(kConstantLayoutVersion);
+            for (const auto& field : block.fields)
+            {
+                output.put(static_cast<std::uint8_t>(field.matrix_order));
+                output.put(static_cast<std::uint32_t>(field.array_dimensions.size()));
+                for (const auto& dimension : field.array_dimensions)
+                {
+                    output.put(dimension.count);
+                    output.put(dimension.stride);
+                }
+            }
         }
     }
 
@@ -218,6 +239,39 @@ namespace lux::rdesc
             field.scalar = static_cast<EDataScalar>(scalar);
             output.fields.push_back(std::move(field));
         }
+        if (offset == bytes.size()) return true;
+        std::uint8_t version = 0;
+        if (!readU8(bytes, offset, version) || version != kConstantLayoutVersion) return false;
+        for (auto& field : output.fields)
+        {
+            std::uint8_t order = 0;
+            std::uint32_t rank = 0;
+            const bool valid_shape = readU8(bytes, offset, order) && readU32(bytes, offset, rank) &&
+                rank <= kMaxArrayRank && rank <= (bytes.size() - offset) / (2 * sizeof(std::uint32_t));
+            if (!valid_shape) return false;
+            field.matrix_order = static_cast<EShaderMatrixOrder>(order);
+            field.array_dimensions.resize(rank);
+            for (auto& dimension : field.array_dimensions)
+            {
+                if (!readU32(bytes, offset, dimension.count) || !readU32(bytes, offset, dimension.stride)) return false;
+            }
+        }
+        return offset == bytes.size() && output.hasConstantLayoutEvidence();
+    }
+
+    std::vector<std::byte> ShaderBlock::serialize(const ShaderBlock& block)
+    {
+        PayloadBuilder output;
+        appendBlock(output, block);
+        return std::move(output.payload);
+    }
+
+    bool ShaderBlock::deserialize(std::span<const std::byte> bytes, ShaderBlock& result)
+    {
+        ShaderBlock parsed;
+        std::size_t offset = 0;
+        if (!readBlock(bytes, offset, parsed)) return false;
+        result = std::move(parsed);
         return true;
     }
 
@@ -524,7 +578,9 @@ namespace lux::rdesc
                     group->second.end(),
                     [binding](const auto& value) { return value.binding == binding; }
                 );
-                if (entry == group->second.end() || !readBlock(buffer.first(end), p, entry->block) || p != end)
+                const bool valid = entry != group->second.end() &&
+                    ShaderBlock::deserialize(buffer.subspan(p, end - p), entry->block);
+                if (!valid)
                 {
                     return fail("binding layout");
                 }
@@ -568,7 +624,9 @@ namespace lux::rdesc
                     out.push_constants.end(),
                     [offset](const auto& value) { return value.offset == offset; }
                 );
-                if (range == out.push_constants.end() || !readBlock(buffer.first(end), p, range->block) || p != end)
+                const bool valid = range != out.push_constants.end() &&
+                    ShaderBlock::deserialize(buffer.subspan(p, end - p), range->block);
+                if (!valid)
                 {
                     return fail("push layout");
                 }

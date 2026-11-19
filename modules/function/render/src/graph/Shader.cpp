@@ -102,7 +102,9 @@ namespace lux::render::detail
             const bool has_matching_columns = spvc_type_get_array_dimension(columns, 0) == field.columns &&
                                               spvc_type_get_vector_size(columns) == field.rows &&
                                               spvc_type_get_columns(columns) == 1;
-            return has_layout && is_float_matrix && has_matching_columns && offset == 0 &&
+            const bool order_matches = field.matrix_order == rdesc::EShaderMatrixOrder::UNSPECIFIED ||
+                field.matrix_order == rdesc::EShaderMatrixOrder::COLUMN_MAJOR;
+            return has_layout && is_float_matrix && has_matching_columns && order_matches && offset == 0 &&
                    stride == field.matrix_stride;
         }
 
@@ -113,7 +115,7 @@ namespace lux::render::detail
             spvc_type type,
             std::string path,
             std::uint64_t base,
-            std::uint32_t inherited_stride,
+            std::vector<rdesc::ShaderArrayDimension>& array_shape,
             const rdesc::ShaderBlock& expected,
             std::size_t& cursor,
             bool array_wrapper = false
@@ -139,7 +141,7 @@ namespace lux::render::detail
                 const auto name =
                     array_wrapper ? path : path + spvc_compiler_get_member_name(compiler, structure_id, member_index);
                 const auto dimensions = spvc_type_get_num_array_dimensions(member);
-                unsigned count = 1, stride = inherited_stride;
+                unsigned count = 1, stride = array_shape.empty() ? 0 : array_shape.back().stride;
                 if (dimensions)
                 {
                     if (dimensions != 1 || !spvc_type_array_dimension_is_literal(member, 0))
@@ -155,6 +157,7 @@ namespace lux::render::detail
                     {
                         return false;
                     }
+                    array_shape.push_back({count, stride});
                 }
                 for (unsigned item = 0; item < count; ++item)
                 {
@@ -173,7 +176,11 @@ namespace lux::render::detail
                         if (is_matrix)
                         {
                             const auto& field = expected.fields[cursor++];
-                            const bool has_matching_position = field.offset == at && field.array_stride == stride;
+                            const bool has_matching_shape =
+                                field.matrix_order == rdesc::EShaderMatrixOrder::UNSPECIFIED ||
+                                field.array_dimensions == array_shape;
+                            const bool has_matching_position =
+                                field.offset == at && field.array_stride == stride && has_matching_shape;
                             if (!has_matching_position || !matchesMatrixStorage(compiler, member, field))
                             {
                                 return false;
@@ -194,7 +201,7 @@ namespace lux::render::detail
                             member,
                             item_name + (is_array_wrapper ? "" : "."),
                             at,
-                            stride,
+                            array_shape,
                             expected,
                             cursor,
                             is_array_wrapper
@@ -237,20 +244,36 @@ namespace lux::render::detail
                                              : scalar == SPVC_BASETYPE_INT32 ? rdesc::EDataScalar::SINT
                                                                              : rdesc::EDataScalar::UINT;
                     const auto& field = expected.fields[cursor++];
-                    const rdesc::ShaderMember actual{
+                    rdesc::ShaderMember actual{
                         item_name,
                         scalar_kind,
                         static_cast<std::uint32_t>(at),
                         spvc_type_get_vector_size(member),
                         spvc_type_get_columns(member),
                         stride,
-                        matrix_stride
+                        matrix_stride,
+                        rdesc::EShaderMatrixOrder::UNSPECIFIED,
+                        {}
                     };
+                    if (field.matrix_order != rdesc::EShaderMatrixOrder::UNSPECIFIED)
+                    {
+                        const bool is_matrix = spvc_type_get_columns(member) > 1;
+                        if (is_matrix && !spvc_compiler_has_member_decoration(
+                                             compiler, structure_id, member_index, SpvDecorationColMajor
+                                         ))
+                        {
+                            return false;
+                        }
+                        actual.matrix_order = is_matrix ? rdesc::EShaderMatrixOrder::COLUMN_MAJOR
+                                                        : rdesc::EShaderMatrixOrder::NOT_MATRIX;
+                        actual.array_dimensions = array_shape;
+                    }
                     if (field != actual)
                     {
                         return false;
                     }
                 }
+                if (dimensions) array_shape.pop_back();
             }
             return true;
         }
@@ -327,7 +350,8 @@ namespace lux::render::detail
                     ? size <= expected.size
                     : (rounded == expected.size ||
                        (expected.storage == rdesc::EDataLayout::TARGET_REFLECTED && size == expected.size));
-            return size_matches && validateFields(compiler, record, "", 0, 0, expected, cursor) &&
+            std::vector<rdesc::ShaderArrayDimension> array_shape;
+            return size_matches && validateFields(compiler, record, "", 0, array_shape, expected, cursor) &&
                    cursor == expected.fields.size();
         }
 

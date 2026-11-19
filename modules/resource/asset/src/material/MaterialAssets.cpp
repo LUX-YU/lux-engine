@@ -21,6 +21,7 @@ namespace lux::asset
         inline constexpr std::uint32_t kMaterialVersion =
             9U; // Cooked use collection, shared record layout and stage-interface ABI.
         inline constexpr std::uint32_t kTargetMaterialVersion = 11U;
+        inline constexpr std::uint32_t kMaterialLayoutVersion = 12U;
         inline constexpr std::uint32_t kMaterialInstanceVersion = 2U;
 
         [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code) noexcept
@@ -207,21 +208,9 @@ namespace lux::asset
 
             void layout(const rdesc::ShaderBlock& value)
             {
-                pod(value.size);
-                pod(value.alignment);
-                pod(static_cast<std::uint8_t>(value.storage));
-                pod(static_cast<std::uint8_t>(value.runtime_records));
-                pod(static_cast<std::uint32_t>(value.fields.size()));
-                for (const auto& field : value.fields)
-                {
-                    text(field.path);
-                    pod(static_cast<std::uint8_t>(field.scalar));
-                    pod(field.offset);
-                    pod(field.rows);
-                    pod(field.columns);
-                    pod(field.array_stride);
-                    pod(field.matrix_stride);
-                }
+                const auto encoded = rdesc::ShaderBlock::serialize(value);
+                pod(static_cast<std::uint32_t>(encoded.size()));
+                rawBytes(encoded);
             }
 
             void id(AssetId value)
@@ -264,7 +253,7 @@ namespace lux::asset
                 return true;
             }
 
-            [[nodiscard]] bool layout(rdesc::ShaderBlock& value)
+            [[nodiscard]] bool legacyLayout(rdesc::ShaderBlock& value)
             {
                 std::uint8_t storage = 0, records = 0;
                 std::uint32_t count = 0;
@@ -287,6 +276,15 @@ namespace lux::asset
                     field.scalar = static_cast<rdesc::EDataScalar>(scalar);
                 }
                 return true;
+            }
+
+            [[nodiscard]] bool layout(rdesc::ShaderBlock& value)
+            {
+                std::uint32_t size = 0;
+                if (!pod(size) || size > bytes.size() - offset) return false;
+                const auto block = bytes.subspan(offset, size);
+                offset += size;
+                return rdesc::ShaderBlock::deserialize(block, value);
             }
 
             [[nodiscard]] bool id(AssetId& value) noexcept
@@ -457,11 +455,11 @@ namespace lux::asset
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::TRUNCATED));
             }
             // v10 was an expression asset; it must be rederived from its author source.
-            if (version != kMaterialVersion && version != kTargetMaterialVersion)
+            if (version != kMaterialVersion && version != kTargetMaterialVersion && version != kMaterialLayoutVersion)
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::UNSUPPORTED_VERSION));
             }
-            if (version == kTargetMaterialVersion &&
+            if (version >= kTargetMaterialVersion &&
                 (!reader.pod(cooked.programs.target) || cooked.programs.target > rdesc::EShaderTarget::DXIL))
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
@@ -507,7 +505,9 @@ namespace lux::asset
             auto& programs = cooked.programs;
             programs.texture_count = texture_count;
             std::uint32_t count = 0;
-            if (!reader.layout(programs.parameters) || !reader.pod(count) || count > 3)
+            const bool has_layout = version == kMaterialLayoutVersion ? reader.layout(programs.parameters)
+                                                                      : reader.legacyLayout(programs.parameters);
+            if (!has_layout || !reader.pod(count) || count > 3)
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             }
@@ -570,7 +570,7 @@ namespace lux::asset
         {
             Writer writer;
             const auto& cooked = data;
-            writer.pod(kTargetMaterialVersion);
+            writer.pod(kMaterialLayoutVersion);
             writer.pod(cooked.programs.target);
             writer.pod(rdesc::kMaterialShaderAbi);
             writer.pod(static_cast<std::uint32_t>(cooked.programs.parameter_defaults.size()));

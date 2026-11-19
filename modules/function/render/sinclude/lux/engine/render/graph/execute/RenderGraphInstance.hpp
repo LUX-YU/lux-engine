@@ -25,13 +25,15 @@ namespace lux::render::detail
         RenderGraphInstance(
             DeviceSession&,
             std::uint32_t frame_count,
-            const PreparedRenderGraph&,
+            const RenderGraphExecutable&,
+            const NativeGraphPrograms&,
             TargetOutput = {}
         ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
         [[nodiscard]] RenderResult<void>
         createData(
-            std::span<const InstanceDataRecipe>, ResourceRegistry&, std::span<const ResourceInstanceId>
+            const GraphAssemblyPlan&, std::span<const InstanceDataRecipe>, ResourceRegistry&,
+            std::span<const ResourceInstanceId>
         ) noexcept;
         [[nodiscard]] RenderResult<bool> prepareData(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
         [[nodiscard]] bool requiresDataPrograms() const noexcept;
@@ -289,7 +291,7 @@ namespace lux::render::detail
         std::vector<HistoryState> histories_;
         const RenderGraphExecutable* plan_;
         const NativeGraphPrograms* programs_;
-        std::span<const std::uint32_t> instance_recipes_;
+        std::span<const std::uint32_t> source_pass_slots_;
         RasterViewport viewport_;
         TargetOutput output_;
 

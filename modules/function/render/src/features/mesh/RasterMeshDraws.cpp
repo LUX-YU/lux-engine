@@ -56,7 +56,7 @@ namespace lux::render::detail
             std::span<MaterialPlacements> shaders,
             const nri::DeviceDesc& limits,
             const RasterPassTemplate& stage,
-            const MeshDrawConfiguration& configuration,
+            const MeshDrawSettings& settings,
             bool paged,
             std::span<const nri::Format> colors,
             nri::Format depth,
@@ -68,7 +68,7 @@ namespace lux::render::detail
                 for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                 {
                     auto shader = buildMeshShader(
-                        materials[index]->data, configuration.purpose, paged, winding != 0
+                        materials[index]->data, settings.purpose, paged, winding != 0
                     );
                     if (!shader) return cxx::unexpected(shader.error());
                     auto placement = planRasterLayout(limits, shader->interface, stage);
@@ -90,11 +90,11 @@ namespace lux::render::detail
                         input.attributes,
                         materials[input.material_index]->data,
                         shader->artifact.interface,
-                        configuration.front_counter_clockwise,
+                        settings.front_counter_clockwise,
                         winding != 0
                     );
                     if (!graphics) return cxx::unexpected(graphics.error());
-                    if (configuration.views.index != kGraphInvalidIndex)
+                    if (settings.layered)
                     {
                         if (!limits.features.dynamicDepthBias)
                         {
@@ -116,11 +116,11 @@ namespace lux::render::detail
         RenderGraphInstance& instance,
         CompiledPrograms& programs,
         const MeshDrawGroupSource& source,
-        MeshDrawConfiguration configuration,
+        MeshDrawSettings settings,
         const CompiledPass& pass
     ) noexcept
         : device_(device), resources_(resources), instance_(instance), programs_(programs), source_(source),
-          configuration_(configuration), pass_(pass)
+          settings_(settings), pass_(pass)
     {
     }
 
@@ -259,14 +259,14 @@ namespace lux::render::detail
                      &placements,
                      limits = &device_.description(),
                      &stage,
-                     configuration = configuration_,
+                     settings = settings_,
                      paged = device_.usesDeviceAddresses(),
                      &colors,
                      depth,
                      samples = instance_.plan().outputDescription().samples]() noexcept
                     {
                         return prepareMeshPrograms(
-                            inputs, materials, placements, *limits, stage, configuration, paged, colors, depth, samples
+                            inputs, materials, placements, *limits, stage, settings, paged, colors, depth, samples
                         );
                     }
                 ) |
@@ -457,11 +457,11 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        const auto view_count = configuration_.views.index != kGraphInvalidIndex ? source_.view_count : 1u;
+        const auto view_count = settings_.layered ? source_.view_count : 1u;
         auto& draws = instance_.rasterDraws(pass_, frame.slot, false);
-        if (configuration_.views.index != kGraphInvalidIndex)
+        if (settings_.layered)
         {
-            auto prepared = instance_.prepareImageLayers(configuration_.depth, frame.slot, view_count);
+            auto prepared = instance_.prepareImageLayers(GraphResourceId{settings_.depth_slot}, frame.slot, view_count);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -809,7 +809,7 @@ namespace lux::render::detail
             );
             if (!storage) return cxx::unexpected(storage.error());
             auto collected = (*storage)->collectReads(
-                material, configuration_.purpose, frame.slot, read_buffers_, read_images_
+                material, settings_.purpose, frame.slot, read_buffers_, read_images_
             );
             if (!collected) return collected;
         }
@@ -848,7 +848,7 @@ namespace lux::render::detail
                 changed = true;
             }
         };
-        if (configuration_.views.index == kGraphInvalidIndex)
+        if (!settings_.layered)
         {
             static_assert(offsetof(CameraParameters, view) == offsetof(MeshViewParameters, view));
             static_assert(offsetof(CameraParameters, projection) == offsetof(MeshViewParameters, projection));
@@ -861,7 +861,7 @@ namespace lux::render::detail
         draws.parameters.resize(view_count * sizeof(MeshViewParameters));
         const auto views = frame.resources[kMeshDrawInputPorts.size()].parameters;
         const auto states = frame.resources[kMeshDrawInputPorts.size() + 1].parameters;
-        const auto input = instance_.resourceInput(configuration_.depth, frame.slot);
+        const auto input = instance_.resourceInput(GraphResourceId{settings_.depth_slot}, frame.slot);
         const auto& image = device_.nriCore().GetTextureDesc(*input.image);
         for (std::uint32_t view = 0; view < view_count; ++view)
         {
@@ -926,8 +926,12 @@ namespace lux::render::detail
         }
         // The producer recipe runs first and owns this view for the lifetime of the Instance.
         const auto& groups = *reinterpret_cast<const MeshDrawGroupSource*>(source.parameters.data());
+        const MeshDrawSettings settings{
+            configuration.purpose, configuration.front_counter_clockwise,
+            configuration.views.index != kGraphInvalidIndex, configuration.depth.index
+        };
         auto value = std::unique_ptr<RasterMeshDraws>(
-            new RasterMeshDraws(device, resources, instance, device.programs(), groups, configuration, *pass)
+            new RasterMeshDraws(device, resources, instance, device.programs(), groups, settings, *pass)
         );
         return std::unique_ptr<InstanceData>(std::move(value));
     }

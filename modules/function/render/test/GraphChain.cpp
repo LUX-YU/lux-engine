@@ -276,7 +276,9 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
         {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
     CHECK(session->nriCore().CreateSampler(session->device(), sampler_description, sampler) == nri::Result::SUCCESS);
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical->output());
+    auto instance = std::make_unique<RenderGraphInstance>(
+        *session, fif, plan.executable, plan.programs, physical->output()
+    );
     CHECK(instance->bindSampler(0, *sampler));
     CHECK(instance->initialize());
     CHECK(instance->dumpResources(sink));
@@ -292,7 +294,9 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     larger_target.width = larger_target.height = 128;
     CHECK(plan.executable.compatible(larger_target));
     auto larger = std::optional{take(OffscreenTarget::create(*session, larger_target, fif))};
-    auto second_instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, larger->output());
+    auto second_instance = std::make_unique<RenderGraphInstance>(
+        *session, fif, plan.executable, plan.programs, larger->output()
+    );
     CHECK(second_instance->bindSampler(0, *sampler));
     CHECK(second_instance->initialize());
     const std::array instances{instance.get(), second_instance.get()};
@@ -401,7 +405,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 3, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 3, plan.executable, plan.programs);
     std::uint32_t requested_value = 0;
     rdesc::ShaderBlock
         parameter_layout{4, 4, rdesc::EDataLayout::STD430, {{"requested", rdesc::EDataScalar::UINT, 0, 1, 1, 0, 0}}};
@@ -513,7 +517,7 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
@@ -619,7 +623,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     CHECK(builder.addTransferPass("recording", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}, {true}));
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
     CHECK(instance->initialize());
     CHECK(take(instance->prepareFrame(0)));
     CHECK(take(instance->prepareFrame(1)));
@@ -750,7 +754,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         const auto duplicate = compile(*session, graph, analysis, nullptr);
         CHECK(duplicate.programs[0].pipeline == plan.programs[0].pipeline);
         CHECK(duplicate.programs[1].pipeline == plan.programs[1].pipeline);
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
         CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
@@ -777,7 +781,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         exportRows(builder, copied.written.front(), 32, 32, 256);
         const auto graph = take(std::move(builder).finish());
         auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
         CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
@@ -826,7 +830,7 @@ static void typedRecording(Validation& validation, bool d3d12)
             const auto graph = take(std::move(builder).finish());
             return compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
         }();
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
         CHECK(instance->initialize());
         CHECK(take(instance->prepareFrame(0)));
         auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
@@ -923,7 +927,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
         return compile(*session, fixture.graph, analysis, nullptr);
     }();
     checkComputeSequence(executable.executable, intermediate);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, executable);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, executable.executable, executable.programs);
     CHECK(instance->initialize());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
     const std::array instances{instance.get()};
@@ -962,9 +966,9 @@ public:
                 const auto& pass = program.passes[p];
                 if (pass.condition_region != kGraphInvalidIndex)
                 {
-                    const auto& predicate = program.conditions[pass.condition_region].predicate;
-                    CHECK(predicate.source == EConditionSource::INPUT && predicate.input < conditions.size());
-                    if (static_cast<bool>(conditions[predicate.input]) != predicate.expected) continue;
+                    const auto& predicate = program.conditions[pass.condition_region];
+                    CHECK(predicate.source == EConditionSource::INPUT && predicate.input_slot < conditions.size());
+                    if (static_cast<bool>(conditions[predicate.input_slot]) != predicate.expected) continue;
                 }
                 CHECK(recordBlock(program, pass.commands, [&](const auto& packet) noexcept
                 {
@@ -1147,6 +1151,26 @@ static void cpuImportedBoundaries()
     }
 }
 
+static void cpuQueueBoundaries()
+{
+    RenderGraphBuilder builder;
+    const auto input = take(builder.declareResource({"input", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {{}}}));
+    const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
+    ComputeWork work;
+    work.allow_async_compute = true;
+    work.interface.program = take(builder.addProgram(GraphProgram{kGraphHistory}));
+    work.interface.resources = {
+        {"previous_sample", {{input, 0}}},
+        {"current_sample", {{output, 0}, {}, EGraphAccess::WRITE}}
+    };
+    const auto written = take(builder.addComputePass("compute only", std::move(work)));
+    CHECK(builder.exportOutput({written.written.front()}));
+    const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+    CHECK(executable.submissions().size() == 1);
+    CHECK(executable.submissions().front().queue == EQueueRole::COMPUTE);
+    CHECK(executable.submissions().front().dependencies.empty());
+}
+
 static void cpuRasterPackets()
 {
     RenderGraphBuilder builder;
@@ -1187,14 +1211,17 @@ static void cpuRasterPackets()
     }
 }
 
-static void historySequence(Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool use_fallback)
+static void historySequence(
+    Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool use_fallback, std::uint32_t distance = 1
+)
 {
     DeviceOptions options;
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
-    const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
+    const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}, {}, EGraphUse::STORAGE_READ,
+                                                     distance));
     const auto enabled = take(builder.declareCondition("update"));
     const auto independent = take(builder.declareHistory("independent", GraphBufferDesc{16}));
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{52}}));
@@ -1255,11 +1282,19 @@ static void historySequence(Validation& validation, EGraphicsBackend backend, st
     const auto graph = take(std::move(builder).finish());
     const auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
-    std::uint32_t sequence = 0;
-    CHECK(plan.executable.physicalResources().reasons[history.previous.index] == EResourceReuse::HISTORY);
+    std::vector<std::uint32_t> published;
+    const auto newestInput = [&]()
+    {
+        return published.size() >= distance ? published[published.size() - distance] : 0u;
+    };
+    const auto evaluate = [&](std::uint32_t input)
+    {
+        return (input == 0 && use_fallback ? 17 : input) + 1;
+    };
+    CHECK(plan.diagnostics.resource_reuse[history.previous.index] == EResourceReuse::HISTORY);
     CHECK(plan.executable.physicalResources().resource_slots[history.current.index] == kGraphInvalidIndex);
     const std::uint8_t enabled_initial = 1;
     CHECK(instance->setConditions({&enabled_initial, 1}));
@@ -1277,18 +1312,14 @@ static void historySequence(Validation& validation, EGraphicsBackend backend, st
         if (invalidate)
         {
             CHECK(instance->invalidateHistory());
-            sequence = 0;
+            published.clear();
         }
         const std::uint8_t enabled_value = execution != 3 && execution != 4 && execution != 10;
         CHECK(instance->setConditions({&enabled_value, 1}));
-        const auto previous = sequence;
+        const auto previous = newestInput();
         if (enabled_value)
         {
-            if (!sequence && use_fallback)
-            {
-                sequence = 17;
-            }
-            ++sequence;
+            published.push_back(evaluate(previous));
         }
         const auto submitted = take(runTask(frames->render(instances, {})));
         CHECK(submitted == 1);
@@ -1297,7 +1328,7 @@ static void historySequence(Validation& validation, EGraphicsBackend backend, st
         const auto values = readHistoryResult<13>(*session, *instance->nativeBuffer(output.index, slot));
         for (unsigned i = 0; i < 4; ++i)
         {
-            CHECK(values[i] == (enabled_value ? sequence : 0));
+            CHECK(values[i] == (enabled_value ? published.back() : 0));
             CHECK(values[i + 4] == (!previous && use_fallback ? 29 : previous));
             // A paused writer in the first history must not suppress this history's publication.
             CHECK(values[i + 9] == (execution < 8 ? execution + 1 : execution - 7));
@@ -1314,12 +1345,12 @@ static void historySequence(Validation& validation, EGraphicsBackend backend, st
             CHECK(session->drain());
             CHECK(take(runTask(frames->render(instances, {}))) == 1);
         }
-        ++sequence;
+        published.push_back(evaluate(newestInput()));
     }
     CHECK(session->drain());
     const auto values =
         readHistoryResult(*session, *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot));
-    CHECK(values[0] == sequence);
+    CHECK(values[0] == published.back());
     instance.reset();
     CHECK(session->drain());
 }
@@ -1396,7 +1427,9 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
     TargetDesc target{9, 7, color_description.format, 1, ETargetKind::OFFSCREEN};
     auto plan = compile(*session, graph, analysis, &target);
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical->output());
+    auto instance = std::make_unique<RenderGraphInstance>(
+        *session, fif, plan.executable, plan.programs, physical->output()
+    );
     CHECK(instance->initialize());
     for (std::uint32_t execution = 0; execution < 4; ++execution)
     {
@@ -1408,7 +1441,9 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
             target.width = 17;
             target.height = 11;
             auto replacement = std::optional{take(OffscreenTarget::create(*session, target, fif))};
-            auto candidate = std::make_unique<RenderGraphInstance>(*session, fif, plan, replacement->output());
+            auto candidate = std::make_unique<RenderGraphInstance>(
+                *session, fif, plan.executable, plan.programs, replacement->output()
+            );
             CHECK(candidate->initialize());
             instance = std::move(candidate);
             physical.emplace(std::move(*replacement));
@@ -1460,7 +1495,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     std::string dump;
-    CHECK(plan.executable.physicalResources().reasons[data.index] == EResourceReuse::CONDITIONAL);
+    CHECK(plan.diagnostics.resource_reuse[data.index] == EResourceReuse::CONDITIONAL);
     CHECK(dumpPlan(
         plan,
         EGraphDumpFormat::JSON,
@@ -1472,7 +1507,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
          }}
     ));
     CHECK(dump.find("\"conditional_regions\":[{\"first_pass\":1,\"pass_count\":2") != std::string::npos);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     for (const std::uint8_t enabled : {0, 1, 0, 1})
@@ -1545,8 +1580,8 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    auto first = std::make_unique<RenderGraphInstance>(*session, 2, plan);
-    auto second = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+    auto first = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+    auto second = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
     for (auto* instance : {first.get(), second.get()})
     {
         const std::uint64_t offset = separate_ranges && instance == second.get() ? 16 : 0;
@@ -1627,8 +1662,8 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         );
     }
 
-    auto first = std::make_unique<RenderGraphInstance>(*session, fif, plan);
-    auto second = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto first = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto second = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     CHECK(first->initialize() && second->initialize());
     const std::array instances{first.get(), second.get()};
     for (unsigned frame = 0; frame < 2; ++frame)
@@ -1746,7 +1781,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
         !alias_memory
     );
     CHECK(plan.executable.physicalResources().slots.size() == (alias_memory ? 4 : 3));
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     CHECK(instance->initialize());
     if (alias_memory)
     {
@@ -1833,10 +1868,10 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
         (plan.executable.physicalResources().resource_slots[a.index] == plan.executable.physicalResources().resource_slots[b.index]) ==
         (reuse && !alias_memory)
     );
-    CHECK(plan.executable.physicalResources().reasons[output_a.index] == EResourceReuse::EXPORTED);
+    CHECK(plan.diagnostics.resource_reuse[output_a.index] == EResourceReuse::EXPORTED);
     CHECK(control.executable.physicalResources().slots.size() == 4);
     CHECK(plan.executable.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     CHECK(instance->initialize());
     if (alias_memory)
     {
@@ -1924,12 +1959,12 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
     const auto& transitions = plan.executable.passes().front().before.images;
     CHECK(transitions.size() == 1);
     const auto& transition = transitions.front();
-    CHECK(transition.resource == image.index && transition.previous.index == kGraphInvalidIndex);
+    CHECK(transition.resource == image.index && transition.previous_slot == kGraphInvalidIndex);
     CHECK(transition.native.mipOffset == 0 && transition.native.mipNum == 4);
     CHECK(transition.native.layerOffset == 0 && transition.native.layerNum == 3);
     CHECK(transition.native.before.layout == nri::Layout::UNDEFINED);
     CHECK(transition.native.after.layout == nri::Layout::COLOR_ATTACHMENT);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     for (std::uint32_t frame = 0; frame < fif; ++frame)
@@ -1986,6 +2021,7 @@ int main(int argc, char** argv)
         cpuConditionalRanges();
         cpuImportedBoundaries();
         cpuRasterPackets();
+        cpuQueueBoundaries();
         std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;
     }
@@ -2043,6 +2079,7 @@ int main(int argc, char** argv)
         imageChain(validation, backend, fif, true);
         historySequence(validation, backend, fif, false);
         historySequence(validation, backend, fif, true);
+        historySequence(validation, backend, fif, true, 2);
         conditionalRegion(validation, backend, fif);
         hzbHistory(validation, backend, fif);
         physicalImageReuse(validation, backend, fif);

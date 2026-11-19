@@ -143,6 +143,7 @@ namespace lux::render
     {
         GraphResourceId previous;
         GraphResourceId current;
+        // Backwards distance in successful publications. A skipped writer keeps the same history.
         std::uint32_t distance = 1;
         HistoryInitialValue initial;
         EGraphUse canonical_use = EGraphUse::STORAGE_READ;

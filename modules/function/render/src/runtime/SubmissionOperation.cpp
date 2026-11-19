@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <bit>
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
 #include <chrono>
@@ -212,13 +213,41 @@ namespace lux::render::detail
                 }
             }
         }
+        // A whole-Job order connects the actual tails and heads of the physical queues.
+        constexpr auto roles = static_cast<std::size_t>(EQueueRole::TRANSFER) + 1;
+        std::array<std::uint32_t, roles> tails, heads;
         for (const auto& edge : order)
         {
             if (edge.producer >= instances.size() || edge.consumer >= instances.size())
                 return cxx::unexpected(RenderError{kJobIdentity});
-            const auto last = frame.instances[edge.producer].first_batch +
-                static_cast<std::uint32_t>(instances[edge.producer]->plan().submissions().size()) - 1;
-            frame.dependencies.push_back({last, frame.instances[edge.consumer].first_batch});
+            std::ranges::fill(tails, kGraphInvalidIndex);
+            std::ranges::fill(heads, kGraphInvalidIndex);
+            const auto producer_first = frame.instances[edge.producer].first_batch;
+            const auto consumer_first = frame.instances[edge.consumer].first_batch;
+            const auto producer_count = instances[edge.producer]->plan().submissions().size();
+            const auto consumer_count = instances[edge.consumer]->plan().submissions().size();
+            for (std::uint32_t b = 0; b < producer_count; ++b)
+            {
+                const auto index = producer_first + b;
+                tails[frame.batches[index].queue] = index;
+            }
+            for (std::uint32_t b = 0; b < consumer_count; ++b)
+            {
+                const auto index = consumer_first + b;
+                auto& head = heads[frame.batches[index].queue];
+                head = std::min(head, index);
+            }
+            for (auto tail : tails)
+            {
+                if (tail == kGraphInvalidIndex) continue;
+                for (auto head : heads)
+                {
+                    if (head != kGraphInvalidIndex)
+                    {
+                        frame.dependencies.push_back({tail, head});
+                    }
+                }
+            }
         }
         if (auto imported = appendImportedDependencies(instances); !imported) return imported;
         std::ranges::sort(

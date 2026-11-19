@@ -34,6 +34,7 @@ namespace lux::render::detail
         std::vector<HistorySlot> slots;
         std::vector<View> views;
         std::uint64_t sequence = 0;
+        std::uint32_t retained_samples = 0;
         std::uint32_t latest = kGraphInvalidIndex;
         std::uint32_t previous = 0, current = 1;
         bool invalidate = false;

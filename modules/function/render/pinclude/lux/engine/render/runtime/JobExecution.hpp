@@ -16,7 +16,7 @@ namespace lux::render::runtime_detail
     {
         JobExecution(
             RenderEffect&, DeviceSessionId, detail::DeviceSession&, std::uint32_t frame_count,
-            detail::PreparedRenderGraph&&, TargetId, detail::TargetOutput
+            detail::RenderGraphExecutable&&, detail::NativeGraphPrograms&&, TargetId, detail::TargetOutput
         ) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
@@ -30,7 +30,8 @@ namespace lux::render::runtime_detail
         RecipeUse recipe;
         DeviceSessionId device;
         TargetId target;
-        const detail::PreparedRenderGraph graph;
+        const detail::RenderGraphExecutable executable;
+        const detail::NativeGraphPrograms fixed_programs;
         detail::RenderGraphInstance instance;
         std::uint32_t pending_uses = 0;
         struct ProgramPreparation final

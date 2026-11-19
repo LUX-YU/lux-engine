@@ -26,48 +26,61 @@ namespace lux::render::detail
 
     bool RenderGraphInstance::HistoryState::select(const DeviceSession& session) noexcept
     {
-        const auto reusable = [&](const HistoryState::HistorySlot& slot)
-        {
-            return session.reached(slot.last_use);
-        };
-
         if (invalidate)
         {
+            retained_samples = 0;
             latest = kGraphInvalidIndex;
             invalidate = false;
         }
-        previous = latest;
+        previous = kGraphInvalidIndex;
         current = kGraphInvalidIndex;
+        const auto distance = plan->description.distance;
+        const auto oldest = retained_samples ? sequence - (retained_samples - 1) : 0;
+        clear_previous = retained_samples < distance;
         for (std::uint32_t i = 0; i < slots.size(); ++i)
         {
-            if (i == previous || !reusable(slots[i]))
+            const auto& slot = slots[i];
+            if (oldest != 0 && slot.sample_sequence >= oldest)
+            {
+                if (!clear_previous && slot.sample_sequence == oldest)
+                {
+                    previous = i;
+                }
+                continue;
+            }
+            if (!session.reached(slot.last_use))
             {
                 continue;
             }
-            if (previous == kGraphInvalidIndex)
+            if (clear_previous && previous == kGraphInvalidIndex)
             {
                 previous = i;
             }
-            else
+            else if (current == kGraphInvalidIndex)
             {
                 current = i;
-                break;
             }
         }
-        if (current == kGraphInvalidIndex)
+        if (previous == kGraphInvalidIndex || current == kGraphInvalidIndex)
         {
             return false;
         }
-        clear_previous = latest == kGraphInvalidIndex;
         clear_current = !slots[current].initialized;
         return true;
     }
 
     void RenderGraphInstance::HistoryState::publish() noexcept
     {
-        auto& written = slots[current];
-        written.sample_sequence = ++sequence;
+        if (sequence == UINT64_MAX)
+        {
+            std::terminate();
+        }
+        slots[current].sample_sequence = ++sequence;
         latest = current;
+        if (retained_samples < plan->description.distance)
+        {
+            ++retained_samples;
+        }
     }
 
     RenderResult<void> RenderGraphInstance::createHistories() noexcept
@@ -77,7 +90,12 @@ namespace lux::render::detail
         {
             auto& history = histories_[index];
             history.plan = &plan_->histories_[index];
-            history.slots.resize(frames_.size() + 1);
+            const auto distance = history.plan->description.distance;
+            if (frames_.size() > kGraphInvalidIndex - distance)
+            {
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+            }
+            history.slots.resize(frames_.size() + distance);
             for (auto& slot : history.slots)
             {
                 slot.last_use = session_->makeFrontiers();
@@ -295,7 +313,7 @@ namespace lux::render::detail
         for (std::size_t h = 0; h < histories_.size(); ++h)
         {
             const auto& history = histories_[h];
-            frame.history_valid[h] = history.latest != kGraphInvalidIndex;
+            frame.history_valid[h] = !history.clear_previous;
             const auto& description = history.plan->description;
             for (const auto [resource, selected] :
                  {std::pair{description.previous, history.previous}, std::pair{description.current, history.current}})

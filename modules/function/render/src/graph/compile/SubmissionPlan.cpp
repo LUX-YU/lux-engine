@@ -145,17 +145,24 @@ namespace lux::render::detail
         std::array<const QueueProperties*, 3> queues,
         std::vector<SubmissionBatch>& batches,
         std::vector<ImportedAccess>& imports,
-        std::uint32_t output
+        std::uint32_t output,
+        bool presents
     ) noexcept
     {
         std::vector<std::uint32_t> pass_batches(graph.passes().size(), kGraphInvalidIndex);
-        // History initialization and the graph's initial boundary belong to Graphics.
-        // Frame replica copies are submitted separately by the Uploader.
-        batches.push_back({});
+        // History initialization uses Graphics. Frame replica copies have their own upload frontier.
+        const bool initializes_history = std::ranges::any_of(
+            resources, [](const auto& resource) { return resource.history != kGraphInvalidIndex; }
+        );
+        if (initializes_history || recording.passes.empty())
+        {
+            // Keep the existing completion contract for a graph with no recording units.
+            batches.push_back({});
+        }
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             auto& pass = recording.passes[p];
-            if (batches.back().queue != pass.queue)
+            if (batches.empty() || batches.back().queue != pass.queue)
             {
                 batches.push_back({pass.queue, p});
             }
@@ -204,8 +211,9 @@ namespace lux::render::detail
         // write would prevent unrelated prefixes and branches in another instance from progressing.
         compactImportedAccesses(imports);
 
-        // Canonical imported/history/export states are restored on Graphics, outside rendering scopes.
-        if (batches.back().queue != EQueueRole::GRAPHICS)
+        const bool has_restore = !recording.after.images.empty() || !recording.after.buffers.empty();
+        // Native restoration and presentation have a Graphics epilogue when the last work uses another queue.
+        if ((has_restore || presents) && batches.back().queue != EQueueRole::GRAPHICS)
         {
             batches.push_back({EQueueRole::GRAPHICS, static_cast<std::uint32_t>(recording.passes.size())});
         }
@@ -250,12 +258,12 @@ namespace lux::render::detail
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             const auto& pass = recording.passes[p];
-            const auto consumer = pass_batches[analysis.execution_order[p].index];
             const auto transitionDependency = [&](const auto& barrier)
             {
-                if (barrier.previous.index != kGraphInvalidIndex)
+                if (barrier.previous_slot != kGraphInvalidIndex)
                 {
-                    depend(consumer, pass_batches[barrier.previous.index], barrier.native.after.stages);
+                    const auto producer = recording.passes[barrier.previous_slot].submission;
+                    depend(pass.submission, producer, barrier.native.after.stages);
                 }
             };
             for (const auto& barrier : pass.before.images)
@@ -267,7 +275,6 @@ namespace lux::render::detail
                 transitionDependency(barrier);
             }
         }
-        // The final boundary must observe every accepted producer, including independent branches.
         const auto last = static_cast<std::uint32_t>(batches.size() - 1);
         std::vector<bool> restored(resources.size());
         const auto finalHistory = [&](const auto& transition)
@@ -286,25 +293,49 @@ namespace lux::render::detail
         {
             finalHistory(transition);
         }
-        for (std::uint32_t b = 1; b < batches.size(); ++b)
-        {
-            depend(b, 0, nri::StageBits::ALL);
-            depend(last, b, nri::StageBits::ALL);
-        }
-        // Object reuse and memory alias proofs include physical-Queue FIFO. Make it an explicit
-        // edge before runtime is allowed to select ready batches out of recording-vector order.
-        std::array<std::uint32_t, 3> previous_queue_batch{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
         for (std::uint32_t b = 0; b < batches.size(); ++b)
         {
-            auto q = static_cast<std::size_t>(batches[b].queue);
-            for (std::size_t previous = 0; previous < q; ++previous)
+            const auto& batch = batches[b];
+            if (initializes_history && !batch.histories.empty())
             {
-                if (queues[previous] == queues[q])
+                depend(b, 0, nri::StageBits::ALL);
+            }
+            if (presents)
+            {
+                depend(last, b, nri::StageBits::ALL);
+                continue;
+            }
+            if (!has_restore || b == last)
+            {
+                continue;
+            }
+            // A boundary transition waits for readers too, even when a covered read emitted no barrier.
+            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            {
+                const auto& uses = graph.passes()[analysis.execution_order[p].index].uses;
+                const bool touches_restored = std::ranges::any_of(uses, [&](const auto& use)
                 {
-                    q = previous;
+                    return restored[use.version.resource.index] ||
+                           (use.access == EGraphAccess::READ && use.fallback && restored[use.fallback->resource.index]);
+                });
+                if (touches_restored)
+                {
+                    depend(last, b, nri::StageBits::ALL);
                     break;
                 }
             }
+        }
+        // Object reuse and memory alias proofs include physical-Queue FIFO. Make it an explicit
+        // edge before runtime is allowed to select ready batches out of recording-vector order.
+        std::array<std::size_t, 3> physical_slots{};
+        for (std::size_t q = 0; q < queues.size(); ++q)
+        {
+            physical_slots[q] = static_cast<std::size_t>(std::ranges::find(queues, queues[q]) - queues.begin());
+        }
+        std::array<std::uint32_t, 3> previous_queue_batch{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
+        for (std::uint32_t b = 0; b < batches.size(); ++b)
+        {
+            const auto q = physical_slots[static_cast<std::size_t>(batches[b].queue)];
             if (previous_queue_batch[q] != kGraphInvalidIndex)
             {
                 depend(b, previous_queue_batch[q], nri::StageBits::ALL);
@@ -367,15 +398,7 @@ namespace lux::render::detail
             }
             for (const auto& dependency : batch.dependencies)
             {
-                auto q = static_cast<std::size_t>(batches[dependency.producer].queue);
-                for (std::size_t previous = 0; previous < q; ++previous)
-                {
-                    if (queues[previous] == queues[q])
-                    {
-                        q = previous;
-                        break;
-                    }
-                }
+                const auto q = physical_slots[static_cast<std::size_t>(batches[dependency.producer].queue)];
                 auto& retained = latest[q];
                 if (retained.producer == kGraphInvalidIndex)
                 {

@@ -20,6 +20,7 @@ namespace lux::render::detail
         std::array<const QueueProperties*, 3>,
         std::vector<SubmissionBatch>&,
         std::vector<ImportedAccess>&,
-        std::uint32_t output
+        std::uint32_t output,
+        bool presents
     ) noexcept;
 } // namespace lux::render::detail

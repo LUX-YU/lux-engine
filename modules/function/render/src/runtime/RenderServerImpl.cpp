@@ -272,7 +272,7 @@ namespace lux::render
         if (!state.writer.isNull())
         {
             affected.push_back(state.writer);
-            if (!runtime_->jobs_.find(state.writer)->execution->graph.executable.compatible(input.description))
+            if (!runtime_->jobs_.find(state.writer)->execution->executable.compatible(input.description))
                 co_return response(RenderError{kDeviceArgument});
         }
         const bool busy_execution = std::ranges::any_of(affected, [&](auto id)

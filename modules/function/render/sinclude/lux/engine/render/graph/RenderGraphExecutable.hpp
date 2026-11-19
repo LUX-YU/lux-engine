@@ -44,7 +44,6 @@ namespace lux::render::detail
 
     struct CompiledResource final
     {
-        std::string key;
         VGraphResourceDesc description;
         EGraphOrigin origin;
         nri::TextureUsageBits image_usage = nri::TextureUsageBits::NONE;
@@ -73,7 +72,7 @@ namespace lux::render::detail
     {
         std::uint32_t resource;
         nri::TextureBarrierDesc native;
-        GraphPassId previous;
+        std::uint32_t previous_slot;
         ETransitionBoundary boundary = ETransitionBoundary::PASS;
     };
 
@@ -81,8 +80,9 @@ namespace lux::render::detail
     {
         std::uint32_t resource;
         nri::BufferBarrierDesc native;
-        GraphPassId previous;
+        std::uint32_t previous_slot;
         ETransitionBoundary boundary = ETransitionBoundary::PASS;
+        bool bind_initial_access = false;
     };
 
     struct BarrierBatch final
@@ -205,9 +205,11 @@ namespace lux::render::detail
     // only the true path records work. The last transition establishes the common exit state.
     struct ConditionalRegion final
     {
-        PassCondition predicate;
-        std::uint32_t first_pass = 0;
-        std::uint32_t pass_count = 1;
+        std::uint32_t first_pass;
+        std::uint32_t pass_count;
+        std::uint32_t input_slot;
+        EConditionSource source;
+        bool expected;
     };
 
     struct RenderingGroup final
@@ -342,6 +344,7 @@ namespace lux::render::detail
         std::array<std::uint32_t, 3> before{}, end{};
         std::array<std::uint32_t, 3> first_pass{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
         std::array<nri::AccessBits, 3> accesses{};
+        bool alias_eligible = false;
     };
 
     // Logical bindings borrow these unique physical slots; the instance owns one set per FIF.
@@ -350,7 +353,6 @@ namespace lux::render::detail
         ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS;
         std::vector<PhysicalResourceSlot> slots;
         std::vector<std::uint32_t> resource_slots;
-        std::vector<EResourceReuse> reasons;
     };
 
     // The execution candidate owns this immutable result; its graph instance borrows it until teardown.
@@ -431,17 +433,6 @@ namespace lux::render::detail
         }
 
     private:
-        [[nodiscard]] exec::task<RenderResult<void>>
-        prepareOperations(
-            DeviceSession&,
-            NativeGraphPrograms&,
-            const RenderGraph&,
-            std::span<const GraphPassId>,
-            execution::CpuScheduler
-        ) noexcept;
-        [[nodiscard]] RenderResult<void>
-        lowerCommands(const RenderGraph&, std::span<const GraphPassId>, const nri::DeviceDesc&) noexcept;
-
         friend class RenderGraphInstance;
         friend class GraphCompiler;
         friend class FrameExecutor;
@@ -460,8 +451,6 @@ namespace lux::render::detail
         std::vector<SubmissionBatch> submissions_;
         std::vector<ImportedAccess> imported_accesses_;
         PhysicalResourcePlan physical_resources_;
-        std::vector<std::uint32_t> pass_indices_;
-        std::vector<GraphPassId> source_passes_;
 
         std::uint32_t output_ = kGraphInvalidIndex;
         std::uint32_t output_first_batch_ = kGraphInvalidIndex;
@@ -495,7 +484,6 @@ namespace lux::render::detail
 
     private:
         friend class GraphCompiler;
-        friend class RenderGraphExecutable;
         NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept;
 
         DeviceSession* session_;
@@ -504,10 +492,24 @@ namespace lux::render::detail
         std::vector<CompiledPrograms::Layout*> layout_uses_;
     };
 
+    struct GraphCompileDiagnostics final
+    {
+        std::vector<GraphPassId> source_passes;
+        std::vector<std::string> resource_keys;
+        std::vector<EResourceReuse> resource_reuse;
+    };
+
+    struct GraphAssemblyPlan final
+    {
+        std::vector<std::uint32_t> instance_recipes;
+        std::vector<std::uint32_t> source_pass_slots;
+    };
+
     struct PreparedRenderGraph final
     {
         RenderGraphExecutable executable;
         NativeGraphPrograms programs;
-        std::vector<std::uint32_t> instance_recipes;
+        GraphAssemblyPlan assembly;
+        GraphCompileDiagnostics diagnostics;
     };
 } // namespace lux::render::detail

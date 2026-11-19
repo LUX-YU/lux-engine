@@ -10,13 +10,12 @@ namespace lux::render::detail
     RenderGraphInstance::RenderGraphInstance(
         DeviceSession& session,
         std::uint32_t frame_count,
-        const PreparedRenderGraph& compiled,
+        const RenderGraphExecutable& plan,
+        const NativeGraphPrograms& programs,
         TargetOutput output
     ) noexcept
-        : session_(&session), uses_(session.makeFrontiers()), plan_(&compiled.executable),
-          programs_(&compiled.programs), instance_recipes_(compiled.instance_recipes), output_(output)
+        : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), programs_(&programs), output_(output)
     {
-        const auto& plan = *plan_;
         instance_values_.resize(plan.descriptor_plan_->instance_parameter_bytes);
         condition_values_.resize(plan.condition_count_);
         parameter_copies_.resize(plan.passes().size());
@@ -164,7 +163,7 @@ namespace lux::render::detail
 
     const CompiledPass* RenderGraphInstance::compiledPass(GraphPassId id) const noexcept
     {
-        const auto index = id.index < plan_->pass_indices_.size() ? plan_->pass_indices_[id.index] : kGraphInvalidIndex;
+        const auto index = id.index < source_pass_slots_.size() ? source_pass_slots_[id.index] : kGraphInvalidIndex;
         return index == kGraphInvalidIndex ? nullptr : &plan_->passes()[index];
     }
 
@@ -224,11 +223,9 @@ namespace lux::render::detail
         for (std::size_t r = 0; r < plan_->recording_.conditions.size(); ++r)
         {
             const auto& region = plan_->recording_.conditions[r];
-            const auto& condition = region.predicate;
-            const bool value = condition.source == EConditionSource::INPUT
-                                   ? condition_values_[condition.input] != 0
-                                   : frame.history_valid[plan_->resources()[condition.input].history] != 0;
-            const bool enabled = value == condition.expected;
+            const bool value = region.source == EConditionSource::INPUT
+                ? condition_values_[region.input_slot] != 0 : frame.history_valid[region.input_slot] != 0;
+            const bool enabled = value == region.expected;
             if ((frame.enabled_regions[r] != 0) != enabled)
             {
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)

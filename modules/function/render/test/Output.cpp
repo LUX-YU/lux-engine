@@ -86,7 +86,9 @@ static void graphOutput(Validation& validation)
     CHECK(ready_result);
     auto graph = take(std::move(std::get<0>(*ready_result)));
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
-    auto execution = std::make_unique<RenderGraphInstance>(*session, frames->frameCount(), graph, physical->output());
+    auto execution = std::make_unique<RenderGraphInstance>(
+        *session, frames->frameCount(), graph.executable, graph.programs, physical->output()
+    );
     CHECK(execution->initialize());
     auto incompatible_output = physical->output();
     incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
@@ -190,12 +192,12 @@ static void importedIdentityReuse(Validation& validation)
         return number("\"dependency_rebuilds\":");
     };
     std::optional<RenderGraphInstance> instance;
-    instance.emplace(*session, 1, plan);
+    instance.emplace(*session, 1, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const auto initial_revision = revision(*instance);
     std::uint64_t creation_revisions = 0;
     {
-        RenderGraphInstance probe{*session, 1, plan};
+        RenderGraphInstance probe{*session, 1, plan.executable, plan.programs};
         CHECK(probe.initialize());
         creation_revisions = revision(probe) - initial_revision;
     }
@@ -214,9 +216,12 @@ static void importedIdentityReuse(Validation& validation)
     };
     // A viewport can change sampled resources several times, then be detached and recreated
     // at the same allocator address. Local ++ used to collide with the next global identity.
+    const auto raster_slot = plan.assembly.source_pass_slots[pass.pass.index];
+    CHECK(raster_slot < plan.executable.passes().size());
+    const auto& raster_pass = plan.executable.passes()[raster_slot];
     for (std::uint64_t update = 0; update < 2 * creation_revisions; ++update)
     {
-        auto& draws = instance->rasterDraws(*instance->compiledPass(pass.pass), 0);
+        auto& draws = instance->rasterDraws(raster_pass, 0);
         draws.reads = {{buffer, GraphBufferRange{16 * (update % 2), 16}, EGraphUse::STORAGE_READ, 1}};
         render();
     }
@@ -225,7 +230,7 @@ static void importedIdentityReuse(Validation& validation)
     const auto* address = &*instance;
     instance.reset();
     CHECK(session->drain());
-    instance.emplace(*session, 1, plan);
+    instance.emplace(*session, 1, plan.executable, plan.programs);
     CHECK(&*instance == address);
     CHECK(instance->initialize());
     render();
@@ -334,14 +339,14 @@ static void importedExtentContracts(Validation& validation)
                   nri::Result::SUCCESS);
         }
         {
-            RenderGraphInstance invalid{*session, 1, plan};
+            RenderGraphInstance invalid{*session, 1, plan.executable, plan.programs};
             invalid.bindImage(source, 0, *images[0]);
             invalid.bindImage(destination, 0, *images[1]);
             const auto rejected = invalid.initialize();
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
         }
         {
-            RenderGraphInstance instance{*session, 1, plan};
+            RenderGraphInstance instance{*session, 1, plan.executable, plan.programs};
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
             CHECK(instance.initialize());

@@ -276,12 +276,14 @@ layouts and descriptor writes on SPIR-V and DXIL. The final descriptor table is 
 image and sampler bindings remain explicit. Program preparation and pipeline creation return to the owner scheduler
 for publication through the existing `CompiledPrograms` cache. The device execution owns those native program
 leases alongside the executable. The executable's recording tables carry slots and the Instance freezes their physical
-bindings for the recording workers.
+bindings for the recording workers. Barrier predecessors and History predicates use compiled slots. The diagnostic
+sidecar carries source Pass IDs, resource names and reuse reasons.
 
 The Effect keeps Storage requirements and cold Feature creation data. Start or Rebind resolves those inputs and creates
-professional bindings before initializing the `RenderGraphInstance`. The instance allocates graph resources and
-descriptors per existing FIF slot; it neither discovers Storage nor runs factories. Standalone project GPU consumers
-can bind physical inputs directly without creating a Registry or Server.
+producer bindings before initializing the `RenderGraphInstance`. Factory calls can resolve source Pass IDs during that
+assembly step. The mapping is released when assembly returns. The initialized Instance allocates graph resources and
+descriptors per existing FIF slot. Standalone project GPU consumers can bind physical inputs directly without creating
+a Registry or Server.
 
 The `RenderGraphExecutable` contains a recording program with typed Raster, Compute and Transfer packet tables,
 range transitions and rendering groups. Legacy's consecutive-pass
@@ -365,7 +367,9 @@ finish or cancel that window before destroying its borrowed inputs. These checks
 not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope_.
 
 `declareHistory` creates a Previous/Current pair. `publishHistory` observes the complete resulting version,
-including inherited mip ranges. Distance 1 is supported. Image initial values are explicit; Buffer history currently
+including inherited mip ranges. Distance counts backwards over successful publications. Each bank retains
+the latest samples within that distance and allocates FIF plus distance physical slots.
+Image initial values are explicit; Buffer history currently
 starts at zero and requires a multiple-of-four byte size. The instance owns F+1 physical slots, chooses a free write
 slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
 does not publish a sample. Descriptor views are created at Start, not on each rotation. Resize replaces only

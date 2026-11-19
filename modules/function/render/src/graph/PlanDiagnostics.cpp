@@ -35,13 +35,13 @@ namespace lux::render::detail
             return output + "}";
         }
 
-        std::string imageTransitionDump(const ImageTransition& transition)
+        std::string imageTransitionDump(const ImageTransition& transition, std::uint32_t source_pass)
         {
             const auto& barrier = transition.native;
             return "{\"resource\":" + std::to_string(transition.resource) +
-                   ",\"previous_pass\":" + std::to_string(transition.previous.index) +
+                   ",\"previous_pass\":" + std::to_string(source_pass) +
                    ",\"boundary\":" + transitionBoundary(transition.boundary) + ",\"source\":" +
-                   quoteDumpText(transition.previous.index == kGraphInvalidIndex ? "initial state" : "pass access") +
+                   quoteDumpText(transition.previous_slot == kGraphInvalidIndex ? "initial state" : "pass access") +
                    ",\"planes\":" + std::to_string(static_cast<unsigned>(barrier.planes)) +
                    ",\"mip\":" + std::to_string(barrier.mipOffset) + ",\"mips\":" + std::to_string(barrier.mipNum) +
                    ",\"layer\":" + std::to_string(barrier.layerOffset) +
@@ -54,10 +54,10 @@ namespace lux::render::detail
                    ",\"after\":" + std::to_string(static_cast<unsigned>(barrier.after.layout)) + "}";
         }
 
-        std::string bufferTransitionDump(const BufferTransition& transition)
+        std::string bufferTransitionDump(const BufferTransition& transition, std::uint32_t source_pass)
         {
             return "{\"resource\":" + std::to_string(transition.resource) +
-                   ",\"previous_pass\":" + std::to_string(transition.previous.index) +
+                   ",\"previous_pass\":" + std::to_string(source_pass) +
                    ",\"boundary\":" + transitionBoundary(transition.boundary) +
                    ",\"scope\":\"whole physical buffer\",\"source_stages\":" +
                    std::to_string(static_cast<unsigned>(transition.native.before.stages)) +
@@ -76,6 +76,11 @@ namespace lux::render::detail
         std::string output;
         const auto& plan = graph.executable;
         const auto& program = plan.recording_;
+        const auto sourcePass = [&](const auto& transition)
+        {
+            return transition.previous_slot == kGraphInvalidIndex
+                ? kGraphInvalidIndex : graph.diagnostics.source_passes[transition.previous_slot].index;
+        };
         constexpr std::string_view boundaries[]{
             "non-raster",
             "first or follows non-raster",
@@ -96,11 +101,11 @@ namespace lux::render::detail
                 }
                 const auto barrierEdge = [&](const auto& transition, std::string detail)
                 {
-                    if (transition.previous.index == kGraphInvalidIndex)
+                    if (transition.previous_slot == kGraphInvalidIndex)
                     {
                         return;
                     }
-                    const auto previous = plan.pass_indices_[transition.previous.index];
+                    const auto previous = transition.previous_slot;
                     output += "p" + std::to_string(previous) + " -> p" + std::to_string(i) + " [style=dashed,label=" +
                               quoteDumpText("resource " + std::to_string(transition.resource) + " " + detail) + "];\n";
                 };
@@ -160,7 +165,7 @@ namespace lux::render::detail
             }
             const auto& pass = program.passes[p];
             output +=
-                "{\"source\":" + std::to_string(plan.source_passes_[p].index) +
+                "{\"source\":" + std::to_string(graph.diagnostics.source_passes[p].index) +
                 ",\"unit\":" + std::to_string(pass.unit) +
                 ",\"kind\":" + std::to_string(static_cast<unsigned>(pass.kind)) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
@@ -205,7 +210,7 @@ namespace lux::render::detail
                 {
                     output += ',';
                 }
-                output += imageTransitionDump(pass.before.images[i]);
+                output += imageTransitionDump(pass.before.images[i], sourcePass(pass.before.images[i]));
             }
             output += "],\"buffer_transitions\":[";
             for (std::size_t i = 0; i < pass.before.buffers.size(); ++i)
@@ -214,7 +219,7 @@ namespace lux::render::detail
                 {
                     output += ',';
                 }
-                output += bufferTransitionDump(pass.before.buffers[i]);
+                output += bufferTransitionDump(pass.before.buffers[i], sourcePass(pass.before.buffers[i]));
             }
             output += "]}";
         }
@@ -239,7 +244,7 @@ namespace lux::render::detail
             }
             output += "{\"resource\":" + std::to_string(i) +
                       ",\"slot\":" + std::to_string(plan.physical_resources_.resource_slots[i]) + ",\"reason\":" +
-                      quoteDumpText(reuse_reasons[static_cast<unsigned>(plan.physical_resources_.reasons[i])]) + "}";
+                      quoteDumpText(reuse_reasons[static_cast<unsigned>(graph.diagnostics.resource_reuse[i])]) + "}";
         }
         output += "],\"physical_object_count\":" + std::to_string(plan.physical_resources_.slots.size()) +
                   ",\"submissions\":[";
@@ -274,11 +279,13 @@ namespace lux::render::detail
                 output += ',';
             }
             const auto& region = program.conditions[i];
+            const auto source_input = region.source == EConditionSource::INPUT
+                ? region.input_slot : plan.histories_[region.input_slot].description.previous.index;
             output += "{\"first_pass\":" + std::to_string(region.first_pass) +
                       ",\"pass_count\":" + std::to_string(region.pass_count) +
-                      ",\"source\":" + std::to_string(static_cast<unsigned>(region.predicate.source)) +
-                      ",\"input\":" + std::to_string(region.predicate.input) +
-                      ",\"expected\":" + (region.predicate.expected ? "true" : "false") + "}";
+                      ",\"source\":" + std::to_string(static_cast<unsigned>(region.source)) +
+                      ",\"input\":" + std::to_string(source_input) +
+                      ",\"expected\":" + (region.expected ? "true" : "false") + "}";
         }
         output += "],\"final_image_transitions\":[";
         for (std::size_t i = 0; i < program.after.images.size(); ++i)
@@ -287,7 +294,7 @@ namespace lux::render::detail
             {
                 output += ',';
             }
-            output += imageTransitionDump(program.after.images[i]);
+            output += imageTransitionDump(program.after.images[i], sourcePass(program.after.images[i]));
         }
         output += "],\"final_buffer_transitions\":[";
         for (std::size_t i = 0; i < program.after.buffers.size(); ++i)
@@ -296,7 +303,7 @@ namespace lux::render::detail
             {
                 output += ',';
             }
-            output += bufferTransitionDump(program.after.buffers[i]);
+            output += bufferTransitionDump(program.after.buffers[i], sourcePass(program.after.buffers[i]));
         }
         output += "],\"groups\":[";
         for (std::size_t i = 0; i < program.groups.size(); ++i)
@@ -327,7 +334,8 @@ namespace lux::render::detail
                 output += ',';
             }
             const auto& resource = plan.resources_[i];
-            output += "{\"id\":" + std::to_string(i) + ",\"key\":" + quoteDumpText(resource.key) + ",\"allocation\":" +
+            output += "{\"id\":" + std::to_string(i) + ",\"key\":" +
+                      quoteDumpText(graph.diagnostics.resource_keys[i]) + ",\"allocation\":" +
                       quoteDumpText(
                           !resource.used                                                   ? "culled"
                           : !resource.memory_used                                          ? "CPU-parameter-input"

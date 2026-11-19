@@ -39,11 +39,6 @@ namespace lux::render::detail
             return true;
         }
 
-        bool allowsReuse(EResourceReuse reason) noexcept
-        {
-            return reason == EResourceReuse::DISTINCT_DESCRIPTION || reason == EResourceReuse::UNORDERED ||
-                   reason == EResourceReuse::REUSED;
-        }
     } // namespace
 
     PhysicalResourcePlan planPhysicalResources(
@@ -53,13 +48,14 @@ namespace lux::render::detail
         const RecordingProgram& recording,
         std::span<const SubmissionBatch> submissions,
         std::array<const QueueProperties*, 3> queues,
-        ETransientAllocation allocation
+        ETransientAllocation allocation,
+        std::vector<EResourceReuse>& reasons
     ) noexcept
     {
         PhysicalResourcePlan result;
         result.allocation = allocation;
         result.resource_slots.resize(resources.size(), kGraphInvalidIndex);
-        result.reasons.resize(resources.size(), EResourceReuse::UNUSED);
+        reasons.assign(resources.size(), EResourceReuse::UNUSED);
         std::vector<ResourceInterval> intervals(resources.size());
         std::vector<Frontier> completed(submissions.size());
         std::array<Frontier, 3> queue_frontiers{};
@@ -136,7 +132,7 @@ namespace lux::render::detail
         for (auto i : order)
         {
             const auto& resource = resources[i];
-            auto& reason = result.reasons[i];
+            auto& reason = reasons[i];
             if (!resource.memory_used)
             {
                 continue;
@@ -153,7 +149,7 @@ namespace lux::render::detail
             }
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description); image && image->runtime_layers)
             {
-                result.reasons[i] = EResourceReuse::DYNAMIC_EXTENT;
+                reasons[i] = EResourceReuse::DYNAMIC_EXTENT;
                 continue;
             }
             if (target[i])
@@ -166,14 +162,14 @@ namespace lux::render::detail
                      : !graph.resources()[i].initial_ranges.empty()    ? EResourceReuse::INITIAL_CONTENT
                      : allocation == ETransientAllocation::INDEPENDENT ? EResourceReuse::DISABLED
                                                                        : EResourceReuse::DISTINCT_DESCRIPTION;
-            if (reason == EResourceReuse::DISTINCT_DESCRIPTION)
+            const bool alias_eligible = reason == EResourceReuse::DISTINCT_DESCRIPTION;
+            if (alias_eligible)
             {
                 for (std::uint32_t s = 0; s < tails.size(); ++s)
                 {
                     const auto previous = tails[s];
                     const auto& candidate = resources[previous];
-                    const auto previous_reason = result.reasons[previous];
-                    const bool reusable = allowsReuse(previous_reason);
+                    const bool reusable = result.slots[s].alias_eligible;
                     // Legacy RGVulkanResourceAllocator::makeKey matches the complete description/usage.
                     // Reuse here additionally requires batch happens-before, never a frame-age heuristic.
                     const bool same_description = candidate.description == resource.description &&
@@ -196,7 +192,10 @@ namespace lux::render::detail
             if (result.resource_slots[i] == kGraphInvalidIndex)
             {
                 result.resource_slots[i] = static_cast<std::uint32_t>(result.slots.size());
-                result.slots.push_back({{i}, intervals[i].before});
+                auto& slot = result.slots.emplace_back();
+                slot.resource = {i};
+                slot.before = intervals[i].before;
+                slot.alias_eligible = alias_eligible;
                 tails.push_back(i);
             }
             auto& slot = result.slots[result.resource_slots[i]];
@@ -225,7 +224,7 @@ namespace lux::render::detail
             const auto& slot = physical.slots[i];
             auto& placement = placements[i];
             placement = {i, EMemoryPlacement::EXCLUDED};
-            if (!allowsReuse(physical.reasons[slot.resource.index]))
+            if (!slot.alias_eligible)
             {
                 continue;
             }

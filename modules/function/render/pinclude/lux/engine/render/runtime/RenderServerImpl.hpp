@@ -155,7 +155,8 @@ namespace lux::render
         resolveJobResources(const RenderEffect&, detail::DeviceEntry&, ViewRequest) noexcept;
 
         [[nodiscard]] RenderResult<void> assembleExecution(
-            JobExecution&, RenderView&, std::span<const ResourceInstanceId>, const JobBinding&
+            const detail::GraphAssemblyPlan&, JobExecution&, RenderView&, std::span<const ResourceInstanceId>,
+            const JobBinding&
         ) noexcept;
 
         exec::task<AckResponse>

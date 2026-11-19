@@ -202,7 +202,8 @@ namespace lux::render
         const bool invalid_capacity = candidate_.resources_.size() > kGraphInvalidIndex - 2;
         const bool invalid_use = canonical_use != EGraphUse::SAMPLED && canonical_use != EGraphUse::STORAGE_READ &&
                                  canonical_use != EGraphUse::TRANSFER_SOURCE;
-        if (key.empty() || distance != 1 || invalid_capacity || invalid_use ||
+        const bool invalid_distance = distance == 0 || distance == kGraphInvalidIndex;
+        if (key.empty() || invalid_distance || invalid_capacity || invalid_use ||
             !compatibleUse(description, canonical_use))
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor));

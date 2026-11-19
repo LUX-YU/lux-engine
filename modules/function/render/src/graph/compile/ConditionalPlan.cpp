@@ -3,7 +3,10 @@
 
 namespace lux::render::detail
 {
-    void planConditions(const RenderGraph& graph, std::span<const GraphPassId> order, RecordingProgram& recording) noexcept
+    void planConditions(
+        const RenderGraph& graph, std::span<const GraphPassId> order, std::span<const CompiledResource> resources,
+        RecordingProgram& recording
+    ) noexcept
     {
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
@@ -13,20 +16,22 @@ namespace lux::render::detail
             {
                 continue;
             }
+            const auto input_slot = condition->source == EConditionSource::INPUT
+                ? condition->input : resources[condition->input].history;
             const bool contiguous =
                 !recording.conditions.empty() &&
                 recording.conditions.back().first_pass + recording.conditions.back().pass_count == p;
             const bool same_predicate = contiguous &&
-                                        recording.conditions.back().predicate.source == condition->source &&
-                                        recording.conditions.back().predicate.input == condition->input &&
-                                        recording.conditions.back().predicate.expected == condition->expected;
+                                        recording.conditions.back().source == condition->source &&
+                                        recording.conditions.back().input_slot == input_slot &&
+                                        recording.conditions.back().expected == condition->expected;
             if (same_predicate)
             {
                 ++recording.conditions.back().pass_count;
             }
             else
             {
-                recording.conditions.push_back({*condition, p, 1});
+                recording.conditions.push_back({p, 1, input_slot, condition->source, condition->expected});
             }
             pass.condition_region = static_cast<std::uint32_t>(recording.conditions.size() - 1);
         }

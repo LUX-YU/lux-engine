@@ -1,10 +1,13 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/compile/BarrierPlan.hpp>
+#include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 #include <lux/engine/render/graph/compile/ConditionalPlan.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
@@ -20,6 +23,89 @@ namespace lux::render::detail
 {
     namespace
     {
+        bool validRecordingTables(
+            const RecordingProgram& program, std::span<const SubmissionBatch> batches,
+            std::size_t resource_count, std::size_t parameter_slots, std::size_t condition_slots,
+            std::size_t history_slots
+        ) noexcept
+        {
+            const auto pass_count = program.passes.size();
+            const auto inBounds = [pass_count](const auto& range) noexcept
+            {
+                return range.first_pass <= pass_count && range.pass_count <= pass_count - range.first_pass;
+            };
+            const auto covers = [](const auto& range, std::size_t pass) noexcept
+            {
+                return range.first_pass <= pass && pass - range.first_pass < range.pass_count;
+            };
+            const auto validTransitions = [resource_count](const BarrierBatch& barriers, std::size_t before) noexcept
+            {
+                const auto valid = [=](const auto& barrier) noexcept
+                {
+                    const bool valid_predecessor = barrier.previous_slot == kGraphInvalidIndex ||
+                        barrier.previous_slot < before;
+                    return barrier.resource < resource_count && valid_predecessor;
+                };
+                return std::ranges::all_of(barriers.images, valid) && std::ranges::all_of(barriers.buffers, valid);
+            };
+            const auto validCondition = [&](const ConditionalRegion& region) noexcept
+            {
+                const auto slots = region.source == EConditionSource::INPUT ? condition_slots : history_slots;
+                return inBounds(region) && region.pass_count != 0 && region.input_slot < slots;
+            };
+            const bool valid_intervals = std::ranges::all_of(program.units, inBounds) &&
+                std::ranges::all_of(program.groups, inBounds) &&
+                std::ranges::all_of(program.conditions, validCondition);
+            if (!valid_intervals || batches.empty() || !validTransitions(program.after, pass_count))
+            {
+                return false;
+            }
+            std::size_t first_pass = 0;
+            for (std::size_t slot = 0; slot < batches.size(); ++slot)
+            {
+                const auto& batch = batches[slot];
+                const bool valid_dependencies = std::ranges::all_of(batch.dependencies, [&](const auto& dependency)
+                {
+                    return dependency.producer < slot;
+                });
+                const bool valid_output = batch.output_begin == kGraphInvalidIndex ||
+                    (batch.output_begin >= first_pass && batch.output_begin - first_pass <= batch.pass_count);
+                if (!inBounds(batch) || batch.first_pass != first_pass || !valid_dependencies || !valid_output)
+                {
+                    return false;
+                }
+                first_pass += batch.pass_count;
+            }
+            if (first_pass != pass_count)
+            {
+                return false;
+            }
+            constexpr auto no_slot = kGraphInvalidIndex;
+            const std::array packet_counts{program.raster.size(), program.compute.size(), program.transfer.size()};
+            for (std::size_t slot = 0; slot < pass_count; ++slot)
+            {
+                const auto& pass = program.passes[slot];
+                const auto kernel = static_cast<std::size_t>(pass.commands.kernel);
+                const bool valid_packet = kernel < packet_counts.size() && pass.commands.packet < packet_counts[kernel];
+                const bool valid_unit = pass.unit < program.units.size() && covers(program.units[pass.unit], slot);
+                const bool valid_submit = pass.submission < batches.size() && covers(batches[pass.submission], slot) &&
+                    batches[pass.submission].queue == pass.queue;
+                const bool valid_group = pass.rendering_group == no_slot ||
+                    (pass.rendering_group < program.groups.size() &&
+                     covers(program.groups[pass.rendering_group], slot));
+                const bool valid_condition = pass.condition_region == no_slot ||
+                    (pass.condition_region < program.conditions.size() &&
+                     covers(program.conditions[pass.condition_region], slot));
+                const bool valid_pass = valid_packet && valid_unit && valid_submit && valid_group && valid_condition &&
+                    pass.binding_slot < parameter_slots && validTransitions(pass.before, slot);
+                if (!valid_pass)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         RenderResult<void>
         validateRasterScope(const RasterScope& scope, const RenderGraph& graph, const nri::DeviceDesc& limits) noexcept
         {
@@ -176,7 +262,7 @@ namespace lux::render::detail
         for (std::uint32_t i = 0; i < graph.resources().size(); ++i)
         {
             const auto& resource = graph.resources()[i];
-            plan.resources_.push_back({resource.key, resource.description, resource.origin});
+            plan.resources_.push_back({resource.description, resource.origin});
             auto& output = plan.resources_.back();
             output.used = live[i];
             output.memory_used = memory_used[i];
@@ -306,9 +392,6 @@ namespace lux::render::detail
             layouts->passes.push_back(std::move(source_layouts[id.index]));
         }
         plan.descriptor_plan_ = std::make_unique<ShaderBindingPlan>(std::move(*layouts));
-        plan.source_passes_ = analysis.execution_order;
-
-        plan.pass_indices_.resize(graph.passes().size(), kGraphInvalidIndex);
         std::size_t parameter_bytes = 0;
         for (const auto id : analysis.execution_order)
         {
@@ -343,7 +426,6 @@ namespace lux::render::detail
             {
                 pass.rendering->depth_bias = {source.graphics->depth_bias_constant, source.graphics->depth_bias_slope};
             }
-            plan.pass_indices_[id.index] = static_cast<std::uint32_t>(plan.recording_.passes.size());
             plan.recording_.passes.push_back(std::move(pass));
         }
         for (std::uint32_t p = 0; p < plan.recording_.passes.size();)
@@ -359,7 +441,7 @@ namespace lux::render::detail
             plan.recording_.units.push_back({p, count});
             p += count;
         }
-        if (auto lowered = plan.lowerCommands(graph, analysis.execution_order, limits); !lowered)
+        if (auto lowered = lowerCommands(plan, graph, analysis.execution_order, limits); !lowered)
         {
             return cxx::unexpected(lowered.error());
         }
@@ -368,7 +450,8 @@ namespace lux::render::detail
 
     RenderResult<void> GraphCompiler::finishPlan(
         RenderGraphExecutable& plan, const RenderGraph& graph, const RenderGraphAnalysis& analysis,
-        std::array<const QueueProperties*, 3> queues, const nri::DeviceDesc& limits, ETransientAllocation allocation
+        std::array<const QueueProperties*, 3> queues, const nri::DeviceDesc& limits, ETransientAllocation allocation,
+        std::vector<EResourceReuse>& resource_reuse
     ) noexcept
     {
         for (const auto& placement : plan.descriptor_plan_->passes)
@@ -429,7 +512,7 @@ namespace lux::render::detail
                 parameter_plan.parameter_resources.push_back(resource);
             }
         }
-        planConditions(graph, analysis.execution_order, plan.recording_);
+        planConditions(graph, analysis.execution_order, plan.resources_, plan.recording_);
         selectQueues(graph, analysis.execution_order, queues, plan.recording_);
         // Logical transitions establish the original batch dependency graph before choosing storage.
         auto barriers = planBarriers(
@@ -477,7 +560,7 @@ namespace lux::render::detail
             collectUseStages(graph, analysis.execution_order, *plan.descriptor_plan_, limits.graphicsAPI);
         planSubmissions(
             graph, analysis, plan.resources_, plan.recording_, use_stages, queues, plan.submissions_,
-            plan.imported_accesses_, plan.output_
+            plan.imported_accesses_, plan.output_, plan.output_description_.kind == ETargetKind::SURFACE
         );
         for (const auto& access : plan.imported_accesses_)
         {
@@ -488,10 +571,10 @@ namespace lux::render::detail
         }
         plan.physical_resources_ =
             planPhysicalResources(
-                graph, analysis.execution_order, plan.resources_, plan.recording_, plan.submissions_, queues, allocation
+                graph, analysis.execution_order, plan.resources_, plan.recording_, plan.submissions_, queues,
+                allocation, resource_reuse
             );
-        if (std::ranges::find(plan.physical_resources_.reasons, EResourceReuse::REUSED) !=
-            plan.physical_resources_.reasons.end())
+        if (std::ranges::find(resource_reuse, EResourceReuse::REUSED) != resource_reuse.end())
         {
             // Rebuild only the cold transition templates using the selected physical identities.
             // Their ordering is already proved: no submission dependency or CPU wait is added.
@@ -584,6 +667,14 @@ namespace lux::render::detail
             }
         }
         compactImageTransitions(plan.resources_, plan.recording_);
+        const bool valid_program = validRecordingTables(
+            plan.recording_, plan.submissions_, plan.resources_.size(), plan.descriptor_plan_->passes.size(),
+            plan.condition_count_, plan.histories_.size()
+        );
+        if (!valid_program)
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
         return {};
     }
 
@@ -598,11 +689,240 @@ namespace lux::render::detail
         {
             return cxx::unexpected(plan.error());
         }
-        if (auto finished = finishPlan(*plan, graph, analysis, queues, limits, allocation); !finished)
+        std::vector<EResourceReuse> resource_reuse;
+        if (auto finished = finishPlan(*plan, graph, analysis, queues, limits, allocation, resource_reuse); !finished)
         {
             return cxx::unexpected(finished.error());
         }
         return plan;
+    }
+
+    exec::task<RenderResult<void>>
+    GraphCompiler::prepareOperations(
+        RenderGraphExecutable& plan,
+        DeviceSession& session,
+        NativeGraphPrograms& native,
+        const RenderGraph& graph,
+        std::span<const GraphPassId> order,
+        execution::CpuScheduler cpu
+    ) noexcept
+    {
+        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        auto& program_cache = session.programs();
+        for (auto& pass : plan.recording_.passes)
+        {
+            if (stop.stop_requested())
+            {
+                co_return cxx::unexpected(RenderError{kCommandCancelled});
+            }
+            const auto& source = graph.passes()[order[pass.binding_slot].index];
+            const auto& input = source.interface;
+            auto& bindings = plan.descriptor_plan_->passes[pass.binding_slot];
+            const rdesc::ShaderProgramArtifact* shader = nullptr;
+            std::vector<nri::Format> colors;
+            std::optional<PassRenderingInfo> rendering;
+            if (const auto* scope = pass.rasterScope())
+            {
+                rendering.emplace();
+                rendering->dynamic_depth_bias = scope->state_input.has_value();
+                for (const auto& color : scope->colors)
+                {
+                    const auto& image =
+                        std::get<GraphImageDesc>(plan.resources_[color.access.version.resource.index].description);
+                    colors.push_back(imageFormat(image.format).native);
+                    rendering->samples = static_cast<std::uint8_t>(image.samples);
+                }
+                if (scope->depth)
+                {
+                    const auto resource = scope->depth->access.version.resource.index;
+                    const auto& image = std::get<GraphImageDesc>(plan.resources_[resource].description);
+                    rendering->depth = imageFormat(image.format).native;
+                    rendering->samples = static_cast<std::uint8_t>(image.samples);
+                }
+            }
+            if (input.program != kGraphInvalidIndex)
+            {
+                const auto& declaration = graph.programs()[input.program];
+                shader = declaration.find(session.enabledFeatures().shader_target, plan.device_addresses_);
+                if (!shader)
+                {
+                    co_return cxx::unexpected(RenderError{kDeviceUnsupported});
+                }
+                auto relocated = co_await (
+                    stdexec::schedule(cpu) |
+                    stdexec::then([&]() noexcept { return relocateShader(*shader, bindings.bindings); }) |
+                    stdexec::upon_stopped(
+                        []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
+                        { return cxx::unexpected(RenderError{kCpuStopped}); }
+                    ) |
+                    stdexec::continues_on(owner_scheduler) |
+                    stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
+                );
+                if (!relocated)
+                {
+                    co_return cxx::unexpected(relocated.error());
+                }
+                RasterProgramKey key;
+                key.shader = std::make_shared<const PreparedShader>(std::move(*relocated));
+                const bool is_raster = source.kind == EGraphPassKind::GRAPHICS;
+                if (is_raster)
+                {
+                    key.state = source.graphics.value_or(GraphicsState{});
+                    if (rendering->dynamic_depth_bias)
+                    {
+                        key.state.depth_bias_constant = 1;
+                    }
+                    key.colors = colors;
+                    key.depth = rendering->depth;
+                    key.samples = rendering->samples;
+                }
+                auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
+                if (!layout)
+                {
+                    co_return cxx::unexpected(layout.error());
+                }
+                cxx::scope_exit release_layout([&]() noexcept { program_cache.releaseLayout(*layout); });
+                const auto lookup = is_raster ? program_cache.lookupRaster(key, **layout)
+                                              : program_cache.lookupCompute(key.shader, **layout);
+                auto* program = lookup.hit();
+                if (!program)
+                {
+                    if (stop.stop_requested())
+                    {
+                        co_return cxx::unexpected(RenderError{kCommandCancelled});
+                    }
+                    // key/layout belong to this coroutine operation and are frozen until native return.
+                    // The worker sees native facts only; cache/Plan publication stays on the control owner.
+                    auto compiled = co_await (
+                        stdexec::schedule(session.nativeScheduler()) |
+                        stdexec::then(
+                            [&key, layout = bindings.layout, raster = is_raster, device = &session.device(),
+                             core = &session.nriCore(), enabled = session.enabledFeatures(),
+                             limits = &session.description(),
+                             formats = session.formatSupport(),
+                             vertex_limits =
+                                 std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}]() noexcept
+                            {
+                                if (raster)
+                                {
+                                    nri::Pipeline* pipeline = nullptr;
+                                    const auto created = createRasterProgram(
+                                        *device, *core, *limits, enabled, formats, vertex_limits, *layout, key, pipeline
+                                    );
+                                    if (!created)
+                                    {
+                                        if (pipeline) core->DestroyPipeline(pipeline);
+                                        return RenderResult<nri::Pipeline*>{cxx::unexpected(created.error())};
+                                    }
+                                    return RenderResult<nri::Pipeline*>{pipeline};
+                                }
+                                return compileCompute(*device, *core, enabled, *layout, key.shader->artifact);
+                            }
+                        ) |
+                        stdexec::upon_error(NativeScheduleFailure<nri::Pipeline*>{}) |
+                        stdexec::upon_stopped(
+                            []() noexcept -> RenderResult<nri::Pipeline*>
+                            { return cxx::unexpected(RenderError{kCommandCancelled}); }
+                        ) |
+                        stdexec::continues_on(owner_scheduler) |
+                        stdexec::upon_error(NativeDeliveryFailure<nri::Pipeline*>{})
+                    );
+                    if (!compiled)
+                    {
+                        co_return cxx::unexpected(compiled.error());
+                    }
+                    program = is_raster ? program_cache.publishRaster(std::move(key), lookup, *compiled)
+                                        : program_cache.publishCompute(std::move(key.shader), lookup, *compiled);
+                }
+                native.program_uses_.push_back(program);
+                native.slots_[pass.binding_slot].pipeline = CompiledPrograms::native(*program);
+            }
+            else if (!bindings.private_bindings.empty())
+            {
+                auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(colors.size()));
+                if (!layout)
+                {
+                    co_return cxx::unexpected(layout.error());
+                }
+                native.layout_uses_.push_back(*layout);
+            }
+            native.slots_[pass.binding_slot].descriptors = bindings.recordBindings();
+            bindings.layout = nullptr;
+        }
+        co_return RenderResult<void>{};
+    }
+
+    RenderResult<void>
+    GraphCompiler::lowerCommands(
+        RenderGraphExecutable& plan, const RenderGraph& graph, std::span<const GraphPassId> order,
+        const nri::DeviceDesc& limits
+    ) noexcept
+    {
+        const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
+            ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+        std::uint32_t indexed_lists = 0, raster_lists = 0;
+        std::vector<std::uint8_t> materialized;
+        materialized.reserve(plan.resources_.size());
+        for (const auto& resource : plan.resources_) materialized.push_back(resource.memory_used);
+        for (auto& pass : plan.recording_.passes)
+        {
+            const auto& source = graph.passes()[order[pass.binding_slot].index];
+            const auto program = source.interface.program;
+            const rdesc::ShaderInfo* shader_info = nullptr;
+            if (program != kGraphInvalidIndex)
+            {
+                const auto* shader = graph.programs()[program].find(target, plan.device_addresses_);
+                if (!shader)
+                {
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
+                }
+                shader_info = &shader->interface;
+            }
+            PassCompileContext context{
+                limits, shader_info, graph.resources(),
+                &indexed_lists, &raster_lists, materialized
+            };
+            const auto append = [&]<class T>(RenderResult<T> result, ERecordKernel kernel, std::vector<T>& table)
+                noexcept -> RenderResult<RecordBlock>
+            {
+                if (!result) return cxx::unexpected(result.error());
+                const auto packet = static_cast<std::uint32_t>(table.size());
+                table.push_back(std::move(*result));
+                return RecordBlock{kernel, packet};
+            };
+            auto commands = std::visit(
+                [&](const auto& command) noexcept -> RenderResult<RecordBlock>
+                {
+                    using Command = std::remove_cvref_t<decltype(command)>;
+                    if constexpr (std::is_same_v<Command, RasterWork>)
+                    {
+                        return append(
+                            RasterPass::compile(command, context), ERecordKernel::RASTER, plan.recording_.raster
+                        );
+                    }
+                    else if constexpr (std::is_same_v<Command, ComputeWork>)
+                    {
+                        return append(
+                            ComputePass::compile(command, context), ERecordKernel::COMPUTE, plan.recording_.compute
+                        );
+                    }
+                    else
+                    {
+                        return append(
+                            TransferPass::compile(command, context), ERecordKernel::TRANSFER, plan.recording_.transfer
+                        );
+                    }
+                },
+                source.command
+            );
+            if (!commands)
+            {
+                return cxx::unexpected(commands.error());
+            }
+            pass.commands = std::move(*commands);
+        }
+        return {};
     }
 
     exec::task<RenderResult<PreparedRenderGraph>> GraphCompiler::compile(
@@ -638,15 +958,22 @@ namespace lux::render::detail
             co_return cxx::unexpected(candidate.error());
         }
         NativeGraphPrograms native(session, candidate->passes().size());
-        auto prepared = co_await candidate->prepareOperations(session, native, graph, analysis.execution_order, cpu);
+        auto prepared = co_await prepareOperations(*candidate, session, native, graph, analysis.execution_order, cpu);
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
         }
+        GraphCompileDiagnostics diagnostics;
         auto planned = co_await (
             stdexec::schedule(cpu) |
-            stdexec::then([&]() noexcept
-                          { return finishPlan(*candidate, graph, analysis, queues, session.description(), allocation); }
+            stdexec::then(
+                [&]() noexcept
+                {
+                    return finishPlan(
+                        *candidate, graph, analysis, queues, session.description(), allocation,
+                        diagnostics.resource_reuse
+                    );
+                }
             ) |
             stdexec::upon_stopped(
                 []() noexcept -> RenderResult<void> { return cxx::unexpected(RenderError{kCpuStopped}); }
@@ -657,6 +984,20 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(planned.error());
         }
-        co_return PreparedRenderGraph{std::move(*candidate), std::move(native), std::move(recipes)};
+        diagnostics.source_passes = analysis.execution_order;
+        diagnostics.resource_keys.reserve(graph.resources().size());
+        for (const auto& resource : graph.resources())
+        {
+            diagnostics.resource_keys.push_back(resource.key);
+        }
+        GraphAssemblyPlan assembly{std::move(recipes), {}};
+        assembly.source_pass_slots.resize(graph.passes().size(), kGraphInvalidIndex);
+        for (std::uint32_t slot = 0; slot < analysis.execution_order.size(); ++slot)
+        {
+            assembly.source_pass_slots[analysis.execution_order[slot].index] = slot;
+        }
+        co_return PreparedRenderGraph{
+            std::move(*candidate), std::move(native), std::move(assembly), std::move(diagnostics)
+        };
     }
 } // namespace lux::render::detail

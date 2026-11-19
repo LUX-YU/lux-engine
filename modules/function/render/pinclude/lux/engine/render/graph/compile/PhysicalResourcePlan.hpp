@@ -11,7 +11,8 @@ namespace lux::render::detail
         const RecordingProgram& recording,
         std::span<const SubmissionBatch> submissions,
         std::array<const QueueProperties*, 3> queues,
-        ETransientAllocation allocation
+        ETransientAllocation allocation,
+        std::vector<EResourceReuse>& reasons
     ) noexcept;
 
     enum class EMemoryPlacement : std::uint8_t

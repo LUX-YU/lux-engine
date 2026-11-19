@@ -31,6 +31,7 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RenderGraphInstance::createData(
+        const GraphAssemblyPlan& assembly,
         std::span<const InstanceDataRecipe> recipes,
         ResourceRegistry& resources,
         std::span<const ResourceInstanceId> resolved
@@ -38,7 +39,9 @@ namespace lux::render::detail
     {
         resources_ = &resources;
         if (!data_.empty()) return cxx::unexpected(RenderError{kDeviceArgument});
-        for (auto index : instance_recipes_)
+        source_pass_slots_ = assembly.source_pass_slots;
+        cxx::scope_exit release_source_mapping([&]() noexcept { source_pass_slots_ = {}; });
+        for (auto index : assembly.instance_recipes)
         {
             if (index >= recipes.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             const auto& recipe = recipes[index];

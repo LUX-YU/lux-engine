@@ -693,10 +693,7 @@ namespace lux::render::detail
                     auto& barrier = frame.passes[p].buffers[index];
                     barrier.buffer = source.buffer;
                     const auto& pass = *frame.passes[p].compiled_pass;
-                    const bool initial_graphics = pass.queue == EQueueRole::GRAPHICS &&
-                                                  pass.before.buffers[index].previous.index == kGraphInvalidIndex;
-                    if (initial_graphics && barrier.before.stages == nri::StageBits::ALL &&
-                        barrier.before.access == nri::AccessBits::NONE)
+                    if (pass.before.buffers[index].bind_initial_access)
                     {
                         barrier.before.access = bufferAccess(core.GetBufferDesc(*source.buffer).usage);
                     }

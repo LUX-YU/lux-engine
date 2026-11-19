@@ -282,11 +282,13 @@ namespace lux::render
         if (!resourcesAvailable(*dependencies)) co_return AckResponse{RenderError{kDeviceBusy}};
         auto& target = *runtime_->targets_.find(target_id);
         if (!plan->executable.compatible(targetDescription(target))) co_return AckResponse{RenderError{kDeviceArgument}};
+        const auto assembly = std::move(plan->assembly);
         auto candidate = std::make_unique<JobExecution>(
-            *effect, device, entry.session(), entry.frameProgress().frameCount(), std::move(*plan), target_id, targetOutput(target)
+            *effect, device, entry.session(), entry.frameProgress().frameCount(),
+            std::move(plan->executable), std::move(plan->programs), target_id, targetOutput(target)
         );
         release_effect.release();
-        if (auto assembled = assembleExecution(*candidate, view, *dependencies, binding); !assembled)
+        if (auto assembled = assembleExecution(assembly, *candidate, view, *dependencies, binding); !assembled)
             co_return AckResponse{assembled.error()};
 
         auto* previous = job.execution.get();

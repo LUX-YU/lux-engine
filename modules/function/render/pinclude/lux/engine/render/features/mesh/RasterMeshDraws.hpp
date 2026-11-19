@@ -24,6 +24,14 @@ namespace lux::render::detail
         GraphResourceId views, raster_states, depth;
     };
 
+    struct MeshDrawSettings final
+    {
+        rdesc::EMaterialPurpose purpose;
+        bool front_counter_clockwise;
+        bool layered;
+        std::uint32_t depth_slot;
+    };
+
     // Actual per-Attachment draw preparation. Immutable native programs are borrowed from the
     // Device cache; Instance owns private bindings and packets for the selected physical FIF slice.
     class RasterMeshDraws final : public InstanceData
@@ -65,7 +73,7 @@ namespace lux::render::detail
             RenderGraphInstance&,
             CompiledPrograms&,
             const MeshDrawGroupSource&,
-            MeshDrawConfiguration,
+            MeshDrawSettings,
             const CompiledPass&
         ) noexcept;
         [[nodiscard]] bool requiresPrograms() const noexcept override;
@@ -87,7 +95,7 @@ namespace lux::render::detail
         RenderGraphInstance& instance_;
         CompiledPrograms& programs_;
         const MeshDrawGroupSource& source_;
-        MeshDrawConfiguration configuration_;
+        MeshDrawSettings settings_;
         const CompiledPass& pass_;
         std::vector<Group> groups_;
         std::vector<std::unique_ptr<Program>> program_bindings_;

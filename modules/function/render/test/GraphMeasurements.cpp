@@ -50,7 +50,7 @@ namespace foundation_test
         }
 
         startGraphMeasurements();
-        auto instance = std::make_unique<RenderGraphInstance>(session, 1, candidate);
+        auto instance = std::make_unique<RenderGraphInstance>(session, 1, candidate.executable, candidate.programs);
         const auto construction_allocations = stopGraphMeasurements();
         CHECK(construction_allocations > 0); // Prove the counter observes allocation inside the Render DLL.
         std::printf("construction_allocations=%zu\n", construction_allocations);

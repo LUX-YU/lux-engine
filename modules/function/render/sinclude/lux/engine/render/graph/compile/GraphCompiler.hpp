@@ -23,6 +23,14 @@ namespace lux::render::detail
         ) noexcept;
 
     private:
+        [[nodiscard]] static RenderResult<void>
+        lowerCommands(RenderGraphExecutable&, const RenderGraph&, std::span<const GraphPassId>,
+                      const nri::DeviceDesc&) noexcept;
+        [[nodiscard]] static exec::task<RenderResult<void>>
+        prepareOperations(
+            RenderGraphExecutable&, DeviceSession&, NativeGraphPrograms&, const RenderGraph&,
+            std::span<const GraphPassId>, execution::CpuScheduler
+        ) noexcept;
         [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
             nri::Device*, const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
             const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation, std::span<const std::uint32_t>,
@@ -30,7 +38,7 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] static RenderResult<void> finishPlan(
             RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
-            const nri::DeviceDesc&, ETransientAllocation
+            const nri::DeviceDesc&, ETransientAllocation, std::vector<EResourceReuse>&
         ) noexcept;
     };
 } // namespace lux::render::detail

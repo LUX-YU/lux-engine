@@ -20,7 +20,7 @@ namespace lux::render::detail
             nri::Layout layout = nri::Layout::UNDEFINED;
             bool write = false;
             bool known = false;
-            GraphPassId pass;
+            std::uint32_t pass_slot = kGraphInvalidIndex;
             ETransitionBoundary boundary = ETransitionBoundary::PASS;
             EQueueRole queue = EQueueRole::GRAPHICS;
             std::uint32_t resource = kGraphInvalidIndex;
@@ -233,7 +233,7 @@ namespace lux::render::detail
         {
             const auto& barrier = transition.native;
             return std::tuple{
-                transition.resource, transition.previous.index, transition.boundary, barrier.planes,
+                transition.resource, transition.previous_slot, transition.boundary, barrier.planes,
                 barrier.before.access, barrier.before.layout, barrier.before.stages,
                 barrier.after.access, barrier.after.layout, barrier.after.stages
             };
@@ -367,7 +367,7 @@ namespace lux::render::detail
             const bool merge_reads = covers_access && covers_stages && previous.known &&
                                      previous.resource == index && !cross_queue &&
                                      !previous.write && !current.write &&
-                                     previous.pass.index != kGraphInvalidIndex &&
+                                     previous.pass_slot != kGraphInvalidIndex &&
                                      current.boundary == ETransitionBoundary::PASS &&
                                      (!image || previous.layout == current.layout);
             const bool transition = !merge_reads;
@@ -390,7 +390,7 @@ namespace lux::render::detail
                     barrier.planes = plane == 0   ? nri::PlaneBits::COLOR
                                      : plane == 1 ? nri::PlaneBits::DEPTH
                                                   : nri::PlaneBits::STENCIL;
-                    batch.images.push_back({index, barrier, previous.pass, current.boundary});
+                    batch.images.push_back({index, barrier, previous.pass_slot, current.boundary});
                 }
                 else
                 {
@@ -400,7 +400,12 @@ namespace lux::render::detail
                         cross_queue ? nri::StageBits::ALL : previous.stages
                     };
                     barrier.after = {current.access, current.stages};
-                    batch.buffers.push_back({index, barrier, previous.pass, current.boundary});
+                    const bool bind_initial_access = current.boundary == ETransitionBoundary::PASS &&
+                        current.queue == EQueueRole::GRAPHICS && previous.pass_slot == kGraphInvalidIndex &&
+                        barrier.before.stages == nri::StageBits::ALL && barrier.before.access == nri::AccessBits::NONE;
+                    batch.buffers.push_back({
+                        index, barrier, previous.pass_slot, current.boundary, bind_initial_access
+                    });
                 }
             }
             else if (!cross_queue)
@@ -473,7 +478,7 @@ namespace lux::render::detail
                     }
                     auto current = accessForUse(use, layout, declared, resource.description, index, backend);
                     current.queue = pass.queue;
-                    current.pass = analysis.execution_order[p];
+                    current.pass_slot = p;
                     includeUsage(resource, current);
                     if (next[index].empty())
                     {
@@ -541,7 +546,7 @@ namespace lux::render::detail
             final_states[i].resize(states[i].size());
             for (std::size_t cell = 0; cell < states[i].size(); ++cell)
             {
-                if (states[i][cell].pass.index != kGraphInvalidIndex)
+                if (states[i][cell].pass_slot != kGraphInvalidIndex)
                 {
                     final_states[i][cell] = externalState(GraphResourceId{i}, usage);
                     final_states[i][cell].boundary = ETransitionBoundary::RESTORE_IMPORTED;

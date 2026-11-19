@@ -3,7 +3,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -149,7 +149,7 @@ namespace lux::render::detail
                             ? (depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT)
                             : (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
                                                                       : nri::TextureView::TEXTURE);
-                    const auto& program = plan_->descriptor_plan_->passes[pass];
+                    const auto& program = plan_->binding_plan_->pass(pass);
                     const bool arrayed =
                         target == Target::DESCRIPTOR && program.bindings[program.uses[index].field].image_arrayed;
                     const auto view_type =
@@ -173,7 +173,7 @@ namespace lux::render::detail
                 else
                 {
                     const auto& selected = std::get<GraphBufferRange>(range);
-                    const auto& plan = plan_->descriptor_plan_->passes[pass];
+                    const auto& plan = plan_->binding_plan_->pass(pass);
                     const auto& shader = plan.bindings[plan.uses[index].field];
                     const auto input = shader.bufferView(slot.buffer, selected.offset, selected.size);
                     result = createBufferView(input, view);
@@ -189,7 +189,7 @@ namespace lux::render::detail
         for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
         {
             const auto& pass = plan_->passes()[p];
-            const auto& uses = plan_->descriptor_plan_->passes[pass.binding_slot].uses;
+            const auto& uses = plan_->binding_plan_->pass(pass.binding_slot).uses;
             for (std::uint32_t i = 0; i < uses.size(); ++i)
             {
                 const auto& use = uses[i];
@@ -352,7 +352,7 @@ namespace lux::render::detail
                 case Target::DESCRIPTOR:
                 {
                     const auto& binding =
-                        plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot].uses[use.index];
+                        plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[use.index];
                     if (!frame.history_valid[h] && binding.fallback != kGraphInvalidIndex)
                     {
                         view = pass.private_views[use.index];

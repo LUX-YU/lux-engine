@@ -219,17 +219,24 @@ namespace lux::render
                 return cxx::unexpected(bound.error());
             }
         }
-        if (auto ready = candidate.instance.initialize(); !ready)
+        if (auto ready = candidate.instance.initialize(assembly); !ready)
         {
             return cxx::unexpected(ready.error());
         }
         auto& instance = candidate.instance;
-        if (auto bound = instance.bindParameterSource(EParameterSource::VIEW, detail::cameraParameterLayout()); !bound)
-            return cxx::unexpected(bound.error());
-        if (auto bound = instance.bindParameterSource(EParameterSource::EFFECT, detail::effectParameterLayout());
-            !bound)
+        auto view_source = instance.bindParameterSource(
+            assembly, EParameterSource::VIEW, detail::cameraParameterLayout()
+        );
+        if (!view_source)
         {
-            return cxx::unexpected(bound.error());
+            return cxx::unexpected(view_source.error());
+        }
+        auto effect_source = instance.bindParameterSource(
+            assembly, EParameterSource::EFFECT, detail::effectParameterLayout()
+        );
+        if (!effect_source)
+        {
+            return cxx::unexpected(effect_source.error());
         }
         if (auto values = instance.setInputs(input.parameters, input.conditions); !values)
             return cxx::unexpected(values.error());

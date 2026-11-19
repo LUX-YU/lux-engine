@@ -49,7 +49,7 @@ namespace lux::render::detail
             execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
         ) noexcept;
 
-        [[nodiscard]] RenderResult<void> initialize() noexcept;
+        [[nodiscard]] RenderResult<void> initialize(const GraphAssemblyPlan&) noexcept;
         // Caller holds the writable FIF until recording and all accepted GPU uses are complete.
         // Each batch part has an exclusive allocator; encoders only borrow its prepared data.
         [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
@@ -138,7 +138,8 @@ namespace lux::render::detail
             return output_.description;
         }
 
-        [[nodiscard]] RenderResult<void> bindParameterSource(EParameterSource, const rdesc::ShaderBlock&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        bindParameterSource(const GraphAssemblyPlan&, EParameterSource, const rdesc::ShaderBlock&) noexcept;
         [[nodiscard]] RenderResult<void> setParameterSource(EParameterSource, std::span<const std::byte>) noexcept;
         [[nodiscard]] bool usesParameterSource(EParameterSource) const noexcept;
         [[nodiscard]] RenderResult<void> setInputs(
@@ -205,7 +206,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> createRecordings(std::uint32_t frame_slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
+        [[nodiscard]] RenderResult<void> prepareDescriptors(const GraphAssemblyPlan&) noexcept;
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
         void markParameters(std::uint32_t pass, std::uint32_t slot) noexcept;
         void markInstanceParameters(std::uint32_t offset, std::uint32_t bytes) noexcept;
@@ -269,10 +270,10 @@ namespace lux::render::detail
             RasterState raster_state;
         };
 
-        struct ParameterCopy final
+        struct ExternalParameterCopy final
         {
             std::uint32_t resource;
-            std::uint32_t source_offset, destination_offset, bytes;
+            ParameterByteCopy copy;
         };
 
         DeviceSession* session_;
@@ -303,7 +304,8 @@ namespace lux::render::detail
         };
 
         std::vector<SamplerInput> samplers_;
-        std::vector<std::vector<ParameterCopy>> parameter_copies_;
+        std::vector<ExternalParameterCopy> external_parameter_copies_;
+        std::vector<std::size_t> external_parameter_offsets_;
         struct SourceCopy final
         {
             EParameterSource source;

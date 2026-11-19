@@ -280,18 +280,19 @@ Imported images, surface output uses, sequences, and conditional intervals const
 
 `GraphCompiler::compile(session, cpu, graph, analysis, ...)` prepares device-qualified programs, descriptor bindings,
 submissions and physical resource layout before publishing the `RenderGraphExecutable`. Shader reflection supplies
-layouts and descriptor writes on SPIR-V and DXIL. The final descriptor table is dense in execution order. Separate
-image and sampler bindings remain explicit. Program preparation and pipeline creation return to the owner scheduler
-for publication through the existing `CompiledPrograms` cache. The device execution owns those native program
+layouts and descriptor writes on SPIR-V and DXIL. Fixed descriptor operands and initial parameter bytes are stored
+in contiguous tables indexed by pass ranges. Descriptor pool counts and instance parameter copies are computed
+during compilation. Separate image and sampler bindings remain explicit. Program preparation returns to the owner
+scheduler for publication through the existing `CompiledPrograms` cache. The device execution owns those native program
 leases alongside the executable. The executable's recording tables carry slots and the Instance freezes their physical
 bindings for the recording workers. Barrier predecessors and History predicates use compiled slots. The diagnostic
 sidecar carries source Pass IDs, resource names and reuse reasons.
 
 The Effect keeps Storage requirements and cold Feature creation data. Start or Rebind resolves those inputs and creates
 producer bindings before initializing the `RenderGraphInstance`. Factory calls can resolve source Pass IDs during that
-assembly step. The mapping is released when assembly returns. The initialized Instance allocates graph resources and
-descriptors per existing FIF slot. Standalone project GPU consumers can bind physical inputs directly without creating
-a Registry or Server.
+assembly step. Layouts and field names are used there to link external parameter sources to byte copies. The initialized
+Instance owns the linked copies and allocates graph resources and descriptors per existing FIF slot. Standalone
+project GPU consumers can bind physical inputs directly without creating a Registry or Server.
 
 The `RenderGraphExecutable` contains a recording program with typed Raster, Compute and Transfer packet tables,
 range transitions and rendering groups. Legacy's consecutive-pass

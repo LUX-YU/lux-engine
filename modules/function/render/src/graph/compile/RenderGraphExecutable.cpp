@@ -2,7 +2,7 @@
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -11,15 +11,15 @@ namespace lux::render::detail
     RenderGraphExecutable::parameterRegion(std::uint32_t index, EParameterSource source) const noexcept
     {
         const auto found = std::ranges::find_if(
-            descriptor_plan_->parameter_regions,
+            binding_plan_->parameter_regions,
             [&](const auto& region) { return region.group == index && region.source == source; }
         );
-        if (found == descriptor_plan_->parameter_regions.end())
+        if (found == binding_plan_->parameter_regions.end())
         {
             return {};
         }
         const auto& region = *found;
-        return {region.offset, region.layout.size};
+        return {region.offset, region.bytes};
     }
 
     RenderGraphExecutable::RenderGraphExecutable(nri::Device* device, EffectOutputDesc output) noexcept
@@ -33,7 +33,7 @@ namespace lux::render::detail
 
     std::span<const DescriptorUse> RenderGraphExecutable::descriptorUses(std::uint32_t binding_slot) const noexcept
     {
-        return descriptor_plan_->passes[binding_slot].uses;
+        return binding_plan_->pass(binding_slot).uses;
     }
 
     NativeGraphPrograms::NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept

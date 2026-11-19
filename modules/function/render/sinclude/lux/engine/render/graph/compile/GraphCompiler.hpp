@@ -6,6 +6,8 @@
 
 namespace lux::render::detail
 {
+    struct ShaderBindingPlan;
+
     struct GraphQueuePolicy final
     {
         GraphQueueCosts costs;
@@ -38,17 +40,18 @@ namespace lux::render::detail
                       const nri::DeviceDesc&) noexcept;
         [[nodiscard]] static exec::task<RenderResult<void>>
         prepareOperations(
-            RenderGraphExecutable&, DeviceSession&, NativeGraphPrograms&, const RenderGraph&,
+            const RenderGraphExecutable&, ShaderBindingPlan&, DeviceSession&, NativeGraphPrograms&, const RenderGraph&,
             std::span<const GraphPassId>, execution::CpuScheduler
         ) noexcept;
         [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
             nri::Device*, const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
             const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation, std::span<const std::uint32_t>,
-            bool, std::vector<std::uint32_t>&
+            bool, std::vector<std::uint32_t>&, ShaderBindingPlan&
         ) noexcept;
         [[nodiscard]] static RenderResult<void> finishPlan(
             RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
-            const nri::DeviceDesc&, ETransientAllocation, std::vector<EResourceReuse>&, GraphQueuePolicy
+            const nri::DeviceDesc&, ETransientAllocation, GraphCompileDiagnostics&, GraphQueuePolicy,
+            ShaderBindingPlan&, GraphAssemblyPlan&
         ) noexcept;
     };
 } // namespace lux::render::detail

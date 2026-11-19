@@ -89,7 +89,7 @@ static void graphOutput(Validation& validation)
     auto execution = std::make_unique<RenderGraphInstance>(
         *session, frames->frameCount(), graph.executable, graph.programs, physical->output()
     );
-    CHECK(execution->initialize());
+    CHECK(execution->initialize(graph.assembly));
     auto incompatible_output = physical->output();
     incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
     auto rejected_resize = execution->prepareResize(incompatible_output, {});
@@ -193,12 +193,12 @@ static void importedIdentityReuse(Validation& validation)
     };
     std::optional<RenderGraphInstance> instance;
     instance.emplace(*session, 1, plan.executable, plan.programs);
-    CHECK(instance->initialize());
+    CHECK(instance->initialize(plan.assembly));
     const auto initial_revision = revision(*instance);
     std::uint64_t creation_revisions = 0;
     {
         RenderGraphInstance probe{*session, 1, plan.executable, plan.programs};
-        CHECK(probe.initialize());
+        CHECK(probe.initialize(plan.assembly));
         creation_revisions = revision(probe) - initial_revision;
     }
     CHECK(creation_revisions != 0);
@@ -232,7 +232,7 @@ static void importedIdentityReuse(Validation& validation)
     CHECK(session->drain());
     instance.emplace(*session, 1, plan.executable, plan.programs);
     CHECK(&*instance == address);
-    CHECK(instance->initialize());
+    CHECK(instance->initialize(plan.assembly));
     render();
     CHECK(rebuilds() == cached_rebuilds + 1);
     CHECK(revision(*instance) > cached_revision);
@@ -342,14 +342,14 @@ static void importedExtentContracts(Validation& validation)
             RenderGraphInstance invalid{*session, 1, plan.executable, plan.programs};
             invalid.bindImage(source, 0, *images[0]);
             invalid.bindImage(destination, 0, *images[1]);
-            const auto rejected = invalid.initialize();
+            const auto rejected = invalid.initialize(plan.assembly);
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
         }
         {
             RenderGraphInstance instance{*session, 1, plan.executable, plan.programs};
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
-            CHECK(instance.initialize());
+            CHECK(instance.initialize(plan.assembly));
             const std::array<TargetFrame, 1> smaller_frames{{{images[1]}}};
             const RenderGraphInstance::ImageReplacement replacement{destination, smaller_frames};
             const auto rejected = instance.prepareResize({}, {&replacement, 1});

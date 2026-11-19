@@ -25,7 +25,6 @@ namespace lux::render::detail
 
         void release(const nri::CoreInterface&) noexcept;
         void invalidateImportedBindings() noexcept;
-        [[nodiscard]] static RenderResult<void> addDescriptors(nri::DescriptorPoolDesc&, const PassBindings&) noexcept;
 
         struct RasterBinding final
         {

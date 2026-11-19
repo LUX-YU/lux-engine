@@ -10,7 +10,7 @@
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -345,7 +345,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, index] : compiled.descriptor_uses)
             {
-                const auto& program = plan_->descriptor_plan_->passes[pass];
+                const auto& program = plan_->binding_plan_->pass(pass);
                 const auto& use = program.uses[index];
                 const auto kind = use.kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE_ARRAY
                                                                              : nri::TextureView::TEXTURE_ARRAY;
@@ -411,7 +411,7 @@ namespace lux::render::detail
             if (replacement.use.target == EImageViewTarget::DESCRIPTOR)
             {
                 const auto& use =
-                    plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot].uses[replacement.use.index];
+                    plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[replacement.use.index];
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, destination, 1};
                 core.UpdateDescriptorRanges(&update, 1);
@@ -994,7 +994,7 @@ namespace lux::render::detail
             binding.parameter_revision = value.parameter_revision;
             if (changed_parameters)
             {
-                for (auto pass : plan_->descriptor_plan_->parameter_uses[resource])
+                for (auto pass : plan_->resourceParameterUses(resource))
                 {
                     markParameters(pass, current);
                 }

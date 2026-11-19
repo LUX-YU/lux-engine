@@ -1,5 +1,5 @@
 #include <lux/engine/render/graph/DumpText.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <set>
 
@@ -173,21 +173,22 @@ namespace lux::render::detail
                 ",\"queue_role\":" + std::to_string(static_cast<unsigned>(pass.queue)) +
                 ",\"rendering_boundary\":" + quoteDumpText(boundaries[static_cast<unsigned>(pass.rendering_boundary)]) +
                 ",\"descriptors\":[";
-            const auto& layout = plan.descriptor_plan_->passes[pass.binding_slot];
-            for (std::size_t i = 0; i < layout.bindings.size(); ++i)
+            const auto& layout = plan.binding_plan_->pass(pass.binding_slot);
+            const auto& fields = graph.diagnostics.descriptor_fields[pass.binding_slot];
+            for (std::size_t i = 0; i < fields.size(); ++i)
             {
                 if (i)
                 {
                     output += ',';
                 }
-                const auto& binding = layout.bindings[i];
+                const auto& binding = fields[i];
                 output += "{\"name\":" + quoteDumpText(binding.name) + ",\"set\":" + std::to_string(binding.set) +
                           ",\"binding\":" + std::to_string(binding.binding) +
                           ",\"count\":" + std::to_string(binding.count) +
                           ",\"kind\":" + std::to_string(static_cast<unsigned>(binding.kind)) +
                           ",\"stages\":" + std::to_string(binding.stages) +
-                          ",\"record_bytes\":" + std::to_string(binding.block.size) +
-                          ",\"runtime_records\":" + (binding.block.runtime_records ? "true" : "false") + "}";
+                          ",\"record_bytes\":" + std::to_string(binding.record_bytes) +
+                          ",\"runtime_records\":" + (binding.runtime_records ? "true" : "false") + "}";
             }
             output += "],\"descriptor_inputs\":[";
             for (std::size_t i = 0; i < layout.uses.size(); ++i)

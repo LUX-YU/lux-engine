@@ -1,7 +1,8 @@
 #pragma once
 
 #include <array>
-#include <lux/engine/render/graph/ShaderInterface.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
+#include <lux/engine/render/graph/GraphAssemblyPlan.hpp>
 
 #include <NRI.h>
 #include <lux/engine/render/extensions/graph/Work.hpp>
@@ -16,29 +17,6 @@ namespace lux::render
 
 namespace lux::render::detail
 {
-    struct DescriptorUse final
-    {
-        std::uint32_t resource;
-        std::uint32_t set;
-        std::uint32_t binding;
-        EDescriptorKind kind;
-        VGraphRange range;
-        std::uint32_t field = 0;
-        std::uint32_t element = 0;
-        std::uint32_t sampler = kGraphInvalidIndex;
-        bool whole_resource = false;
-        std::uint32_t fallback = kGraphInvalidIndex;
-        bool comparison_sampler = false;
-    };
-
-    struct ParameterUse final
-    {
-        std::uint32_t resource;
-        std::string source_field;
-        rdesc::ShaderMember destination;
-        std::uint32_t source_offset = 0;
-    };
-
     struct PassBindings final
     {
         [[nodiscard]] PassDescriptorBindings recordBindings() const noexcept
@@ -61,27 +39,26 @@ namespace lux::render::detail
         std::vector<std::pair<std::uint32_t, EDeviceParameter>> device_parameters;
     };
 
-    // The sole cold physical placement decision. Shader relocation, native layouts and Context writes
-    // consume this same value. Private resources are packed; a resource never consumes an entire set.
+    struct ParameterRegion final
+    {
+        rdesc::ShaderBlock layout;
+        std::uint32_t group = 0, offset = 0;
+        std::vector<std::uint32_t> passes;
+        EParameterSource source = EParameterSource::INSTANCE;
+    };
+
+    // Cold shader relocation and native pipeline layout data. Fixed descriptor operands are
+    // lowered into the executable after queue, barrier, and layout planning.
     struct ShaderBindingPlan final
     {
         std::vector<PassBindings> passes;
 
-        struct ParameterRegion final
-        {
-            rdesc::ShaderBlock layout;
-            std::uint32_t group = 0, offset = 0;
-            std::vector<std::uint32_t> passes;
-            EParameterSource source = EParameterSource::INSTANCE;
-        };
-
         std::vector<ParameterRegion> parameter_regions;
         std::uint32_t local_parameter_bytes = 0;
         std::uint32_t instance_parameter_bytes = 0;
-        std::vector<std::vector<std::uint32_t>> parameter_uses;
-        std::vector<std::uint32_t> instance_parameter_uses;
-        std::vector<std::uint32_t> parameter_resources;
     };
+
+    [[nodiscard]] RenderResult<void> addPrivateDescriptors(nri::DescriptorPoolDesc&, const PassBindings&) noexcept;
 
     // The same reflected placement algorithm serves a fixed Graph pass and a material program.
     // Field indices and resource ranges have already been normalized at the authoring boundary.

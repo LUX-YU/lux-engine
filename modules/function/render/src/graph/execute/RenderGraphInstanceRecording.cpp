@@ -9,7 +9,6 @@
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {

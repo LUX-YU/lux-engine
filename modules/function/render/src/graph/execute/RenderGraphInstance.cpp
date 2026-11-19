@@ -3,7 +3,7 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -16,25 +16,23 @@ namespace lux::render::detail
     ) noexcept
         : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), programs_(&programs), output_(output)
     {
-        instance_values_.resize(plan.descriptor_plan_->instance_parameter_bytes);
+        instance_values_.resize(plan.binding_plan_->instance_parameter_bytes);
         condition_values_.resize(plan.condition_count_);
-        parameter_copies_.resize(plan.passes().size());
+        external_parameter_offsets_.resize(plan.passes().size() + 1);
         const auto parameter_bytes = plan.passes().empty() ? 0 :
             plan.passes().back().parameter_offset + plan.passes().back().parameter_size;
-        for (const auto& program : plan.descriptor_plan_->passes)
+        for (const auto& use : plan.binding_plan_->descriptor_uses)
         {
-            for (const auto& use : program.uses)
+            if (use.sampler == kGraphInvalidIndex)
             {
-                if (use.sampler != kGraphInvalidIndex && use.sampler >= samplers_.size())
-                {
-                    samplers_.resize(std::size_t(use.sampler) + 1);
-                }
-                if (use.sampler != kGraphInvalidIndex)
-                {
-                    samplers_[use.sampler].comparison = use.comparison_sampler;
-                    samplers_[use.sampler].used = true;
-                }
+                continue;
             }
+            if (use.sampler >= samplers_.size())
+            {
+                samplers_.resize(std::size_t(use.sampler) + 1);
+            }
+            samplers_[use.sampler].comparison = use.comparison_sampler;
+            samplers_[use.sampler].used = true;
         }
         frames_.resize(frame_count);
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
@@ -44,7 +42,7 @@ namespace lux::render::detail
             frame.parameters.resize(parameter_bytes);
             for (const auto& pass : plan.passes())
             {
-                const auto& initial = plan.descriptor_plan_->passes[pass.binding_slot].initial_parameters;
+                const auto& initial = plan.binding_plan_->pass(pass.binding_slot).initial_parameters;
                 std::ranges::copy(initial, frame.parameters.begin() + pass.parameter_offset);
             }
             frame.parameter_dirty.resize(plan.passes().size());
@@ -99,7 +97,7 @@ namespace lux::render::detail
         );
     }
 
-    RenderResult<void> RenderGraphInstance::initialize() noexcept
+    RenderResult<void> RenderGraphInstance::initialize(const GraphAssemblyPlan& assembly) noexcept
     {
         auto& session = *session_;
         const auto& plan = *plan_;
@@ -113,9 +111,9 @@ namespace lux::render::detail
         const bool invalid_programs = programs_->session() != &session || programs_->size() != plan.passes().size();
         const bool missing_programs = invalid_programs || std::ranges::any_of(plan.passes(), [&](const auto& pass)
         {
-            const auto& bindings = plan.descriptor_plan_->passes[pass.binding_slot];
+            const auto& bindings = plan.binding_plan_->pass(pass.binding_slot);
             const auto& native = (*programs_)[pass.binding_slot];
-            if (!bindings.private_bindings.empty() && !native.descriptors.layout) return true;
+            if (bindings.has_private_set && !native.descriptors.layout) return true;
             if (const auto* raster = plan.rasterCommands(pass))
                 return !std::holds_alternative<RasterListCommands>(raster->draw) && !native.pipeline;
             const auto* compute = plan.computeCommands(pass);
@@ -149,7 +147,7 @@ namespace lux::render::detail
                 return recordings;
             }
         }
-        if (auto descriptors = prepareDescriptors(); !descriptors)
+        if (auto descriptors = prepareDescriptors(assembly); !descriptors)
         {
             return descriptors;
         }

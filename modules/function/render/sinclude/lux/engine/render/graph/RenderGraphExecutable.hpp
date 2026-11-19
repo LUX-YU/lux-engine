@@ -12,12 +12,13 @@
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/GraphAssemblyPlan.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <memory>
 
 namespace lux::render::detail
 {
-    struct ShaderBindingPlan;
+    struct GraphBindingPlan;
     struct DescriptorUse;
     class DeviceSession;
     class RenderGraphExecutable;
@@ -355,6 +356,11 @@ namespace lux::render::detail
         std::vector<std::uint32_t> resource_slots;
     };
 
+    struct ParameterByteCopy final
+    {
+        std::uint32_t source_offset, destination_offset, bytes;
+    };
+
     // The execution candidate owns this immutable result; its graph instance borrows it until teardown.
     class LUX_RENDER_PUBLIC RenderGraphExecutable final
     {
@@ -439,8 +445,22 @@ namespace lux::render::detail
         friend class SubmissionOperation;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
+        [[nodiscard]] std::span<const ParameterByteCopy> instanceParameterCopies(std::uint32_t pass) const noexcept
+        {
+            const auto first = instance_copy_offsets_[pass];
+            const auto count = instance_copy_offsets_[std::size_t(pass) + 1] - first;
+            return std::span(instance_copies_).subspan(first, count);
+        }
+
+        [[nodiscard]] std::span<const std::uint32_t> resourceParameterUses(std::uint32_t resource) const noexcept
+        {
+            const auto first = resource_parameter_offsets_[resource];
+            const auto count = resource_parameter_offsets_[std::size_t(resource) + 1] - first;
+            return std::span(resource_parameter_passes_).subspan(first, count);
+        }
+
         RenderGraphExecutable(nri::Device* device, EffectOutputDesc output) noexcept;
-        std::unique_ptr<ShaderBindingPlan> descriptor_plan_;
+        std::unique_ptr<GraphBindingPlan> binding_plan_;
         nri::Device* device_;
         bool device_addresses_ = false;
         EffectOutputDesc output_description_;
@@ -451,6 +471,10 @@ namespace lux::render::detail
         std::vector<SubmissionBatch> submissions_;
         std::vector<ImportedAccess> imported_accesses_;
         PhysicalResourcePlan physical_resources_;
+        std::vector<ParameterByteCopy> instance_copies_;
+        std::vector<std::size_t> instance_copy_offsets_;
+        std::vector<std::size_t> resource_parameter_offsets_;
+        std::vector<std::uint32_t> resource_parameter_passes_, parameter_resources_;
 
         std::uint32_t output_ = kGraphInvalidIndex;
         std::uint32_t output_first_batch_ = kGraphInvalidIndex;
@@ -492,17 +516,20 @@ namespace lux::render::detail
         std::vector<CompiledPrograms::Layout*> layout_uses_;
     };
 
+    struct GraphDescriptorDiagnostics final
+    {
+        std::string name;
+        std::uint32_t set, binding, count, stages, record_bytes;
+        std::uint8_t kind;
+        bool runtime_records;
+    };
+
     struct GraphCompileDiagnostics final
     {
         std::vector<GraphPassId> source_passes;
         std::vector<std::string> resource_keys;
         std::vector<EResourceReuse> resource_reuse;
-    };
-
-    struct GraphAssemblyPlan final
-    {
-        std::vector<std::uint32_t> instance_recipes;
-        std::vector<std::uint32_t> source_pass_slots;
+        std::vector<std::vector<GraphDescriptorDiagnostics>> descriptor_fields;
     };
 
     struct PreparedRenderGraph final

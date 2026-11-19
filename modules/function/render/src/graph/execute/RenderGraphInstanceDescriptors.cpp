@@ -49,38 +49,6 @@ namespace lux::render::detail
         };
     }
 
-    RenderResult<void>
-    RenderGraphInstance::FrameResources::addDescriptors(
-        nri::DescriptorPoolDesc& pool,
-        const PassBindings& program
-    ) noexcept
-    {
-        if (program.private_bindings.empty()) return {};
-        if (pool.descriptorSetMaxNum == UINT32_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
-        ++pool.descriptorSetMaxNum;
-        for (const auto& binding : program.private_bindings)
-        {
-            auto* count = [&]() noexcept -> std::uint32_t*
-            {
-                switch (binding.kind)
-                {
-                case EDescriptorKind::TYPED_STORAGE_BUFFER: return &pool.storageBufferMaxNum;
-                case EDescriptorKind::STORAGE_BUFFER: return binding.access == EShaderAccess::READ_ONLY ?
-                    &pool.structuredBufferMaxNum : &pool.storageStructuredBufferMaxNum;
-                case EDescriptorKind::UNIFORM_BUFFER: return &pool.constantBufferMaxNum;
-                case EDescriptorKind::STORAGE_IMAGE: return &pool.storageTextureMaxNum;
-                case EDescriptorKind::SAMPLED_IMAGE: return &pool.textureMaxNum;
-                case EDescriptorKind::SAMPLER: return &pool.samplerMaxNum;
-                }
-                return nullptr;
-            }();
-            if (!count || binding.count > UINT32_MAX - *count)
-                return cxx::unexpected(RenderError{kDeviceCapacity});
-            *count += binding.count;
-        }
-        return {};
-    }
-
     RenderResult<nri::DescriptorSet*>
     RenderGraphInstance::prepareRasterBindings(
         std::uint32_t slot,
@@ -108,7 +76,7 @@ namespace lux::render::detail
         if (!record.set)
         {
             nri::DescriptorPoolDesc additional{};
-            if (auto counted = FrameResources::addDescriptors(additional, bindings); !counted)
+            if (auto counted = addPrivateDescriptors(additional, bindings); !counted)
                 return cxx::unexpected(counted.error());
             const bool fits = frame.descriptor_pool && std::ranges::all_of(descriptor_counts, [&](auto field) noexcept
             {
@@ -161,18 +129,11 @@ namespace lux::render::detail
     {
         auto& frame = frames_[slot];
         const auto& core = session_->nriCore();
-        nri::DescriptorPoolDesc required{};
+        auto required = plan_->binding_plan_->private_pool;
         if (auto counted = session_->descriptors().addSnapshotDescriptors(required); !counted) return counted;
-        for (const auto& pass : frame.passes)
-        {
-            auto counted = FrameResources::addDescriptors(
-                required, plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot]
-            );
-            if (!counted) return cxx::unexpected(counted.error());
-        }
         for (const auto& item : frame.raster_bindings)
         {
-            if (auto counted = FrameResources::addDescriptors(required, *item.bindings); !counted)
+            if (auto counted = addPrivateDescriptors(required, *item.bindings); !counted)
                 return cxx::unexpected(counted.error());
         }
         auto capacity = frame.descriptor_capacity;
@@ -192,19 +153,17 @@ namespace lux::render::detail
         auto shared = session_->descriptors().createSnapshot(*pool);
         if (!shared) return cxx::unexpected(shared.error());
         std::vector<std::pair<nri::DescriptorSet**, nri::DescriptorSet*>> replacements;
-        const auto allocate = [&](const PassBindings& program, PassDescriptorBindings native,
+        const auto allocate = [&](std::span<const DescriptorUse> uses, PassDescriptorBindings native,
                                   nri::DescriptorSet*& destination, const auto& view) noexcept -> RenderResult<void>
         {
-            if (program.private_bindings.empty()) return {};
             nri::DescriptorSet* set = nullptr;
             const auto allocated = core.AllocateDescriptorSets(
                 *pool, *native.layout, native.private_set, &set, 1, 0
             );
             if (allocated != nri::Result::SUCCESS) return cxx::unexpected(nativeError(allocated));
-            for (std::size_t i = 0; i < program.uses.size(); ++i)
+            for (std::size_t i = 0; i < uses.size(); ++i)
             {
-                const auto& use = program.uses[i];
-                if (program.bindings[use.field].count == 0) continue;
+                const auto& use = uses[i];
                 auto* descriptor = view(i, use);
                 if (!descriptor) continue;
                 const nri::UpdateDescriptorRangeDesc write{set, use.binding, use.element, &descriptor, 1};
@@ -215,11 +174,13 @@ namespace lux::render::detail
         };
         for (auto& pass : frame.passes)
         {
-            const auto& program = plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot];
+            const auto& program = plan_->binding_plan_->pass(pass.compiled_pass->binding_slot);
+            if (!program.has_private_set) continue;
             const auto& native = (*programs_)[pass.compiled_pass->binding_slot];
-            auto ready = allocate(program, native.descriptors, pass.private_descriptors,
-                [&](std::size_t i, const auto& use) noexcept
+            auto ready = allocate(program.uses, native.descriptors, pass.private_descriptors,
+                [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
             {
+                if (!program.bindings[use.field].private_binding) return nullptr;
                 if (use.sampler != kGraphInvalidIndex) return samplers_[use.sampler].descriptor;
                 // Feature preparation precedes Instance::rebind. Dirty resources already
                 // name the new allocation; the old cached view is not a valid replay source.
@@ -230,8 +191,13 @@ namespace lux::render::detail
         }
         for (auto& item : frame.raster_bindings)
         {
-            auto ready = allocate(*item.bindings, item.bindings->recordBindings(), item.set,
-                [&](std::size_t i, const auto&) noexcept { return item.views[i]; });
+            const auto& program = *item.bindings;
+            if (program.private_bindings.empty()) continue;
+            auto ready = allocate(program.uses, program.recordBindings(), item.set,
+                [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
+            {
+                return program.bindings[use.field].count ? item.views[i] : nullptr;
+            });
             if (!ready) return cxx::unexpected(ready.error());
         }
         // Earlier Features may already have produced CPU packets for this same writable FIF.
@@ -510,13 +476,18 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::prepareDescriptors() noexcept
+    RenderResult<void> RenderGraphInstance::prepareDescriptors(const GraphAssemblyPlan& assembly) noexcept
     {
-        const auto& layout = *plan_->descriptor_plan_;
-        // Actual input parameter offsets are qualified once at Attach. Physical slices
-        // share that type/layout; only their values and GPU addresses differ at recording.
+        const auto& layout = *plan_->binding_plan_;
+        if (assembly.parameter_links.size() != plan_->passes().size())
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        // Link external input layouts once at Attach and store the resulting byte copies contiguously.
+        external_parameter_copies_.clear();
         for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
         {
+            external_parameter_offsets_[p] = external_parameter_copies_.size();
             const auto& compiled_pass = plan_->passes()[p];
             if (const auto* raster = compiled_pass.rasterScope(); raster && raster->state_input)
             {
@@ -531,10 +502,8 @@ namespace lux::render::detail
             {
                 continue;
             }
-            const auto& pass_layout = layout.passes[compiled_pass.binding_slot];
-            for (const auto& mapping : pass_layout.parameters)
+            for (const auto& mapping : assembly.parameter_links[compiled_pass.binding_slot])
             {
-                if (mapping.resource == kGraphInvalidIndex) continue;
                 const ResourceInput source{
                     nullptr, 0, 0, frames_[0].bindings[mapping.resource].parameters,
                     frames_[0].bindings[mapping.resource].parameter_layout
@@ -563,33 +532,28 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
-                parameter_copies_[p].push_back(
-                    {mapping.resource,
-                     field->offset,
-                     destination.offset,
-                     std::uint32_t(bytes)}
+                external_parameter_copies_.push_back(
+                    {mapping.resource, {field->offset, destination.offset, std::uint32_t(bytes)}}
                 );
             }
         }
-        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        external_parameter_offsets_.back() = external_parameter_copies_.size();
+        for (std::uint32_t pass = 0; pass < plan_->passes().size(); ++pass)
         {
-            for (std::uint32_t pass = 0; pass < plan_->passes().size(); ++pass)
+            const auto* raster = plan_->passes()[pass].rasterScope();
+            const bool has_external = external_parameter_offsets_[pass] != external_parameter_offsets_[pass + 1];
+            const bool needs_parameters = has_external || !plan_->instanceParameterCopies(pass).empty() ||
+                (raster && raster->state_input);
+            if (needs_parameters)
             {
-                const auto* raster = plan_->passes()[pass].rasterScope();
-                if (!layout.passes[pass].parameters.empty() ||
-                    (raster && raster->state_input))
+                for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
                 {
                     markParameters(pass, slot);
                 }
             }
         }
-        nri::DescriptorPoolDesc pool{};
+        auto pool = layout.private_pool;
         if (auto counted = session_->descriptors().addSnapshotDescriptors(pool); !counted) return counted;
-        for (const auto& pass : plan_->passes())
-        {
-            if (auto counted = FrameResources::addDescriptors(pool, layout.passes[pass.binding_slot]); !counted)
-                return counted;
-        }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
@@ -612,15 +576,16 @@ namespace lux::render::detail
             }
             for (auto& pass : frame.passes)
             {
-                const auto& program = layout.passes[pass.compiled_pass->binding_slot];
+                const auto& program = layout.pass(pass.compiled_pass->binding_slot);
                 pass.private_views.resize(program.uses.size());
                 pass.history_views.resize(program.uses.size());
-                if (!program.private_bindings.empty())
+                if (program.has_private_set)
                 {
+                    const auto& native = (*programs_)[pass.compiled_pass->binding_slot].descriptors;
                     const auto status = session_->nriCore().AllocateDescriptorSets(
                         *frame.descriptor_pool,
-                        *(*programs_)[pass.compiled_pass->binding_slot].descriptors.layout,
-                        program.private_set,
+                        *native.layout,
+                        native.private_set,
                         &pass.private_descriptors,
                         1,
                         0
@@ -666,7 +631,7 @@ namespace lux::render::detail
     RenderResult<void> RenderGraphInstance::rebind(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
-        const auto& layout = *plan_->descriptor_plan_;
+        const auto& layout = *plan_->binding_plan_;
         const auto& core = session_->nriCore();
         for (auto resource : frame.changed_resources)
         {
@@ -717,7 +682,7 @@ namespace lux::render::detail
                     continue;
                 }
                 auto& pass = frame.passes[p];
-                const auto& program = layout.passes[pass.compiled_pass->binding_slot];
+                const auto& program = layout.pass(pass.compiled_pass->binding_slot);
                 const auto& use = program.uses[index];
                 nri::Descriptor* candidate = nullptr;
                 auto status = nri::Result::SUCCESS;
@@ -782,22 +747,29 @@ namespace lux::render::detail
 
     bool RenderGraphInstance::usesParameterSource(EParameterSource source) const noexcept
     {
-        return std::ranges::any_of(plan_->descriptor_plan_->parameter_regions,
-            [&](const auto& region) { return region.source == source && region.layout.size != 0; });
+        return std::ranges::any_of(plan_->binding_plan_->parameter_regions,
+            [&](const auto& region) { return region.source == source && region.bytes != 0; });
     }
 
-    RenderResult<void> RenderGraphInstance::bindParameterSource(
-        EParameterSource source, const rdesc::ShaderBlock& layout
+    RenderResult<void>
+    RenderGraphInstance::bindParameterSource(
+        const GraphAssemblyPlan& assembly, EParameterSource source, const rdesc::ShaderBlock& layout
     ) noexcept
     {
         const auto index = static_cast<std::size_t>(source);
         if (index >= source_sizes_.size() || source == EParameterSource::INSTANCE)
             return cxx::unexpected(RenderError{kDeviceArgument});
-        std::vector<SourceCopy> copies;
-        for (const auto& region : plan_->descriptor_plan_->parameter_regions)
+        const auto& regions = plan_->binding_plan_->parameter_regions;
+        if (assembly.parameter_layouts.size() != regions.size())
         {
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
+        std::vector<SourceCopy> copies;
+        for (std::size_t i = 0; i < regions.size(); ++i)
+        {
+            const auto& region = regions[i];
             if (region.source != source) continue;
-            for (const auto& field : region.layout.fields)
+            for (const auto& field : assembly.parameter_layouts[i].fields)
             {
                 const auto found = std::ranges::find(layout.fields, field.path, &rdesc::ShaderMember::path);
                 if (found == layout.fields.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -808,7 +780,7 @@ namespace lux::render::detail
                     (field.columns ? std::uint64_t(field.columns - 1) * field.matrix_stride : 0);
                 const bool invalid_range = bytes == 0 || bytes > UINT32_MAX ||
                     std::uint64_t(found->offset) + bytes > layout.size ||
-                    std::uint64_t(field.offset) + bytes > region.layout.size;
+                    std::uint64_t(field.offset) + bytes > region.bytes;
                 if (mismatch || invalid_range) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 copies.push_back({source, found->offset, region.offset + field.offset, std::uint32_t(bytes)});
             }
@@ -842,7 +814,7 @@ namespace lux::render::detail
         std::span<const std::uint8_t> conditions
     ) noexcept
     {
-        const auto local_bytes = plan_->descriptor_plan_->local_parameter_bytes;
+        const auto local_bytes = plan_->binding_plan_->local_parameter_bytes;
         if (parameters.size() != local_bytes)
             return cxx::unexpected(RenderError{kDeviceArgument});
         if (auto valid = setConditions(conditions); !valid) return valid;
@@ -866,9 +838,9 @@ namespace lux::render::detail
 
     void RenderGraphInstance::markInstanceParameters(std::uint32_t offset, std::uint32_t bytes) noexcept
     {
-        for (const auto& region : plan_->descriptor_plan_->parameter_regions)
+        for (const auto& region : plan_->binding_plan_->parameter_regions)
         {
-            if (offset >= region.offset + region.layout.size || region.offset >= offset + bytes) continue;
+            if (offset >= region.offset + region.bytes || region.offset >= offset + bytes) continue;
             for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
             {
                 for (auto pass : region.passes) markParameters(pass, slot);
@@ -881,11 +853,11 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         // Unversioned external borrows retain their prior live semantics. Versioned inputs and
         // owned instance defaults are copied only into the FIF slices they actually invalidated.
-        for (auto resource : plan_->descriptor_plan_->parameter_resources)
+        for (auto resource : plan_->parameter_resources_)
         {
             if (frame.bindings[resource].parameter_revision == 0)
             {
-                for (auto pass : plan_->descriptor_plan_->parameter_uses[resource])
+                for (auto pass : plan_->resourceParameterUses(resource))
                 {
                     markParameters(pass, slot);
                 }
@@ -916,30 +888,25 @@ namespace lux::render::detail
                 }
             }
             auto& parameters = frame.passes[p].parameters;
-            const auto& compiled = plan_->passes()[p];
-            for (const auto& mapping : plan_->descriptor_plan_->passes[compiled.binding_slot].parameters)
+            const auto copyChanged = [&](const ParameterByteCopy& copy, const std::byte* input) noexcept
             {
-                if (mapping.resource != kGraphInvalidIndex) continue;
-                const auto& field = mapping.destination;
-                const auto bytes = std::size_t(field.rows) * 4 +
-                    (field.columns ? std::size_t(field.columns - 1) * field.matrix_stride : 0);
-                auto* destination = parameters.data() + field.offset;
-                const auto* source = instance_values_.data() + mapping.source_offset;
-                if (std::memcmp(destination, source, bytes) != 0)
-                {
-                    std::memcpy(destination, source, bytes);
-                    invalidateRecording(slot, p);
-                }
-            }
-            for (const auto& copy : parameter_copies_[p])
-            {
-                const auto* source = frame.bindings[copy.resource].parameters.data();
                 auto* destination = parameters.data() + copy.destination_offset;
-                if (std::memcmp(destination, source + copy.source_offset, copy.bytes) != 0)
+                const auto* source = input + copy.source_offset;
+                if (std::memcmp(destination, source, copy.bytes) != 0)
                 {
-                    std::memcpy(destination, source + copy.source_offset, copy.bytes);
+                    std::memcpy(destination, source, copy.bytes);
                     invalidateRecording(slot, p);
                 }
+            };
+            for (const auto& copy : plan_->instanceParameterCopies(p))
+            {
+                copyChanged(copy, instance_values_.data());
+            }
+            const auto first = external_parameter_offsets_[p];
+            const auto count = external_parameter_offsets_[std::size_t(p) + 1] - first;
+            for (const auto& external : std::span(external_parameter_copies_).subspan(first, count))
+            {
+                copyChanged(external.copy, frame.bindings[external.resource].parameters.data());
             }
         }
 

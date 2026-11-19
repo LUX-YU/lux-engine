@@ -6,7 +6,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -436,7 +436,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, use_index] : resource.descriptor_uses)
             {
-                const auto& program = plan_->descriptor_plan_->passes[pass];
+                const auto& program = plan_->binding_plan_->pass(pass);
                 const auto& use = program.uses[use_index];
                 nri::Descriptor* descriptor = nullptr;
                 nri::Result status;
@@ -695,7 +695,7 @@ namespace lux::render::detail
                 if (view.use.target == EImageViewTarget::DESCRIPTOR)
                 {
                     const auto& use =
-                        plan_->descriptor_plan_->passes[pass.compiled_pass->binding_slot].uses[view.use.index];
+                        plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[view.use.index];
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, use.binding, use.element, destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);

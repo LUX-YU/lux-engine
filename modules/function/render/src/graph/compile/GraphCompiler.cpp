@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 namespace lux::render::detail
 {
@@ -185,7 +186,8 @@ namespace lux::render::detail
         ETransientAllocation allocation,
         std::span<const std::uint32_t> parameter_groups,
         bool device_addresses,
-        std::vector<std::uint32_t>& recipe_indices
+        std::vector<std::uint32_t>& recipe_indices,
+        ShaderBindingPlan& bindings
     ) noexcept
     {
         if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
@@ -391,7 +393,7 @@ namespace lux::render::detail
         {
             layouts->passes.push_back(std::move(source_layouts[id.index]));
         }
-        plan.descriptor_plan_ = std::make_unique<ShaderBindingPlan>(std::move(*layouts));
+        bindings = std::move(*layouts);
         std::size_t parameter_bytes = 0;
         for (const auto id : analysis.execution_order)
         {
@@ -404,7 +406,7 @@ namespace lux::render::detail
             pass.kind = source.kind;
             pass.binding_slot = static_cast<std::uint32_t>(plan.recording_.passes.size());
             pass.parameter_offset = parameter_bytes;
-            pass.parameter_size = plan.descriptor_plan_->passes[pass.binding_slot].initial_parameters.size();
+            pass.parameter_size = bindings.passes[pass.binding_slot].initial_parameters.size();
             parameter_bytes += pass.parameter_size;
             if (source.condition && source.condition->source == EConditionSource::HISTORY_VALID &&
                 plan.resources_[source.condition->input].history == kGraphInvalidIndex)
@@ -451,10 +453,12 @@ namespace lux::render::detail
     RenderResult<void> GraphCompiler::finishPlan(
         RenderGraphExecutable& plan, const RenderGraph& graph, const RenderGraphAnalysis& analysis,
         std::array<const QueueProperties*, 3> queues, const nri::DeviceDesc& limits, ETransientAllocation allocation,
-        std::vector<EResourceReuse>& resource_reuse, GraphQueuePolicy policy
+        GraphCompileDiagnostics& diagnostics, GraphQueuePolicy policy, ShaderBindingPlan& parameter_plan,
+        GraphAssemblyPlan& assembly
     ) noexcept
     {
-        for (const auto& placement : plan.descriptor_plan_->passes)
+        auto& resource_reuse = diagnostics.resource_reuse;
+        for (const auto& placement : parameter_plan.passes)
         {
             for (std::size_t i = 0; i < placement.uses.size(); ++i)
             {
@@ -464,64 +468,76 @@ namespace lux::render::detail
                 }
             }
         }
-        auto& parameter_plan = *plan.descriptor_plan_;
-        parameter_plan.parameter_uses.resize(plan.resources_.size());
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> resource_uses;
+        plan.instance_copy_offsets_.reserve(plan.passes().size() + 1);
+        plan.instance_copy_offsets_.push_back(0);
         for (std::uint32_t p = 0; p < plan.passes().size(); ++p)
         {
             const auto& pass = plan.passes()[p];
             if (const auto* raster = pass.rasterScope(); raster && raster->state_input)
             {
-                parameter_plan.parameter_uses[raster->state_input->resource.index].push_back(p);
+                resource_uses.emplace_back(raster->state_input->resource.index, p);
             }
-            for (const auto& mapping : parameter_plan.passes[pass.binding_slot].parameters)
+            auto& pass_layout = parameter_plan.passes[pass.binding_slot];
+            auto& region = parameter_plan.parameter_regions[pass_layout.instance_region];
+            auto& mappings = pass_layout.parameters;
+            bool has_external = false;
+            for (const auto& mapping : mappings)
             {
-                auto& uses = mapping.resource == kGraphInvalidIndex ? parameter_plan.instance_parameter_uses
-                                                                    : parameter_plan.parameter_uses[mapping.resource];
-                uses.push_back(p);
-                if (mapping.resource == kGraphInvalidIndex)
+                if (mapping.resource != kGraphInvalidIndex)
                 {
-                    const auto& field = mapping.destination;
-                    const auto bytes = field.rows * 4 + (field.columns ? (field.columns - 1) * field.matrix_stride : 0);
-                    for (auto& region : parameter_plan.parameter_regions)
-                    {
-                        if (mapping.source_offset < region.offset + region.layout.size &&
-                            region.offset < mapping.source_offset + bytes)
-                        {
-                            region.passes.push_back(p);
-                        }
-                    }
+                    resource_uses.emplace_back(mapping.resource, p);
+                    has_external = true;
+                    continue;
                 }
+                const auto& field = mapping.destination;
+                const auto bytes = field.rows * 4 + (field.columns ? (field.columns - 1) * field.matrix_stride : 0);
+                plan.instance_copies_.push_back({mapping.source_offset, field.offset, bytes});
+                region.passes.push_back(p);
             }
+            if (!has_external)
+            {
+                mappings = std::vector<ParameterUse>{};
+            }
+            else
+            {
+                std::erase_if(mappings, [](const auto& mapping) noexcept
+                {
+                    return mapping.resource == kGraphInvalidIndex;
+                });
+            }
+            plan.instance_copy_offsets_.push_back(plan.instance_copies_.size());
         }
-        const auto deduplicate = [](auto& uses)
-        {
-            std::ranges::sort(uses);
-            uses.erase(std::unique(uses.begin(), uses.end()), uses.end());
-        };
-        deduplicate(parameter_plan.instance_parameter_uses);
         for (auto& region : parameter_plan.parameter_regions)
         {
-            deduplicate(region.passes);
+            // Pass slots were appended in order; a pass may consume more than one field in its region.
+            region.passes.erase(std::unique(region.passes.begin(), region.passes.end()), region.passes.end());
         }
-        for (std::uint32_t resource = 0; resource < parameter_plan.parameter_uses.size(); ++resource)
+        std::ranges::sort(resource_uses);
+        resource_uses.erase(std::unique(resource_uses.begin(), resource_uses.end()), resource_uses.end());
+        plan.resource_parameter_offsets_.resize(plan.resources_.size() + 1);
+        plan.resource_parameter_passes_.reserve(resource_uses.size());
+        for (const auto [resource, pass] : resource_uses)
         {
-            auto& uses = parameter_plan.parameter_uses[resource];
-            deduplicate(uses);
-            if (!uses.empty())
+            auto& count = plan.resource_parameter_offsets_[std::size_t(resource) + 1];
+            if (count++ == 0)
             {
-                parameter_plan.parameter_resources.push_back(resource);
+                plan.parameter_resources_.push_back(resource);
             }
+            plan.resource_parameter_passes_.push_back(pass);
         }
+        auto& offsets = plan.resource_parameter_offsets_;
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
         planConditions(graph, analysis.execution_order, plan.resources_, plan.recording_);
         const auto order = std::span(analysis.execution_order);
-        const auto use_stages = collectUseStages(graph, order, *plan.descriptor_plan_, limits.graphicsAPI);
+        const auto use_stages = collectUseStages(graph, order, parameter_plan, limits.graphicsAPI);
         const bool presents = plan.output_description_.kind == ETargetKind::SURFACE;
         const auto surface_output = presents ? plan.output_ : kGraphInvalidIndex;
         const auto lowerSchedule = [&]() noexcept -> RenderResult<void>
         {
             // Derive the actual submit DAG from the candidate's logical transitions before choosing storage.
             auto barriers = planBarriers(
-                graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
+                graph, analysis, parameter_plan, plan.resources_, plan.recording_, plan.output_description_,
                 limits.graphicsAPI
             );
             if (!barriers)
@@ -621,7 +637,7 @@ namespace lux::render::detail
             // Rebuild only the cold transition templates using the selected physical identities.
             // Their ordering is already proved: no submission dependency or CPU wait is added.
             auto barriers = planBarriers(
-                graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
+                graph, analysis, parameter_plan, plan.resources_, plan.recording_, plan.output_description_,
                 limits.graphicsAPI, &plan.physical_resources_
             );
             if (!barriers)
@@ -710,13 +726,60 @@ namespace lux::render::detail
         }
         compactImageTransitions(plan.resources_, plan.recording_);
         const bool valid_program = validRecordingTables(
-            plan.recording_, plan.submissions_, plan.resources_.size(), plan.descriptor_plan_->passes.size(),
+            plan.recording_, plan.submissions_, plan.resources_.size(), parameter_plan.passes.size(),
             plan.condition_count_, plan.histories_.size()
         );
         if (!valid_program)
         {
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
+        auto bindings = std::make_unique<GraphBindingPlan>();
+        bindings->parameter_regions.reserve(parameter_plan.parameter_regions.size());
+        assembly.parameter_layouts.reserve(parameter_plan.parameter_regions.size());
+        for (auto& region : parameter_plan.parameter_regions)
+        {
+            bindings->parameter_regions.push_back({
+                region.group, region.offset, region.layout.size, std::move(region.passes), region.source
+            });
+            assembly.parameter_layouts.push_back(std::move(region.layout));
+        }
+        bindings->local_parameter_bytes = parameter_plan.local_parameter_bytes;
+        bindings->instance_parameter_bytes = parameter_plan.instance_parameter_bytes;
+        bindings->passes.reserve(parameter_plan.passes.size());
+        assembly.parameter_links.reserve(parameter_plan.passes.size());
+        diagnostics.descriptor_fields.reserve(parameter_plan.passes.size());
+        for (auto& source : parameter_plan.passes)
+        {
+            if (auto added = addPrivateDescriptors(bindings->private_pool, source); !added)
+            {
+                return added;
+            }
+            bindings->passes.push_back({
+                {bindings->descriptor_fields.size(), source.bindings.size()},
+                {bindings->descriptor_uses.size(), source.uses.size()},
+                {bindings->initial_parameters.size(), source.initial_parameters.size()},
+                !source.private_bindings.empty()
+            });
+            bindings->descriptor_uses.insert(bindings->descriptor_uses.end(), source.uses.begin(), source.uses.end());
+            bindings->initial_parameters.insert(
+                bindings->initial_parameters.end(), source.initial_parameters.begin(), source.initial_parameters.end()
+            );
+            assembly.parameter_links.push_back(std::move(source.parameters));
+            auto& fields = diagnostics.descriptor_fields.emplace_back();
+            fields.reserve(source.bindings.size());
+            for (auto& binding : source.bindings)
+            {
+                const auto view = binding.bufferView(nullptr, 0, 0);
+                bindings->descriptor_fields.push_back({
+                    view.type, view.format, view.structureStride, binding.image_arrayed, binding.count != 0
+                });
+                fields.push_back({
+                    std::move(binding.name), binding.set, binding.binding, binding.count, binding.stages,
+                    binding.block.size, static_cast<std::uint8_t>(binding.kind), binding.block.runtime_records
+                });
+            }
+        }
+        plan.binding_plan_ = std::move(bindings);
         return {};
     }
 
@@ -725,14 +788,20 @@ namespace lux::render::detail
         const RenderGraphAnalysis& analysis, ETransientAllocation allocation, GraphQueuePolicy policy
     ) noexcept
     {
-        std::vector<std::uint32_t> recipes;
-        auto plan = planStructure(nullptr, limits, queues, graph, analysis, nullptr, allocation, {}, false, recipes);
+        GraphAssemblyPlan assembly;
+        ShaderBindingPlan bindings;
+        auto plan = planStructure(
+            nullptr, limits, queues, graph, analysis, nullptr, allocation, {}, false,
+            assembly.instance_recipes, bindings
+        );
         if (!plan)
         {
             return cxx::unexpected(plan.error());
         }
-        std::vector<EResourceReuse> resource_reuse;
-        auto finished = finishPlan(*plan, graph, analysis, queues, limits, allocation, resource_reuse, policy);
+        GraphCompileDiagnostics diagnostics;
+        auto finished = finishPlan(
+            *plan, graph, analysis, queues, limits, allocation, diagnostics, policy, bindings, assembly
+        );
         if (!finished)
         {
             return cxx::unexpected(finished.error());
@@ -742,7 +811,8 @@ namespace lux::render::detail
 
     exec::task<RenderResult<void>>
     GraphCompiler::prepareOperations(
-        RenderGraphExecutable& plan,
+        const RenderGraphExecutable& plan,
+        ShaderBindingPlan& layouts,
         DeviceSession& session,
         NativeGraphPrograms& native,
         const RenderGraph& graph,
@@ -761,7 +831,7 @@ namespace lux::render::detail
             }
             const auto& source = graph.passes()[order[pass.binding_slot].index];
             const auto& input = source.interface;
-            auto& bindings = plan.descriptor_plan_->passes[pass.binding_slot];
+            auto& bindings = layouts.passes[pass.binding_slot];
             const rdesc::ShaderProgramArtifact* shader = nullptr;
             std::vector<nri::Format> colors;
             std::optional<PassRenderingInfo> rendering;
@@ -979,7 +1049,8 @@ namespace lux::render::detail
             &session.queue(EQueueRole::GRAPHICS).properties(), &session.queue(EQueueRole::COMPUTE).properties(),
             &session.queue(EQueueRole::TRANSFER).properties()
         };
-        std::vector<std::uint32_t> recipes;
+        GraphAssemblyPlan assembly;
+        ShaderBindingPlan bindings;
         auto candidate = co_await (
             stdexec::schedule(cpu) |
             stdexec::then(
@@ -987,7 +1058,7 @@ namespace lux::render::detail
                 {
                     return planStructure(
                         &session.device(), session.description(), queues, graph, analysis, target, allocation,
-                        parameter_groups, session.usesDeviceAddresses(), recipes
+                        parameter_groups, session.usesDeviceAddresses(), assembly.instance_recipes, bindings
                     );
                 }
             ) |
@@ -1001,7 +1072,9 @@ namespace lux::render::detail
             co_return cxx::unexpected(candidate.error());
         }
         NativeGraphPrograms native(session, candidate->passes().size());
-        auto prepared = co_await prepareOperations(*candidate, session, native, graph, analysis.execution_order, cpu);
+        auto prepared = co_await prepareOperations(
+            *candidate, bindings, session, native, graph, analysis.execution_order, cpu
+        );
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -1014,7 +1087,7 @@ namespace lux::render::detail
                 {
                     return finishPlan(
                         *candidate, graph, analysis, queues, session.description(), allocation,
-                        diagnostics.resource_reuse, {session.graphQueueCosts(), exercise_async}
+                        diagnostics, {session.graphQueueCosts(), exercise_async}, bindings, assembly
                     );
                 }
             ) |
@@ -1033,7 +1106,6 @@ namespace lux::render::detail
         {
             diagnostics.resource_keys.push_back(resource.key);
         }
-        GraphAssemblyPlan assembly{std::move(recipes), {}};
         assembly.source_pass_slots.resize(graph.passes().size(), kGraphInvalidIndex);
         for (std::uint32_t slot = 0; slot < analysis.execution_order.size(); ++slot)
         {

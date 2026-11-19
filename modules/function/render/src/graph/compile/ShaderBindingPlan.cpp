@@ -11,6 +11,38 @@
 
 namespace lux::render::detail
 {
+    RenderResult<void>
+    addPrivateDescriptors(
+        nri::DescriptorPoolDesc& pool,
+        const PassBindings& program
+    ) noexcept
+    {
+        if (program.private_bindings.empty()) return {};
+        if (pool.descriptorSetMaxNum == UINT32_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
+        ++pool.descriptorSetMaxNum;
+        for (const auto& binding : program.private_bindings)
+        {
+            auto* count = [&]() noexcept -> std::uint32_t*
+            {
+                switch (binding.kind)
+                {
+                case EDescriptorKind::TYPED_STORAGE_BUFFER: return &pool.storageBufferMaxNum;
+                case EDescriptorKind::STORAGE_BUFFER: return binding.access == EShaderAccess::READ_ONLY ?
+                    &pool.structuredBufferMaxNum : &pool.storageStructuredBufferMaxNum;
+                case EDescriptorKind::UNIFORM_BUFFER: return &pool.constantBufferMaxNum;
+                case EDescriptorKind::STORAGE_IMAGE: return &pool.storageTextureMaxNum;
+                case EDescriptorKind::SAMPLED_IMAGE: return &pool.textureMaxNum;
+                case EDescriptorKind::SAMPLER: return &pool.samplerMaxNum;
+                }
+                return nullptr;
+            }();
+            if (!count || binding.count > UINT32_MAX - *count)
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+            *count += binding.count;
+        }
+        return {};
+    }
+
     RenderResult<nri::PipelineLayout*>
     createPipelineLayout(
         nri::Device& device,

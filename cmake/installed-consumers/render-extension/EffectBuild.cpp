@@ -73,6 +73,9 @@ struct Monitor final
     static inline std::atomic<unsigned> retired_textures = 0;
     static inline std::atomic<unsigned> reject_after = 0;
     static inline std::atomic<nri::Result> injected = nri::Result::SUCCESS;
+    static inline std::atomic<const nri::Queue*> fault_queue = nullptr;
+    static inline std::atomic<std::uint64_t> fault_signal = 0;
+    static inline std::atomic<std::uint32_t> fault_waits = 0, fault_commands = 0;
     static inline thread_local bool on_server = false;
     static inline decltype(nri::CoreInterface::CmdBeginRendering) begin_rendering = nullptr;
     static inline std::atomic<unsigned> records = 0, parallel_arrivals = 0;
@@ -124,7 +127,18 @@ struct Monitor final
                 submitted.store(true);
                 hold_submit.wait(true);
             }
-            if (reject_after.load() && reject_after.fetch_sub(1) == 1) return injected.load();
+            auto remaining = reject_after.load();
+            while (remaining && !reject_after.compare_exchange_weak(remaining, remaining - 1))
+            {
+            }
+            if (remaining == 1)
+            {
+                fault_queue.store(&queue);
+                fault_signal.store(description.signalFenceNum ? description.signalFences[0].value : 0);
+                fault_waits.store(description.waitFenceNum);
+                fault_commands.store(description.commandBufferNum);
+                return injected.load();
+            }
             const auto result = submit(queue, description);
             if (result == nri::Result::SUCCESS) ++accepted_submits;
             return result;
@@ -798,10 +812,36 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(!recovered_first.error.type && !recovered_second.error.type && executed(suffix) == suffix_before + 1);
     std::puts("ACCEPTED PREFIX PASS: independent replies preserve the accepted Job and explicit retry recovers");
 
+    const auto before_unknown = server->stats().submissions;
+    const auto before_native = Monitor::accepted_submits.load();
+    Monitor::fault_queue.store(nullptr);
     Monitor::injected.store(nri::Result::FAILURE);
     Monitor::reject_after.store(2);
     const auto [accepted_job, unknown] = batch(job.job, suffix);
-    CHECK(accepted_job.job == job.job && unknown.error.type == kOutcomeUnknown);
+    const bool correct_receipts = !accepted_job.error.type && accepted_job.job == job.job &&
+        unknown.error.type == kOutcomeUnknown;
+    if (!correct_receipts)
+    {
+        std::fprintf(
+            stderr,
+            "UNKNOWN receipt failure prefix=%u/%u error=%llu frame=%llu slot=%u "
+            "suffix=%u/%u error=%llu expected=%llu\n",
+            accepted_job.job.index, accepted_job.job.gen, static_cast<unsigned long long>(accepted_job.error.type),
+            static_cast<unsigned long long>(accepted_job.frame_index), accepted_job.slot_index,
+            unknown.job.index, unknown.job.gen, static_cast<unsigned long long>(unknown.error.type),
+            static_cast<unsigned long long>(kOutcomeUnknown)
+        );
+        std::fprintf(
+            stderr,
+            "UNKNOWN submit state native_delta=%u server_delta=%llu remaining=%u queue=%p signal=%llu waits=%u CBs=%u\n",
+            Monitor::accepted_submits.load() - before_native,
+            static_cast<unsigned long long>(server->stats().submissions - before_unknown), Monitor::reject_after.load(),
+            static_cast<const void*>(Monitor::fault_queue.load()),
+            static_cast<unsigned long long>(Monitor::fault_signal.load()),
+            Monitor::fault_waits.load(), Monitor::fault_commands.load()
+        );
+    }
+    CHECK(correct_receipts);
     render.join();
     CHECK(!ran && ran.error().type == kOutcomeUnknown && server->stats().validation_errors == 0);
     std::puts("UNKNOWN OUTCOME PASS: device admission stopped and accepted prefix retired");

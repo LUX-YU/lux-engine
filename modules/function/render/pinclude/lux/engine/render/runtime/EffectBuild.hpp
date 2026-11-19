@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/extensions/effect/EffectStateFactory.hpp>
 #include <lux/engine/render/extensions/features/EffectDefinition.hpp>
 #include <lux/engine/render/extensions/detail/FeatureEntry.hpp>
 #include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
@@ -19,11 +20,22 @@ namespace lux::render::runtime_detail
         bool binds_graph = false;
     };
 
+    struct EffectContributions final
+    {
+        struct CommandSelection final
+        {
+            RenderEffect::CommandRoute route;
+            std::size_t state;
+        };
+        std::vector<EffectStateFactory> factories;
+        std::vector<CommandSelection> commands;
+    };
+
     struct QualifiedEffectRecipe final
     {
         std::vector<const FeatureEntry*> features;
         std::vector<RenderEffect::ResourceDependency> resources;
-        std::vector<CommandBindingLocation> commands;
+        EffectContributions contributions;
         bool uses_capabilities = false;
     };
 

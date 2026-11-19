@@ -73,8 +73,9 @@ payload is identical. Keep the returned IDs, or query the catalog on its owner, 
 Each successful registration is its own transaction; install shared dependencies once before publishing implementations.
 
 An implementation declares `using Capability = ...`, `Features` and `Bindings`.
-`registerCapabilityImplementation<I>()` references registered dependencies and their exact method locations;
-it does not resubmit factories or overwrite configurations. Resource commands share one protocol record but retain
+`registerCapabilityImplementation<I>()` references registered dependencies and their exact method locations.
+The implementation supplies its own contribution state factory when it exposes Effect commands.
+Resource commands share one protocol record and retain
 separate call locations for each Resource declaration, even when they use the same Storage class. The directory
 records each implementation's parent CapabilityId; its own ID is already the container key. Cold add/replace/remove
 calls reject active execution and invalid entries; replacement creates a fresh generation. Resource configuration
@@ -128,7 +129,13 @@ operation returns Busy, and Jobs that need a Resource with an exclusive command 
 terminal delivery. Unrelated IPC, Jobs and transfers can proceed.
 
 Use `registerCommands` with `CommandBinding::declare<C, function>()` for stateless typed sync/async functions.
-Capability `Bindings` also accepts such functions, selecting their exact implementation without a dummy owner.
+For a request with an `effectId` selector, declare its synchronous method with
+`CommandBinding::declareForEffect<C, State, function>()` and select the corresponding `EffectCommandMethod`
+in the implementation's `Bindings`. The implementation supplies `EffectStateFactory::declare<State, create>()`.
+After successful graph assembly, `CreateEffect` creates one state per selected contribution on the Server
+owner and links each full command ID to its method and state. It rejects two contributions claiming
+the same command, including repeated selections of one implementation. The typed method receives its
+state by reference and acknowledges CPU updates. Graph preparation and GPU parameter publication run separately.
 Stateful Handlers retain constructor-injected dependencies. All forms use the existing request operation,
 Resource borrow and ResponseOutbox; an async request's source bytes remain borrowed until its real response.
 

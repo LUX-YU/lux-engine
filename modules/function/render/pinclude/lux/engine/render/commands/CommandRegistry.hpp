@@ -14,10 +14,11 @@ namespace lux::render::runtime_detail
         HandlerCall call;
         cxx::basic_type_info method_type;
         cxx::basic_type_info storage_type;
+        cxx::basic_type_info effect_state_type;
 
         [[nodiscard]] bool callable() const noexcept
         {
-            return call.invoke && (handler.isNull() || call.object);
+            return call.invoke && (call.object || (handler.isNull() && !effect_state_type.isValid()));
         }
     };
 

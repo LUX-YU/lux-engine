@@ -4,6 +4,7 @@
 #include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/extensions/effect/EffectStateFactory.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 
 namespace lux::render
@@ -28,6 +29,7 @@ namespace lux::render
         std::vector<CapabilityOutputSupport> outputs;
         // Exact calls already owned by CommandRegistry, in the implementation's declared method order.
         std::vector<CommandBindingLocation> command_bindings;
+        EffectStateFactory state_factory;
     };
 
 } // namespace lux::render

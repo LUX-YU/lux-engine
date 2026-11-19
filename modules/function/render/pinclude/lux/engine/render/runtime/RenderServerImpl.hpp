@@ -226,7 +226,8 @@ namespace lux::render
         void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
         using EffectBuildResult = RenderResult<RenderEffect>;
-        [[nodiscard]] exec::task<EffectCreated> adoptBuiltEffect(EffectBuildResult) noexcept;
+        [[nodiscard]] exec::task<EffectCreated>
+        adoptBuiltEffect(EffectBuildResult, runtime_detail::EffectContributions) noexcept;
         auto createEffect(CreateEffect::Request&&) noexcept;
         [[nodiscard]] RenderResult<runtime_detail::QualifiedEffectRecipe>
         qualifyEffectRecipe(const CreateEffectRequest&) const noexcept;

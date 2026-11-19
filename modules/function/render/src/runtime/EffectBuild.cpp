@@ -191,7 +191,6 @@ namespace lux::render::runtime_detail
         result.output = input->output;
         result.parameter_groups = std::move(parameter_groups);
         result.resource_dependencies = std::move(recipe.resources);
-        result.commands = std::move(recipe.commands);
         result.input_schema = std::move(*schema);
         return result;
     }

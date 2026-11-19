@@ -43,10 +43,21 @@ namespace lux::render::runtime_detail
         // belongs to CommandBinding::declare; no second Handler::Bindings list is consulted.
         return []<class... Types>(std::tuple<Types...>) noexcept
         {
-            return std::array<CommandBinding, sizeof...(Types)>{
-                CommandBinding::
-                    declare<typename Types::type::Command, Types::type::method, typename Types::type::Handler>()...
+            const auto declare = []<class Method>(std::type_identity<Method>) noexcept
+            {
+                if constexpr (requires { typename Method::EffectState; })
+                {
+                    return CommandBinding::
+                        declareForEffect<typename Method::Command, typename Method::EffectState, Method::method>();
+                }
+                else
+                {
+                    return CommandBinding::declare<
+                        typename Method::Command, Method::method, typename Method::Handler
+                    >();
+                }
             };
+            return std::array<CommandBinding, sizeof...(Types)>{declare(Types{})...};
         }(uniqueTypes(static_cast<std::tuple<Methods...>*>(nullptr)));
     }
 

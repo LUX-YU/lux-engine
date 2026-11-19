@@ -14,6 +14,7 @@
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <optional>
 #include <thread>
 #include <source_location>
 
@@ -112,11 +113,26 @@ struct ProbeHandler final
 struct ProbeEffectCommand final
 {
     static constexpr std::string_view name = "example.effect.route";
-    using Request = EffectId;
+    struct Request final
+    {
+        EffectId effect;
+        std::optional<std::uint32_t> value;
+    };
+    struct Response final
+    {
+        RenderError error;
+        std::uint32_t value = 0;
+        std::uint64_t revision = 0;
+    };
     using Data = std::uint32_t;
-    using Response = ProbeIdentity::Response;
 
-    static EffectId effectId(const Request& request) noexcept { return request; }
+    static EffectId effectId(const Request& request) noexcept { return request.effect; }
+};
+
+struct ProbeEffectState final
+{
+    std::uint32_t value;
+    std::uint64_t revision = 1;
 };
 
 struct RoutedCapability final
@@ -131,17 +147,60 @@ template <std::uint32_t Value> struct RoutedImplementation final
     using Capability = RoutedCapability;
     using Features = std::tuple<>;
 
-    static void read(const EffectId&, ProbeEffectCommand::Response& response) noexcept
+    static RenderResult<std::unique_ptr<ProbeEffectState>> createState() noexcept
     {
-        response = {{}, Value};
+        return std::make_unique<ProbeEffectState>(ProbeEffectState{Value});
     }
 
-    using Bindings = std::tuple<CommandMethod<ProbeEffectCommand, &read>>;
+    static void update(
+        ProbeEffectState& state, const ProbeEffectCommand::Request& request, ProbeEffectCommand::Response& response
+    ) noexcept
+    {
+        if (request.value && *request.value > 100)
+        {
+            response.error = {kInvalidConfig};
+            return;
+        }
+        if (request.value && *request.value != state.value)
+        {
+            if (state.revision == UINT64_MAX)
+            {
+                response.error = {kRuntimeCapacity};
+                return;
+            }
+            state.value = *request.value;
+            ++state.revision;
+        }
+        response = {{}, state.value, state.revision};
+    }
+
+    using Bindings = std::tuple<EffectCommandMethod<ProbeEffectCommand, ProbeEffectState, &update>>;
     static CapabilityImplementation implementation() noexcept
     {
         CapabilityImplementation result;
         result.implementation = Value == 17 ? "example.effect.route.a" : "example.effect.route.b";
         result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
+        result.state_factory = EffectStateFactory::declare<ProbeEffectState, &createState>();
+        return result;
+    }
+};
+
+struct FailingRoutedImplementation final
+{
+    using Capability = RoutedCapability;
+    using Features = std::tuple<>;
+    using Bindings = RoutedImplementation<17>::Bindings;
+
+    static RenderResult<std::unique_ptr<ProbeEffectState>> createState() noexcept
+    {
+        return lux::cxx::unexpected(RenderError{kInvalidConfig});
+    }
+
+    static CapabilityImplementation implementation() noexcept
+    {
+        auto result = RoutedImplementation<17>::implementation();
+        result.implementation = "example.effect.route.failed_state";
+        result.state_factory = EffectStateFactory::declare<ProbeEffectState, &createState>();
         return result;
     }
 };
@@ -616,12 +675,13 @@ int main(int argc, char** argv)
     take(server->registerResource<RejectedStorage>());
     take(server->registerCapability<RoutedCapability>());
     const std::array effect_calls{
-        CommandBinding::declare<ProbeEffectCommand, &RoutedImplementation<17>::read>(),
-        CommandBinding::declare<ProbeEffectCommand, &RoutedImplementation<29>::read>()
+        CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &RoutedImplementation<17>::update>(),
+        CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &RoutedImplementation<29>::update>()
     };
     CHECK(server->registerCommands(effect_calls));
     const auto route_a = take(server->registerCapabilityImplementation<RoutedImplementation<17>>());
     const auto route_b = take(server->registerCapabilityImplementation<RoutedImplementation<29>>());
+    const auto route_fails = take(server->registerCapabilityImplementation<FailingRoutedImplementation>());
     take(server->registerCapability<ProbeCapability>());
     take(server->registerCapability<ProbeGraphCapability>());
     take(server->registerCapability<RejectedCapability>());
@@ -773,15 +833,34 @@ int main(int argc, char** argv)
     };
     const auto effect_a = make_routed({&route_a, 1});
     const auto effect_b = make_routed({&route_b, 1});
+    const auto effect_a_peer = make_routed({&route_a, 1});
     const std::array incompatible{route_a, route_b};
-    CHECK(!effect_a.error.type && !effect_b.error.type);
-    CHECK(make_routed(incompatible).error.type == kCapabilityDeclaration);
-    const std::array route_name{CommandName{ProbeEffectCommand::name}};
-    const auto route_id = call<QueryCommandIds>(client, QueryCommandIds::id, route_name).ids.front();
-    CHECK(call<ProbeEffectCommand>(client, route_id, effect_a.effect).value == 17);
-    CHECK(call<ProbeEffectCommand>(client, route_id, effect_b.effect).value == 29);
+    const std::array ambiguous_state{route_a, route_a};
+    CHECK(!effect_a.error.type && !effect_b.error.type && !effect_a_peer.error.type);
+    CHECK(make_routed(incompatible).error.type == kCapabilityConflict);
+    CHECK(make_routed(ambiguous_state).error.type == kCapabilityConflict);
+    const auto failed_state = make_routed({&route_fails, 1});
+    CHECK(failed_state.error.type == kInvalidConfig && failed_state.effect.isNull());
+    const std::array route_names{CommandName{ProbeEffectCommand::name}, CommandName{RemoveEffect::name}};
+    const auto route_ids = call<QueryCommandIds>(client, QueryCommandIds::id, route_names).ids;
+    CHECK(route_ids.size() == route_names.size());
+    const auto route_id = route_ids.front();
+    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_a.effect}).value == 17);
+    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_b.effect}).value == 29);
+    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_a.effect, 101}).error.type == kInvalidConfig);
+    const auto updated = call<ProbeEffectCommand>(client, route_id, {effect_a.effect, 42});
+    CHECK(!updated.error.type && updated.value == 42 && updated.revision == 2);
+    const auto unchanged = call<ProbeEffectCommand>(client, route_id, {effect_a.effect, 42});
+    CHECK(!unchanged.error.type && unchanged.revision == 2);
+    const auto peer = call<ProbeEffectCommand>(client, route_id, {effect_a_peer.effect});
+    CHECK(!peer.error.type && peer.value == 17 && peer.revision == 1);
     CHECK(call<ProbeEffectCommand>(client, route_id, {}).error.type == kRuntimeIdentity);
-    std::puts("EFFECT ROUTING PASS: installed calls selected by EffectId");
+    CHECK(!call<RemoveEffect>(client, route_ids.back(), {effect_a.effect}).error.type);
+    const auto replacement_effect = make_routed({&route_b, 1});
+    CHECK(!replacement_effect.error.type && replacement_effect.effect != effect_a.effect);
+    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_a.effect}).error.type == kRuntimeIdentity);
+    CHECK(call<ProbeEffectCommand>(client, route_id, {replacement_effect.effect}).value == 29);
+    std::puts("EFFECT ROUTING PASS: typed state isolation, revisions, ambiguity, factory rejection and stale EffectId");
 
     std::vector<CapabilityImplementationId> implementations;
     for (const auto& choice : choices.implementations)

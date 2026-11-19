@@ -24,6 +24,21 @@ namespace lux::render
         void* object = nullptr;
     };
 
+    template <class C>
+    concept EffectCommand = RenderCommand<C> && requires(const typename C::Request& request)
+    {
+        { C::effectId(request) } noexcept -> std::same_as<EffectId>;
+    } && !requires(const typename C::Request& request) { C::resourceId(request); };
+
+    template <EffectCommand C, class State, auto Method>
+    struct EffectCommandMethod final
+    {
+        using Command = C;
+        using Handler = void;
+        using EffectState = State;
+        static constexpr auto method = Method;
+    };
+
     // Non-owning typed dispatch. The registry retains the Handler; accepted asynchronous operations
     // retain their own Request/Response state in the Server scope. No caller-thread reply publication.
     class CommandBinding final
@@ -65,6 +80,29 @@ namespace lux::render
             return descriptor_ && call_.invoke;
         }
 
+        template <EffectCommand C, class State, auto Method>
+            requires std::same_as<decltype(Method),
+                void (*)(State&, const typename C::Request&, typename C::Response&) noexcept>
+        [[nodiscard]] static CommandBinding declareForEffect() noexcept
+        {
+            CommandBinding result;
+            result.initializeDeclaration<C>();
+            result.method_type_ = cxx::make_basic_type_info<EffectCommandMethod<C, State, Method>>();
+            result.effect_state_type_ = cxx::make_basic_type_info<State>();
+            result.effect_ = [](const platform::ipc::IpcMessage& message) noexcept
+            {
+                return C::effectId(message.get<typename C::Request>());
+            };
+            result.call_.invoke = [](void* object, runtime_detail::CommandDispatchContext& context) noexcept
+            {
+                auto& output = runtime_detail::prepareResponse(context.outbox, context.response_route);
+                auto& response = output.emplace<typename C::Response>();
+                response.error = RenderError{kRuntimeState};
+                Method(*static_cast<State*>(object), context.request.get<typename C::Request>(), response);
+            };
+            return result;
+        }
+
         void makeError(platform::ipc::IpcMessage& output, RenderError error) const noexcept
         {
             make_error_(output, error);
@@ -77,8 +115,10 @@ namespace lux::render
             requires(SyncCommandHandlerFor<C, H, Method> || AsyncCommandHandlerFor<C, H, Method>)
         [[nodiscard]] static CommandBinding declare() noexcept
         {
+            static_assert(!requires(const typename C::Request& request) { C::effectId(request); },
+                "Effect commands use a typed contribution state");
             CommandBinding result;
-            result.descriptor_ = &commandDescriptor<C>();
+            result.initializeDeclaration<C>();
             if constexpr (!std::is_void_v<H>)
             {
                 result.handler_type_ = cxx::make_basic_type_info<H>();
@@ -90,14 +130,6 @@ namespace lux::render
             {
                 static_assert(CapabilityCommand<C>);
                 result.storage_type_ = cxx::make_basic_type_info<std::remove_const_t<Storage>>();
-            }
-            result.make_error_ = [](platform::ipc::IpcMessage& output, RenderError error) noexcept
-            { output.emplace<typename C::Response>().error = error; };
-            if constexpr (requires(const typename C::Request& request) { C::effectId(request); })
-            {
-                static_assert(!requires(const typename C::Request& request) { C::resourceId(request); });
-                result.effect_ = [](const platform::ipc::IpcMessage& message) noexcept
-                { return C::effectId(message.get<typename C::Request>()); };
             }
             if constexpr (requires(const typename C::Request& request) { C::resourceId(request); })
             {
@@ -196,6 +228,15 @@ namespace lux::render
     private:
         friend class runtime_detail::CommandRegistry;
 
+        template <RenderCommand C> void initializeDeclaration() noexcept
+        {
+            descriptor_ = &commandDescriptor<C>();
+            make_error_ = [](platform::ipc::IpcMessage& output, RenderError error) noexcept
+            {
+                output.emplace<typename C::Response>().error = error;
+            };
+        }
+
         template <RenderCommand C> struct ResponseError final
         {
             typename C::Response operator()(RenderError error) const noexcept
@@ -221,6 +262,7 @@ namespace lux::render
         cxx::basic_type_info handler_type_;
         cxx::basic_type_info storage_type_;
         cxx::basic_type_info method_type_;
+        cxx::basic_type_info effect_state_type_;
         HandlerCall call_;
         void (*make_error_)(platform::ipc::IpcMessage&, RenderError) noexcept = nullptr;
         EffectId (*effect_)(const platform::ipc::IpcMessage&) noexcept = nullptr;

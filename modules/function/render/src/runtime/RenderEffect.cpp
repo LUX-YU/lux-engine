@@ -77,13 +77,15 @@ namespace lux::render
             if (auto error = capabilityOutputError(*implementation, request.output); error.type)
                 return cxx::unexpected(error);
 
+            const auto& factory = implementation->state_factory;
+            const auto state = recipe.contributions.factories.size();
+            if (factory.create_) recipe.contributions.factories.push_back(factory);
             for (const auto& binding : implementation->command_bindings)
             {
-                const auto previous =
-                    std::ranges::find(recipe.commands, binding.command, &CommandBindingLocation::command);
-                if (previous == recipe.commands.end()) recipe.commands.push_back(binding);
-                else if (previous->binding != binding.binding)
-                    return cxx::unexpected(RenderError{kCapabilityDeclaration});
+                const auto* method = runtime_->command_registry_.binding(binding);
+                if (!method || !factory.create_ || method->effect_state_type != factory.type_)
+                    return cxx::unexpected(RenderError{kCommandContract});
+                recipe.contributions.commands.push_back({{binding.command, method->call}, state});
             }
             const auto parent = capability_registry_.capabilityOf(use.implementation);
             const auto* declaration = capability_registry_.get(parent);
@@ -101,6 +103,12 @@ namespace lux::render
                 recipe.resources.push_back({factory->descriptor->domain, type, {}, {}});
             }
         }
+        const auto command_id = [](const auto& selection) noexcept { return commandTag(selection.route.command); };
+        auto& commands = recipe.contributions.commands;
+        std::ranges::sort(commands, {}, command_id);
+        if (std::ranges::adjacent_find(commands, std::ranges::equal_to{}, command_id) != commands.end())
+            return cxx::unexpected(RenderError{kCapabilityConflict});
+
         for (const auto* declaration : declarations)
         {
             for (const auto prerequisite : declaration->prerequisites)
@@ -140,8 +148,10 @@ namespace lux::render
         auto recipe = qualifyEffectRecipe(request);
         const auto error = recipe ? RenderError{} : recipe.error();
         std::vector<ResourceDeclaration> declarations;
+        runtime_detail::EffectContributions effect_contributions;
         if (recipe)
         {
+            effect_contributions = std::move(recipe->contributions);
             runtime_->resources_.forEachType(
                 [&](ResourceTypeId id, const ResourceDefinition& definition) noexcept
                 {
@@ -168,17 +178,34 @@ namespace lux::render
                 return buildEffect(declarations, request, std::move(qualified), limit);
             }) |
             stdexec::continues_on(server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery)) |
-            stdexec::let_value([this](EffectBuildResult& built) { return adoptBuiltEffect(std::move(built)); });
+            stdexec::let_value([this, contributions = std::move(effect_contributions)](EffectBuildResult& built) mutable
+            {
+                return adoptBuiltEffect(std::move(built), std::move(contributions));
+            });
         auto rejected = stdexec::just(EffectCreated{error});
         using VSource = exec::variant_sender<decltype(rejected), decltype(compiled)>;
         return error.type ? VSource{std::move(rejected)} : VSource{std::move(compiled)};
     }
 
-    exec::task<EffectCreated> RenderServer::Impl::adoptBuiltEffect(EffectBuildResult candidate) noexcept
+    exec::task<EffectCreated> RenderServer::Impl::adoptBuiltEffect(
+        EffectBuildResult candidate, runtime_detail::EffectContributions contributions
+    ) noexcept
     {
         if (!candidate) co_return EffectCreated{candidate.error()};
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested()) co_return EffectCreated{RenderError{kCommandCancelled}};
+        for (const auto& factory : contributions.factories)
+        {
+            auto state = factory.create_();
+            if (!state) co_return EffectCreated{state.error()};
+            candidate->contribution_states.emplace_back(*state, factory.destroy_);
+        }
+        candidate->command_routes.reserve(contributions.commands.size());
+        for (auto& command : contributions.commands)
+        {
+            command.route.call.object = candidate->contribution_states[command.state].get();
+            candidate->command_routes.push_back(command.route);
+        }
         const auto id = runtime_->effects_.emplace(std::move(*candidate));
         compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
         co_return EffectCreated{{}, id};

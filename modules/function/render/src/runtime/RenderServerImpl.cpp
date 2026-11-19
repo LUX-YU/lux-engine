@@ -933,20 +933,9 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
-        const auto method = std::ranges::find(effect->commands, command, &CommandBindingLocation::command);
-        if (method == effect->commands.end())
-        {
-            return cxx::unexpected(RenderError{kCommandContract});
-        }
-        const auto* binding = entry.binding(method->binding);
-        const bool is_invalid_call = !binding || !binding->callable();
-        if (is_invalid_call)
-        {
-            return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        }
-        // Resource operations require their own instance identity and never use Effect selection.
-        if (binding->storage_type.isValid()) return cxx::unexpected(RenderError{kCommandContract});
-        return binding->call;
+        const auto* call = effect->findCommand(command);
+        if (!call) return cxx::unexpected(RenderError{kCommandContract});
+        return *call;
     }
 
     void RenderServer::Impl::dispatchRequest(ipc::ReceivedRequest received) noexcept

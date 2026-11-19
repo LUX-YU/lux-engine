@@ -82,13 +82,14 @@ namespace lux::render::runtime_detail
 
     CommandBindingLocation CommandRegistry::publishResourceBinding(const CommandBinding& binding) noexcept
     {
+        const HandlerBinding method{{}, binding.call_, binding.method_type_, binding.storage_type_, {}};
         const auto found = commands_by_name_.find(binding.descriptor()->name.name());
         if (found == commands_by_name_.end())
         {
             const auto id = commands_.emplace(CommandRecord{
                 binding.descriptor_,
                 binding.make_error_,
-                {{{}, binding.call_, binding.method_type_, binding.storage_type_}},
+                {method},
                 nullptr,
                 binding.storage_
             });
@@ -97,7 +98,7 @@ namespace lux::render::runtime_detail
         }
         auto& entry = *commands_.find(found->second);
         const auto index = static_cast<std::uint32_t>(entry.bindings.size());
-        entry.bindings.push_back({{}, binding.call_, binding.method_type_, binding.storage_type_});
+        entry.bindings.push_back(method);
         return {found->second, index};
     }
 
@@ -165,7 +166,7 @@ namespace lux::render::runtime_detail
         const auto id = commands_.emplace(CommandRecord{
             binding.descriptor_,
             binding.make_error_,
-            {{{}, binding.call_, binding.method_type_}},
+            {{{}, binding.call_, binding.method_type_, binding.storage_type_, binding.effect_state_type_}},
             binding.effect_,
             binding.storage_
         });
@@ -253,10 +254,7 @@ namespace lux::render::runtime_detail
             {
                 if (auto valid = compatibleCommands(*stored.description, description); !valid) return valid;
             }
-            if (!binding.effect_ || !stored.effect || stored.storage)
-            {
-                return cxx::unexpected(RenderError{kRuntimeUnsupported});
-            }
+            return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
 
         return has_methods ? RenderResult<void>{} : cxx::unexpected(RenderError{kCommandContract});
@@ -274,13 +272,16 @@ namespace lux::render::runtime_detail
     {
         auto call = binding.call();
         if (!handler.isNull()) call.object = (*handlers_.find(handler))->object.get();
+        const HandlerBinding method{
+            handler, call, binding.method_type_, binding.storage_type_, binding.effect_state_type_
+        };
         const auto found = commands_by_name_.find(binding.descriptor()->name.name());
         if (found == commands_by_name_.end())
         {
             const auto id = commands_.emplace(CommandRecord{
                 binding.descriptor_,
                 binding.make_error_,
-                {{handler, call, binding.method_type_, binding.storage_type_}},
+                {method},
                 binding.effect_,
                 binding.storage_
             });
@@ -289,7 +290,7 @@ namespace lux::render::runtime_detail
         }
         auto& entry = *commands_.find(found->second);
         const auto index = static_cast<std::uint32_t>(entry.bindings.size());
-        entry.bindings.push_back({handler, call, binding.method_type_, binding.storage_type_});
+        entry.bindings.push_back(method);
         return {found->second, index};
     }
 

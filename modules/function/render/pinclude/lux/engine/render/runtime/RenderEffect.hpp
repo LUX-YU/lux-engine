@@ -1,12 +1,14 @@
 #pragma once
 
 #include <lux/engine/render/core/EffectParameters.hpp>
-#include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/features/EffectDefinition.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/Binding.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
+#include <algorithm>
+#include <memory>
 #include <vector>
 
 namespace lux::render::runtime_detail
@@ -30,7 +32,24 @@ namespace lux::render::runtime_detail
 
         std::vector<ResourceDependency> resource_dependencies;
         FrameLayout input_schema;
-        std::vector<CommandBindingLocation> commands;
+        struct CommandRoute final
+        {
+            CommandId command;
+            HandlerCall call;
+        };
+        std::vector<std::unique_ptr<void, void (*)(void*) noexcept>> contribution_states;
+        std::vector<CommandRoute> command_routes;
+
+        [[nodiscard]] const HandlerCall* findCommand(CommandId command) const noexcept
+        {
+            const auto route = std::ranges::lower_bound(
+                command_routes,
+                commandTag(command),
+                {},
+                [](const CommandRoute& entry) noexcept { return commandTag(entry.command); }
+            );
+            return route != command_routes.end() && route->command == command ? &route->call : nullptr;
+        }
 
         struct ExternalImage final
         {

@@ -189,9 +189,13 @@ namespace lux::render
         {
             const auto* method = runtime_->command_registry_.binding(binding);
             const auto* command = runtime_->command_registry_.findCommand(binding.command);
+            const auto& factory = implementation.state_factory;
             const bool invalid_call = !method || !method->call.invoke;
-            const bool invalid_route = !command || !command->effect || (method && method->storage_type.isValid());
-            if (invalid_call || invalid_route) return cxx::unexpected(RenderError{kCommandContract});
+            const bool already_bound = method && (!method->handler.isNull() || method->call.object);
+            const bool invalid_route = !command || !command->effect || command->storage;
+            const bool invalid_state = !factory.create_ || !method || method->effect_state_type != factory.type_;
+            if (invalid_call || already_bound || invalid_route || invalid_state)
+                return cxx::unexpected(RenderError{kCommandContract});
         }
         for (const auto* command : commands)
         {

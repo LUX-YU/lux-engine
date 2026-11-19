@@ -2,9 +2,17 @@
 
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render::detail
 {
+    struct GraphQueuePolicy final
+    {
+        GraphQueueCosts costs;
+        // Native fixtures use this to exercise legal cross-queue transitions even on serialized graphs.
+        bool exercise_async = false;
+    };
+
     class LUX_RENDER_PUBLIC GraphCompiler final
     {
     public:
@@ -13,13 +21,15 @@ namespace lux::render::detail
             DeviceSession&, execution::CpuScheduler, const RenderGraph&, const RenderGraphAnalysis&,
             const EffectOutputDesc* target = nullptr,
             ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
-            std::span<const std::uint32_t> parameter_groups = {}
+            std::span<const std::uint32_t> parameter_groups = {},
+            bool exercise_async = false
         ) noexcept;
 
         // Use native-independent compilation to exercise recording tables with declared capabilities.
         [[nodiscard]] static RenderResult<RenderGraphExecutable> compileForRecordingTest(
             const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
-            const RenderGraphAnalysis&, ETransientAllocation = ETransientAllocation::INDEPENDENT
+            const RenderGraphAnalysis&, ETransientAllocation = ETransientAllocation::INDEPENDENT,
+            GraphQueuePolicy = {}
         ) noexcept;
 
     private:
@@ -38,7 +48,7 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] static RenderResult<void> finishPlan(
             RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
-            const nri::DeviceDesc&, ETransientAllocation, std::vector<EResourceReuse>&
+            const nri::DeviceDesc&, ETransientAllocation, std::vector<EResourceReuse>&, GraphQueuePolicy
         ) noexcept;
     };
 } // namespace lux::render::detail

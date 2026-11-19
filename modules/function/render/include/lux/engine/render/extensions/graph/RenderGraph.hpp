@@ -22,6 +22,7 @@ namespace lux::render
         std::optional<GraphicsState> graphics;
         bool allow_async_compute = false;
         GraphPassId sequence_first, sequence_last;
+        std::uint64_t estimated_gpu_ns = 0;
 
         [[nodiscard]] const RasterScope* rasterScope() const noexcept
         {

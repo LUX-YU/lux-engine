@@ -266,6 +266,9 @@ namespace lux::render
     {
         bool side_effect = false;
         std::optional<PassCondition> condition;
+        // GPU time for this command on the calibrated workload. A sequence applies the estimate
+        // to each dispatch. Zero marks an unknown duration.
+        std::uint64_t estimated_gpu_ns = 0;
     };
 
     struct PassResult final

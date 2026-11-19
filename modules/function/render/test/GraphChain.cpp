@@ -69,14 +69,15 @@ static PreparedRenderGraph compile(
     const RenderGraph& graph,
     const RenderGraphAnalysis& analysis,
     const TargetDesc* target,
-    ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY
+    ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
+    bool exercise_async = true
 )
 {
     std::optional<EffectOutputDesc> output;
     if (target) output.emplace(target->format, target->samples, target->kind, target->sampled);
     auto ready = stdexec::sync_wait(GraphCompiler::compile(
         session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis,
-        output ? &*output : nullptr, allocation
+        output ? &*output : nullptr, allocation, {}, exercise_async
     ));
     CHECK(ready);
     return take(std::move(std::get<0>(*ready)));
@@ -1051,7 +1052,8 @@ private:
     std::vector<std::vector<std::optional<Word>>> buffers_;
 };
 
-static RenderGraphExecutable compileCpuGraph(const RenderGraph& graph)
+static RenderGraphExecutable
+compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool alias_queues = false)
 {
     nri::DeviceDesc capabilities{};
     capabilities.graphicsAPI = nri::GraphicsAPI::VK;
@@ -1063,8 +1065,10 @@ static RenderGraphExecutable compileCpuGraph(const RenderGraph& graph)
     const QueueProperties graphics;
     const QueueProperties compute{nri::QueueType::COMPUTE, 1};
     const QueueProperties copy{nri::QueueType::COPY, 2};
-    const std::array queues{&graphics, &compute, &copy};
-    return take(GraphCompiler::compileForRecordingTest(capabilities, queues, graph, take(analyzeRenderGraph(graph))));
+    const std::array queues{&graphics, alias_queues ? &graphics : &compute, &copy};
+    return take(GraphCompiler::compileForRecordingTest(
+        capabilities, queues, graph, take(analyzeRenderGraph(graph)), ETransientAllocation::INDEPENDENT, policy
+    ));
 }
 
 static void cpuRecordingTables()
@@ -1139,7 +1143,7 @@ static void cpuImportedBoundaries()
         };
         const auto written = take(builder.addComputePass("read imported subresource", std::move(work)));
         CHECK(builder.exportOutput({written.written.front(), range}));
-        const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+        const auto executable = compileCpuGraph(take(std::move(builder).finish()), {.exercise_async = true});
         CHECK(executable.submissions().size() == 1);
         CHECK(executable.submissions().front().queue == EQueueRole::GRAPHICS);
         const auto& after = executable.recordingProgram().after.images;
@@ -1165,10 +1169,105 @@ static void cpuQueueBoundaries()
     };
     const auto written = take(builder.addComputePass("compute only", std::move(work)));
     CHECK(builder.exportOutput({written.written.front()}));
-    const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+    const auto graph = take(std::move(builder).finish());
+    const auto baseline = compileCpuGraph(graph);
+    CHECK(baseline.submissions().size() == 1 && baseline.submissions().front().queue == EQueueRole::GRAPHICS);
+    const auto executable = compileCpuGraph(graph, {.exercise_async = true});
     CHECK(executable.submissions().size() == 1);
     CHECK(executable.submissions().front().queue == EQueueRole::COMPUTE);
     CHECK(executable.submissions().front().dependencies.empty());
+}
+
+struct QueueScheduleFixture final
+{
+    RenderGraph graph;
+    GraphResourceId compute_result, graphics_result;
+};
+
+static QueueScheduleFixture queueScheduleFixture(
+    EGraphicsBackend backend, std::uint64_t branch_ns, bool serialize
+)
+{
+    RenderGraphBuilder builder;
+    const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
+    const auto compute_result = take(builder.declareResource({"compute result", GraphBufferDesc{16}}));
+    const auto graphics_result = take(builder.declareResource({"graphics result", GraphBufferDesc{16}}));
+    const auto initialized = take(builder.addTransferPass(
+        "seed", TransferWork{{FillBuffer{{{seed, 0}}, 3}}}, {.estimated_gpu_ns = 100}
+    ));
+    ComputeWork work;
+    work.allow_async_compute = true;
+    work.interface.program = take(builder.addProgram(program(kGraphHistory, backend)));
+    work.interface.resources = {
+        {"previous_sample", {initialized.written.front()}},
+        {"current_sample", {{compute_result, 0}, {}, EGraphAccess::WRITE}}
+    };
+    const auto compute = take(builder.addComputePass("compute", std::move(work), {.estimated_gpu_ns = branch_ns}));
+    const auto graphics = take(builder.addTransferPass(
+        "independent graphics work", TransferWork{{FillBuffer{{{graphics_result, 0}}, 7}}},
+        {.estimated_gpu_ns = branch_ns}
+    ));
+    if (serialize)
+    {
+        CHECK(builder.dependsOn(compute.pass, graphics.pass));
+    }
+    CHECK(builder.exportOutput({compute.written.front()}));
+    CHECK(builder.exportOutput({graphics.written.front()}));
+    return {take(std::move(builder).finish()), compute_result, graphics_result};
+}
+
+static void cpuQueueCandidates()
+{
+    constexpr auto backend = EGraphicsBackend::VULKAN;
+    constexpr GraphQueuePolicy calibrated{{1'000, 1'000, 1'000}};
+    const auto heavy = queueScheduleFixture(backend, 80'000, false);
+    const auto serial = queueScheduleFixture(backend, 80'000, true);
+    const auto light = queueScheduleFixture(backend, 500, false);
+    const auto unknown = queueScheduleFixture(backend, 0, false);
+    CHECK(compileCpuGraph(heavy.graph).submissions().size() == 1);
+    CHECK(compileCpuGraph(serial.graph, calibrated).submissions().size() == 1);
+    CHECK(compileCpuGraph(light.graph, calibrated).submissions().size() == 1);
+    CHECK(compileCpuGraph(unknown.graph, calibrated).submissions().size() == 1);
+    CHECK(compileCpuGraph(heavy.graph, calibrated, true).submissions().size() == 1);
+    CHECK(compileCpuGraph(heavy.graph, {{1'000, 1'000, 100'000}}).submissions().size() == 1);
+
+    const auto scheduled = compileCpuGraph(heavy.graph, calibrated);
+    const auto batches = scheduled.submissions();
+    CHECK(batches.size() == 3);
+    CHECK(batches[0].queue == EQueueRole::GRAPHICS && batches[1].queue == EQueueRole::COMPUTE);
+    CHECK(batches[2].queue == EQueueRole::GRAPHICS);
+    CHECK(batches[1].dependencies.size() == 1 && batches[1].dependencies.front().producer == 0);
+    CHECK(batches[2].dependencies.size() == 1 && batches[2].dependencies.front().producer == 0);
+}
+
+static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backend)
+{
+    DeviceOptions options;
+    options.backend = backend;
+    options.multiple_queues = true;
+    options.graph_queue_costs = {1'000, 1'000, 1'000}; // Deterministic scheduling input for the fixture.
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    FrameHarness frames(*session, 1);
+    const auto fixture = queueScheduleFixture(backend, 80'000, false);
+    const auto analysis = take(analyzeRenderGraph(fixture.graph));
+    const auto plan = compile(*session, fixture.graph, analysis, nullptr, ETransientAllocation::ALIAS_MEMORY, false);
+    const auto bounds = plan.executable.submissions();
+    const bool separate = &session->queue() != &session->queue(EQueueRole::COMPUTE);
+    CHECK(bounds.size() == (separate ? 3 : 1));
+    if (separate)
+    {
+        CHECK(bounds[1].queue == EQueueRole::COMPUTE);
+    }
+    RenderGraphInstance instance(*session, 1, plan.executable, plan.programs);
+    CHECK(instance.initialize());
+    const std::array instances{&instance};
+    CHECK(take(runTask(frames.render(instances, {}))) > 0);
+    finishSubmissions(*session, frames);
+    CHECK(session->drain());
+    const auto computed = readHistoryResult<4>(*session, *instance.nativeBuffer(fixture.compute_result.index, 0));
+    const auto graphics = readHistoryResult<4>(*session, *instance.nativeBuffer(fixture.graphics_result.index, 0));
+    CHECK(computed[0] == 4 && graphics[0] == 7);
+    std::printf("Calibrated queue schedule: split=%u, both branches read back correctly\n", separate);
 }
 
 static void cpuRasterPackets()
@@ -2022,6 +2121,7 @@ int main(int argc, char** argv)
         cpuImportedBoundaries();
         cpuRasterPackets();
         cpuQueueBoundaries();
+        cpuQueueCandidates();
         std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;
     }
@@ -2097,6 +2197,7 @@ int main(int argc, char** argv)
             physicalReuse(validation, options, fif, false, true);
         }
     }
+    nativeQueueCandidates(validation, backend);
     indirectCounts(validation, backend);
     resolveAndCopy(validation, backend);
     sharedImportedBuffer(validation, backend, false);

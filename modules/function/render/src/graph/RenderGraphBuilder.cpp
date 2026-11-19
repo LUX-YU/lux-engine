@@ -356,6 +356,7 @@ namespace lux::render
     RenderGraphBuilder::addWork(std::string key, VGraphCommand command, EGraphPassKind kind, GraphPassOptions options) noexcept
     {
         GraphPass pass{std::move(key), kind, {}, {}, options.side_effect, options.condition};
+        pass.estimated_gpu_ns = options.estimated_gpu_ns;
         PassResult result;
         RenderError failure{};
         const auto append = [&](ResourceAccess& access, EGraphUse usage, bool record = true) noexcept

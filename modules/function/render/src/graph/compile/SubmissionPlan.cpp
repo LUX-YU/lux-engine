@@ -67,73 +67,119 @@ namespace lux::render::detail
         }
     } // namespace
 
-    void selectQueues(
+    bool assignAsyncCompute(
         const RenderGraph& graph,
         std::span<const GraphPassId> order,
         std::array<const QueueProperties*, 3> queues,
+        std::uint32_t surface_output,
         RecordingProgram& recording
     ) noexcept
     {
-        for (auto& pass : recording.passes)
+        if (queues[0] == queues[1])
         {
-            const auto& source = graph.passes()[order[pass.binding_slot].index];
-            if (!source.allow_async_compute || queues[0] == queues[1])
-            {
-                continue;
-            }
-            // Imported textures do not yet declare a sharing contract. Keep them on Graphics
-            // rather than inventing ownership transfers for externally created EXCLUSIVE images.
-            const bool imported_image = std::ranges::any_of(
-                source.uses,
-                [&](const auto& use)
-                {
-                    const auto imported = [&](GraphResourceId id)
-                    {
-                        const auto& resource = graph.resources()[id.index];
-                        return resource.origin == EGraphOrigin::IMPORTED &&
-                               std::holds_alternative<GraphImageDesc>(resource.description);
-                    };
-                    return imported(use.version.resource) ||
-                           (use.access == EGraphAccess::READ && use.fallback && imported(use.fallback->resource));
-                }
-            );
-            if (!imported_image)
-            {
-                pass.queue = EQueueRole::COMPUTE;
-            }
+            return false;
         }
-        for (std::size_t index = 0; index < order.size();)
+        const auto pinnedResource = [&](GraphResourceId id) noexcept
         {
-            const auto& source = graph.passes()[order[index].index];
-            if (source.sequence_first.index == kGraphInvalidIndex)
+            const auto& resource = graph.resources()[id.index];
+            const bool imported_image = resource.origin == EGraphOrigin::IMPORTED &&
+                std::holds_alternative<GraphImageDesc>(resource.description);
+            return imported_image || id.index == surface_output;
+        };
+        const auto eligible = [&](const GraphPass& pass) noexcept
+        {
+            if (!pass.allow_async_compute || pass.kind != EGraphPassKind::COMPUTE)
             {
-                ++index;
-                continue;
+                return false;
             }
-            const auto count = source.sequence_last.index - source.sequence_first.index + 1;
-            auto commands = std::span(recording.passes).subspan(index, count);
-            const bool requires_graphics = std::ranges::any_of(commands, [](const auto& command)
+            return std::ranges::none_of(pass.uses, [&](const auto& use) noexcept
             {
-                return command.queue == EQueueRole::GRAPHICS;
+                return pinnedResource(use.version.resource) ||
+                    (use.access == EGraphAccess::READ && use.fallback && pinnedResource(use.fallback->resource));
             });
-            if (requires_graphics)
-            {
-                for (auto& command : commands) command.queue = EQueueRole::GRAPHICS;
-            }
-            index += count;
-        }
-        // An initial conditional region is a single-queue interval, including its false transitions.
-        for (const auto& region : recording.conditions)
+        };
+        bool assigned = false;
+        for (std::size_t first = 0; first < order.size();)
         {
-            auto passes = std::span(recording.passes).subspan(region.first_pass, region.pass_count);
-            if (std::ranges::any_of(passes, [](const auto& pass) { return pass.queue == EQueueRole::GRAPHICS; }))
+            // Sequences and conditional regions both require a single physical queue.
+            // Close the interval over all overlapping units before assigning it.
+            auto end = first + 1;
+            bool can_migrate = true;
+            for (auto slot = first; slot < end; ++slot)
             {
-                for (auto& pass : passes)
+                const auto& pass = recording.passes[slot];
+                const auto& unit = recording.units[pass.unit];
+                end = std::max(end, std::size_t(unit.first_pass) + unit.pass_count);
+                if (pass.condition_region != kGraphInvalidIndex)
                 {
-                    pass.queue = EQueueRole::GRAPHICS;
+                    const auto& region = recording.conditions[pass.condition_region];
+                    end = std::max(end, std::size_t(region.first_pass) + region.pass_count);
+                }
+                can_migrate = can_migrate && eligible(graph.passes()[order[slot].index]);
+            }
+            if (can_migrate)
+            {
+                for (auto& pass : std::span(recording.passes).subspan(first, end - first))
+                {
+                    pass.queue = EQueueRole::COMPUTE;
+                }
+                assigned = true;
+            }
+            first = end;
+        }
+        return assigned;
+    }
+
+    double estimateScheduleNs(
+        const RenderGraph& graph,
+        std::span<const GraphPassId> order,
+        std::span<const SubmissionBatch> batches,
+        GraphQueueCosts costs
+    ) noexcept
+    {
+        std::array<double, 2> queue_finish{};
+        std::vector<double> batch_finish(batches.size());
+        double submits = 0;
+        for (std::size_t slot = 0; slot < batches.size(); ++slot)
+        {
+            const auto& batch = batches[slot];
+            const bool is_compute = batch.queue == EQueueRole::COMPUTE;
+            auto& available = queue_finish[is_compute];
+            auto start = available;
+            for (const auto& dependency : batch.dependencies)
+            {
+                if (batches[dependency.producer].queue != batch.queue)
+                {
+                    start = std::max(start, batch_finish[dependency.producer] + double(costs.queue_handoff_ns));
                 }
             }
+            double duration = 0;
+            for (auto pass : order.subspan(batch.first_pass, batch.pass_count))
+            {
+                duration += double(graph.passes()[pass.index].estimated_gpu_ns);
+            }
+            available = batch_finish[slot] = start + duration;
+            submits += double(is_compute ? costs.compute_submit_ns : costs.graphics_submit_ns);
         }
+        return std::max(queue_finish[0], queue_finish[1]) + submits;
+    }
+
+    bool preservesObjectReuse(const PhysicalResourcePlan& baseline, const PhysicalResourcePlan& candidate) noexcept
+    {
+        for (std::size_t resource = 0; resource < baseline.resource_slots.size(); ++resource)
+        {
+            const auto baseline_slot = baseline.resource_slots[resource];
+            if (baseline_slot == kGraphInvalidIndex)
+            {
+                continue;
+            }
+            const auto owner = baseline.slots[baseline_slot].resource.index;
+            if (candidate.resource_slots[resource] != candidate.resource_slots[owner])
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     void planSubmissions(

@@ -1,15 +1,20 @@
 #pragma once
 
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render::detail
 {
-    void selectQueues(
-        const RenderGraph&,
-        std::span<const GraphPassId>,
-        std::array<const QueueProperties*, 3>,
-        RecordingProgram&
+    [[nodiscard]] bool assignAsyncCompute(
+        const RenderGraph&, std::span<const GraphPassId>, std::array<const QueueProperties*, 3>,
+        std::uint32_t surface_output, RecordingProgram&
     ) noexcept;
+
+    [[nodiscard]] double estimateScheduleNs(
+        const RenderGraph&, std::span<const GraphPassId>, std::span<const SubmissionBatch>, GraphQueueCosts
+    ) noexcept;
+
+    [[nodiscard]] bool preservesObjectReuse(const PhysicalResourcePlan&, const PhysicalResourcePlan&) noexcept;
 
     void planSubmissions(
         const RenderGraph&,

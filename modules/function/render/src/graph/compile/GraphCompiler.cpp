@@ -451,7 +451,7 @@ namespace lux::render::detail
     RenderResult<void> GraphCompiler::finishPlan(
         RenderGraphExecutable& plan, const RenderGraph& graph, const RenderGraphAnalysis& analysis,
         std::array<const QueueProperties*, 3> queues, const nri::DeviceDesc& limits, ETransientAllocation allocation,
-        std::vector<EResourceReuse>& resource_reuse
+        std::vector<EResourceReuse>& resource_reuse, GraphQueuePolicy policy
     ) noexcept
     {
         for (const auto& placement : plan.descriptor_plan_->passes)
@@ -513,16 +513,69 @@ namespace lux::render::detail
             }
         }
         planConditions(graph, analysis.execution_order, plan.resources_, plan.recording_);
-        selectQueues(graph, analysis.execution_order, queues, plan.recording_);
-        // Logical transitions establish the original batch dependency graph before choosing storage.
-        auto barriers = planBarriers(
-            graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
-            limits.graphicsAPI
-        );
-        if (!barriers)
+        const auto order = std::span(analysis.execution_order);
+        const auto use_stages = collectUseStages(graph, order, *plan.descriptor_plan_, limits.graphicsAPI);
+        const bool presents = plan.output_description_.kind == ETargetKind::SURFACE;
+        const auto surface_output = presents ? plan.output_ : kGraphInvalidIndex;
+        const auto lowerSchedule = [&]() noexcept -> RenderResult<void>
         {
-            return cxx::unexpected(barriers.error());
+            // Derive the actual submit DAG from the candidate's logical transitions before choosing storage.
+            auto barriers = planBarriers(
+                graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
+                limits.graphicsAPI
+            );
+            if (!barriers)
+            {
+                return barriers;
+            }
+            plan.submissions_.clear();
+            plan.imported_accesses_.clear();
+            planSubmissions(
+                graph, analysis, plan.resources_, plan.recording_, use_stages, queues, plan.submissions_,
+                plan.imported_accesses_, plan.output_, presents
+            );
+            plan.physical_resources_ = planPhysicalResources(
+                graph, order, plan.resources_, plan.recording_, plan.submissions_, queues, allocation, resource_reuse
+            );
+            return {};
+        };
+        if (policy.exercise_async)
+        {
+            (void)assignAsyncCompute(graph, order, queues, surface_output, plan.recording_);
         }
+        if (auto baseline = lowerSchedule(); !baseline)
+        {
+            return baseline;
+        }
+
+        const auto& costs = policy.costs;
+        const bool has_calibration = costs.graphics_submit_ns != 0 && costs.compute_submit_ns != 0;
+        const bool has_durations = has_calibration && std::ranges::all_of(order, [&](auto id) noexcept
+        {
+            return graph.passes()[id.index].estimated_gpu_ns != 0;
+        });
+        const bool compares_async = !policy.exercise_async && has_durations && queues[0] != queues[1];
+        if (compares_async && assignAsyncCompute(graph, order, queues, surface_output, plan.recording_))
+        {
+            const auto baseline_ns = estimateScheduleNs(graph, order, plan.submissions_, costs);
+            auto baseline_storage = std::move(plan.physical_resources_);
+            const auto candidate = lowerSchedule();
+            const bool improves_cost = candidate && estimateScheduleNs(graph, order, plan.submissions_, costs) <
+                baseline_ns;
+            const bool should_adopt = improves_cost && preservesObjectReuse(baseline_storage, plan.physical_resources_);
+            if (!should_adopt)
+            {
+                for (auto& pass : plan.recording_.passes)
+                {
+                    pass.queue = EQueueRole::GRAPHICS;
+                }
+                if (auto restored = lowerSchedule(); !restored)
+                {
+                    return restored;
+                }
+            }
+        }
+
         for (auto& history : plan.histories_)
         {
             auto& previous = plan.resources_[history.description.previous.index];
@@ -556,12 +609,6 @@ namespace lux::render::detail
                 }
             }
         }
-        const auto use_stages =
-            collectUseStages(graph, analysis.execution_order, *plan.descriptor_plan_, limits.graphicsAPI);
-        planSubmissions(
-            graph, analysis, plan.resources_, plan.recording_, use_stages, queues, plan.submissions_,
-            plan.imported_accesses_, plan.output_, plan.output_description_.kind == ETargetKind::SURFACE
-        );
         for (const auto& access : plan.imported_accesses_)
         {
             if (access.resource.index == plan.output_)
@@ -569,16 +616,11 @@ namespace lux::render::detail
                 plan.output_first_batch_ = std::min(plan.output_first_batch_, access.batch);
             }
         }
-        plan.physical_resources_ =
-            planPhysicalResources(
-                graph, analysis.execution_order, plan.resources_, plan.recording_, plan.submissions_, queues,
-                allocation, resource_reuse
-            );
         if (std::ranges::find(resource_reuse, EResourceReuse::REUSED) != resource_reuse.end())
         {
             // Rebuild only the cold transition templates using the selected physical identities.
             // Their ordering is already proved: no submission dependency or CPU wait is added.
-            barriers = planBarriers(
+            auto barriers = planBarriers(
                 graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.output_description_,
                 limits.graphicsAPI, &plan.physical_resources_
             );
@@ -680,7 +722,7 @@ namespace lux::render::detail
 
     RenderResult<RenderGraphExecutable> GraphCompiler::compileForRecordingTest(
         const nri::DeviceDesc& limits, std::array<const QueueProperties*, 3> queues, const RenderGraph& graph,
-        const RenderGraphAnalysis& analysis, ETransientAllocation allocation
+        const RenderGraphAnalysis& analysis, ETransientAllocation allocation, GraphQueuePolicy policy
     ) noexcept
     {
         std::vector<std::uint32_t> recipes;
@@ -690,7 +732,8 @@ namespace lux::render::detail
             return cxx::unexpected(plan.error());
         }
         std::vector<EResourceReuse> resource_reuse;
-        if (auto finished = finishPlan(*plan, graph, analysis, queues, limits, allocation, resource_reuse); !finished)
+        auto finished = finishPlan(*plan, graph, analysis, queues, limits, allocation, resource_reuse, policy);
+        if (!finished)
         {
             return cxx::unexpected(finished.error());
         }
@@ -928,7 +971,7 @@ namespace lux::render::detail
     exec::task<RenderResult<PreparedRenderGraph>> GraphCompiler::compile(
         DeviceSession& session, execution::CpuScheduler cpu, const RenderGraph& graph,
         const RenderGraphAnalysis& analysis, const EffectOutputDesc* target, ETransientAllocation allocation,
-        std::span<const std::uint32_t> parameter_groups
+        std::span<const std::uint32_t> parameter_groups, bool exercise_async
     ) noexcept
     {
         const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
@@ -971,7 +1014,7 @@ namespace lux::render::detail
                 {
                     return finishPlan(
                         *candidate, graph, analysis, queues, session.description(), allocation,
-                        diagnostics.resource_reuse
+                        diagnostics.resource_reuse, {session.graphQueueCosts(), exercise_async}
                     );
                 }
             ) |

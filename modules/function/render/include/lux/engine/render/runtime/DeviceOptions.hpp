@@ -12,6 +12,13 @@ namespace lux::render
         D3D12
     };
 
+    struct GraphQueueCosts final
+    {
+        std::uint64_t graphics_submit_ns = 0;
+        std::uint64_t compute_submit_ns = 0;
+        std::uint64_t queue_handoff_ns = 0;
+    };
+
     struct DeviceOptions
     {
         // Explicit enumeration index, or prefer a discrete eligible device.
@@ -32,5 +39,7 @@ namespace lux::render
         // Number of zero-user native programs retained; active programs are not constrained by this budget.
         std::uint32_t cached_unused_programs = 256;
         EGraphicsBackend backend = EGraphicsBackend::VULKAN;
+        // Measured on this adapter/backend. A zero submit cost marks calibration as unavailable.
+        GraphQueueCosts graph_queue_costs;
     };
 } // namespace lux::render

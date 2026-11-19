@@ -270,6 +270,14 @@ Compute pass. The Builder commits the sequence as a unit and returns the final w
 Analysis keeps the commands together, derives their hazards individually, and rejects dependency cycles. The compiler
 records compatible adjacent work in the same CB and emits the synchronization between commands.
 
+Compute work can declare permission to run asynchronously. The compiler uses a Graphics schedule by default.
+A device can supply measured submit and queue handoff costs in DeviceOptions::graph_queue_costs, and Features can
+supply workload-specific command timings in GraphPassOptions::estimated_gpu_ns. With complete timings for the live
+graph, the compiler compares the Graphics and eligible async schedules using their actual compiled submission DAGs.
+It estimates GPU completion across queues, includes native submit costs, and requires the winning async candidate to
+preserve the baseline's reuse of identical physical objects. Runtime memory alias placement still uses NRI requirements.
+Imported images, surface output uses, sequences, and conditional intervals constrain queue assignment.
+
 `GraphCompiler::compile(session, cpu, graph, analysis, ...)` prepares device-qualified programs, descriptor bindings,
 submissions and physical resource layout before publishing the `RenderGraphExecutable`. Shader reflection supplies
 layouts and descriptor writes on SPIR-V and DXIL. The final descriptor table is dense in execution order. Separate

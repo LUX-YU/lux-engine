@@ -57,6 +57,7 @@ namespace lux::render::detail
     {
     public:
         [[nodiscard]] bool usesDeviceAddresses() const noexcept { return use_device_addresses_; }
+        [[nodiscard]] GraphQueueCosts graphQueueCosts() const noexcept { return graph_queue_costs_; }
 
         // Cold query values; an explicit DeviceOptions index uses this same NRI enumeration order.
         [[nodiscard]] static RenderResult<std::vector<nri::AdapterDesc>> enumerateAdapters() noexcept;
@@ -258,6 +259,7 @@ namespace lux::render::detail
 
     private:
         bool use_device_addresses_ = false;
+        GraphQueueCosts graph_queue_costs_;
         friend struct DeviceBackend;
         void requireCleanupComplete(const RenderResult<void>&) noexcept;
         explicit DeviceSession(cxx::execution::ManualContext::Scheduler native_scheduler) noexcept;

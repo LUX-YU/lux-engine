@@ -68,6 +68,7 @@ namespace lux::render::detail
             return cxx::unexpected(initialized.error());
         }
         result->use_device_addresses_ = options.buffer_device_address;
+        result->graph_queue_costs_ = options.graph_queue_costs;
         result->programs_ = std::make_unique<CompiledPrograms>(*result, options.cached_unused_programs);
         return result;
     }

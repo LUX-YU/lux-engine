@@ -41,6 +41,9 @@ target_link_libraries(lux_shader_compile PRIVATE shader_compiler)
 install(TARGETS lux_shader_compile RUNTIME DESTINATION bin COMPONENT lux_engine_resource)
 
 if(WIN32)
+    target_sources(shader_compiler PRIVATE src/DxilConstantLayout.cpp)
+    target_include_directories(shader_compiler PRIVATE "${LUX_DXC_ROOT}/inc")
+
     add_custom_command(
         TARGET shader_compiler POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${LUX_SHADER_COMPILER_RUNTIMES}

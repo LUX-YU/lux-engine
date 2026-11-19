@@ -884,6 +884,10 @@ stride for each leaf. The SPIR-V verifier checks these facts against native type
 column-vector and array wrappers. Legacy blocks can still use structured layout checks. A typed
 constant contract requires the additional target layout evidence, so legacy blocks require recooking
 before such a contract can qualify.
+The Windows cooker uses the pinned DXC reflection API to check each bound DXIL constant buffer's
+register, field offsets, matrix storage and physical array strides. NRI layout creation checks the
+root constant range against the device limit. The D3D12 budget includes the descriptor tables
+formed by NRI from the final descriptor ranges.
 
 D3D12 requires Shader Model 6.6 and loads the deployed Agility SDK beside the Render DLL.
 It uses the existing contiguous instance-buffer path, with per-draw member offsets when

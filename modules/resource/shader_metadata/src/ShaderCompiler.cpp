@@ -9,6 +9,7 @@
 #include <new>
 
 #ifdef _WIN32
+#include "DxilConstantLayout.hpp"
 #define NOMINMAX
 #include <windows.h>
 #undef interface
@@ -675,6 +676,16 @@ namespace lux::shader
                 {
                     return cxx::unexpected(std::move(compiled.error()));
                 }
+#ifdef _WIN32
+                if (request.target == rdesc::EShaderTarget::DXIL)
+                {
+                    const auto checked = detail::verifyDxilConstants(dxc, *compiled);
+                    if (checked == detail::EDxilConstantLayout::REFLECTION_UNAVAILABLE)
+                        return failure(EShaderCompileError::COMPILER_FAILURE, "cannot reflect native DXIL");
+                    if (checked == detail::EDxilConstantLayout::LAYOUT_MISMATCH)
+                        return failure(EShaderCompileError::UNSUPPORTED_LAYOUT, "DXIL constant layout mismatch");
+                }
+#endif
                 result.push_back(std::move(*compiled));
                 previous = &request;
             }

@@ -11,6 +11,49 @@
 
 namespace lux::render::detail
 {
+    namespace
+    {
+        enum class ED3DTable : std::uint8_t { SRV, UAV, CBV, SAMPLER };
+
+        ED3DTable tableKind(nri::DescriptorType type) noexcept
+        {
+            switch (type)
+            {
+            case nri::DescriptorType::SAMPLER: return ED3DTable::SAMPLER;
+            case nri::DescriptorType::CONSTANT_BUFFER: return ED3DTable::CBV;
+            case nri::DescriptorType::STORAGE_TEXTURE:
+            case nri::DescriptorType::STORAGE_BUFFER:
+            case nri::DescriptorType::STORAGE_STRUCTURED_BUFFER: return ED3DTable::UAV;
+            default: return ED3DTable::SRV;
+            }
+        }
+
+        std::uint64_t d3dTableBytes(std::span<const nri::DescriptorSetDesc> sets) noexcept
+        {
+            std::uint64_t tables = 0;
+            for (const auto& set : sets)
+            {
+                // The pinned NRI combines adjacent ranges of the same D3D range type and visibility per set.
+                std::optional<std::pair<ED3DTable, nri::StageBits>> previous;
+                for (const auto& range : std::span(set.ranges, set.rangeNum))
+                {
+                    if (range.descriptorType == nri::DescriptorType::MUTABLE) continue;
+                    const auto stages = range.shaderStages;
+                    const bool single_graphics = stages == nri::StageBits::VERTEX_SHADER ||
+                        stages == nri::StageBits::FRAGMENT_SHADER;
+                    const auto visibility = single_graphics ? stages : nri::StageBits::ALL;
+                    const auto key = std::pair{tableKind(range.descriptorType), visibility};
+                    if (previous != key)
+                    {
+                        ++tables;
+                        previous = key;
+                    }
+                }
+            }
+            return tables * sizeof(std::uint32_t);
+        }
+    } // namespace
+
     RenderResult<void>
     addPrivateDescriptors(
         nri::DescriptorPoolDesc& pool,
@@ -73,6 +116,26 @@ namespace lux::render::detail
             sets.push_back({program.private_set, local.data(), static_cast<std::uint32_t>(local.size())});
         }
         const auto& limits = core.GetDeviceDesc(device);
+        constexpr auto supported_stages =
+            nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+        const bool is_d3d12 = limits.graphicsAPI == nri::GraphicsAPI::D3D12;
+        if (program.parameter_bytes)
+        {
+            const auto stages = static_cast<std::uint32_t>(program.parameter_stages);
+            const auto allowed = static_cast<std::uint32_t>(supported_stages);
+            const bool invalid_range = program.parameter_bytes % sizeof(std::uint32_t) != 0;
+            const bool invalid_stages = (stages & ~allowed) != 0;
+            if (invalid_range || invalid_stages)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+        }
+        const auto root_bytes = program.parameter_bytes + (is_d3d12 ? d3dTableBytes(sets) : 0);
+        const auto root_limit = limits.pipelineLayout.rootConstantMaxSize;
+        if (root_bytes > root_limit)
+        {
+            return cxx::unexpected(RenderError{kDeviceCapacity, {root_bytes, root_limit}});
+        }
         if (sets.size() > limits.pipelineLayout.descriptorSetMaxNum)
         {
             return cxx::unexpected(
@@ -192,9 +255,8 @@ namespace lux::render::detail
         const nri::RootConstantDesc parameters{0, program.parameter_bytes, program.parameter_stages};
         nri::PipelineLayoutDesc description{};
         description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
-        description.rootRegisterSpace = limits.graphicsAPI == nri::GraphicsAPI::D3D12 ? 255 : 0;
-        description.shaderStages =
-            nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+        description.rootRegisterSpace = is_d3d12 ? 255 : 0;
+        description.shaderStages = supported_stages;
         description.descriptorSets = sets.data();
         description.descriptorSetNum = static_cast<std::uint32_t>(sets.size());
         description.rootConstants = program.parameter_bytes ? &parameters : nullptr;

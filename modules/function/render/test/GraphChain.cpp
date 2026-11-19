@@ -704,7 +704,26 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     ));
     CHECK(builder.exportOutput({written(copied, readback), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
     auto graph = take(std::move(builder).finish());
-    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const auto analysis = take(analyzeRenderGraph(graph));
+    if (backend == EGraphicsBackend::D3D12)
+    {
+        // The block fits on its own. The CBV and UAV occupy separate NRI descriptor tables.
+        static nri::DeviceDesc limited;
+        limited = session->description();
+        limited.pipelineLayout.rootConstantMaxSize = 64;
+        auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+        const auto get_device_desc = core.GetDeviceDesc;
+        core.GetDeviceDesc = [](const nri::Device&) -> const nri::DeviceDesc& { return limited; };
+        auto rejected = runTask(GraphCompiler::compile(
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr,
+            ETransientAllocation::ALIAS_MEMORY, {}, true
+        ));
+        core.GetDeviceDesc = get_device_desc;
+        CHECK(!rejected && rejected.error().type == kDeviceCapacity);
+        CHECK(rejected.error().args[0] == 72 && rejected.error().args[1] == 64);
+        std::puts("ROOT RANGE PASS: table DWORDs exhaust the native D3D12 budget before layout creation");
+    }
+    auto plan = compile(*session, graph, analysis, nullptr);
     FrameHarness frames(*session, 1);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 1, plan.executable, plan.programs);
     CHECK(instance->initialize(plan.assembly));

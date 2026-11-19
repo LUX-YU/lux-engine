@@ -20,12 +20,9 @@ namespace lux::render::detail
     public:
         [[nodiscard]] bool belongsTo(const DeviceSession& device) const noexcept { return &session_ == &device; }
 
-        static RenderResult<SwapchainTarget> create(
-            DeviceSession&,
-            TargetDesc,
-            SurfaceDescription,
-            std::uint32_t frame_count
-        ) noexcept;
+        static RenderResult<SwapchainTarget>
+        create(DeviceSession&, TargetDesc, SurfaceDescription, std::uint32_t frame_count) noexcept;
+
         ~SwapchainTarget() noexcept;
         SwapchainTarget(SwapchainTarget&&) noexcept;
         SwapchainTarget(const SwapchainTarget&) = delete;
@@ -66,21 +63,23 @@ namespace lux::render::detail
     private:
         [[nodiscard]] auto whenIdle() noexcept
         {
-            return exec::create<stdexec::set_value_t()>([this](auto& completion) noexcept
-            {
-                if (!nativePending())
+            return exec::create<stdexec::set_value_t()>(
+                [this](auto& completion) noexcept
                 {
-                    stdexec::set_value(std::move(completion.receiver));
-                    return;
+                    if (!nativePending())
+                    {
+                        stdexec::set_value(std::move(completion.receiver));
+                        return;
+                    }
+                    using Completion = std::remove_reference_t<decltype(completion)>;
+                    idle_context_ = &completion;
+                    idle_ = [](void* object) noexcept
+                    {
+                        auto& done = *static_cast<Completion*>(object);
+                        stdexec::set_value(std::move(done.receiver));
+                    };
                 }
-                using Completion = std::remove_reference_t<decltype(completion)>;
-                idle_context_ = &completion;
-                idle_ = [](void* object) noexcept
-                {
-                    auto& done = *static_cast<Completion*>(object);
-                    stdexec::set_value(std::move(done.receiver));
-                };
-            });
+            );
         }
 
         SwapchainTarget(DeviceSession&, TargetDesc, SurfaceDescription) noexcept;

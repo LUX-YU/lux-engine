@@ -47,9 +47,9 @@ namespace lux::render
     // Config/Ops qualification belongs to the typed Factory, not a manual version or encoded config schema.
     struct ResourceDefinition final
     {
-        ResourceNameView type;
-        std::uint32_t required_capabilities = 0;
-        std::uint32_t optional_capabilities = 0;
+        ResourceNameView    type;
+        std::uint32_t       required_capabilities = 0;
+        std::uint32_t       optional_capabilities = 0;
         cxx::basic_type_info binding_type;
         std::string_view description;
         EResourceDomain domain = EResourceDomain::DEVICE;
@@ -63,9 +63,12 @@ namespace lux::render
 
         [[nodiscard]] bool hasSameContract(const ResourceDefinition& other) const noexcept
         {
-            const bool same_policy = type == other.type && required_capabilities == other.required_capabilities &&
-                                     optional_capabilities == other.optional_capabilities &&
-                                     binding_type == other.binding_type && domain == other.domain;
+            const bool same_policy =
+                type == other.type &&
+                required_capabilities == other.required_capabilities &&
+                optional_capabilities == other.optional_capabilities &&
+                binding_type == other.binding_type &&
+                domain == other.domain;
             const bool same_commands_count = commands.size() == other.commands.size();
             if (!(same_policy && same_commands_count))
             {
@@ -84,9 +87,12 @@ namespace lux::render
         }
     };
 
-    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validateStorage(const ResourceDefinition& descriptor) noexcept;
+    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void>
+    validateStorage(const ResourceDefinition& descriptor) noexcept;
+
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void>
     compatibleStorage(const ResourceDefinition& expected, const ResourceDefinition& actual) noexcept;
 
-    [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor> renderResourceErrorDescriptors() noexcept;
+    [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor>
+    renderResourceErrorDescriptors() noexcept;
 } // namespace lux::render

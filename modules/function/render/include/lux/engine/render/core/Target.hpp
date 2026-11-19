@@ -18,10 +18,10 @@ namespace lux::render
     // Immutable Effect output contract. Actual pixel dimensions belong to Target and Instance.
     struct EffectOutputDesc final
     {
-        rdesc::ETextureFormat format{rdesc::ETextureFormat::UNDEFINED};
-        std::uint32_t samples{1};
-        ETargetKind kind{ETargetKind::OFFSCREEN};
-        bool sampled{false};
+        rdesc::ETextureFormat   format{rdesc::ETextureFormat::UNDEFINED};
+        std::uint32_t           samples{1};
+        ETargetKind             kind{ETargetKind::OFFSCREEN};
+        bool                    sampled{false};
         bool operator==(const EffectOutputDesc&) const noexcept = default;
     };
 
@@ -31,15 +31,15 @@ namespace lux::render
     // Device limits, supported formats/sample counts and WSI eligibility are later checks.
     struct TargetDesc
     {
-        std::uint32_t width{};
-        std::uint32_t height{};
-        rdesc::ETextureFormat format{rdesc::ETextureFormat::UNDEFINED};
-        std::uint32_t samples{1};
-        ETargetKind kind{ETargetKind::OFFSCREEN};
-        bool sampled = false; // Allows graph consumers to borrow the execution layer's published output.
+        std::uint32_t           width{};
+        std::uint32_t           height{};
+        rdesc::ETextureFormat   format{rdesc::ETextureFormat::UNDEFINED};
+        std::uint32_t           samples{1};
+        ETargetKind             kind{ETargetKind::OFFSCREEN};
+        bool                    sampled = false; // Allows graph consumers to borrow the execution layer's published output.
 
         [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validate() const noexcept;
-        bool operator==(const TargetDesc&) const noexcept = default;
+        bool                    operator==(const TargetDesc&) const noexcept = default;
     };
 
     struct Win32Surface final
@@ -68,7 +68,13 @@ namespace lux::render
         bool operator==(const MetalSurface&) const noexcept = default;
     };
 
-    using VSurfaceWindow = std::variant<std::monostate, Win32Surface, X11Surface, WaylandSurface, MetalSurface>;
+    using VSurfaceWindow = std::variant<
+        std::monostate,
+        Win32Surface,
+        X11Surface,
+        WaylandSurface,
+        MetalSurface
+    >;
 
     // Borrowed platform window, retained until RemoveTarget completes (or RenderServer joins).
     // No Window/UI object crosses the protocol. The first path is SDR; WAITABLE/HDR are not implied.

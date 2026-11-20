@@ -1,9 +1,8 @@
 #pragma once
 
 #include <lux/engine/object/CodeLease.hpp>
-#include <lux/engine/render/extensions/execution/InstanceDataFactory.hpp>
-
-namespace nri { struct Buffer; struct Texture; }
+#include <lux/engine/render/extensions/execution/InstanceDataPrototype.hpp>
+#include <vector>
 
 namespace lux::render::detail
 {
@@ -27,37 +26,6 @@ namespace lux::render::detail
         // The Effect execution borrow protects this owner-side source through every Job.
         std::span<const std::byte> node_state;
         std::vector<std::uint32_t> program_snapshots;
-    };
-
-    struct OwnedRasterStream final
-    {
-        struct MeshBuffer final
-        {
-            nri::Buffer* buffer;
-            std::uint64_t offset, size;
-            const MeshDescription* asset;
-            EGraphUse use;
-        };
-
-        struct MaterialRead final
-        {
-            const nri::Buffer* buffer;
-            GraphBufferRange range;
-            std::uint32_t program, first_image, image_count;
-        };
-
-        std::vector<RasterStreamDraw> draws;
-        std::vector<RasterStreamBinding> bindings;
-        std::vector<RasterStreamVertex> vertices;
-        std::vector<std::byte> constants;
-        std::vector<RasterStreamSection> sections;
-        std::vector<const nri::Texture*> textures;
-        std::vector<MeshBuffer> mesh_buffers;
-        std::vector<MaterialRead> materials;
-        std::vector<const nri::Texture*> material_images;
-        std::vector<std::uint8_t> used_material_programs;
-        std::uint64_t selection = 0;
-        bool written = false;
     };
 
     struct PreparationPlan final

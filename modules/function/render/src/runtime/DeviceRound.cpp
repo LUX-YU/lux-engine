@@ -177,7 +177,7 @@ namespace lux::render
             auto& execution = *job.execution;
             if (execution.device != entry.id) continue;
             if (execution.programsReady() || execution.programError().type) continue;
-            if (execution.pending_uses || !resourcesAvailable(execution.resources)) continue;
+            if (execution.pending_uses || !resourcesAvailable(execution.retainedResources())) continue;
             const bool parallel_recording = std::ranges::any_of(runtime_->devices_, [](const auto& device) noexcept
             {
                 const auto& operation = device->round.operation;

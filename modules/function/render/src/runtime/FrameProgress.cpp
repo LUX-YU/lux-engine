@@ -104,7 +104,7 @@ namespace lux::render::detail
     RenderResult<bool> FrameProgress::waitForProgress(DeviceSession& device, std::uint64_t timeout_ns) noexcept
     {
         const auto count = device.queueCount();
-        const auto frontier = slots_[nextSlot()].serials();
+        const auto& frontier = slots_[nextSlot()].serials();
         for (std::size_t offset = 0; offset < count; ++offset)
         {
             const auto index = (wait_queue_cursor_ + offset) % count;

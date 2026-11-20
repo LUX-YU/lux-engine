@@ -4,7 +4,7 @@
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
+#include <lux/engine/render/extensions/graph/ParameterBinding.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
 
 namespace lux::render
@@ -25,22 +25,6 @@ namespace lux::render
         {
             uniform_constant = kConstantBlockContract<T>;
             access.range = GraphBufferRange{offset, sizeof(T)};
-        }
-    };
-
-    struct ParameterBinding final
-    {
-        std::vector<std::byte> values;
-        // Explicitly zero-initialize any reflected tail beyond the supplied constant bytes.
-        bool zero_fill_tail = false;
-        ConstantBlockContract inline_constant;
-
-        template <ShaderConstantBlock T> void setInlineConstant(const T& value) noexcept
-        {
-            const auto bytes = std::as_bytes(std::span{&value, 1});
-            values.assign(bytes.begin(), bytes.end());
-            zero_fill_tail = false;
-            inline_constant = kConstantBlockContract<T>;
         }
     };
 

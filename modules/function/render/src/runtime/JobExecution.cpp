@@ -8,13 +8,9 @@
 
 namespace lux::render::runtime_detail
 {
-    JobExecution::RecipeUse::~RecipeUse() noexcept
-    {
-        effect.releaseExecution();
-    }
-
     JobExecution::JobExecution(
-        RenderEffect& effect,
+        EffectExecutionUse effect,
+        ResourceRegistry& registry,
         DeviceSessionId session,
         detail::DeviceSession& device,
         std::uint32_t frame_count,
@@ -22,23 +18,23 @@ namespace lux::render::runtime_detail
         TargetId output,
         detail::TargetOutput physical
     ) noexcept
-        : recipe{effect}, device(session), target(output), graph_plan(std::move(plan)), executable(graph_plan->executable),
+        : effect_use_(std::move(effect)), storage_uses_(registry), device(session), target(output),
+          graph_plan(std::move(plan)), executable(graph_plan->executable),
           instance(device, frame_count, executable, graph_plan->programs, physical)
     {
     }
 
     JobExecution::StorageUses::~StorageUses() noexcept
     {
-        for (auto id : retained) registry->releaseExecution(id);
+        for (auto id : retained) registry.releaseExecution(id);
     }
 
-    RenderResult<void> JobExecution::retainStorage(ResourceRegistry& registry, ResourceInstanceId id) noexcept
+    RenderResult<void> JobExecution::retainStorage(ResourceInstanceId id) noexcept
     {
-        if (std::ranges::find(storage_uses.retained, id) != storage_uses.retained.end()) return {};
-        if (auto retained = registry.retainExecution(id); !retained) return retained;
-        storage_uses.registry = &registry;
-        storage_uses.retained.push_back(id);
-        resources.push_back(id);
+        auto& retained = storage_uses_.retained;
+        if (std::ranges::find(retained, id) != retained.end()) return {};
+        if (auto acquired = storage_uses_.registry.retainExecution(id); !acquired) return acquired;
+        retained.push_back(id);
         return {};
     }
 
@@ -173,7 +169,7 @@ namespace lux::render
             if (slot == kGraphInvalidIndex) continue;
             const auto& input = binding.resources[i];
             const auto id = input.resource;
-            if (auto retained = candidate.retainStorage(registry, id); !retained) return retained;
+            if (auto retained = candidate.retainStorage(id); !retained) return retained;
             if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
             const auto* factory = registry.factory(registry.declarationOf(id));
@@ -192,7 +188,7 @@ namespace lux::render
         for (const auto& snapshot : preparation.snapshots)
         {
             const auto id = binding.resources[snapshot.binding].resource;
-            if (auto retained = candidate.retainStorage(registry, id); !retained) return retained;
+            if (auto retained = candidate.retainStorage(id); !retained) return retained;
             const auto* factory = registry.factory(registry.declarationOf(id));
             const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
             sources.push_back({id, registry.resourceInstance(id), ops->cpu_snapshot});
@@ -202,7 +198,7 @@ namespace lux::render
         {
             if (slot == kGraphInvalidIndex) return {};
             const auto id = binding.resources[slot].resource;
-            if (auto retained = candidate.retainStorage(registry, id); !retained) return retained;
+            if (auto retained = candidate.retainStorage(id); !retained) return retained;
             auto storage = registry.borrow<Storage>(id);
             if (!storage) return cxx::unexpected(storage.error());
             owner = *storage;

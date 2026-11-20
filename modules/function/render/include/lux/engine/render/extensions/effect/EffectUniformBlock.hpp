@@ -12,7 +12,8 @@ namespace lux::render
     public:
         explicit EffectUniformBlock(const T& value) noexcept : value_(value) {}
 
-        [[nodiscard]] const T& value() const noexcept { return value_; }
+        [[nodiscard]] const T& value() const & noexcept { return value_; }
+        const T& value() const && = delete;
         [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
 
         [[nodiscard]] RenderResult<void> set(const T& value) noexcept

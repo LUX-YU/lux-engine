@@ -716,7 +716,7 @@ namespace lux::render::detail
             auto& source_queue = *first.queue;
             auto& queue = acquiring ? device_.queue() : source_queue;
             batch_entries_.clear();
-            while (ready_head_ && batch_entries_.size() < batch_entries_.capacity())
+            while (ready_head_ && batch_entries_.size() < options_.batch_entries)
             {
                 auto* entry = ready_head_;
                 const bool same_submission = entry->queue == &source_queue && entry->acquiring == acquiring;
@@ -1225,7 +1225,8 @@ namespace lux::render::detail
             }
         );
         const auto ranges = image ? regions.size() : buffer_runs;
-        copies.reserve(std::min(options_.window_regions, std::max(options_.staging_pages, ranges)));
+        const auto window_limit = std::min(options_.window_regions, std::max(options_.staging_pages, ranges));
+        copies.reserve(window_limit);
         std::size_t index = 0, offset = 0, run_end = 0, run_remaining = 0;
         std::uint32_t row = 0;
         const auto count = image ? regions.size() : writes.size();
@@ -1236,7 +1237,7 @@ namespace lux::render::detail
                 co_return failure(RenderError{kUploadStopped});
             }
             copies.clear();
-            while (index < count && copies.size() < copies.capacity())
+            while (index < count && copies.size() < window_limit)
             {
                 const auto* region = image ? &regions[index] : nullptr;
                 const auto row_bytes =

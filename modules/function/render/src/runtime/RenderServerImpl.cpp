@@ -511,7 +511,7 @@ namespace lux::render
         if (!device.round.run_count) return false;
         return std::ranges::any_of(device.round.outputs, [&](const auto& output)
         {
-            const auto& resources = output.execution->resources;
+            const auto resources = output.execution->retainedResources();
             return std::ranges::find(resources, id) != resources.end();
         });
     }

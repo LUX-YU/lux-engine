@@ -54,7 +54,8 @@ namespace lux::render
         }
 
         template <class T>
-            requires std::is_nothrow_move_constructible_v<std::remove_cvref_t<T>> &&
+            requires std::constructible_from<std::remove_cvref_t<T>, T&&> &&
+                     std::is_nothrow_move_constructible_v<std::remove_cvref_t<T>> &&
                      std::is_nothrow_destructible_v<std::remove_cvref_t<T>> &&
                      requires(const std::remove_cvref_t<T>& value) {
                          {
@@ -94,17 +95,21 @@ namespace lux::render
             return retained_bytes_;
         }
 
-        template <class T> [[nodiscard]] const T* borrow() const noexcept
+        template <class T> [[nodiscard]] const T* borrow() const & noexcept
         {
             const bool matches = type() == cxx::make_basic_type_info<T>();
             return matches ? static_cast<const T*>(value_.get()) : nullptr;
         }
 
+        template <class T> const T* borrow() const && = delete;
+
         // Trusted typed Factory/Graph thunk uses this after its single cold type_info check.
-        [[nodiscard]] const void* data() const noexcept
+        [[nodiscard]] const void* data() const & noexcept
         {
             return value_.get();
         }
+
+        const void* data() const && = delete;
 
     private:
         using ConfigObject = std::unique_ptr<const void, void (*)(const void*) noexcept>;

@@ -1,43 +1,10 @@
 #pragma once
 
-#include <lux/engine/render/core/ConfigValue.hpp>
+#include <lux/engine/render/extensions/execution/InstanceDataPrototype.hpp>
 #include <lux/engine/render/extensions/execution/InstanceLink.hpp>
-#include <vector>
 
 namespace lux::render
 {
-    class InstanceInstantiationContext
-    {
-    public:
-        virtual ~InstanceInstantiationContext() noexcept = default;
-        [[nodiscard]] virtual const TargetDesc& target() const noexcept = 0;
-    };
-
-    using InstanceDataResult = RenderResult<std::unique_ptr<InstanceData>>;
-
-    class InstanceDataFactory;
-
-    class InstanceDataPrototype final
-    {
-    public:
-        [[nodiscard]] InstanceDataResult instantiate(InstanceInstantiationContext& instance) const noexcept
-        {
-            return instantiate_(inputs_.data(), instance);
-        }
-
-    private:
-        friend class InstanceDataFactory;
-        using Instantiate = InstanceDataResult (*)(const void*, InstanceInstantiationContext&) noexcept;
-
-        InstanceDataPrototype(ConfigValue inputs, Instantiate instantiate) noexcept
-            : inputs_(std::move(inputs)), instantiate_(instantiate)
-        {
-        }
-
-        ConfigValue inputs_;
-        Instantiate instantiate_;
-    };
-
     template <class T>
     concept InstanceDataProducer = std::derived_from<T, InstanceData> && requires(
         const typename T::Configuration& config, typename T::ResolvedInputs inputs,
@@ -83,21 +50,5 @@ namespace lux::render
         using Link = RenderResult<InstanceDataPrototype> (*)(const ConfigValue&, InstanceLinkContext&) noexcept;
         explicit constexpr InstanceDataFactory(Link link) noexcept : link_(link) {}
         Link link_;
-    };
-
-    struct GraphPreparation final
-    {
-        InstanceDataFactory factory;
-        ConfigValue configuration;
-        std::vector<GraphCpuDataId> inputs;
-        std::vector<GraphCpuDataId> outputs;
-        std::vector<GraphPassId> inline_blocks;
-        // A live preparation retains all of its GPU passes. Inline block passes are included automatically.
-        std::vector<GraphPassId> passes{};
-        // Each listed buffer is published once, through its linked writer or sizer.
-        std::vector<GraphResourceId> gpu_buffers{};
-        std::vector<GraphStorageSnapshotId> storage_inputs{};
-        // Subset of storage_inputs that drives the runtime Raster program selection.
-        std::vector<GraphStorageSnapshotId> program_storage_inputs{};
     };
 } // namespace lux::render

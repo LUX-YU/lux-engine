@@ -1,6 +1,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>

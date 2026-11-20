@@ -15,7 +15,7 @@ namespace lux::render
         SceneId scene{};
     };
 
-    // A scene stays bound to the device hosting this Server for its entire lifetime.
+    // A logical scene owns views. Each device manages its own resources scoped to that scene.
     struct CreateScene final
     {
         static constexpr std::string_view name{"render.scene.create"};

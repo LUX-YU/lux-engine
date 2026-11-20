@@ -115,7 +115,6 @@ namespace lux::render::detail
     struct RasterListCommands final
     {
         std::uint32_t data_index;
-        RasterPassTemplate description;
         bool producer_stream = false;
     };
 

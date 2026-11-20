@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <lux/engine/render/core/Error.hpp>
 #include <string_view>
 

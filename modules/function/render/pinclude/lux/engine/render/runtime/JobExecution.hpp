@@ -7,6 +7,7 @@
 #include <lux/engine/render/frame/FrameLayout.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/runtime/EffectExecutionUse.hpp>
 #include <memory>
 #include <vector>
 
@@ -17,8 +18,6 @@ namespace lux::render::detail
 
 namespace lux::render::runtime_detail
 {
-    struct RenderEffect;
-
     struct JobGraphPlan final
     {
         detail::RenderGraphExecutable executable;
@@ -33,26 +32,28 @@ namespace lux::render::runtime_detail
     struct JobExecution final
     {
         JobExecution(
-            RenderEffect&, DeviceSessionId, detail::DeviceSession&, std::uint32_t frame_count,
+            EffectExecutionUse, ResourceRegistry&, DeviceSessionId, detail::DeviceSession&, std::uint32_t frame_count,
             std::shared_ptr<const JobGraphPlan>, TargetId, detail::TargetOutput
         ) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;
 
-        struct RecipeUse final
-        {
-            RenderEffect& effect;
-            ~RecipeUse() noexcept;
-        };
-        RecipeUse recipe;
+    private:
+        // Native instance state is destroyed before either retained owner is released.
+        EffectExecutionUse effect_use_;
         struct StorageUses final
         {
-            ResourceRegistry* registry = nullptr;
+            explicit StorageUses(ResourceRegistry& resource_registry) noexcept : registry(resource_registry) {}
+            StorageUses(const StorageUses&) = delete;
+            StorageUses& operator=(const StorageUses&) = delete;
+            ResourceRegistry& registry;
             std::vector<ResourceInstanceId> retained;
             ~StorageUses() noexcept;
         };
-        StorageUses storage_uses;
+        StorageUses storage_uses_;
+
+    public:
         std::vector<ResourceInstanceId> gpu_resources;
         DeviceSessionId device;
         TargetId target;
@@ -92,7 +93,10 @@ namespace lux::render::runtime_detail
         FrameLayout input_layout;
         // Qualified once at assembly. These identities also define which exclusive commands
         // conflict with a live Run, including resources used only for GPU bindings.
-        std::vector<ResourceInstanceId> resources;
+        [[nodiscard]] std::span<const ResourceInstanceId> retainedResources() const & noexcept
+        {
+            return storage_uses_.retained;
+        }
         // Pointees belong to the retained domain; call metadata lives in stable Resource type slots.
         // No pointer into a relocatable instance record or Client payload is retained here.
         struct Input final
@@ -128,7 +132,7 @@ namespace lux::render::runtime_detail
             std::uint32_t frame_count,
             std::uint32_t projection
         ) noexcept;
-        [[nodiscard]] RenderResult<void> retainStorage(ResourceRegistry&, ResourceInstanceId) noexcept;
+        [[nodiscard]] RenderResult<void> retainStorage(ResourceInstanceId) noexcept;
         void selectViewParameters() noexcept;
         const detail::ViewParameterStorage* view_parameters = nullptr;
         std::uint64_t view_revision = 0;

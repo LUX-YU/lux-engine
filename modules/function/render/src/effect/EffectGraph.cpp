@@ -4,7 +4,7 @@
 
 namespace lux::render
 {
-    const EffectNode* EffectGraph::findNode(graph::NodeId node) const noexcept
+    const EffectNode* EffectGraph::findNode(graph::NodeId node) const & noexcept
     {
         const auto found = nodes_.find(node);
         return found == nodes_.end() ? nullptr : &found->second;

@@ -219,7 +219,7 @@ namespace lux::render
             if (!job.readyToRun() || !jobTargetReady(job)) continue;
             auto& state = inputs.selection[i];
             state.availability = EAvailability::READY;
-            if (!entry.execution->programsReady() || !resourcesAvailable(entry.execution->resources))
+            if (!entry.execution->programsReady() || !resourcesAvailable(entry.execution->retainedResources()))
             {
                 block(i);
                 continue;

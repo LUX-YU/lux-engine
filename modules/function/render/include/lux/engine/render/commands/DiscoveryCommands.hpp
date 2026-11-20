@@ -39,7 +39,7 @@ namespace lux::render
         cxx::basic_type_info data;
         bool capability_command = false;
 
-        [[nodiscard]] CommandDescriptor descriptor() const noexcept
+        [[nodiscard]] CommandDescriptor descriptor() const & noexcept
         {
             return {
                 CommandName{name},
@@ -51,6 +51,8 @@ namespace lux::render
                 capability_command
             };
         }
+
+        CommandDescriptor descriptor() const && = delete;
     };
 
     struct CommandList final

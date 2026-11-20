@@ -10,6 +10,7 @@
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RenderScope.hpp>
 #include <span>
 #include <string>
@@ -19,10 +20,8 @@
 
 namespace lux::render
 {
-    struct CommandTag;
     struct HandlerTag;
     struct CommandNameTag;
-    using CommandId = cxx::SlotKey<CommandTag>;
     using HandlerId = cxx::SlotKey<HandlerTag>;
     using CommandName = cxx::SchemaIdView<CommandNameTag>;
 

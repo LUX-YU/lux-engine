@@ -4,6 +4,7 @@
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/runtime/EffectExecutionUse.hpp>
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -18,7 +19,6 @@ namespace lux::render::detail
 namespace lux::render::runtime_detail
 {
     struct JobGraphPlan;
-
     struct RenderEffect final
     {
         std::unique_ptr<const EffectGraph> source;
@@ -84,11 +84,12 @@ namespace lux::render::runtime_detail
         }
 
         // The same lifetime borrow covers asynchronous compilation and the published execution.
-        [[nodiscard]] bool tryBorrowExecution() noexcept;
-        void releaseExecution() noexcept;
+        [[nodiscard]] RenderResult<EffectExecutionUse> borrowExecution() noexcept;
         [[nodiscard]] bool hasExecutions() const noexcept { return execution_borrows_ != 0; }
 
     private:
+        friend class EffectExecutionUse;
+        void releaseExecution() noexcept;
         std::uint32_t execution_borrows_ = 0;
     };
 } // namespace lux::render::runtime_detail

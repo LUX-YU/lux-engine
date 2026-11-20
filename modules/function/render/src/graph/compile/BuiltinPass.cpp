@@ -238,10 +238,7 @@ namespace lux::render::detail
         else
         {
             const auto& stage = std::get<RasterPassTemplate>(raster->program);
-            const bool uses_producer = stage.usesStreamProducer();
-            recorded.draw = RasterListCommands{
-                (*context.raster_list_count)++, uses_producer ? RasterPassTemplate{} : stage, uses_producer
-            };
+            recorded.draw = RasterListCommands{(*context.raster_list_count)++, stage.usesStreamProducer()};
         }
         return recorded;
     }

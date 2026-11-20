@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <limits>
 #include <lux/cxx/container/SlotMap.hpp>
 
@@ -28,6 +29,7 @@ namespace lux::render
     struct EffectTag;
     struct ResourceTypeTag;
     struct ResourceInstanceTag;
+    struct CommandTag;
 
     using RenderJobId = cxx::SlotKey<RenderJobTag>;
     using DeviceSessionId = cxx::SlotKey<DeviceSessionTag>;
@@ -37,6 +39,7 @@ namespace lux::render
     using EffectId = cxx::SlotKey<EffectTag>;
     using ResourceTypeId = cxx::SlotKey<ResourceTypeTag>;
     using ResourceInstanceId = cxx::SlotKey<ResourceInstanceTag>;
+    using CommandId = cxx::SlotKey<CommandTag>;
 
     // Keys are local to their SlotMap. isValid() only checks the null sentinel; lookup must
     // validate generation in the owning SlotMap. View lookup also needs SceneId.

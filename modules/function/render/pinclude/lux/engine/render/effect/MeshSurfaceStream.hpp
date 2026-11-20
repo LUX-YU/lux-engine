@@ -4,7 +4,7 @@
 #include <lux/engine/render/resources/instance/Data.hpp>
 #include <map>
 
-namespace lux::render { struct MeshVisibilityView; }
+namespace lux::render { struct MeshVisibilityView; struct RasterState; }
 
 namespace lux::render::detail
 {

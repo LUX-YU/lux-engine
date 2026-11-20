@@ -1,3 +1,4 @@
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <algorithm>
 #include <cstdio>
@@ -59,6 +60,61 @@ namespace
 
     static_assert(CanAppend<ResourceA, Element>);
     static_assert(!CanAppend<ResourceB, std::uint32_t>);
+
+    struct ImmutableElement final
+    {
+        const std::uint64_t value = 0;
+    };
+
+    struct NonMovableElement final
+    {
+        std::uint64_t value = 0;
+        NonMovableElement() noexcept = default;
+        NonMovableElement(const NonMovableElement&) = delete;
+        NonMovableElement(NonMovableElement&&) = delete;
+        NonMovableElement& operator=(const NonMovableElement&) = default;
+    };
+
+    struct ResourceWithRestrictedElements final
+    {
+        using PerFrameData = std::tuple<ImmutableElement, NonMovableElement>;
+    };
+
+    template <class R, class T> concept CanAdd = requires(FrameData& packet, T&& value)
+    {
+        packet.addData<R>(std::forward<T>(value));
+    };
+
+    static_assert(CanAdd<ResourceA, const Element&> && CanAdd<ResourceA, Element>);
+    static_assert(CanAppend<ResourceWithRestrictedElements, ImmutableElement>);
+    static_assert(!CanAdd<ResourceWithRestrictedElements, ImmutableElement>);
+    static_assert(std::is_trivially_copyable_v<NonMovableElement>);
+    static_assert(!CanAppend<ResourceWithRestrictedElements, NonMovableElement>);
+    static_assert(!CanAdd<ResourceWithRestrictedElements, NonMovableElement>);
+
+    struct MoveOnlyConfig final
+    {
+        std::uint32_t value;
+        explicit MoveOnlyConfig(std::uint32_t v) noexcept : value(v) {}
+        MoveOnlyConfig(MoveOnlyConfig&&) noexcept = default;
+        MoveOnlyConfig(const MoveOnlyConfig&) = delete;
+    };
+
+    template <class T> concept CanMakeConfig = requires(T&& value)
+    {
+        ConfigValue::make(std::forward<T>(value));
+    };
+
+    template <class T> concept CanBorrowConfig = requires(T&& owner)
+    {
+        std::forward<T>(owner).template borrow<std::uint32_t>();
+        std::forward<T>(owner).data();
+    };
+
+    static_assert(CanMakeConfig<const std::uint32_t&> && CanMakeConfig<MoveOnlyConfig>);
+    static_assert(!CanMakeConfig<MoveOnlyConfig&>);
+    static_assert(CanBorrowConfig<const ConfigValue&> && !CanBorrowConfig<ConfigValue>);
+
     using Resources = std::tuple<ResourceA, ResourceB, ResourceA>;
 
     FrameLayout layout()

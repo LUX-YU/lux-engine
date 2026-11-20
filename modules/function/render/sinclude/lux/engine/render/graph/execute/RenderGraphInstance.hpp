@@ -6,11 +6,14 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
+#include <lux/engine/render/extensions/execution/PreparedCpuValue.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
+#include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/resources/view/Parameters.hpp>
 
 namespace lux::render::detail
 {

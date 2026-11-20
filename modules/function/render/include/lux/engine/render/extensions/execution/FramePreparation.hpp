@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/extensions/execution/PreparedCpuValue.hpp>
 #include <lux/engine/render/extensions/execution/RasterStream.hpp>
 #include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
@@ -47,10 +48,6 @@ namespace lux::render
         bool operator==(const GraphStorageSnapshotId&) const noexcept = default;
     };
 
-    template <class T>
-    concept CpuPreparationValue = std::is_trivially_copyable_v<T> && std::same_as<T, std::remove_cv_t<T>> &&
-        !std::is_array_v<T>;
-
     template <CpuPreparationValue T> class PreparedDataSlot final
     {
         friend class FramePreparation;
@@ -73,12 +70,6 @@ namespace lux::render
         friend class InstanceLinkContext;
         explicit constexpr InlineConstantWriter(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
-    };
-
-    template <CpuPreparationValue T> struct PreparedCpuValue final
-    {
-        T value;
-        std::uint64_t revision;
     };
 
     class FramePreparation
@@ -172,19 +163,5 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<void>
         writeGpuBuffer(std::uint32_t, std::span<const std::byte>, std::uint64_t) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> sizeGpuBuffer(std::uint32_t, std::uint64_t) noexcept = 0;
-    };
-
-    // The context and its borrowed target are valid only during prepare().
-    class InstanceData
-    {
-    public:
-        virtual ~InstanceData() noexcept = default;
-        // Advances whenever the selected program set changes. Queried only on the Server owner.
-        [[nodiscard]] virtual std::uint64_t rasterProgramRevision() const noexcept { return 0; }
-        [[nodiscard]] virtual RenderResult<void> selectRasterPrograms(RasterProgramSelection&) noexcept
-        {
-            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-        }
-        [[nodiscard]] virtual RenderResult<void> prepare(FramePreparation&) noexcept = 0;
     };
 } // namespace lux::render

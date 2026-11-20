@@ -5,7 +5,8 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/Draw.hpp>
+#include <lux/engine/render/extensions/graph/ParameterBinding.hpp>
 #include <lux/engine/render/resources/material/Data.hpp>
 #include <lux/engine/render/resources/mesh/Data.hpp>
 

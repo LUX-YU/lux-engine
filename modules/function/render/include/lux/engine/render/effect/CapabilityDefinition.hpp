@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/function/graph/GraphNodeTypeIdentity.hpp>
 #include <lux/engine/object/CodeLease.hpp>
 #include <cstdint>

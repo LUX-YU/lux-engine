@@ -32,11 +32,17 @@ namespace lux::render
     class LUX_RENDER_PUBLIC EffectGraph final
     {
     public:
-        [[nodiscard]] const graph::GraphTopology& topology() const noexcept { return topology_; }
-        [[nodiscard]] const graph::GraphLayout& layout() const noexcept { return layout_; }
-        [[nodiscard]] const std::map<graph::NodeId, EffectNode>& nodes() const noexcept { return nodes_; }
-        [[nodiscard]] std::span<const EffectOutput> outputs() const noexcept { return outputs_; }
-        [[nodiscard]] const EffectNode* findNode(graph::NodeId node) const noexcept;
+        [[nodiscard]] const graph::GraphTopology& topology() const & noexcept { return topology_; }
+        [[nodiscard]] const graph::GraphLayout& layout() const & noexcept { return layout_; }
+        [[nodiscard]] const std::map<graph::NodeId, EffectNode>& nodes() const & noexcept { return nodes_; }
+        [[nodiscard]] std::span<const EffectOutput> outputs() const & noexcept { return outputs_; }
+        [[nodiscard]] const EffectNode* findNode(graph::NodeId node) const & noexcept;
+
+        const graph::GraphTopology& topology() const && = delete;
+        const graph::GraphLayout& layout() const && = delete;
+        const std::map<graph::NodeId, EffectNode>& nodes() const && = delete;
+        std::span<const EffectOutput> outputs() const && = delete;
+        const EffectNode* findNode(graph::NodeId) const && = delete;
         [[nodiscard]] graph::PinId pinId(graph::NodeId node, graph::PinSemanticId semantic) const noexcept;
 
     private:

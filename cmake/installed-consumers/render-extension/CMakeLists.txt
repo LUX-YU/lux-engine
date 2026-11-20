@@ -67,12 +67,18 @@ if(WIN32)
 endif()
 
 foreach(header IN ITEMS
-    graph/RenderGraphBuilder graph/Work graph/Diagnostics
-    execution/InstanceDataFactory execution/RasterStream
+    core/ConfigValue core/RenderErrorSink
+    effect/CapabilityDefinition effect/EffectCatalog effect/EffectGraph
+    extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
+    extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
+    extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/Diagnostics
+    extensions/execution/GraphPreparation extensions/execution/InstanceData
+    extensions/execution/InstanceDataFactory extensions/execution/InstanceDataPrototype extensions/execution/RasterStream
+    extensions/execution/PreparedCpuValue
 )
     get_filename_component(name "${header}" NAME)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${name}Header.cpp")
-    file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/extensions/${header}.hpp>\n")
+    file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/${header}.hpp>\n")
     add_library(header_${name} OBJECT "${source}")
     target_link_libraries(header_${name} PRIVATE lux::engine::function::render_extensions)
     target_compile_features(header_${name} PRIVATE cxx_std_20)

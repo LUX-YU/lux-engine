@@ -34,10 +34,12 @@ namespace lux::render
         void seal() noexcept { sealed_ = true; }
         [[nodiscard]] bool sealed() const noexcept { return sealed_; }
 
-        [[nodiscard]] std::span<const std::shared_ptr<const CapabilityDefinition>> listCapabilities() const noexcept
+        [[nodiscard]] std::span<const std::shared_ptr<const CapabilityDefinition>> listCapabilities() const & noexcept
         {
             return capabilities_;
         }
+
+        std::span<const std::shared_ptr<const CapabilityDefinition>> listCapabilities() const && = delete;
 
         [[nodiscard]] std::vector<ImplementationOption>
         listImplementations(graph::NodeTypeId capability, std::uint32_t version) const noexcept;

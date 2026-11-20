@@ -1,16 +1,37 @@
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
+#include <utility>
 
 namespace lux::render::runtime_detail
 {
-    bool RenderEffect::tryBorrowExecution() noexcept
+    EffectExecutionUse::EffectExecutionUse(EffectExecutionUse&& other) noexcept
+        : effect_(std::exchange(other.effect_, nullptr))
+    {
+    }
+
+    EffectExecutionUse& EffectExecutionUse::operator=(EffectExecutionUse&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (effect_) effect_->releaseExecution();
+            effect_ = std::exchange(other.effect_, nullptr);
+        }
+        return *this;
+    }
+
+    EffectExecutionUse::~EffectExecutionUse() noexcept
+    {
+        if (effect_) effect_->releaseExecution();
+    }
+
+    RenderResult<EffectExecutionUse> RenderEffect::borrowExecution() noexcept
     {
         if (execution_borrows_ == UINT32_MAX)
         {
-            return false;
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
         ++execution_borrows_;
-        return true;
+        return EffectExecutionUse{*this};
     }
 
     void RenderEffect::releaseExecution() noexcept

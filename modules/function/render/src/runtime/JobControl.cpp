@@ -71,6 +71,7 @@ namespace lux::render::detail
         }
         out.job_ = this;
         out.target_ = target;
+        out.cancelled_ = false;
         starting_ = &out;
         return {};
     }

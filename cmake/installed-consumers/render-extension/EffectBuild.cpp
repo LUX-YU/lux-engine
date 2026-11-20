@@ -32,6 +32,29 @@ using namespace lux;
 using namespace lux::render;
 namespace ipc = lux::platform::ipc;
 
+template <class T> concept CanBorrowGraph = requires(T&& owner)
+{
+    std::forward<T>(owner).topology();
+    std::forward<T>(owner).layout();
+    std::forward<T>(owner).nodes();
+    std::forward<T>(owner).outputs();
+    std::forward<T>(owner).findNode(graph::NodeId{});
+};
+
+template <class T> concept CanBorrowCatalog = requires(T&& owner)
+{
+    std::forward<T>(owner).listCapabilities();
+};
+
+template <class T> concept CanBorrowDescriptor = requires(T&& owner)
+{
+    std::forward<T>(owner).descriptor();
+};
+
+static_assert(CanBorrowGraph<const EffectGraph&> && !CanBorrowGraph<EffectGraph>);
+static_assert(CanBorrowCatalog<const EffectCatalog&> && !CanBorrowCatalog<EffectCatalog>);
+static_assert(CanBorrowDescriptor<const CommandInfo&> && !CanBorrowDescriptor<CommandInfo>);
+
 static void check(bool value, int line)
 {
     if (value) return;

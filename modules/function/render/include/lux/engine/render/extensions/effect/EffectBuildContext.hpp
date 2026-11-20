@@ -4,10 +4,12 @@
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
-#include <lux/engine/render/extensions/execution/InstanceDataFactory.hpp>
+#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <array>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>

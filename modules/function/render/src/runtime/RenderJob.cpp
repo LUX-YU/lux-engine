@@ -543,8 +543,8 @@ namespace lux::render
                 if (state.reservation == &operation) state.reservation = nullptr;
             }
         });
-        if (!effect->tryBorrowExecution()) co_return AckResponse{RenderError{kRuntimeCapacity}};
-        cxx::scope_exit release_effect([effect]() noexcept { effect->releaseExecution(); });
+        auto effect_use = effect->borrowExecution();
+        if (!effect_use) co_return AckResponse{effect_use.error()};
         auto& entry = *runtime_->device(device);
         ++entry.pending_starts;
         cxx::scope_exit release_device([&entry]() noexcept { --entry.pending_starts; });
@@ -575,10 +575,15 @@ namespace lux::render
         if (!(*graph_plan)->executable.compatible(targetDescription(target)))
             co_return AckResponse{RenderError{kDeviceArgument}};
         auto candidate = std::make_unique<JobExecution>(
-            *effect, device, entry.session(), entry.frameProgress().frameCount(),
-            std::move(*graph_plan), target_id, targetOutput(target)
+            std::move(*effect_use),
+            runtime_->resources_,
+            device,
+            entry.session(),
+            entry.frameProgress().frameCount(),
+            std::move(*graph_plan),
+            target_id,
+            targetOutput(target)
         );
-        release_effect.release();
         candidate->view_parameters = view_parameters;
         if (auto assembled = assembleExecution(*candidate, binding); !assembled)
             co_return AckResponse{assembled.error()};
@@ -586,11 +591,9 @@ namespace lux::render
         std::vector<FrameChannel> channels;
         auto& registry = runtime_->resources_;
         const ViewRequest scope{job.content.scene, job.content.view};
-        const bool needs_view = view_parameters &&
-            std::ranges::find(candidate->resources, binding.view_parameters) == candidate->resources.end();
-        if (needs_view)
+        if (view_parameters)
         {
-            if (auto retained = candidate->retainStorage(registry, binding.view_parameters); !retained)
+            if (auto retained = candidate->retainStorage(binding.view_parameters); !retained)
                 co_return AckResponse{retained.error()};
         }
         struct FrameResource final
@@ -599,7 +602,7 @@ namespace lux::render
             const ResourceRegistration* factory;
         };
         std::vector<FrameResource> frame_resources;
-        for (const auto id : candidate->resources)
+        for (const auto id : candidate->retainedResources())
         {
             const auto* factory = registry.factory(registry.declarationOf(id));
             if (factory->frame_call.channels.empty()) continue;

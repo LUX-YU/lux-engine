@@ -21,9 +21,6 @@ namespace lux::render::detail
             input.buffer,
             input.buffer_offset,
             input.buffer_size,
-            input.parameters,
-            input.parameter_layout,
-            input.parameter_revision,
             input.image,
             input.addressed_buffers,
             input.addressed_revision
@@ -886,21 +883,6 @@ namespace lux::render::detail
             binding.buffer = value.buffer;
             binding.buffer_offset = value.offset;
             binding.buffer_size = value.size;
-            const bool changed_parameters = value.parameter_revision == 0 ||
-                                            binding.parameter_revision != value.parameter_revision ||
-                                            binding.parameters.data() != value.parameters.data() ||
-                                            binding.parameters.size() != value.parameters.size() ||
-                                            binding.parameter_layout != value.parameter_layout;
-            binding.parameters = value.parameters;
-            binding.parameter_layout = value.parameter_layout;
-            binding.parameter_revision = value.parameter_revision;
-            if (changed_parameters)
-            {
-                for (auto pass : plan_->resourceParameterUses(resource))
-                {
-                    markParameters(pass, current);
-                }
-            }
             if (changed_physical) invalidateRecordings(current);
             if (changed_physical && !binding.dirty)
             {

@@ -17,9 +17,7 @@ namespace lux::render::detail
     ) noexcept
         : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), programs_(&programs), output_(output)
     {
-        instance_values_.resize(plan.binding_plan_->instance_parameter_bytes);
         condition_values_.resize(plan.condition_count_);
-        external_parameter_offsets_.resize(plan.passes().size() + 1);
         const auto parameter_bytes = plan.passes().empty() ? 0 :
             plan.passes().back().parameter_offset + plan.passes().back().parameter_size;
         for (const auto& use : plan.binding_plan_->descriptor_uses)
@@ -46,8 +44,6 @@ namespace lux::render::detail
                 const auto& initial = plan.binding_plan_->pass(pass.binding_slot).initial_parameters;
                 std::ranges::copy(initial, frame.parameters.begin() + pass.parameter_offset);
             }
-            frame.parameter_dirty.resize(plan.passes().size());
-            frame.parameter_updates.reserve(plan.passes().size());
             frame.bindings.resize(plan.resources().size());
             frame.record_resources.resize(plan.resources().size());
             frame.record_passes.resize(plan.passes().size());
@@ -102,17 +98,7 @@ namespace lux::render::detail
         );
     }
 
-    RenderResult<void> RenderGraphInstance::initialize(const GraphAssemblyPlan& assembly) noexcept
-    {
-        return initialize(&assembly);
-    }
-
     RenderResult<void> RenderGraphInstance::initialize() noexcept
-    {
-        return initialize(nullptr);
-    }
-
-    RenderResult<void> RenderGraphInstance::initialize(const GraphAssemblyPlan* assembly) noexcept
     {
         auto& session = *session_;
         const auto& plan = *plan_;
@@ -159,7 +145,7 @@ namespace lux::render::detail
                 return recordings;
             }
         }
-        if (auto descriptors = prepareDescriptors(assembly); !descriptors)
+        if (auto descriptors = prepareDescriptors(); !descriptors)
         {
             return descriptors;
         }
@@ -256,7 +242,7 @@ namespace lux::render::detail
             for (std::uint32_t p = 0; p < frame.passes.size(); ++p)
             {
                 const auto* raster = frame.passes[p].compiled_pass->rasterScope();
-                if (raster && !raster->state_input && !raster->viewport) invalidateRecording(slot, p);
+                if (raster && !raster->viewport) invalidateRecording(slot, p);
             }
             frame.viewport = viewport_;
         }
@@ -281,10 +267,6 @@ namespace lux::render::detail
             }
             invalidateRecordings(slot);
             frame.shared_binding_revision = shared_revision;
-        }
-        if (auto parameters = prepareParameters(slot); !parameters)
-        {
-            return cxx::unexpected(parameters.error());
         }
         if (auto sections = prepareRasterSections(slot); !sections)
             return cxx::unexpected(sections.error());

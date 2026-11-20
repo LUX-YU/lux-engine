@@ -174,15 +174,6 @@ namespace lux::render
                           ",\"resource\":" + std::to_string(hazard.resource.index) +
                           ",\"range\":" + detail::dumpRange(hazard.range) + "}";
             }
-            output += "],\"parameter_inputs\":[";
-            for (std::size_t i = 0; i < analysis.parameter_inputs.size(); ++i)
-            {
-                if (i)
-                {
-                    output += ',';
-                }
-                output += std::to_string(analysis.parameter_inputs[i].index);
-            }
             output += "],\"exports\":[";
             for (std::size_t i = 0; i < graph.outputs().size(); ++i)
             {

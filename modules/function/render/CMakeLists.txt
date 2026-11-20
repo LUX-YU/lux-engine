@@ -67,7 +67,6 @@ set(render_sources
     src/graph/RenderGraphBuilder.cpp
     src/graph/RenderGraphAnalysis.cpp
     src/graph/Diagnostics.cpp
-    src/resource/view/ViewParameterLayout.cpp
     src/features/mesh/RasterMesh.cpp
     src/features/lighting/ClusteredLightingWork.cpp
     src/features/shadow/ShadowProjection.cpp

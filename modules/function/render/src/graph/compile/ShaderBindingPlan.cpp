@@ -4,7 +4,6 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
-#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <map>
 #include <spirv-tools/libspirv.h>
 
@@ -339,11 +338,9 @@ namespace lux::render::detail
         {
             const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
                 ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
-            const bool has_other_writers = authored.source != EParameterSource::INSTANCE ||
-                authored.instance_layout.size != 0 || !authored.fields.empty() || !authored.device_fields.empty();
             const bool compatible = authored.inline_constant.bytes == authored.values.size() &&
                 matchesConstantBlock(authored.inline_constant, target, parameters);
-            if (has_other_writers || !compatible)
+            if (!compatible)
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         const bool is_invalid_values = input.parameters.zero_fill_tail
@@ -359,39 +356,6 @@ namespace lux::render::detail
         output.parameter_stages = shaderStages(reflected->parameter_stages);
         output.initial_parameters = input.parameters.values;
         output.initial_parameters.resize(parameters.size);
-        for (const auto& field : input.parameters.device_fields)
-        {
-            const auto destination = std::ranges::find(parameters.fields, field.shader_field, &rdesc::ShaderMember::path);
-            if (destination == parameters.fields.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            const bool is_invalid_source = field.source != EDeviceParameter::INDIRECT_FIRST_INSTANCE;
-            const bool is_invalid_scalar = destination->scalar != rdesc::EDataScalar::UINT ||
-                destination->rows != 1 || destination->columns != 1 || destination->array_stride != 0;
-            const bool is_invalid_range = destination->offset > parameters.size ||
-                parameters.size - destination->offset < sizeof(std::uint32_t);
-            const bool is_duplicate = std::ranges::any_of(output.device_parameters,
-                [&](const auto& old) { return old.first == destination->offset; });
-            const bool is_invalid_field = is_invalid_source || is_invalid_scalar || is_invalid_range || is_duplicate;
-            if (is_invalid_field) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            output.device_parameters.emplace_back(destination->offset, field.source);
-        }
-        for (const auto& field : input.parameters.fields)
-        {
-            const auto destination =
-                std::ranges::find(parameters.fields, field.shader_field, &rdesc::ShaderMember::path);
-            const bool missing = destination == parameters.fields.end() || field.source_field.empty();
-            const bool duplicate = std::ranges::any_of(
-                output.parameters,
-                [&](const auto& old) { return old.destination.path == field.shader_field; }
-            );
-            const bool has_device_source = !missing && std::ranges::any_of(output.device_parameters,
-                [&](const auto& item) { return item.first == destination->offset; });
-            const bool is_invalid_projection = missing || duplicate || has_device_source;
-            if (is_invalid_projection)
-            {
-                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            }
-            output.parameters.push_back({field.resource.index, field.source_field, *destination});
-        }
         output.bindings = std::move(reflected->bindings);
         if (output.bindings.size() != input.resources.size() + input.samplers.size())
         {
@@ -665,20 +629,11 @@ namespace lux::render::detail
         const nri::DeviceDesc& limits,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        std::span<const std::uint32_t> parameter_groups,
         bool device_addresses
     ) noexcept
     {
         ShaderBindingPlan plan;
         plan.passes.resize(graph.passes().size());
-        const auto regionFor = [&](std::uint32_t group, EParameterSource source)
-        {
-            const auto found = std::ranges::find_if(plan.parameter_regions, [&](const auto& region)
-            { return region.group == group && region.source == source; });
-            const auto index = static_cast<std::uint32_t>(found - plan.parameter_regions.begin());
-            if (found == plan.parameter_regions.end()) plan.parameter_regions.push_back({{}, group, 0, {}, source});
-            return index;
-        };
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
@@ -700,20 +655,7 @@ namespace lux::render::detail
             }
             output.private_bindings = output.bindings;
             const auto& parameters = input->parameters;
-            const auto group = parameter_groups.empty() ? 0u : parameter_groups[id.index];
-            const auto region = regionFor(group, parameters.source);
-            const auto& instance = parameters.instance_layout;
-            auto& region_layout = plan.parameter_regions[region].layout;
-            if (instance.size != 0)
-            {
-                if (region_layout.size != 0 && region_layout != instance)
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                }
-                region_layout = instance;
-            }
-            plan.passes[id.index].instance_region = region;
-            if (!input || input->program == kGraphInvalidIndex)
+            if (input->program == kGraphInvalidIndex)
             {
                 if (parameters.inline_constant.layout)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -730,58 +672,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(program.error());
             }
-            program->instance_region = region;
             plan.passes[id.index] = std::move(*program);
-        }
-        // The caller's byte block contains only local regions. Shared View copies
-        // use the same backing allocation, after the local prefix.
-        for (const bool local : {true, false})
-        {
-            for (auto& region : plan.parameter_regions)
-            {
-                const bool local_source = region.source == EParameterSource::INSTANCE;
-                if (local_source != local) continue;
-                region.offset = plan.instance_parameter_bytes;
-                const auto extent = (std::uint64_t(region.layout.size) + 15u) & ~std::uint64_t{15};
-                if (extent > UINT32_MAX - plan.instance_parameter_bytes)
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                }
-                plan.instance_parameter_bytes += static_cast<std::uint32_t>(extent);
-            }
-            if (local) plan.local_parameter_bytes = plan.instance_parameter_bytes;
-        }
-        for (auto& program : plan.passes)
-        {
-            for (auto& mapping : program.parameters)
-            {
-                if (mapping.resource != kGraphInvalidIndex)
-                {
-                    continue;
-                }
-                const auto& region = plan.parameter_regions[program.instance_region];
-                const auto& fields = region.layout.fields;
-                const auto field = std::ranges::find(fields, mapping.source_field, &rdesc::ShaderMember::path);
-                if (field == fields.end())
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                }
-                const auto& destination = mapping.destination;
-                const bool mismatch = field->scalar != destination.scalar || field->rows != destination.rows ||
-                                      field->columns != destination.columns ||
-                                      field->matrix_stride != destination.matrix_stride ||
-                                      field->array_stride != destination.array_stride;
-                const auto bytes = std::uint64_t(field->rows) * 4 +
-                                   (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
-                const bool invalid = !bytes || bytes > UINT32_MAX ||
-                                     std::uint64_t(field->offset) + bytes > region.layout.size ||
-                                     std::uint64_t(destination.offset) + bytes > program.parameter_bytes;
-                if (mismatch || invalid)
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                }
-                mapping.source_offset = region.offset + field->offset;
-            }
         }
         std::map<std::uint32_t, bool> sampler_contracts;
         for (const auto& program : plan.passes)

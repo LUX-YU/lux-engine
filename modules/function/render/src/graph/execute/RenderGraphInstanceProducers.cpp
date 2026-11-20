@@ -84,9 +84,7 @@ namespace lux::render::detail
             if (programs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kDeviceCapacity});
             for (const auto& program : programs)
             {
-                const bool source_parameters = program.parameters.source != EParameterSource::INSTANCE ||
-                    !program.parameters.fields.empty() || !program.parameters.device_fields.empty();
-                if (!program.shader || source_parameters)
+                if (!program.shader)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
             }
             entry->programs.emplace(programs.begin(), programs.end());

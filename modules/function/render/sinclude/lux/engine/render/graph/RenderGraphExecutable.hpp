@@ -350,18 +350,10 @@ namespace lux::render::detail
         std::vector<std::uint32_t> resource_slots;
     };
 
-    struct ParameterByteCopy final
-    {
-        std::uint32_t source_offset, destination_offset, bytes;
-    };
-
     // The execution candidate owns this immutable result; its graph instance borrows it until teardown.
     class LUX_RENDER_PUBLIC RenderGraphExecutable final
     {
     public:
-        [[nodiscard]] std::pair<std::uint32_t, std::uint32_t>
-        parameterRegion(std::uint32_t, EParameterSource = EParameterSource::INSTANCE) const noexcept;
-
         ~RenderGraphExecutable() noexcept;
         RenderGraphExecutable(RenderGraphExecutable&& other) noexcept;
         RenderGraphExecutable& operator=(RenderGraphExecutable&&) = delete;
@@ -441,20 +433,6 @@ namespace lux::render::detail
         friend class SubmissionOperation;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
-        [[nodiscard]] std::span<const ParameterByteCopy> instanceParameterCopies(std::uint32_t pass) const noexcept
-        {
-            const auto first = instance_copy_offsets_[pass];
-            const auto count = instance_copy_offsets_[std::size_t(pass) + 1] - first;
-            return std::span(instance_copies_).subspan(first, count);
-        }
-
-        [[nodiscard]] std::span<const std::uint32_t> resourceParameterUses(std::uint32_t resource) const noexcept
-        {
-            const auto first = resource_parameter_offsets_[resource];
-            const auto count = resource_parameter_offsets_[std::size_t(resource) + 1] - first;
-            return std::span(resource_parameter_passes_).subspan(first, count);
-        }
-
         RenderGraphExecutable(nri::Device* device, EffectOutputDesc output) noexcept;
         std::unique_ptr<GraphBindingPlan> binding_plan_;
         nri::Device* device_;
@@ -467,10 +445,6 @@ namespace lux::render::detail
         std::vector<SubmissionBatch> submissions_;
         std::vector<ImportedAccess> imported_accesses_;
         PhysicalResourcePlan physical_resources_;
-        std::vector<ParameterByteCopy> instance_copies_;
-        std::vector<std::size_t> instance_copy_offsets_;
-        std::vector<std::size_t> resource_parameter_offsets_;
-        std::vector<std::uint32_t> resource_parameter_passes_, parameter_resources_;
 
         std::uint32_t output_ = kGraphInvalidIndex;
         std::uint32_t output_first_batch_ = kGraphInvalidIndex;

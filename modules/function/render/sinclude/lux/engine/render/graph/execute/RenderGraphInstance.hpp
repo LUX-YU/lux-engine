@@ -7,7 +7,6 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
-#include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
@@ -70,7 +69,6 @@ namespace lux::render::detail
             execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
         ) noexcept;
 
-        [[nodiscard]] RenderResult<void> initialize(const GraphAssemblyPlan&) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void>
         writeInlineConstant(std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes) noexcept;
@@ -151,15 +149,6 @@ namespace lux::render::detail
             return output_.description;
         }
 
-        [[nodiscard]] RenderResult<void>
-        bindParameterSource(const GraphAssemblyPlan&, EParameterSource, const rdesc::ShaderBlock&) noexcept;
-        [[nodiscard]] RenderResult<void> setParameterSource(EParameterSource, std::span<const std::byte>) noexcept;
-        [[nodiscard]] bool usesParameterSource(EParameterSource) const noexcept;
-        [[nodiscard]] RenderResult<void> setInputs(
-            std::span<const std::byte>,
-            std::span<const std::uint8_t>
-        ) noexcept;
-
         [[nodiscard]] RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
 
         [[nodiscard]] std::span<const std::uint8_t> conditions() const noexcept
@@ -169,12 +158,6 @@ namespace lux::render::detail
 
         // An empty selection invalidates every declared history at the next preparation boundary.
         [[nodiscard]] RenderResult<void> invalidateHistory(std::span<const GraphResourceId> previous = {}) noexcept;
-
-        [[nodiscard]] std::span<const std::byte> instanceParameters() const noexcept
-        {
-            return instance_values_;
-        }
-
 
         void setViewport(const RasterViewport& viewport) noexcept
         {
@@ -220,12 +203,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> createRecordings(std::uint32_t frame_slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> initialize(const GraphAssemblyPlan*) noexcept;
-        [[nodiscard]] RenderResult<void> prepareDescriptors(const GraphAssemblyPlan*) noexcept;
+        [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
-        void markParameters(std::uint32_t pass, std::uint32_t slot) noexcept;
-        void markInstanceParameters(std::uint32_t offset, std::uint32_t bytes) noexcept;
-        [[nodiscard]] RenderResult<void> prepareParameters(std::uint32_t slot) noexcept;
 
         [[nodiscard]] RenderResult<void> prepareResizeHistories(ResizeResources&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void>
@@ -238,9 +217,6 @@ namespace lux::render::detail
             nri::Descriptor* view = nullptr;
             nri::Buffer* buffer = nullptr;
             std::uint64_t buffer_offset = 0, buffer_size = 0;
-            std::span<const std::byte> parameters;
-            const rdesc::ShaderBlock* parameter_layout = nullptr;
-            std::uint64_t parameter_revision = 0;
             std::span<nri::Buffer* const> addressed_buffers;
             std::uint64_t addressed_revision = 0;
             bool dirty = false;
@@ -296,13 +272,6 @@ namespace lux::render::detail
             std::vector<nri::Descriptor*> clear_views;
             std::array<std::uint32_t, 3> dispatch_groups{};
             std::span<std::byte> parameters;
-            RasterState raster_state;
-        };
-
-        struct ExternalParameterCopy final
-        {
-            std::uint32_t resource;
-            ParameterByteCopy copy;
         };
 
         DeviceSession* session_;
@@ -378,16 +347,6 @@ namespace lux::render::detail
         };
 
         std::vector<SamplerInput> samplers_;
-        std::vector<ExternalParameterCopy> external_parameter_copies_;
-        std::vector<std::size_t> external_parameter_offsets_;
-        struct SourceCopy final
-        {
-            EParameterSource source;
-            std::uint32_t source_offset, destination_offset, bytes;
-        };
-        std::vector<SourceCopy> source_copies_;
-        std::array<std::uint32_t, 2> source_sizes_{};
-        std::vector<std::byte> instance_values_;
         std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;
         RenderError submission_error_;

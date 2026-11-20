@@ -49,7 +49,6 @@ namespace lux::render
         const detail::RasterDrawList* draws = nullptr;
         detail::BindingState* bindings = nullptr;
         bool begin_rendering = false, end_rendering = false, reset_viewport = false;
-        bool dynamic_depth_bias = false;
     };
 
     struct PassRecordInput final

@@ -188,8 +188,7 @@ namespace lux::render::detail
         const auto& info = core.GetTextureDesc(*image);
         const auto width = std::max(1u, std::uint32_t(info.width) >> first_range.first_mip);
         const auto height = std::max(1u, std::uint32_t(info.height) >> first_range.first_mip);
-        const auto& default_viewport = scope.state_input ? pass.raster_state.viewport :
-            scope.viewport ? *scope.viewport : frame.viewport;
+        const auto& default_viewport = scope.viewport ? *scope.viewport : frame.viewport;
 
         const auto sliceView = [&](const ResourceAccess& access, bool depth, std::uint32_t layer,
                                    nri::Descriptor*& view) noexcept -> RenderResult<void>
@@ -271,12 +270,6 @@ namespace lux::render::detail
             if (selected.depth_bias)
             {
                 section.depth_bias = nri::DepthBiasDesc{selected.depth_bias->constant, 0, selected.depth_bias->slope};
-            }
-            else if (scope.state_input)
-            {
-                section.depth_bias = nri::DepthBiasDesc{
-                    pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope
-                };
             }
             for (std::size_t c = 0; c < scope.colors.size(); ++c)
             {

@@ -147,9 +147,6 @@ namespace lux::render::detail
             replica.binding,
             0,
             replica.binding ? session_.nriCore().GetBufferDesc(*replica.binding).size : sizeof(TransformMatrix),
-            {},
-            nullptr,
-            0,
             nullptr,
             replica.addressed,
             replica.address_revision

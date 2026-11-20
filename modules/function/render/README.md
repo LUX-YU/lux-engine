@@ -1183,14 +1183,14 @@ CPU sources end at their operation terminal, and staging pages wait for their GP
 both targets expose the same named resource/access contract; it does not equate their physical offsets or registers.
 Device compilation selects the target and resolves binding names against that target's reflection. Embedded shaders
 are already compiled build outputs, so loading both artifacts does not invoke a compiler during construction.
-Device-dependent constants, such as indirect-first-instance support, are qualified by reflected field name and
-filled during native program preparation. They cannot overlap ordinary Resource/View parameter projections.
+Implementations select device-dependent values, such as indirect-first-instance support, when declaring their
+complete constant blocks. The compiler checks those blocks against the selected target's reflection.
 Explicit `zero_fill_tail` constant bindings initialize only the supplied byte prefix and zero the selected target's
 remaining reflected bytes; ordinary exact-size bindings remain strict. UI and fullscreen passes use this for
 target-dependent constant-block padding.
 
-`prepareFrame` copies parameter values into the selected FIF slice and freezes the physical resources, pass
-inputs and History initialization commands used by `FrameRecordInput`. `FrameExecutor` only borrows those
+Producers write complete parameter blocks into the writable FIF slice. `prepareFrame` freezes its physical
+bindings, pass inputs and History initialization commands for `FrameRecordInput`. `FrameExecutor` borrows those
 stable slices during synchronous recording; it has no GraphInstance access and performs no texture-description
 queries. Changing author parameter bytes after preparation affects the next preparation, not this recording.
 Physical binding or recording invalidation requires preparation again. The caller retains exclusive access to

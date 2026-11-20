@@ -8,21 +8,6 @@
 
 namespace lux::render::detail
 {
-    std::pair<std::uint32_t, std::uint32_t>
-    RenderGraphExecutable::parameterRegion(std::uint32_t index, EParameterSource source) const noexcept
-    {
-        const auto found = std::ranges::find_if(
-            binding_plan_->parameter_regions,
-            [&](const auto& region) { return region.group == index && region.source == source; }
-        );
-        if (found == binding_plan_->parameter_regions.end())
-        {
-            return {};
-        }
-        const auto& region = *found;
-        return {region.offset, region.bytes};
-    }
-
     RenderGraphExecutable::RenderGraphExecutable(nri::Device* device, EffectOutputDesc output) noexcept
         : device_(device), output_description_(output)
     {

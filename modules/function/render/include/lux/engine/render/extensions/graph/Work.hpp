@@ -6,7 +6,6 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
-#include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 
 namespace lux::render
 {
@@ -29,33 +28,11 @@ namespace lux::render
         }
     };
 
-    struct ValueParameter final
-    {
-        std::string shader_field;
-        GraphResourceId resource; // Invalid selects the instance parameter block.
-        std::string source_field;
-    };
-
-    enum class EDeviceParameter : std::uint8_t
-    {
-        INDIRECT_FIRST_INSTANCE
-    };
-
-    struct DeviceParameter final
-    {
-        std::string shader_field;
-        EDeviceParameter source = EDeviceParameter::INDIRECT_FIRST_INSTANCE;
-    };
-
     struct ParameterBinding final
     {
         std::vector<std::byte> values;
-        rdesc::ShaderBlock instance_layout;
-        std::vector<ValueParameter> fields;
-        std::vector<DeviceParameter> device_fields;
         // Explicitly zero-initialize any reflected tail beyond the supplied constant bytes.
         bool zero_fill_tail = false;
-        EParameterSource source = EParameterSource::INSTANCE;
         ConstantBlockContract inline_constant;
 
         template <ShaderConstantBlock T> void setInlineConstant(const T& value) noexcept
@@ -114,12 +91,6 @@ namespace lux::render
     {
         RasterViewport viewport;
         float depth_bias_constant = 0, depth_bias_slope = 0;
-    };
-
-    struct RasterStateInput final
-    {
-        GraphResourceId resource;
-        std::uint32_t offset = 0;
     };
 
     struct GraphRasterTextureSetId final
@@ -201,7 +172,6 @@ namespace lux::render
         std::optional<RasterAttachment> depth;
         // Per-pass rectangle in its attachment; absent uses the instance's normalized viewport.
         std::optional<RasterViewport> viewport;
-        std::optional<RasterStateInput> state_input; // Prepared CPU parameter record; overrides viewport and bias.
     };
 
     struct RasterWork final : RasterScope

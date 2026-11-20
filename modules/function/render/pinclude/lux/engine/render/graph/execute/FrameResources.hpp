@@ -107,8 +107,6 @@ namespace lux::render::detail
 
         std::vector<RasterDrawList> raster_draws;
         std::vector<std::byte> parameters;
-        std::vector<std::uint8_t> parameter_dirty;
-        std::vector<std::uint32_t> parameter_updates;
         std::vector<std::uint8_t> enabled_regions;
         std::vector<std::uint8_t> history_valid;
         std::uint32_t enabled_pass_count = 0;

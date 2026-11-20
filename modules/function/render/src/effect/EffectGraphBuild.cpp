@@ -501,11 +501,6 @@ namespace lux::render::runtime_detail
             if (unbound_import || unbound_frame_buffer)
                 return cxx::unexpected(RenderError{kRuntimeUnsupported, {index}});
         }
-        const bool has_legacy_sources = std::ranges::any_of(source->passes(), [](const auto& pass) noexcept
-        {
-            return pass.interface.parameters.source != EParameterSource::INSTANCE;
-        });
-        if (has_legacy_sources) return cxx::unexpected(RenderError{kRuntimeUnsupported});
         for (std::size_t p = 0; p < source->passes().size(); ++p)
         {
             for (const auto& use : source->passes()[p].uses)

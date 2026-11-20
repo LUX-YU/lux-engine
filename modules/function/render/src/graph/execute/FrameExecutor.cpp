@@ -160,7 +160,7 @@ namespace lux::render::detail
                     core.CmdSetViewports(command, &native.viewport, 1);
                     setPassScissor(core, command, native.scissor, binding_state);
                 }
-                if (native.dynamic_depth_bias || binding_state.depth_bias)
+                if (binding_state.depth_bias)
                     setPassDepthBias(core, command, native.depth_bias, binding_state);
             }
             if (owns_draw_sections) binding_state.invalidate();

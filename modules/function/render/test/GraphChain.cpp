@@ -58,6 +58,23 @@ template <> struct lux::render::ConstantBlockTraits<NestedUniformBlock> final
     }
 };
 
+struct IndirectCountConstants final
+{
+    std::uint32_t requested;
+};
+
+template <> struct lux::render::ConstantBlockTraits<IndirectCountConstants> final
+{
+    static ConstantBlockLayout layout(rdesc::EShaderTarget target) noexcept
+    {
+        static constexpr std::array members{
+            ConstantMemberLayout{"requested", offsetof(IndirectCountConstants, requested), rdesc::EDataScalar::UINT}
+        };
+        const unsigned alignment = target == rdesc::EShaderTarget::DXIL ? 16u : 4u;
+        return {sizeof(IndirectCountConstants), alignment, members};
+    }
+};
+
 struct RecordTextureQueries final
 {
     inline static decltype(nri::CoreInterface::GetTextureDesc) original = nullptr;
@@ -104,7 +121,7 @@ static PreparedRenderGraph compile(
     if (target) output.emplace(target->format, target->samples, target->kind, target->sampled);
     auto ready = stdexec::sync_wait(GraphCompiler::compile(
         session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis,
-        output ? &*output : nullptr, allocation, {}, exercise_async
+        output ? &*output : nullptr, allocation, exercise_async
     ));
     CHECK(ready);
     return take(std::move(std::get<0>(*ready)));
@@ -308,7 +325,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
         *session, fif, plan.executable, plan.programs, physical->output()
     );
     CHECK(instance->bindSampler(0, *sampler));
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     CHECK(instance->dumpResources(sink));
     CHECK(dump.find("\"allocation_requirement_bytes\":") != std::string::npos);
     CHECK(dump.find("\"owned_command_buffers\":") != std::string::npos);
@@ -326,7 +343,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
         *session, fif, plan.executable, plan.programs, larger->output()
     );
     CHECK(second_instance->bindSampler(0, *sampler));
-    CHECK(second_instance->initialize(plan.assembly));
+    CHECK(second_instance->initialize());
     const std::array instances{instance.get(), second_instance.get()};
     const auto submit = [&](std::span<RenderGraphInstance* const> selected)
     {
@@ -389,8 +406,6 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     const auto indices = take(builder.declareResource({"indices", GraphBufferDesc{12}}));
     const auto color = take(builder.declareResource({"color", GraphImageDesc{32, 32}}));
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{8192}}));
-    const auto parameter =
-        take(builder.declareResource({"requested count", GraphBufferDesc{4}, EGraphOrigin::IMPORTED}));
     const auto dispatch_arguments = take(builder.declareResource({"dispatch arguments", GraphBufferDesc{64}}));
     const auto dispatch_ready = take(builder.addTransferPass(
         "dispatch dimensions",
@@ -404,8 +419,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
         {"count", {{count, 0}, GraphBufferRange{64, 4}, EGraphAccess::WRITE}},
         {"indices", {{indices, 0}, {}, EGraphAccess::WRITE}}
     };
-    compute.interface.parameters.values.resize(4);
-    compute.interface.parameters.fields.push_back({"requested", parameter, "requested"});
+    compute.interface.parameters.setInlineConstant(IndirectCountConstants{});
     compute.dispatch = IndirectDispatchArguments{dispatch_ready.written.front(), 16};
     const auto generated = take(builder.addComputePass("GPU commands and count", std::move(compute)));
     RasterWork draw;
@@ -434,22 +448,17 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 3, plan.executable, plan.programs);
-    std::uint32_t requested_value = 0;
-    rdesc::ShaderBlock
-        parameter_layout{4, 4, rdesc::EDataLayout::STD430, {{"requested", rdesc::EDataScalar::UINT, 0, 1, 1, 0, 0}}};
-    instance->setResource(
-        parameter.index,
-        UINT32_MAX,
-        {nullptr, 0, 0, std::as_bytes(std::span(&requested_value, 1)), &parameter_layout}
-    );
-    CHECK(instance->initialize(plan.assembly));
-    plan.assembly = {}; // Linked parameter copies outlive the source field layouts and Pass mapping.
+    const auto count_pass = plan.assembly.source_pass_slots[generated.pass.index];
+    CHECK(count_pass != kGraphInvalidIndex);
+    CHECK(instance->initialize());
+    plan.assembly = {};
+    IndirectCountConstants count_input{1};
+    const auto bytes = std::as_bytes(std::span{&count_input, 1});
     const std::array instances{instance.get()};
-    std::uint64_t parameter_revision = 0;
     CHECK(!instance->recordBatch(0, 0)); // An initialized owner is not a prepared recording input.
-    requested_value = 1;
+    CHECK(instance->writeInlineConstant(0, count_pass, bytes));
     CHECK(take(instance->prepareFrame(0)));
-    requested_value = 0; // Change the unversioned author borrow after its bytes have been prepared.
+    count_input.requested = 0;
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     RecordTextureQueries::original = core.GetTextureDesc;
     RecordTextureQueries::count = 0;
@@ -461,7 +470,8 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
         CHECK(session->drain()); // This fixture serializes batches; normal queue dependencies are tested below.
     }
     CHECK(RecordTextureQueries::count == 0);
-    requested_value = 1;
+    count_input.requested = 1;
+    CHECK(instance->writeInlineConstant(0, count_pass, bytes));
     CHECK(take(instance->prepareFrame(0)));
     CHECK(RecordTextureQueries::count == 0); // An unchanged fixed slice reuses its frozen native bindings.
     core.GetTextureDesc = RecordTextureQueries::original;
@@ -470,16 +480,10 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     std::puts("FROZEN INPUT PASS author changed after Prepare, GPU uses prepared bytes, Record texture queries=0");
     for (std::uint32_t requested : {0u, 1u, 3u, 0u, 1u, 3u, 0u, 1u, 3u})
     {
-        requested_value = requested;
-        if (++parameter_revision > 3)
+        count_input.requested = requested;
+        for (std::uint32_t slot = 0; slot < instance->frameCount(); ++slot)
         {
-            // The first three frames exercise an unversioned live borrow. Later frames wrap
-            // every FIF slice with explicit parameter revisions and verify the actual GPU count.
-            instance->setResource(
-                parameter.index,
-                UINT32_MAX,
-                {nullptr, 0, 0, std::as_bytes(std::span(&requested_value, 1)), &parameter_layout, parameter_revision}
-            );
+            CHECK(instance->writeInlineConstant(slot, count_pass, bytes));
         }
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
@@ -547,7 +551,7 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
     CHECK(session->drain());
@@ -747,7 +751,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
         const auto analysis = take(analyzeRenderGraph(candidate));
         auto rejected = runTask(GraphCompiler::compile(
             *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), candidate, analysis, nullptr,
-            ETransientAllocation::ALIAS_MEMORY, {}, true
+            ETransientAllocation::ALIAS_MEMORY, true
         ));
         CHECK(!rejected && rejected.error().type == error);
     };
@@ -775,7 +779,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
         core.GetDeviceDesc = [](const nri::Device&) -> const nri::DeviceDesc& { return limited; };
         auto rejected = runTask(GraphCompiler::compile(
             *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr,
-            ETransientAllocation::ALIAS_MEMORY, {}, true
+            ETransientAllocation::ALIAS_MEMORY, true
         ));
         core.GetDeviceDesc = get_device_desc;
         CHECK(!rejected && rejected.error().type == kDeviceCapacity);
@@ -785,7 +789,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     auto plan = compile(*session, graph, analysis, nullptr);
     FrameHarness frames(*session, 1);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 1, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     CHECK(session->drain());
@@ -857,7 +861,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     CHECK(take(instance->prepareFrame(0)));
     CHECK(take(instance->prepareFrame(1)));
     RenderResult<std::span<nri::CommandBuffer* const>> first, second;
@@ -988,7 +992,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         CHECK(duplicate.programs[0].pipeline == plan.programs[0].pipeline);
         CHECK(duplicate.programs[1].pipeline == plan.programs[1].pipeline);
         auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
-        CHECK(instance->initialize(plan.assembly));
+        CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
@@ -1015,7 +1019,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         const auto graph = take(std::move(builder).finish());
         auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
         auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
-        CHECK(instance->initialize(plan.assembly));
+        CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
@@ -1079,7 +1083,7 @@ static void typedRecording(Validation& validation, bool d3d12)
             return compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
         }();
         auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
-        CHECK(instance->initialize(plan.assembly));
+        CHECK(instance->initialize());
         CHECK(take(instance->prepareFrame(0)));
         auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
         EndFailure::original = core.EndCommandBuffer;
@@ -1180,7 +1184,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
     }();
     checkComputeSequence(executable.executable, intermediate);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 2, executable.executable, executable.programs);
-    CHECK(instance->initialize(executable.assembly));
+    CHECK(instance->initialize());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
@@ -1510,7 +1514,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
         CHECK(bounds[1].queue == EQueueRole::COMPUTE);
     }
     RenderGraphInstance instance(*session, 1, plan.executable, plan.programs);
-    CHECK(instance.initialize(plan.assembly));
+    CHECK(instance.initialize());
     const std::array instances{&instance};
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     finishSubmissions(*session, frames);
@@ -1633,7 +1637,7 @@ static void historySequence(
     const auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     const std::array instances{instance.get()};
     std::vector<std::uint32_t> published;
     const auto newestInput = [&]()
@@ -1780,7 +1784,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
     auto instance = std::make_unique<RenderGraphInstance>(
         *session, fif, plan.executable, plan.programs, physical->output()
     );
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     for (std::uint32_t execution = 0; execution < 4; ++execution)
     {
         if (execution == 2)
@@ -1794,7 +1798,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
             auto candidate = std::make_unique<RenderGraphInstance>(
                 *session, fif, plan.executable, plan.programs, replacement->output()
             );
-            CHECK(candidate->initialize(plan.assembly));
+            CHECK(candidate->initialize());
             instance = std::move(candidate);
             physical.emplace(std::move(*replacement));
             CHECK(session->drain());
@@ -1858,7 +1862,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     ));
     CHECK(dump.find("\"conditional_regions\":[{\"first_pass\":1,\"pass_count\":2") != std::string::npos);
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     const std::array instances{instance.get()};
     for (const std::uint8_t enabled : {0, 1, 0, 1})
     {
@@ -1936,7 +1940,7 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     {
         const std::uint64_t offset = separate_ranges && instance == second.get() ? 16 : 0;
         instance->setResource(input.index, UINT32_MAX, {shared, offset, 16});
-        CHECK(instance->initialize(plan.assembly));
+        CHECK(instance->initialize());
     }
     const std::array instances{first.get(), second.get()};
     const auto before = session->queue(EQueueRole::COMPUTE).submitted();
@@ -2014,7 +2018,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
 
     auto first = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
     auto second = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    CHECK(first->initialize(plan.assembly) && second->initialize(plan.assembly));
+    CHECK(first->initialize() && second->initialize());
     const std::array instances{first.get(), second.get()};
     for (unsigned frame = 0; frame < 2; ++frame)
     {
@@ -2132,7 +2136,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
     );
     CHECK(plan.executable.physicalResources().slots.size() == (alias_memory ? 4 : 3));
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     if (alias_memory)
     {
         std::string dump;
@@ -2222,7 +2226,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     CHECK(control.executable.physicalResources().slots.size() == 4);
     CHECK(plan.executable.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     if (alias_memory)
     {
         std::string dump;
@@ -2315,7 +2319,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
     CHECK(transition.native.before.layout == nri::Layout::UNDEFINED);
     CHECK(transition.native.after.layout == nri::Layout::COLOR_ATTACHMENT);
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    CHECK(instance->initialize(plan.assembly));
+    CHECK(instance->initialize());
     const std::array instances{instance.get()};
     for (std::uint32_t frame = 0; frame < fif; ++frame)
     {

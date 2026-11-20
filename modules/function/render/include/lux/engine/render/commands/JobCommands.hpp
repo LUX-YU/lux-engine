@@ -63,7 +63,6 @@ namespace lux::render
 
     struct JobInputs final
     {
-        std::vector<std::byte> parameters; // Execution-local parameter region.
         RasterViewport viewport;
         std::vector<std::uint8_t> conditions;
     };

@@ -23,7 +23,6 @@ namespace lux::render::detail
             DeviceSession&, execution::CpuScheduler, const RenderGraph&, const RenderGraphAnalysis&,
             const EffectOutputDesc* target = nullptr,
             ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
-            std::span<const std::uint32_t> parameter_groups = {},
             bool exercise_async = false
         ) noexcept;
 
@@ -45,13 +44,13 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
             nri::Device*, const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
-            const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation, std::span<const std::uint32_t>,
+            const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation,
             bool, ShaderBindingPlan&
         ) noexcept;
         [[nodiscard]] static RenderResult<void> finishPlan(
             RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
             const nri::DeviceDesc&, ETransientAllocation, GraphCompileDiagnostics&, GraphQueuePolicy,
-            ShaderBindingPlan&, GraphAssemblyPlan&
+            ShaderBindingPlan&
         ) noexcept;
     };
 } // namespace lux::render::detail

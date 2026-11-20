@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <span>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
-#include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
 namespace lux::render::detail
@@ -59,13 +58,6 @@ namespace lux::render::detail
         bool has_private_set;
     };
 
-    struct CompiledParameterRegion final
-    {
-        std::uint32_t group, offset, bytes;
-        std::vector<std::uint32_t> passes;
-        EParameterSource source;
-    };
-
     struct GraphBindingPlan final
     {
         [[nodiscard]] FixedPassBindingView pass(std::size_t slot) const noexcept
@@ -88,8 +80,5 @@ namespace lux::render::detail
         std::vector<DescriptorUse> descriptor_uses;
         std::vector<std::byte> initial_parameters;
         nri::DescriptorPoolDesc private_pool{};
-        std::vector<CompiledParameterRegion> parameter_regions;
-        std::uint32_t local_parameter_bytes = 0;
-        std::uint32_t instance_parameter_bytes = 0;
     };
 } // namespace lux::render::detail

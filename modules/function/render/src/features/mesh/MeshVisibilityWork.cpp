@@ -40,7 +40,7 @@ namespace lux::render
 
     RenderResult<detail::MeshVisibilityOutputs> detail::addMeshVisibilityPasses(
         RenderGraphBuilder& graph, const std::string& pass_prefix, const MeshVisibilityBuffers& input,
-        bool frustum_culling, bool shadow_pass, std::optional<bool> indirect_first_instance
+        bool frustum_culling, bool shadow_pass, bool indirect_first_instance
     ) noexcept
     {
         GraphProgram cull_variants{kMeshFrustumCull};
@@ -104,15 +104,7 @@ namespace lux::render
             {"visible", {visible}},
             {"commands", {input.commands, {}, EGraphAccess::WRITE}}
         };
-        if (indirect_first_instance)
-        {
-            compact.interface.parameters.setInlineConstant(detail::MeshCompactConstants{*indirect_first_instance});
-        }
-        else
-        {
-            compact.interface.parameters.values.resize(sizeof(std::uint32_t));
-            compact.interface.parameters.device_fields = {{"shared_members", EDeviceParameter::INDIRECT_FIRST_INSTANCE}};
-        }
+        compact.interface.parameters.setInlineConstant(detail::MeshCompactConstants{indirect_first_instance});
         compact.dispatch = IndirectDispatchArguments{dispatch, 12};
         compact.allow_async_compute = true;
         auto completed = graph.addComputePass(

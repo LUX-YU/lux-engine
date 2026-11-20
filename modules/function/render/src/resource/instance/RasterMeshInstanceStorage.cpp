@@ -377,9 +377,6 @@ namespace lux::render::detail
                 {buffer,
                  0,
                  session_.nriCore().GetBufferDesc(*buffer).size,
-                 {},
-                 nullptr,
-                 0,
                  nullptr,
                  slice.addressed_buffers[field],
                  slice.addressed_revision}
@@ -403,7 +400,7 @@ namespace lux::render::detail
         }
         auto* root = slice.table->root;
         return {
-            root, 0, session_.nriCore().GetBufferDesc(*root).size, {}, nullptr, 0, nullptr,
+            root, 0, session_.nriCore().GetBufferDesc(*root).size, nullptr,
             slice.root_dependencies, slice.addressed_revision
         };
     }
@@ -1340,9 +1337,6 @@ namespace lux::render::detail
                 handle,
                 0,
                 handle ? session_.nriCore().GetBufferDesc(*handle).size : bytes,
-                {},
-                nullptr,
-                0,
                 nullptr,
                 slice.addressed_buffers[field],
                 slice.addressed_revision

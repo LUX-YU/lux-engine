@@ -628,27 +628,6 @@ namespace lux::render
                 appendLifetimes(writer.use->version.number, std::move(cells));
             }
         }
-        std::vector<bool> parameters(resources.size(), false);
-        for (auto id : result.execution_order)
-        {
-            const auto* parameters_input = &passes[id.index].interface.parameters;
-            if (const auto* scope = passes[id.index].rasterScope(); scope && scope->state_input)
-                parameters[scope->state_input->resource.index] = true;
-            for (const auto& field : parameters_input->fields)
-            {
-                if (field.resource.index != kGraphInvalidIndex)
-                {
-                    parameters[field.resource.index] = true;
-                }
-            }
-        }
-        for (std::uint32_t i = 0; i < parameters.size(); ++i)
-        {
-            if (parameters[i])
-            {
-                result.parameter_inputs.push_back({i});
-            }
-        }
         return result;
     }
 } // namespace lux::render

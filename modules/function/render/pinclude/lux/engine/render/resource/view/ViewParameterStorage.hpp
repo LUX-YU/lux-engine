@@ -20,5 +20,4 @@ namespace lux::render::detail
         std::uint64_t revision_ = 1;
     };
 
-    [[nodiscard]] rdesc::ShaderBlock viewParameterLayout() noexcept;
 } // namespace lux::render::detail

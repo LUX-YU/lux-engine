@@ -56,7 +56,6 @@ namespace lux::render
         std::vector<GraphVersionUse> versions;
         std::vector<GraphLifetime> lifetimes;
         // Live CPU parameter inputs are not GPU memory reads and introduce no synthetic barriers.
-        std::vector<GraphResourceId> parameter_inputs;
         bool operator==(const RenderGraphAnalysis&) const noexcept = default;
     };
 

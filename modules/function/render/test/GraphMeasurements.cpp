@@ -54,7 +54,7 @@ namespace foundation_test
         const auto construction_allocations = stopGraphMeasurements();
         CHECK(construction_allocations > 0); // Prove the counter observes allocation inside the Render DLL.
         std::printf("construction_allocations=%zu\n", construction_allocations);
-        CHECK(instance->initialize(candidate.assembly));
+        CHECK(instance->initialize());
         CHECK(candidate.executable.submissions().size() == 1);
         CHECK(candidate.executable.submissions().front().queue == EQueueRole::GRAPHICS);
         CHECK(candidate.executable.submissions().front().reusable_recording);

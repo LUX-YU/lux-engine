@@ -370,16 +370,12 @@ namespace lux::render
 
         auto plan = co_await detail::GraphCompiler::compile(
             entry.session(), cpu_scheduler_, built->source, built->analysis, &built->output,
-            detail::ETransientAllocation::ALIAS_MEMORY, {}
+            detail::ETransientAllocation::ALIAS_MEMORY
         );
         if (!plan) co_return cxx::unexpected(plan.error());
         if (stop_requested_.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
 
-        const bool has_external_parameters = std::ranges::any_of(
-            plan->assembly.parameter_links, [](const auto& links) noexcept { return !links.empty(); }
-        );
-        if (has_external_parameters) co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         for (auto& slot : built->target_imports)
         {
             if (slot.index == kGraphInvalidIndex) continue;
@@ -693,7 +689,7 @@ namespace lux::render
         if (job->control.pendingStart() || !canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
         if (auto valid = input.inputs.viewport.validate(); !valid) { reply.error = valid.error(); return; }
         auto& execution = *job->execution;
-        if (auto applied = execution.instance.setInputs(input.inputs.parameters, input.inputs.conditions); !applied)
+        if (auto applied = execution.instance.setConditions(input.inputs.conditions); !applied)
         {
             reply.error = applied.error();
             return;

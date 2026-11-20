@@ -158,9 +158,7 @@ namespace lux::render::detail
             const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
             const auto width = std::max(1u, std::uint32_t(image.width) >> mip);
             const auto height = std::max(1u, std::uint32_t(image.height) >> mip);
-            const auto& area = scope->state_input ? pass.raster_state.viewport
-                               : scope->viewport  ? *scope->viewport
-                                                   : frame.viewport;
+            const auto& area = scope->viewport ? *scope->viewport : frame.viewport;
             draws.sections.resize(1);
             auto& section = draws.sections.front();
             section = {};
@@ -177,11 +175,6 @@ namespace lux::render::detail
             };
             section.parameter_size = dynamic->producer_stream ? 0 : static_cast<std::uint32_t>(draws.parameters.size());
             section.draw_count = static_cast<std::uint32_t>(draws.packets.size());
-            if (scope->state_input)
-            {
-                section.depth_bias =
-                    nri::DepthBiasDesc{pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope};
-            }
             const nri::Rect scissor{
                 static_cast<std::int16_t>(area.x * width),
                 static_cast<std::int16_t>(area.y * height),
@@ -243,17 +236,14 @@ namespace lux::render::detail
                 native.begin_rendering = group.first_pass == i;
                 native.end_rendering = group.first_pass + group.pass_count == i + 1;
                 const auto* previous = i ? frame.passes[i - 1].compiled_pass->rasterScope() : nullptr;
-                const bool has_state_input = scope->state_input.has_value();
-                const bool previous_changed = previous && (previous->state_input ||
-                    previous->viewport != scope->viewport || previous->exclusive);
-                native.reset_viewport = native.begin_rendering || has_state_input || previous_changed;
+                const bool previous_changed = previous && (previous->viewport != scope->viewport || previous->exclusive);
+                native.reset_viewport = native.begin_rendering || previous_changed;
                 const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
                 const auto& image = frame.record_resources[attachment.access.version.resource.index];
                 const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
                 const auto width = std::max(1u, image.width >> mip);
                 const auto height = std::max(1u, image.height >> mip);
-                const auto& area = has_state_input ? pass.raster_state.viewport
-                    : scope->viewport ? *scope->viewport : frame.viewport;
+                const auto& area = scope->viewport ? *scope->viewport : frame.viewport;
                 native.viewport = {
                     area.x * width, area.y * height, area.width * width, area.height * height,
                     area.min_depth, area.max_depth, true
@@ -262,10 +252,7 @@ namespace lux::render::detail
                     static_cast<std::int16_t>(area.x * width), static_cast<std::int16_t>(area.y * height),
                     static_cast<nri::Dim_t>(area.width * width), static_cast<nri::Dim_t>(area.height * height)
                 };
-                native.dynamic_depth_bias = has_state_input;
-                native.depth_bias = has_state_input
-                    ? nri::DepthBiasDesc{pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope}
-                    : nri::DepthBiasDesc{scope->depth_bias[0], 0, scope->depth_bias[1]};
+                native.depth_bias = {scope->depth_bias[0], 0, scope->depth_bias[1]};
             }
         }
 

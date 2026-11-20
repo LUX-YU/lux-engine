@@ -6,7 +6,6 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
 #include <algorithm>
-#include <cstring>
 #include <exception>
 #include <functional>
 #include <unordered_set>
@@ -16,16 +15,6 @@ namespace lux::render::detail
 {
     namespace
     {
-        // Fixed and dynamically acquired programs share this native parameter preparation, including cache hits.
-        void prepareDeviceParameters(PassBindings& bindings, const EnabledDeviceFeatures& features) noexcept
-        {
-            for (const auto& [offset, source] : bindings.device_parameters)
-            {
-                const std::uint32_t value = features.indirect_first_instance ? 1u : 0u;
-                std::memcpy(bindings.initial_parameters.data() + offset, &value, sizeof(value));
-            }
-        }
-
         template <class T> void combineHash(std::size_t& seed, const T& value) noexcept
         {
             seed ^= std::hash<T>{}(value) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
@@ -201,7 +190,6 @@ namespace lux::render::detail
     RenderResult<CompiledPrograms::Layout*>
     CompiledPrograms::acquireLayout(PassBindings& bindings, std::uint32_t color_count) noexcept
     {
-        prepareDeviceParameters(bindings, session_.enabledFeatures());
         auto key = layoutKey(session_, bindings);
         const auto digest = key.contentDigest();
         const auto [first, last] = layout_index_.equal_range(digest);

@@ -432,21 +432,6 @@ namespace lux::render
                 failure = graphError(kGraphInvalidDescriptor);
                 return;
             }
-            for (const auto& field : input.parameters.fields)
-            {
-                const auto index = field.resource.index;
-                if (index == kGraphInvalidIndex)
-                {
-                    continue;
-                }
-                const bool valid = index < candidate_.resources_.size() &&
-                                   candidate_.resources_[index].origin == EGraphOrigin::IMPORTED;
-                if (!valid)
-                {
-                    failure = graphError(kGraphInvalidDescriptor, {}, field.resource);
-                    return;
-                }
-            }
             std::vector<const rdesc::EDescriptorBindingInfo*> descriptors;
             for (const auto& set : candidate_.programs_[input.program].targets.front().interface.sets)
             {
@@ -506,17 +491,6 @@ namespace lux::render
         };
         const auto rasterScope = [&](RasterScope& scope) noexcept
         {
-            if (scope.state_input)
-            {
-                const auto resource = scope.state_input->resource;
-                const bool valid = resource.index < candidate_.resources_.size() &&
-                                   candidate_.resources_[resource.index].origin == EGraphOrigin::IMPORTED;
-                if (!valid)
-                {
-                    failure = graphError(kGraphInvalidDescriptor, {}, resource);
-                    return;
-                }
-            }
             for (auto& color : scope.colors)
             {
                 color.access.access =
@@ -550,7 +524,7 @@ namespace lux::render
                     else
                     {
                         auto& dynamic = std::get<RasterPassTemplate>(value.program);
-                        const bool no_bias_source = !dynamic.usesStreamProducer() || !value.depth || value.state_input;
+                        const bool no_bias_source = !dynamic.usesStreamProducer() || !value.depth;
                         const bool invalid_bias = dynamic.section_depth_bias && no_bias_source;
                         const bool mixed_program_sources = dynamic.runtime_stream_programs && !dynamic.stream_programs.empty();
                         const bool external_owners = dynamic.shared_textures || dynamic.mesh_geometry ||
@@ -620,22 +594,6 @@ namespace lux::render
                                 return;
                             }
                             append(resource, resource.usage);
-                        }
-                        for (const auto& field : dynamic.parameters.fields)
-                        {
-                            const auto resource = field.resource;
-                            if (resource.index == kGraphInvalidIndex)
-                            {
-                                continue;
-                            }
-                            const bool is_imported =
-                                resource.index < candidate_.resources_.size() &&
-                                candidate_.resources_[resource.index].origin == EGraphOrigin::IMPORTED;
-                            if (!is_imported)
-                            {
-                                failure = graphError(kGraphInvalidDescriptor, {}, resource);
-                                return;
-                            }
                         }
                     }
                     rasterScope(value);

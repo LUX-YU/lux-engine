@@ -2,7 +2,6 @@
 
 #include <array>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
-#include <lux/engine/render/graph/GraphAssemblyPlan.hpp>
 
 #include <NRI.h>
 #include <lux/engine/render/extensions/graph/Work.hpp>
@@ -28,24 +27,13 @@ namespace lux::render::detail
         std::vector<DescriptorUse> uses;
         nri::PipelineLayout* layout = nullptr;
         std::uint32_t private_set = 0;
-        std::uint32_t instance_region = 0;
         // Texture, sampler and buffer table positions; absent kinds consume no set.
         std::array<std::uint32_t, 3> shared_sets{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
         std::uint32_t parameter_bytes = 0;
         nri::StageBits parameter_stages = nri::StageBits::NONE;
         std::vector<std::byte> initial_parameters;
-        std::vector<ParameterUse> parameters;
-        std::vector<std::pair<std::uint32_t, EDeviceParameter>> device_parameters;
 
         bool operator==(const PassBindings&) const noexcept = default;
-    };
-
-    struct ParameterRegion final
-    {
-        rdesc::ShaderBlock layout;
-        std::uint32_t group = 0, offset = 0;
-        std::vector<std::uint32_t> passes;
-        EParameterSource source = EParameterSource::INSTANCE;
     };
 
     // Cold shader relocation and native pipeline layout data. Fixed descriptor operands are
@@ -54,9 +42,6 @@ namespace lux::render::detail
     {
         std::vector<PassBindings> passes;
 
-        std::vector<ParameterRegion> parameter_regions;
-        std::uint32_t local_parameter_bytes = 0;
-        std::uint32_t instance_parameter_bytes = 0;
     };
 
     [[nodiscard]] RenderResult<void> addPrivateDescriptors(nri::DescriptorPoolDesc&, const PassBindings&) noexcept;
@@ -90,7 +75,6 @@ namespace lux::render::detail
         const nri::DeviceDesc& limits,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        std::span<const std::uint32_t> parameter_groups = {},
         bool device_addresses = false
     ) noexcept;
 

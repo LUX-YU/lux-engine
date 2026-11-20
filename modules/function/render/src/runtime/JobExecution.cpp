@@ -227,7 +227,7 @@ namespace lux::render
                 preparation, registry, sources, std::move(raster_owners)
             ); !ready) return ready;
         candidate.instance.linkUniformBlocks(candidate.graph_plan->uniforms);
-        if (auto values = candidate.instance.setInputs(input.parameters, input.conditions); !values) return values;
+        if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;
         candidate.instance.setViewport(input.viewport);
         candidate.selectViewParameters();
         return {};

@@ -448,29 +448,8 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
         }
-        static const rdesc::ShaderBlock layout = []
-        {
-            rdesc::ShaderBlock result{sizeof(TextureGpuRef), alignof(TextureGpuRef)};
-            result.fields = {
-                {"image_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, image_index), 1, 1, 0, 0},
-                {"sampler_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, sampler_index), 1, 1, 0, 0},
-                {"color_space", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, color_space), 1, 1, 0, 0},
-                {"flags", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, flags), 1, 1, 0, 0}
-            };
-            return result;
-        }();
-        // Texture identities are immutable. The Client ends bindings before release; there is no update subscription.
-        static constexpr TextureGpuRef default_reference{};
-        const auto& reference = backing ? backing->reference_ : default_reference;
-        return ResourceInput{
-            nullptr,
-            0,
-            0,
-            std::as_bytes(std::span(&reference, 1)),
-            &layout,
-            1,
-            backing ? backing->image_ : nullptr
-        };
+        // Texture owners retain the image until callers withdraw their bindings.
+        return ResourceInput{.image = backing ? backing->image_ : nullptr};
     }
 
     ResourceRegistration SampledTexture2DStorage::factory() noexcept

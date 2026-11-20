@@ -32,9 +32,9 @@ namespace lux::render
             },
             error::ErrorDescriptor{
                 "lux.render.device.unsupported",
-                "Required native capability is unavailable, NRI result {0}",
+                "Required native capability is unavailable",
                 error::ERecovery::PERMANENT,
-                {error::EArgument::HEX}
+                {}
             },
             error::ErrorDescriptor{
                 "lux.render.device.capacity",

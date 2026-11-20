@@ -2,6 +2,7 @@
 #include "SceneCapture.hpp"
 #include "EffectGraphColor.hpp"
 #include <lux/engine/render/capabilities/ColorEncoding.hpp>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -489,7 +490,7 @@ namespace
     CapabilityDefinition outputSource(bool hdr)
     {
         const auto name = hdr ? hdr_source_name : display_clear_name;
-        const auto type = hdr ? ToneMapping::hdr_type : ToneMapping::display_type;
+        const auto type = hdr ? HdrColorBundle::type : ToneMapping::display_type;
         return {
             .identity = {graph::nodeTypeId(name), std::string{name}, 1},
             .ports = {{ToneMapping::color, "color", {std::string{type}, 1}, graph::EPinDirection::OUTPUT}}
@@ -2005,8 +2006,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CapabilityDefinition capability;
     capability.identity = {graph::nodeTypeId(schema), std::string{schema}, 1};
     capability.ports = {
-        {node_input, "source", {std::string{ToneMapping::hdr_type}, 1}, graph::EPinDirection::INPUT},
-        {node_color, "color", {std::string{ToneMapping::hdr_type}, 1}, graph::EPinDirection::OUTPUT, 2}
+        {node_input, "source", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::INPUT},
+        {node_color, "color", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::OUTPUT, 2}
     };
     capability.commands = {command.command};
     CHECK(server->registerEffectCapability(capability));
@@ -4352,7 +4353,7 @@ static void lightingGraphOutput(bool d3d12)
     CapabilityDefinition source;
     constexpr std::string_view source_name = "test.lighting.gbuffer";
     source.identity = {graph::nodeTypeId(source_name), std::string{source_name}, 1};
-    source.ports = {{Lighting::surface, "surface", {std::string{Lighting::surface_type}, 1},
+    source.ports = {{Lighting::surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
         graph::EPinDirection::OUTPUT}};
     CHECK(server->registerEffectCapability(source));
     EffectImplementation source_implementation;
@@ -4367,9 +4368,9 @@ static void lightingGraphOutput(bool d3d12)
         }};
         auto& builder = context.builder();
         EffectResourceBundle surface;
-        for (std::size_t i = 0; i < Lighting::surface_members.size(); ++i)
+        for (std::size_t i = 0; i < GBufferBundle::members.size(); ++i)
         {
-            const auto name = Lighting::surface_members[i];
+            const auto name = GBufferBundle::members[i];
             const bool depth = i == 3;
             const auto format = depth ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
             const auto resource = take(builder.declareResource({std::string{name}, GraphImageDesc{64, 64, 1, 1, format}}));
@@ -4386,7 +4387,7 @@ static void lightingGraphOutput(bool d3d12)
     CapabilityDefinition shadow_source;
     constexpr std::string_view shadow_name = "test.lighting.shadow";
     shadow_source.identity = {graph::nodeTypeId(shadow_name), std::string{shadow_name}, 1};
-    shadow_source.ports = {{Lighting::shadows, "shadows", {std::string{Lighting::shadow_type}, 1},
+    shadow_source.ports = {{Lighting::shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version},
         graph::EPinDirection::OUTPUT}};
     CHECK(server->registerEffectCapability(shadow_source));
     EffectImplementation shadow_implementation;
@@ -4415,7 +4416,7 @@ static void lightingGraphOutput(bool d3d12)
         EffectResourceBundle shadow;
         for (std::size_t i = 0; i < sizes.size(); ++i)
         {
-            const std::string name{Lighting::shadow_members[i]};
+            const std::string name{ShadowBundle::members[i]};
             const auto buffer = take(builder.declareResource({name, GraphBufferDesc{sizes[i]}}));
             const auto initial = take(builder.addTransferPass(
                 name + ".zero", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}
@@ -4434,7 +4435,7 @@ static void lightingGraphOutput(bool d3d12)
         const auto cleared = take(builder.addTransferPass(
             "clear occluder", TransferWork{{ClearImage{{{depth, 0}, GraphImageRange{2, 0, 1, 0, 2}}, {}, 0.f}}}
         ));
-        shadow.push_back({effectPortSemantic(Lighting::shadow_members.back()), cleared.written.front()});
+        shadow.push_back({effectPortSemantic(ShadowBundle::members.back()), cleared.written.front()});
         return context.publish(Lighting::shadows, std::move(shadow));
     };
     const auto shadow_selection = shadow_implementation.identity;

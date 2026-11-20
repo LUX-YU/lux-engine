@@ -5,6 +5,7 @@
 #include "ShadowReadback.hpp"
 #include "SceneCapture.hpp"
 #include "SceneComparison.hpp"
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/ClusterLists.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -228,12 +229,12 @@ struct ShadowReadback final
         return {
             .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
             .ports = {
-                {GBuffer::surface, "surface", {std::string{Lighting::surface_type}, 1}, INPUT, 1, true},
-                {Shadow::shadows, "shadows", {std::string{Lighting::shadow_type}, 1}, INPUT, 1, true},
+                {GBuffer::surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version}, INPUT, 1, true},
+                {Shadow::shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version}, INPUT, 1, true},
                 {Shadow::draws, "draws", {std::string{MeshVisibility::draws_type}, 1}, INPUT, 1, true},
-                {reference, "reference", {std::string{Lighting::hdr_type}, 1}, INPUT, 1},
-                {candidate, "candidate", {std::string{Lighting::hdr_type}, 1}, INPUT, 1},
-                {Lighting::cluster_lists, "cluster_lists", {std::string{Lighting::cluster_lists_type}, 1}, INPUT, 1},
+                {reference, "reference", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, INPUT, 1},
+                {candidate, "candidate", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, INPUT, 1},
+                {Lighting::cluster_lists, "cluster_lists", {std::string{ClusterListBundle::type}, ClusterListBundle::version}, INPUT, 1},
                 {readback, "readback", {"test.shadow.readback.bytes", 1}, OUTPUT}
             }
         };
@@ -290,7 +291,7 @@ private:
         ComputeWork snapshot;
         snapshot.interface.program = take(graph.addProgram(GraphProgram{kShadowReadback.load(context.shaderTarget())}));
         snapshot.interface.resources = {
-            {"shadow_views", {member(context, Shadow::shadows, effectPortSemantic(Lighting::shadow_members[0]))}},
+            {"shadow_views", {member(context, Shadow::shadows, effectPortSemantic(ShadowBundle::members[0]))}},
             {"shadow_commands", {member(context, Shadow::draws, MeshVisibility::commands)}},
             {"views", {{views, 0}, {}, EGraphAccess::WRITE}},
             {"commands", {{commands, 0}, {}, EGraphAccess::WRITE}}
@@ -318,7 +319,7 @@ private:
         for (std::uint32_t i : {2u, 3u})
         {
             const bool depth = i == 3;
-            const auto semantic = effectPortSemantic(depth ? Lighting::surface_members.back() : Lighting::surface_members[0]);
+            const auto semantic = effectPortSemantic(depth ? GBufferBundle::members.back() : GBufferBundle::members[0]);
             const auto source = member(context, GBuffer::surface, semantic);
             const auto copied = take(graph.addTransferPass("copy " + std::string{bindings[i]},
                 TransferWork{{CopyImageBuffer{
@@ -343,7 +344,7 @@ private:
             comparison.dispatch = DispatchArguments{{8, 8, 1}};
             const auto compared = take(graph.addComputePass("compare shadow lighting HDR", std::move(comparison)));
             copy_buffer(4, compared.written.front(), GraphCaptureBuffer::image_bytes);
-            copy_buffer(5, member(context, Lighting::cluster_lists, effectPortSemantic(Lighting::cluster_members.back())),
+            copy_buffer(5, member(context, Lighting::cluster_lists, effectPortSemantic(ClusterListBundle::members.back())),
                 sizeof(ClusterStatusGpu));
         }
         EffectResourceBundle outputs;

@@ -3,6 +3,7 @@
 #include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/capabilities/ClusterGrid.hpp>
 #include <lux/engine/render/effect/ClusterLists.hpp>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/resources/transform/Data.hpp>
 #include <utility>
 
@@ -26,12 +27,12 @@ namespace lux::render::detail
     };
 
     inline constexpr std::array clusterBindings{
-        std::pair{"bounds", &ClusterBuffers::bounds},
-        std::pair{"counts", &ClusterBuffers::counts},
-        std::pair{"grid", &ClusterBuffers::grid},
-        std::pair{"offsets", &ClusterBuffers::offsets},
-        std::pair{"indices", &ClusterBuffers::indices},
-        std::pair{"status", &ClusterBuffers::status}
+        std::pair{ClusterListBundle::bounds, &ClusterBuffers::bounds},
+        std::pair{ClusterListBundle::counts, &ClusterBuffers::counts},
+        std::pair{ClusterListBundle::grid, &ClusterBuffers::grid},
+        std::pair{ClusterListBundle::offsets, &ClusterBuffers::offsets},
+        std::pair{ClusterListBundle::indices, &ClusterBuffers::indices},
+        std::pair{ClusterListBundle::status, &ClusterBuffers::status}
     };
 
     struct ClusterBuildResult final

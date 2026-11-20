@@ -12,6 +12,7 @@
 #include <lux/engine/render/resources/instance/Commands.hpp>
 #include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/ClusterLists.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -26,7 +27,7 @@
 
 namespace graph = lux::graph;
 
-static constexpr auto outputs = Lighting::cluster_members;
+static constexpr auto outputs = ClusterListBundle::members;
 static constexpr std::uint32_t difference_bytes = 64 * 64 * sizeof(std::uint32_t);
 static constexpr std::uint32_t scan_offset_bytes = 130 * sizeof(std::uint32_t);
 static constexpr std::uint32_t scan_status_bytes = sizeof(ClusterStatusGpu);
@@ -143,11 +144,11 @@ static CapabilityDefinition inspectionDefinition(std::string_view name, bool sce
     };
     if (scene)
     {
-        const EffectValueType hdr{std::string{Lighting::hdr_type}, 1};
+        const EffectValueType hdr{std::string{HdrColorBundle::type}, HdrColorBundle::version};
         definition.ports.push_back({reference_hdr, "reference", hdr, graph::EPinDirection::INPUT, 1, true});
         definition.ports.push_back({candidate_hdr, "candidate", hdr, graph::EPinDirection::INPUT, 1, true});
         definition.ports.push_back({
-            Lighting::cluster_lists, "cluster_lists", {std::string{Lighting::cluster_lists_type}, 1},
+            Lighting::cluster_lists, "cluster_lists", {std::string{ClusterListBundle::type}, ClusterListBundle::version},
             graph::EPinDirection::INPUT, 1, true
         });
     }

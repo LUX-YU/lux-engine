@@ -186,17 +186,19 @@ namespace lux::render::detail
 
     std::vector<RasterPassTemplate::Input> meshRasterInputs()
     {
-        return {
-            {"transforms", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
-            {"properties", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
-            {"alive", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
-            {"members", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
-            {std::string(rdesc::kMaterialTableName), rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 2
-            },
-            {"uTex", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2},
-            {"uTexSamplers", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2},
-            {"vertices", {}, EGraphUse::VERTEX},
-            {"indices", {}, EGraphUse::INDEX}
-        };
+        std::vector<RasterPassTemplate::Input> inputs;
+        inputs.reserve(kMeshRasterInputNames.size() + 5);
+        for (const auto name : kMeshRasterInputNames)
+        {
+            inputs.push_back({std::string{name}, rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1});
+        }
+        inputs.push_back({
+            std::string{rdesc::kMaterialTableName}, rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 2
+        });
+        inputs.push_back({"uTex", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2});
+        inputs.push_back({"uTexSamplers", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2});
+        inputs.push_back({"vertices", {}, EGraphUse::VERTEX});
+        inputs.push_back({"indices", {}, EGraphUse::INDEX});
+        return inputs;
     }
 } // namespace lux::render::detail

@@ -1,6 +1,7 @@
 #include "TonemapLinear.hpp"
 #include "TonemapSrgb.hpp"
 #include <charconv>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
@@ -114,7 +115,8 @@ namespace lux::render
         definition.identity = {graph::nodeTypeId(capability), std::string{capability}, version};
         definition.display_name = "Tone Mapping";
         definition.ports = {
-            {hdr_color, "hdr_color", {std::string{hdr_type}, 1}, graph::EPinDirection::INPUT, 1, true},
+            {hdr_color, "hdr_color", {std::string{HdrColorBundle::type}, HdrColorBundle::version},
+                graph::EPinDirection::INPUT, 1, true},
             {color, "color", {std::string{display_type}, 1}, graph::EPinDirection::OUTPUT}
         };
         return definition;

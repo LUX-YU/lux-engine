@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
@@ -34,11 +35,11 @@ namespace lux::render::detail
             for (std::size_t i = 0; i < names.size(); ++i)
                 shader.resources.push_back({std::string{names[i]}, {versions[i]}});
         };
-        bind(Lighting::surface_members, inputs.surface);
+        bind(GBufferBundle::members, inputs.surface);
         bind(Lighting::light_bindings, inputs.lights);
         if (inputs.shadows)
         {
-            bind(Lighting::shadow_members, *inputs.shadows);
+            bind(ShadowBundle::members, *inputs.shadows);
             const auto sampler =
                 builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_BORDER, EDepthCompare::LESS_EQUAL, 1});
             shader.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
@@ -247,7 +248,7 @@ namespace lux::render
         RenderResult<void> buildLighting(EffectBuildContext& context, std::string_view arguments) noexcept
         {
             const auto node = context.nodeId();
-            auto surface = resolveLightingBundle(context.inputs(Lighting::surface), Lighting::surface_members, node);
+            auto surface = resolveLightingBundle(context.inputs(Lighting::surface), GBufferBundle::members, node);
             if (!surface) return cxx::unexpected(surface.error());
             detail::DeferredLightingInputs lighting{*surface, {}};
             auto& builder = context.builder();
@@ -256,7 +257,7 @@ namespace lux::render
             {
                 const auto* description = builder.resourceDescription((*surface)[i].resource);
                 const auto* image = description ? std::get_if<GraphImageDesc>(description) : nullptr;
-                const auto format = i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
+                const auto format = GBufferBundle::formats[i];
                 const bool invalid_shape = image &&
                     (image->format != format || image->mips != 1 || image->layers != 1 ||
                      image->runtime_layers || image->samples != 1);
@@ -272,7 +273,7 @@ namespace lux::render
             const auto shadows = context.inputs(Lighting::shadows);
             if (!shadows.empty())
             {
-                auto bound = resolveLightingBundle(shadows, Lighting::shadow_members, node);
+                auto bound = resolveLightingBundle(shadows, ShadowBundle::members, node);
                 if (!bound) return cxx::unexpected(bound.error());
                 lighting.shadows = *bound;
             }
@@ -348,10 +349,13 @@ namespace lux::render
         definition.identity = {graph::nodeTypeId(capability), std::string{capability}, version};
         definition.display_name = "Lighting";
         definition.ports = {
-            {surface, "surface", {std::string{surface_type}, 1}, graph::EPinDirection::INPUT, 1, true},
-            {shadows, "shadows", {std::string{shadow_type}, 1}, graph::EPinDirection::INPUT, 1},
-            {hdr, "hdr_color", {std::string{hdr_type}, 1}, graph::EPinDirection::OUTPUT, UINT8_MAX},
-            {cluster_lists, "cluster_lists", {std::string{cluster_lists_type}, 1}, graph::EPinDirection::OUTPUT, UINT8_MAX}
+            {surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
+                graph::EPinDirection::INPUT, 1, true},
+            {shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version}, graph::EPinDirection::INPUT, 1},
+            {hdr, "hdr_color", {std::string{HdrColorBundle::type}, HdrColorBundle::version},
+                graph::EPinDirection::OUTPUT, UINT8_MAX},
+            {cluster_lists, "cluster_lists", {std::string{ClusterListBundle::type}, ClusterListBundle::version},
+                graph::EPinDirection::OUTPUT, UINT8_MAX}
         };
         return definition;
     }

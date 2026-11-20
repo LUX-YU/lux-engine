@@ -8,6 +8,7 @@
 #include <set>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -344,7 +345,7 @@ namespace
         constexpr auto direction = graph::EPinDirection::INPUT;
         const auto name = purpose == EMaterialPurpose::GBUFFER ? "test.material.capture.gbuffer" :
             purpose == EMaterialPurpose::SHADOW ? "test.material.capture.depth" : "test.material.capture.color";
-        const auto type = purpose == EMaterialPurpose::GBUFFER ? Lighting::surface_type :
+        const auto type = purpose == EMaterialPurpose::GBUFFER ? GBufferBundle::type :
             purpose == EMaterialPurpose::SHADOW ? DepthPyramid::depth_type : ToneMapping::display_type;
         return {
             .identity = {graph::nodeTypeId(name), name, 1},
@@ -360,7 +361,7 @@ namespace
     {
         constexpr bool depth = Purpose == EMaterialPurpose::SHADOW;
         constexpr auto member = Purpose == EMaterialPurpose::GBUFFER ?
-            effectPortSemantic(Lighting::surface_members.front()) : depth ? MeshRaster::depth : MeshRaster::color;
+            effectPortSemantic(GBufferBundle::members.front()) : depth ? MeshRaster::depth : MeshRaster::color;
         const auto inputs = context.inputs(capture_input);
         CHECK(inputs.size() == 1);
         const auto source = std::ranges::find(inputs.front(), member, &EffectResourceValue::member);
@@ -385,7 +386,7 @@ namespace
     {
         return {
             .identity = {graph::nodeTypeId(hdr_capability), std::string{hdr_capability}, 1},
-            .ports = {{Lighting::hdr, "hdr_color", {std::string{Lighting::hdr_type}, 1}, graph::EPinDirection::OUTPUT}}
+            .ports = {{Lighting::hdr, "hdr_color", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::OUTPUT}}
         };
     }
 

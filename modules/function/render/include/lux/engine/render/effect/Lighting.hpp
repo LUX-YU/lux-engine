@@ -1,10 +1,8 @@
 #pragma once
 
 #include <array>
-#include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/effect/CapabilityDefinition.hpp>
-#include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render
@@ -19,19 +17,6 @@ namespace lux::render
         static constexpr auto shadows = effectPortSemantic("shadows");
         static constexpr auto hdr = effectPortSemantic("hdr_color");
         static constexpr auto cluster_lists = effectPortSemantic("cluster_lists");
-        static constexpr std::string_view surface_type = rdesc::GBufferLayout::semantic;
-        static constexpr std::string_view shadow_type = "lux.lighting.shadow.forward-z";
-        static constexpr std::string_view hdr_type = ToneMapping::hdr_type;
-        static constexpr std::string_view cluster_lists_type = "lux.lighting.cluster-lists.forward-z";
-        static constexpr std::array<std::string_view, 6> cluster_members{
-            "grid", "bounds", "counts", "offsets", "indices", "status"
-        };
-        static constexpr std::array<std::string_view, 4> surface_members{
-            "albedo_metallic", "normal_roughness", "emissive_ao", "depth"
-        };
-        static constexpr std::array<std::string_view, 4> shadow_members{
-            "shadow_views", "shadow_slices", "shadow_ranges", "shadow_depth"
-        };
         // Each binding selects the corresponding EDirectLightingBuffer projection of a LightResource.
         static constexpr std::array<std::string_view, 4> light_bindings{
             "directional_lights", "point_lights", "spot_lights", "light_counts"

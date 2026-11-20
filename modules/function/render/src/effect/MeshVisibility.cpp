@@ -1,8 +1,10 @@
 #include "MeshView.hpp"
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/effect/MeshRaster.hpp>
 #include <lux/engine/render/effect/MeshSurfaceStream.hpp>
 #include <lux/engine/render/effect/MeshVisibility.hpp>
@@ -460,17 +462,17 @@ namespace lux::render
                     if (!depth) return cxx::unexpected(depth.error());
                     raster.depth = RasterAttachment{{{*depth, 0}}};
                     for (std::size_t i = 0; i < shadow->uploads.size(); ++i)
-                        bundle.push_back({effectPortSemantic(Lighting::shadow_members[i]), {shadow->uploads[i], 0}});
+                        bundle.push_back({effectPortSemantic(ShadowBundle::members[i]), {shadow->uploads[i], 0}});
                 }
                 else if constexpr (Effect == EMeshEffect::GBUFFER)
                 {
-                    for (std::size_t i = 0; i < Lighting::surface_members.size(); ++i)
+                    for (std::size_t i = 0; i < GBufferBundle::members.size(); ++i)
                     {
                         const bool is_depth = i == rdesc::GBufferLayout::color_formats.size();
-                        const auto format = is_depth ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
+                        const auto format = GBufferBundle::formats[i];
                         GraphImageDesc image{0, 0, 1, 1, format};
                         image.extent.source = EImageExtentSource::TARGET;
-                        const auto attachment = graph.declareResource({key + std::string{Lighting::surface_members[i]}, image});
+                        const auto attachment = graph.declareResource({key + std::string{GBufferBundle::members[i]}, image});
                         if (!attachment) return cxx::unexpected(attachment.error());
                         if (is_depth) raster.depth = RasterAttachment{{{*attachment, 0}}};
                         else raster.colors.push_back({{{*attachment, 0}}});
@@ -495,10 +497,10 @@ namespace lux::render
                 const auto drawn = graph.addRasterPass(key + "raster", std::move(raster));
                 if (!drawn) return cxx::unexpected(drawn.error());
                 if constexpr (Effect == EMeshEffect::SHADOW)
-                    bundle.push_back({effectPortSemantic(Lighting::shadow_members.back()), drawn->written.front()});
+                    bundle.push_back({effectPortSemantic(ShadowBundle::members.back()), drawn->written.front()});
                 else if constexpr (Effect == EMeshEffect::GBUFFER)
-                    for (std::size_t i = 0; i < Lighting::surface_members.size(); ++i)
-                        bundle.push_back({effectPortSemantic(Lighting::surface_members[i]), drawn->written[i]});
+                    for (std::size_t i = 0; i < GBufferBundle::members.size(); ++i)
+                        bundle.push_back({effectPortSemantic(GBufferBundle::members[i]), drawn->written[i]});
                 else
                     bundle.push_back({
                         Effect == EMeshEffect::FORWARD ? MeshRaster::color : MeshRaster::depth, drawn->written.front()
@@ -578,7 +580,7 @@ namespace lux::render
         definition.identity = {graph::nodeTypeId(capability), std::string{capability}, version};
         definition.display_name = "GBuffer";
         definition.ports = {
-            {surface, "surface", {std::string{rdesc::GBufferLayout::semantic}, 1},
+            {surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
                 graph::EPinDirection::OUTPUT, UINT8_MAX},
             {draws, "draws", {std::string{MeshVisibility::draws_type}, 1},
                 graph::EPinDirection::OUTPUT, UINT8_MAX}
@@ -651,7 +653,8 @@ namespace lux::render
         definition.identity = {graph::nodeTypeId(capability), std::string{capability}, version};
         definition.display_name = "Shadow";
         definition.ports = {
-            {shadows, "shadows", {std::string{Lighting::shadow_type}, 1}, graph::EPinDirection::OUTPUT, UINT8_MAX},
+            {shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version},
+                graph::EPinDirection::OUTPUT, UINT8_MAX},
             {draws, "draws", {std::string{MeshVisibility::draws_type}, 1}, graph::EPinDirection::OUTPUT, UINT8_MAX}
         };
         return definition;

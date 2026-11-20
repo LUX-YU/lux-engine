@@ -16,6 +16,7 @@
 #include <lux/engine/render/resources/transform/Resource.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -120,7 +121,7 @@ namespace
         CapabilityDefinition definition;
         definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
         definition.ports = {
-            {GBuffer::surface, "surface", {std::string{rdesc::GBufferLayout::semantic}, 1},
+            {GBuffer::surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
                 graph::EPinDirection::INPUT, 1, true},
             {gbuffer_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
         };
@@ -128,7 +129,7 @@ namespace
         {
             definition.ports[0] = {ToneMapping::color, "color", {std::string{ToneMapping::display_type}, 1},
                 graph::EPinDirection::INPUT, 1, true};
-            definition.ports.push_back({Shadow::shadows, "shadows", {std::string{Lighting::shadow_type}, 1},
+            definition.ports.push_back({Shadow::shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version},
                 graph::EPinDirection::INPUT, 1, true});
         }
         return definition;
@@ -195,7 +196,7 @@ namespace
                 const bool depth = members[i] == 3;
                 const auto pitch = members[i] == 1 ? 512u : 256u;
                 const auto bytes = pitch * 64u;
-                const auto semantic = effectPortSemantic(Lighting::surface_members[members[i]]);
+                const auto semantic = effectPortSemantic(GBufferBundle::members[members[i]]);
                 const auto input = std::ranges::find(inputs.front(), semantic, &EffectResourceValue::member);
                 CHECK(input != inputs.front().end());
                 const GraphBufferRange range{destination, bytes};

@@ -174,6 +174,11 @@ implementation, connect a `lux.color.linear-hdr` input to `hdr_color`, and consu
 `color`. The node argument is an optional numeric exposure in stops with a default of 1.
 `SetToneMappingExposure` addresses an Effect and a node, including before a Job is attached.
 
+`effect/EffectBundles.hpp` defines the GBuffer, Shadow, HDR and cluster-list schemas shared by Effect producers
+and consumers. Use the schema's type, version and member names when declaring or connecting these bundles.
+Cold graph failures report an `EffectDiagnostic` through `RenderErrorSink` with the source node and pins where
+available. The sink may retain a copy of this value after returning from the callback.
+
 For a producer-authored Raster stream, declare the program choices and read-only resource envelope on
 `RasterPassTemplate`. The producer's preparation declares ownership of that pass. During cold linking,
 `resolveDrawStream` and `resolveRasterProgram` grant slots scoped to the compiled variant. Buffer, image,

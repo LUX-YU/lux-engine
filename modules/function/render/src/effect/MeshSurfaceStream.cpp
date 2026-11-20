@@ -22,10 +22,9 @@ namespace lux::render::detail
             if (!buffer) return cxx::unexpected(buffer.error());
             resolved.buffers[i] = *buffer;
         }
-        constexpr std::array names{"transforms", "properties", "alive", "members"};
-        for (std::size_t i = 0; i < names.size(); ++i)
+        for (std::size_t i = 0; i < kMeshRasterInputNames.size(); ++i)
         {
-            const auto argument = context.resolveRasterArgument(config.pass, names[i]);
+            const auto argument = context.resolveRasterArgument(config.pass, kMeshRasterInputNames[i]);
             if (!argument) return cxx::unexpected(argument.error());
             resolved.arguments[i] = *argument;
         }
@@ -199,7 +198,7 @@ namespace lux::render::detail
                     auto program = frame.rasterProgram(inputs_.stream, group.first_program + winding);
                     if (!program) return cxx::unexpected(program.error());
                     const auto binding = static_cast<std::uint32_t>(bindings_.size());
-                    for (std::size_t i = 0; i < 3; ++i)
+                    for (std::size_t i = 0; i < kMeshRasterMemberInput; ++i)
                     {
                         bindings_.push_back({
                             inputs_.arguments[i], RasterBufferSlice{inputs_.buffers[i], 0, RasterBufferSlice::whole}
@@ -208,8 +207,8 @@ namespace lux::render::detail
                     const auto stream = view * kMeshWindingCount + winding;
                     const auto stride = std::uint64_t(group.visible_stride) * sizeof(std::uint32_t);
                     const auto member_offset = std::uint64_t(group.visible_offset) * sizeof(std::uint32_t) + stride * stream;
-                    bindings_.push_back({inputs_.arguments[3], RasterBufferSlice{
-                        inputs_.buffers[3], inputs_.shared_members ? 0 : member_offset,
+                    bindings_.push_back({inputs_.arguments[kMeshRasterMemberInput], RasterBufferSlice{
+                        inputs_.buffers[kMeshRasterMemberInput], inputs_.shared_members ? 0 : member_offset,
                         inputs_.shared_members ? RasterBufferSlice::whole : stride
                     }});
                     const auto command = std::uint64_t(group.gpu_index) * source.view_count * kMeshWindingCount + stream;
@@ -217,7 +216,7 @@ namespace lux::render::detail
                     draws_.push_back({
                         *program, {binding, 4}, {vertex, 1}, {constant_offset, sizeof(VisibilityViewConstants)},
                         RasterStreamIndirect{
-                            {inputs_.buffers[4], command * indirect_bytes, indirect_bytes}, {},
+                            {inputs_.buffers[kMeshRasterIndirectInput], command * indirect_bytes, indirect_bytes}, {},
                             RasterStreamIndexBinding{
                                 group.geometry.indices, group.geometry.index_type, ERasterIndexOrigin::MESH_ARENA
                             }

@@ -16,7 +16,9 @@ namespace lux::render::detail
         for (std::size_t i = 0; i < clusterBindings.size(); ++i)
         {
             const auto& [name, field] = clusterBindings[i];
-            auto resource = builder.declareResource({std::string{key} + "/" + name, GraphBufferDesc{sizes[i]}});
+            auto resource = builder.declareResource({
+                std::string{key} + "/" + std::string{name}, GraphBufferDesc{sizes[i]}
+            });
             if (!resource) return cxx::unexpected(resource.error());
             buffers.*field = {*resource, 0};
         }

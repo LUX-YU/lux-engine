@@ -74,7 +74,9 @@ namespace lux::render::detail
             selected.owner->unpin(*selected.version, unknown);
         }
         workspace_.uniforms.clear();
-        if (std::exchange(native_bindings_pinned_, false)) device_.descriptors().unpinNativeBindings();
+        for (const auto& selection : workspace_.native_bindings)
+            device_.descriptors().releaseNativeBindings(selection);
+        workspace_.native_bindings.clear();
         submission_.reset();
         round_.finish();
         cancellation_.reset();
@@ -241,12 +243,7 @@ namespace lux::render::detail
         bool ready = producer_uploads_ready_;
         if (ready)
         {
-            // Vulkan frame replicas borrow the native tables through recording and submission receipt adoption.
-            if (!native_bindings_pinned_ && device_.description().graphicsAPI == nri::GraphicsAPI::VK)
-            {
-                device_.descriptors().pinNativeBindings();
-                native_bindings_pinned_ = true;
-            }
+
             auto prepared = prepareInstances(instances);
             if (!prepared) co_return cxx::unexpected(track(prepared).error());
             ready = *prepared;
@@ -374,6 +371,20 @@ namespace lux::render::detail
             if (!*prepared)
             {
                 return false;
+            }
+            if (device_.description().graphicsAPI == nri::GraphicsAPI::VK)
+            {
+                // This call has frozen a complete replica without suspending. Another replica may
+                // freeze after a later pool replacement while the round waits for History.
+                auto& descriptors = device_.descriptors();
+                const auto selected = descriptors.nativeBindingSelection();
+                auto& selections = workspace_.native_bindings;
+                const bool any_pool = std::ranges::any_of(selected, [](const auto id) noexcept { return !id.isNull(); });
+                if (any_pool && (selections.empty() || selections.back() != selected))
+                {
+                    descriptors.retainNativeBindings(selected);
+                    selections.push_back(selected);
+                }
             }
             ++prepared_instances_;
         }

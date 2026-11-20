@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/cxx/container/StableSlotMap.hpp>
+
 #include <lux/engine/render/visibility.h>
 
 #include <NRI.h>
@@ -64,11 +66,18 @@ namespace lux::render::detail
     private:
         friend class FrameOperation;
 
-        struct RetiredPool final
+        struct NativePoolTag;
+        using NativePoolId = cxx::SlotKey<NativePoolTag>;
+
+        struct NativePool final
         {
             nri::DescriptorPool* pool;
             std::uint32_t capacity;
+            std::uint32_t readers = 0;
+            bool replaced = false;
         };
+
+        using NativeBindingSelection = std::array<NativePoolId, 3>;
 
         struct Entry final
         {
@@ -81,7 +90,7 @@ namespace lux::render::detail
             std::uint32_t allocated_capacity = 0;
             cxx::SlotKeyAutoSparseSet<Slot, Entry> slots;
             nri::PipelineLayout* allocation_layout = nullptr;
-            nri::DescriptorPool* pool = nullptr;
+            NativePoolId pool;
             nri::DescriptorSet* descriptors = nullptr;
         };
 
@@ -92,18 +101,19 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] RenderResult<void> reserve(nri::DescriptorType, std::uint32_t required) noexcept;
-        void pinNativeBindings() noexcept;
-        void unpinNativeBindings() noexcept;
-        void retirePool(RetiredPool) noexcept;
+        [[nodiscard]] NativeBindingSelection nativeBindingSelection() const noexcept;
+        void retainNativeBindings(const NativeBindingSelection&) noexcept;
+        void releaseNativeBindings(const NativeBindingSelection&) noexcept;
+        void retirePool(NativePoolId) noexcept;
+        void destroyPool(NativePoolId) noexcept;
 
         DeviceSession& session_;
         std::array<Table, 3> tables_;
         std::vector<Sampler> samplers_;
-        std::vector<RetiredPool> pinned_pools_;
+        cxx::StableSlotMap<NativePool, NativePoolTag> pools_;
         std::uint64_t allocated_descriptors_ = 0;
         std::uint64_t native_binding_generation_ = 1;
         std::uint64_t content_revision_ = 1;
         std::uint32_t pool_capacity_ = 0;
-        std::uint32_t binding_pins_ = 0;
     };
 } // namespace lux::render::detail

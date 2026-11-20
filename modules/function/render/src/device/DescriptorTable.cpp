@@ -178,10 +178,7 @@ namespace lux::render::detail
 
     void DescriptorTable::clear() noexcept
     {
-        if (binding_pins_ != 0 || !pinned_pools_.empty())
-        {
-            std::terminate();
-        }
+
         const auto& core = session_.nriCore();
         for (std::size_t i = 0; i < tables_.size(); ++i)
         {
@@ -191,11 +188,7 @@ namespace lux::render::detail
                 std::terminate();
             }
             table.slots.clear();
-            if (table.pool)
-            {
-                core.DestroyDescriptorPool(std::exchange(table.pool, nullptr));
-                allocated_descriptors_ -= table.allocated_capacity;
-            }
+            if (!table.pool.isNull()) destroyPool(std::exchange(table.pool, {}));
             if (table.allocation_layout)
             {
                 core.DestroyPipelineLayout(std::exchange(table.allocation_layout, nullptr));
@@ -203,7 +196,7 @@ namespace lux::render::detail
             table.descriptors = nullptr;
             table.layout_capacity = table.allocated_capacity = 0;
         }
-        if (allocated_descriptors_ != 0)
+        if (allocated_descriptors_ != 0 || !pools_.empty())
         {
             std::terminate(); // Retiring pools must have completed before close.
         }
@@ -215,26 +208,48 @@ namespace lux::render::detail
         pool_capacity_ = 0;
     }
 
-    void DescriptorTable::pinNativeBindings() noexcept
+    DescriptorTable::NativeBindingSelection DescriptorTable::nativeBindingSelection() const noexcept
     {
-        ++binding_pins_;
+        return {tables_[0].pool, tables_[1].pool, tables_[2].pool};
     }
 
-    void DescriptorTable::unpinNativeBindings() noexcept
+    void DescriptorTable::retainNativeBindings(const NativeBindingSelection& selection) noexcept
     {
-        if (binding_pins_ == 0) std::terminate();
-        if (--binding_pins_ != 0) return;
-        for (const auto& pool : pinned_pools_) retirePool(pool);
-        pinned_pools_.clear();
-    }
-
-    void DescriptorTable::retirePool(RetiredPool pool) noexcept
-    {
-        session_.deferRelease([this, pool]() noexcept
+        for (const auto id : selection)
         {
-            session_.nriCore().DestroyDescriptorPool(pool.pool);
-            allocated_descriptors_ -= pool.capacity;
-        });
+            if (id.isNull()) continue;
+            auto* pool = pools_.find(id);
+            const bool invalid = !pool || pool->replaced || pool->readers == UINT32_MAX;
+            if (invalid) std::terminate();
+            ++pool->readers;
+        }
+    }
+
+    void DescriptorTable::releaseNativeBindings(const NativeBindingSelection& selection) noexcept
+    {
+        for (const auto id : selection)
+        {
+            if (id.isNull()) continue;
+            auto* pool = pools_.find(id);
+            if (!pool || !pool->readers) std::terminate();
+            if (--pool->readers == 0 && pool->replaced) retirePool(id);
+        }
+    }
+
+    void DescriptorTable::retirePool(NativePoolId id) noexcept
+    {
+        // The last reader returns after native receipt adoption. Current accepted values include all of
+        // this pool's GPU uses; the cleanup scope keeps the device and pool directory alive.
+        session_.deferRelease([this, id]() noexcept { destroyPool(id); });
+    }
+
+    void DescriptorTable::destroyPool(NativePoolId id) noexcept
+    {
+        auto* pool = pools_.find(id);
+        if (!pool || pool->readers) std::terminate();
+        session_.nriCore().DestroyDescriptorPool(pool->pool);
+        allocated_descriptors_ -= pool->capacity;
+        pools_.erase(id);
     }
 
     RenderResult<void> DescriptorTable::reserve(nri::DescriptorType type, std::uint32_t required) noexcept
@@ -307,17 +322,18 @@ namespace lux::render::detail
         {
             core.UpdateDescriptorRanges(writes.data(), static_cast<std::uint32_t>(writes.size()));
         }
-        auto* old_pool = std::exchange(table.pool, pool);
-        const auto old_capacity = std::exchange(table.allocated_capacity, capacity);
+        const auto native_pool = pools_.emplace(NativePool{pool, capacity});
+        const auto previous = std::exchange(table.pool, native_pool);
+        table.allocated_capacity = capacity;
         table.descriptors = descriptors;
         if (native_binding_generation_ == UINT64_MAX) std::terminate();
         ++native_binding_generation_;
         allocated_descriptors_ += capacity;
-        if (old_pool)
+        if (!previous.isNull())
         {
-            const RetiredPool old{old_pool, old_capacity};
-            if (binding_pins_) pinned_pools_.push_back(old);
-            else retirePool(old);
+            auto& replaced = *pools_.find(previous);
+            replaced.replaced = true;
+            if (!replaced.readers) retirePool(previous);
         }
         return {};
     }

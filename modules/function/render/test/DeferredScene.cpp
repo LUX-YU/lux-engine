@@ -598,6 +598,8 @@ static void descriptorTables()
     CHECK(core.CreateTextureView(view_desc, view) == nri::Result::SUCCESS);
     auto& table = session->descriptors();
     auto* first = table.descriptors(nri::DescriptorType::TEXTURE);
+    const auto first_generation = table.nativeBindingGeneration();
+    const auto first_content = table.contentRevision();
     const auto ranges = DescriptorTable::layoutRanges({32, 16, 16}, enabled.variable_descriptor_count);
     const nri::DescriptorSetDesc image_set{0, &ranges[0], 1};
     nri::PipelineLayoutDesc layout_desc{};
@@ -628,6 +630,7 @@ static void descriptorTables()
     CHECK(!table.allocate(nri::DescriptorType::TEXTURE));
     CHECK(table.descriptors(nri::DescriptorType::TEXTURE) == first);
     CHECK(call_capture_fail_set.load() == 0);
+    CHECK(table.nativeBindingGeneration() == first_generation && table.contentRevision() == first_content);
     const auto destroyed_before_growth = destroyed_pools;
     std::vector<DescriptorTable::Slot> slots;
     for (unsigned i = 0; i < 17; ++i)
@@ -637,14 +640,20 @@ static void descriptorTables()
         slots.push_back(slot);
     }
     CHECK(table.descriptors(nri::DescriptorType::TEXTURE) != first);
+    CHECK(table.nativeBindingGeneration() > first_generation && table.contentRevision() == first_content + slots.size());
     CHECK(destroyed_pools == destroyed_before_growth); // Accepted frontiers have not been dispatched.
     CHECK(session->drain());
     CHECK(destroyed_pools >= destroyed_before_growth + 5);
     const auto removed = slots[3];
+    const auto stable_generation = table.nativeBindingGeneration();
+    const auto previous_content = table.contentRevision();
     table.release(nri::DescriptorType::TEXTURE, removed);
+    CHECK(table.contentRevision() == previous_content + 1);
     slots[3] = take(table.allocate(nri::DescriptorType::TEXTURE));
     CHECK(slots[3].index == removed.index && slots[3].gen != removed.gen);
     table.write(nri::DescriptorType::TEXTURE, slots[3], view);
+    CHECK(table.contentRevision() == previous_content + 2);
+    CHECK(table.nativeBindingGeneration() == stable_generation);
     while (slots.size() != 31)
     {
         auto slot = take(table.allocate(nri::DescriptorType::TEXTURE));

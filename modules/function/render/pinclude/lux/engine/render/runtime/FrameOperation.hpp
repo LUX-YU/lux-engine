@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
@@ -27,6 +28,7 @@ namespace lux::render::detail
             SubmissionFrontiers blocked_completion;
             SubmissionFrontiers uniform_completed;
             std::vector<SelectedUniformBlock> uniforms;
+            std::vector<DescriptorTable::NativeBindingSelection> native_bindings;
         };
 
         FrameOperation(
@@ -90,6 +92,5 @@ namespace lux::render::detail
         bool producer_selections_ready_ = false;
         bool producer_uploads_ready_ = false;
         bool waiting_for_gpu_ = false;
-        bool native_bindings_pinned_ = false;
     };
 } // namespace lux::render::detail

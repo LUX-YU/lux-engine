@@ -3,6 +3,7 @@
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 
 #include <algorithm>
+#include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -11,10 +12,14 @@
 
 namespace lux::render::detail
 {
-    RenderGraphInstance::ResizeResources::ResizeResources(DeviceSession& session) noexcept : session_(&session) {}
+    RenderGraphInstance::ResizeResources::ResizeResources(RenderGraphInstance& owner) noexcept
+        : owner_(&owner), session_(owner.session_)
+    {
+    }
 
     RenderGraphInstance::ResizeResources::ResizeResources(ResizeResources&& other) noexcept
         : output(other.output), frames(std::move(other.frames)), histories(std::move(other.histories)),
+          owner_(other.owner_), prepared_(std::exchange(other.prepared_, false)),
           session_(std::exchange(other.session_, nullptr))
     {
     }
@@ -60,7 +65,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
         auto& session = *session_;
-        ResizeResources result{session};
+        ResizeResources result{*this};
         result.output = output;
         result.frames.resize(frames_.size());
         const auto& target = output.description;
@@ -538,12 +543,38 @@ namespace lux::render::detail
         return {};
     }
 
+    nri::Descriptor*& RenderGraphInstance::ResizeResources::destination(Pass& pass, const ImageViewBinding& use) noexcept
+    {
+        switch (use.target)
+        {
+        case EImageViewTarget::DESCRIPTOR:
+            return pass.private_views[use.index];
+        case EImageViewTarget::COLOR:
+            return pass.colors[use.index].descriptor;
+        case EImageViewTarget::DEPTH:
+            return pass.depth.descriptor;
+        case EImageViewTarget::COLOR_RESOLVE:
+            return pass.colors[use.index].resolveDst;
+        case EImageViewTarget::DEPTH_RESOLVE:
+            return pass.depth.resolveDst;
+        case EImageViewTarget::CLEAR:
+            return pass.clear_views[use.index];
+        }
+        std::terminate();
+    }
+
     RenderResult<void> RenderGraphInstance::prepareResizeAdoption(ResizeResources& result) noexcept
     {
+        if (result.owner_ != this || result.frames.size() != frames_.size())
+            return cxx::unexpected(RenderError{kFrameContract});
+        result.prepared_ = false;
+        const auto& physical = plan_->physical_resources_;
         for (std::uint32_t f = 0; f < frames_.size(); ++f)
         {
-            const auto& frame = frames_[f];
+            auto& frame = frames_[f];
             auto& candidate = result.frames[f];
+            candidate.image_adoptions.clear();
+            candidate.buffer_adoptions.clear();
             const auto binding = [&](std::uint32_t resource) -> const Binding&
             {
                 const auto changed =
@@ -551,6 +582,42 @@ namespace lux::render::detail
                 return changed != candidate.resources.end() && changed->index == resource ? changed->binding
                                                                                           : frame.bindings[resource];
             };
+            const auto find_slot = [](const auto& objects, const auto* object) noexcept
+            {
+                const auto found = std::ranges::find(objects, object);
+                return found == objects.end() ? SIZE_MAX : static_cast<std::size_t>(found - objects.begin());
+            };
+            for (std::uint32_t s = 0; s < candidate.replaced_slots.size(); ++s)
+            {
+                if (!candidate.replaced_slots[s]) continue;
+                const auto index = physical.slots[s].resource.index;
+                const auto& old = frame.bindings[index];
+                const auto& incoming = binding(index);
+                const bool is_image = old.image != nullptr;
+                auto& adoptions = is_image ? candidate.image_adoptions : candidate.buffer_adoptions;
+                const auto swap = is_image
+                    ? ResizeResources::OwnershipSlots{
+                        find_slot(frame.images, old.image), find_slot(candidate.physical.images, incoming.image)
+                    }
+                    : ResizeResources::OwnershipSlots{
+                        find_slot(frame.buffers, old.buffer), find_slot(candidate.physical.buffers, incoming.buffer)
+                    };
+                if (swap.live == SIZE_MAX || swap.candidate == SIZE_MAX)
+                    return cxx::unexpected(RenderError{kFrameContract, {f, index}});
+                adoptions.push_back(swap);
+            }
+            for (auto& view : candidate.views)
+            {
+                if (!view.owned) continue;
+                auto* previous = ResizeResources::destination(frame.passes[view.use.pass], view.use);
+                const bool is_attachment = view.use.target != EImageViewTarget::DESCRIPTOR;
+                view.ownership = {
+                    is_attachment ? find_slot(frame.views, previous) : SIZE_MAX,
+                    find_slot(candidate.physical.views, view.descriptor)
+                };
+                if (view.ownership.candidate == SIZE_MAX || (is_attachment && view.ownership.live == SIZE_MAX))
+                    return cxx::unexpected(RenderError{kFrameContract, {f, view.use.pass, view.use.index}});
+            }
             for (auto& extent : candidate.extents)
             {
                 auto ready = preparePassExtent(
@@ -567,40 +634,22 @@ namespace lux::render::detail
                 }
             }
         }
+        result.prepared_ = true;
         return {};
     }
 
     void RenderGraphInstance::commitResize(ResizeResources&& result) noexcept
     {
+        if (result.owner_ != this || !std::exchange(result.prepared_, false)) std::terminate();
         const auto& core = session_->nriCore();
-        const auto& physical = plan_->physical_resources_;
         for (std::uint32_t f = 0; f < frames_.size(); ++f)
         {
             auto& frame = frames_[f];
             auto& candidate = result.frames[f];
-            for (std::uint32_t s = 0; s < candidate.replaced_slots.size(); ++s)
-            {
-                if (!candidate.replaced_slots[s])
-                {
-                    continue;
-                }
-                const auto index = physical.slots[s].resource.index;
-                const auto replacement =
-                    std::ranges::lower_bound(candidate.resources, index, {}, &ResizeResources::Resource::index);
-                const auto& old = frame.bindings[index];
-                if (old.image)
-                {
-                    auto& current = *std::ranges::find(frame.images, old.image);
-                    auto& incoming = *std::ranges::find(candidate.physical.images, replacement->binding.image);
-                    std::swap(current, incoming);
-                }
-                else
-                {
-                    auto& current = *std::ranges::find(frame.buffers, old.buffer);
-                    auto& incoming = *std::ranges::find(candidate.physical.buffers, replacement->binding.buffer);
-                    std::swap(current, incoming);
-                }
-            }
+            for (const auto [live, incoming] : candidate.image_adoptions)
+                std::swap(frame.images[live], candidate.physical.images[incoming]);
+            for (const auto [live, incoming] : candidate.buffer_adoptions)
+                std::swap(frame.buffers[live], candidate.physical.buffers[incoming]);
             if (!candidate.placements.empty())
             {
                 for (std::uint32_t group = 0; group < candidate.adopted_memories.size(); ++group)
@@ -670,44 +719,20 @@ namespace lux::render::detail
             for (auto& view : candidate.views)
             {
                 auto& pass = frame.passes[view.use.pass];
-                nri::Descriptor** destination = nullptr;
-                switch (view.use.target)
-                {
-                case EImageViewTarget::DESCRIPTOR:
-                    destination = &pass.private_views[view.use.index];
-                    break;
-                case EImageViewTarget::COLOR:
-                    destination = &pass.colors[view.use.index].descriptor;
-                    break;
-                case EImageViewTarget::DEPTH:
-                    destination = &pass.depth.descriptor;
-                    break;
-                case EImageViewTarget::COLOR_RESOLVE:
-                    destination = &pass.colors[view.use.index].resolveDst;
-                    break;
-                case EImageViewTarget::DEPTH_RESOLVE:
-                    destination = &pass.depth.resolveDst;
-                    break;
-                case EImageViewTarget::CLEAR:
-                    destination = &pass.clear_views[view.use.index];
-                    break;
-                }
-                auto* previous = std::exchange(*destination, view.descriptor);
+                auto& destination = ResizeResources::destination(pass, view.use);
+                auto* previous = std::exchange(destination, view.descriptor);
                 if (view.owned)
                 {
-                    auto& incoming = *std::ranges::find(candidate.physical.views, view.descriptor);
-                    incoming = previous;
-                    if (view.use.target != EImageViewTarget::DESCRIPTOR)
-                    {
-                        *std::ranges::find(frame.views, previous) = view.descriptor;
-                    }
+                    candidate.physical.views[view.ownership.candidate] = previous;
+                    if (view.ownership.live != SIZE_MAX)
+                        frame.views[view.ownership.live] = view.descriptor;
                 }
                 if (view.use.target == EImageViewTarget::DESCRIPTOR)
                 {
                     const auto& use =
                         plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[view.use.index];
                     const nri::UpdateDescriptorRangeDesc
-                        update{pass.private_descriptors, use.binding, use.element, destination, 1};
+                        update{pass.private_descriptors, use.binding, use.element, &destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);
                 }
             }

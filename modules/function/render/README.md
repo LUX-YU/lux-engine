@@ -608,8 +608,8 @@ ResourceUploader owns staging, upload batches and copy-acceptance callbacks. Fra
 FIF slot and owns its accepted frontiers. Structural Resource commands borrow a reusable physical replica and
 return their accepted transfer frontiers to that slot. ResourceCreateContext supplies these device services to factories.
 Device, Scene and View own their ResourceSets. ResourceRegistry keeps the sole declaration directory and a
-non-owning generational index. Effect owns its logical graph. JobExecution owns the device plan and instance and
-borrows the Target output. The Client settles uploads and stops consuming Jobs before deleting their resources.
+non-owning generational index. Effect owns its logical graph. JobExecution borrows the device plan and Target
+output and owns its graph instance. The Client settles uploads and stops consuming Jobs before deleting their resources.
 
 DescriptorTable maintains independent image and sampler indices. Identical sampler descriptions reuse one
 device-lifetime sampler. Texture references carry both indices and explicit flags; the material sampling code
@@ -1031,7 +1031,9 @@ Vulkan relocates descriptor decorations, while D3D12 preserves the compiled regi
 space/index through the NRI descriptor-range mapping. Root constants use `b0, space255`.
 On D3D12, shared descriptor tables are CPU copy sources. The writable FIF snapshots live
 entries into its own GPU descriptor pool alongside private sets, so one heap pair supplies
-all bindings. Table growth rebuilds that frame's pool and invalidates affected recordings.
+all bindings. Content updates write into the existing writable FIF pool. Table growth rebuilds that frame's pool
+and invalidates affected recordings. Vulkan frames retain the shared native pool generations selected by their
+frozen replicas until submission receipts have been adopted. A replaced pool returns its budget after destruction.
 DXIL never passes through SPIR-V relocation. Runtime validation uses pinned SPIRV-Tools
 and the resolved SPIRV-Cross package; generation has no Engine toolchain or PATH/SDK fallback.
 

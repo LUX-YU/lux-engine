@@ -8,7 +8,7 @@ namespace lux::render::detail
     // Before adoption it owns candidates, afterwards the replaced objects. Both use the Session cleanup scope.
     struct LUX_RENDER_PUBLIC RenderGraphInstance::ResizeResources final
     {
-        explicit ResizeResources(DeviceSession&) noexcept;
+        explicit ResizeResources(RenderGraphInstance&) noexcept;
         ResizeResources(ResizeResources&&) noexcept;
         ~ResizeResources() noexcept;
         ResizeResources(const ResizeResources&) = delete;
@@ -21,11 +21,18 @@ namespace lux::render::detail
             Binding binding;
         };
 
+        struct OwnershipSlots final
+        {
+            std::size_t live = SIZE_MAX;
+            std::size_t candidate = SIZE_MAX;
+        };
+
         struct View final
         {
             ImageViewBinding use;
             nri::Descriptor* descriptor;
             bool owned;
+            OwnershipSlots ownership;
         };
 
         struct Extent final
@@ -41,6 +48,8 @@ namespace lux::render::detail
             std::vector<View> views;
             std::vector<Extent> extents;
             std::vector<std::uint8_t> replaced_slots;
+            std::vector<OwnershipSlots> image_adoptions;
+            std::vector<OwnershipSlots> buffer_adoptions;
             std::vector<BoundMemoryPlacement> placements;
             std::vector<std::uint32_t> allocation_candidates;
             std::vector<MemoryGroupId> previous_allocations;
@@ -54,6 +63,11 @@ namespace lux::render::detail
         std::vector<std::pair<std::uint32_t, HistoryState>> histories;
 
     private:
+        friend class RenderGraphInstance;
+        [[nodiscard]] static nri::Descriptor*& destination(Pass&, const ImageViewBinding&) noexcept;
+
+        const RenderGraphInstance* owner_;
+        bool prepared_ = false;
         DeviceSession* session_;
     };
 } // namespace lux::render::detail

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <optional>
-#include <memory>
+#include <vector>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
@@ -32,9 +32,12 @@ namespace lux::render
         std::uint32_t stream = kGraphInvalidIndex, index = kGraphInvalidIndex;
     };
 
+    // Index into the shader artifacts submitted for this stream and selection.
+    struct ShaderCandidateSlot final { std::uint32_t index = kGraphInvalidIndex; };
+
     struct RuntimeRasterProgram final
     {
-        std::shared_ptr<const rdesc::ShaderProgramArtifact> shader;
+        ShaderCandidateSlot shader;
         GraphicsState graphics;
         ParameterBinding parameters;
     };
@@ -43,15 +46,21 @@ namespace lux::render
     {
     public:
         virtual ~RasterProgramSelection() noexcept = default;
-        // Qualified by the stream's named owners. The selection retains Material code through native preparation.
-        [[nodiscard]] virtual RenderResult<std::shared_ptr<const rdesc::MaterialProgramSet>>
+        // Borrowed during selectRasterPrograms(). The operation keeps the material registered until it settles.
+        [[nodiscard]] virtual RenderResult<const rdesc::MaterialProgramSet*>
         materialProgram(DrawStreamSlot, MaterialProgramId) noexcept = 0;
         [[nodiscard]] virtual RenderResult<MaterialProgramId> materialProgramId(DrawStreamSlot, MaterialId)
             const noexcept = 0;
         [[nodiscard]] virtual RenderResult<MeshDescription> meshLayout(DrawStreamSlot, MeshId) const noexcept = 0;
         // Select every program for this revision. The renderer owns the selected inputs across scheduler hops.
         [[nodiscard]] virtual RenderResult<void>
-        setPrograms(DrawStreamSlot stream, std::span<const RuntimeRasterProgram> programs) noexcept = 0;
+        setPrograms(
+            DrawStreamSlot stream, std::vector<rdesc::ShaderProgramArtifact> shaders,
+            std::span<const RuntimeRasterProgram> programs
+        ) noexcept = 0;
+
+        // Use the existing ordered bindings when the producer's complete program key set is unchanged.
+        [[nodiscard]] virtual RenderResult<void> reusePrograms(DrawStreamSlot stream) noexcept = 0;
 
         // The selected value is valid for the duration of selectRasterPrograms().
         template <class T>

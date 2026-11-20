@@ -1460,12 +1460,12 @@ namespace
             if (mode == ETestStreamPrograms::INVALID)
                 uniform.target = selection_.target == rdesc::EShaderTarget::SPIRV ?
                     rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+            std::vector<rdesc::ShaderProgramArtifact> shaders;
+            shaders.push_back(streamShader(selection_.target, kEffectStreamInline));
+            shaders.push_back(std::move(uniform));
             std::array programs{
-                RuntimeRasterProgram{
-                    std::make_shared<const rdesc::ShaderProgramArtifact>(streamShader(selection_.target, kEffectStreamInline)),
-                    {}, std::move(parameters)
-                },
-                RuntimeRasterProgram{std::make_shared<const rdesc::ShaderProgramArtifact>(std::move(uniform)), {}, {}}
+                RuntimeRasterProgram{{0}, {}, std::move(parameters)},
+                RuntimeRasterProgram{{1}, {}, {}}
             };
             if (mode == ETestStreamPrograms::PENDING) programs[0].graphics.blend.enabled = true;
             if (mode == ETestStreamPrograms::REVERSED)
@@ -1473,7 +1473,7 @@ namespace
                 for (auto& program : programs) program.graphics.front_counter_clockwise = false;
                 std::swap(programs[0], programs[1]);
             }
-            return selection.setPrograms(selection_.stream, programs);
+            return selection.setPrograms(selection_.stream, std::move(shaders), programs);
         }
 
         RenderResult<void> prepare(FramePreparation& frame) noexcept override
@@ -3206,26 +3206,23 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
 
         RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept override
         {
-            RuntimeRasterProgram program;
+            RuntimeRasterProgram program{{0}};
+            std::vector<rdesc::ShaderProgramArtifact> shaders;
             if (input_.materials)
             {
                 auto lease = selection.materialProgram(input_.stream, selected_material_program);
                 if (!lease) return lux::cxx::unexpected(lease.error());
                 const auto* shader = (*lease)->find(rdesc::EMaterialPurpose::FORWARD);
                 CHECK(shader);
-                program.shader = std::make_shared<const rdesc::ShaderProgramArtifact>(
-                    prependStreamVertex(shader->shader, kEffectStreamVertex)
-                );
+                shaders.push_back(prependStreamVertex(shader->shader, kEffectStreamVertex));
                 program.parameters.setInlineConstant(rdesc::MaterialGpuReference{});
             }
             else
             {
-                program.shader = std::make_shared<const rdesc::ShaderProgramArtifact>(
-                    streamShader(input_.target, kEffectStreamSharedTexture)
-                );
+                shaders.push_back(streamShader(input_.target, kEffectStreamSharedTexture));
                 program.parameters.setInlineConstant(TestSharedTextureIndices{});
             }
-            return selection.setPrograms(input_.stream, std::span{&program, 1});
+            return selection.setPrograms(input_.stream, std::move(shaders), std::span{&program, 1});
         }
 
         RenderResult<void> prepare(FramePreparation& frame) noexcept override
@@ -3628,17 +3625,16 @@ static void meshRasterStream(bool d3d12)
             graphics.vertex_attributes = {{position.location, 0, position.offset, position.format}};
             ParameterBinding parameters;
             parameters.setInlineConstant(ProducerConstants{});
-            auto shader = std::make_shared<const rdesc::ShaderProgramArtifact>(
-                prependStreamVertex(fragment->shader, kEffectStreamMesh)
-            );
+            std::vector<rdesc::ShaderProgramArtifact> shaders;
+            shaders.push_back(prependStreamVertex(fragment->shader, kEffectStreamMesh));
             std::array programs{
-                RuntimeRasterProgram{shader, graphics, parameters},
-                RuntimeRasterProgram{shader, graphics, parameters}
+                RuntimeRasterProgram{{0}, graphics, parameters},
+                RuntimeRasterProgram{{0}, graphics, parameters}
             };
             programs.back().graphics.vertex_attributes.front().offset += sizeof(float);
             program_selection_revision_ = snapshot->revision;
             ++program_selections;
-            return selection.setPrograms(input_.stream, programs);
+            return selection.setPrograms(input_.stream, std::move(shaders), programs);
         }
 
         RenderResult<void> prepare(FramePreparation& frame) noexcept override

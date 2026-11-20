@@ -34,10 +34,49 @@ namespace lux::render::detail
     RenderResult<void>
     MeshSurfaceStream::selectPrograms(RasterProgramSelection& selection, const MeshInstanceSnapshot& instances) noexcept
     {
+        ProgramSelectionState next;
+        const auto stage = [&](RenderResult<void> declared) noexcept
+        {
+            if (!declared) return declared;
+            std::ranges::sort(next.materials);
+            const auto duplicates = std::ranges::unique(next.materials);
+            next.materials.erase(duplicates.begin(), duplicates.end());
+            pending_programs_.emplace(std::move(next));
+            return declared;
+        };
+        if (selected_programs_)
+        {
+            const auto& previous = *selected_programs_;
+            std::vector<std::uint32_t> used;
+            bool has_new_group = false;
+            for (const auto& instance : instances.instances)
+            {
+                if (!instance.render_enabled) continue;
+                const GroupKey key{instance.mesh, instance.program};
+                const auto group = previous.groups.find(key);
+                if (group == previous.groups.end())
+                {
+                    has_new_group = true;
+                    break;
+                }
+                if (next.groups.emplace(key, group->second).second) used.push_back(group->second.first);
+                if (group->second.reads_material) next.materials.emplace_back(group->second.first, instance.material);
+            }
+            if (!has_new_group)
+            {
+                std::ranges::sort(used);
+                const auto slots = std::ranges::unique(used).begin() - used.begin();
+                next.program_count = static_cast<std::size_t>(slots) * kMeshWindingCount;
+                if (next.program_count == previous.program_count)
+                    return stage(selection.reusePrograms(inputs_.stream));
+            }
+            next = {};
+        }
+
         struct MaterialShaders final
         {
-            std::shared_ptr<const rdesc::MaterialProgramSet> program;
-            std::array<std::shared_ptr<const rdesc::ShaderProgramArtifact>, kMeshWindingCount> shaders;
+            const rdesc::MaterialProgramSet* program = nullptr;
+            std::array<ShaderCandidateSlot, kMeshWindingCount> shaders;
             bool reads_material = false;
         };
         using LayoutKey = std::tuple<MaterialProgramId, std::uint32_t, std::span<const MeshAttribute>>;
@@ -61,12 +100,11 @@ namespace lux::render::detail
         std::map<MeshId, MeshDescription> geometry;
         std::map<LayoutKey, std::uint32_t, decltype(compare_layout)> layouts(compare_layout);
         std::vector<RuntimeRasterProgram> candidates;
-        programs_.clear();
-        materials_.clear();
+        std::vector<rdesc::ShaderProgramArtifact> artifacts;
         for (const auto& instance : instances.instances)
         {
             if (!instance.render_enabled) continue;
-            const auto [group, new_group] = programs_.try_emplace({instance.mesh, instance.program});
+            const auto [group, new_group] = next.groups.try_emplace({instance.mesh, instance.program});
             if (new_group)
             {
                 const auto [material, new_material] = materials.try_emplace(instance.program);
@@ -75,7 +113,9 @@ namespace lux::render::detail
                 {
                     auto program = selection.materialProgram(inputs_.stream, instance.program);
                     if (!program) return cxx::unexpected(program.error());
-                    shaders.program = std::move(*program);
+                    shaders.program = *program;
+                    if (artifacts.size() > kGraphInvalidIndex - kMeshWindingCount)
+                        return cxx::unexpected(RenderError{kDeviceCapacity});
                     for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                     {
                         auto shader = buildMeshShader(
@@ -89,7 +129,8 @@ namespace lux::render::detail
                                 return field.count == 0 && field.name == rdesc::kMaterialTableName;
                             });
                         }
-                        shaders.shaders[winding] = std::make_shared<const rdesc::ShaderProgramArtifact>(std::move(*shader));
+                        shaders.shaders[winding] = {static_cast<std::uint32_t>(artifacts.size())};
+                        artifacts.push_back(std::move(*shader));
                     }
                 }
                 const auto [mesh, new_mesh] = geometry.try_emplace(instance.mesh);
@@ -110,10 +151,10 @@ namespace lux::render::detail
                 {
                     for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                     {
-                        const auto& shader = shaders.shaders[winding];
+                        const auto shader = shaders.shaders[winding];
                         auto state = meshGraphicsState(
-                            layout.vertex_stride, layout.attributes, *shaders.program, shader->interface,
-                            inputs_.front_counter_clockwise, winding != 0
+                            layout.vertex_stride, layout.attributes, *shaders.program,
+                            artifacts[shader.index].interface, inputs_.front_counter_clockwise, winding != 0
                         );
                         if (!state) return cxx::unexpected(state.error());
                         auto& program = candidates.emplace_back(shader, std::move(*state), ParameterBinding{});
@@ -122,12 +163,17 @@ namespace lux::render::detail
                 }
                 group->second = {use->second, shaders.reads_material};
             }
-            if (group->second.reads_material) materials_.emplace_back(group->second.first, instance.material);
+            if (group->second.reads_material) next.materials.emplace_back(group->second.first, instance.material);
         }
-        std::sort(materials_.begin(), materials_.end());
-        const auto duplicates = std::ranges::unique(materials_);
-        materials_.erase(duplicates.begin(), duplicates.end());
-        return selection.setPrograms(inputs_.stream, candidates);
+        next.program_count = candidates.size();
+        return stage(selection.setPrograms(inputs_.stream, std::move(artifacts), candidates));
+    }
+
+    void MeshSurfaceStream::settlePrograms(bool adopted) noexcept
+    {
+        if (!pending_programs_) return;
+        if (adopted) selected_programs_ = std::move(pending_programs_);
+        pending_programs_.reset();
     }
 
     RenderResult<void> MeshSurfaceStream::prepare(
@@ -162,7 +208,8 @@ namespace lux::render::detail
         sections_.clear();
         const bool invalid_views = constants.size() != source.view_count || states.size() != source.view_count;
         if (invalid_views) return cxx::unexpected(RenderError{kFrameContract});
-        for (const auto& [index, material] : materials_)
+        if (!selected_programs_) return cxx::unexpected(RenderError{kFrameContract});
+        for (const auto& [index, material] : selected_programs_->materials)
         {
             for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
             {
@@ -175,8 +222,8 @@ namespace lux::render::detail
         for (const auto& group : source.groups)
         {
             if (group.gpu_index == kGraphInvalidIndex) continue;
-            const auto selected = programs_.find({group.mesh, group.program});
-            if (selected == programs_.end()) return cxx::unexpected(RenderError{kFrameContract});
+            const auto selected = selected_programs_->groups.find({group.mesh, group.program});
+            if (selected == selected_programs_->groups.end()) return cxx::unexpected(RenderError{kFrameContract});
             auto mesh = frame.selectMesh(inputs_.stream, group.mesh);
             if (!mesh) return cxx::unexpected(mesh.error());
             vertices_.push_back({0, mesh->vertices});

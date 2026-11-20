@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NRI.h>
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
 #include <cstddef>
@@ -64,6 +65,7 @@ namespace lux::render::detail
 
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
         void release(std::span<Program* const>) noexcept;
+        void release(std::size_t count, cxx::function_ref<Program*(std::size_t) noexcept> get) noexcept;
 
         // Before cleanup_scope_ closes; no logical users or CPU compilation borrows may remain.
         void clear() noexcept;

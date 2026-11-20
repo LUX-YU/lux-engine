@@ -11,6 +11,7 @@
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 #include <algorithm>
+#include <map>
 #include <bit>
 
 namespace lux::render::detail
@@ -36,6 +37,8 @@ namespace lux::render::detail
         {
             std::uint32_t pass;
             std::optional<std::vector<RuntimeRasterProgram>> programs{};
+            std::vector<rdesc::ShaderProgramArtifact> shaders;
+            bool reuse = false;
         };
 
         ProgramSelection(const RenderGraphInstance& instance, const Producer& producer) noexcept
@@ -45,16 +48,28 @@ namespace lux::render::detail
             for (auto pass : producer.runtime_streams) entries.emplace_back(pass);
         }
 
-        RenderResult<std::shared_ptr<const rdesc::MaterialProgramSet>>
+        RenderResult<const rdesc::MaterialProgramSet*>
         materialProgram(DrawStreamSlot slot, MaterialProgramId id) noexcept override
         {
             const auto* owner = findOwner(slot);
             if (!owner || !owner->materials)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            auto lease = owner->materials->borrowProgram(id);
-            if (!lease) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
-            const auto& material = material_leases_.emplace_back(std::move(lease));
-            return std::shared_ptr<const rdesc::MaterialProgramSet>{material, &material->data};
+            auto existing = materials_.find(id);
+            if (existing != materials_.end())
+            {
+                if (existing->second.owner != owner->materials)
+                    return cxx::unexpected(RenderError{kStorageMismatch, {slot.index}});
+                return existing->second.program;
+            }
+            auto program = owner->materials->beginProgramPreparation(id);
+            if (!program) return cxx::unexpected(program.error());
+            materials_.emplace(id, MaterialInput{owner->materials, *program});
+            return *program;
+        }
+
+        void finishMaterialInputs() noexcept
+        {
+            for (const auto& [id, input] : materials_) input.owner->finishProgramPreparation(id);
         }
 
         RenderResult<MaterialProgramId> materialProgramId(DrawStreamSlot slot, MaterialId id) const noexcept override
@@ -77,18 +92,36 @@ namespace lux::render::detail
             return *layout;
         }
 
-        RenderResult<void> setPrograms(DrawStreamSlot slot, std::span<const RuntimeRasterProgram> programs) noexcept override
+        RenderResult<void> setPrograms(
+            DrawStreamSlot slot, std::vector<rdesc::ShaderProgramArtifact> shaders,
+            std::span<const RuntimeRasterProgram> programs
+        ) noexcept override
         {
             const auto entry = std::ranges::find(entries, slot.index, &Entry::pass);
             if (entry == entries.end()) return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            if (entry->programs) return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {slot.index}});
-            if (programs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kDeviceCapacity});
+            if (entry->programs || entry->reuse)
+                return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {slot.index}});
+            if (programs.size() >= kGraphInvalidIndex || shaders.size() >= kGraphInvalidIndex)
+                return cxx::unexpected(RenderError{kDeviceCapacity});
             for (const auto& program : programs)
             {
-                if (!program.shader)
+                if (program.shader.index >= shaders.size())
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
             }
             entry->programs.emplace(programs.begin(), programs.end());
+            entry->shaders = std::move(shaders);
+            return {};
+        }
+
+        RenderResult<void> reusePrograms(DrawStreamSlot slot) noexcept override
+        {
+            const auto entry = std::ranges::find(entries, slot.index, &Entry::pass);
+            if (entry == entries.end()) return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
+            if (entry->programs || entry->reuse)
+                return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {slot.index}});
+            if (!instance_.dynamic_raster_programs_[slot.index])
+                return cxx::unexpected(RenderError{kFrameContract, {slot.index}});
+            entry->reuse = true;
             return {};
         }
 
@@ -110,7 +143,13 @@ namespace lux::render::detail
 
         const RenderGraphInstance& instance_;
         std::span<const std::uint32_t> snapshots_;
-        std::vector<std::shared_ptr<const MaterialProgramRecord>> material_leases_;
+        struct MaterialInput final
+        {
+            RasterMaterialStorage* owner;
+            const rdesc::MaterialProgramSet* program;
+        };
+
+        std::map<MaterialProgramId, MaterialInput> materials_;
     };
 
     class RenderGraphInstance::ProducerFrame final : public FramePreparation
@@ -294,12 +333,17 @@ namespace lux::render::detail
             return stage(instance_.cpu_data_[slot], bytes);
         }
 
-        RenderResult<void> writeInlineBlock(std::uint32_t slot, std::span<const std::byte> bytes) noexcept override
+        RenderResult<void>
+        writeInlineBlock(std::uint32_t slot, std::span<const std::byte> bytes, std::uint64_t revision) noexcept override
         {
             const auto use = std::ranges::find(linked_.inline_blocks, slot, &LinkedInlineBlock::pass);
             if (use == linked_.inline_blocks.end())
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot}});
-            return stage(producer_.constants[use - linked_.inline_blocks.begin()], bytes);
+            auto& output = producer_.constants[use - linked_.inline_blocks.begin()];
+            const bool unchanged = revision != 0 && revision == output.source_revision;
+            auto written = stage(output.payload, bytes, unchanged);
+            if (written) output.source_revision = revision;
+            return written;
         }
 
         RenderResult<void> writeGpuBuffer(
@@ -335,11 +379,12 @@ namespace lux::render::detail
             return {};
         }
 
-        static RenderResult<void> stage(PreparedBytes& output, std::span<const std::byte> bytes) noexcept
+        static RenderResult<void>
+        stage(PreparedBytes& output, std::span<const std::byte> bytes, bool unchanged = false) noexcept
         {
             if (output.written || output.bytes.size() != bytes.size())
                 return cxx::unexpected(RenderError{kFrameContract});
-            std::ranges::copy(bytes, output.bytes.begin());
+            if (!unchanged) std::ranges::copy(bytes, output.bytes.begin());
             output.written = true;
             return {};
         }
@@ -399,7 +444,7 @@ namespace lux::render::detail
             if (!data) return cxx::unexpected(data.error());
             if (!*data) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             auto& producer = producers.emplace_back(
-                std::move(*data), std::vector<PreparedBytes>{},
+                std::move(*data), std::vector<PreparedInlineBlock>{},
                 std::vector<OwnedRasterStream>(linked.raster_streams.size()),
                 std::vector<std::byte>(linked.node_state.size())
             );
@@ -421,7 +466,7 @@ namespace lux::render::detail
             producer.constants.reserve(linked.inline_blocks.size());
             for (const auto& block : linked.inline_blocks)
             {
-                producer.constants.push_back({std::vector<std::byte>(block.bytes)});
+                producer.constants.push_back({{std::vector<std::byte>(block.bytes)}});
             }
         }
         cpu_data_.reserve(plan.cpu_data_bytes.size());
@@ -446,14 +491,9 @@ namespace lux::render::detail
     {
         auto& selected = dynamic_raster_programs_[pass];
         if (!selected) return;
-        if (replacing)
-        {
-            std::vector<const PassBindings*> bindings;
-            bindings.reserve(selected->programs.size());
-            for (const auto& program : selected->programs) bindings.push_back(&program.bindings);
-            releaseRasterBindings(bindings, pass);
-        }
-        session_->programs().release(selected->leases);
+        if (replacing && !selected->programs.empty()) releaseRasterBindings(pass, selected->revision);
+        const auto get = [&](std::size_t i) noexcept { return selected->programs[i].cache_entry; };
+        session_->programs().release(selected->programs.size(), get);
         selected.reset();
     }
 
@@ -501,6 +541,9 @@ namespace lux::render::detail
             snapshot.revision = *captured;
         }
         ProgramSelection selection{*this, producer};
+        bool adopted = false;
+        cxx::scope_exit finish_materials([&]() noexcept { selection.finishMaterialInputs(); });
+        cxx::scope_exit settle([&]() noexcept { producer.value->settleRasterPrograms(adopted); });
         if (auto gathered = producer.value->selectRasterPrograms(selection); !gathered)
             co_return cxx::unexpected(gathered.error());
         std::vector<std::unique_ptr<DynamicRasterPrograms>> candidates;
@@ -508,10 +551,19 @@ namespace lux::render::detail
         cxx::scope_exit release_candidates([&]() noexcept
         {
             for (const auto& candidate : candidates)
-                if (candidate) session_->programs().release(candidate->leases);
+            {
+                if (!candidate) continue;
+                const auto get = [&](std::size_t i) noexcept { return candidate->programs[i].cache_entry; };
+                session_->programs().release(candidate->programs.size(), get);
+            }
         });
         for (const auto& entry : selection.entries)
         {
+            if (entry.reuse)
+            {
+                candidates.emplace_back();
+                continue;
+            }
             if (!entry.programs) co_return cxx::unexpected(RenderError{kFrameContract, {entry.pass}});
             const auto& contract = *programs_->rasterStream(entry.pass)->runtime;
             auto& selected = candidates.emplace_back(std::make_unique<DynamicRasterPrograms>());
@@ -520,20 +572,18 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kDeviceCapacity});
             selected->revision = previous ? previous->revision + 1 : 1;
             selected->programs.reserve(entry.programs->size());
-            selected->leases.reserve(entry.programs->size());
             RasterPassTemplate stage;
             stage.inputs = contract.arguments;
             for (const auto& program : *entry.programs)
             {
                 stage.parameters = program.parameters;
                 auto prepared = co_await prepareRasterStreamProgram(
-                    *session_, cpu, stage, contract.target, *program.shader, program.graphics,
+                    *session_, cpu, stage, contract.target, entry.shaders[program.shader.index], program.graphics,
                     cxx::function_ref<bool() noexcept>{is_current}
                 );
-                if (prepared) selected->leases.push_back(prepared->lease);
+                if (prepared) selected->programs.push_back(std::move(*prepared));
                 if (!is_current()) co_return false;
                 if (!prepared) co_return cxx::unexpected(prepared.error());
-                selected->programs.push_back(std::move(prepared->data));
             }
         }
         if (!is_current()) co_return false;
@@ -542,13 +592,15 @@ namespace lux::render::detail
             const auto pass = selection.entries[i].pass;
             const auto& previous = dynamic_raster_programs_[pass];
             const auto& candidate = candidates[i];
-            const bool unchanged = previous && previous->leases == candidate->leases &&
+            if (!candidate) continue;
+            const bool unchanged = previous &&
                 previous->programs == candidate->programs;
             if (unchanged) continue;
             releaseDynamicRasterPrograms(pass, true);
             dynamic_raster_programs_[pass] = std::move(candidates[i]);
         }
         producer.program_revisions.assign(revisions.begin(), revisions.end());
+        adopted = true;
         co_return true;
     }
 
@@ -582,7 +634,7 @@ namespace lux::render::detail
             auto& producer = producers_[i];
             if (!producer.runtime_streams.empty() && !rasterProgramMatches(producer, producer.program_revisions))
                 return cxx::unexpected(RenderError{kDeviceBusy});
-            for (auto& block : producer.constants) block.written = false;
+            for (auto& block : producer.constants) block.payload.written = false;
             for (auto& stream : producer.streams)
             {
                 stream.written = false;
@@ -609,7 +661,7 @@ namespace lux::render::detail
             }
             for (std::size_t b = 0; b < linked.inline_blocks.size(); ++b)
             {
-                if (!producer.constants[b].written)
+                if (!producer.constants[b].payload.written)
                     return cxx::unexpected(RenderError{kFrameContract, {linked.inline_blocks[b].pass}});
             }
             for (std::size_t s = 0; s < linked.raster_streams.size(); ++s)
@@ -631,8 +683,11 @@ namespace lux::render::detail
             const auto& blocks = linked.inline_blocks;
             for (std::size_t b = 0; b < blocks.size(); ++b)
             {
-                if (auto written = writeInlineConstant(slot, blocks[b].pass, producers_[i].constants[b].bytes); !written)
-                    return written;
+                const auto& selected = producers_[i].constants[b];
+                auto written = writeInlineConstant(
+                    slot, blocks[b].pass, selected.payload.bytes, selected.source_revision
+                );
+                if (!written) return written;
             }
         }
         return {};

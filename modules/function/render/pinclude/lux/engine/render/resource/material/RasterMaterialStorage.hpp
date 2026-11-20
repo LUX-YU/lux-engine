@@ -34,9 +34,10 @@ namespace lux::render::detail
 
         struct ProgramSlot final
         {
-            std::shared_ptr<const MaterialProgramRecord> record;
+            MaterialProgramRecord record;
             Table* table = nullptr;
             std::size_t instances = 0;
+            std::uint32_t program_preparations = 0;
         };
 
     public:
@@ -72,7 +73,9 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<RasterRecord>
         selectRasterRecord(MaterialId, std::uint32_t frame, const rdesc::ShaderBlock& layout) const noexcept;
         [[nodiscard]] MaterialProgramId programId(MaterialId) const noexcept;
-        [[nodiscard]] std::shared_ptr<const MaterialProgramRecord> borrowProgram(MaterialProgramId) const noexcept;
+        [[nodiscard]] RenderResult<const rdesc::MaterialProgramSet*>
+        beginProgramPreparation(MaterialProgramId) noexcept;
+        void finishProgramPreparation(MaterialProgramId) noexcept;
         // Append the instance's physical parameter page and sampled images for this FIF.
         [[nodiscard]] RenderResult<void>
         collectReads(

@@ -356,12 +356,19 @@ namespace lux::render::detail
 
     void CompiledPrograms::release(std::span<Program* const> programs) noexcept
     {
-        if (programs.empty()) return;
+        const auto get = [&](std::size_t i) noexcept { return programs[i]; };
+        release(programs.size(), get);
+    }
+
+    void CompiledPrograms::release(std::size_t count, cxx::function_ref<Program*(std::size_t) noexcept> get) noexcept
+    {
+        if (!count) return;
         auto accepted = session_.makeFrontiers();
         for (std::size_t q = 0; q < session_.queueCount(); ++q)
             accepted.accept(session_.submissionPoint(q, session_.physicalQueue(q).submitted()));
-        for (auto* program : programs)
+        for (std::size_t i = 0; i < count; ++i)
         {
+            auto* program = get(i);
             if (!program->users) std::terminate();
             program->last_uses.merge(accepted);
             if (--program->users == 0) unused_.emplace(program->last_acquired, program);

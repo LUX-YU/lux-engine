@@ -774,7 +774,7 @@ namespace lux::render::detail
         co_return program;
     }
 
-    exec::task<RenderResult<PreparedRasterStreamProgram>>
+    exec::task<RenderResult<CompiledRasterStream::Program>>
     prepareRasterStreamProgram(
         DeviceSession& session, execution::CpuScheduler cpu, const RasterPassTemplate& stage,
         const RasterStreamTarget& target, const rdesc::ShaderProgramArtifact& artifact, const GraphicsState& graphics,
@@ -845,11 +845,10 @@ namespace lux::render::detail
                     attribute.location = input->semantic_index;
             }
         }
-        CompiledRasterStream::Program program{
-            CompiledPrograms::native(**lease), std::move(*layout), graphics.vertex_bindings,
+        co_return CompiledRasterStream::Program{
+            CompiledPrograms::native(**lease), *lease, std::move(*layout), graphics.vertex_bindings,
             std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
         };
-        co_return PreparedRasterStreamProgram{std::move(program), *lease};
     }
 
     exec::task<RenderResult<void>>
@@ -977,8 +976,8 @@ namespace lux::render::detail
                     stage.parameters = authored.parameters;
                     auto program = co_await prepareRasterStreamProgram(session, cpu, stage, target, *artifact, authored.graphics);
                     if (!program) co_return cxx::unexpected(program.error());
-                    native.program_uses_.push_back(program->lease);
-                    stream->programs.push_back(std::move(program->data));
+                    native.program_uses_.push_back(program->cache_entry);
+                    stream->programs.push_back(std::move(*program));
                 }
                 native.streams_[pass.binding_slot] = std::move(stream);
             }

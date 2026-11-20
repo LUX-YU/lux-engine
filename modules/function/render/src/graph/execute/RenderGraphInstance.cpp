@@ -246,27 +246,30 @@ namespace lux::render::detail
             }
             frame.viewport = viewport_;
         }
-        const auto shared_revision = session_->descriptors().bindingRevision();
-        if (frame.shared_binding_revision != shared_revision)
+        const auto& shared = session_->descriptors();
+        const auto shared_generation = shared.nativeBindingGeneration();
+        const bool is_d3d12 = session_->description().graphicsAPI == nri::GraphicsAPI::D3D12;
+        if (frame.shared_binding_generation != shared_generation)
         {
-            if (frame.shared_descriptor_counts != session_->descriptors().snapshotCounts())
+            if (frame.shared_descriptor_counts != shared.snapshotCounts())
             {
                 if (auto grown = growRasterDescriptorPool(slot); !grown) return cxx::unexpected(grown.error());
             }
-            if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
-            {
-                session_->descriptors().updateSnapshot(frame.shared_descriptors);
-            }
-            else
+            if (!is_d3d12)
             {
                 constexpr std::array kinds{
                     nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
                 };
                 for (std::size_t kind = 0; kind < kinds.size(); ++kind)
-                    frame.shared_descriptors[kind] = session_->descriptors().descriptors(kinds[kind]);
+                    frame.shared_descriptors[kind] = shared.descriptors(kinds[kind]);
+                invalidateRecordings(slot);
             }
-            invalidateRecordings(slot);
-            frame.shared_binding_revision = shared_revision;
+            frame.shared_binding_generation = shared_generation;
+        }
+        if (is_d3d12 && frame.shared_content_revision != shared.contentRevision())
+        {
+            shared.updateSnapshot(frame.shared_descriptors);
+            frame.shared_content_revision = shared.contentRevision();
         }
         if (auto sections = prepareRasterSections(slot); !sections)
             return cxx::unexpected(sections.error());

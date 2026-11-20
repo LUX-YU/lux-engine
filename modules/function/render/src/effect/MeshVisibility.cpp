@@ -136,6 +136,11 @@ namespace lux::render
                 if (inputs.shadow) shadow_.emplace(inputs.shadow->settings);
             }
 
+            void settleRasterPrograms(bool adopted) noexcept override
+            {
+                if (surface_) surface_->settlePrograms(adopted);
+            }
+
             RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept override
             {
                 if (!surface_) return cxx::unexpected(RenderError{kFrameContract});

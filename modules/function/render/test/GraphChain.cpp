@@ -456,7 +456,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     const auto bytes = std::as_bytes(std::span{&count_input, 1});
     const std::array instances{instance.get()};
     CHECK(!instance->recordBatch(0, 0)); // An initialized owner is not a prepared recording input.
-    CHECK(instance->writeInlineConstant(0, count_pass, bytes));
+    CHECK(instance->writeInlineConstant(0, count_pass, bytes, 1));
     CHECK(take(instance->prepareFrame(0)));
     count_input.requested = 0;
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
@@ -471,7 +471,8 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     }
     CHECK(RecordTextureQueries::count == 0);
     count_input.requested = 1;
-    CHECK(instance->writeInlineConstant(0, count_pass, bytes));
+    CHECK(instance->writeInlineConstant(0, count_pass, bytes, 2));
+    CHECK(instance->writeInlineConstant(0, count_pass, bytes, 2));
     CHECK(take(instance->prepareFrame(0)));
     CHECK(RecordTextureQueries::count == 0); // An unchanged fixed slice reuses its frozen native bindings.
     core.GetTextureDesc = RecordTextureQueries::original;

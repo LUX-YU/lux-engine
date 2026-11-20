@@ -232,9 +232,7 @@ namespace lux::render::detail
         const auto key = programs_.emplace();
         const auto id = extension_detail::ResourceIdentity::make<MaterialProgramId>(id_, key);
         auto* slot = programs_.find(key);
-        slot->record = std::make_shared<const MaterialProgramRecord>(
-            MaterialProgramRecord{id, std::move(program), samples_textures}
-        );
+        slot->record = {id, std::move(program), samples_textures};
         slot->table = table;
         if (table) ++table->programs;
         return id;
@@ -338,7 +336,7 @@ namespace lux::render::detail
     void RasterMaterialStorage::removeProgram(ProgramSlot& program) noexcept
     {
         auto* table = program.table;
-        const auto key = extension_detail::ResourceIdentity::local(program.record->id);
+        const auto key = extension_detail::ResourceIdentity::local(program.record.id);
         programs_.erase(key);
         if (table)
         {
@@ -351,7 +349,7 @@ namespace lux::render::detail
     {
         auto* program = findProgram(id);
         if (!program) return cxx::unexpected(RenderError{kStorageIdentity});
-        const bool has_live_uses = program->instances || program->record.use_count() != 1;
+        const bool has_live_uses = program->instances || program->program_preparations != 0;
         if (has_live_uses) return cxx::unexpected(RenderError{kDeviceBusy});
         removeProgram(*program);
         return {};
@@ -543,7 +541,7 @@ namespace lux::render::detail
             if constexpr (creating)
             {
                 const auto id = entries_.emplace();
-                entries_.find(id)->program = program->record->id;
+                entries_.find(id)->program = program->record.id;
                 ++program->instances;
                 co_return extension_detail::ResourceIdentity::make<MaterialId>(id_, id);
             }
@@ -669,7 +667,7 @@ namespace lux::render::detail
         {
             id = extension_detail::ResourceIdentity::make<MaterialId>(id_, entries_.emplace());
             existing = entries_.find(extension_detail::ResourceIdentity::local(id));
-            existing->program = program->record->id;
+            existing->program = program->record.id;
             existing->page = &page;
             existing->slot = slot;
             ++program->instances;
@@ -786,10 +784,21 @@ namespace lux::render::detail
         };
     }
 
-    std::shared_ptr<const MaterialProgramRecord> RasterMaterialStorage::borrowProgram(MaterialProgramId id) const noexcept
+    RenderResult<const rdesc::MaterialProgramSet*>
+    RasterMaterialStorage::beginProgramPreparation(MaterialProgramId id) noexcept
     {
-        const auto* slot = findProgram(id);
-        return slot ? slot->record : nullptr;
+        auto* slot = findProgram(id);
+        if (!slot) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (slot->program_preparations == UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
+        ++slot->program_preparations;
+        return &slot->record.data;
+    }
+
+    void RasterMaterialStorage::finishProgramPreparation(MaterialProgramId id) noexcept
+    {
+        auto* slot = findProgram(id);
+        if (!slot || !slot->program_preparations) std::terminate();
+        --slot->program_preparations;
     }
 
     const RasterMaterialStorage::ProgramSlot* RasterMaterialStorage::findProgram(MaterialProgramId id) const noexcept
@@ -827,7 +836,7 @@ namespace lux::render::detail
         {
             buffers.push_back({page->gpu[frame].parameters, 0, page->records.size()});
             const auto* program = programs_.find(extension_detail::ResourceIdentity::local(entry->program));
-            if (program->record->samples_textures[purpose_index])
+            if (program->record.samples_textures[purpose_index])
             {
                 for (const auto id : entry->textures)
                 {

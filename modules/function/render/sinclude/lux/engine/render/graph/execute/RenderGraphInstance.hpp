@@ -49,7 +49,7 @@ namespace lux::render::detail
         {
             const SampledTexture2DStorage* textures = nullptr;
             const IndexedTriangleMeshStorage* meshes = nullptr;
-            const RasterMaterialStorage* materials = nullptr;
+            RasterMaterialStorage* materials = nullptr;
         };
 
         [[nodiscard]] RenderResult<void>
@@ -74,7 +74,9 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void>
-        writeInlineConstant(std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes) noexcept;
+        writeInlineConstant(
+            std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision = 0
+        ) noexcept;
         // Caller holds the writable FIF until recording and all accepted GPU uses are complete.
         // Each batch part has an exclusive allocator; encoders only borrow its prepared data.
         [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
@@ -100,16 +102,6 @@ namespace lux::render::detail
         void commitResize(ResizeResources&&) noexcept;
         // After accepted uses complete, withdraw borrowed SwapChain objects before their presentation owner closes.
         void releaseOutputReferences() noexcept;
-        // Caller owns the binding recipe and supplies one stable key per distinct private input set.
-        // Only the writable FIF is modified; the returned set remains owned by this instance.
-        [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterBindings(
-            std::uint32_t slot,
-            const PassBindings&,
-            std::uint64_t binding_key,
-            std::span<const ResourceInput>
-        ) noexcept;
-        // Remove recipes before their professional Owner is destroyed; GPU views retire by accepted frontiers.
-        void releaseRasterBindings(std::span<const PassBindings* const>, std::uint32_t pass = kGraphInvalidIndex) noexcept;
         // The selected writable FIF slot owns the list. Features fill physical packets before
         // prepareFrame seals attachments and barriers; no list is mutated during recording.
         [[nodiscard]] RasterDrawList&
@@ -228,10 +220,20 @@ namespace lux::render::detail
         struct HistoryState;
         struct FrameResources;
 
+        struct RasterBindingKey final
+        {
+            std::uint32_t pass, program;
+            std::uint64_t generation;
+
+            bool operator==(const RasterBindingKey&) const noexcept = default;
+        };
+
         [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
-            std::uint32_t, const PassBindings&, std::uint64_t, std::span<const ResourceInput>,
+            std::uint32_t, const PassBindings&, RasterBindingKey, std::uint32_t draw,
             std::span<const RasterDescriptorInput>
         ) noexcept;
+        [[nodiscard]] const PassBindings& rasterBindings(RasterBindingKey) const noexcept;
+        void releaseRasterBindings(std::uint32_t pass, std::uint64_t generation) noexcept;
         static void
         collectRasterViews(FrameResources&, nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;
         void retireRasterViews(FrameResources&, nri::Buffer*, nri::Texture*) noexcept;
@@ -275,6 +277,7 @@ namespace lux::render::detail
             std::vector<nri::Descriptor*> clear_views;
             std::array<std::uint32_t, 3> dispatch_groups{};
             std::span<std::byte> parameters;
+            std::uint64_t parameter_source_revision = 0;
         };
 
         DeviceSession* session_;
@@ -292,10 +295,16 @@ namespace lux::render::detail
             bool written = false;
         };
 
+        struct PreparedInlineBlock final
+        {
+            PreparedBytes payload;
+            std::uint64_t source_revision = 0;
+        };
+
         struct Producer final
         {
             std::unique_ptr<::lux::render::InstanceData> value;
-            std::vector<PreparedBytes> constants;
+            std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
             std::vector<std::byte> node_state;
             std::vector<std::uint32_t> runtime_streams{};

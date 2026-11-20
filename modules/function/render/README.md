@@ -204,13 +204,16 @@ materializing native draw packets.
 
 Set `RasterPassTemplate::runtime_stream_programs` for a stream whose programs are selected by its producer.
 Advance `InstanceData::rasterProgramRevision()` when the selection changes. In `selectRasterPrograms()`,
-provide the complete ordered set for each linked runtime stream with `setPrograms()`. Shader artifacts
-have shared immutable ownership across asynchronous preparation. A failed or obsolete selection leaves the
-previous set resident, and requests for a failed revision complete with the preparation error.
+transfer the shader artifacts and provide the complete ordered set with `setPrograms()`. Each program
+names a `ShaderCandidateSlot` in that artifact list. Several programs can use one candidate.
+Use `reusePrograms()` for a stream whose complete program keys and binding order still match. Producers
+can adopt their associated records in `settleRasterPrograms()` after the complete selection succeeds.
+A failed or obsolete selection leaves the previous set resident, and requests for a failed revision
+complete with the preparation error.
 Use `RasterProgramSelection::meshLayout()` for an owned copy of the selected mesh's vertex layout and
 `materialProgram()` for the selected material's immutable program set. Both lookups use the stream's
-named owners. The selection retains each borrowed material program until native program preparation
-settles, including when the producer combines it with another shader stage.
+named owners. The material pointer is borrowed during selection. The preparation operation registers
+one reader per material program until completion, including when the producer combines shader stages.
 Use `FramePreparation::rasterProgram()` to obtain a slot for a selection index during the current call.
 Slots carry the published program-set revision, so a producer must resolve them again after replacement.
 

@@ -20,6 +20,8 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
+        // Called on the owner after a selection succeeds or is abandoned. Publish any candidate producer data here.
+        virtual void settleRasterPrograms(bool) noexcept {}
         [[nodiscard]] virtual RenderResult<void> prepare(FramePreparation&) noexcept = 0;
     };
 } // namespace lux::render

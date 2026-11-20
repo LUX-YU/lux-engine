@@ -24,6 +24,7 @@ namespace lux::render::detail
         struct Program final
         {
             nri::Pipeline* pipeline;
+            CompiledPrograms::Program* cache_entry;
             PassBindings bindings;
             std::vector<VertexBinding> vertices;
             std::vector<VertexAttribute> mesh_attributes;
@@ -70,13 +71,7 @@ namespace lux::render::detail
         std::optional<RuntimeContract> runtime;
     };
 
-    struct PreparedRasterStreamProgram final
-    {
-        CompiledRasterStream::Program data;
-        CompiledPrograms::Program* lease;
-    };
-
-    [[nodiscard]] exec::task<RenderResult<PreparedRasterStreamProgram>>
+    [[nodiscard]] exec::task<RenderResult<CompiledRasterStream::Program>>
     prepareRasterStreamProgram(
         DeviceSession&, execution::CpuScheduler, const RasterPassTemplate&, const RasterStreamTarget&,
         const rdesc::ShaderProgramArtifact&, const GraphicsState&,
@@ -87,6 +82,5 @@ namespace lux::render::detail
     {
         std::uint64_t revision = 0;
         std::vector<CompiledRasterStream::Program> programs;
-        std::vector<CompiledPrograms::Program*> leases;
     };
 } // namespace lux::render::detail

@@ -47,12 +47,10 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<nri::Descriptor*> sampler(const SamplerDescription&) noexcept;
 
         // The physical table generation changes only after a replacement Set is published.
-        [[nodiscard]] std::uint64_t bindingRevision() const noexcept
-        {
-            return binding_revision_;
-        }
+        [[nodiscard]] std::uint64_t nativeBindingGeneration() const noexcept { return native_binding_generation_; }
+        [[nodiscard]] std::uint64_t contentRevision() const noexcept { return content_revision_; }
 
-        // Recorded commands may retain this Set only while observing bindingRevision on reuse.
+        // Recorded commands may retain this Set only while observing the native generation on reuse.
         [[nodiscard]] nri::DescriptorSet* descriptors(nri::DescriptorType) const noexcept;
         [[nodiscard]] std::uint32_t capacity(nri::DescriptorType) const noexcept;
 
@@ -103,7 +101,8 @@ namespace lux::render::detail
         std::vector<Sampler> samplers_;
         std::vector<RetiredPool> pinned_pools_;
         std::uint64_t allocated_descriptors_ = 0;
-        std::uint64_t binding_revision_ = 1;
+        std::uint64_t native_binding_generation_ = 1;
+        std::uint64_t content_revision_ = 1;
         std::uint32_t pool_capacity_ = 0;
         std::uint32_t binding_pins_ = 0;
     };

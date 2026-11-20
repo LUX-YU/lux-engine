@@ -48,7 +48,7 @@ namespace lux::render
             {
                 const auto state = frame.readNodeState(inputs_.state);
                 if (!state) return cxx::unexpected(state.error());
-                return frame.write(inputs_.writer, state->constants);
+                return frame.write(inputs_.writer, state->constants, state->revision);
             }
 
         private:

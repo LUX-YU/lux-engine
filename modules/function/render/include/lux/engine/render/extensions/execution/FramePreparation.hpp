@@ -124,10 +124,12 @@ namespace lux::render
             return publishBytes(slot.slot_, std::as_bytes(std::span{&value, 1}));
         }
 
+        // A nonzero revision identifies stable bytes from this writer's selected source.
         template <ShaderConstantBlock T>
-        [[nodiscard]] RenderResult<void> write(InlineConstantWriter<T> writer, const T& value) noexcept
+        [[nodiscard]] RenderResult<void>
+        write(InlineConstantWriter<T> writer, const T& value, std::uint64_t revision = 0) noexcept
         {
-            return writeInlineBlock(writer.slot_, std::as_bytes(std::span{&value, 1}));
+            return writeInlineBlock(writer.slot_, std::as_bytes(std::span{&value, 1}), revision);
         }
 
         // Publish a complete Buffer payload. A nonzero revision identifies unchanged bytes in later calls.
@@ -159,7 +161,7 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<SelectedBytes> readBytes(std::uint32_t, std::size_t) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void>
-        writeInlineBlock(std::uint32_t, std::span<const std::byte>) noexcept = 0;
+        writeInlineBlock(std::uint32_t, std::span<const std::byte>, std::uint64_t revision) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void>
         writeGpuBuffer(std::uint32_t, std::span<const std::byte>, std::uint64_t) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> sizeGpuBuffer(std::uint32_t, std::uint64_t) noexcept = 0;

@@ -179,7 +179,7 @@ namespace lux::render
             const auto* ops = factory->storage()->bindings();
             sources.push_back({id, registry.resourceInstance(id), ops->cpu_snapshot});
         }
-        const auto bindOwner = [&]<class Storage>(std::uint32_t slot, const Storage*& owner) noexcept
+        const auto bindOwner = [&]<class Storage>(std::uint32_t slot, Storage*& owner) noexcept
             -> RenderResult<void>
         {
             if (slot == kGraphInvalidIndex) return {};

@@ -32,16 +32,13 @@ namespace lux::render::detail
                 out.error = {kFrameContract};
                 return;
             }
-            if (exposure != state.constants.exposure)
+            if (state.revision == UINT64_MAX)
             {
-                if (state.revision == UINT64_MAX)
-                {
-                    out.error = {kRuntimeCapacity};
-                    return;
-                }
-                state.constants.exposure = exposure;
-                ++state.revision;
+                out.error = {kRuntimeCapacity};
+                return;
             }
+            state.constants.exposure = exposure;
+            ++state.revision;
             out.error = {};
         }
     };

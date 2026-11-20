@@ -39,13 +39,23 @@ namespace lux::render::detail
         struct RasterBinding final
         {
             nri::DescriptorSet* set = nullptr;
-            std::uint64_t binding_key = 0;
+            RasterBindingKey program;
+            std::uint32_t draw = 0;
             std::vector<nri::Descriptor*> views;
             std::vector<RasterDescriptorInput> inputs;
-            const PassBindings* bindings = nullptr;
         };
 
-        using RasterBindingIndices = std::unordered_map<std::uint64_t, std::uint32_t>;
+        struct RasterBindingHash final
+        {
+            std::size_t operator()(RasterBindingKey binding) const noexcept
+            {
+                const auto position = (std::uint64_t(binding.pass) << 32) | binding.program;
+                const auto generation = std::hash<std::uint64_t>{}(binding.generation);
+                return std::hash<std::uint64_t>{}(position) ^ (generation + 0x9e3779b9u);
+            }
+        };
+
+        using RasterBindingIndices = std::unordered_map<std::uint32_t, std::uint32_t>;
 
         struct RasterAttachmentView final
         {
@@ -57,7 +67,7 @@ namespace lux::render::detail
 
         std::vector<RasterAttachmentView> raster_attachment_views;
         std::vector<RasterBinding> raster_bindings;
-        std::unordered_map<const PassBindings*, RasterBindingIndices> raster_binding_indices;
+        std::unordered_map<RasterBindingKey, RasterBindingIndices, RasterBindingHash> raster_binding_indices;
         nri::DescriptorPoolDesc descriptor_capacity{}, descriptor_reserved{};
 
         std::vector<PassResourceInput> record_resources;
@@ -101,7 +111,8 @@ namespace lux::render::detail
         };
 
         std::vector<CommandBatch> command_batches;
-        std::uint64_t shared_binding_revision = 0;
+        std::uint64_t shared_binding_generation = 0;
+        std::uint64_t shared_content_revision = 0;
         std::array<nri::DescriptorSet*, 3> shared_descriptors{};
         std::array<std::uint32_t, 3> shared_descriptor_counts{};
 

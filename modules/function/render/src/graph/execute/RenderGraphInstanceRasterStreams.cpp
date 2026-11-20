@@ -728,7 +728,8 @@ namespace lux::render::detail
                 const auto& bindings = selected_programs[draw.program.index].bindings;
                 if (bindings.private_bindings.empty()) continue;
                 if (auto bound = setInputs(draw, bindings); !bound) return bound;
-                auto descriptors = prepareRasterDescriptorSet(slot, bindings, d, {}, inputs);
+                const RasterBindingKey key{p, draw.program.index, program_revision};
+                auto descriptors = prepareRasterDescriptorSet(slot, bindings, key, d, inputs);
                 if (!descriptors) return cxx::unexpected(descriptors.error());
             }
             // Pool growth can replace any earlier allocation. Read all final sets after allocation.
@@ -736,7 +737,8 @@ namespace lux::render::detail
             {
                 const auto& bindings = selected_programs[input.draws[d].program.index].bindings;
                 if (bindings.private_bindings.empty()) continue;
-                const auto cache = frame.raster_binding_indices.find(&bindings);
+                const RasterBindingKey key{p, input.draws[d].program.index, program_revision};
+                const auto cache = frame.raster_binding_indices.find(key);
                 if (cache == frame.raster_binding_indices.end())
                     return cxx::unexpected(RenderError{kFrameContract, {p, d}});
                 const auto binding = cache->second.find(d);

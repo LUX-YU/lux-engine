@@ -57,6 +57,7 @@ namespace lux::render::detail
         [[nodiscard]] static RenderResult<Inputs> resolve(const Configuration&, InstanceLinkContext&) noexcept;
         explicit MeshSurfaceStream(const Inputs& inputs) noexcept : inputs_(inputs) {}
         [[nodiscard]] RenderResult<void> selectPrograms(RasterProgramSelection&, const MeshInstanceSnapshot&) noexcept;
+        void settlePrograms(bool adopted) noexcept;
         [[nodiscard]] RenderResult<void> prepare(
             FramePreparation&, const MeshDrawGroupSource&, const ViewGpuParameters&
         ) noexcept;
@@ -84,9 +85,15 @@ namespace lux::render::detail
         ) noexcept;
 
         using GroupKey = std::pair<MeshId, MaterialProgramId>;
+        struct ProgramSelectionState final
+        {
+            std::map<GroupKey, ProgramBinding> groups;
+            std::vector<std::pair<std::uint32_t, MaterialId>> materials;
+            std::size_t program_count = 0;
+        };
+
         Inputs inputs_;
-        std::map<GroupKey, ProgramBinding> programs_;
-        std::vector<std::pair<std::uint32_t, MaterialId>> materials_;
+        std::optional<ProgramSelectionState> selected_programs_, pending_programs_;
         std::vector<RasterStreamDraw> draws_;
         std::vector<RasterStreamBinding> bindings_;
         std::vector<RasterStreamVertex> vertices_;

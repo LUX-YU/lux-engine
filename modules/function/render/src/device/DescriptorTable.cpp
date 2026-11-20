@@ -310,7 +310,8 @@ namespace lux::render::detail
         auto* old_pool = std::exchange(table.pool, pool);
         const auto old_capacity = std::exchange(table.allocated_capacity, capacity);
         table.descriptors = descriptors;
-        ++binding_revision_;
+        if (native_binding_generation_ == UINT64_MAX) std::terminate();
+        ++native_binding_generation_;
         allocated_descriptors_ += capacity;
         if (old_pool)
         {
@@ -364,18 +365,15 @@ namespace lux::render::detail
         const nri::UpdateDescriptorRangeDesc update{table.descriptors, 0, slot.index, &descriptor, 1};
         session_.nriCore().UpdateDescriptorRanges(&update, 1);
         entry->descriptor = descriptor;
-        if (session_.description().graphicsAPI == nri::GraphicsAPI::D3D12)
-        {
-            ++binding_revision_;
-        }
+        if (content_revision_ == UINT64_MAX) std::terminate();
+        ++content_revision_;
     }
 
     void DescriptorTable::release(nri::DescriptorType type, Slot slot) noexcept
     {
-        if (!tables_[tableIndex(type)].slots.erase(slot))
-        {
-            std::terminate();
-        }
+        if (!tables_[tableIndex(type)].slots.erase(slot)) std::terminate();
+        if (content_revision_ == UINT64_MAX) std::terminate();
+        ++content_revision_;
     }
 
     nri::DescriptorSet* DescriptorTable::descriptors(nri::DescriptorType type) const noexcept

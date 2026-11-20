@@ -4,13 +4,54 @@
 
 namespace lux::render
 {
+    FrameLayout::FrameLayout(const FrameLayout& other) noexcept : key_(other.key_), channels_(other.channels_)
+    {
+        ownTypeNames();
+    }
+
+    FrameLayout& FrameLayout::operator=(const FrameLayout& other) noexcept
+    {
+        if (this != &other) *this = FrameLayout{other};
+        return *this;
+    }
+
+    FrameLayout::FrameLayout(FrameLayout&& other) noexcept
+        : key_(std::exchange(other.key_, {})), channels_(std::move(other.channels_)),
+          type_names_(std::move(other.type_names_))
+    {
+    }
+
+    FrameLayout& FrameLayout::operator=(FrameLayout&& other) noexcept
+    {
+        if (this != &other)
+        {
+            key_ = std::exchange(other.key_, {});
+            channels_ = std::move(other.channels_);
+            type_names_ = std::move(other.type_names_);
+        }
+        return *this;
+    }
+
+    void FrameLayout::ownTypeNames() noexcept
+    {
+        type_names_.reserve(channels_.size());
+        for (auto& channel : channels_)
+        {
+            const auto& names = type_names_.emplace_back(
+                std::string{channel.declaration.name()}, std::string{channel.element.name()}
+            );
+            channel.declaration = {channel.declaration.hash(), names.declaration};
+            channel.element = {channel.element.hash(), names.element};
+        }
+    }
+
     RenderResult<FrameLayout>
     FrameLayout::create(std::span<const FrameChannel> channels, std::uint64_t revision) noexcept
     {
         if (revision == 0) return cxx::unexpected(RenderError{kFrameContract});
         FrameLayout result;
-        result.revision_ = revision;
-        std::vector<FrameChannel> qualified;
+        result.key_.input_layout_revision = revision;
+        auto& qualified = result.channels_;
         qualified.reserve(channels.size());
         for (const auto& channel : channels)
         {
@@ -34,13 +75,13 @@ namespace lux::render
             }
             if (!found) qualified.push_back(channel);
         }
-        result.channels_ = std::make_shared<const std::vector<FrameChannel>>(std::move(qualified));
+        result.ownTypeNames();
         return result;
     }
 
     bool FrameLayout::operator==(const FrameLayout& other) const noexcept
     {
-        return revision_ == other.revision_ && std::ranges::equal(channels(), other.channels());
+        return revision() == other.revision() && std::ranges::equal(channels(), other.channels());
     }
 
     bool FrameLayout::hasSameChannels(const FrameLayout& other) const noexcept
@@ -55,10 +96,10 @@ namespace lux::render
 
     std::size_t FrameLayout::find(cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept
     {
-        const auto position = std::ranges::find_if(channels(), [&](const auto& channel) noexcept
+        const auto position = std::ranges::find_if(channels_, [&](const auto& channel) noexcept
         {
             return channel.declaration == declaration && channel.element == element;
         });
-        return static_cast<std::size_t>(position - channels().begin());
+        return static_cast<std::size_t>(position - channels_.begin());
     }
 } // namespace lux::render

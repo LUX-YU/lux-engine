@@ -4,43 +4,23 @@
 
 namespace lux::render::runtime_detail
 {
-    EffectExecutionUse::EffectExecutionUse(EffectExecutionUse&& other) noexcept
-        : effect_(std::exchange(other.effect_, nullptr))
+    RenderResult<void> RenderEffect::retainExecution() noexcept
     {
-    }
-
-    EffectExecutionUse& EffectExecutionUse::operator=(EffectExecutionUse&& other) noexcept
-    {
-        if (this != &other)
-        {
-            if (effect_) effect_->releaseExecution();
-            effect_ = std::exchange(other.effect_, nullptr);
-        }
-        return *this;
-    }
-
-    EffectExecutionUse::~EffectExecutionUse() noexcept
-    {
-        if (effect_) effect_->releaseExecution();
-    }
-
-    RenderResult<EffectExecutionUse> RenderEffect::borrowExecution() noexcept
-    {
-        if (execution_borrows_ == UINT32_MAX)
+        if (execution_count_ == UINT32_MAX)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
-        ++execution_borrows_;
-        return EffectExecutionUse{*this};
+        ++execution_count_;
+        return {};
     }
 
     void RenderEffect::releaseExecution() noexcept
     {
-        if (execution_borrows_ == 0)
+        if (execution_count_ == 0)
         {
             std::terminate();
         }
-        --execution_borrows_;
+        --execution_count_;
     }
 } // namespace lux::render::runtime_detail
 
@@ -97,6 +77,8 @@ namespace lux::render
             output.error = {kRuntimeState};
             return;
         }
+
+        for (auto& device : runtime_->devices_) device->removeUniformPools(input.effect);
         runtime_->effects_.erase(input.effect);
         output = {};
     }

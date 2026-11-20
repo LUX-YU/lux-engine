@@ -11,6 +11,7 @@
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <atomic>
 #include <optional>
 
 namespace lux::render
@@ -49,7 +50,16 @@ namespace lux::render
             return cxx::unexpected(RenderError{kRuntimeState});
         }
 
-        auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), execution);
+        static std::atomic<std::uint64_t> next_instance_id{1};
+        auto next = next_instance_id.load(std::memory_order_relaxed);
+        do
+        {
+            if (next == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        } while (!next_instance_id.compare_exchange_weak(next, next + 1, std::memory_order_relaxed));
+
+        auto state = std::make_unique<RenderServer::Impl>(
+            ServerInstanceId{next}, std::move(config), std::move(*responder), execution
+        );
         auto server = std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
         if (auto registered = server->registerBuiltins(); !registered)
         {
@@ -96,8 +106,9 @@ namespace lux::render
             return cxx::unexpected(valid.error());
         if (auto valid = impl_->runtime_->command_registry_.validateResourceBindings(factory.commands); !valid)
             return cxx::unexpected(valid.error());
-        const auto type = impl_->runtime_->resources_.publishFactory(factory, std::move(configuration));
-        for (const auto& command : factory.commands)
+        auto& resources = impl_->runtime_->resources_;
+        const auto type = resources.publishFactory(std::move(factory), std::move(configuration));
+        for (const auto& command : resources.factory(type)->commands)
         {
             const auto location = impl_->runtime_->command_registry_.publishResourceBinding(command);
             if (!impl_->runtime_->resources_.bindCommand(type, location)) std::terminate();

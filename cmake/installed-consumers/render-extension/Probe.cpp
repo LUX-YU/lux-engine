@@ -341,7 +341,7 @@ struct ProbeStorage final
 
     static ResourceRegistration factory() noexcept
     {
-        static const detail::StorageBindingOps binding{
+        const detail::StorageBindingOps binding{
             .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
                 -> RenderResult<detail::StorageGraphImport>
             {
@@ -520,7 +520,7 @@ struct ProbeReadback final
 
     static ResourceRegistration factory() noexcept
     {
-        static const detail::StorageBindingOps binding{
+        const detail::StorageBindingOps binding{
             .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
                 -> RenderResult<detail::StorageGraphImport>
             {
@@ -749,7 +749,32 @@ int main(int argc, char** argv)
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") device.backend = EGraphicsBackend::D3D12;
     config.frames_in_flight = readback_frames;
     auto server = take(RenderServer::create(config, *execution));
-    take(server->registerResource<ProbeStorageType<false>>());
+    {
+        auto registration = ProbeStorageType<false>::factory();
+        ResourceDefinition descriptor = *registration.descriptor;
+        std::string resource_name{descriptor.type.name()};
+        std::string description{descriptor.description};
+        descriptor.type = ResourceNameView{resource_name};
+        descriptor.description = description;
+
+        constexpr auto command_count = std::tuple_size_v<ProbeResource<false>::Commands>;
+        CHECK(descriptor.commands.size() == command_count);
+        std::array<CommandDescriptor, command_count> commands{};
+        std::array<const CommandDescriptor*, command_count> declarations{};
+        std::array<std::string, command_count> names;
+        for (std::size_t i = 0; i < command_count; ++i)
+        {
+            commands[i] = *descriptor.commands[i];
+            names[i] = commands[i].name.name();
+            commands[i].name = CommandName{names[i]};
+            declarations[i] = &commands[i];
+        }
+        descriptor.commands = declarations;
+        auto bindings = std::vector(registration.commands.begin(), registration.commands.end());
+        registration.commands = bindings;
+        registration.descriptor = &descriptor;
+        take(server->registerResource(std::move(registration)));
+    }
     take(server->registerResource<ProbeStorageType<true>>());
     take(server->registerResource(DomainStorage::factory<EResourceDomain::SCENE>()));
     take(server->registerResource(DomainStorage::factory<EResourceDomain::VIEW>()));

@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <optional>
+#include <utility>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/commands/JobCommands.hpp>
 #include <lux/engine/render/core/Ids.hpp>
@@ -18,8 +20,6 @@ namespace lux::render::detail
     class JobControl final
     {
     public:
-        class Start;
-        class Run;
 
         struct Request final
         {
@@ -42,6 +42,22 @@ namespace lux::render::detail
             JobControl* owner_ = nullptr;
         };
 
+        struct StartAttempt final
+        {
+            TargetId target;
+            std::uint64_t serial;
+            bool cancelled = false;
+        };
+
+        struct Completion final
+        {
+            void* receiver;
+            Request::Complete complete;
+            RenderResult<JobReceipt> result;
+
+            void deliver() && noexcept { complete(receiver, std::move(result)); }
+        };
+
         explicit JobControl(EJobCadence cadence) noexcept;
         void setId(RenderJobId) noexcept;
         ~JobControl() noexcept;
@@ -49,19 +65,26 @@ namespace lux::render::detail
         JobControl& operator=(const JobControl&) = delete;
 
         // External Scene/Target device compatibility is checked once before this call.
-        [[nodiscard]] RenderResult<void> beginStart(TargetId target, bool rebind, Start& output) noexcept;
+        [[nodiscard]] RenderResult<std::uint64_t> beginStart(TargetId target, bool rebind) noexcept;
+        [[nodiscard]] bool canPublishStart(std::uint64_t serial) const noexcept;
+        [[nodiscard]] RenderResult<void> publishStart(std::uint64_t serial) noexcept;
+        void finishStart(std::uint64_t serial) noexcept;
         void stop() noexcept; // closes admission NOW; already admitted Run may finish
         void rejectUnadmitted(RenderError) noexcept;
         [[nodiscard]] RenderResult<void> request(Request& request) noexcept;
-        [[nodiscard]] bool tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index, Run& output) noexcept;
+        [[nodiscard]] bool tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index) noexcept;
+        [[nodiscard]] std::optional<Completion>
+        finishRun(std::uint64_t generation, RenderResult<void> submitted) noexcept;
 
         [[nodiscard]] bool running() const noexcept
         {
             return running_;
         }
 
-        [[nodiscard]] Start* pendingStart() const noexcept { return starting_; }
-        [[nodiscard]] bool hasRun() const noexcept { return admitted_ != nullptr; }
+        [[nodiscard]] const StartAttempt* pendingStart() const & noexcept { return starting_ ? &*starting_ : nullptr; }
+        [[nodiscard]] const StartAttempt* pendingStart() const && = delete;
+        [[nodiscard]] std::uint64_t executionGeneration() const noexcept { return execution_generation_; }
+        [[nodiscard]] bool hasRun() const noexcept { return admitted_.has_value(); }
         [[nodiscard]] bool hasRequest() const noexcept { return requested_ != nullptr; }
 
         [[nodiscard]] bool eligible() const noexcept;
@@ -79,65 +102,20 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<void> setCadence(EJobCadence cadence) noexcept;
 
-        class Start final
-        {
-        public:
-            Start() noexcept = default;
-            ~Start() noexcept;
-            Start(const Start&) = delete;
-            Start& operator=(const Start&) = delete;
-            // Call only after candidate graph/pipeline construction has succeeded.
-            // The Server validates ownership of the actual Target reservation before publication.
-            [[nodiscard]] RenderResult<void> publish() noexcept;
-
-            [[nodiscard]] bool active() const noexcept
-            {
-                return job_ != nullptr;
-            }
-
-            [[nodiscard]] TargetId target() const noexcept { return target_; }
-            [[nodiscard]] bool cancelled() const noexcept { return cancelled_; }
-
-        private:
-            friend class JobControl;
-            JobControl* job_ = nullptr;
-            TargetId target_{};
-            bool cancelled_ = false;
-        };
-
-        class Run final
-        {
-        public:
-            Run() noexcept = default;
-            ~Run() noexcept;
-            Run(const Run&) = delete;
-            Run& operator=(const Run&) = delete;
-            // Complete after actual native acceptance, not after enqueueing a call.
-            void finish(RenderResult<void> submitted) noexcept;
-
-            [[nodiscard]] JobReceipt receipt() const noexcept
-            {
-                return receipt_;
-            }
-
-            [[nodiscard]] bool active() const noexcept
-            {
-                return job_ != nullptr;
-            }
-
-        private:
-            friend class JobControl;
-            JobControl* job_ = nullptr;
-            Request* request_ = nullptr;
-            JobReceipt receipt_{};
-        };
-
     private:
+        struct AdmittedRun final
+        {
+            JobReceipt receipt;
+            Request* request;
+        };
+
         RenderJobId id_;
         EJobCadence cadence_;
         bool running_ = false;
-        Start* starting_ = nullptr; // addresses of real connected operations
-        Run* admitted_ = nullptr;
+        std::uint64_t start_serial_ = 0;
+        std::uint64_t execution_generation_ = 0;
+        std::optional<StartAttempt> starting_;
+        std::optional<AdmittedRun> admitted_;
         Request* requested_ = nullptr; // one exact request credit per Job; never silently coalesced
     };
 } // namespace lux::render::detail

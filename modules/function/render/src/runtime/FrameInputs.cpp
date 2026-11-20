@@ -54,7 +54,7 @@ namespace lux::render
             {
                 if (storage.isNull()) continue;
                 const auto* factory = runtime_->resources_.factory(runtime_->resources_.declarationOf(storage));
-                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
+                const auto* ops = factory->storage->bindings();
                 if (!ops || !ops->prepareFrame) continue;
                 auto* native = runtime_->resources_.resourceInstance(storage);
                 ids.push_back(storage);
@@ -142,7 +142,6 @@ namespace lux::render
         round.instances.reserve(count);
         round.storages.reserve(inputs.storages.size());
         round.job_order.reserve(order_capacity);
-        if (round.runs.size() < count) round.runs.resize(count);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto elapsed = std::chrono::steady_clock::now() - started;
         input_rebuilds_.fetch_add(1, std::memory_order_relaxed);

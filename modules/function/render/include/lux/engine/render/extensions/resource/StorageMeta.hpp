@@ -6,7 +6,9 @@
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <memory>
+#include <optional>
 
 namespace lux::render
 {
@@ -15,18 +17,28 @@ namespace lux::render
     // Immutable implementation metadata. It has no Resource declaration or global identity.
     struct StorageMeta final
     {
-        const void* ops;
-        RenderResult<StorageOwner> (*create)(ResourceCreateContext&, ResourceInstanceId, const void*) noexcept;
-        const void* binding_ops;
+        StorageMeta() noexcept = default;
+        StorageMeta(const StorageMeta&) = delete;
+        StorageMeta& operator=(const StorageMeta&) = delete;
+
+        std::unique_ptr<const void, void (*)(const void*) noexcept> ops{nullptr, nullptr};
+        RenderResult<StorageOwner> (*create)(ResourceCreateContext&, ResourceInstanceId, const void*) noexcept = nullptr;
+        std::optional<detail::StorageSnapshotOps> snapshot_ops;
+        std::optional<detail::StorageBindingOps> binding_ops;
         cxx::basic_type_info config_type;
         cxx::basic_type_info ops_type;
         cxx::basic_type_info implementation_type;
+
+        [[nodiscard]] const detail::StorageBindingOps* bindings() const noexcept
+        {
+            return binding_ops ? &*binding_ops : nullptr;
+        }
     };
 
     struct ResourceRegistration final
     {
         const ResourceDefinition* descriptor;
-        const StorageMeta* storage;
+        std::unique_ptr<StorageMeta> storage;
         std::span<const CommandBinding> commands;
         FrameDataCall frame_call;
     };
@@ -48,7 +60,8 @@ namespace lux::render
         std::conditional_t<std::is_void_v<Ops>, std::nullptr_t, std::add_lvalue_reference_t<std::add_const_t<Ops>>>;
 
     template <class Config, class Ops, class Implementation, auto Create>
-    [[nodiscard]] const StorageMeta* makeStorageMeta(StorageOpsArgument<Ops> ops, const void* binding_ops) noexcept
+    [[nodiscard]] std::unique_ptr<StorageMeta>
+    makeStorageMeta(StorageOpsArgument<Ops> ops, const detail::StorageBindingOps* binding_ops) noexcept
     {
         constexpr bool has_config = !std::is_void_v<Config>;
         constexpr cxx::basic_type_info config_type = []() noexcept
@@ -62,67 +75,65 @@ namespace lux::render
                 return cxx::basic_type_info{};
             }
         }();
-        const void* ops_pointer = nullptr;
+        auto metadata = std::make_unique<StorageMeta>();
         if constexpr (!std::is_void_v<Ops>)
         {
-            ops_pointer = &ops;
+            static_assert(std::is_nothrow_copy_constructible_v<Ops> && std::is_nothrow_destructible_v<Ops>);
+            metadata->ops = {
+                new const Ops(ops),
+                [](const void* owner) noexcept { delete static_cast<const Ops*>(owner); }
+            };
+            metadata->ops_type = cxx::make_basic_type_info<Ops>();
         }
-        static const StorageMeta metadata{
-            ops_pointer,
-            [](ResourceCreateContext& dependencies, ResourceInstanceId id, const void* config
-            ) noexcept -> RenderResult<StorageOwner>
+        if (binding_ops)
+        {
+            metadata->binding_ops = *binding_ops;
+            if (binding_ops->cpu_snapshot)
             {
-                auto candidate = [&]() noexcept
-                {
-                    if constexpr (has_config)
-                    {
-                        static_assert(std::same_as<
-                                      decltype(Create),
-                                      RenderResult<std::unique_ptr<
-                                          Implementation>> (*)(ResourceCreateContext&, ResourceInstanceId, const Config&) noexcept>);
-                        return Create(dependencies, id, *static_cast<const Config*>(config));
-                    }
-                    else
-                    {
-                        static_assert(std::same_as<
-                                      decltype(Create),
-                                      RenderResult<std::unique_ptr<
-                                          Implementation>> (*)(ResourceCreateContext&, ResourceInstanceId) noexcept>);
-                        return Create(dependencies, id);
-                    }
-                }();
-                if (!candidate)
-                {
-                    return cxx::unexpected(candidate.error());
-                }
-                return StorageOwner{
-                    candidate->release(),
-                    [](void* value) noexcept { delete static_cast<Implementation*>(value); }
-                };
-            },
-            binding_ops,
-            config_type,
-            []() noexcept
+                metadata->snapshot_ops = *binding_ops->cpu_snapshot;
+                metadata->binding_ops->cpu_snapshot = &*metadata->snapshot_ops;
+            }
+        }
+        metadata->config_type = config_type;
+        metadata->implementation_type = cxx::make_basic_type_info<Implementation>();
+        metadata->create = [](ResourceCreateContext& dependencies, ResourceInstanceId id, const void* config)
+            noexcept -> RenderResult<StorageOwner>
+        {
+            auto candidate = [&]() noexcept
             {
-                if constexpr (std::is_void_v<Ops>)
+                if constexpr (has_config)
                 {
-                    return cxx::basic_type_info{};
+                    using Factory = RenderResult<std::unique_ptr<Implementation>> (*)(
+                        ResourceCreateContext&, ResourceInstanceId, const Config&
+                    ) noexcept;
+                    static_assert(std::same_as<decltype(Create), Factory>);
+                    return Create(dependencies, id, *static_cast<const Config*>(config));
                 }
                 else
                 {
-                    return cxx::make_basic_type_info<Ops>();
+                    using Factory = RenderResult<std::unique_ptr<Implementation>> (*)(
+                        ResourceCreateContext&, ResourceInstanceId
+                    ) noexcept;
+                    static_assert(std::same_as<decltype(Create), Factory>);
+                    return Create(dependencies, id);
                 }
-            }(),
-            cxx::make_basic_type_info<Implementation>()
+            }();
+            if (!candidate)
+            {
+                return cxx::unexpected(candidate.error());
+            }
+            return StorageOwner{
+                candidate->release(),
+                [](void* value) noexcept { delete static_cast<Implementation*>(value); }
+            };
         };
-        const bool is_different_operations = metadata.ops != ops_pointer || metadata.binding_ops != binding_ops;
-        return is_different_operations ? nullptr : &metadata;
+        return metadata;
     }
 
     template <class Declaration, class Implementation, auto Create>
     [[nodiscard]] ResourceRegistration makeResourceRegistration(
         StorageOpsArgument<typename Declaration::Ops> ops,
-        const void* binding_ops = nullptr,
+        const detail::StorageBindingOps* binding_ops = nullptr,
         std::span<const CommandBinding> commands = {},
         FrameDataCall frame_call = {}
     ) noexcept

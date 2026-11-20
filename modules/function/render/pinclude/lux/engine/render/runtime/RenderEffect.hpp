@@ -3,58 +3,21 @@
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
-#include <lux/engine/render/runtime/EffectExecutionUse.hpp>
 #include <algorithm>
 #include <memory>
 #include <optional>
 #include <tuple>
 #include <vector>
 
-namespace lux::render::detail
-{
-    class UniformBlockVersions;
-}
 
 namespace lux::render::runtime_detail
 {
-    struct JobGraphPlan;
+
     struct RenderEffect final
     {
         std::unique_ptr<const EffectGraph> source;
         std::vector<EffectNodeConfiguration> node_configurations;
-        using VariantPlan = std::shared_ptr<const JobGraphPlan>;
-        using VariantResult = RenderResult<VariantPlan>;
 
-        struct VariantCompilation final
-        {
-            struct Waiter final
-            {
-                void* receiver;
-                void (*complete)(void*, VariantResult) noexcept;
-            };
-
-            std::optional<VariantResult> result;
-            std::vector<Waiter> waiters;
-        };
-
-        struct Variant final
-        {
-            DeviceSessionId device;
-            EffectOutputDesc target;
-            EffectImportContracts imports;
-            // In-flight starts protect the device. After compilation only Jobs retain the plan.
-            std::shared_ptr<VariantCompilation> compiling;
-            std::weak_ptr<const JobGraphPlan> plan;
-        };
-        std::vector<Variant> variants;
-        struct UniformPool final
-        {
-            DeviceSessionId device;
-            graph::NodeId node;
-            std::string name;
-            std::shared_ptr<detail::UniformBlockVersions> versions;
-        };
-        std::vector<UniformPool> uniform_pools;
         struct NodeState final
         {
             using Destroy = void (*)(void*) noexcept;
@@ -81,13 +44,12 @@ namespace lux::render::runtime_detail
             return route != command_routes.end() && route->key() == key ? &route->call : nullptr;
         }
 
-        // The same lifetime borrow covers asynchronous compilation and the published execution.
-        [[nodiscard]] RenderResult<EffectExecutionUse> borrowExecution() noexcept;
-        [[nodiscard]] bool hasExecutions() const noexcept { return execution_borrows_ != 0; }
+        // The Server registers pending Starts and adopted executions against this owner.
+        [[nodiscard]] RenderResult<void> retainExecution() noexcept;
+        void releaseExecution() noexcept;
+        [[nodiscard]] bool hasExecutions() const noexcept { return execution_count_ != 0; }
 
     private:
-        friend class EffectExecutionUse;
-        void releaseExecution() noexcept;
-        std::uint32_t execution_borrows_ = 0;
+        std::uint32_t execution_count_ = 0;
     };
 } // namespace lux::render::runtime_detail

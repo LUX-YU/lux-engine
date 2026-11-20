@@ -152,17 +152,20 @@ namespace lux::render
                     auto& input = context.request.get<typename C::Request>();
                     if constexpr (SyncCommandHandlerFor<C, H, Method>)
                     {
-                        auto& output = runtime_detail::prepareResponse(context.outbox, context.response_route);
-                        auto& response = output.emplace<typename C::Response>();
+                        typename C::Response response{};
                         response.error = RenderError{kRuntimeState};
                         if constexpr (std::is_void_v<H>)
                         {
-                            Invocation::invoke(context.resource.get(), input, response);
+                            Invocation::invoke(context.resource, input, response);
                         }
                         else
                         {
-                            Invocation::invoke(*static_cast<H*>(object), context.resource.get(), input, response);
+                            Invocation::invoke(*static_cast<H*>(object), context.resource, input, response);
                         }
+                        if constexpr (!std::is_void_v<Storage>)
+                            runtime_detail::finishResourceCommand(context.resources, context.resource_id);
+                        runtime_detail::prepareResponse(context.outbox, context.response_route)
+                            .emplace<typename C::Response>(std::move(response));
                     }
                     else
                     {
@@ -174,7 +177,7 @@ namespace lux::render
                         // Keep the request in operation state: a lazy Handler may borrow its fields
                         // after dispatchRequest has released the IPC message.
                         auto sender = stdexec::just(std::move(input)) | stdexec::let_value(
-                            [object, storage = context.resource.get()](typename C::Request& request) noexcept
+                            [object, storage = context.resource](typename C::Request& request) noexcept
                             {
                                 if constexpr (std::is_void_v<H>)
                                 {
@@ -194,11 +197,11 @@ namespace lux::render
                             ) |
                             stdexec::continues_on(render_scheduler) | stdexec::upon_error(ResponseError<C>{}) |
                             stdexec::then(
-                                [route,
-                                 &outbox,
-                                 resource = std::move(context.resource)](typename C::Response response) mutable noexcept
+                                [route, &outbox, &resources = context.resources, id = context.resource_id]
+                                (typename C::Response response) noexcept
                                 {
-                                    resource.reset();
+                                    if constexpr (!std::is_void_v<Storage>)
+                                        runtime_detail::finishResourceCommand(resources, id);
                                     runtime_detail::prepareResponse(outbox, route)
                                         .emplace<typename C::Response>(std::move(response));
                                 }
@@ -227,6 +230,7 @@ namespace lux::render
         }
 
     private:
+        friend class ResourceRegistry;
         friend class runtime_detail::CommandRegistry;
 
         template <RenderCommand C> void initializeDeclaration() noexcept

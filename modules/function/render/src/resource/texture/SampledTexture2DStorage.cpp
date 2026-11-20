@@ -477,10 +477,9 @@ namespace lux::render::detail
                 return {};
             }
         };
-        static const auto factory = makeResourceRegistration<
+        return makeResourceRegistration<
             render::TextureResource,
             SampledTexture2DStorage,
             &SampledTexture2DStorage::create>(nullptr, &bindings, commands);
-        return factory;
     }
 } // namespace lux::render::detail

@@ -69,6 +69,15 @@ namespace lux::render
         }
     }
 
+    template <class Resource, class T>
+    class TypedColumnIndex final
+    {
+        friend class FrameData;
+
+        explicit TypedColumnIndex(std::size_t index) noexcept : index_(index) {}
+        std::size_t index_;
+    };
+
     // One CPU input slot. Payloads are grouped by (Resource declaration, element type).
     // Cross-channel application order is not insertion order; zero elements mean no update.
     // Pointer/span members do not acquire a deep lifetime: use explicit commands for foreign borrows.
@@ -108,6 +117,34 @@ namespace lux::render
 
         template <class Resource, class T>
         requires(frame_detail::FrameElement<T> && frame_detail::declaredElement<Resource, T>)
+        [[nodiscard]] RenderResult<TypedColumnIndex<Resource, T>> resolveColumn() const noexcept
+        {
+            if (!impl_) return cxx::unexpected(RenderError{kFrameContract});
+            const auto index = channel<Resource, T>();
+            if (index >= layout().channels().size()) return cxx::unexpected(RenderError{kFrameContract});
+            return TypedColumnIndex<Resource, T>{index};
+        }
+
+        template <class Resource, class T>
+        requires(frame_detail::FrameElement<T> && frame_detail::declaredElement<Resource, T>)
+        [[nodiscard]] RenderResult<std::span<T>>
+        appendData(TypedColumnIndex<Resource, T> column, std::size_t count) & noexcept
+        {
+            if (!impl_) return cxx::unexpected(RenderError{kFrameContract});
+            const auto channels = layout().channels();
+            const auto index = column.index_;
+            if (index >= channels.size()) return cxx::unexpected(RenderError{kFrameContract});
+            const auto& schema = channels[index];
+            const bool is_wrong_column = schema.declaration != cxx::make_basic_type_info<Resource>() ||
+                schema.element != cxx::make_basic_type_info<T>();
+            if (is_wrong_column) return cxx::unexpected(RenderError{kFrameContract});
+            auto appended = append(index, count);
+            if (!appended) return cxx::unexpected(appended.error());
+            return std::span<T>{static_cast<T*>(*appended), count};
+        }
+
+        template <class Resource, class T>
+        requires(frame_detail::FrameElement<T> && frame_detail::declaredElement<Resource, T>)
         [[nodiscard]] RenderResult<std::span<T>> appendData(std::size_t count) noexcept
         {
             static_assert(frame_detail::FrameElement<T>);
@@ -119,12 +156,12 @@ namespace lux::render
         template <class Resource, class T>
             requires frame_detail::FrameAssignableFrom<std::remove_cvref_t<T>, T> &&
                      frame_detail::declaredElement<Resource, T>
-        [[nodiscard]] bool addData(T&& value) noexcept
+        [[nodiscard]] RenderResult<void> addData(T&& value) noexcept
         {
             auto added = appendData<Resource, std::remove_cvref_t<T>>(1);
-            if (!added) return false;
+            if (!added) return cxx::unexpected(added.error());
             added->front() = std::forward<T>(value);
-            return true;
+            return {};
         }
 
         template <class Resource, class T>
@@ -142,22 +179,25 @@ namespace lux::render
             return {static_cast<const T*>(values.data), values.count};
         }
 
-        [[nodiscard]] const FrameLayout& layout() const noexcept;
+        [[nodiscard]] const FrameLayout& layout() const & noexcept;
+        [[nodiscard]] const FrameLayout& layout() const && = delete;
+        [[nodiscard]] FrameLayoutKey layoutKey() const noexcept;
         [[nodiscard]] Column column(std::size_t index) const noexcept;
         [[nodiscard]] std::size_t capacity(std::size_t index) const noexcept;
         [[nodiscard]] bool writable() const noexcept;
         [[nodiscard]] bool sealed() const noexcept;
         [[nodiscard]] RenderResult<void> seal() noexcept;
-        // Caller thread only, after terminal response/host settlement, or proven pre-admission rejection.
-        // Cancellation, disconnection and successful send alone never authorize release().
+        // Caller thread only. Cancel an unsubmitted seal, or release a raw IPC seal after terminal settlement.
+        // RenderClient controls its own submissions through the in-flight phase.
         void release() noexcept;
         // Reset retains capacities. Reset/move/destruction while sealed is a fatal ownership violation.
         void reset() noexcept;
 
     private:
         friend class RenderClient;
-        [[nodiscard]] bool beginBorrow() noexcept;
-        void finishBorrow() noexcept;
+        enum class EPhase : std::uint8_t { WRITABLE, SEALED, IN_FLIGHT };
+        [[nodiscard]] bool beginSubmission() noexcept;
+        void completeSubmission() noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
         explicit FrameData(std::unique_ptr<Impl>) noexcept;

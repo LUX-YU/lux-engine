@@ -54,67 +54,41 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<void> JobControl::beginStart(TargetId target, bool rebind, Start& out) noexcept
+    RenderResult<std::uint64_t> JobControl::beginStart(TargetId target, bool rebind) noexcept
     {
-        const bool invalid = out.active() || target.isNull();
-        if (invalid)
-        {
-            return cxx::unexpected(RenderError{kJobState});
-        }
-        if (starting_ || admitted_)
-        {
-            return cxx::unexpected(RenderError{kJobBusy});
-        }
-        if (running_ != rebind)
-        {
-            return cxx::unexpected(RenderError{kJobState});
-        }
-        out.job_ = this;
-        out.target_ = target;
-        out.cancelled_ = false;
-        starting_ = &out;
+        if (target.isNull()) return cxx::unexpected(RenderError{kJobState});
+        if (starting_ || admitted_) return cxx::unexpected(RenderError{kJobBusy});
+        if (running_ != rebind) return cxx::unexpected(RenderError{kJobState});
+        if (start_serial_ == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        starting_.emplace(target, ++start_serial_);
+        return start_serial_;
+    }
+
+    bool JobControl::canPublishStart(std::uint64_t serial) const noexcept
+    {
+        return starting_ && starting_->serial == serial && !starting_->cancelled;
+    }
+
+    RenderResult<void> JobControl::publishStart(std::uint64_t serial) noexcept
+    {
+        if (!canPublishStart(serial)) return cxx::unexpected(RenderError{kJobStopped});
+        starting_.reset();
+        execution_generation_ = serial;
+        running_ = true;
         return {};
     }
 
-    JobControl::Start::~Start() noexcept
+    void JobControl::finishStart(std::uint64_t serial) noexcept
     {
-        if (!job_)
-        {
-            return;
-        }
-        if (job_->starting_ != this)
-        {
-            std::terminate();
-        }
-        job_->starting_ = nullptr;
+        if (starting_ && starting_->serial == serial) starting_.reset();
     }
 
-    RenderResult<void> JobControl::Start::publish() noexcept
-    {
-        if (!job_)
-        {
-            return cxx::unexpected(RenderError{kJobState});
-        }
-        auto& job = *job_;
-        if (job.starting_ != this)
-        {
-            std::terminate();
-        }
-        job.starting_ = nullptr;
-        job_ = nullptr;
-        if (cancelled_)
-        {
-            return cxx::unexpected(RenderError{kJobStopped});
-        }
-        job.running_ = true;
-        return {};
-    }
 
     void JobControl::stop() noexcept
     {
         if (starting_)
         {
-            starting_->cancelled_ = true;
+            starting_->cancelled = true;
         }
         running_ = false;
         rejectUnadmitted(RenderError{kJobStopped});
@@ -123,7 +97,7 @@ namespace lux::render::detail
     void JobControl::rejectUnadmitted(RenderError error) noexcept
     {
         // Everything below is set before calling arbitrary response code.
-        const bool has_unadmitted_request = requested_ && (!admitted_ || admitted_->request_ != requested_);
+        const bool has_unadmitted_request = requested_ && (!admitted_ || admitted_->request != requested_);
         if (has_unadmitted_request)
         {
             Request* request = std::exchange(requested_, nullptr);
@@ -158,67 +132,30 @@ namespace lux::render::detail
         return running() && !admitted_ && (cadence_ == EJobCadence::CONTINUOUS || requested_);
     }
 
-
-    bool JobControl::tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index, Run& out) noexcept
+    bool JobControl::tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index) noexcept
     {
-        if (out.active())
-        {
-            return false;
-        }
-        if (!eligible())
-        {
-            return false;
-        }
-        out.job_ = this;
-        out.request_ = requested_;
-        out.receipt_ = {id_, frame_index, slot_index};
-        admitted_ = &out;
+        if (!eligible()) return false;
+        admitted_.emplace(JobReceipt{id_, frame_index, slot_index}, requested_);
         return true;
     }
 
     bool JobControl::canRemove() const noexcept
     {
-        return !running() && !starting_ && !admitted_ && !requested_;
+        return !running_ && !starting_ && !admitted_ && !requested_;
     }
 
-    JobControl::Run::~Run() noexcept
+    std::optional<JobControl::Completion>
+    JobControl::finishRun(std::uint64_t generation, RenderResult<void> submitted) noexcept
     {
-        if (job_)
-        {
-            finish(cxx::unexpected(RenderError{kJobStopped}));
-        }
-    }
-
-    void JobControl::Run::finish(RenderResult<void> submitted) noexcept
-    {
-        if (!job_)
-        {
-            return;
-        }
-        JobControl& job = *job_;
-        if (job.admitted_ != this)
-        {
-            std::terminate();
-        }
-        job.admitted_ = nullptr;
-        const JobReceipt receipt = receipt_;
-        Request* request = request_;
-        if (request)
-        {
-            if (job.requested_ != request)
-            {
-                std::terminate();
-            }
-            job.requested_ = nullptr;
-            request->owner_ = nullptr;
-        }
-        job_ = nullptr;
-        request_ = nullptr;
-        if (request)
-        {
-            auto result = submitted ? RenderResult<JobReceipt>{receipt}
-                                    : RenderResult<JobReceipt>{cxx::unexpected(submitted.error())};
-            request->complete(request->receiver, std::move(result));
-        }
+        if (!admitted_ || generation != execution_generation_) std::terminate();
+        const auto run = *admitted_;
+        admitted_.reset();
+        if (!run.request) return std::nullopt;
+        if (requested_ != run.request) std::terminate();
+        requested_ = nullptr;
+        run.request->owner_ = nullptr;
+        auto result = submitted ? RenderResult<JobReceipt>{run.receipt}
+                                : RenderResult<JobReceipt>{cxx::unexpected(submitted.error())};
+        return Completion{run.request->receiver, run.request->complete, std::move(result)};
     }
 } // namespace lux::render::detail

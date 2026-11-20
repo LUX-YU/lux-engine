@@ -1060,7 +1060,7 @@ namespace
             if (!watched_instances.isNull())
             {
                 const auto* factory = context.resources.factory(kInstanceResourceName);
-                const auto& ops = *static_cast<const StorageBindingOps*>(factory->storage->binding_ops);
+                const auto& ops = *factory->storage->bindings();
                 capture->paged_probe_.changed = [](void*, std::uint32_t frame, const ResourceInput& input) noexcept
                 {
                     if (frame >= published_paged_reads.size()) return;
@@ -2888,10 +2888,16 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     stopAndRemoveJob(*client, commands, first);
     stopAndRemoveJob(*client, commands, peer);
 
+    CreateEffectRequest shutdown_request{std::make_unique<EffectGraph>()};
+    EffectGraphEdit shutdown_edit{*shutdown_request.graph};
+    const auto shutdown_node = take(shutdown_edit.addNode(capability, selected, "producer"));
+    CHECK(shutdown_edit.setOutput("display", shutdown_edit.pinId(shutdown_node, node_color), true));
+    CHECK(shutdown_edit.commit());
+    const auto shutdown_effect = call<CreateEffect>(*client, commands, std::move(shutdown_request)).effect;
     const auto shutdown_first =
-        call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+        call<CreateRenderJob>(*client, commands, {scene, view, shutdown_effect, EJobCadence::REQUESTED}).job;
     const auto shutdown_peer =
-        call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+        call<CreateRenderJob>(*client, commands, {scene, view, shutdown_effect, EJobCadence::REQUESTED}).job;
     const auto shutdown = start_pair(shutdown_first, shutdown_peer, node_builds.load());
     server->stop();
     const auto cancelled = finish_pair(shutdown, ENodeBuildGate::PASS);

@@ -4,7 +4,6 @@
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/runtime/JobControl.hpp>
 #include <chrono>
-#include <deque>
 
 namespace lux::render
 {
@@ -80,12 +79,13 @@ namespace lux::render::runtime_detail
             JobExecution* execution;
             TargetId target;
             std::span<const TargetId> reads;
+            std::uint64_t execution_generation = 0;
             bool submitted = false;
+            std::optional<detail::JobControl::Completion> completion;
         };
 
         std::vector<Output> outputs;
         std::vector<detail::RenderGraphInstance*> instances;
-        std::deque<detail::JobControl::Run> runs;
         std::size_t run_count = 0;
         detail::SubmissionFrontiers target_uses;
         std::vector<detail::StorageFrameBinding> storages;

@@ -80,6 +80,7 @@ namespace lux::render
         // Release the window and actual device before run() returns. Reverse order keeps each borrow valid.
         std::optional<RuntimeState> runtime_{std::in_place};
         std::vector<RenderJobId> running_jobs_;
+        const ServerInstanceId instance_id_;
         std::uint64_t next_input_layout_revision_ = 1;
 
         ResponseOutbox response_outbox_;
@@ -117,7 +118,7 @@ namespace lux::render
         std::chrono::steady_clock::time_point program_preparation_started_at_;
 #endif
 
-        Impl(RenderServerConfig value, ipc::IpcResponder input, execution::ExecutionRuntime& execution);
+        Impl(ServerInstanceId, RenderServerConfig, ipc::IpcResponder, execution::ExecutionRuntime&);
 
         template <RenderCommand C, auto Method> CommandId bindFrameworkCommand() noexcept
         {
@@ -135,6 +136,8 @@ namespace lux::render
         auto requestJob(RequestRenderJob::Request&&) noexcept;
         void stopJob(RenderJob&) noexcept;
         void retireStoppedExecution(RenderJob&) noexcept;
+        void destroyExecution(std::unique_ptr<JobExecution>) noexcept;
+        [[nodiscard]] RenderResult<void> retainExecutionResource(JobExecution&, ResourceInstanceId) noexcept;
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
         [[nodiscard]] bool frameUsesResource(const detail::DeviceEntry&, ResourceInstanceId) const noexcept;
         [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
@@ -153,20 +156,31 @@ namespace lux::render
         [[nodiscard]] RenderResult<EffectImportContracts>
         qualifyEffectImports(const detail::DeviceEntry&, const JobBinding&) const noexcept;
 
-        exec::task<RenderEffect::VariantResult> acquireEffectVariant(
-            RenderEffect&, detail::DeviceEntry&, EffectOutputDesc, const EffectImportContracts&
+        exec::task<detail::EffectVariantResult> acquireEffectVariant(
+            EffectId, RenderEffect&, detail::DeviceEntry&, EffectOutputDesc, const EffectImportContracts&
         ) noexcept;
 
-        exec::task<RenderEffect::VariantResult> compileEffectVariant(
-            RenderEffect&, detail::DeviceEntry&, const EffectOutputDesc&, const EffectImportContracts&
+        exec::task<RenderResult<std::unique_ptr<const JobGraphPlan>>> compileEffectVariant(
+            EffectId, RenderEffect&, detail::DeviceEntry&, const EffectOutputDesc&, const EffectImportContracts&
         ) noexcept;
 
-        exec::task<AckResponse>
-        buildJobExecution(DeviceSessionId, RenderJobId, EffectId, TargetId, JobBinding, bool rebind) noexcept;
+        enum class EJobStartMode : std::uint8_t { START, REBIND };
+        struct JobStartRequest final
+        {
+            DeviceSessionId device;
+            RenderJobId job;
+            EffectId effect;
+            TargetId target;
+            JobBinding binding;
+            EJobStartMode mode;
+        };
+
+        exec::task<AckResponse> buildJobExecution(JobStartRequest) noexcept;
+        [[nodiscard]] RenderResult<void> buildJobInputLayout(const RenderJob&, JobExecution&) noexcept;
 
         [[nodiscard]] RenderResult<void> validateJobBinding(
             DeviceSessionId,
-            const RenderJob&, const RenderEffect&, TargetId, const JobBinding&, const void* reservation
+            const RenderJob&, const RenderEffect&, TargetId, const JobBinding&, detail::TargetReservation
         ) const noexcept;
 
         using ResizeCandidates = std::vector<std::pair<RenderJobId, detail::RenderGraphInstance::ResizeResources>>;
@@ -243,7 +257,7 @@ namespace lux::render
 
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
         [[nodiscard]] RenderResult<HandlerCall>
-        resolveCommandCall(CommandId, const CommandRecord&, const ipc::IpcMessage&, ResourceCommandUse& resource) noexcept;
+        resolveCommandCall(CommandId, const CommandRecord&, const ipc::IpcMessage&, ResourceInstanceId& resource) noexcept;
         void failDevice(detail::DeviceEntry&, RenderError) noexcept;
         void failExecution(RenderError error) noexcept;
 

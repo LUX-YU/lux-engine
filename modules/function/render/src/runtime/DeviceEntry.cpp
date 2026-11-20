@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <exception>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/device/NativeExecution.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -56,7 +57,76 @@ namespace lux::render::detail
         return entry;
     }
 
-    DeviceEntry::~DeviceEntry() noexcept = default;
+    DeviceEntry::~DeviceEntry() noexcept
+    {
+        if (!variants_.empty()) std::terminate();
+    }
+
+    EffectDeviceVariant* DeviceEntry::findVariant(
+        EffectId effect, const EffectOutputDesc& target, const runtime_detail::EffectImportContracts& imports
+    ) noexcept
+    {
+        const auto found = std::ranges::find_if(variants_, [&](const auto& variant) noexcept
+        {
+            return !variant.failure.type && variant.effect == effect && variant.target == target &&
+                variant.imports == imports;
+        });
+        return found != variants_.end() ? &*found : nullptr;
+    }
+
+    EffectDeviceVariant& DeviceEntry::beginVariant(
+        EffectId effect, const EffectOutputDesc& target, const runtime_detail::EffectImportContracts& imports
+    ) noexcept
+    {
+        const auto id = variants_.emplace(EffectDeviceVariant{.effect = effect, .target = target, .imports = imports});
+        auto& variant = *variants_.find(id);
+        variant.id = id;
+        return variant;
+    }
+
+    const runtime_detail::JobGraphPlan& DeviceEntry::variantPlan(DeviceVariantId id) const noexcept
+    {
+        const auto* variant = variants_.find(id);
+        if (!variant || !variant->plan) std::terminate();
+        return *variant->plan;
+    }
+
+    void DeviceEntry::releaseVariant(DeviceVariantId id) noexcept
+    {
+        auto* variant = variants_.find(id);
+        if (!variant || !variant->readers) std::terminate();
+        if (--variant->readers == 0)
+        {
+            const bool finished = variant->plan || variant->failure.type;
+            if (!finished || !variant->waiters.empty()) std::terminate();
+            variants_.erase(id);
+        }
+    }
+
+    UniformBlockVersions* DeviceEntry::uniformPool(EffectId effect, graph::NodeId node, std::string_view name) noexcept
+    {
+        const auto found = std::ranges::find_if(uniform_pools_, [&](const auto& pool) noexcept
+        {
+            return pool.effect == effect && pool.node == node && pool.name == name;
+        });
+        return found != uniform_pools_.end() ? found->versions.get() : nullptr;
+    }
+
+    void DeviceEntry::adoptUniformPools(std::vector<UniformPool> pools) noexcept
+    {
+        for (auto& pool : pools) uniform_pools_.push_back(std::move(pool));
+    }
+
+    void DeviceEntry::removeUniformPools(EffectId effect) noexcept
+    {
+        std::erase_if(uniform_pools_, [effect](const auto& pool) noexcept { return pool.effect == effect; });
+    }
+
+    void DeviceEntry::clearUniformPools() noexcept
+    {
+        if (!variants_.empty()) std::terminate();
+        uniform_pools_.clear();
+    }
 
     ResourceCreateContext DeviceEntry::resourceCreateContext() noexcept
     {

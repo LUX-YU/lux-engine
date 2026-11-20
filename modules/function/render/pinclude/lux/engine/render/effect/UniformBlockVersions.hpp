@@ -50,7 +50,7 @@ namespace lux::render::detail
 
     struct LinkedUniformBlock final
     {
-        std::shared_ptr<UniformBlockVersions> versions;
+        UniformBlockVersions* versions;
         GraphResourceId resource;
         std::vector<std::uint32_t> batches;
     };

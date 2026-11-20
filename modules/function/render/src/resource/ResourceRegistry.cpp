@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <lux/engine/render/extensions/FrameDataCall.hpp>
+#include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <exception>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
@@ -7,54 +7,13 @@
 
 namespace lux::render
 {
-    ResourceCommandUse::ResourceCommandUse(
-        ResourceRegistry& registry,
-        ResourceInstanceId id,
-        void* instance,
-        CommandBindingLocation binding,
-        cxx::basic_type_info implementation
-    ) noexcept
-        : registry_(&registry), id_(id), instance_(instance), binding_(binding), implementation_(implementation)
+    void runtime_detail::finishResourceCommand(ResourceRegistry& registry, ResourceInstanceId id) noexcept
     {
+        if (!id.isNull()) registry.finishCommand(id);
     }
 
-    ResourceCommandUse::~ResourceCommandUse() noexcept
-    {
-        reset();
-    }
-
-    ResourceCommandUse::ResourceCommandUse(ResourceCommandUse&& other) noexcept
-        : registry_(std::exchange(other.registry_, nullptr)), id_(other.id_),
-          instance_(std::exchange(other.instance_, nullptr)), binding_(other.binding_),
-          implementation_(other.implementation_)
-    {
-    }
-
-    ResourceCommandUse& ResourceCommandUse::operator=(ResourceCommandUse&& other) noexcept
-    {
-        if (this != &other)
-        {
-            reset();
-            registry_ = std::exchange(other.registry_, nullptr);
-            id_ = other.id_;
-            instance_ = std::exchange(other.instance_, nullptr);
-            binding_ = other.binding_;
-            implementation_ = other.implementation_;
-        }
-        return *this;
-    }
-
-    void ResourceCommandUse::reset() noexcept
-    {
-        if (auto* registry = std::exchange(registry_, nullptr))
-        {
-            registry->releaseCommand(id_);
-        }
-        instance_ = nullptr;
-    }
-
-    RenderResult<ResourceCommandUse>
-    ResourceRegistry::acquireCommand(ResourceInstanceId id, CommandId command, bool exclusive) noexcept
+    RenderResult<ResourceRegistry::ResolvedCommand>
+    ResourceRegistry::beginCommand(ResourceInstanceId id, CommandId command, bool exclusive) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || !entry->instance)
@@ -75,9 +34,7 @@ namespace lux::render
         if (entry->command_uses == UINT32_MAX) std::terminate();
         ++entry->command_uses;
         entry->exclusive_command = exclusive;
-        return ResourceCommandUse{
-            *this, id, entry->instance, *location, definition.factory.storage->implementation_type
-        };
+        return ResolvedCommand{*location, definition.factory.storage->implementation_type};
     }
 
     bool ResourceRegistry::hasBorrows(ResourceInstanceId id) const noexcept
@@ -167,7 +124,7 @@ namespace lux::render
         return false;
     }
 
-    void ResourceRegistry::releaseCommand(ResourceInstanceId id) noexcept
+    void ResourceRegistry::finishCommand(ResourceInstanceId id) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || !entry->command_uses)
@@ -310,9 +267,68 @@ namespace lux::render
         return {};
     }
 
+    ResourceRegistry::Type::Type(ResourceRegistration source, ConfigValue config) noexcept
+        : descriptor(*source.descriptor), frame_inputs(descriptor.frame_inputs.begin(), descriptor.frame_inputs.end()),
+          frame_channels(source.frame_call.channels.begin(), source.frame_call.channels.end()),
+          factory(std::move(source)), configuration(std::move(config))
+    {
+        const auto own_name = [this](std::string_view text) noexcept -> std::string_view
+        {
+            return text.empty() ? std::string_view{} : std::string_view{names.emplace_back(text)};
+        };
+        const auto own_type = [&](cxx::basic_type_info& type) noexcept
+        {
+            type = {type.hash(), own_name(type.name())};
+        };
+
+        descriptor.type = ResourceNameView{own_name(descriptor.type.name())};
+        descriptor.description = own_name(descriptor.description);
+        own_type(descriptor.binding_type);
+        for (auto& type : frame_inputs) own_type(type);
+        descriptor.frame_inputs = frame_inputs;
+        factory.descriptor = &descriptor;
+
+        command_descriptors.reserve(factory.commands.size());
+        command_views.reserve(factory.commands.size());
+        command_bindings.reserve(factory.commands.size());
+        for (std::size_t i = 0; i < factory.commands.size(); ++i)
+        {
+            auto& declaration = command_descriptors.emplace_back(*descriptor.commands[i]);
+            declaration.name = CommandName{own_name(declaration.name.name())};
+            own_type(declaration.request);
+            own_type(declaration.response);
+            own_type(declaration.data);
+            command_views.push_back(&declaration);
+
+            auto& binding = command_bindings.emplace_back(factory.commands[i]);
+            binding.descriptor_ = &declaration;
+            own_type(binding.storage_type_);
+            own_type(binding.method_type_);
+        }
+        descriptor.commands = command_views;
+        factory.commands = command_bindings;
+
+        auto& call = factory.frame_call;
+        own_type(call.declaration_type);
+        own_type(call.storage_type);
+        own_type(call.method_type);
+        for (auto& channel : frame_channels)
+        {
+            own_type(channel.declaration);
+            own_type(channel.element);
+        }
+        call.channels = frame_channels;
+
+        auto& storage = *factory.storage;
+        own_type(storage.config_type);
+        own_type(storage.ops_type);
+        own_type(storage.implementation_type);
+        if (storage.snapshot_ops) own_type(storage.snapshot_ops->type);
+    }
+
     ResourceTypeId ResourceRegistry::publishFactory(ResourceRegistration factory, ConfigValue configuration) noexcept
     {
-        const auto id = types_.emplace(Type{std::move(factory), std::move(configuration)});
+        const auto id = types_.emplace(std::move(factory), std::move(configuration));
         types_by_name_.emplace(std::string(types_.find(id)->factory.descriptor->type.name()), id);
         return id;
     }

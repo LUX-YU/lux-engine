@@ -13,8 +13,7 @@ namespace lux::render
 
         FrameLayout layout;
         std::vector<OwnedColumn> columns;
-        bool sealed = false;
-        bool borrowed = false;
+        EPhase phase = EPhase::WRITABLE;
     };
 
     FrameData::FrameData() noexcept = default;
@@ -42,7 +41,7 @@ namespace lux::render
 
     void FrameData::requireUnsealed() const noexcept
     {
-        if (impl_ && impl_->sealed) std::terminate();
+        if (sealed()) std::terminate();
     }
 
     RenderResult<FrameData>
@@ -75,31 +74,36 @@ namespace lux::render
 
     bool FrameData::writable() const noexcept
     {
-        return impl_ && !impl_->sealed;
+        return impl_ && impl_->phase == EPhase::WRITABLE;
     }
 
     bool FrameData::sealed() const noexcept
     {
-        return impl_ && impl_->sealed;
+        return impl_ && impl_->phase != EPhase::WRITABLE;
     }
 
-    bool FrameData::beginBorrow() noexcept
+    bool FrameData::beginSubmission() noexcept
     {
-        if (!sealed() || impl_->borrowed) return false;
-        impl_->borrowed = true;
+        if (!impl_ || impl_->phase != EPhase::SEALED) return false;
+        impl_->phase = EPhase::IN_FLIGHT;
         return true;
     }
 
-    void FrameData::finishBorrow() noexcept
+    void FrameData::completeSubmission() noexcept
     {
-        if (!impl_ || !impl_->borrowed || !impl_->sealed) std::terminate();
-        impl_->borrowed = impl_->sealed = false;
+        if (!impl_ || impl_->phase != EPhase::IN_FLIGHT) std::terminate();
+        impl_->phase = EPhase::WRITABLE;
     }
 
-    const FrameLayout& FrameData::layout() const noexcept
+    const FrameLayout& FrameData::layout() const & noexcept
     {
         if (!impl_) std::terminate();
         return impl_->layout;
+    }
+
+    FrameLayoutKey FrameData::layoutKey() const noexcept
+    {
+        return impl_ ? impl_->layout.key() : FrameLayoutKey{};
     }
 
     std::size_t FrameData::findChannel(cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept
@@ -140,14 +144,14 @@ namespace lux::render
     RenderResult<void> FrameData::seal() noexcept
     {
         if (!writable()) return cxx::unexpected(RenderError{kFrameContract});
-        impl_->sealed = true;
+        impl_->phase = EPhase::SEALED;
         return {};
     }
 
     void FrameData::release() noexcept
     {
-        if (!impl_ || !impl_->sealed || impl_->borrowed) std::terminate();
-        impl_->sealed = false;
+        if (!impl_ || impl_->phase != EPhase::SEALED) std::terminate();
+        impl_->phase = EPhase::WRITABLE;
     }
 
     void FrameData::reset() noexcept

@@ -1450,7 +1450,9 @@ int main(int argc, char** argv)
     CHECK(call<UpdateJobInputs>(client, {current}).error.type == 0);
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect, moved_target}).error.type == 0);
     CHECK(!call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
+    const auto warm_compiles = server->stats().compiled_graphs;
     CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == 0);
+    CHECK(server->stats().compiled_graphs == warm_compiles);
     CHECK(call<StopRenderJob>(client, rival).error.type == 0);
 
     auto asynchronous = take(ipc::IpcCore::instance().createRequester(config.channel_name));
@@ -1501,14 +1503,38 @@ int main(int argc, char** argv)
 
     RenderServerConfig peer_config{"installed.effect.peer"};
     auto peer = take(RenderServer::create(peer_config, *execution));
+    take(peer->registerResource(ColdResource::factory()));
+    registerClearNode(*peer);
     auto peer_client = take(ipc::IpcCore::instance().createRequester(peer_config.channel_name));
     std::thread peer_render([&]() noexcept { CHECK(peer->run()); });
     const auto peer_session = call<CreateDeviceSession>(peer_client, device);
     CHECK(!peer_session.error.type);
+    const auto peer_target = call<CreateTarget>(
+        peer_client, {peer_session.device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}
+    );
+    const auto peer_effect = call<CreateEffect>(peer_client, clearEffect());
+    const auto peer_scene = call<CreateScene>(peer_client, {}).scene;
+    const auto peer_view = call<CreateView>(peer_client, {peer_scene}).view;
+    const auto peer_job = call<CreateRenderJob>(
+        peer_client, {peer_scene, peer_view, peer_effect.effect, EJobCadence::REQUESTED}
+    ).job;
+    const auto peer_resource = getSceneState(peer_client, peer_session.device, peer_scene);
+    CHECK(!call<StartRenderJob>(
+        peer_client, {peer_session.device, peer_job, peer_target.target, clearBinding(peer_resource)}
+    ).error.type);
+    const auto peer_layout = call<QueryRenderJobInputLayout>(peer_client, peer_job).layout;
+    CHECK(peer_layout == old_schema && !peer_layout.hasSameIdentity(old_schema));
+    auto foreign_packet = take(FrameData::create<std::tuple<>>(old_schema));
+    CHECK(foreign_packet.seal());
+    CHECK(call<RequestRenderJob>(peer_client, {peer_job, &foreign_packet}).error.type == kFrameContract);
+    foreign_packet.release();
+    CHECK(!call<StopRenderJob>(peer_client, peer_job).error.type);
+
+    const auto cold_effect = create();
+    CHECK(!cold_effect.error.type);
     Monitor::hold.store(true);
-    const auto pending = send<RebindRenderJobEffect>(asynchronous, {session, rival, effect.effect});
+    const auto pending = send<RebindRenderJobEffect>(asynchronous, {session, rival, cold_effect.effect});
     await(Monitor::entered);
-    const auto peer_target = call<CreateTarget>(peer_client, {peer_session.device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}});
     CHECK(peer_target.error.type == 0 && !peer_target.target.isNull());
     CHECK(call<RemoveTarget>(peer_client, peer_target.target).error.type == 0);
     std::puts("DEVICE ISOLATION PASS: a second DeviceEntry served IPC and native allocation during a held compile");
@@ -1533,9 +1559,11 @@ int main(int argc, char** argv)
 
     verifyDeviceOwnership(client, session, device, effect.effect);
 
+    const auto shutdown_effect = create();
+    CHECK(!shutdown_effect.error.type);
     Monitor::entered.store(false);
     Monitor::hold.store(true);
-    const auto final_rebind = send<RebindRenderJobEffect>(asynchronous, {session, next, replacement.effect});
+    const auto final_rebind = send<RebindRenderJobEffect>(asynchronous, {session, next, shutdown_effect.effect});
     await(Monitor::entered);
     server->stop();
     CHECK(!Monitor::destroyed);

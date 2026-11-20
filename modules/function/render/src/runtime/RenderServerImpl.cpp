@@ -12,11 +12,14 @@
 
 namespace lux::render
 {
-    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::ExecutionRuntime& execution)
+    RenderServer::Impl::Impl(
+        ServerInstanceId instance_id, RenderServerConfig value, ipc::IpcResponder input,
+        execution::ExecutionRuntime& execution
+    )
         : config_(std::move(value)), cpu_scheduler_(execution.cpuScheduler()),
           program_scheduler_(execution.cpuSchedulerOnWorker(0)),
           recording_scheduler_(execution.cpuSchedulerOnWorker(execution.cpuConcurrency() > 1 ? 1 : 0)),
-          responder_(std::move(input)),
+          responder_(std::move(input)), instance_id_(instance_id),
           server_context_(
               cxx::execution::default_manual_context_config(),
               {nullptr, [](void*) noexcept { ipc::IpcCore::instance().notifyWork(); }}
@@ -765,10 +768,7 @@ namespace lux::render
             if (!safe) std::terminate();
         }
         if (entry->hasBorrows()) std::terminate();
-        for (auto& effect : runtime_->effects_)
-        {
-            std::erase_if(effect.uniform_pools, [id](const auto& pool) noexcept { return pool.device == id; });
-        }
+
         runtime_->devices_.erase(id);
         co_return AckResponse{};
     }
@@ -818,7 +818,7 @@ namespace lux::render
         device.failure = error;
         cancelActiveFrame(device, error);
         if (preparing_execution_ && preparing_execution_->device == device.id)
-            preparing_execution_->programs.active->stop.request_stop();
+            preparing_execution_->programs.stop->request_stop();
         if (device.retiring) return;
 
         for (auto id : running_jobs_)
@@ -850,7 +850,7 @@ namespace lux::render
         CommandId command,
         const CommandRecord& entry,
         const ipc::IpcMessage& request,
-        ResourceCommandUse& resource
+        ResourceInstanceId& resource
     ) noexcept
     {
         if (entry.storage)
@@ -872,13 +872,18 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kDeviceBusy});
             }
-            auto borrowed = runtime_->resources_.acquireCommand(id, command, exclusive);
-            if (!borrowed) return cxx::unexpected(borrowed.error());
-            const auto* selected = entry.binding(borrowed->binding().binding);
+            auto& resources = runtime_->resources_;
+            const auto admitted = resources.beginCommand(id, command, exclusive);
+            if (!admitted) return cxx::unexpected(admitted.error());
+            const auto* selected = entry.binding(admitted->binding.binding);
             const bool is_invalid_call = !selected || !selected->call.invoke ||
-                selected->storage_type != borrowed->implementationType();
-            if (is_invalid_call) return cxx::unexpected(RenderError{kCommandContract});
-            resource = std::move(*borrowed);
+                selected->storage_type != admitted->implementation;
+            if (is_invalid_call)
+            {
+                resources.finishCommand(id);
+                return cxx::unexpected(RenderError{kCommandContract});
+            }
+            resource = id;
             return selected->call;
         }
         if (!entry.effect)
@@ -918,7 +923,7 @@ namespace lux::render
         }
         else
         {
-            ResourceCommandUse resource;
+            ResourceInstanceId resource;
             auto call = resolveCommandCall(id, *entry, received.message(), resource);
             if (!call)
             {
@@ -932,7 +937,9 @@ namespace lux::render
                     response_outbox_,
                     command_scope_,
                     server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery),
-                    std::move(resource)
+                    runtime_->resources_,
+                    resource,
+                    resource.isNull() ? nullptr : runtime_->resources_.resourceInstance(resource)
                 };
                 // Async Handler construction consumes this exact call now; completion never
                 // re-reads the capability directory or a selected Handler.
@@ -1046,7 +1053,14 @@ namespace lux::render
         }
         // All sources of new native work have returned. Staging and native payloads can now release in owner order.
         for (const auto& device : runtime_->devices_)
+        {
             if (auto drained = device->session().drain(); !drained) failDevice(*device, drained.error());
+        }
+        for (const auto& job : runtime_->jobs_)
+        {
+            if (job.execution) std::terminate();
+        }
+        for (auto& device : runtime_->devices_) device->clearUniformPools();
         runtime_.reset();
         (void)server_context_.close();
         responder_.reset();

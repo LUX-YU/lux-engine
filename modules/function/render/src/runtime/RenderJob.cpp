@@ -43,7 +43,7 @@ namespace lux::render
             auto device = job.execution ? job.execution->device : DeviceSessionId{};
             if (const auto* start = job.control.pendingStart(); start && device.isNull())
             {
-                if (const auto* output = runtime_->targets_.find(start->target())) device = targetState(*output).device;
+                if (const auto* output = runtime_->targets_.find(start->target)) device = targetState(*output).device;
             }
             entries.push_back({job.control.id(), device, &job.relations});
         }
@@ -81,11 +81,34 @@ namespace lux::render
         reply.error = result ? RenderError{} : result.error();
     }
 
+    RenderResult<void>
+    RenderServer::Impl::retainExecutionResource(JobExecution& execution, ResourceInstanceId resource) noexcept
+    {
+        auto& resources = execution.resource_ids;
+        if (std::ranges::find(resources, resource) != resources.end()) return {};
+        if (auto retained = runtime_->resources_.retainExecution(resource); !retained) return retained;
+        resources.push_back(resource);
+        return {};
+    }
+
+    void RenderServer::Impl::destroyExecution(std::unique_ptr<JobExecution> execution) noexcept
+    {
+        if (!execution) return;
+        const auto effect = execution->effect;
+        const auto device = execution->device;
+        const auto variant = execution->variant;
+        auto resources = std::move(execution->resource_ids);
+        execution.reset();
+        for (const auto id : resources) runtime_->resources_.releaseExecution(id);
+        runtime_->device(device)->releaseVariant(variant);
+        runtime_->effects_.find(effect)->releaseExecution();
+    }
+
     void RenderServer::Impl::retireStoppedExecution(RenderJob& job) noexcept
     {
         if (!job.control.running() && !job.hasExecutionBorrows())
         {
-            job.execution.reset();
+            destroyExecution(std::move(job.execution));
         }
     }
 
@@ -94,20 +117,20 @@ namespace lux::render
         const auto id = job.control.id();
         if (const auto* starting = job.control.pendingStart())
         {
-            if (auto* target = runtime_->targets_.find(starting->target()))
+            if (auto* target = runtime_->targets_.find(starting->target))
             {
                 auto& state = targetState(*target);
-                if (state.reservation == starting) state.reservation = nullptr;
+                if (state.reservation == detail::TargetReservation{id, starting->serial}) state.reservation = {};
             }
         }
         if (job.execution)
         {
-            if (auto& active = job.execution->programs.active) active->stop.request_stop();
+            if (auto& stop = job.execution->programs.stop) stop->request_stop();
             targetState(*runtime_->targets_.find(job.execution->target)).releaseWriter(id);
         }
         if (std::erase(running_jobs_, id) != 0) ++job_structure_revision_;
         job.control.stop();
-        retireStoppedExecution(job);
+        if (auto* current = runtime_->jobs_.find(id)) retireStoppedExecution(*current);
     }
 
     void RenderServer::Impl::handleStopJob(const RenderJobId& id, AckResponse& reply) noexcept
@@ -137,6 +160,7 @@ namespace lux::render
         }
         auto& view = *runtime_->scenes_.find(job->content.scene)->views.find(job->content.view);
         std::erase(view.jobs, id);
+        destroyExecution(std::move(job->execution));
         runtime_->jobs_.erase(id);
         ++job_structure_revision_;
         reply = {};
@@ -167,7 +191,7 @@ namespace lux::render
         const RenderEffect& effect,
         TargetId target_id,
         const JobBinding& binding,
-        const void* reservation
+        detail::TargetReservation reservation
     ) const noexcept
     {
         const auto* target = runtime_->targets_.find(target_id);
@@ -209,9 +233,10 @@ namespace lux::render
     {
         const auto* job = runtime_->jobs_.find(request.job);
         if (!job) co_return AckResponse{RenderError{kJobIdentity}};
-        co_return co_await buildJobExecution(
-            request.device, request.job, job->content.effect, request.target, std::move(request.binding), false
-        );
+        co_return co_await buildJobExecution({
+            request.device, request.job, job->content.effect, request.target, std::move(request.binding),
+            EJobStartMode::START
+        });
     }
 
     exec::task<AckResponse> RenderServer::Impl::rebindJob(RebindRenderJobEffect::Request&& request) noexcept
@@ -229,7 +254,9 @@ namespace lux::render
         }
         const auto target = request.target.isNull() ? job->execution->target : request.target;
         auto binding = request.binding ? std::move(*request.binding) : job->binding;
-        co_return co_await buildJobExecution(request.device, request.job, request.effect, target, std::move(binding), true);
+        co_return co_await buildJobExecution({
+            request.device, request.job, request.effect, target, std::move(binding), EJobStartMode::REBIND
+        });
     }
 
     RenderResult<std::vector<EffectTargetImport>>
@@ -279,7 +306,7 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageMismatch, {i}});
             if (registry.hasExclusiveCommand(input.resource))
                 return cxx::unexpected(RenderError{kDeviceBusy, {i}});
-            const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
+            const auto* ops = factory->storage->bindings();
             const auto same_binding = std::ranges::find_if(inputs.first(i), [&](const JobResourceInput& earlier) noexcept
             {
                 return earlier.resource == input.resource && earlier.projection == input.projection &&
@@ -336,8 +363,8 @@ namespace lux::render
         return imports;
     }
 
-    exec::task<RenderEffect::VariantResult> RenderServer::Impl::compileEffectVariant(
-        RenderEffect& effect, detail::DeviceEntry& entry, const EffectOutputDesc& target,
+    exec::task<RenderResult<std::unique_ptr<const JobGraphPlan>>> RenderServer::Impl::compileEffectVariant(
+        EffectId effect_id, RenderEffect& effect, detail::DeviceEntry& entry, const EffectOutputDesc& target,
         const EffectImportContracts& imports
     ) noexcept
     {
@@ -396,7 +423,7 @@ namespace lux::render
         );
         if (!preparation) co_return cxx::unexpected(preparation.error());
         std::vector<detail::LinkedUniformBlock> uniforms;
-        std::vector<RenderEffect::UniformPool> pending_pools;
+        std::vector<detail::DeviceEntry::UniformPool> pending_pools;
         for (const auto& block : built->uniforms)
         {
             if (!plan->executable.resources()[block.resource.index].memory_used) continue;
@@ -404,23 +431,27 @@ namespace lux::render
             const auto state = std::ranges::find(effect.node_states, block.node, &RenderEffect::NodeState::node);
             if (state == effect.node_states.end() || state->type != block.source.state_type)
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            auto& pools = effect.uniform_pools;
-            const auto existing = std::ranges::find_if(pools, [&](const auto& pool) noexcept
+            auto* versions = entry.uniformPool(effect_id, block.node, block.name);
+            if (!versions)
             {
-                return pool.device == entry.id && pool.node == block.node && pool.name == block.name;
-            });
-            auto versions = existing == pools.end() ? nullptr : existing->versions;
+                const auto pending = std::ranges::find_if(pending_pools, [&](const auto& pool) noexcept
+                {
+                    return pool.node == block.node && pool.name == block.name;
+                });
+                if (pending != pending_pools.end()) versions = pending->versions.get();
+            }
             if (versions && !versions->matches(block.source))
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
             if (!versions)
             {
-                versions = std::make_shared<detail::UniformBlockVersions>(
+                auto candidate = std::make_unique<detail::UniformBlockVersions>(
                     entry.session(), state->value.get(), block.source, entry.frameProgress().frameCount()
                 );
-                pending_pools.push_back({entry.id, block.node, block.name, versions});
+                versions = candidate.get();
+                pending_pools.push_back({effect_id, block.node, block.name, std::move(candidate)});
             }
 
-            auto& linked = uniforms.emplace_back(std::move(versions), block.resource, std::vector<std::uint32_t>{});
+            auto& linked = uniforms.emplace_back(versions, block.resource, std::vector<std::uint32_t>{});
             for (const auto& access : plan->executable.importedAccesses())
             {
                 if (access.resource != block.resource) continue;
@@ -431,47 +462,32 @@ namespace lux::render
             const auto duplicates = std::ranges::unique(linked.batches);
             linked.batches.erase(duplicates.begin(), duplicates.end());
         }
-        for (auto& pool : pending_pools) effect.uniform_pools.push_back(std::move(pool));
+        entry.adoptUniformPools(std::move(pending_pools));
         const auto samplers = built->source.samplers();
-        co_return std::make_shared<const JobGraphPlan>(JobGraphPlan{
+        co_return std::make_unique<const JobGraphPlan>(JobGraphPlan{
             std::move(plan->executable), std::move(plan->programs), {samplers.begin(), samplers.end()},
             std::move(built->target_imports), std::move(built->storage_imports), std::move(*preparation),
             std::move(uniforms)
         });
     }
 
-    exec::task<RenderEffect::VariantResult>
-    RenderServer::Impl::acquireEffectVariant(
-        RenderEffect& effect, detail::DeviceEntry& entry, EffectOutputDesc target,
+    exec::task<detail::EffectVariantResult> RenderServer::Impl::acquireEffectVariant(
+        EffectId id, RenderEffect& effect, detail::DeviceEntry& entry, EffectOutputDesc target,
         const EffectImportContracts& imports
     ) noexcept
     {
-        // The Effect owns one immutable recipe and each DeviceSession has a fixed shader and queue contract.
-        // Extents and physical target IDs are instance data. The import contract retains the alias pattern.
-        auto& variants = effect.variants;
-        std::erase_if(variants, [](const auto& variant) noexcept
+        if (auto* variant = entry.findVariant(id, target, imports))
         {
-            return !variant.compiling && variant.plan.expired();
-        });
-        const auto found = std::ranges::find_if(variants, [&](const auto& variant) noexcept
-        {
-            return variant.device == entry.id && variant.target == target && variant.imports == imports;
-        });
-        if (found != variants.end())
-        {
-            if (auto plan = found->plan.lock()) co_return plan;
-            auto pending = found->compiling;
-            co_return co_await exec::create<stdexec::set_value_t(RenderEffect::VariantResult)>(
-                [pending = std::move(pending)](auto& context) noexcept
+            if (variant->readers == UINT32_MAX) co_return cxx::unexpected(RenderError{kRuntimeCapacity});
+            const auto identity = variant->id;
+            ++variant->readers;
+            if (variant->plan) co_return identity;
+            auto result = co_await exec::create<stdexec::set_value_t(detail::EffectVariantResult)>(
+                [variant](auto& context) noexcept
                 {
-                    if (pending->result)
-                    {
-                        stdexec::set_value(std::move(context.receiver), *pending->result);
-                        return;
-                    }
-                    pending->waiters.push_back({
+                    variant->waiters.push_back({
                         &context,
-                        [](void* receiver, RenderEffect::VariantResult result) noexcept
+                        [](void* receiver, detail::EffectVariantResult result) noexcept
                         {
                             auto& operation = *static_cast<std::remove_reference_t<decltype(context)>*>(receiver);
                             stdexec::set_value(std::move(operation.receiver), std::move(result));
@@ -479,44 +495,40 @@ namespace lux::render
                     });
                 }
             );
+            if (!result) entry.releaseVariant(identity);
+            co_return result;
         }
 
-        auto pending = std::make_shared<RenderEffect::VariantCompilation>();
-        variants.push_back({entry.id, target, imports, pending, {}});
-        RenderEffect::VariantResult result = cxx::unexpected(RenderError{kCommandCancelled});
-        cxx::scope_exit settle([&]() noexcept
+        auto& variant = entry.beginVariant(id, target, imports);
+        const auto identity = variant.id;
+        auto compiled = co_await compileEffectVariant(id, effect, entry, target, imports);
+        auto waiters = std::exchange(variant.waiters, {});
+        const auto deliver = [&](const detail::EffectVariantResult& result) noexcept
         {
-            const auto building = std::ranges::find(variants, pending, &RenderEffect::Variant::compiling);
-            if (building == variants.end()) std::terminate();
-            pending->result.emplace(result);
-            if (result)
-            {
-                building->plan = *result;
-                building->compiling.reset();
-                compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
-            }
-            else
-            {
-                variants.erase(building);
-            }
-
-            // Publish the terminal result before resuming any StartRenderJob. A completion
-            // can re-enter the owner and the compiling Job may itself have been stopped.
-            auto waiters = std::move(pending->waiters);
-            for (const auto& waiter : waiters) waiter.complete(waiter.receiver, *pending->result);
-        });
-        result = co_await compileEffectVariant(effect, entry, target, imports);
-        co_return std::as_const(result);
+            // Keep the compiling reader through all completion callbacks, including reentrant Starts.
+            for (const auto& waiter : waiters) waiter.complete(waiter.receiver, result);
+        };
+        if (!compiled)
+        {
+            variant.failure = compiled.error();
+            deliver(cxx::unexpected(variant.failure));
+            entry.releaseVariant(identity);
+            co_return cxx::unexpected(compiled.error());
+        }
+        variant.plan = std::move(*compiled);
+        compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
+        deliver(identity);
+        co_return identity;
     }
 
-    exec::task<AckResponse> RenderServer::Impl::buildJobExecution(
-        DeviceSessionId device, RenderJobId id, EffectId effect_id, TargetId target_id, JobBinding binding, bool rebind
-    ) noexcept
+    exec::task<AckResponse> RenderServer::Impl::buildJobExecution(JobStartRequest request) noexcept
     {
+        auto& [device, id, effect_id, target_id, binding, mode] = request;
+        const bool rebind = mode == EJobStartMode::REBIND;
         auto& job = *runtime_->jobs_.find(id);
         auto* effect = runtime_->effects_.find(effect_id);
         if (!effect) co_return AckResponse{RenderError{kJobIdentity}};
-        if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, nullptr); !valid)
+        if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, {}); !valid)
             co_return AckResponse{valid.error()};
         const auto qualify_view = [&]() noexcept -> RenderResult<detail::ViewParameterStorage*>
         {
@@ -534,21 +546,23 @@ namespace lux::render
         auto relations = jobRelations();
         std::ranges::find(relations, id, &detail::JobRelationEntry::id)->device = device;
         if (auto valid = detail::validateJobDevices(relations); !valid) co_return AckResponse{valid.error()};
-        detail::JobControl::Start operation;
-        if (auto begun = job.control.beginStart(target_id, rebind, operation); !begun)
-            co_return AckResponse{begun.error()};
-        targetState(*runtime_->targets_.find(target_id)).reservation = &operation;
-        cxx::scope_exit release_target([&]() noexcept
+        const auto begun = job.control.beginStart(target_id, rebind);
+        if (!begun) co_return AckResponse{begun.error()};
+        const detail::TargetReservation reservation{id, *begun};
+        targetState(*runtime_->targets_.find(target_id)).reservation = reservation;
+        cxx::scope_exit finish_start([&]() noexcept
         {
             if (auto* target = runtime_->targets_.find(target_id))
             {
                 auto& state = targetState(*target);
-                if (state.reservation == &operation) state.reservation = nullptr;
+                if (state.reservation == reservation) state.reservation = {};
             }
+            if (auto* current = runtime_->jobs_.find(id)) current->control.finishStart(reservation.start_serial);
         });
-        auto effect_use = effect->borrowExecution();
-        if (!effect_use) co_return AckResponse{effect_use.error()};
+        if (auto retained = effect->retainExecution(); !retained) co_return AckResponse{retained.error()};
+        cxx::scope_exit release_effect([effect]() noexcept { effect->releaseExecution(); });
         auto& entry = *runtime_->device(device);
+        if (entry.pending_starts == UINT32_MAX) co_return AckResponse{RenderError{kRuntimeCapacity}};
         ++entry.pending_starts;
         cxx::scope_exit release_device([&entry]() noexcept { --entry.pending_starts; });
         const auto target_desc = targetDescription(*runtime_->targets_.find(target_id));
@@ -559,11 +573,13 @@ namespace lux::render
         std::ranges::sort(binding.resources, {}, &JobResourceInput::binding);
         auto imports = qualifyEffectImports(entry, binding);
         if (!imports) co_return AckResponse{imports.error()};
-        auto graph_plan = co_await acquireEffectVariant(*effect, entry, output_contract, *imports);
+        const auto variant = co_await acquireEffectVariant(effect_id, *effect, entry, output_contract, *imports);
+        cxx::scope_exit release_variant([&]() noexcept { if (variant) entry.releaseVariant(*variant); });
         if (stop_requested_.load()) co_return AckResponse{RenderError{kCommandCancelled}};
-        if (operation.cancelled()) co_return AckResponse{RenderError{kJobStopped}};
-        if (!graph_plan) co_return AckResponse{graph_plan.error()};
-        if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, &operation); !valid)
+        if (!job.control.canPublishStart(reservation.start_serial))
+            co_return AckResponse{RenderError{kJobStopped}};
+        if (!variant) co_return AckResponse{variant.error()};
+        if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, reservation); !valid)
             co_return AckResponse{valid.error()};
         if (!imports->targets.empty() || !imports->storages.empty())
         {
@@ -575,99 +591,43 @@ namespace lux::render
         if (!qualified_view) co_return AckResponse{qualified_view.error()};
         auto* view_parameters = *qualified_view;
         auto& target = *runtime_->targets_.find(target_id);
-        if (!(*graph_plan)->executable.compatible(targetDescription(target)))
+        const auto& graph_plan = entry.variantPlan(*variant);
+        if (!graph_plan.executable.compatible(targetDescription(target)))
             co_return AckResponse{RenderError{kDeviceArgument}};
         auto candidate = std::make_unique<JobExecution>(
-            std::move(*effect_use),
-            runtime_->resources_,
+            effect_id,
             device,
+            *variant,
             entry.session(),
             entry.frameProgress().frameCount(),
-            std::move(*graph_plan),
+            graph_plan,
             target_id,
             targetOutput(target)
         );
+        release_variant.release();
+        release_effect.release();
+        cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
         candidate->view_parameters = view_parameters;
         if (auto assembled = assembleExecution(*candidate, binding); !assembled)
             co_return AckResponse{assembled.error()};
 
-        std::vector<FrameChannel> channels;
-        auto& registry = runtime_->resources_;
-        const ViewRequest scope{job.content.scene, job.content.view};
         if (view_parameters)
         {
-            if (auto retained = candidate->retainStorage(binding.view_parameters); !retained)
+            if (auto retained = retainExecutionResource(*candidate, binding.view_parameters); !retained)
                 co_return AckResponse{retained.error()};
         }
-        struct FrameResource final
-        {
-            ResourceInstanceId id;
-            const ResourceRegistration* factory;
-        };
-        std::vector<FrameResource> frame_resources;
-        for (const auto id : candidate->retainedResources())
-        {
-            const auto* factory = registry.factory(registry.declarationOf(id));
-            if (factory->frame_call.channels.empty()) continue;
-            ResourceResponse local;
-            queryResource({device, scope, factory->descriptor->type}, local);
-            // Named graph imports may read a foreign scope. FrameData addresses the Job's own scope.
-            if (local.resource_id == id) frame_resources.push_back({id, factory});
-        }
-        std::ranges::sort(frame_resources, {}, [](const FrameResource& resource) noexcept
-        {
-            return std::pair{resource.factory->descriptor->domain, resource.factory->descriptor->type.name()};
-        });
-        std::size_t extra_columns = 0;
-        for (const auto& resource : frame_resources)
-        {
-            const auto count = resource.factory->frame_call.channels.size();
-            if (count > UINT32_MAX - extra_columns)
-                co_return AckResponse{RenderError{kRuntimeCapacity}};
-            extra_columns += count;
-        }
-        channels.reserve(extra_columns);
-        auto& columns = candidate->input_columns;
-        columns.reserve(extra_columns);
-        for (const auto& resource : frame_resources)
-        {
-            const auto& call = resource.factory->frame_call;
-            const auto first = columns.size();
-            for (const auto& channel : call.channels)
-            {
-                columns.push_back(static_cast<std::uint32_t>(channels.size()));
-                channels.push_back(channel);
-            }
-            candidate->inputs.emplace_back(
-                resource.id, registry.resourceInstance(resource.id), &call, std::span{columns}.subspan(first)
-            );
-        }
+        if (auto layout = buildJobInputLayout(job, *candidate); !layout) co_return AckResponse{layout.error()};
+
         auto* previous = job.execution.get();
-        const auto same_input = [](const auto& a, const auto& b) noexcept
-        {
-            return a.identity == b.identity && std::ranges::equal(a.columns, b.columns);
-        };
-        const bool can_reuse_layout = previous && previous->target == target_id &&
-            std::ranges::equal(previous->input_layout.channels(), channels) &&
-            std::ranges::equal(previous->inputs, candidate->inputs, same_input);
-        if (can_reuse_layout)
-        {
-            candidate->input_layout = previous->input_layout;
-        }
-        else
-        {
-            if (next_input_layout_revision_ == UINT64_MAX) co_return AckResponse{RenderError{kRuntimeCapacity}};
-            auto layout = FrameLayout::create(channels, next_input_layout_revision_++);
-            if (!layout) co_return AckResponse{layout.error()};
-            candidate->input_layout = std::move(*layout);
-        }
-        if (auto published = operation.publish(); !published) co_return AckResponse{published.error()};
+        if (auto published = job.control.publishStart(reservation.start_serial); !published)
+            co_return AckResponse{published.error()};
         targetState(target).writer = id;
         if (previous && previous->target != target_id)
         {
             targetState(*runtime_->targets_.find(previous->target)).releaseWriter(id);
         }
-        job.execution = std::move(candidate);
+        destroyExecution(std::exchange(job.execution, std::move(candidate)));
+        rollback.release();
         job.content.effect = effect_id;
         job.binding = std::move(binding);
         job.last_run_error = {};
@@ -681,6 +641,78 @@ namespace lux::render
         ++job_structure_revision_;
         co_return AckResponse{};
     }
+
+    RenderResult<void> RenderServer::Impl::buildJobInputLayout(const RenderJob& job, JobExecution& candidate) noexcept
+    {
+        std::vector<FrameChannel> channels;
+        auto& registry = runtime_->resources_;
+        const ViewRequest scope{job.content.scene, job.content.view};
+        struct FrameResource final
+        {
+            ResourceInstanceId id;
+            const ResourceRegistration* factory;
+        };
+        std::vector<FrameResource> frame_resources;
+        for (const auto id : candidate.retainedResources())
+        {
+            const auto* factory = registry.factory(registry.declarationOf(id));
+            if (factory->frame_call.channels.empty()) continue;
+            ResourceResponse local;
+            queryResource({candidate.device, scope, factory->descriptor->type}, local);
+            // Named graph imports may read a foreign scope. FrameData addresses the Job's own scope.
+            if (local.resource_id == id) frame_resources.push_back({id, factory});
+        }
+        std::ranges::sort(frame_resources, {}, [](const FrameResource& resource) noexcept
+        {
+            return std::pair{resource.factory->descriptor->domain, resource.factory->descriptor->type.name()};
+        });
+        std::size_t extra_columns = 0;
+        for (const auto& resource : frame_resources)
+        {
+            const auto count = resource.factory->frame_call.channels.size();
+            if (count > UINT32_MAX - extra_columns)
+                return cxx::unexpected(RenderError{kRuntimeCapacity});
+            extra_columns += count;
+        }
+        channels.reserve(extra_columns);
+        auto& columns = candidate.input_columns;
+        columns.reserve(extra_columns);
+        for (const auto& resource : frame_resources)
+        {
+            const auto& call = resource.factory->frame_call;
+            const auto first = columns.size();
+            for (const auto& channel : call.channels)
+            {
+                columns.push_back(static_cast<std::uint32_t>(channels.size()));
+                channels.push_back(channel);
+            }
+            candidate.inputs.emplace_back(
+                resource.id, registry.resourceInstance(resource.id), &call, std::span{columns}.subspan(first)
+            );
+        }
+        auto* previous = job.execution.get();
+        const auto same_input = [](const auto& a, const auto& b) noexcept
+        {
+            return a.identity == b.identity && std::ranges::equal(a.columns, b.columns);
+        };
+        const bool can_reuse_layout = previous && previous->target == candidate.target &&
+            std::ranges::equal(previous->input_layout.channels(), channels) &&
+            std::ranges::equal(previous->inputs, candidate.inputs, same_input);
+        if (can_reuse_layout)
+        {
+            candidate.input_layout = previous->input_layout;
+        }
+        else
+        {
+            if (next_input_layout_revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            auto layout = FrameLayout::create(channels, next_input_layout_revision_++);
+            if (!layout) return cxx::unexpected(layout.error());
+            layout->key_.server = instance_id_;
+            candidate.input_layout = std::move(*layout);
+        }
+        return {};
+    }
+
 
     void RenderServer::Impl::updateJobInputs(const UpdateJobInputs::Request& input, AckResponse& reply) noexcept
     {

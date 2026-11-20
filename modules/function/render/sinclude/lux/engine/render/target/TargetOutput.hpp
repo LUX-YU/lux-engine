@@ -8,13 +8,22 @@
 
 namespace lux::render::detail
 {
+    struct TargetReservation final
+    {
+        RenderJobId job;
+        std::uint64_t start_serial = 0;
+
+        [[nodiscard]] explicit operator bool() const noexcept { return start_serial != 0; }
+        bool operator==(const TargetReservation&) const noexcept = default;
+    };
+
     // Control-thread state attached to either physical Target alternative.
     struct TargetState final
     {
         DeviceSessionId device;
         std::uint64_t epoch = 1;
         RenderJobId writer;
-        const void* reservation = nullptr; // The connected Job start/rebind owns this reservation.
+        TargetReservation reservation;
         bool enabled = true;
         bool resizing = false;
 

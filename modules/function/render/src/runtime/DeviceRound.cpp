@@ -17,7 +17,8 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::adoptFrameData(const JobExecution& execution, const FrameData& packet) noexcept
     {
-        if (!packet.sealed() || !packet.layout().hasSameIdentity(execution.input_layout))
+        const auto layout = packet.layoutKey();
+        if (!packet.sealed() || !layout.valid() || layout != execution.input_layout.key())
         {
             return cxx::unexpected(RenderError{kFrameContract});
         }
@@ -101,8 +102,9 @@ namespace lux::render
         {
             output.submitted = false;
             auto& control = runtime_->jobs_.find(output.job)->control;
-            if (!control.tryAdmit(context.frame_index, context.slot_index, round.runs[round.run_count++]))
-                std::terminate();
+            if (!control.tryAdmit(context.frame_index, context.slot_index)) std::terminate();
+            output.execution_generation = control.executionGeneration();
+            ++round.run_count;
         }
         if (auto applied = selectGraphInputs(entry, round.slot()); !applied) round.error = applied.error();
         return true;
@@ -130,16 +132,22 @@ namespace lux::render
         raster_geometry_bytes_.fetch_add(reads.geometry_bytes, std::memory_order_relaxed);
 #endif
         round.error = {};
-        for (std::size_t i = 0; i < round.run_count; ++i)
+        const auto completed = std::exchange(round.run_count, 0);
+        const auto failure = error.type ? error : RenderError{kJobState};
+        for (auto& output : std::span{round.outputs}.first(completed))
         {
-            const auto& output = round.outputs[i];
             auto& job = *runtime_->jobs_.find(output.job);
-            const auto failure = error.type ? error : RenderError{kJobState};
             job.last_run_error = output.submitted ? RenderError{} : failure;
-            round.runs[i].finish(output.submitted ? RenderResult<void>{} : cxx::unexpected(failure));
+            output.completion = job.control.finishRun(
+                output.execution_generation, output.submitted ? RenderResult<void>{} : cxx::unexpected(failure)
+            );
             retireStoppedExecution(job);
         }
-        round.run_count = 0;
+        for (auto& output : std::span{round.outputs}.first(completed))
+        {
+            if (auto completion = std::exchange(output.completion, std::nullopt))
+                std::move(*completion).deliver();
+        }
     }
 
     bool RenderServer::Impl::progressProgramPreparations(detail::DeviceEntry& entry) noexcept
@@ -165,7 +173,7 @@ namespace lux::render
         {
             auto& programs = preparing_execution_->programs;
             if (!preparing_execution_->instance.matchesProgramRevisions(programs.revisions))
-                programs.active->stop.request_stop();
+                programs.stop->request_stop();
             return progressed;
         }
         const auto count = running_jobs_.size();
@@ -200,12 +208,12 @@ namespace lux::render
         auto& programs = execution.programs;
         execution.instance.captureProgramRevisions(programs.revisions);
         programs.failure = {};
-        programs.active.emplace(execution);
+        programs.stop.emplace();
         preparing_execution_ = &execution;
         preparation_targets_.clear();
         preparation_targets_.push_back(execution.target);
         for (const auto& input : execution.target_images) preparation_targets_.push_back(input.target);
-        const auto stop = programs.active->stop.get_token();
+        const auto stop = programs.stop->get_token();
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         program_preparation_started_at_ = std::chrono::steady_clock::now();
         program_preparations_.fetch_add(1, std::memory_order_relaxed);
@@ -218,10 +226,15 @@ namespace lux::render
             stdexec::continues_on(scheduler) |
             stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<bool> { std::terminate(); }) |
             stdexec::then(
-                [this, &job, &execution](RenderResult<bool> result) noexcept
+                [this, id = job.control.id(), generation = job.control.executionGeneration()](RenderResult<bool> result)
+                    noexcept
                 {
+                    auto* job = runtime_->jobs_.find(id);
+                    if (!job || job->control.executionGeneration() != generation ||
+                        job->execution.get() != preparing_execution_) std::terminate();
+                    auto& execution = *job->execution;
                     auto& programs = execution.programs;
-                    const bool discarded = programs.active->stop.stop_requested() ||
+                    const bool discarded = programs.stop->stop_requested() ||
                         !execution.instance.matchesProgramRevisions(programs.revisions);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
                     const auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -235,10 +248,10 @@ namespace lux::render
                         if (!result) programs.failure = result.error();
                         else if (!*result || execution.instance.requiresProducerPrograms()) programs.failure = {kFrameContract};
                     }
-                    programs.active.reset();
+                    programs.stop.reset();
                     preparing_execution_ = nullptr;
                     preparation_targets_.clear();
-                    retireStoppedExecution(job);
+                    retireStoppedExecution(*job);
                 }
             );
         stdexec::spawn(

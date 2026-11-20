@@ -7,13 +7,14 @@
 #include <lux/engine/render/frame/FrameLayout.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
-#include <lux/engine/render/runtime/EffectExecutionUse.hpp>
 #include <memory>
 #include <vector>
 
 namespace lux::render::detail
 {
     class ViewParameterStorage;
+    struct DeviceVariantTag;
+    using DeviceVariantId = cxx::SlotKey<DeviceVariantTag>;
 }
 
 namespace lux::render::runtime_detail
@@ -32,48 +33,27 @@ namespace lux::render::runtime_detail
     struct JobExecution final
     {
         JobExecution(
-            EffectExecutionUse, ResourceRegistry&, DeviceSessionId, detail::DeviceSession&, std::uint32_t frame_count,
-            std::shared_ptr<const JobGraphPlan>, TargetId, detail::TargetOutput
+            EffectId, DeviceSessionId, detail::DeviceVariantId, detail::DeviceSession&, std::uint32_t frame_count,
+            const JobGraphPlan&, TargetId, detail::TargetOutput
         ) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;
 
-    private:
-        // Native instance state is destroyed before either retained owner is released.
-        EffectExecutionUse effect_use_;
-        struct StorageUses final
-        {
-            explicit StorageUses(ResourceRegistry& resource_registry) noexcept : registry(resource_registry) {}
-            StorageUses(const StorageUses&) = delete;
-            StorageUses& operator=(const StorageUses&) = delete;
-            ResourceRegistry& registry;
-            std::vector<ResourceInstanceId> retained;
-            ~StorageUses() noexcept;
-        };
-        StorageUses storage_uses_;
-
-    public:
+        const EffectId effect;
+        std::vector<ResourceInstanceId> resource_ids;
         std::vector<ResourceInstanceId> gpu_resources;
         DeviceSessionId device;
+        detail::DeviceVariantId variant;
         TargetId target;
-        std::shared_ptr<const JobGraphPlan> graph_plan;
+        const JobGraphPlan* const graph_plan;
         const detail::RenderGraphExecutable& executable;
         detail::RenderGraphInstance instance;
         std::uint32_t pending_uses = 0;
         struct ProgramPreparation final
         {
-            struct Active final
-            {
-                explicit Active(JobExecution& owner) noexcept : execution(owner) { ++execution.pending_uses; }
-                ~Active() noexcept { --execution.pending_uses; }
-
-                JobExecution& execution;
-                stdexec::inplace_stop_source stop;
-            };
-
             std::vector<std::uint64_t> revisions;
-            std::optional<Active> active;
+            std::optional<stdexec::inplace_stop_source> stop;
             RenderError failure;
         };
         ProgramPreparation programs;
@@ -87,7 +67,7 @@ namespace lux::render::runtime_detail
 
         [[nodiscard]] bool programsReady() const noexcept
         {
-            return !programs.active && !instance.requiresProducerPrograms();
+            return !programs.stop && !instance.requiresProducerPrograms();
         }
 
         FrameLayout input_layout;
@@ -95,7 +75,7 @@ namespace lux::render::runtime_detail
         // conflict with a live Run, including resources used only for GPU bindings.
         [[nodiscard]] std::span<const ResourceInstanceId> retainedResources() const & noexcept
         {
-            return storage_uses_.retained;
+            return resource_ids;
         }
         // Pointees belong to the retained domain; call metadata lives in stable Resource type slots.
         // No pointer into a relocatable instance record or Client payload is retained here.
@@ -132,7 +112,6 @@ namespace lux::render::runtime_detail
             std::uint32_t frame_count,
             std::uint32_t projection
         ) noexcept;
-        [[nodiscard]] RenderResult<void> retainStorage(ResourceInstanceId) noexcept;
         void selectViewParameters() noexcept;
         const detail::ViewParameterStorage* view_parameters = nullptr;
         std::uint64_t view_revision = 0;

@@ -108,7 +108,7 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
-        if (!data.beginBorrow())
+        if (!data.beginSubmission())
         {
             return cxx::unexpected(RenderError{kFrameContract});
         }
@@ -121,7 +121,7 @@ namespace lux::render
         auto slot = std::ranges::find(impl_->frame_borrows, &data);
         if (slot == impl_->frame_borrows.end()) std::terminate();
         *slot = nullptr;
-        data.finishBorrow();
+        data.completeSubmission();
     }
 
     RenderResult<void> RenderClient::send(CommandId command, ipc::IpcMessage& message, ResponseNode& receiver) noexcept

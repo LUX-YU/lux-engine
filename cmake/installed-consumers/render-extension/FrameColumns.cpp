@@ -145,6 +145,19 @@ namespace
         CHECK(copied_config && copied_config->label == "dynamic config");
         const auto schema = layout();
         CHECK(schema.channels().size() == 3 && schema.revision() == 3);
+        CHECK(!schema.key().valid());
+        auto independent = [&]()
+        {
+            std::vector<FrameChannel> channels(schema.channels().begin(), schema.channels().end());
+            std::string name{"test.frame.columns.temporary.type"};
+            auto& element = channels.front().element;
+            element = {element.hash(), name};
+            auto original = take(FrameLayout::create(channels, schema.revision()));
+            auto copy = original;
+            return take(FrameData::create<Resources>(copy));
+        }();
+        CHECK(independent.layout().channels().front().element.name() == "test.frame.columns.temporary.type");
+        CHECK(!independent.layoutKey().valid());
         CHECK(!makeFrameLayout(std::type_identity<std::tuple<ResourceA, ConflictingResource>>{}, 3));
         CHECK(!FrameLayout::create(schema.channels(), 0));
         std::vector<FrameChannel> reordered(schema.channels().begin(), schema.channels().end());
@@ -156,7 +169,8 @@ namespace
         CHECK(packet.getData<ResourceA, Element>().empty());
         CHECK(packet.appendData<ResourceA, Element>(0)->empty());
         CHECK(packet.reserve<ResourceA, Element>(2));
-        auto first = take(packet.appendData<ResourceA, Element>(2));
+        const auto resource_a_column = take(packet.resolveColumn<ResourceA, Element>());
+        auto first = take(packet.appendData(resource_a_column, 2));
         CHECK(first[0].value == 7 && first[1].value == 7);
         CHECK(reinterpret_cast<std::uintptr_t>(first.data()) % alignof(Element) == 0);
         first[0].value = 101;
@@ -183,9 +197,12 @@ namespace
         CHECK(!packet.writable() && !packet.seal());
         CHECK(!packet.reserve<ResourceA, Element>(0));
         CHECK(!packet.appendData<ResourceA, Element>(0));
-        CHECK(!packet.addData<ResourceA>(Element{}));
+        const auto blocked = packet.addData<ResourceA>(Element{});
+        CHECK(!blocked && blocked.error().type == kFrameContract);
         // Another CPU slot can grow while the first is sealed; no global pool or GPU slot is involved.
         auto other = take(FrameData::create<Resources>(schema));
+        const auto wrong_column = other.appendData(resource_a_column, 1);
+        CHECK(!wrong_column && wrong_column.error().type == kFrameContract);
         CHECK(other.appendData<ResourceA, Element>(8193));
         CHECK(packet.column(index).data == retained && packet.column(index).count == 3);
         packet.release(); // This leaf fixture did not submit the borrow to a Server.

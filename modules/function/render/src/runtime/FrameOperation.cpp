@@ -296,7 +296,7 @@ namespace lux::render::detail
             {
                 const auto& block = instance->uniform_blocks_[i];
                 const auto found = std::ranges::find(
-                    workspace_.uniforms, block.versions.get(), &SelectedUniformBlock::owner
+                    workspace_.uniforms, block.versions, &SelectedUniformBlock::owner
                 );
                 auto* version = found == workspace_.uniforms.end() ? nullptr : found->version;
                 if (!version)
@@ -309,7 +309,7 @@ namespace lux::render::detail
                         continue;
                     }
                     version = *selected;
-                    workspace_.uniforms.push_back({block.versions.get(), version});
+                    workspace_.uniforms.push_back({block.versions, version});
                 }
                 if (version->phase != UniformBlockVersions::EPhase::READY)
                 {

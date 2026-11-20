@@ -462,9 +462,12 @@ leases alongside the executable. The executable's recording tables carry slots a
 bindings for the recording workers. Barrier predecessors and History predicates use compiled slots. The diagnostic
 sidecar carries source Pass IDs, resource names and reuse reasons.
 
-The Effect retains its logical graph for future device and Target variants. Compilation links graph imports,
-preparation producers and constant writers to final slots. Job assembly binds native resources and creates
-producer instances from the shared plan. Each Job owns its writable frame bindings, transient resources and History.
+The Effect owns its logical graph. Each DeviceEntry owns the compiled variants for its device, keyed by Effect,
+Target contract and qualified imports. A matching Start joins an in-flight compilation or reuses the ready plan.
+The device removes a variant when its final Start or Job reader returns. Shared uniform buffers stay in the device's
+Effect pool until the Effect or device retires.
+The compiler links producers and constant writers to final slots. Job assembly borrows the plan and creates its own
+producer instances, writable frame bindings, transient resources and History.
 Standalone project GPU consumers can bind physical inputs directly.
 
 The `RenderGraphExecutable` contains a recording program with typed Raster, Compute and Transfer packet tables,
@@ -939,8 +942,8 @@ consume its response on later ticks before reusing that input.
 ## Resource lookup and commands
 
 Resource declarations and Storage implementations have separate identities. Each device's Device, Scene or View scope
-owns at most one instance of each declaration. Two declarations can reuse one StorageMeta and factory
-without sharing instance data. ResourceSet owns the instances; ResourceRegistry only indexes them.
+owns at most one instance of each declaration. Two declarations can reuse one typed factory implementation and
+register independent metadata. ResourceSet owns instances. ResourceRegistry owns registration metadata and indexes instances.
 
 Ordinary clients include `commands/ResourceCommands.hpp` and `resources/BuiltinResources.hpp`.
 They query or explicitly create the desired Resource before uploading:
@@ -968,11 +971,13 @@ share declaration/domain/device qualification; Query never constructs. Cold grap
 ResourceTypeId requirements. Start reuses that same creation path and retains no extra Resource owner. A failed
 attachment candidate does not remove already published resources. Preparation deduplicates ResourceInstanceId.
 
-Different declarations can share the exact StorageMeta and Factory while owning separate instances and Command
-associations. Repeated registration must agree on policy, creation defaults and methods. A resource command's
+Registration imports the Resource definition, command bindings and frame channels into stable Registry storage.
+The typed factory copies operation tables when it constructs the registration. The host keeps the callable code
+loaded until the Server and its outstanding operations have been destroyed. A resource command's
 instance selects its declaration first, then its exact thunk; implementation type only qualifies the final borrow.
-Stateless resource methods allocate no Handler object. Admitted asynchronous commands retain ResourceCommandUse
-through terminal delivery; Scene/View removal returns Busy while such a borrow exists. Removal revokes identities
+Stateless resource methods allocate no Handler object. Command admission registers an active Resource use.
+The terminal continuation ends that use on the Server before queuing the response. Scene/View removal returns Busy
+while an active use exists. Removal revokes identities
 before destruction, and dense record moves repair the index. References are allowed only within the same actual
 owning domain or its real ancestors on the same device.
 
@@ -1142,11 +1147,10 @@ writable FIF replica and invalidates the recording that references that block.
 
 ## CPU input columns
 
-`FrameLayout` describes channels by Resource declaration and element type. Construct its metadata with
-`makeFrameLayout(std::type_identity<std::tuple<Resources...>>{}, execution_revision)`. Repeated declarations
-share channels; distinct declarations using the same element do not. The revision belongs to the actual
-execution owner; capacity changes do not change it. Copies share immutable metadata identity, so frame admission
-compares identity rather than repeating ABI/name qualification. Layouts contain no client data or Storage pointers.
+`FrameLayout` owns the channel descriptions identified by Resource declaration and element type.
+`makeFrameLayout(std::type_identity<std::tuple<Resources...>>{}, revision)` creates a standalone typed schema.
+`QueryRenderJobInputLayout` returns an independent copy with a Server-issued `FrameLayoutKey`. Admission checks the
+Server instance and input revision. A Rebind with the same Target, channels and Resource identities retains the key.
 
 `FrameData::create<Resources>(layout, initial_capacities)` checks the complete typed contract and fixes its
 column directory. Each column owns one typed vector. `appendData<Resource, T>(count)` grows that column and
@@ -1156,9 +1160,9 @@ its old spans. Other columns and another CPU slot can grow independently. Reset 
 column means no update, and cross-column ordering does not express last-writer-wins semantics.
 
 `seal()` makes the owner immutable. Writes/reservations reject a sealed packet; reset, move and destruction
-are fatal ownership violations. RenderClient acquires an exclusive packet borrow at operation start and returns it
-on the caller thread before delivering the real terminal response, including pre-publication failure and host settlement.
-A second request cannot borrow the same in-flight slot. Sending or cancelling an accepted request does not return it.
+are fatal ownership violations. RenderClient moves the packet from sealed to in flight at operation start, then
+restores it to writable before terminal delivery on the caller thread. A second submission of the same slot fails.
+Sending or cancelling an accepted request does not return it.
 Raw IPC callers must retain the sealed owner and call `release()` only after the actual response or host settlement.
 Element metadata and code remain loaded until the packet owner is destroyed.
 
@@ -1169,7 +1173,7 @@ JobExecution holds the layout and its qualified bindings. The Server adopts `Upd
 For an EffectGraph Job, the layout includes the retained Resources with update channels in the Job's
 Device, Scene, or View scope. Repeated bindings of the same Resource contribute one batch.
 A packet-bearing `RequestRenderJob` first takes the Job's unique request credit, then adopts the packet during
-the same dispatch. The acknowledgement for a render request still follows native submission acceptance.
+the same dispatch. The acknowledgement for a render request follows native submission acceptance.
 Nonempty Resource batches are prechecked for exclusive commands before any write. Each Resource validates its
 own batch before applying it. Mesh instance updates change references, and Transform updates change matrix values.
 

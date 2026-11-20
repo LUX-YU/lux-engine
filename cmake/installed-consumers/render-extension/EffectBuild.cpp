@@ -2,6 +2,7 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectDiagnostic.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -1368,10 +1369,10 @@ int main(int argc, char** argv)
     CHECK(catalog.error.type == 0);
     const auto clear = std::ranges::find_if(catalog.capabilities, [](const EffectCapabilityInfo& capability)
     {
-        return capability.definition->identity.canonical_name == clear_node;
+        return capability.definition.identity.canonical_name == clear_node;
     });
     CHECK(clear != catalog.capabilities.end());
-    CHECK(clear->definition->identity.version == 1);
+    CHECK(clear->definition.identity.version == 1);
     CHECK(clear->implementations.size() == 1);
     CHECK(clear->implementations.front().identity == (ImplementationSelection{std::string{clear_node}, 1}));
     CHECK(call<CreateEffect>(client, {}).error.type == kCapabilityDeclaration);
@@ -1543,6 +1544,9 @@ int main(int argc, char** argv)
     CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);
     client.reset();
     server.reset();
+    CHECK(clear->definition.identity.canonical_name == clear_node);
+    CHECK(clear->definition.ports.front().name == "color");
+    CHECK(clear->implementations.front().identity == (ImplementationSelection{std::string{clear_node}, 1}));
     recordClearGraph(*execution, device);
     CHECK(verifyIndependentDevices(*execution, device, false));
     execution.reset();

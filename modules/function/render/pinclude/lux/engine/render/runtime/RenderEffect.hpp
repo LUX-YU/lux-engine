@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
@@ -58,8 +57,6 @@ namespace lux::render::runtime_detail
         struct NodeState final
         {
             using Destroy = void (*)(void*) noexcept;
-            // Value destruction returns into Render while the originating module is still pinned.
-            object::CodeLease code;
             std::unique_ptr<void, Destroy> value;
             cxx::basic_type_info type;
             graph::NodeId node;

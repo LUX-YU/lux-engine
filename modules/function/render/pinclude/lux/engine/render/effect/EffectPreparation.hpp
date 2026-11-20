@@ -40,7 +40,6 @@ namespace lux::render::runtime_detail
 
         struct Producer final
         {
-            object::CodeLease code;
             GraphPreparation declaration;
             graph::NodeId node;
         };

@@ -38,8 +38,16 @@ and publishes named outputs. Register node-targeted typed bindings with `registe
 locations in the selected implementation. Each live node can initialize one typed state. Commands select that state by
 Effect and NodeId before or after a Job starts.
 
-`ListEffectCapabilities` returns immutable definitions and implementation choices before a device exists.
+`ListEffectCapabilities` returns self-contained definitions and implementation choices before a device exists.
+The response owns its names and ports and can outlive the Server. Synchronous Catalog lookups borrow from
+the Catalog, whose sealed definitions remain stable during graph validation and lowering.
 Device and target qualification runs when the Job prepares its selected graph.
+
+Hosts keep registered extension and receiver code loaded while Render can invoke it. At shutdown close
+business admission, request stop, continue draining Client responses and completions, and join the Server thread.
+After join, call `RenderClient::serverStopped` so real responses settle before any remaining requests. Destroy
+the related messages, configurations, FrameData, operations, Client, and Server, and let their final callbacks
+and typed destructors return before unloading extension code.
 
 EffectGraph builds typed GPU work from the actual output format, sample count, Target kind, and device Shader ABI
 during `StartRenderJob`. Target-relative extents are evaluated by the instance. Compatible starts share one in-flight

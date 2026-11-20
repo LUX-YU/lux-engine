@@ -38,7 +38,7 @@ namespace
         return {semantic, std::move(name), {std::move(type), 1}, direction, graph::kUnlimitedFan, required};
     }
 
-    [[nodiscard]] std::shared_ptr<const CapabilityDefinition> registerCapability(
+    [[nodiscard]] const CapabilityDefinition* registerCapability(
         EffectCatalog& catalog, std::string name, std::vector<EffectPortDefinition> ports
     )
     {

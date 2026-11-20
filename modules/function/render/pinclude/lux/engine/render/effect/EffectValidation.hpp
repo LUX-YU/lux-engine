@@ -40,8 +40,9 @@ namespace lux::render::effect_detail
     struct ValidatedEffectNode final
     {
         graph::NodeId source;
-        std::shared_ptr<const CapabilityDefinition> capability;
-        std::shared_ptr<const EffectImplementation> implementation;
+        // Borrows the sealed Catalog for this cold validation and build only.
+        const CapabilityDefinition* capability;
+        const EffectImplementation* implementation;
         // Borrows the source EffectGraph owner during initialization/lowering only.
         std::string_view arguments;
         EffectTableRange pins;

@@ -413,7 +413,7 @@ namespace lux::render::runtime_detail
         plan.producers.reserve(definition.live_order.size());
         for (auto index : definition.live_order)
         {
-            const auto& [code, declaration, node] = definition.producers[index];
+            const auto& [declaration, node] = definition.producers[index];
             const auto state = std::ranges::find(effect.node_states, node, &RenderEffect::NodeState::node);
             std::vector<detail::LinkedInlineBlock> constants;
             std::vector<std::uint32_t> buffers;
@@ -435,7 +435,6 @@ namespace lux::render::runtime_detail
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {index}});
 
             auto& linked = plan.producers.emplace_back(
-                code,
                 std::move(*prototype),
                 std::vector<std::uint32_t>{},
                 std::vector<std::uint32_t>{},

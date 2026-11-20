@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/function/graph/GraphNodeTypeIdentity.hpp>
-#include <lux/engine/object/CodeLease.hpp>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -41,6 +40,13 @@ namespace lux::render
         [[nodiscard]] bool operator==(const ImplementationSelection&) const noexcept = default;
     };
 
+    // Discovery data for a registered implementation. It carries no executable operations.
+    struct ImplementationOption final
+    {
+        ImplementationSelection identity;
+        std::string display_name;
+    };
+
     // Registered once, then immutable. A Capability is the graph NodeType.
     // Implementations cannot add/reorder pins or change this public command contract.
     struct CapabilityDefinition final
@@ -50,6 +56,5 @@ namespace lux::render
         std::vector<EffectPortDefinition> ports;
         std::vector<CommandId> commands;
         std::uint32_t max_instances = 0; // 0 = unbounded; otherwise checked across all nodes in this graph.
-        object::CodeLease code = object::CodeLease::builtin();
     };
 }

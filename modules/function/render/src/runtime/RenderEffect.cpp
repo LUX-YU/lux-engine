@@ -74,7 +74,7 @@ namespace lux::render
         output.capabilities.reserve(definitions.size());
         for (const auto& definition : definitions)
         {
-            const auto& identity = definition->identity;
+            const auto& identity = definition.identity;
             output.capabilities.push_back({definition, effect_catalog_.listImplementations(identity.id, identity.version)});
         }
         output.error = {};

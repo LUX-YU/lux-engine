@@ -42,8 +42,7 @@ namespace lux::render::runtime_detail
         class NodeInitialization final : public EffectInitializationContext
         {
         public:
-            NodeInitialization(graph::NodeId node, const object::CodeLease& code, RenderEffect& owner) noexcept
-                : node_(node), code_(code), owner_(owner)
+            NodeInitialization(graph::NodeId node, RenderEffect& owner) noexcept : node_(node), owner_(owner)
             {
             }
 
@@ -60,15 +59,14 @@ namespace lux::render::runtime_detail
             ) noexcept override
             {
                 if (has_state_) return cxx::unexpected(RenderError{kCapabilityConflict});
-                owner_.node_states.push_back({code_, std::unique_ptr<void, RenderEffect::NodeState::Destroy>{
-                    value, destroy
-                }, type, node_, bytes});
+                owner_.node_states.push_back({
+                    std::unique_ptr<void, RenderEffect::NodeState::Destroy>{value, destroy}, type, node_, bytes
+                });
                 has_state_ = true;
                 return {};
             }
 
             graph::NodeId node_;
-            const object::CodeLease& code_;
             RenderEffect& owner_;
             bool has_state_ = false;
         };
@@ -294,7 +292,7 @@ namespace lux::render::runtime_detail
             {
                 if (preparation_.producers.size() >= kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
-                preparation_.producers.push_back({node_.implementation->code, std::move(recipe), node_.source});
+                preparation_.producers.push_back({std::move(recipe), node_.source});
                 return {};
             }
 
@@ -407,7 +405,7 @@ namespace lux::render::runtime_detail
         {
             const auto& node = validated->nodes[index];
             if (!node.live) continue;
-            NodeInitialization context{node.source, node.implementation->code, candidate};
+            NodeInitialization context{node.source, candidate};
             if (auto initialized = node.implementation->initialize(context, node.arguments); !initialized)
             {
                 return cxx::unexpected(reportEffectFailure(

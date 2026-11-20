@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/core/execution/CompletionCode.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -24,7 +23,6 @@ namespace lux::render
                 void (*)(ResponseNode&, lux::platform::ipc::IpcMessage&&, RenderError) noexcept;
             Deliver deliver;
             cxx::basic_type_info response_type;
-            std::shared_ptr<const void> code;
         };
 
         using CommonCommands = std::tuple<
@@ -117,10 +115,7 @@ namespace lux::render
                     typename C::Request& input,
                     Receiver receiver
                 ) noexcept
-                    : ResponseNode{
-                          &finish, response_type_info,
-                          execution::detail::getCompletionCode(stdexec::get_env(receiver))
-                      },
+                    : ResponseNode{&finish, response_type_info},
                       client(client), command(command), input(input), receiver(std::move(receiver))
                 {
                 }

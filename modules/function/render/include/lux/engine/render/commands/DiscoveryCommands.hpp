@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/effect/EffectCatalog.hpp>
+#include <lux/engine/render/effect/CapabilityDefinition.hpp>
 #include <string>
 #include <vector>
 
@@ -9,7 +9,7 @@ namespace lux::render
 {
     struct EffectCapabilityInfo final
     {
-        std::shared_ptr<const CapabilityDefinition> definition;
+        CapabilityDefinition definition;
         std::vector<ImplementationOption> implementations;
     };
 

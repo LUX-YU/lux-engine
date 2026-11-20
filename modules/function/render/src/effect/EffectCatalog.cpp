@@ -48,13 +48,21 @@ namespace lux::render
         }
     }
 
+    EffectCatalog::EffectCatalog() noexcept = default;
+
+    EffectCatalog::~EffectCatalog() noexcept = default;
+
+    EffectCatalog::EffectCatalog(EffectCatalog&&) noexcept = default;
+
+    EffectCatalog& EffectCatalog::operator=(EffectCatalog&&) noexcept = default;
+
     RenderResult<void> EffectCatalog::addCapability(std::unique_ptr<CapabilityDefinition> definition) noexcept
     {
         if (sealed_ || !definition) return cxx::unexpected(RenderError{kCapabilityDeclaration});
         const auto& identity = definition->identity;
         const bool is_invalid_identity = !identity.id.valid() || identity.canonical_name.empty() ||
             identity.version == 0 || identity.id != graph::nodeTypeId(identity.canonical_name);
-        if (is_invalid_identity || !definition->code.valid() || !validPorts(definition->ports))
+        if (is_invalid_identity || !validPorts(definition->ports))
             return cxx::unexpected(RenderError{kCapabilityDeclaration});
         for (const auto& existing : capabilities_)
         {
@@ -72,9 +80,7 @@ namespace lux::render
         {
             return capabilityKey(*item);
         });
-        auto code = definition->code;
-        // Pin while allocation is uniquely owned. No chains of shared-owner wrappers.
-        capabilities_.insert(position, object::pinCodeOwner(std::move(code), std::move(definition)));
+        capabilities_.insert(position, std::move(definition));
         return {};
     }
 
@@ -86,8 +92,7 @@ namespace lux::render
         const auto capability = findCapability(implementation->capability, implementation->capability_version);
         const bool is_invalid_identity = implementation->identity.canonical_name.empty() ||
             implementation->identity.version == 0;
-        const bool is_invalid_code = !implementation->initialize || !implementation->build ||
-            !implementation->code.valid();
+        const bool is_invalid_code = !implementation->initialize || !implementation->build;
         if (!capability || is_invalid_identity || is_invalid_code)
             return cxx::unexpected(RenderError{kCapabilityDeclaration});
         auto supported = implementation->supported_outputs;
@@ -117,28 +122,27 @@ namespace lux::render
         });
         if (position != implementations_.end() && implementationKey(**position) == key)
             return cxx::unexpected(RenderError{kCapabilityConflict});
-        auto code = implementation->code;
-        implementations_.insert(position, object::pinCodeOwner(std::move(code), std::move(implementation)));
+        implementations_.insert(position, std::move(implementation));
         return {};
     }
 
-    std::shared_ptr<const CapabilityDefinition>
-    EffectCatalog::findCapability(graph::NodeTypeId capability, std::uint32_t version) const noexcept
+    const CapabilityDefinition*
+    EffectCatalog::findCapability(graph::NodeTypeId capability, std::uint32_t version) const & noexcept
     {
         const auto key = std::pair{capability.value, version};
         const auto found = std::ranges::lower_bound(capabilities_, key, {}, [](const auto& item) noexcept
         {
             return capabilityKey(*item);
         });
-        if (found == capabilities_.end() || capabilityKey(**found) != key) return {};
-        return *found;
+        if (found == capabilities_.end() || capabilityKey(**found) != key) return nullptr;
+        return found->get();
     }
 
-    std::shared_ptr<const EffectImplementation> EffectCatalog::findImplementation(
+    const EffectImplementation* EffectCatalog::findImplementation(
         graph::NodeTypeId capability,
         std::uint32_t capability_version,
         const ImplementationSelection& selection
-    ) const noexcept
+    ) const & noexcept
     {
         const auto key = std::tuple{
             capability.value, capability_version, std::string_view{selection.canonical_name}, selection.version
@@ -147,8 +151,8 @@ namespace lux::render
         {
             return implementationKey(*item);
         });
-        if (found == implementations_.end() || implementationKey(**found) != key) return {};
-        return *found;
+        if (found == implementations_.end() || implementationKey(**found) != key) return nullptr;
+        return found->get();
     }
 
     std::vector<ImplementationOption>

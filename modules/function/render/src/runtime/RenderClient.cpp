@@ -145,7 +145,7 @@ namespace lux::render
 
     void RenderClient::deliver(ResponseNode& node, ipc::IpcMessage&& message, RenderError error) noexcept
     {
-        auto code = std::move(node.code); // Completion can destroy its operation and release its module reference.
+        // The receiver can destroy the operation. Delivery returns without accessing it again.
         node.deliver(node, std::move(message), error);
     }
 

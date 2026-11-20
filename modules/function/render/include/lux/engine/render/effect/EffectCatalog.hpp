@@ -3,6 +3,7 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/effect/CapabilityDefinition.hpp>
 #include <memory>
+#include <ranges>
 #include <span>
 #include <vector>
 
@@ -10,23 +11,17 @@ namespace lux::render
 {
     struct EffectImplementation;
 
-    // UI data. No shader, build callback, resource factory or command-handler address.
-    struct ImplementationOption final
-    {
-        ImplementationSelection identity;
-        std::string display_name;
-    };
-
-    // Owner-thread assembly, then seal and publish as shared_ptr<const EffectCatalog>.
-    // There is no registration/mutation on the worker or frame hot path.
+    // Owner-thread assembly followed by sealing. Cold lookups borrow immutable definitions
+    // from this Catalog while the Server protects their lifetime.
     class LUX_RENDER_PUBLIC EffectCatalog final
     {
     public:
-        EffectCatalog() noexcept = default;
+        EffectCatalog() noexcept;
+        ~EffectCatalog() noexcept;
         EffectCatalog(const EffectCatalog&) = delete;
         EffectCatalog& operator=(const EffectCatalog&) = delete;
-        EffectCatalog(EffectCatalog&&) noexcept = default;
-        EffectCatalog& operator=(EffectCatalog&&) noexcept = default;
+        EffectCatalog(EffectCatalog&&) noexcept;
+        EffectCatalog& operator=(EffectCatalog&&) noexcept;
 
         [[nodiscard]] RenderResult<void> addCapability(std::unique_ptr<CapabilityDefinition> definition) noexcept;
         [[nodiscard]] RenderResult<void>
@@ -34,28 +29,35 @@ namespace lux::render
         void seal() noexcept { sealed_ = true; }
         [[nodiscard]] bool sealed() const noexcept { return sealed_; }
 
-        [[nodiscard]] std::span<const std::shared_ptr<const CapabilityDefinition>> listCapabilities() const & noexcept
+        [[nodiscard]] auto listCapabilities() const & noexcept
         {
-            return capabilities_;
+            return std::views::transform(capabilities_, [](const auto& definition) noexcept -> const CapabilityDefinition&
+            {
+                return *definition;
+            });
         }
 
-        std::span<const std::shared_ptr<const CapabilityDefinition>> listCapabilities() const && = delete;
+        void listCapabilities() const && = delete;
 
         [[nodiscard]] std::vector<ImplementationOption>
         listImplementations(graph::NodeTypeId capability, std::uint32_t version) const noexcept;
 
         // Cold compilation lookup. Ordinary graph/editor users only need list APIs.
-        [[nodiscard]] std::shared_ptr<const CapabilityDefinition>
-        findCapability(graph::NodeTypeId capability, std::uint32_t version) const noexcept;
-        [[nodiscard]] std::shared_ptr<const EffectImplementation> findImplementation(
+        [[nodiscard]] const CapabilityDefinition*
+        findCapability(graph::NodeTypeId capability, std::uint32_t version) const & noexcept;
+        const CapabilityDefinition* findCapability(graph::NodeTypeId, std::uint32_t) const && = delete;
+
+        [[nodiscard]] const EffectImplementation* findImplementation(
             graph::NodeTypeId capability,
             std::uint32_t capability_version,
             const ImplementationSelection& selection
-        ) const noexcept;
+        ) const & noexcept;
+        const EffectImplementation*
+        findImplementation(graph::NodeTypeId, std::uint32_t, const ImplementationSelection&) const && = delete;
 
     private:
-        std::vector<std::shared_ptr<const CapabilityDefinition>> capabilities_;
-        std::vector<std::shared_ptr<const EffectImplementation>> implementations_;
+        std::vector<std::unique_ptr<const CapabilityDefinition>> capabilities_;
+        std::vector<std::unique_ptr<const EffectImplementation>> implementations_;
         bool sealed_ = false;
     };
 }

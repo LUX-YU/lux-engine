@@ -149,15 +149,13 @@ namespace lux::render
     }
 
     RenderResult<CommandBindingLocation>
-    RenderServer::registerNodeEffectCommand(const CommandBinding& binding, object::CodeLease code) noexcept
+    RenderServer::registerNodeEffectCommand(const CommandBinding& binding) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        if (!code.valid() || !binding.isNodeEffectCommand())
+        if (!binding.isNodeEffectCommand())
             return cxx::unexpected(RenderError{kCommandContract});
-        auto& runtime = *impl_->runtime_;
-        auto& registry = runtime.command_registry_;
+        auto& registry = impl_->runtime_->command_registry_;
         if (auto valid = registry.validateStaticBindings({&binding, 1}); !valid) return cxx::unexpected(valid.error());
-        runtime.effect_command_code_.push_back(std::move(code));
         return registry.publishBinding({}, binding);
     }
 

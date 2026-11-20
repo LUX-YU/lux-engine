@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/effect/CapabilityDefinition.hpp>
@@ -28,6 +27,5 @@ namespace lux::render
         std::vector<CommandBindingLocation> command_bindings;
         Initialize initialize = nullptr;
         Build build = nullptr;
-        object::CodeLease code = object::CodeLease::builtin();
     };
 }

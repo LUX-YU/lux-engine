@@ -148,7 +148,7 @@ namespace lux::render::effect_detail
                 });
             }
             result.nodes.push_back({
-                record.id, std::move(capability), std::move(implementation), payload->arguments,
+                record.id, capability, implementation, payload->arguments,
                 {first_pin, static_cast<std::uint32_t>(actual_count)}, false
             });
             capability_instances.push_back(record.type);

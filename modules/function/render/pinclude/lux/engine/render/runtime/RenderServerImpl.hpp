@@ -70,7 +70,6 @@ namespace lux::render
                 const auto* entry = devices_.find(id);
                 return entry ? entry->get() : nullptr;
             }
-            std::vector<object::CodeLease> effect_command_code_;
             CommandRegistry command_registry_;
             cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
             cxx::StableSlotMap<VRenderTarget, TargetTag> targets_;

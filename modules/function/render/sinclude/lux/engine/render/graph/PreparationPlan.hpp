@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/render/extensions/execution/InstanceDataPrototype.hpp>
 #include <vector>
 
@@ -14,8 +13,6 @@ namespace lux::render::detail
 
     struct LinkedPreparationProducer final
     {
-        // The producer's config payload and instantiation thunk may originate in this module.
-        object::CodeLease code;
         InstanceDataPrototype prototype;
         std::vector<std::uint32_t> inputs;
         std::vector<std::uint32_t> outputs;

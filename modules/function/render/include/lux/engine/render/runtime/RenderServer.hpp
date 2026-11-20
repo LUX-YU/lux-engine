@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -125,9 +124,7 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<void> registerEffectCapability(CapabilityDefinition) noexcept;
         [[nodiscard]] RenderResult<void> registerEffectImplementation(EffectImplementation) noexcept;
-        [[nodiscard]] RenderResult<CommandBindingLocation> registerNodeEffectCommand(
-            const CommandBinding&, object::CodeLease = object::CodeLease::builtin()
-        ) noexcept;
+        [[nodiscard]] RenderResult<CommandBindingLocation> registerNodeEffectCommand(const CommandBinding&) noexcept;
 
         // Stateless typed functions use the same command directory without a dummy Handler owner.
         // Install these bindings during serialized setup. Query IDs through IPC while running.

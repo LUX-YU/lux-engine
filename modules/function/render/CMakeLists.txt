@@ -16,10 +16,6 @@ if(NOT TARGET lux::engine::function::graph)
     find_package(lux-engine-function CONFIG REQUIRED COMPONENTS graph)
 endif()
 
-if(NOT TARGET lux::engine::core::object)
-    find_package(lux-engine-core CONFIG REQUIRED COMPONENTS object)
-endif()
-
 find_package(Vulkan 1.3 REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
@@ -285,7 +281,7 @@ target_link_libraries(render
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
         STDEXEC::stdexec lux::cxx::execution lux::engine::core::core_execution
-        lux::engine::function::graph lux::engine::core::object
+        lux::engine::function::graph
     PRIVATE NRI Eigen3::Eigen lux::engine::core::math
         lux::engine::core::serialization
         spirv-cross-c SPIRV-Tools-static
@@ -296,7 +292,7 @@ component_add_transitive_commands(render
     "find_package(stdexec CONFIG REQUIRED GLOBAL)"
     "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution)"
-    "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values object)"
+    "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
     "find_package(lux-engine-function CONFIG REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types shader_metadata)"
     "find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)"

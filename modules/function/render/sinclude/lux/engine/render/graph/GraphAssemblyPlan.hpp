@@ -13,6 +13,8 @@ namespace lux::render::detail
         std::string source_field;
         rdesc::ShaderMember destination;
         std::uint32_t source_offset = 0;
+
+        bool operator==(const ParameterUse&) const noexcept = default;
     };
 
     struct GraphAssemblyPlan final

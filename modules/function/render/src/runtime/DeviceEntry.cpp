@@ -78,26 +78,26 @@ namespace lux::render::detail
         return child == scope.views.end() ? nullptr : &child->second;
     }
 
-    bool DeviceEntry::scopedResourceCommands(SceneId scene, ViewId view) const noexcept
+    bool DeviceEntry::scopedResourceBorrows(SceneId scene, ViewId view) const noexcept
     {
-        const auto has_commands = [](const SceneResources& scope) noexcept
+        const auto has_resource_borrows = [](const SceneResources& scope) noexcept
         {
-            return scope.resources.hasCommands() ||
-                std::ranges::any_of(scope.views, [](const auto& child) noexcept { return child.second.hasCommands(); });
+            return scope.resources.hasBorrows() ||
+                std::ranges::any_of(scope.views, [](const auto& child) noexcept { return child.second.hasBorrows(); });
         };
         if (scene.isNull())
         {
             return std::ranges::any_of(scene_resources_, [&](const auto& entry) noexcept
             {
-                return has_commands(entry.second);
+                return has_resource_borrows(entry.second);
             });
         }
 
         const auto found = scene_resources_.find({scene.index, scene.gen});
         if (found == scene_resources_.end()) return false;
-        if (view.isNull()) return has_commands(found->second);
+        if (view.isNull()) return has_resource_borrows(found->second);
         const auto child = found->second.views.find({view.index, view.gen});
-        return child != found->second.views.end() && child->second.hasCommands();
+        return child != found->second.views.end() && child->second.hasBorrows();
     }
 
     void DeviceEntry::eraseResourceScope(SceneId scene, ViewId view) noexcept
@@ -116,7 +116,7 @@ namespace lux::render::detail
     bool DeviceEntry::hasBorrows() const noexcept
     {
         const bool has_uploads = upload_pending || (uploader_ && uploader_->hasPendingTransfers());
-        return pending_starts || has_uploads || resources_.hasCommands() || scopedResourceCommands() ||
-            round.operation || !round.input_updates.empty() || !nativeIdle();
+        return pending_starts || has_uploads || resources_.hasBorrows() || scopedResourceBorrows() ||
+            round.operation || !nativeIdle();
     }
 } // namespace lux::render::detail

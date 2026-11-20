@@ -142,7 +142,9 @@ namespace lux::render::detail
                 reason = EResourceReuse::HISTORY;
                 continue;
             }
-            if (resource.origin == EGraphOrigin::IMPORTED || resource.shared_table)
+            const bool runtime_bound =
+                resource.origin == EGraphOrigin::IMPORTED || resource.origin == EGraphOrigin::FRAME_BUFFER;
+            if (runtime_bound || resource.shared_table)
             {
                 reason = EResourceReuse::EXTERNAL;
                 continue;
@@ -214,7 +216,8 @@ namespace lux::render::detail
         const PhysicalResourcePlan& physical,
         std::span<const CompiledResource> resources,
         const RecordingProgram& recording,
-        std::span<const nri::MemoryDesc> requirements
+        std::span<const nri::MemoryDesc> requirements,
+        nri::GraphicsAPI backend
     ) noexcept
     {
         std::vector<MemoryPlacement> placements(physical.slots.size());
@@ -251,6 +254,8 @@ namespace lux::render::detail
                 continue;
             }
             placement.reason = EMemoryPlacement::DISTINCT_REQUIREMENTS;
+            const bool requires_compatible_layout = backend == nri::GraphicsAPI::D3D12 &&
+                std::holds_alternative<GraphImageDesc>(resources[slot.resource.index].description);
             for (auto& tail : tails)
             {
                 const auto& previous = physical.slots[tail];
@@ -271,6 +276,13 @@ namespace lux::render::detail
                 }
                 if (ordered)
                 {
+                    // The placed-memory handoff currently uses a global barrier. On D3D12 the
+                    // same access masks can share that boundary without a texture layout transition.
+                    if (requires_compatible_layout && previous.accesses != slot.accesses)
+                    {
+                        placement.reason = EMemoryPlacement::INCOMPATIBLE_LAYOUT;
+                        continue;
+                    }
                     placement = {placements[tail].allocation, EMemoryPlacement::ALIASED};
                     tail = i;
                     break;

@@ -1,5 +1,3 @@
-#include <lux/engine/render/features/common/ParameterLayout.hpp>
-#include <lux/engine/render/resource/view/CameraParameters.hpp>
 #include <exception>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
@@ -31,7 +29,6 @@ namespace lux::render
         bindFrameworkCommand<CreateScene, &Impl::createScene>();
         bindFrameworkCommand<RemoveScene, &Impl::removeScene>();
         bindFrameworkCommand<CreateView, &Impl::createView>();
-        bindFrameworkCommand<UpdateViewCamera, &Impl::updateViewCamera>();
         bindFrameworkCommand<QueryRenderJobInputLayout, &Impl::queryFrameInputLayout>();
         bindFrameworkCommand<UpdateFrameData, &Impl::updateFrameData>();
         bindFrameworkCommand<RemoveView, &Impl::removeView>();
@@ -41,7 +38,6 @@ namespace lux::render
         bindFrameworkCommand<SetTargetActive, &Impl::setTargetActive>();
         bindCreateEffectCommand();
         bindFrameworkCommand<RemoveEffect, &Impl::removeEffect>();
-        bindFrameworkCommand<SetEffectParameters, &Impl::setEffectParameters>();
         bindJobCommands();
         bindFrameworkCommand<Stop, &Impl::stopCommand>();
         bindFrameworkCommand<QueryRenderStats, &Impl::queryRenderStats>();
@@ -49,7 +45,7 @@ namespace lux::render
         bindFrameworkCommand<RemoveDeviceSession, &Impl::removeDeviceSession>();
         bindFrameworkCommand<QueryRenderDevice, &Impl::queryRenderDevice>();
         bindFrameworkCommand<QueryExecutionProgress, &Impl::queryExecutionProgress>();
-        bindFrameworkCommand<ListCapabilities, &Impl::listCapabilities>();
+        bindFrameworkCommand<ListEffectCapabilities, &Impl::listEffectCapabilities>();
         bindFrameworkCommand<ListCommands, &Impl::listCommands>();
         runtime_->resources_.setOutputResolver(this, [](void* owner, const detail::DeviceSession& device, TargetId id, std::uint32_t slot) noexcept
             -> RenderResult<ResourceRegistry::SampledImage>
@@ -470,13 +466,11 @@ namespace lux::render
         }
     }
 
-    RenderResult<void> RenderServer::Impl::applyParameterSources(detail::DeviceEntry& device, std::uint32_t slot) noexcept
+    RenderResult<void> RenderServer::Impl::selectGraphInputs(detail::DeviceEntry& device, std::uint32_t slot) noexcept
     {
         for (const auto& output : device.round.outputs)
         {
-            const auto& content = runtime_->jobs_.find(output.job)->content;
             auto& execution = *output.execution;
-            const auto& view = *runtime_->scenes_.find(content.scene)->views.find(content.view);
             auto& instance = execution.instance;
             for (const auto& imported : execution.target_images)
             {
@@ -484,31 +478,7 @@ namespace lux::render
                 if (!sampled) return cxx::unexpected(sampled.error());
                 instance.bindImage(imported.resource, slot, *const_cast<nri::Texture*>(sampled->image));
             }
-            if (execution.camera_revision != view.camera_revision)
-            {
-                detail::CameraParameters camera;
-                if (auto encoded = detail::projectCameraParameters(view.camera,
-                    std::as_writable_bytes(std::span{&camera, 1})); !encoded) return encoded;
-                if (auto applied = instance.setParameterSource(EParameterSource::VIEW,
-                    std::as_bytes(std::span{&camera, 1})); !applied) return applied;
-                if (instance.usesParameterSource(EParameterSource::VIEW))
-                {
-                    const auto& viewport = view.camera.viewport;
-                    instance.setViewport({viewport[0], viewport[1], viewport[2], viewport[3]});
-                }
-                execution.camera_revision = view.camera_revision;
-            }
-            const auto& effect = execution.recipe.effect;
-            const auto revision = effect.parameterRevision();
-            if (execution.effect_parameter_revision != revision)
-            {
-                if (auto applied = instance.setParameterSource(EParameterSource::EFFECT, effect.parameterBytes());
-                    !applied)
-                {
-                    return applied;
-                }
-                execution.effect_parameter_revision = revision;
-            }
+            execution.selectViewParameters();
         }
         return {};
     }
@@ -806,6 +776,10 @@ namespace lux::render
             if (!safe) std::terminate();
         }
         if (entry->hasBorrows()) std::terminate();
+        for (auto& effect : runtime_->effects_)
+        {
+            std::erase_if(effect.uniform_pools, [id](const auto& pool) noexcept { return pool.device == id; });
+        }
         runtime_->devices_.erase(id);
         co_return AckResponse{};
     }
@@ -933,7 +907,9 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
-        const auto* call = effect->findCommand(command);
+        const auto node = entry.effect_node(request);
+        if (!node.valid()) return cxx::unexpected(RenderError{kCommandContract});
+        const auto* call = effect->findCommand(command, node);
         if (!call) return cxx::unexpected(RenderError{kCommandContract});
         return *call;
     }
@@ -1015,7 +991,7 @@ namespace lux::render
         {
             const bool device_pending = std::ranges::any_of(runtime_->devices_, [](const auto& device) noexcept
             {
-                return device->round.operation || !device->round.input_updates.empty() ||
+                return device->round.operation ||
                     device->upload_pending || !device->nativeIdle();
             });
             return device_pending || preparing_execution_ || !server_context_.is_idle() || !response_outbox_.empty();
@@ -1117,7 +1093,7 @@ namespace lux::render
                 if (failure.type) failDevice(device, failure);
                 const bool can_admit = admitting && !stop_requested_.load() && !device.admissionError().type;
                 if (can_admit) progressTargetFlights(device);
-                progressed |= progressInputUpdates(device);
+
                 if (can_admit) progressed |= progressProgramPreparations(device);
                 progressed |= progressFrame(device);
                 if (!device.retiring) progressUploads(device);
@@ -1153,6 +1129,7 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
+        effect_catalog_.seal();
         if (!stop_requested_.load())
         {
             runtime_->command_registry_.activateHandlers(runtime_->resources_);
@@ -1222,7 +1199,9 @@ namespace lux::render
             discarded_preparations_.load(std::memory_order_relaxed),
             job_selection_calls_.load(std::memory_order_acquire),
             job_selection_growths_.load(std::memory_order_relaxed),
-            job_topology_growths_.load(std::memory_order_relaxed)
+            job_topology_growths_.load(std::memory_order_relaxed),
+            raster_geometry_ranges_.load(std::memory_order_relaxed),
+            raster_geometry_bytes_.load(std::memory_order_relaxed)
         };
 #else
         return std::nullopt;

@@ -1,18 +1,29 @@
 #pragma once
 
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
+#include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <string>
 #include <vector>
 
 namespace lux::render
 {
-    struct ListCapabilities final
+    struct EffectCapabilityInfo final
+    {
+        std::shared_ptr<const CapabilityDefinition> definition;
+        std::vector<ImplementationOption> implementations;
+    };
+
+    struct ListEffectCapabilities final
     {
         static constexpr bool failure_safe = true;
-        static constexpr std::string_view name = "render.capabilities.list";
-        using Request = CapabilityQuery;
-        using Response = CapabilityList;
+        static constexpr std::string_view name{"render.effect.capabilities.list"};
+        using Request = EmptyRequest;
+
+        struct Response final
+        {
+            RenderError error{};
+            std::vector<EffectCapabilityInfo> capabilities;
+        };
     };
 
     struct CommandInfo final

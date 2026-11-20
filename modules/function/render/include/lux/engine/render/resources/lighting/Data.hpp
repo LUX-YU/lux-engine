@@ -65,6 +65,22 @@ namespace lux::render
         LightShadowSettings shadows;
     };
 
+    struct ShadowLightRecord final
+    {
+        LightId id;
+        VDirectLight value; // Spatial projection fields. Shading-only fields use their default values.
+        LightShadowSettings settings;
+        std::uint32_t dense_index = 0;
+    };
+
+    struct ShadowLightSnapshot final
+    {
+        // All lighting records contribute to the dense lighting-table offsets.
+        std::array<std::uint32_t, 3> counts{};
+        std::vector<ShadowLightRecord> casters;
+        std::uint64_t revision = 0;
+    };
+
     struct LightData final
     {
         std::uint64_t sequence = 0;

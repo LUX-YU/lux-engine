@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/resources/material/Data.hpp>
+#include <span>
 
 namespace lux::render::MaterialCommands
 {
@@ -93,6 +94,25 @@ namespace lux::render::MaterialCommands
         [[nodiscard]] static MaterialProgramId resourceId(const Request& request) noexcept
         {
             return request.program;
+        }
+    };
+
+    struct UpdateColor final
+    {
+        static constexpr std::string_view name = "lux.render.material.update_color";
+        using Data = MaterialColorUpdate;
+
+        struct Request final
+        {
+            ResourceInstanceId resource;
+            std::span<const Data> updates;
+        };
+
+        using Response = AckResponse;
+
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
+        {
+            return request.resource;
         }
     };
 

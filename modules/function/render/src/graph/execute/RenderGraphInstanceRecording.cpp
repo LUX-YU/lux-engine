@@ -148,7 +148,8 @@ namespace lux::render::detail
                 draws.dependency_reads = draws.reads;
                 frame.invalidateImportedBindings();
             }
-            if (dynamic && !draws.sections.empty())
+            const bool has_feature_sections = dynamic && !dynamic->producer_stream && !draws.sections.empty();
+            if (draws.has_explicit_sections || has_feature_sections)
             {
                 continue; // The feature supplied explicit per-layer rendering sections for this reusable slice.
             }
@@ -192,7 +193,8 @@ namespace lux::render::detail
                 area.max_depth,
                 true
             };
-            section.parameter_size = dynamic ? static_cast<std::uint32_t>(draws.parameters.size())
+            section.parameter_size = dynamic ? (dynamic->producer_stream ? 0 :
+                                                  static_cast<std::uint32_t>(draws.parameters.size()))
                                      : streamed->partial_parameters
                                          ? static_cast<std::uint32_t>(compiled.parameter_size)
                                          : 0;

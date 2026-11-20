@@ -12,6 +12,14 @@ if(NOT TARGET lux::engine::core::serialization)
     find_package(lux-engine CONFIG REQUIRED COMPONENTS core::serialization)
 endif()
 
+if(NOT TARGET lux::engine::function::graph)
+    find_package(lux-engine-function CONFIG REQUIRED COMPONENTS graph)
+endif()
+
+if(NOT TARGET lux::engine::core::object)
+    find_package(lux-engine-core CONFIG REQUIRED COMPONENTS object)
+endif()
+
 find_package(Vulkan 1.3 REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
@@ -27,20 +35,28 @@ generate_visibility_header(
 )
 
 set(render_sources
+    src/effect/DepthPyramid.cpp
+    src/effect/MeshVisibility.cpp
+    src/effect/MeshSurfaceStream.cpp
+    src/effect/EffectCatalog.cpp
+    src/effect/EffectGraphBuild.cpp
+    src/effect/UniformBlockVersions.cpp
+    src/effect/EffectGraph.cpp
+    src/effect/EffectPreparation.cpp
+    src/effect/EffectValidation.cpp
+    src/effect/Lighting.cpp
+    src/effect/ToneMapping.cpp
     src/device/CopyEncoding.cpp
     src/runtime/RenderClient.cpp
     src/frame/FrameLayout.cpp
     src/frame/FrameData.cpp
-    src/resource/view/CameraInputHandler.cpp
+    src/resource/transform/TransformStorage.cpp
+    src/resource/transform/TransformReplicas.cpp
+    src/resource/view/ViewParameterStorage.cpp
     src/core/Target.cpp
     src/core/Error.cpp
     src/core/RasterViewport.cpp
     src/commands/Command.cpp
-    src/capabilities/CapabilityComposition.cpp
-    src/capabilities/RasterSurface.cpp
-    src/capabilities/DeferredLighting.cpp
-    src/capabilities/MeshShadows.cpp
-    src/capabilities/RenderPresets.cpp
     src/resource/ResourceDefinition.cpp
     src/resource/StorageMeta.cpp
     src/resource/ResourceRegistry.cpp
@@ -51,27 +67,14 @@ set(render_sources
     src/graph/RenderGraphBuilder.cpp
     src/graph/RenderGraphAnalysis.cpp
     src/graph/Diagnostics.cpp
-    src/graph/FeatureAssembly.cpp
-    src/graph/FeatureBuildContext.cpp
-    src/resource/view/CameraParameters.cpp
+    src/resource/view/ViewParameterLayout.cpp
     src/features/mesh/RasterMesh.cpp
-    src/features/mesh/MaterialMeshRaster.cpp
-    src/features/mesh/MeshDepthRaster.cpp
-    src/features/mesh/HzbFeature.cpp
-    src/features/mesh/GBufferFeature.cpp
-    src/features/lighting/DeferredLightingFeature.cpp
-    src/features/lighting/ClusteredLightingFeature.cpp
-    src/features/shadow/ShadowMapFeature.cpp
+    src/features/lighting/ClusteredLightingWork.cpp
     src/features/shadow/ShadowProjection.cpp
-    src/features/shadow/ShadowProjectionBinding.cpp
-    src/features/mesh/MeshVisibilityFeature.cpp
-    src/features/shadow/MeshShadowFeature.cpp
-    src/features/postprocess/TonemapFeature.cpp
+    src/features/mesh/MeshVisibilityWork.cpp
     src/features/common/FullscreenRaster.cpp
-    src/features/common/ParameterLayout.cpp
     src/resource/lighting/DirectLightingStorage.cpp
-    src/features/mesh/RasterMeshDraws.cpp
-    src/features/mesh/MeshDrawGroups.cpp
+    src/features/mesh/MeshGrouping.cpp
     src/device/Error.cpp
     src/device/NativeExecution.cpp
     src/device/DeviceSession.cpp
@@ -85,6 +88,8 @@ set(render_sources
     src/target/OffscreenTarget.cpp
     src/target/SwapchainTarget.cpp
     src/graph/execute/RenderGraphInstance.cpp
+    src/graph/execute/RenderGraphInstanceProducers.cpp
+    src/graph/execute/RenderGraphInstanceRasterStreams.cpp
     src/graph/execute/RenderGraphInstanceResources.cpp
     src/graph/execute/RenderGraphInstanceDescriptors.cpp
     src/graph/execute/RenderGraphInstanceRecording.cpp
@@ -113,10 +118,8 @@ set(render_sources
     src/resource/instance/RasterMeshInstanceStorage.cpp
     src/resource/mesh/IndexedTriangleMeshStorage.cpp
     src/runtime/RenderServer.cpp
-    src/capabilities/CapabilityRegistry.cpp
     src/commands/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
-    src/runtime/CapabilityCatalog.cpp
     src/resource/ResourceScopes.cpp
     src/runtime/FrameProgress.cpp
     src/runtime/FrameOperation.cpp
@@ -127,7 +130,6 @@ set(render_sources
     src/runtime/RenderJob.cpp
     src/runtime/DeviceEntry.cpp
     src/runtime/Scene.cpp
-    src/runtime/EffectBuild.cpp
     src/runtime/RenderEffect.cpp
     src/commands/CommandDispatchContext.cpp
     src/runtime/DeviceRound.cpp
@@ -375,6 +377,7 @@ target_link_libraries(render
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
         STDEXEC::stdexec lux::cxx::execution lux::engine::core::core_execution
+        lux::engine::function::graph lux::engine::core::object
     PRIVATE NRI Eigen3::Eigen lux::engine::core::math
         lux::engine::core::serialization
         spirv-cross-c SPIRV-Tools-static
@@ -385,7 +388,8 @@ component_add_transitive_commands(render
     "find_package(stdexec CONFIG REQUIRED GLOBAL)"
     "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution)"
-    "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
+    "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values object)"
+    "find_package(lux-engine-function CONFIG REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types shader_metadata)"
     "find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)"
 )

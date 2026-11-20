@@ -1,6 +1,4 @@
-#include <exec/create.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
-#include <lux/engine/render/resource/view/CameraInputHandler.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
 namespace lux::render
@@ -17,16 +15,7 @@ namespace lux::render
         output = {{}, job->execution->input_layout};
     }
 
-    void RenderServer::Impl::updateViewCamera(const UpdateViewCamera::Request& input, AckResponse& output) noexcept
-    {
-        auto* scene = runtime_->scenes_.find(input.view.scene);
-        auto* view = scene ? scene->views.find(input.view.view) : nullptr;
-        if (!view) { output.error = {kRuntimeIdentity}; return; }
-        const auto applied = detail::CameraInputHandler::apply(view->camera, view->camera_revision, input.camera);
-        output.error = applied ? RenderError{} : applied.error();
-    }
-
-    RenderResult<void> RenderServer::Impl::applyFrameData(const JobExecution& execution, const FrameData& packet) noexcept
+    RenderResult<void> RenderServer::Impl::adoptFrameData(const JobExecution& execution, const FrameData& packet) noexcept
     {
         if (!packet.sealed() || !packet.layout().hasSameIdentity(execution.input_layout))
         {
@@ -59,65 +48,21 @@ namespace lux::render
         return {};
     }
 
-    exec::task<AckResponse> RenderServer::Impl::updateFrameData(UpdateFrameData::Request&& input) noexcept
+    void RenderServer::Impl::updateFrameData(const UpdateFrameData::Request& input, AckResponse& output) noexcept
     {
         auto* job = runtime_->jobs_.find(input.job);
-        if (!job) co_return AckResponse{RenderError{kJobIdentity}};
-        if (!job->control.running()) co_return AckResponse{RenderError{kJobStopped}};
-        if (!input.data) co_return AckResponse{RenderError{kFrameContract}};
-        auto& execution = *job->execution;
-        auto& entry = *runtime_->device(execution.device);
-        if (const auto error = entry.admissionError(); error.type) co_return AckResponse{error};
-        auto& round = entry.round;
-        if (!round.operation && round.input_updates.empty())
+        if (!job) { output.error = {kJobIdentity}; return; }
+        if (!job->control.running()) { output.error = {kJobStopped}; return; }
+        if (!input.data) { output.error = {kFrameContract}; return; }
+        const auto& execution = *job->execution;
+        if (const auto error = runtime_->device(execution.device)->admissionError(); error.type)
         {
-            const auto updated = applyFrameData(execution, *input.data);
-            if (updated && job->last_run_error.type)
-            {
-                job->last_run_error = {};
-            }
-            co_return AckResponse{updated ? RenderError{} : updated.error()};
+            output.error = error;
+            return;
         }
-        if (execution.pending_uses == UINT32_MAX) co_return AckResponse{RenderError{kRuntimeCapacity}};
-        InputUpdate pending{input.job, input.data, &execution, nullptr, nullptr};
-        co_return co_await exec::create<stdexec::set_value_t(AckResponse)>([&round, &pending](auto& context) noexcept
-        {
-            using Context = std::remove_reference_t<decltype(context)>;
-            ++pending.execution->pending_uses;
-            pending.receiver = &context;
-            pending.complete = [](void* receiver, AckResponse response) noexcept
-            {
-                auto& context = *static_cast<Context*>(receiver);
-                stdexec::set_value(std::move(context.receiver), response);
-            };
-            round.input_updates.push_back(&pending);
-        });
-    }
-
-    bool RenderServer::Impl::progressInputUpdates(detail::DeviceEntry& entry) noexcept
-    {
-        auto& round = entry.round;
-        if (round.operation || round.input_updates.empty()) return false;
-        const auto count = std::min<std::size_t>(round.input_updates.size(), 32);
-        for (std::size_t i = 0; i < count; ++i)
-        {
-            auto& update = *round.input_updates.front();
-            round.input_updates.pop_front();
-            auto& job = *runtime_->jobs_.find(update.job);
-            RenderError error;
-            if (const auto failure = entry.admissionError(); failure.type) error = failure;
-            else if (stop_requested_.load()) error = {kCommandCancelled};
-            else if (!job.control.running()) error = {kJobStopped};
-            else if (auto result = applyFrameData(*update.execution, *update.data); !result) error = result.error();
-            if (!error.type && job.last_run_error.type)
-            {
-                job.last_run_error = {};
-            }
-            --update.execution->pending_uses;
-            retireStoppedExecution(job);
-            update.complete(update.receiver, {error});
-        }
-        return true;
+        const auto updated = adoptFrameData(execution, *input.data);
+        if (updated) job->last_run_error = {};
+        output.error = updated ? RenderError{} : updated.error();
     }
 
     bool RenderServer::Impl::beginFrame(detail::DeviceEntry& entry) noexcept
@@ -160,7 +105,7 @@ namespace lux::render
             if (!control.tryAdmit(context.frame_index, context.slot_index, round.runs[round.run_count++]))
                 std::terminate();
         }
-        if (auto applied = applyParameterSources(entry, round.slot()); !applied) round.error = applied.error();
+        if (auto applied = selectGraphInputs(entry, round.slot()); !applied) round.error = applied.error();
         return true;
     }
 
@@ -182,6 +127,8 @@ namespace lux::render
         raster_buffer_bytes_.fetch_add(reads.buffer_bytes, std::memory_order_relaxed);
         raster_image_ranges_.fetch_add(reads.image_ranges, std::memory_order_relaxed);
         raster_image_subresources_.fetch_add(reads.image_subresources, std::memory_order_relaxed);
+        raster_geometry_ranges_.fetch_add(reads.geometry_ranges, std::memory_order_relaxed);
+        raster_geometry_bytes_.fetch_add(reads.geometry_bytes, std::memory_order_relaxed);
 #endif
         round.error = {};
         for (std::size_t i = 0; i < round.run_count; ++i)
@@ -202,21 +149,13 @@ namespace lux::render
         if (round.operation || stop_requested_.load() || entry.admissionError().type) return false;
 
         bool progressed = false;
-        // Settle every newly accepted packet before capturing any program revision.
-        // JobControl keeps the request until its one terminal response.
         for (auto id : running_jobs_)
         {
             auto& job = *runtime_->jobs_.find(id);
             if (!job.control.eligible()) continue;
             auto& execution = *job.execution;
             if (execution.device != entry.id) continue;
-            if (const auto* packet = job.control.takeRequestedData())
-            {
-                const auto updated = applyFrameData(execution, *packet);
-                job.last_run_error = updated ? RenderError{} : updated.error();
-                if (!updated) job.control.rejectUnadmitted(updated.error());
-                progressed = true;
-            }
+
             if (const auto error = execution.programError(); error.type && job.control.hasRequest())
             {
                 job.control.rejectUnadmitted(error);

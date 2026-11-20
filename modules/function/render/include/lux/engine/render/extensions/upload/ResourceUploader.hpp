@@ -118,6 +118,9 @@ namespace lux::render::detail
         // Capacity failure leaves this write unstaged. Caller bytes may change after success.
         [[nodiscard]] RenderResult<std::size_t> stageBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
 
+        // Stage the prefix that fits this preparation window. Zero bytes indicate backpressure.
+        [[nodiscard]] RenderResult<std::size_t> stageBufferPrefix(const BufferWrite&, std::size_t unit = 4) noexcept;
+
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
         {
             return options_.window_regions;

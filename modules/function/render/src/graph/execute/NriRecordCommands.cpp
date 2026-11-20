@@ -95,6 +95,15 @@ namespace lux::render::detail
                         );
                     }
                     setPassScissor(core, command, packet.scissor, state);
+                    const bool changed_index = state.index != packet.index ||
+                        state.index_offset != packet.index_offset || state.index_type != packet.index_type;
+                    if (packet.index && changed_index)
+                    {
+                        core.CmdSetIndexBuffer(command, *packet.index, packet.index_offset, packet.index_type);
+                        state.index = packet.index;
+                        state.index_offset = packet.index_offset;
+                        state.index_type = packet.index_type;
+                    }
                     std::visit(
                         [&](const auto& draw) noexcept
                         {
@@ -103,36 +112,22 @@ namespace lux::render::detail
                             {
                                 core.CmdDraw(command, draw);
                             }
+                            else if constexpr (std::same_as<Draw, nri::DrawIndexedDesc>)
+                            {
+                                core.CmdDrawIndexed(command, draw);
+                            }
                             else
                             {
-                                const bool changed_index = state.index != packet.index ||
-                                                           state.index_offset != packet.index_offset ||
-                                                           state.index_type != packet.index_type;
-                                if (changed_index)
-                                {
-                                    core.CmdSetIndexBuffer(
-                                        command, *packet.index, packet.index_offset, packet.index_type
-                                    );
-                                    state.index = packet.index;
-                                    state.index_offset = packet.index_offset;
-                                    state.index_type = packet.index_type;
-                                }
-                                if constexpr (std::same_as<Draw, nri::DrawIndexedDesc>)
-                                {
-                                    core.CmdDrawIndexed(command, draw);
-                                }
-                                else
-                                {
-                                    core.CmdDrawIndexedIndirect(
-                                        command,
-                                        *draw.arguments,
-                                        draw.offset,
-                                        draw.count,
-                                        draw.stride,
-                                        draw.count_buffer,
-                                        draw.count_offset
-                                    );
-                                }
+                                const auto record = packet.index ? core.CmdDrawIndexedIndirect : core.CmdDrawIndirect;
+                                record(
+                                    command,
+                                    *draw.arguments,
+                                    draw.offset,
+                                    draw.count,
+                                    draw.stride,
+                                    draw.count_buffer,
+                                    draw.count_offset
+                                );
                             }
                         },
                         packet.draw
@@ -345,7 +340,6 @@ namespace lux::render::detail
         // Clear helpers may use backend-private compute state. Do not carry a cached
         // application binding across those operations.
         binding_state = {};
-        std::uint32_t fill_binding = 0;
         for (std::size_t i = 0; i < operations.size(); ++i)
         {
             std::visit(
@@ -380,7 +374,20 @@ namespace lux::render::detail
                     else if constexpr (std::is_same_v<Operation, FillBuffer>)
                     {
                         const auto& range = std::get<GraphBufferRange>(operation.destination.range);
-                        if (!operation.value)
+                        const auto& fill = buffer_fills[i];
+                        const bool storage = fill.descriptor != kGraphInvalidIndex;
+                        if (fill.sync_before)
+                        {
+                            const nri::AccessStage state = storage
+                                ? nri::AccessStage{nri::AccessBits::CLEAR_STORAGE, nri::StageBits::CLEAR_STORAGE}
+                                : nri::AccessStage{nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
+                            const nri::BufferBarrierDesc barrier{destination.buffer, state, state};
+                            nri::BarrierDesc barriers{};
+                            barriers.buffers = &barrier;
+                            barriers.bufferNum = 1;
+                            core.CmdBarrier(command, barriers);
+                        }
+                        if (!storage)
                         {
                             core.CmdZeroBuffer(
                                 command,
@@ -392,12 +399,12 @@ namespace lux::render::detail
                         else
                         {
                             nri::ClearStorageDesc clear{};
-                            clear.descriptor = pass.private_views[fill_binding]
-                                                   ? pass.private_views[fill_binding]
-                                                   : pass.history_views[fill_binding];
+                            clear.descriptor = pass.private_views[fill.descriptor]
+                                                   ? pass.private_views[fill.descriptor]
+                                                   : pass.history_views[fill.descriptor];
                             clear.value
                                 .ui = {operation.value, operation.value, operation.value, operation.value};
-                            clear.rangeIndex = fill_binding++;
+                            clear.rangeIndex = fill.descriptor;
                             core.CmdClearStorage(command, clear);
                         }
                     }

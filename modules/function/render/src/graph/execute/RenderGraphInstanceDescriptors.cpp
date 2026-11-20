@@ -19,22 +19,22 @@ namespace lux::render::detail
     {
         const auto& core = session_->nriCore();
         const auto& limits = session_->description();
-        if (view.type == nri::BufferView::CONSTANT_BUFFER && limits.graphicsAPI == nri::GraphicsAPI::D3D12)
+        if (view.type == nri::BufferView::CONSTANT_BUFFER)
         {
             const auto alignment = limits.memoryAlignment.constantBufferOffset;
+            const auto max_range = limits.memory.constantBufferMaxRange;
             const bool invalid_offset = alignment == 0 || view.offset % alignment != 0;
-            const bool invalid_size = view.size == 0 || view.size > limits.memory.constantBufferMaxRange;
-            if (invalid_offset || invalid_size)
+            const bool invalid_size = view.size == 0 || view.size > max_range;
+            if (invalid_offset || invalid_size) return nri::Result::INVALID_ARGUMENT;
+            if (limits.graphicsAPI == nri::GraphicsAPI::D3D12)
             {
-                return nri::Result::INVALID_ARGUMENT;
+                const auto padding = (alignment - view.size % alignment) % alignment;
+                if (padding > max_range - view.size) return nri::Result::INVALID_ARGUMENT;
+                view.size += padding;
             }
-            view.size += (alignment - view.size % alignment) % alignment;
             const auto capacity = core.GetBufferDesc(*view.buffer).size;
             const bool outside_buffer = view.offset > capacity || view.size > capacity - view.offset;
-            if (outside_buffer || view.size > limits.memory.constantBufferMaxRange)
-            {
-                return nri::Result::INVALID_ARGUMENT;
-            }
+            if (outside_buffer) return nri::Result::INVALID_ARGUMENT;
         }
         return core.CreateBufferView(view, descriptor);
     }
@@ -57,6 +57,16 @@ namespace lux::render::detail
         std::span<const ResourceInput> inputs
     ) noexcept
     {
+        return prepareRasterDescriptorSet(slot, bindings, binding_key, inputs, {});
+    }
+
+    RenderResult<nri::DescriptorSet*> RenderGraphInstance::prepareRasterDescriptorSet(
+        std::uint32_t slot, const PassBindings& bindings, std::uint64_t binding_key,
+        std::span<const ResourceInput> resources, std::span<const RasterDescriptorInput> inputs
+    ) noexcept
+    {
+        if (!inputs.empty() && inputs.size() != bindings.uses.size())
+            return cxx::unexpected(RenderError{kDeviceArgument});
         auto& frame = frames_[slot];
         auto& indices = frame.raster_binding_indices[&bindings];
         auto found = indices.find(binding_key);
@@ -103,20 +113,48 @@ namespace lux::render::detail
         {
             const auto& use = bindings.uses[i];
             if (bindings.bindings[use.field].count == 0) continue;
-            const bool unsupported = use.kind != EDescriptorKind::UNIFORM_BUFFER &&
-                use.kind != EDescriptorKind::STORAGE_BUFFER;
-            if (unsupported || use.resource >= inputs.size()) return cxx::unexpected(RenderError{kDeviceArgument});
-            const auto& source = inputs[use.resource];
-            if (!source.buffer || source.size == 0) return cxx::unexpected(RenderError{kDeviceArgument});
-            const auto& previous = record.inputs[i];
-            const bool unchanged = previous.buffer == source.buffer && previous.offset == source.offset &&
-                previous.size == source.size;
-            if (unchanged) continue;
-            nri::Descriptor* descriptor = nullptr;
-            const auto view = bindings.bindings[use.field].bufferView(source.buffer, source.offset, source.size);
-            const auto status = createBufferView(view, descriptor);
+            RasterDescriptorInput source;
+            if (inputs.empty())
+            {
+                const bool is_buffer = use.kind == EDescriptorKind::UNIFORM_BUFFER ||
+                    use.kind == EDescriptorKind::STORAGE_BUFFER;
+                if (!is_buffer || use.resource >= resources.size())
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto& buffer = resources[use.resource];
+                if (!buffer.buffer || !buffer.size) return cxx::unexpected(RenderError{kDeviceArgument});
+                source = {buffer.buffer, buffer.offset, buffer.size};
+            }
+            else
+            {
+                source = inputs[i];
+            }
+            if (record.inputs[i] == source) continue;
+
+            nri::Descriptor* descriptor = source.sampler;
+            auto status = nri::Result::SUCCESS;
+            if (source.image)
+            {
+                const auto& range = source.range;
+                const auto type = bindings.bindings[use.field].image_arrayed
+                    ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE;
+                nri::TextureViewDesc view{
+                    source.image, type, source.format,
+                    static_cast<nri::Dim_t>(range.first_mip), static_cast<nri::Dim_t>(range.mip_count),
+                    static_cast<nri::Dim_t>(range.first_layer), static_cast<nri::Dim_t>(range.layer_count)
+                };
+                view.planes = range.aspects == 1 ? nri::PlaneBits::COLOR :
+                    range.aspects == 2 ? nri::PlaneBits::DEPTH : nri::PlaneBits::STENCIL;
+                status = core.CreateTextureView(view, descriptor);
+            }
+            else if (source.buffer)
+            {
+                const auto view = bindings.bindings[use.field].bufferView(source.buffer, source.offset, source.size);
+                status = createBufferView(view, descriptor);
+            }
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
-            core.DestroyDescriptor(std::exchange(record.views[i], descriptor));
+            if (!descriptor) return cxx::unexpected(RenderError{kDeviceArgument});
+            const auto owned = source.sampler ? nullptr : descriptor;
+            core.DestroyDescriptor(std::exchange(record.views[i], owned));
             record.inputs[i] = source;
             const nri::UpdateDescriptorRangeDesc write{record.set, use.binding, use.element, &descriptor, 1};
             core.UpdateDescriptorRanges(&write, 1);
@@ -196,7 +234,8 @@ namespace lux::render::detail
             auto ready = allocate(program.uses, program.recordBindings(), item.set,
                 [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
             {
-                return program.bindings[use.field].count ? item.views[i] : nullptr;
+                if (!program.bindings[use.field].count) return nullptr;
+                return item.inputs[i].sampler ? item.inputs[i].sampler : item.views[i];
             });
             if (!ready) return cxx::unexpected(ready.error());
         }
@@ -221,7 +260,8 @@ namespace lux::render::detail
         auto* old_pool = std::exchange(frame.descriptor_pool, pool);
         frame.descriptor_capacity = capacity;
         frame.descriptor_reserved = required;
-        frame.shared_descriptors = *shared;
+        if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
+            frame.shared_descriptors = *shared;
         frame.shared_binding_revision = 0;
         frame.shared_descriptor_counts = session_->descriptors().snapshotCounts();
         rollback.release();
@@ -234,7 +274,8 @@ namespace lux::render::detail
         return {};
     }
 
-    void RenderGraphInstance::releaseRasterBindings(std::span<const PassBindings* const> bindings) noexcept
+    void
+    RenderGraphInstance::releaseRasterBindings(std::span<const PassBindings* const> bindings, std::uint32_t pass) noexcept
     {
         if (bindings.empty()) return;
         const std::unordered_set<const PassBindings*> removed(bindings.begin(), bindings.end());
@@ -242,7 +283,8 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
-            invalidateRecordings(slot);
+            if (pass == kGraphInvalidIndex) invalidateRecordings(slot);
+            else invalidateRecording(slot, pass);
             std::erase_if(frame.raster_bindings, [&](auto& record) noexcept
             {
                 if (!removed.contains(record.bindings)) return false;
@@ -476,10 +518,10 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::prepareDescriptors(const GraphAssemblyPlan& assembly) noexcept
+    RenderResult<void> RenderGraphInstance::prepareDescriptors(const GraphAssemblyPlan* assembly) noexcept
     {
         const auto& layout = *plan_->binding_plan_;
-        if (assembly.parameter_links.size() != plan_->passes().size())
+        if (assembly && assembly->parameter_links.size() != plan_->passes().size())
         {
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
@@ -498,11 +540,11 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
             }
-            if ((plan_->transferCommands(compiled_pass) != nullptr))
+            if (!assembly || plan_->transferCommands(compiled_pass))
             {
                 continue;
             }
-            for (const auto& mapping : assembly.parameter_links[compiled_pass.binding_slot])
+            for (const auto& mapping : assembly->parameter_links[compiled_pass.binding_slot])
             {
                 const ResourceInput source{
                     nullptr, 0, 0, frames_[0].bindings[mapping.resource].parameters,
@@ -717,8 +759,8 @@ namespace lux::render::detail
                     // Imported variable-size input buffers expose their current physical range.
                     const auto size =
                         use.whole_resource && use.fallback == kGraphInvalidIndex ? source.buffer_size : range.size;
-                    const bool invalid_range =
-                        range.offset > source.buffer_size || size > source.buffer_size - range.offset;
+                    const bool invalid_range = range.offset > source.buffer_size ||
+                        size > source.buffer_size - range.offset || range.offset > UINT64_MAX - source.buffer_offset;
                     if (invalid_range)
                     {
                         return cxx::unexpected(RenderError{kDeviceArgument});
@@ -742,6 +784,23 @@ namespace lux::render::detail
             source.dirty = false;
         }
         frame.changed_resources.clear();
+        return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::writeInlineConstant(
+        std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes
+    ) noexcept
+    {
+        if (slot >= frames_.size() || pass >= frames_[slot].passes.size())
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto destination = frames_[slot].passes[pass].parameters;
+        if (bytes.empty() || bytes.size() != destination.size())
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        if (std::memcmp(destination.data(), bytes.data(), bytes.size()) != 0)
+        {
+            std::memcpy(destination.data(), bytes.data(), bytes.size());
+            invalidateRecording(slot, pass);
+        }
         return {};
     }
 

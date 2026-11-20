@@ -3,8 +3,9 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
-#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/graph/GraphError.hpp>
 
 namespace lux::render::detail
 {
@@ -122,58 +123,6 @@ namespace lux::render::detail
         }
     } // namespace
 
-    RenderResult<void> validateShadowConfiguration(const ShadowProjectionInput& config) noexcept
-    {
-        const bool invalid_shape =
-            !config.shape.view_count || config.pcf_radius > 4 || config.shape.resolution <= 2 * (config.pcf_radius + 2);
-        if (invalid_shape)
-        {
-            return cxx::unexpected(RenderError{kFeatureContract});
-        }
-        std::uint64_t count = 0;
-        for (std::size_t i = 0; i < config.casters.size(); ++i)
-        {
-            const auto& light = config.casters[i];
-            const bool invalid_identity = light.light.isNull() || light.kind >= EDirectLightingBuffer::COUNTS;
-            const bool invalid_distances = !std::isfinite(light.near_distance) || light.near_distance <= 0 ||
-                                           !std::isfinite(light.caster_distance) || light.caster_distance <= 0;
-            const bool invalid_bias = !std::isfinite(light.normal_offset) || light.normal_offset < 0 ||
-                                      !std::isfinite(light.comparison_offset) || light.comparison_offset < 0 ||
-                                      !std::isfinite(light.depth_bias_constant) ||
-                                      !std::isfinite(light.depth_bias_slope);
-            const bool duplicate = std::ranges::any_of(
-                std::span(config.casters).first(i),
-                [&](const auto& previous) { return previous.light == light.light; }
-            );
-            if (invalid_identity || invalid_distances || invalid_bias || duplicate)
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-            if (light.kind == EDirectLightingBuffer::DIRECTIONAL)
-            {
-                float previous = 0;
-                for (float distance : light.cascade_far_distances)
-                {
-                    if (!std::isfinite(distance) || distance <= previous)
-                    {
-                        return cxx::unexpected(RenderError{kFeatureContract});
-                    }
-                    previous = distance;
-                }
-                if (light.cascade_far_distances.empty())
-                {
-                    return cxx::unexpected(RenderError{kFeatureContract});
-                }
-                count += light.cascade_far_distances.size();
-            }
-            else
-            {
-                count += light.kind == EDirectLightingBuffer::POINT ? 6 : 1;
-            }
-        }
-        return count <= config.shape.view_count ? RenderResult<void>{} : cxx::unexpected(RenderError{kFeatureContract});
-    }
-
     RenderResult<void> projectShadows(
         const ShadowProjectionInput& config,
         const ShadowCamera& camera,
@@ -193,7 +142,7 @@ namespace lux::render::detail
             std::abs(xyz(camera.direction_far).squaredNorm() - 1) > 0.001;
         if (invalid_camera)
         {
-            return cxx::unexpected(RenderError{kFeatureContract});
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         std::ranges::fill(views, MeshVisibilityView{});
         std::ranges::fill(slices, ShadowSliceGpu{});
@@ -205,7 +154,7 @@ namespace lux::render::detail
         }
         if (inverse.determinant() == 0)
         {
-            return cxx::unexpected(RenderError{kFeatureContract});
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         std::array<Vector, 8> corners;
         for (unsigned i = 0; i < corners.size(); ++i)
@@ -213,7 +162,7 @@ namespace lux::render::detail
             const Eigen::Vector4d point = inverse * Eigen::Vector4d(i & 1 ? 1 : -1, i & 2 ? 1 : -1, i >> 2, 1);
             if (!point.allFinite() || std::abs(point.w()) < 1e-12)
             {
-                return cxx::unexpected(RenderError{kFeatureContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             corners[i] = point.head<3>() / point.w();
         }
@@ -249,7 +198,7 @@ namespace lux::render::detail
                     const double end = selection.cascade_far_distances[face];
                     if (begin < near_z || end > far_z || end <= begin)
                     {
-                        return cxx::unexpected(RenderError{kFeatureContract});
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                     }
                     matrix = directional(
                         xyz(std::get<DirectionalLightGpu>(light.value).direction),
@@ -300,13 +249,13 @@ namespace lux::render::detail
                         const double cosine = spot.direction_outer[3];
                         if (cosine <= 0 || cosine >= 1)
                         {
-                            return cxx::unexpected(RenderError{kFeatureContract});
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                         }
                         projection_scale *= cosine / std::sqrt(1 - cosine * cosine);
                     }
                     if (selection.near_distance >= far_light)
                     {
-                        return cxx::unexpected(RenderError{kFeatureContract});
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                     }
                     matrix = perspective(projection_scale, selection.near_distance, far_light) *
                              lightView(position, direction, up);
@@ -314,12 +263,104 @@ namespace lux::render::detail
                 }
                 if (!matrix.allFinite())
                 {
-                    return cxx::unexpected(RenderError{kFeatureContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 storeView(matrix, views[first + face]);
             }
             first += count;
         }
         return {};
+    }
+
+    ShadowProjectionData::ShadowProjectionData(ShadowProjectionSettings settings) noexcept
+        : settings_(settings), views_(settings.shape.view_count), slices_(settings.shape.view_count),
+          raster_states_(settings.shape.view_count)
+    {
+    }
+
+    RenderResult<bool> ShadowProjectionData::select(const ShadowCamera& camera, const ShadowLightSnapshot& lights) noexcept
+    {
+        if (lights.revision == 0) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        if (camera == camera_ && applied_light_revision_ == lights.revision) return false;
+        if (revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
+        // A failure may overwrite the scratch data. Only successful projections own a cache key.
+        applied_light_revision_ = 0;
+
+        const auto counts = lights.counts;
+        const auto light_count = std::uint64_t(counts[0]) + counts[1] + counts[2];
+        if (light_count > UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
+        const std::array<std::uint32_t, 3> offsets{0, counts[0], counts[0] + counts[1]};
+        casters_.resize(lights.casters.size());
+        selected_lights_.resize(lights.casters.size());
+        const auto near_distance = camera.position_near[3];
+        const auto far_distance = std::min(camera.direction_far[3], settings_.distance);
+        std::uint64_t layer_count = 0;
+        for (std::size_t i = 0; i < lights.casters.size(); ++i)
+        {
+            const auto& light = lights.casters[i];
+            const auto& settings = light.settings;
+            const auto kind = light.value.index();
+            const bool invalid_index = kind >= counts.size() || light.dense_index >= counts[kind];
+            if (invalid_index) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            auto& caster = casters_[i];
+            caster.light = light.id;
+            caster.kind = static_cast<EDirectLightingBuffer>(kind);
+            caster.normal_offset = settings.normal_bias;
+            caster.comparison_offset = settings.bias;
+            caster.caster_distance = settings_.distance;
+            caster.depth_bias_constant = settings.depth_bias_constant;
+            caster.depth_bias_slope = settings.depth_bias_slope;
+            caster.cascade_far_distances.clear();
+            if (caster.kind == EDirectLightingBuffer::DIRECTIONAL)
+            {
+                if (settings.cascade_count > settings.cascade_splits.size())
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                for (auto split : std::span(settings.cascade_splits).first(settings.cascade_count))
+                {
+                    caster.cascade_far_distances.push_back(near_distance + (far_distance - near_distance) * split);
+                }
+            }
+            selected_lights_[i] = {light.value, light.dense_index, true};
+            layer_count += caster.kind == EDirectLightingBuffer::DIRECTIONAL ? settings.cascade_count :
+                caster.kind == EDirectLightingBuffer::POINT ? 6 : 1;
+        }
+        layer_count = std::max<std::uint64_t>(settings_.shape.view_count, layer_count);
+        if (layer_count > settings_.maximum_layers) return cxx::unexpected(RenderError{kDeviceCapacity});
+
+        views_.resize(layer_count);
+        slices_.resize(layer_count);
+        raster_states_.assign(layer_count, RasterState{});
+        std::size_t first = 0;
+        for (const auto& caster : casters_)
+        {
+            const auto count = caster.kind == EDirectLightingBuffer::DIRECTIONAL ? caster.cascade_far_distances.size() :
+                caster.kind == EDirectLightingBuffer::POINT ? 6u : 1u;
+            std::ranges::fill(
+                std::span{raster_states_}.subspan(first, count),
+                RasterState{RasterViewport{}, caster.depth_bias_constant, caster.depth_bias_slope}
+            );
+            first += count;
+        }
+
+        ranges_.resize(std::max<std::uint64_t>(1, light_count));
+        const ShadowProjectionInput projection{
+            {settings_.shape.resolution, static_cast<std::uint32_t>(layer_count)}, casters_, settings_.pcf_radius
+        };
+        auto projected = projectShadows(projection, camera, selected_lights_, views_, slices_, ranges_, offsets);
+        if (!projected) return cxx::unexpected(projected.error());
+        const ShadowMappingHeader header{
+            {offsets[0], offsets[1], offsets[2], static_cast<std::uint32_t>(light_count)},
+            camera.position_near,
+            camera.direction_far
+        };
+        const auto ranges = std::as_bytes(std::span{ranges_});
+        mappings_.resize(sizeof(header) + ranges.size());
+        std::memcpy(mappings_.data(), &header, sizeof(header));
+        std::memcpy(mappings_.data() + sizeof(header), ranges.data(), ranges.size());
+
+        camera_ = camera;
+        applied_light_revision_ = lights.revision;
+        ++revision_;
+        return true;
     }
 } // namespace lux::render::detail

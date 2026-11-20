@@ -13,6 +13,17 @@
 
 namespace lux::render::detail
 {
+    struct RasterDescriptorInput final
+    {
+        nri::Buffer* buffer = nullptr;
+        std::uint64_t offset = 0, size = 0;
+        nri::Texture* image = nullptr;
+        nri::Descriptor* sampler = nullptr;
+        nri::Format format = nri::Format::UNKNOWN;
+        GraphImageRange range;
+        bool operator==(const RasterDescriptorInput&) const noexcept = default;
+    };
+
     // These are physical GPU objects, independent of the Context's subscriptions and CPU recipes.
     // Stable descriptor banks are never rewritten while their prior submission is in flight.
     struct RenderGraphInstance::FrameResources final
@@ -31,12 +42,21 @@ namespace lux::render::detail
             nri::DescriptorSet* set = nullptr;
             std::uint64_t binding_key = 0;
             std::vector<nri::Descriptor*> views;
-            std::vector<ResourceInput> inputs;
+            std::vector<RasterDescriptorInput> inputs;
             const PassBindings* bindings = nullptr;
         };
 
         using RasterBindingIndices = std::unordered_map<std::uint64_t, std::uint32_t>;
 
+        struct RasterAttachmentView final
+        {
+            nri::Texture* image;
+            GraphImageRange range;
+            bool depth;
+            nri::Descriptor* view;
+        };
+
+        std::vector<RasterAttachmentView> raster_attachment_views;
         std::vector<RasterBinding> raster_bindings;
         std::unordered_map<const PassBindings*, RasterBindingIndices> raster_binding_indices;
         nri::DescriptorPoolDesc descriptor_capacity{}, descriptor_reserved{};
@@ -52,6 +72,10 @@ namespace lux::render::detail
         // updates bindings and barriers separately; resource contents do not invalidate dependencies.
         std::uint64_t imported_revision = 0;
         std::vector<Pass> passes;
+        std::vector<OwnedRasterStream> stream_inputs;
+        RasterDrawList stream_scratch;
+        std::vector<std::uint8_t> stream_layers_seen;
+        std::vector<RasterDescriptorInput> stream_binding_inputs;
         // Each compiled batch owns its allocators, buffers and cache version in this FIF slice.
         // A recording lease protects the whole batch; distinct batches never share an allocator.
         struct CommandBatch final
@@ -94,12 +118,23 @@ namespace lux::render::detail
         std::vector<std::uint32_t> changed_resources;
         std::size_t unavailable_buffers = 0;
         std::vector<nri::Buffer*> buffers;
+        struct PreparedBufferReplica final
+        {
+            RenderGraphInstance* owner = nullptr;
+            nri::Buffer* buffer = nullptr;
+            std::uint64_t capacity = 0;
+            std::uint64_t accepted_revision = 0, accepted_size = 0;
+            std::uint64_t pending_revision = 0, pending_size = 0;
+            std::size_t staged_bytes = 0;
+        };
+        std::vector<PreparedBufferReplica> prepared_buffers;
         std::vector<nri::Texture*> images;
 
         struct LayeredImage final
         {
             GraphResourceId resource;
             std::vector<nri::Descriptor*> views; // Non-owning index into this frame's owned view collection.
+            std::uint32_t requested_layers = 0;
         };
 
         std::vector<LayeredImage> layered_images;

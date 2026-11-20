@@ -4,8 +4,8 @@
 #include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/extensions/features/EffectDefinition.hpp>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -40,8 +40,25 @@ namespace lux::render
 
     struct TargetImageInput final
     {
-        FeaturePortRef destination; // External input port declared by the Effect author.
         TargetId target;
+        std::string binding{}; // Named input of an EffectGraph.
+    };
+
+    enum class EJobResourceUse : std::uint8_t
+    {
+        GPU_BINDING,
+        CPU_SNAPSHOT,
+        RASTER_TEXTURES,
+        RASTER_MESHES,
+        RASTER_MATERIALS
+    };
+
+    struct JobResourceInput final
+    {
+        std::string binding;
+        ResourceInstanceId resource;
+        std::uint32_t projection = 0; // Index in the Resource's graph binding contract.
+        EJobResourceUse use = EJobResourceUse::GPU_BINDING;
     };
 
     struct JobInputs final
@@ -55,6 +72,8 @@ namespace lux::render
     {
         JobInputs inputs;
         std::vector<TargetImageInput> target_images;
+        std::vector<JobResourceInput> resources{};
+        ResourceInstanceId view_parameters{}; // Optional ViewParameterResource in this Job's device and View scope.
     };
 
     struct CreateRenderJob final

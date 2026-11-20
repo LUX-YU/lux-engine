@@ -15,6 +15,8 @@ namespace lux::render
 {
     class ResourceSet;
     class RenderServer;
+    namespace detail { class RasterMeshInstanceStorage; }
+    namespace runtime_detail { struct JobExecution; }
 
     class LUX_RENDER_PUBLIC ResourceRegistry final
     {
@@ -77,7 +79,6 @@ namespace lux::render
         [[nodiscard]] RenderResult<ResourceCommandUse>
         acquireCommand(ResourceInstanceId, CommandId, bool exclusive) noexcept;
         [[nodiscard]] const detail::DeviceSession* deviceOf(ResourceInstanceId) const noexcept;
-        [[nodiscard]] bool hasCommands(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool hasExclusiveCommand(ResourceInstanceId) const noexcept;
         [[nodiscard]] bool canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept;
         [[nodiscard]] const CommandBindingLocation* commandBinding(ResourceTypeId, CommandId) const noexcept;
@@ -148,8 +149,16 @@ namespace lux::render
         void* output_owner_ = nullptr;
         ResolveOutput resolve_output_ = nullptr;
         friend class ResourceSet;
+        friend class detail::RasterMeshInstanceStorage;
         friend class RenderServer;
         friend class ResourceCommandUse;
+        friend struct runtime_detail::JobExecution;
+        [[nodiscard]] bool hasBorrows(ResourceInstanceId) const noexcept;
+        [[nodiscard]] bool hasDependents(ResourceInstanceId) const noexcept;
+        [[nodiscard]] RenderResult<ResourceInstanceId>
+        requireDuringConstruction(ResourceCreateContext&, ResourceInstanceId, ResourceTypeId) noexcept;
+        [[nodiscard]] RenderResult<void> retainExecution(ResourceInstanceId) noexcept;
+        void releaseExecution(ResourceInstanceId) noexcept;
         void releaseCommand(ResourceInstanceId) noexcept;
         [[nodiscard]] RenderResult<void> bindCommand(ResourceTypeId, CommandBindingLocation) noexcept;
 
@@ -183,7 +192,10 @@ namespace lux::render
             ResourceTypeId type;
             void* instance = nullptr;
             std::uint32_t command_uses = 0;
+            std::uint32_t execution_uses = 0;
             bool exclusive_command = false;
+            std::uint32_t dependent_storages = 0;
+            std::vector<ResourceInstanceId> dependencies{};
         };
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;

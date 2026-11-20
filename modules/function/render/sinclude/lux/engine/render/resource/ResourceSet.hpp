@@ -48,7 +48,7 @@ namespace lux::render
         }
 
         void clear() noexcept;
-        [[nodiscard]] bool hasCommands() const noexcept;
+        [[nodiscard]] bool hasBorrows() const noexcept;
 
     private:
         friend class ResourceRegistry;

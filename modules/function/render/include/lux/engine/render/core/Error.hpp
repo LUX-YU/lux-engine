@@ -47,7 +47,6 @@ namespace lux::render
 
     inline constexpr auto kCapabilityDeclaration = error::errorId("lux.render.capability");
     inline constexpr auto kCapabilityConflict = error::errorId("lux.render.capability.conflict");
-    inline constexpr auto kCapabilityPrerequisite = error::errorId("lux.render.capability.prerequisite");
     inline constexpr auto kCapabilityCycle = error::errorId("lux.render.capability.cycle");
     inline constexpr auto kCapabilityInUse = error::errorId("lux.render.capability.in_use");
 

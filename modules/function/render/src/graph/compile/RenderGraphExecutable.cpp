@@ -3,6 +3,7 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -37,12 +38,13 @@ namespace lux::render::detail
     }
 
     NativeGraphPrograms::NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept
-        : session_(&session), slots_(slots)
+        : session_(&session), slots_(slots), streams_(slots)
     {
     }
 
     NativeGraphPrograms::NativeGraphPrograms(NativeGraphPrograms&& other) noexcept
         : session_(std::exchange(other.session_, nullptr)), slots_(std::move(other.slots_)),
+          streams_(std::move(other.streams_)),
           program_uses_(std::move(other.program_uses_)), layout_uses_(std::move(other.layout_uses_))
     {
     }

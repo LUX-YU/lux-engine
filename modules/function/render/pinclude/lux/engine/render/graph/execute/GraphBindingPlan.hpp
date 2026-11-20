@@ -21,6 +21,8 @@ namespace lux::render::detail
         bool whole_resource = false;
         std::uint32_t fallback = kGraphInvalidIndex;
         bool comparison_sampler = false;
+
+        bool operator==(const DescriptorUse&) const noexcept = default;
     };
 
     struct FixedDescriptorBinding final

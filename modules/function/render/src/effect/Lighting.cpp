@@ -1,0 +1,384 @@
+#include "DeferredLighting.hpp"
+#include "DeferredLightingClustered.hpp"
+#include "DeferredLightingClusteredShadow.hpp"
+#include "DeferredLightingShadow.hpp"
+#include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
+#include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/features/common/FullscreenRaster.hpp>
+#include <lux/engine/render/features/lighting/ClusteredLightingWork.hpp>
+#include <lux/engine/render/features/lighting/DeferredLightingWork.hpp>
+#include <lux/engine/render/resources/lighting/Resource.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
+
+namespace lux::render::detail
+{
+    RenderResult<RasterWork>
+    deferredLightingWork(RenderGraphBuilder& builder, const DeferredLightingInputs& inputs) noexcept
+    {
+        constexpr std::array shaders{
+            &kDeferredLighting, &kDeferredLightingShadow, &kDeferredLightingClustered, &kDeferredLightingClusteredShadow
+        };
+        const auto variant = 2 * unsigned(inputs.clusters.has_value()) + unsigned(inputs.shadows.has_value());
+        auto work = fullscreenRaster(builder, GraphProgram{*shaders[variant]});
+        if (!work) return cxx::unexpected(work.error());
+        auto& shader = work->fixed().interface;
+        const auto bind = [&](const auto& names, const auto& versions) noexcept
+        {
+            for (std::size_t i = 0; i < names.size(); ++i)
+                shader.resources.push_back({std::string{names[i]}, {versions[i]}});
+        };
+        bind(Lighting::surface_members, inputs.surface);
+        bind(Lighting::light_bindings, inputs.lights);
+        if (inputs.shadows)
+        {
+            bind(Lighting::shadow_members, *inputs.shadows);
+            const auto sampler =
+                builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_BORDER, EDepthCompare::LESS_EQUAL, 1});
+            shader.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
+        }
+        if (inputs.clusters)
+        {
+            constexpr std::array members{"cluster_grid", "cluster_offsets", "cluster_indices", "cluster_status"};
+            bind(members, *inputs.clusters);
+        }
+        return work;
+    }
+
+    struct alignas(16) LightingConstants final
+    {
+        TransformMatrix inverse_view_projection;
+        std::array<float, 4> camera_position, viewport, background, environment;
+    };
+} // namespace lux::render::detail
+
+namespace lux::render
+{
+    template <> struct ConstantBlockTraits<detail::LightingConstants> final
+    {
+        static ConstantBlockLayout layout(rdesc::EShaderTarget) noexcept
+        {
+            using Block = detail::LightingConstants;
+            constexpr auto scalar = rdesc::EDataScalar::FLOAT;
+            static constexpr std::array members{
+                ConstantMemberLayout{"inverse_view_projection", offsetof(Block, inverse_view_projection),
+                    scalar, 4, 4, 16, rdesc::EShaderMatrixOrder::COLUMN_MAJOR},
+                ConstantMemberLayout{"camera_position", offsetof(Block, camera_position), scalar, 4},
+                ConstantMemberLayout{"viewport", offsetof(Block, viewport), scalar, 4},
+                ConstantMemberLayout{"background", offsetof(Block, background), scalar, 4},
+                ConstantMemberLayout{"environment", offsetof(Block, environment), scalar, 4}
+            };
+            return {sizeof(Block), alignof(Block), members};
+        }
+    };
+
+    namespace
+    {
+        struct LightingState final
+        {
+            std::array<float, 4> environment{};
+
+            static void setEnvironment(
+                LightingState& state, const SetLightingEnvironment::Request& request, AckResponse& output
+            ) noexcept
+            {
+                if (std::ranges::any_of(request.radiance, [](float channel) noexcept
+                    { return !std::isfinite(channel) || channel < 0; }))
+                {
+                    output.error = {kFrameContract};
+                    return;
+                }
+                std::ranges::copy(request.radiance, state.environment.begin());
+                output.error = {};
+            }
+        };
+
+        class LightingPreparation final : public InstanceData
+        {
+        public:
+            struct ClusterConfiguration final
+            {
+                GraphPassId pass;
+                ClusterGrid grid;
+            };
+
+            struct Configuration final
+            {
+                std::optional<GraphPassId> lighting;
+                std::optional<ClusterConfiguration> cluster;
+            };
+
+            struct ClusterWriter final
+            {
+                InlineConstantWriter<detail::ClusterBuildConstants> writer;
+                detail::ClusterBuildConstants constants;
+            };
+
+            struct LightingWriter final
+            {
+                NodeStateSlot<LightingState> state;
+                InlineConstantWriter<detail::LightingConstants> writer;
+            };
+
+            struct ResolvedInputs final
+            {
+                std::optional<LightingWriter> lighting;
+                std::optional<ClusterWriter> cluster;
+            };
+
+            [[nodiscard]] static RenderResult<ResolvedInputs>
+            resolve(const Configuration& config, InstanceLinkContext& context) noexcept
+            {
+                ResolvedInputs inputs;
+                if (config.lighting)
+                {
+                    auto state = context.resolveNodeState<LightingState>();
+                    if (!state) return cxx::unexpected(state.error());
+                    auto writer = context.resolveInlineConstants<detail::LightingConstants>(*config.lighting);
+                    if (!writer) return cxx::unexpected(writer.error());
+                    inputs.lighting = LightingWriter{*state, *writer};
+                }
+                if (config.cluster)
+                {
+                    auto cluster = context.resolveInlineConstants<detail::ClusterBuildConstants>(config.cluster->pass);
+                    if (!cluster) return cxx::unexpected(cluster.error());
+                    inputs.cluster = ClusterWriter{*cluster, detail::clusterBuildConstants(config.cluster->grid)};
+                }
+                return inputs;
+            }
+
+            [[nodiscard]] static InstanceDataResult
+            instantiate(const ResolvedInputs& inputs, InstanceInstantiationContext&) noexcept
+            {
+                return std::make_unique<LightingPreparation>(inputs);
+            }
+
+            explicit LightingPreparation(ResolvedInputs inputs) noexcept : inputs_(inputs) {}
+
+            RenderResult<void> prepare(FramePreparation& frame) noexcept override
+            {
+                const auto snapshot = frame.viewParameters();
+                if (!snapshot) return cxx::unexpected(snapshot.error());
+                const auto& view = snapshot->value;
+                if (inputs_.cluster)
+                {
+                    auto constants = inputs_.cluster->constants;
+                    constants.inverse_view_projection = view.inverse_view_projection;
+                    constants.position_near = view.position_near;
+                    constants.direction_far = view.direction_far;
+                    if (auto written = frame.write(inputs_.cluster->writer, constants); !written) return written;
+                }
+                if (!inputs_.lighting) return {};
+                const auto state = frame.readNodeState(inputs_.lighting->state);
+                if (!state) return cxx::unexpected(state.error());
+                return frame.write(inputs_.lighting->writer, {
+                    view.inverse_view_projection, view.position_near, view.viewport, view.background, state->environment
+                });
+            }
+
+        private:
+            ResolvedInputs inputs_;
+        };
+
+        using BundleVersions = std::array<ResourceVersion, 4>;
+        RenderResult<BundleVersions> resolveLightingBundle(
+            std::span<const EffectResourceBundle> input,
+            const std::array<std::string_view, 4>& members,
+            graph::NodeId node
+        ) noexcept
+        {
+            if (input.size() != 1 || input.front().size() != members.size())
+                return cxx::unexpected(RenderError{kCapabilityDeclaration, {node.value}});
+            BundleVersions result;
+            const auto& bundle = input.front();
+            for (std::size_t i = 0; i < members.size(); ++i)
+            {
+                const auto member = std::ranges::find(bundle, effectPortSemantic(members[i]), &EffectResourceValue::member);
+                if (member == bundle.end()) return cxx::unexpected(RenderError{kCapabilityDeclaration, {node.value, i}});
+                result[i] = member->version;
+            }
+            return result;
+        }
+
+        RenderResult<ClusterGrid> parseClusterGrid(graph::NodeId node, std::string_view arguments) noexcept
+        {
+            ClusterGrid grid;
+            if (arguments.empty()) return grid;
+            const std::array fields{&grid.cells[0], &grid.cells[1], &grid.cells[2], &grid.index_capacity};
+            for (std::size_t i = 0; i < fields.size(); ++i)
+            {
+                const auto comma = arguments.find(',');
+                if (comma == std::string_view::npos || !comma)
+                    return cxx::unexpected(RenderError{kInvalidConfig, {node.value, i}});
+                const auto last = arguments.data() + comma;
+                const auto parsed = std::from_chars(arguments.data(), last, *fields[i]);
+                if (parsed.ec != std::errc{} || parsed.ptr != last)
+                    return cxx::unexpected(RenderError{kInvalidConfig, {node.value, i}});
+                arguments.remove_prefix(comma + 1);
+            }
+            if (arguments == "linear")
+                grid.depth = EClusterDepth::LINEAR;
+            else if (arguments != "logarithmic")
+                return cxx::unexpected(RenderError{kInvalidConfig, {node.value, fields.size()}});
+            if (!grid.valid()) return cxx::unexpected(RenderError{kInvalidConfig, {node.value}});
+            return grid;
+        }
+
+        template <bool Clustered>
+        RenderResult<void> initializeLighting(EffectInitializationContext& context, std::string_view arguments) noexcept
+        {
+            if constexpr (Clustered)
+            {
+                auto grid = parseClusterGrid(context.nodeId(), arguments);
+                if (!grid) return cxx::unexpected(grid.error());
+            }
+            else if (!arguments.empty())
+                return cxx::unexpected(RenderError{kInvalidConfig, {context.nodeId().value}});
+            return context.initializeState<LightingState>();
+        }
+
+        template <bool Clustered>
+        RenderResult<void> buildLighting(EffectBuildContext& context, std::string_view arguments) noexcept
+        {
+            const auto node = context.nodeId();
+            auto surface = resolveLightingBundle(context.inputs(Lighting::surface), Lighting::surface_members, node);
+            if (!surface) return cxx::unexpected(surface.error());
+            detail::DeferredLightingInputs lighting{*surface, {}};
+            auto& builder = context.builder();
+            GraphImageDesc extent;
+            for (std::size_t i = 0; i < surface->size(); ++i)
+            {
+                const auto* description = builder.resourceDescription((*surface)[i].resource);
+                const auto* image = description ? std::get_if<GraphImageDesc>(description) : nullptr;
+                const auto format = i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
+                const bool invalid_shape = image &&
+                    (image->format != format || image->mips != 1 || image->layers != 1 ||
+                     image->runtime_layers || image->samples != 1);
+                if (!image || invalid_shape)
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {node.value, i}});
+                auto shape = *image;
+                shape.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+                if (i == 0)
+                    extent = shape;
+                else if (shape != extent)
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {node.value, i}});
+            }
+            const auto shadows = context.inputs(Lighting::shadows);
+            if (!shadows.empty())
+            {
+                auto bound = resolveLightingBundle(shadows, Lighting::shadow_members, node);
+                if (!bound) return cxx::unexpected(bound.error());
+                lighting.shadows = *bound;
+            }
+            constexpr std::array sizes{
+                sizeof(DirectionalLightGpu), sizeof(PointLightGpu), sizeof(SpotLightGpu), sizeof(std::uint32_t) * 4
+            };
+            const ResourceRequirement owner{ResourceName{kLightResourceName.name()}};
+            for (std::uint32_t index = 0; index < sizes.size(); ++index)
+            {
+                const auto bytes = sizes[index];
+                auto input = context.importResource(Lighting::light_bindings[index], owner, {
+                    "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, bytes}},
+                    EGraphUse::STORAGE_READ
+                }, index);
+                if (!input) return cxx::unexpected(input.error());
+                lighting.lights[index] = *input;
+            }
+            const std::string key = "lighting/" + std::to_string(node.value);
+            LightingPreparation::Configuration preparation;
+            std::vector<GraphPassId> writers;
+            if constexpr (Clustered)
+            {
+                const auto grid = parseClusterGrid(node, arguments);
+                if (!grid) return cxx::unexpected(grid.error());
+                const auto cluster_key = key + "/clusters";
+                auto buffers = detail::declareClusterBuffers(builder, cluster_key, *grid);
+                if (!buffers) return cxx::unexpected(buffers.error());
+                ParameterBinding parameters;
+                parameters.setInlineConstant(detail::clusterBuildConstants(*grid));
+                const auto lists = detail::buildClusterLightLists(
+                    builder, cluster_key, *grid, *buffers, lighting.lights, std::move(parameters)
+                );
+                if (!lists) return cxx::unexpected(lists.error());
+                const auto& b = lists->buffers;
+                lighting.clusters = {{b.grid, b.offsets, b.indices, b.status}};
+                if (context.outputDemanded(Lighting::cluster_lists))
+                {
+                    EffectResourceBundle bundle;
+                    for (const auto& [name, field] : detail::clusterBindings)
+                        bundle.push_back({effectPortSemantic(name), b.*field});
+                    if (auto published = context.publish(Lighting::cluster_lists, std::move(bundle)); !published)
+                        return published;
+                }
+                preparation.cluster = LightingPreparation::ClusterConfiguration{lists->build, *grid};
+                writers.push_back(lists->build);
+            }
+            if (context.outputDemanded(Lighting::hdr))
+            {
+                const auto hdr = builder.declareResource({key, extent});
+                if (!hdr) return cxx::unexpected(hdr.error());
+                auto work = detail::deferredLightingWork(builder, lighting);
+                if (!work) return cxx::unexpected(work.error());
+                work->fixed().interface.parameters.setInlineConstant(detail::LightingConstants{});
+                work->colors.push_back({{{*hdr, 0}}});
+                auto pass = builder.addRasterPass(key, std::move(*work));
+                if (!pass) return cxx::unexpected(pass.error());
+                preparation.lighting = pass->pass;
+                writers.push_back(pass->pass);
+                if (auto published = context.publish(Lighting::hdr, {{Lighting::hdr, pass->written.front()}}); !published)
+                    return published;
+            }
+            auto config = ConfigValue::make(std::move(preparation));
+            if (!config) return cxx::unexpected(config.error());
+            return context.addPreparation({
+                InstanceDataFactory::make<LightingPreparation>(), std::move(*config), {}, {}, std::move(writers)
+            });
+        }
+    }
+
+    CapabilityDefinition Lighting::definition() noexcept
+    {
+        CapabilityDefinition definition;
+        definition.identity = {graph::nodeTypeId(capability), std::string{capability}, version};
+        definition.display_name = "Lighting";
+        definition.ports = {
+            {surface, "surface", {std::string{surface_type}, 1}, graph::EPinDirection::INPUT, 1, true},
+            {shadows, "shadows", {std::string{shadow_type}, 1}, graph::EPinDirection::INPUT, 1},
+            {hdr, "hdr_color", {std::string{hdr_type}, 1}, graph::EPinDirection::OUTPUT, UINT8_MAX},
+            {cluster_lists, "cluster_lists", {std::string{cluster_lists_type}, 1}, graph::EPinDirection::OUTPUT, UINT8_MAX}
+        };
+        return definition;
+    }
+
+    RenderResult<void> detail::registerLighting(RenderServer& server) noexcept
+    {
+        const auto command = server.registerNodeEffectCommand(
+            CommandBinding::declareForEffect<SetLightingEnvironment, LightingState, &LightingState::setEnvironment>()
+        );
+        if (!command) return cxx::unexpected(command.error());
+        auto definition = Lighting::definition();
+        const auto type = definition.identity.id;
+        definition.commands = {command->command};
+        if (auto added = server.registerEffectCapability(std::move(definition)); !added) return added;
+        EffectImplementation implementation;
+        implementation.capability = type;
+        implementation.identity = {std::string{Lighting::direct}, Lighting::version};
+        implementation.supported_outputs = {Lighting::hdr};
+        implementation.command_bindings = {*command};
+        implementation.initialize = initializeLighting<false>;
+        implementation.build = buildLighting<false>;
+        auto clustered = implementation;
+        clustered.identity.canonical_name = Lighting::clustered;
+        clustered.supported_outputs.push_back(Lighting::cluster_lists);
+        clustered.initialize = initializeLighting<true>;
+        clustered.build = buildLighting<true>;
+        if (auto added = server.registerEffectImplementation(std::move(implementation)); !added) return added;
+        return server.registerEffectImplementation(std::move(clustered));
+    }
+} // namespace lux::render

@@ -31,29 +31,8 @@ namespace lux::render::detail
             std::span<ResourceInput>
         ) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
-        [[nodiscard]] bool read(LightId, VDirectLight&, std::uint32_t& dense_index) const noexcept;
         [[nodiscard]] std::array<std::uint32_t, 3> counts() const noexcept;
-
-        template <class F> void forEachShadow(F&& visitor) const noexcept
-        {
-            for (std::uint32_t kind = 0; kind < 3; ++kind)
-            {
-                for (const auto key : arrays_[kind].identities)
-                {
-                    const auto& entry = *entries_.find(key);
-                    if (entry.shadows.enabled)
-                    {
-                        visitor(extension_detail::ResourceIdentity::make<LightId>(id_, key), kind, entry.shadows);
-                    }
-                }
-            }
-        }
-
-        // Projection/mapping changes only; radiance updates still dirty GPU records independently.
-        [[nodiscard]] std::uint64_t shadowRevision() const noexcept
-        {
-            return shadow_revision_;
-        }
+        [[nodiscard]] RenderResult<std::uint64_t> captureShadows(ShadowLightSnapshot&) const noexcept;
 
     private:
         struct Entry final

@@ -70,6 +70,9 @@ namespace lux::render::detail
                 result.access = nri::AccessBits::ARGUMENT_BUFFER;
                 result.stages = nri::StageBits::INDIRECT;
                 break;
+            case EGraphUse::UNIFORM_READ:
+                result.access = nri::AccessBits::CONSTANT_BUFFER;
+                break;
             default:
                 result.access = use.usage == EGraphUse::SAMPLED ? nri::AccessBits::SHADER_RESOURCE
                                                                 : nri::AccessBits::SHADER_RESOURCE_STORAGE;
@@ -114,9 +117,36 @@ namespace lux::render::detail
         ) noexcept
         {
             auto current = accessFor(use, program);
+            const auto* raster = std::get_if<RasterWork>(&pass.command);
+            const auto* stream = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
+            const bool is_stream_buffer = stream && stream->usesStreamProducer() &&
+                use.usage == EGraphUse::STORAGE_READ && std::holds_alternative<GraphBufferDesc>(description);
+            const bool is_stream_image = stream && stream->usesStreamProducer() &&
+                use.usage == EGraphUse::SAMPLED && std::holds_alternative<GraphImageDesc>(description);
+            if (is_stream_buffer || is_stream_image)
+            {
+                auto access = nri::AccessBits::NONE;
+                auto stages = nri::StageBits::ALL; // NRI uses zero for stage-mask accumulation.
+                for (const auto& input : stream->inputs)
+                {
+                    if (input.usage != use.usage || !input.kind) continue;
+                    if (is_stream_image && *input.kind != rdesc::EDescriptorType::SAMPLED_IMAGE) continue;
+                    stages |= shaderStages(input.stages);
+                    access |= *input.kind == rdesc::EDescriptorType::UNIFORM_BUFFER
+                        ? nri::AccessBits::CONSTANT_BUFFER : nri::AccessBits::SHADER_RESOURCE;
+                }
+                if (access != nri::AccessBits::NONE)
+                {
+                    current.access = access;
+                    current.stages = stages;
+                }
+            }
             if (const auto* transfer = std::get_if<TransferWork>(&pass.command))
             {
-                if (const auto native = TransferPass::access(*transfer, use, description, backend))
+                const auto native = TransferPass::access(
+                    *transfer, pass.interface.typed_buffer_writes, use, description, backend
+                );
+                if (native)
                 {
                     current.access = native->access;
                     current.stages = native->stages;
@@ -256,9 +286,8 @@ namespace lux::render::detail
                 std::size_t count = 0;
                 for (const auto& transition : batch.images)
                 {
-                    const auto& image = std::get<GraphImageDesc>(resources[transition.resource].description);
                     bool merged = false;
-                    if (count && !image.runtime_layers && key(batch.images[count - 1]) == key(transition))
+                    if (count && key(batch.images[count - 1]) == key(transition))
                     {
                         auto& previous = batch.images[count - 1].native;
                         const auto& next = transition.native;

@@ -30,7 +30,6 @@ namespace lux::render
         using CommonCommands = std::tuple<
             QueryRenderJobInputLayout,
             UpdateFrameData,
-            UpdateViewCamera,
             QueryResource,
             GetOrCreateResource,
             CreateScene,
@@ -42,8 +41,8 @@ namespace lux::render
             RemoveTarget,
             SetTargetActive,
             CreateEffect,
+            SetToneMappingExposure,
             RemoveEffect,
-            SetEffectParameters,
             CreateRenderJob,
             StartRenderJob,
             StopRenderJob,
@@ -54,13 +53,13 @@ namespace lux::render
             RequestRenderJob,
             UpdateJobInputs,
             InvalidateHistory,
-            ListCapabilities,
             QueryExecutionProgress,
             QueryRenderStats,
             CreateDeviceSession,
             RemoveDeviceSession,
             QueryRenderDevice,
             Stop,
+            ListEffectCapabilities,
             ListCommands
         >;
 

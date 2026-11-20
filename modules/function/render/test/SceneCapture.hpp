@@ -4,22 +4,20 @@
 #include <lux/engine/render/resources/material/Resource.hpp>
 #include <lux/engine/render/resources/texture/Resource.hpp>
 #include <lux/engine/render/resources/mesh/Resource.hpp>
-
-#include <lux/engine/render/resources/instance/Resource.hpp>
-#include <lux/engine/render/resources/lighting/Resource.hpp>
-
-#include <lux/engine/render/capabilities/DeferredLighting.hpp>
-#include <lux/engine/render/capabilities/RasterSurface.hpp>
-#include <lux/engine/render/capabilities/RenderPresets.hpp>
+#include <lux/engine/render/resources/transform/Resource.hpp>
 
 #include "Support.hpp"
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstring>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/resources/texture/Binding.hpp>
@@ -43,47 +41,6 @@ namespace ipc = lux::platform::ipc;
 namespace rdesc = lux::rdesc;
 using Clock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
-
-struct CaptureDescriptor;
-
-struct RenderProbeCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Resources = std::tuple<
-        MeshResource, TextureResource, MaterialResource, InstanceResource, LightResource, CaptureDescriptor
-    >;
-};
-
-// Test configurations compose existing typed Feature inputs; preserve their real cold memory accounting.
-namespace lux::render
-{
-    template <class... Fields> struct ConfigValueTraits<std::tuple<Fields...>>
-    {
-        static RenderResult<std::size_t> retainedBytes(const std::tuple<Fields...>& value) noexcept
-        {
-            RenderResult<std::size_t> total{sizeof(value)};
-            std::apply(
-                [&](const auto&... fields) noexcept
-                {
-                    const auto add = [&](const auto& field) noexcept
-                    {
-                        if (!total) return;
-                        using Field = std::remove_cvref_t<decltype(field)>;
-                        auto bytes = ConfigValueTraits<Field>::retainedBytes(field);
-                        if (!bytes) total = lux::cxx::unexpected(bytes.error());
-                        else if (*bytes < sizeof(Field) || *bytes - sizeof(Field) > SIZE_MAX - *total)
-                            total = lux::cxx::unexpected(RenderError{kInvalidConfig});
-                        else *total += *bytes - sizeof(Field);
-                    };
-                    (add(fields), ...);
-                },
-                value
-            );
-            return total;
-        }
-    };
-}
 
 // Test-only observation: installed by the first CaptureBuffer before the first frame.
 // The fixture serializes uploads/Attach before frame submission. Installation never races
@@ -529,74 +486,6 @@ inline void endCallCapture() noexcept
     }
 }
 
-// Test-only capability: implementations produce explicit render/readback probes.
-// No Graph description is carried in its public Commands or frame protocol.
-
-
-inline std::vector<std::string>
-probePorts(std::initializer_list<std::string_view> images, std::initializer_list<std::string_view> buffers)
-{
-    std::vector<std::string> names;
-    for (auto key : images) names.emplace_back(key);
-    for (auto key : buffers) names.emplace_back(key);
-    return names;
-}
-
-template <class Configuration, class Capability = RenderProbeCapability> struct RenderProbe final
-{
-    using Build = RenderResult<EffectDefinition> (*)(
-        const EffectOutputDesc&, const Configuration&, std::span<const FeatureId>
-    ) noexcept;
-    CapabilityImplementationId implementation;
-    std::vector<FeatureId> features;
-    std::vector<std::string> outputs;
-    Build build;
-};
-
-template <class Configuration, class Capability = RenderProbeCapability>
-RenderProbe<Configuration, Capability> registerRenderProbe(
-    RenderServer& server, std::string name, std::vector<FeatureId> features, std::vector<std::string> outputs,
-    typename RenderProbe<Configuration, Capability>::Build build
-)
-{
-    CapabilityImplementation implementation;
-    implementation.implementation = std::move(name);
-    implementation.features = features;
-    using enum rdesc::ETextureFormat;
-    using enum ETargetKind;
-    implementation.outputs = {
-        {RGBA8_UNORM, 1, OFFSCREEN}, {RGBA8_UNORM, 1, SURFACE},
-        {RGBA16_SFLOAT, 1, OFFSCREEN}, {RGBA16_SFLOAT, 1, SURFACE}
-    };
-    auto capability = server.capabilityId(lux::cxx::make_basic_type_info<Capability>());
-    if (!capability && capability.error().type == kRuntimeIdentity)
-        capability = server.registerCapability<Capability>();
-    const auto id = take(server.addCapabilityImplementation(take(std::move(capability)), implementation));
-    return {id, std::move(features), std::move(outputs), build};
-}
-
-template <class Configuration, class Capability = RenderProbeCapability>
-CreateEffectRequest probeRequest(
-    TargetDesc target, const RenderProbe<Configuration, Capability>& probe, Configuration configuration,
-    std::initializer_list<std::string_view> outputs
-)
-{
-    CreateEffectRequest request{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
-    request.definition = take(probe.build(request.output, configuration, probe.features));
-    CHECK(request.definition.outputs.size() == probe.outputs.size());
-    std::vector<FeatureExport> selected;
-    for (auto name : outputs)
-    {
-        const auto found = std::ranges::find(probe.outputs, name);
-        CHECK(found != probe.outputs.end());
-        selected.push_back(request.definition.outputs[found - probe.outputs.begin()]);
-    }
-    request.definition.outputs = std::move(selected);
-    for (auto& feature : request.definition.features) feature.contribution_key = "probe/" + feature.contribution_key;
-    request.implementations.push_back({probe.implementation, "probe"});
-    return request;
-}
-
 // Test extension: ordinary graph copies, mapped only after Detach and actual GPU cleanup.
 // No production Readback command, implicit Draw, Native accessor on Client, or timing-based completion.
 struct CapturedPixels
@@ -625,23 +514,6 @@ struct CaptureDescriptor
         "View-owned terminal copy collection.", EResourceDomain::VIEW
     };
 };
-
-struct CaptureCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Resources = std::tuple<CaptureDescriptor>;
-};
-
-inline CapabilityImplementationId registerCaptureProbe(RenderServer& server, FeatureId feature)
-{
-    CapabilityImplementation implementation;
-    implementation.implementation = "test.capture";
-    implementation.features = {feature};
-    implementation.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-    const auto capability = take(server.registerCapability<CaptureCapability>());
-    return take(server.addCapabilityImplementation(capability, implementation));
-}
 
 class CaptureBuffer
 {
@@ -735,115 +607,132 @@ private:
     std::vector<Allocation> allocations_;
 };
 
-struct WindowClear final
+struct GraphCaptureDescriptor final
 {
-    struct Config final
-    {
-        rdesc::ETextureFormat format;
+    using Config = void;
+    using Ops = void;
+    static inline const ResourceDefinition descriptor{
+        ResourceNameView{"test.graph.capture"}, 0, 0, {}, "View-owned EffectGraph readback.", EResourceDomain::VIEW
     };
-    using Ports = WindowClear;
-    static constexpr FeatureName name{"test.window.clear"};
-
-    static RenderResult<void> describe(const void* configuration, std::string_view, FeaturePorts& ports) noexcept
-    {
-        GraphImageDesc image{64, 64, 1, 1, static_cast<const Config*>(configuration)->format};
-        image.extent.source = EImageExtentSource::TARGET;
-        FeaturePort color{"color", EFeaturePort::OUTPUT, image};
-        if (image.format == rdesc::ETextureFormat::RGBA16_SFLOAT)
-            color.semantic = "lux.color.linear-hdr.v1";
-        ports.resources.push_back(std::move(color));
-        return {};
-    }
-
-    static RenderResult<void> build(const void* configuration, std::string_view, FeatureBuildContext& context) noexcept
-    {
-        const auto color = context.resource("color");
-        const bool is_depth = static_cast<const Config*>(configuration)->format == rdesc::ETextureFormat::D32_SFLOAT;
-        const auto clear = is_depth ? ClearImage{{color, GraphImageRange{2}}, {}, .25f}
-                                    : ClearImage{{color}, {.25f, .5f, .75f, 1}};
-        auto pass = context.graph.addTransferPass("clear output", TransferWork{{clear}});
-        if (!pass) return lux::cxx::unexpected(pass.error());
-        return context.publish("color", pass->written.front());
-    }
 };
 
-struct CaptureFeature
+class GraphCaptureBuffer final
 {
-    using Config = CaptureConfig;
-    static constexpr FeatureName name{"test.deferred.Copy"};
-    using Storages = std::tuple<CaptureBuffer>;
-    using Commands = std::tuple<>;
-    using Ports = CaptureFeature;
+public:
+    using Descriptor = GraphCaptureDescriptor;
+    static constexpr std::uint32_t image_bytes = 64u * 256;
 
-    static RenderResult<void> describe(const void* value, std::string_view key, FeaturePorts& ports) noexcept
+    static ResourceRegistration factory() noexcept
     {
-        GraphImageDesc image{64, 64};
-        const auto& config = *static_cast<const CaptureConfig*>(value);
-        image.format = config.format;
-        image.layers = config.layers;
-        image.mips = config.mips;
-        image.extent.source = config.target_relative ? EImageExtentSource::TARGET : EImageExtentSource::FIXED;
-        ports.resources.push_back(
-            {"color",
-             EFeaturePort::INPUT,
-             config.bytes ? VGraphResourceDesc{GraphBufferDesc{config.bytes}} : VGraphResourceDesc{image}}
-        );
-        ports.resource_bindings.view.push_back(
-            {"pixels",
-             EFeaturePort::OUTPUT,
-             GraphBufferDesc{std::max(64u * 256, config.bytes)},
-             EGraphOrigin::IMPORTED,
-             {},
-             ResourceRequirement{ResourceName(CaptureDescriptor::descriptor.type.name())},
-             EGraphUse::TRANSFER_DESTINATION}
-        );
-        return {};
+        static const StorageBindingOps bindings{
+            .describeGraphImport = describe,
+            .resolveGraphImport = resolve
+        };
+        return makeResourceRegistration<Descriptor, GraphCaptureBuffer, &GraphCaptureBuffer::create>(nullptr, &bindings);
     }
 
-    static RenderResult<void>
-    build(
-        const void* value,
-        std::string_view key,
-        FeatureBuildContext& context
+    static ResourceInstanceId
+    bind(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
+        ViewRequest view, const CaptureConfig& config, const CaptureConfig& extra = {});
+
+    static ResourceInstanceId
+    bind(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
+        ViewRequest view, std::span<const CaptureConfig> configurations);
+
+    GraphCaptureBuffer(std::unique_ptr<CaptureBuffer> storage, std::span<const CaptureConfig> configurations) noexcept
+        : storage_(std::move(storage)), config_(configurations.begin(), configurations.end())
+    {
+    }
+
+private:
+    static RenderResult<std::unique_ptr<GraphCaptureBuffer>>
+    create(ResourceCreateContext& context, ResourceInstanceId id) noexcept
+    {
+        const auto* config = creation_input_.load();
+        if (!config) return lux::cxx::unexpected(RenderError{kInvalidConfig});
+        auto storage = CaptureBuffer::create(context, id);
+        if (!storage) return lux::cxx::unexpected(storage.error());
+        return std::make_unique<GraphCaptureBuffer>(std::move(*storage), *config);
+    }
+
+    static RenderResult<StorageGraphImport> describe(const void* object, std::uint32_t projection) noexcept
+    {
+        const auto& capture = *static_cast<const GraphCaptureBuffer*>(object);
+        if (projection >= capture.config_.size() || !capture.config_[projection].result)
+            return lux::cxx::unexpected(RenderError{kStorageContract});
+        const auto bytes = std::max(image_bytes, capture.config_[projection].bytes);
+        return StorageGraphImport{GraphBufferDesc{bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+    }
+
+    static RenderResult<void> resolve(
+        void* object, std::uint32_t projection, const VGraphResourceDesc& description,
+        StorageSubscription& subscription, std::span<ResourceInput> output
     ) noexcept
     {
-        context.require(StorageArgument::make(context.resource("pixels").resource,
-            *static_cast<const CaptureConfig*>(value)));
-        auto initialized = context.graph.addTransferPass(
-            featureKey(FeatureName{"test.deferred.Copy"}, key, "initialize"),
-            TransferWork{{FillBuffer{{context.resource("pixels")}, 0}}}
-        );
-        if (!initialized)
-        {
-            return lux::cxx::unexpected(initialized.error());
-        }
-        const auto& config = *static_cast<const CaptureConfig*>(value);
-        TransferWork copy;
-        if (config.bytes)
-        {
-            copy.operations.push_back(CopyBuffer{
-                {context.resource("color")},
-                {initialized->written.front(), GraphBufferRange{0, config.bytes}, EGraphAccess::READ_WRITE}
-            });
-        }
-        else
-        {
-            const auto aspects = rdesc::textureAspectMask(config.format);
-            copy.operations.push_back(CopyImageBuffer{
-                {context.resource("color"), GraphImageRange{aspects, config.mip, 1, config.layer, 1}},
-                {initialized->written.front(), {}, EGraphAccess::READ_WRITE}
-            });
-        }
-        auto pass =
-            context.graph.addTransferPass(featureKey(FeatureName{"test.deferred.Copy"}, key, "copy"), std::move(copy));
-        if (!pass)
-        {
-            return lux::cxx::unexpected(pass.error());
-        }
-        return context.publish("pixels", pass->written.front());
+        auto& capture = *static_cast<GraphCaptureBuffer*>(object);
+        if (projection >= capture.config_.size() || !capture.config_[projection].result)
+            return lux::cxx::unexpected(RenderError{kStorageContract});
+        return CaptureBuffer::resolve(capture.storage_.get(), description, &capture.config_[projection], subscription, output);
     }
+
+    static inline std::atomic<const std::span<const CaptureConfig>*> creation_input_{};
+    std::unique_ptr<CaptureBuffer> storage_;
+    std::vector<CaptureConfig> config_;
 };
 
+struct ColorCapture final
+{
+    static constexpr std::string_view name = "test.graph.capture_color";
+    static constexpr auto color = effectPortSemantic("color");
+    static constexpr auto pixels = effectPortSemantic("pixels");
+
+    static CapabilityDefinition definition()
+    {
+        return {
+            .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
+            .ports = {
+                {color, "color", {std::string{ToneMapping::display_type}, 1}, lux::graph::EPinDirection::INPUT, 1, true},
+                {pixels, "pixels", {"test.graph.pixels", 1}, lux::graph::EPinDirection::OUTPUT}
+            }
+        };
+    }
+
+    static void registerWith(RenderServer& server)
+    {
+        take(server.registerResource<GraphCaptureBuffer>());
+        const auto capability = definition();
+        CHECK(server.registerEffectCapability(capability));
+        EffectImplementation implementation;
+        implementation.capability = capability.identity.id;
+        implementation.identity = {std::string{name}, 1};
+        implementation.supported_outputs = {pixels};
+        implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept
+            -> RenderResult<void> { return {}; };
+        implementation.build = build;
+        CHECK(server.registerEffectImplementation(std::move(implementation)));
+    }
+
+private:
+    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    {
+        const auto input = context.inputs(color);
+        CHECK(input.size() == 1 && input.front().size() == 1);
+        const auto readback = context.importResource(
+            name,
+            {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
+            {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
+                EGraphUse::TRANSFER_DESTINATION}
+        );
+        if (!readback) return lux::cxx::unexpected(readback.error());
+        const auto copy = take(context.builder().addTransferPass(
+            "copy color pixels", TransferWork{{CopyImageBuffer{
+                {input.front().front().version}, {*readback}, 256, GraphCaptureBuffer::image_bytes,
+                ImageCopyRegion{0, 0, 64, 64}
+            }}}
+        ));
+        return context.publish(pixels, {{pixels, copy.written.front()}});
+    }
+};
 
 // Fixture-owned correlation across its sequential calls; production Clients own their own counters.
 static std::uint64_t nextSceneRequest() noexcept
@@ -917,6 +806,59 @@ inline MaterialId createMaterialInstance(
     ).material;
 }
 
+static ResourceInstanceId sceneTransformStorage(
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device, SceneId scene
+)
+{
+    return call<GetOrCreateResource>(client, commands, {device, scene, kTransformResourceName}).resource_id;
+}
+
+static TransformId createTransform(
+    ipc::IpcRequester& client,
+    const CommandList& commands,
+    ResourceInstanceId resource,
+    const TransformMatrix& matrix = kIdentityTransform
+)
+{
+    return call<TransformCommands::Create>(client, commands, {resource, std::span{&matrix, 1}}).transforms.front();
+}
+
+static std::vector<TransformId> bindTransforms(
+    ipc::IpcRequester& client,
+    const CommandList& commands,
+    ResourceInstanceId resource,
+    std::span<MeshInstanceData> instances,
+    std::span<const TransformMatrix> matrices
+)
+{
+    CHECK(instances.size() == matrices.size());
+    auto transforms = call<TransformCommands::Create>(client, commands, {resource, matrices}).transforms;
+    CHECK(transforms.size() == instances.size());
+    for (std::size_t i = 0; i < instances.size(); ++i) instances[i].transform_id = transforms[i];
+    return transforms;
+}
+
+inline ResourceInstanceId GraphCaptureBuffer::bind(
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
+    ViewRequest view, const CaptureConfig& config, const CaptureConfig& extra
+)
+{
+    const std::array configurations{config, extra};
+    return bind(client, commands, device, view, std::span{configurations}.first(extra.result ? 2 : 1));
+}
+
+inline ResourceInstanceId GraphCaptureBuffer::bind(
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
+    ViewRequest view, std::span<const CaptureConfig> configurations
+)
+{
+    // Only this synchronous fixture call supplies the resource's creation input.
+    CHECK(!configurations.empty() && !creation_input_.exchange(&configurations));
+    const auto resource = call<GetOrCreateResource>(client, commands, {device, view, Descriptor::descriptor.type});
+    creation_input_.store(nullptr);
+    return resource.resource_id;
+}
+
 static void renderFrame(ipc::IpcRequester& client, const CommandList& commands, RenderJobId job)
 {
     CHECK(call<RequestRenderJob>(client, commands, {job}).job == job);
@@ -929,11 +871,12 @@ static RenderJobId startRenderJob(
     SceneId scene,
     ViewId view,
     TargetId target,
-    EffectId effect
+    EffectId effect,
+    JobBinding binding = {}
 )
 {
     const auto job = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    call<StartRenderJob>(client, commands, {session, job, target});
+    call<StartRenderJob>(client, commands, {session, job, target, std::move(binding)});
     return job;
 }
 
@@ -964,45 +907,14 @@ static CommandList queryCommands(ipc::IpcRequester& client)
     return call<ListCommands>(client, bootstrap, {});
 }
 
-struct SceneInputRoutes final
-{
-    ResourceInstanceId instances, lights;
-    VRenderScope scope;
-    std::vector<CapabilityImplementationInfo> recipes;
-};
-
-static SceneInputRoutes
-installInputs(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session, VRenderScope scope)
-{
-    const auto choices = call<ListCapabilities>(client, commands, {session});
-    SceneInputRoutes routes{{}, {}, scope};
-    for (auto name : {kRasterSurfaceCapability, kDeferredLightingCapability})
-    {
-        const auto found = std::ranges::find_if(
-            choices.implementations,
-            [name](const auto& value) { return value.capability.type.name() == name; }
-        );
-        CHECK(found != choices.implementations.end());
-        routes.recipes.push_back(*found);
-    }
-    if (!std::holds_alternative<DeviceScope>(scope))
-    {
-        routes.instances = call<GetOrCreateResource>(client, commands, {session, scope, kInstanceResourceName}).resource_id;
-        routes.lights = call<GetOrCreateResource>(client, commands, {session, scope, kLightResourceName}).resource_id;
-    }
-    return routes;
-}
-
 // Professional commands also work without a running Job.
-template <class Target, class T>
+template <class T>
 static AckResponse updateSceneData(
-    ipc::IpcRequester& client, const CommandList& commands, Target target, const T& input, bool success = true
+    ipc::IpcRequester& client, const CommandList& commands, ResourceInstanceId target, const T& input, bool success = true
 )
 {
-    if constexpr (std::same_as<Target, ViewRequest>)
-        return call<UpdateViewCamera>(client, commands, {target, input}, success);
-    else if constexpr (std::same_as<T, std::span<const DirectLightUpdate>>)
+    if constexpr (std::same_as<T, std::span<const DirectLightUpdate>>)
         return call<LightingCommands::Update>(client, commands, {target, input}, success);
     else
-        return call<InstanceCommands::Update>(client, commands, {target, {}, input}, success);
+        return call<InstanceCommands::Update>(client, commands, {target, input}, success);
 }

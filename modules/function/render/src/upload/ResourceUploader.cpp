@@ -453,14 +453,25 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceCapacity});
         }
+        auto staged = stageBufferPrefix(write, unit);
+        if (!staged || *staged != write.source.size())
+        {
+            std::terminate(); // Preflight and consumption are one control-owner segment.
+        }
+        return staged;
+    }
+
+    RenderResult<std::size_t> ResourceUploader::stageBufferPrefix(const BufferWrite& write, std::size_t unit) noexcept
+    {
+        const bool invalid_range = unit == 0 || write.source.size() % unit != 0;
+        if (!write.target || write.source.empty() || invalid_range)
+            return cxx::unexpected(RenderError{kDeviceArgument});
+
         std::size_t offset = 0;
-        while (offset < write.source.size())
+        while (offset < write.source.size() && frame_copies_.size() < options_.window_regions)
         {
             auto range = staging_arena_->acquire(write.source.size() - offset, unit);
-            if (!range)
-            {
-                std::terminate(); // Preflight and consumption are one control-owner segment.
-            }
+            if (!range) break;
             const auto bytes = range->bytes.size();
             std::memcpy(range->bytes.data(), write.source.data() + offset, bytes);
             frame_copies_.push_back({std::move(*range), write.target, write.offset + offset});

@@ -37,7 +37,7 @@ namespace lux::render::detail
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;
         [[nodiscard]] ResourceSet* scopedResources(SceneId, ViewId, bool create) noexcept;
-        [[nodiscard]] bool scopedResourceCommands(SceneId = {}, ViewId = {}) const noexcept;
+        [[nodiscard]] bool scopedResourceBorrows(SceneId = {}, ViewId = {}) const noexcept;
         void eraseResourceScope(SceneId, ViewId = {}) noexcept;
     private:
         DeviceEntry(

@@ -15,6 +15,8 @@
 namespace lux::render::detail
 {
 
+    class TransformStorage;
+
     class RasterMeshInstanceStorage final
     {
         struct GpuPage;
@@ -57,7 +59,7 @@ namespace lux::render::detail
             std::size_t position_ = 0;
         };
 
-        RasterMeshInstanceStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
+        RasterMeshInstanceStorage(ResourceCreateContext&, ResourceInstanceId, TransformStorage&) noexcept;
         ~RasterMeshInstanceStorage() noexcept;
         RasterMeshInstanceStorage(const RasterMeshInstanceStorage&) = delete;
         RasterMeshInstanceStorage& operator=(const RasterMeshInstanceStorage&) = delete;
@@ -65,8 +67,7 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceData) noexcept;
         [[nodiscard]] exec::task<
             RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceData>) noexcept;
-        [[nodiscard]] RenderResult<void>
-        update(std::span<const TransformUpdate>, std::span<const MeshInstanceUpdate>) noexcept;
+        [[nodiscard]] RenderResult<void> update(std::span<const MeshInstanceUpdate>) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
         void observe(Observer&) noexcept;
 
@@ -89,6 +90,12 @@ namespace lux::render::detail
         [[nodiscard]] std::uint64_t capacity() const noexcept;
 
     private:
+        [[nodiscard]] RenderResult<std::uint64_t> captureMeshSelections(MeshInstanceSnapshot&) const noexcept;
+        [[nodiscard]] ResourceInput pagedRoot(std::uint32_t frame) noexcept;
+        [[nodiscard]] RenderResult<StorageGraphImport> describeGraphImport(std::uint32_t projection) const noexcept;
+        [[nodiscard]] RenderResult<void> resolveGraphImport(
+            std::uint32_t projection, const VGraphResourceDesc&, StorageSubscription&, std::span<ResourceInput>
+        ) noexcept;
         template <class Input>
         using CreateValue =
             std::conditional_t<std::same_as<Input, MeshInstanceData>, MeshInstanceId, std::vector<MeshInstanceId>>;
@@ -120,16 +127,19 @@ namespace lux::render::detail
         FrameProgress& replica_progress_;
         std::uint32_t frame_count_;
         ResourceRegistry& resources_;
+        TransformStorage& transforms_;
 
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
+        std::uint64_t selection_revision_ = 1;
         const bool paged_;
         bool updating_ = false;
         std::uint32_t live_records_ = 0;
         cxx::SlotMap<Entry, MeshInstanceTag> entries_;
         std::vector<std::unique_ptr<Page>> pages_;
         std::unique_ptr<FrameData> frames_;
-        std::array<StorageSubscription*, 3> bindings_{};
+        std::array<StorageSubscription*, 2> bindings_{};
+        StorageSubscription* paged_bindings_ = nullptr;
         std::vector<Observer*> observers_;
     };
 } // namespace lux::render::detail

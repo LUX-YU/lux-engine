@@ -37,6 +37,8 @@ namespace lux::render::detail
         std::vector<std::byte> initial_parameters;
         std::vector<ParameterUse> parameters;
         std::vector<std::pair<std::uint32_t, EDeviceParameter>> device_parameters;
+
+        bool operator==(const PassBindings&) const noexcept = default;
     };
 
     struct ParameterRegion final

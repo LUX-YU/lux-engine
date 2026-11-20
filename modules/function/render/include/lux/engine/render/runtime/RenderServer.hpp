@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/capabilities/CapabilityDeclaration.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -22,15 +22,13 @@ namespace lux::execution
 namespace lux::render
 {
     struct ResourceRegistration;
-    struct CapabilityImplementation;
-    struct CapabilityDescription;
-    class CapabilityRegistry;
+    struct CapabilityDefinition;
+    struct EffectImplementation;
     class CommandBinding;
 
     namespace runtime_detail
     {
         struct HandlerRecord;
-        struct FeatureEntry;
     } // namespace runtime_detail
 
     struct RenderServerConfig final
@@ -72,6 +70,8 @@ namespace lux::render
         std::uint64_t program_preparations = 0, discarded_preparations = 0;
         // Each growth is a new backing allocation made by a selection or topology vector.
         std::uint64_t job_selection_calls = 0, job_selection_growths = 0, job_topology_growths = 0;
+        // External vertex and index ranges selected by raster streams in accepted batches.
+        std::uint64_t raster_geometry_ranges = 0, raster_geometry_bytes = 0;
     };
 
     // The application owns the rendering thread. Only stop() and stats() may race with run().
@@ -90,45 +90,19 @@ namespace lux::render
         RenderServer& operator=(const RenderServer&) = delete;
 
         // Setup lookup. Runtime applications use the discovery commands through IPC.
-        [[nodiscard]] RenderResult<FeatureId>
-        featureId(std::string_view implementation) const noexcept;
-
-        [[nodiscard]] RenderResult<CapabilityId> capabilityId(cxx::basic_type_info) const noexcept;
         [[nodiscard]] RenderResult<HandlerId> handlerId(cxx::basic_type_info, std::string_view key = {}) const noexcept;
 
         // Extension authors include extensions/Registration.hpp for these template definitions.
         // Metadata and callback code must outlive the Server and all accepted work. Serialize all
         // direct catalog calls during setup. run() seals registration and takes over the catalog.
-        template <class Feature> [[nodiscard]] RenderResult<FeatureId>
-        registerFeature() noexcept;
-
-        // Dependencies are registered once by the module closure; this helper only resolves their IDs.
-        template <class Implementation> [[nodiscard]] RenderResult<CapabilityImplementationId>
-        registerCapabilityImplementation() noexcept;
-
-        // Register capabilities before handing the catalog to run().
-        template <CapabilityConcept C> [[nodiscard]] RenderResult<CapabilityId> registerCapability() noexcept
-        {
-            return registerCapability(describeCapability<C>());
-        }
-
-        [[nodiscard]] RenderResult<CapabilityId>
-        registerCapability(const CapabilityDescription&) noexcept;
-
-        [[nodiscard]] RenderResult<CapabilityImplementationId>
-        addCapabilityImplementation(CapabilityId capability, const CapabilityImplementation& declaration) noexcept;
-
-        [[nodiscard]] RenderResult<CapabilityImplementationId>
-        replaceCapabilityImplementation(CapabilityImplementationId previous, const CapabilityImplementation& declaration) noexcept;
-
-        [[nodiscard]] RenderResult<void>
-        removeCapabilityImplementation(CapabilityImplementationId id) noexcept;
-
-        [[nodiscard]] RenderResult<void>
-        removeCapability(CapabilityId id) noexcept;
-
         // Resource declaration and shared implementation metadata remain distinct at registration.
         [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}) noexcept;
+
+        [[nodiscard]] RenderResult<void> registerEffectCapability(CapabilityDefinition) noexcept;
+        [[nodiscard]] RenderResult<void> registerEffectImplementation(EffectImplementation) noexcept;
+        [[nodiscard]] RenderResult<CommandBindingLocation> registerNodeEffectCommand(
+            const CommandBinding&, object::CodeLease = object::CodeLease::builtin()
+        ) noexcept;
 
         // Stateless typed functions use the same command directory without a dummy Handler owner.
         // Install these bindings during serialized setup. Query IDs through IPC while running.
@@ -162,13 +136,7 @@ namespace lux::render
         [[nodiscard]] std::optional<RenderDevelopmentStats> developmentStats() const noexcept;
 
     private:
-        [[nodiscard]] RenderResult<FeatureId>
-        registerFeature(runtime_detail::FeatureEntry) noexcept;
-
         [[nodiscard]] RenderResult<void> registerBuiltins() noexcept;
-        [[nodiscard]] RenderResult<CommandBindingLocation>
-        commandBinding(const CommandDescriptor&, cxx::basic_type_info method, HandlerId) const noexcept;
-
         [[nodiscard]] RenderResult<HandlerId>
         registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 

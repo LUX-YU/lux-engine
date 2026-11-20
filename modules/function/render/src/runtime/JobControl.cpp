@@ -31,6 +31,12 @@ namespace lux::render::detail
         return {};
     }
 
+    JobControl::Request::Request(Request&& other) noexcept
+        : receiver(other.receiver), complete(other.complete)
+    {
+        if (other.owner_) std::terminate();
+    }
+
     JobControl::Request::~Request() noexcept
     {
         if (owner_)
@@ -151,10 +157,6 @@ namespace lux::render::detail
         return running() && !admitted_ && (cadence_ == EJobCadence::CONTINUOUS || requested_);
     }
 
-    const FrameData* JobControl::takeRequestedData() noexcept
-    {
-        return requested_ ? std::exchange(requested_->data, nullptr) : nullptr;
-    }
 
     bool JobControl::tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index, Run& out) noexcept
     {

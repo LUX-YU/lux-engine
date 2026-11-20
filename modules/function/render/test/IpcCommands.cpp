@@ -12,8 +12,8 @@
 
 #include "TestSupport.hpp"
 
-static_assert(std::is_trivially_copyable_v<lux::render::TransformUpdate>);
-static_assert(std::is_standard_layout_v<lux::render::TransformUpdate>);
+static_assert(std::is_trivially_copyable_v<lux::render::TransformRecordUpdate>);
+static_assert(std::is_standard_layout_v<lux::render::TransformRecordUpdate>);
 static_assert(std::is_trivially_copyable_v<lux::render::MeshId> && std::is_standard_layout_v<lux::render::MeshId>);
 static_assert(sizeof(lux::render::MeshId) == 16);
 static_assert(sizeof(lux::render::RequestId) == sizeof(std::uint64_t));

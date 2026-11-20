@@ -34,6 +34,30 @@
 using namespace foundation_test;
 namespace rdesc = lux::rdesc;
 
+struct alignas(16) NestedUniformBlock final
+{
+    std::array<std::array<std::array<std::uint32_t, 4>, 2>, 2> entries;
+};
+
+template <> struct lux::render::ConstantBlockTraits<NestedUniformBlock> final
+{
+    static ConstantBlockLayout layout(rdesc::EShaderTarget) noexcept
+    {
+        static constexpr std::array<rdesc::ShaderArrayDimension, 2> dimensions{{{2, 32}, {2, 16}}};
+        static constexpr std::array<ConstantMemberLayout, 4> members{{
+            {"entries[0].groups[0]", 0, rdesc::EDataScalar::UINT, 4, 1, 0,
+             rdesc::EShaderMatrixOrder::NOT_MATRIX, dimensions},
+            {"entries[0].groups[1]", 16, rdesc::EDataScalar::UINT, 4, 1, 0,
+             rdesc::EShaderMatrixOrder::NOT_MATRIX, dimensions},
+            {"entries[1].groups[0]", 32, rdesc::EDataScalar::UINT, 4, 1, 0,
+             rdesc::EShaderMatrixOrder::NOT_MATRIX, dimensions},
+            {"entries[1].groups[1]", 48, rdesc::EDataScalar::UINT, 4, 1, 0,
+             rdesc::EShaderMatrixOrder::NOT_MATRIX, dimensions}
+        }};
+        return {sizeof(NestedUniformBlock), alignof(NestedUniformBlock), members};
+    }
+};
+
 struct RecordTextureQueries final
 {
     inline static decltype(nri::CoreInterface::GetTextureDesc) original = nullptr;
@@ -675,35 +699,70 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     DeviceOptions options;
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-    RenderGraphBuilder builder;
-    const auto uniform_bytes = take(builder.declareResource({"Uniform", GraphBufferDesc{256}}));
-    const auto output = take(builder.declareResource({"Result", GraphBufferDesc{16}}));
-    const auto readback = take(builder.declareResource({"Readback", GraphBufferDesc{16}}));
-    const auto initialized = take(builder.addTransferPass(
-        "UBO initialize", TransferWork{{FillBuffer{{{uniform_bytes, 0}}, 0}}}
-    ));
-    const auto selected = take(builder.addTransferPass(
-        "UBO nested field",
-        TransferWork{{FillBuffer{{written(initialized, uniform_bytes), GraphBufferRange{group.offset + 4, 4}}, 27}}}
-    ));
-    ComputeWork work;
-    work.interface.parameters.values.resize(push.size);
-    const std::uint32_t matrix_value = std::bit_cast<std::uint32_t>(2.5f);
+    const auto offset_alignment = session->description().memoryAlignment.constantBufferOffset;
+    CHECK(offset_alignment >= 4);
+    const auto block_offset = std::uint64_t{offset_alignment};
+    const auto matrix_value = std::bit_cast<std::uint32_t>(2.5f);
     const std::uint32_t array_value = 19;
-    auto* parameters = work.interface.parameters.values.data();
-    std::memcpy(parameters + basis.offset + basis.matrix_stride + 8, &matrix_value, sizeof(matrix_value));
-    std::memcpy(parameters + ids.offset + 8, &array_value, sizeof(array_value));
-    work.interface.program = take(builder.addProgram(GraphProgram{std::move(shader)}));
-    work.interface.resources = {
-        {"uniforms", {written(selected, uniform_bytes)}},
-        {"output_values", {{output, 0}, {}, EGraphAccess::WRITE}}
+    const auto build = [&](std::uint64_t offset, ConstantBlockContract contract)
+    {
+        RenderGraphBuilder builder;
+        const auto uniform_bytes = take(builder.declareResource({
+            "Uniform", GraphBufferDesc{block_offset + sizeof(NestedUniformBlock)}
+        }));
+        const auto output = take(builder.declareResource({"Result", GraphBufferDesc{16}}));
+        const auto readback = take(builder.declareResource({"Readback", GraphBufferDesc{16}}));
+        const auto initialized = take(builder.addTransferPass(
+            "UBO initialize", TransferWork{{FillBuffer{{{uniform_bytes, 0}}, 0}}}
+        ));
+        const auto selected = take(builder.addTransferPass(
+            "UBO nested field",
+            TransferWork{{FillBuffer{{
+                written(initialized, uniform_bytes), GraphBufferRange{block_offset + group.offset + 4, 4}
+            }, 27}}}
+        ));
+        ComputeWork work;
+        work.interface.parameters.values.resize(push.size);
+        auto* parameters = work.interface.parameters.values.data();
+        std::memcpy(parameters + basis.offset + basis.matrix_stride + 8, &matrix_value, sizeof(matrix_value));
+        std::memcpy(parameters + ids.offset + 8, &array_value, sizeof(array_value));
+        work.interface.program = take(builder.addProgram(GraphProgram{shader}));
+        work.interface.resources = {
+            {"uniforms", {written(selected, uniform_bytes)}},
+            {"output_values", {{output, 0}, {}, EGraphAccess::WRITE}}
+        };
+        auto& binding = work.interface.resources.front();
+        binding.setUniformConstant<NestedUniformBlock>(offset);
+        binding.uniform_constant = contract;
+        const auto computed = take(builder.addComputePass("typed ABI readback", std::move(work)));
+        const auto copied = take(builder.addTransferPass(
+            "readback", TransferWork{{CopyBuffer{{written(computed, output)}, {{readback, 0}}}}}
+        ));
+        CHECK(builder.exportOutput({written(copied, readback), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
+        return std::pair{take(std::move(builder).finish()), readback};
     };
-    const auto computed = take(builder.addComputePass("typed ABI readback", std::move(work)));
-    const auto copied = take(builder.addTransferPass(
-        "readback", TransferWork{{CopyBuffer{{written(computed, output)}, {{readback, 0}}}}}
-    ));
-    CHECK(builder.exportOutput({written(copied, readback), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
-    auto graph = take(std::move(builder).finish());
+    const auto reject = [&](std::uint64_t offset, ConstantBlockContract contract, auto error)
+    {
+        const auto candidate = build(offset, contract).first;
+        const auto analysis = take(analyzeRenderGraph(candidate));
+        auto rejected = runTask(GraphCompiler::compile(
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), candidate, analysis, nullptr,
+            ETransientAllocation::ALIAS_MEMORY, {}, true
+        ));
+        CHECK(!rejected && rejected.error().type == error);
+    };
+    auto mismatched = kConstantBlockContract<NestedUniformBlock>;
+    mismatched.layout = [](rdesc::EShaderTarget target) noexcept
+    {
+        auto layout = ConstantBlockTraits<NestedUniformBlock>::layout(target);
+        // The whole record still has the right size. Changing array coverage must be rejected.
+        layout.members = layout.members.first(3);
+        return layout;
+    };
+    reject(block_offset, mismatched, kGraphInvalidDescriptor);
+    reject(block_offset - 3, kConstantBlockContract<NestedUniformBlock>, kGraphInvalidRange);
+
+    auto [graph, readback] = build(block_offset, kConstantBlockContract<NestedUniformBlock>);
     const auto analysis = take(analyzeRenderGraph(graph));
     if (backend == EGraphicsBackend::D3D12)
     {
@@ -732,7 +791,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     CHECK(session->drain());
     const std::array expected{matrix_value, array_value, 27u, 0u};
     CHECK(readHistoryResult<4>(*session, *instance->nativeBuffer(readback.index, 0)) == expected);
-    std::puts("CONSTANT LAYOUT PASS: matrix order, nested array extents, legacy codec and native values");
+    std::puts("CONSTANT LAYOUT PASS: typed UBO binding, incomplete ABI and offset rejection, native values");
 }
 
 struct HeldCompletion final
@@ -992,13 +1051,28 @@ static void typedRecording(Validation& validation, bool d3d12)
     }
     {
         RenderGraphBuilder builder;
-        const auto source = take(builder.declareResource({"source", GraphBufferDesc{16}}));
-        const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
-        const auto fill = take(builder.addTransferPass("fill", TransferWork{{FillBuffer{{{source, 0}}, 7}}}));
-        const auto copy = take(builder.addTransferPass(
-            "copy", TransferWork{{CopyBuffer{{fill.written.front()}, {{output, 0}}}}}
-        ));
-        CHECK(builder.exportOutput({copy.written.front()}));
+        const auto source = take(builder.declareResource({"source", GraphBufferDesc{32}}));
+        const auto zero_source = take(builder.declareResource({"zero source", GraphBufferDesc{16}}));
+        const auto output = take(builder.declareResource({"output", GraphBufferDesc{32}}));
+        const auto zero_output = take(builder.declareResource({"zero output", GraphBufferDesc{16}}));
+        const auto seed = take(builder.addTransferPass("seed", TransferWork{{
+            FillBuffer{{{source, 0}}, 7},
+            FillBuffer{{{zero_source, 0}}, 9}
+        }}));
+        const auto fill = take(builder.addTransferPass("mixed fills", TransferWork{{
+            FillBuffer{{written(seed, source), GraphBufferRange{4, 4}}, 0},
+            FillBuffer{{written(seed, zero_source), GraphBufferRange{0, 4}}, 0},
+            FillBuffer{{written(seed, source), GraphBufferRange{8, 8}}, 11},
+            FillBuffer{{written(seed, source), GraphBufferRange{16, 4}}, 0},
+            FillBuffer{{written(seed, zero_source), GraphBufferRange{8, 4}}, 0},
+            FillBuffer{{written(seed, source), GraphBufferRange{24, 4}}, 19}
+        }}));
+        const auto copy = take(builder.addTransferPass("copy", TransferWork{{
+            CopyBuffer{{written(fill, source)}, {{output, 0}}},
+            CopyBuffer{{written(fill, zero_source)}, {{zero_output, 0}}}
+        }}));
+        CHECK(builder.exportOutput({written(copy, output)}));
+        CHECK(builder.exportOutput({written(copy, zero_output)}));
         auto plan = [&]
         {
             const auto graph = take(std::move(builder).finish());
@@ -1021,12 +1095,16 @@ static void typedRecording(Validation& validation, bool d3d12)
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
-        const auto values = readHistoryResult<4>(*session, *instance->nativeBuffer(output.index, 0));
-        CHECK(std::ranges::all_of(values, [](auto value) { return value == 7; }));
+        const auto values = readHistoryResult<8>(*session, *instance->nativeBuffer(output.index, 0));
+        const std::array<std::uint32_t, 8> expected{7, 0, 11, 11, 0, 7, 19, 7};
+        CHECK(values == expected);
+        const auto zeros = readHistoryResult<4>(*session, *instance->nativeBuffer(zero_output.index, 0));
+        const std::array<std::uint32_t, 4> expected_zeros{0, 9, 0, 9};
+        CHECK(zeros == expected_zeros);
         instance.reset();
         CHECK(session->drain());
     }
-    std::printf("TYPED RECORDING PASS backend=%s: detached source, End failure and retry, GPU buffer results\n",
+    std::printf("TYPED RECORDING PASS backend=%s: detached source, End retry and mixed FillBuffer readback\n",
         d3d12 ? "D3D12" : "Vulkan");
 }
 

@@ -63,15 +63,6 @@ namespace lux::render::runtime_detail
         std::vector<std::uint8_t> used_storages;
     };
 
-    // Borrowed from the connected UpdateFrameData operation until its terminal response.
-    struct InputUpdate final
-    {
-        RenderJobId job;
-        const FrameData* data;
-        JobExecution* execution;
-        void* receiver;
-        void (*complete)(void*, AckResponse) noexcept;
-    };
 
     struct DeviceRound final
     {
@@ -99,7 +90,7 @@ namespace lux::render::runtime_detail
         detail::SubmissionFrontiers target_uses;
         std::vector<detail::StorageFrameUse> storages;
         std::vector<detail::SubmissionOrder> job_order;
-        std::deque<InputUpdate*> input_updates;
+
         std::size_t preparation_cursor = 0;
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         std::chrono::steady_clock::time_point opened_at;

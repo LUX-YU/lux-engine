@@ -1,7 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/resources/material/Data.hpp>
+#include <lux/engine/render/resources/mesh/Data.hpp>
 
 namespace lux::render::detail
 {
@@ -20,24 +21,5 @@ namespace lux::render::detail
     ) noexcept;
 
     // Shared geometric ports describe data, not material groups or pipeline counts.
-    void describeMeshDrawInputs(FeaturePorts&);
-    [[nodiscard]] RasterWork meshRasterStage(FeatureBuildContext&, bool camera_view = true);
-    [[nodiscard]] RenderResult<void> bindMeshDraws(
-        FeatureBuildContext&,
-        GraphPassId,
-        rdesc::EMaterialPurpose,
-        GraphResourceId views = {},
-        GraphResourceId raster_states = {},
-        bool front_counter_clockwise = true
-    ) noexcept;
-
-    template <bool Depth> RenderResult<void> describe(const void*, std::string_view, FeaturePorts&) noexcept;
-
-    template <bool Depth>
-    RenderResult<void>
-    build(
-        const void*,
-        std::string_view,
-        FeatureBuildContext&
-    ) noexcept;
+    [[nodiscard]] std::vector<RasterPassTemplate::Input> meshRasterInputs();
 } // namespace lux::render::detail

@@ -1,9 +1,8 @@
 #pragma once
 
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/core/EffectParameters.hpp>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/extensions/features/EffectDefinition.hpp>
+#include <lux/engine/render/effect/EffectGraph.hpp>
+#include <memory>
 
 namespace lux::render
 {
@@ -18,21 +17,9 @@ namespace lux::render
         EffectId effect{};
     };
 
-    struct EffectImplementationUse final
-    {
-        CapabilityImplementationId implementation;
-        std::string contribution;
-    };
-
     struct CreateEffectRequest final
     {
-        EffectOutputDesc output;
-        EffectDefinition definition;
-        // With selections, each Feature key names exactly one implementation contribution or its slash-delimited
-        // child. Live external Resources must belong to the union of selected Capabilities.
-        // With no selections, the Feature ports declare the free graph's Resource requirements.
-        std::vector<EffectImplementationUse> implementations;
-        EffectParameters parameters;
+        std::unique_ptr<EffectGraph> graph;
     };
 
     // Builds a reusable logical recipe. The selected execution compiles its device plan separately.
@@ -43,18 +30,20 @@ namespace lux::render
         using Response = EffectCreated;
     };
 
-    // Updates every execution of this Effect at the next Prepare. View and execution-local values are separate.
-    struct SetEffectParameters final
+    struct SetToneMappingExposure final
     {
-        static constexpr std::string_view name{"render.effect.set_parameters"};
+        static constexpr std::string_view name{"render.tone_mapping.set_exposure"};
 
         struct Request final
         {
             EffectId effect;
-            EffectParameters parameters;
+            graph::NodeId node;
+            float exposure;
         };
 
         using Response = AckResponse;
+        [[nodiscard]] static EffectId effectId(const Request& request) noexcept { return request.effect; }
+        [[nodiscard]] static graph::NodeId nodeId(const Request& request) noexcept { return request.node; }
     };
 
     struct RemoveEffect final

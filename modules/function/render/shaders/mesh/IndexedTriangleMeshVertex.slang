@@ -63,6 +63,7 @@ struct Property
     uint material_record;
     uint section_index;
     uint render_flags;
+    uint transform_record;
 };
 
 struct Word
@@ -77,7 +78,6 @@ struct Address
 
 struct PageAddresses
 {
-    uvec2 transforms;
     uvec2 properties;
     uvec2 alive;
 };
@@ -107,16 +107,23 @@ void luxMain()
     uint root = slot >> 23;
     uint leaf = (slot >> 14) & 511;
     uint local = slot & 16383;
-    mat4 model =
-        ((Transform*)luxAddress(((PageAddresses*)luxAddress(transforms[root].value))[leaf].transforms))[local].model;
     Property property =
         ((Property*)luxAddress(((PageAddresses*)luxAddress(properties[root].value))[leaf].properties))[local];
     uint present = ((Word*)luxAddress(((PageAddresses*)luxAddress(alive[root].value))[leaf].alive))[local].value;
 #else
-    mat4 model = transforms[slot].model;
     Property property = properties[slot];
     uint present = alive[slot].value;
 #endif
+    mat4 model = {};
+    if (present != 0)
+    {
+#ifdef PAGED_INSTANCES
+        uint transform = property.transform_record;
+        model = ((Transform*)luxAddress(transforms[transform >> 14].value))[transform & 16383].model;
+#else
+        model = transforms[property.transform_record].model;
+#endif
+    }
     float orientation = dot(transpose(model)[0].xyz, cross(transpose(model)[1].xyz, transpose(model)[2].xyz));
 #ifdef REFLECTED_INSTANCES
     bool selected = orientation < 0;

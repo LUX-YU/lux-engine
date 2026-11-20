@@ -8,7 +8,6 @@ namespace lux::render
     enum class EParameterSource : std::uint8_t
     {
         INSTANCE,
-        VIEW,
-        EFFECT
+        VIEW
     };
 } // namespace lux::render

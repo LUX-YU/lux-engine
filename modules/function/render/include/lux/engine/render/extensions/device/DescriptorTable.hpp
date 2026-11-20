@@ -17,6 +17,7 @@ namespace lux::render
 namespace lux::render::detail
 {
     class DeviceSession;
+    class FrameOperation;
     struct DescriptorSlotTag;
 
     // Device-thread owner of stable descriptor indices and replaceable physical tables.
@@ -63,6 +64,14 @@ namespace lux::render::detail
         void updateSnapshot(const Snapshot&) const noexcept;
 
     private:
+        friend class FrameOperation;
+
+        struct RetiredPool final
+        {
+            nri::DescriptorPool* pool;
+            std::uint32_t capacity;
+        };
+
         struct Entry final
         {
             nri::Descriptor* descriptor = nullptr;
@@ -85,12 +94,17 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] RenderResult<void> reserve(nri::DescriptorType, std::uint32_t required) noexcept;
+        void pinNativeBindings() noexcept;
+        void unpinNativeBindings() noexcept;
+        void retirePool(RetiredPool) noexcept;
 
         DeviceSession& session_;
         std::array<Table, 3> tables_;
         std::vector<Sampler> samplers_;
+        std::vector<RetiredPool> pinned_pools_;
         std::uint64_t allocated_descriptors_ = 0;
         std::uint64_t binding_revision_ = 1;
         std::uint32_t pool_capacity_ = 0;
+        std::uint32_t binding_pins_ = 0;
     };
 } // namespace lux::render::detail

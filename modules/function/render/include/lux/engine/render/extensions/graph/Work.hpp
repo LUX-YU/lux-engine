@@ -4,6 +4,7 @@
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
+#include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
 #include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 
@@ -19,6 +20,13 @@ namespace lux::render
         // A runtime Shader array can be bound to this finite pass-local image list. Zero retains
         // the existing complete device table; nonzero must equal 1 + elements.size().
         std::uint32_t descriptor_count = 0;
+        ConstantBlockContract uniform_constant{};
+
+        template <ShaderConstantBlock T> void setUniformConstant(std::uint64_t offset = 0) noexcept
+        {
+            uniform_constant = kConstantBlockContract<T>;
+            access.range = GraphBufferRange{offset, sizeof(T)};
+        }
     };
 
     struct ValueParameter final
@@ -48,6 +56,15 @@ namespace lux::render
         // Explicitly zero-initialize any reflected tail beyond the supplied constant bytes.
         bool zero_fill_tail = false;
         EParameterSource source = EParameterSource::INSTANCE;
+        ConstantBlockContract inline_constant;
+
+        template <ShaderConstantBlock T> void setInlineConstant(const T& value) noexcept
+        {
+            const auto bytes = std::as_bytes(std::span{&value, 1});
+            values.assign(bytes.begin(), bytes.end());
+            zero_fill_tail = false;
+            inline_constant = kConstantBlockContract<T>;
+        }
     };
 
     struct SamplerParameter final
@@ -105,6 +122,24 @@ namespace lux::render
         std::uint32_t offset = 0;
     };
 
+    struct GraphRasterTextureSetId final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+        bool operator==(const GraphRasterTextureSetId&) const noexcept = default;
+    };
+
+    struct GraphRasterMeshSetId final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+        bool operator==(const GraphRasterMeshSetId&) const noexcept = default;
+    };
+
+    struct GraphRasterMaterialSetId final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+        bool operator==(const GraphRasterMaterialSetId&) const noexcept = default;
+    };
+
     // Dynamic programs fill these read-only slots at frame preparation. A slot describes a use,
     // not an allocated Graph resource or a provisional descriptor set/binding.
     struct RasterPassTemplate final
@@ -117,6 +152,7 @@ namespace lux::render
             EGraphUse usage = EGraphUse::UNSPECIFIED;
             // Shader reads use Vertex=1 / Fragment=2. Geometry/indirect stages derive from usage.
             std::uint32_t stages = 0;
+            bool comparison_sampler = false;
         };
 
         std::string purpose;
@@ -125,6 +161,33 @@ namespace lux::render
         // are resolved from the slots above and participate in the frame's imported dependencies.
         std::vector<ResourceAccess> resources;
         ParameterBinding parameters;
+
+        struct StreamProgram final
+        {
+            // Index returned by RenderGraphBuilder::addProgram.
+            std::uint32_t program = kGraphInvalidIndex;
+            GraphicsState graphics;
+            ParameterBinding parameters;
+        };
+
+        std::vector<StreamProgram> stream_programs{};
+        // Source sampler IDs granted to this stream at link time.
+        std::vector<std::uint32_t> stream_samplers{};
+        // Requires a depth attachment and an explicit depth bias for every submitted section.
+        bool section_depth_bias = false;
+        // Select the complete program set before admitting a frame.
+        bool runtime_stream_programs = false;
+        // Actual shared-table reads are selected from this named TextureResource.
+        std::optional<GraphRasterTextureSetId> shared_textures;
+        // Vertex and index slices can be selected from this named MeshResource.
+        std::optional<GraphRasterMeshSetId> mesh_geometry;
+        // The reflected material table reads records from this named MaterialResource.
+        std::optional<GraphRasterMaterialSetId> shared_materials;
+
+        [[nodiscard]] bool usesStreamProducer() const noexcept
+        {
+            return runtime_stream_programs || !stream_programs.empty();
+        }
     };
 
     struct RasterScope

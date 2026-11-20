@@ -1,20 +1,21 @@
 #include "FullscreenVertex.hpp"
-#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/graph/GraphError.hpp>
+
 #include <lux/engine/render/features/common/FullscreenRaster.hpp>
 
 namespace lux::render::detail
 {
     RenderResult<RasterWork>
-    fullscreenRaster(FeatureBuildContext& context, GraphProgram shaders) noexcept
+    fullscreenRaster(RenderGraphBuilder& graph, GraphProgram shaders) noexcept
     {
-        if (shaders.targets.empty()) return cxx::unexpected(RenderError{kFeatureContract});
+        if (shaders.targets.empty()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         auto parameter_bytes = UINT32_MAX;
         for (auto& shader : shaders.targets)
         {
             auto vertex = kFullscreenVertex.load(shader.target);
             if (shader.stages.empty() || vertex.stages.empty())
             {
-                return cxx::unexpected(RenderError{kFeatureContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             shader.stages.insert(shader.stages.begin(), vertex.stages.begin(), vertex.stages.end());
             shader.interface.entry_points.insert(
@@ -31,7 +32,7 @@ namespace lux::render::detail
         // Authors may fill the common byte prefix. Target-specific trailing padding is supplied by Compile.
         fixed_work.interface.parameters.values.resize(parameter_bytes);
         fixed_work.interface.parameters.zero_fill_tail = true;
-        auto program = context.graph.addProgram(std::move(shaders));
+        auto program = graph.addProgram(std::move(shaders));
         if (!program)
         {
             return cxx::unexpected(program.error());

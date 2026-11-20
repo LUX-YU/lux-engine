@@ -73,22 +73,43 @@ namespace lux::render::detail
 
     bool RenderGraphInstance::requiresDataPrograms() const noexcept
     {
-        return std::ranges::any_of(data_, [](const auto& data) { return data.value->requiresPrograms(); });
+        if (std::ranges::any_of(data_, [](const auto& data) { return data.value->requiresPrograms(); })) return true;
+        return std::ranges::any_of(program_producers_, [&](auto index) noexcept
+        {
+            const auto& producer = producers_[index];
+            return !rasterProgramMatches(producer, producer.program_revisions);
+        });
     }
 
     void RenderGraphInstance::captureProgramRevisions(std::vector<std::uint64_t>& revisions) const noexcept
     {
         revisions.clear();
-        revisions.reserve(data_.size());
         for (const auto& data : data_) revisions.push_back(data.value->programRevision());
+        for (auto index : program_producers_)
+        {
+            const auto& producer = producers_[index];
+            revisions.push_back(producer.value->rasterProgramRevision());
+            for (auto slot : producer.program_snapshots) revisions.push_back(programStorageRevision(slot));
+        }
     }
 
     bool RenderGraphInstance::matchesProgramRevisions(std::span<const std::uint64_t> revisions) const noexcept
     {
-        return std::ranges::equal(data_, revisions, {}, [](const auto& data) noexcept
+        if (revisions.size() < data_.size()) return false;
+        const bool legacy_matches = std::ranges::equal(data_, revisions.first(data_.size()), {}, [](const auto& data) noexcept
         {
             return data.value->programRevision();
         });
+        if (!legacy_matches) return false;
+        revisions = revisions.subspan(data_.size());
+        for (auto index : program_producers_)
+        {
+            const auto& producer = producers_[index];
+            const auto count = producer.program_snapshots.size() + 1;
+            if (revisions.size() < count || !rasterProgramMatches(producer, revisions.first(count))) return false;
+            revisions = revisions.subspan(count);
+        }
+        return revisions.empty();
     }
 
     exec::task<RenderResult<bool>> RenderGraphInstance::prepareDataPrograms(
@@ -103,6 +124,18 @@ namespace lux::render::detail
             auto compiled = co_await data.preparePrograms(cpu, revisions[i], stop);
             if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
             if (!compiled || !*compiled) co_return compiled;
+        }
+        auto offset = data_.size();
+        for (auto index : program_producers_)
+        {
+            const auto& producer = producers_[index];
+            const auto count = producer.program_snapshots.size() + 1;
+            const auto revision = revisions.subspan(offset, count);
+            offset += count;
+            if (std::ranges::equal(producer.program_revisions, revision)) continue;
+            auto ready = co_await prepareRasterPrograms(index, cpu, revision, stop);
+            if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
+            if (!ready || !*ready) co_return ready;
         }
         co_return true;
     }
@@ -126,8 +159,11 @@ namespace lux::render::detail
         {
             const auto& pass = plan_->passes()[p];
             const auto* raster = plan_->rasterCommands(pass);
-            if (raster && std::holds_alternative<RasterListCommands>(raster->draw))
+            const auto* dynamic = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
+            if (dynamic)
             {
+                if (dynamic->producer_stream && frame.stream_inputs.empty())
+                    frame.stream_inputs.resize(plan_->passes().size());
                 frame.raster_draws.emplace_back();
                 continue;
             }
@@ -269,10 +305,18 @@ namespace lux::render::detail
         {
             return std::span<nri::Descriptor* const>{selected->views};
         }
-        invalidateRecordings(slot);
         const auto& core = session_->nriCore();
         auto& binding = frame.bindings[resource.index];
         const auto& compiled = plan_->resources()[resource.index];
+        if (layers > 1)
+        {
+            for (const auto [pass, index] : compiled.descriptor_uses)
+            {
+                const auto& program = plan_->binding_plan_->pass(pass);
+                if (!program.bindings[program.uses[index].field].image_arrayed)
+                    return cxx::unexpected(RenderError{kGraphInvalidRange, {resource.index, layers}});
+            }
+        }
         auto description = core.GetTextureDesc(*binding.image);
         const bool replace_image = description.layerNum != layers;
         description.layerNum = static_cast<nri::Dim_t>(layers);
@@ -322,7 +366,7 @@ namespace lux::render::detail
                 static_cast<nri::Dim_t>(use.range.first_layer),
                 static_cast<nri::Dim_t>(count)
             };
-            view.planes = use.range.aspects == 1 ? nri::PlaneBits::COLOR : nri::PlaneBits::DEPTH;
+            view.planes = static_cast<nri::PlaneBits>(use.range.aspects);
             nri::Descriptor* descriptor = nullptr;
             const auto created = core.CreateTextureView(view, descriptor);
             if (created != nri::Result::SUCCESS)
@@ -338,7 +382,7 @@ namespace lux::render::detail
             {
                 const auto kind = use.range.aspects == 1 ? nri::TextureView::COLOR_ATTACHMENT
                                                          : nri::TextureView::DEPTH_STENCIL_ATTACHMENT;
-                if (auto created = add_view(use, kind, 1); !created)
+                if (auto created = add_view(use, kind, layers); !created)
                 {
                     return cxx::unexpected(created.error());
                 }
@@ -347,8 +391,10 @@ namespace lux::render::detail
             {
                 const auto& program = plan_->binding_plan_->pass(pass);
                 const auto& use = program.uses[index];
-                const auto kind = use.kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE_ARRAY
-                                                                             : nri::TextureView::TEXTURE_ARRAY;
+                const bool arrayed = program.bindings[use.field].image_arrayed;
+                const auto kind = use.kind == EDescriptorKind::STORAGE_IMAGE
+                    ? (arrayed ? nri::TextureView::STORAGE_TEXTURE_ARRAY : nri::TextureView::STORAGE_TEXTURE)
+                    : (arrayed ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE);
                 if (auto created = add_view(
                         {pass, index, EImageViewTarget::DESCRIPTOR, std::get<GraphImageRange>(use.range)},
                         kind,
@@ -380,8 +426,8 @@ namespace lux::render::detail
             }
             layer_views.push_back(descriptor);
         }
-        // All objects exist. The acquired FIF slot has no GPU reader; replace views before
-        // releasing the old image. Normal frame destruction retains the same view-before-image order.
+        // The acquired FIF slot has no GPU reader. Adopt all views before releasing the old image.
+        invalidateRecordings(slot);
         for (auto& replacement : replacements)
         {
             auto& pass = frame.passes[replacement.use.pass];
@@ -431,8 +477,12 @@ namespace lux::render::detail
         frame.views.insert(frame.views.end(), selected->views.begin(), selected->views.end());
         if (replace_image)
         {
+            std::vector<nri::Descriptor*> stream_views;
+            collectRasterViews(frame, nullptr, binding.image, stream_views);
+            for (auto* view : stream_views) core.DestroyDescriptor(view);
             *std::ranges::find(frame.images, binding.image) = image;
             core.DestroyTexture(std::exchange(binding.image, image));
+            // Runtime-layer uses are whole-resource. Each compiled transition spans all nominal layers.
             for (const auto [pass, index] : compiled.barrier_uses)
             {
                 auto& barrier = frame.passes[pass].images[index];
@@ -479,6 +529,7 @@ namespace lux::render::detail
                 binding.buffer_size = physical.buffer_size;
                 continue;
             }
+            if (resource.origin == EGraphOrigin::FRAME_BUFFER) continue;
             if (resource.origin == EGraphOrigin::IMPORTED)
             {
                 if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
@@ -596,7 +647,9 @@ namespace lux::render::detail
         {
             return {};
         }
-        const auto placements = instantiatePlacements(physical, plan_->resources(), plan_->recording_, requirements);
+        const auto placements = instantiatePlacements(
+            physical, plan_->resources(), plan_->recording_, requirements, session.description().graphicsAPI
+        );
         std::vector<nri::AllocateMemoryDesc> descriptions(physical.slots.size());
         for (std::uint32_t s = 0; s < placements.size(); ++s)
         {
@@ -696,8 +749,13 @@ namespace lux::render::detail
     RenderResult<nri::BufferDesc>
     RenderGraphInstance::bufferDescription(const CompiledResource& resource) const noexcept
     {
+        return bufferDescription(resource, std::get<GraphBufferDesc>(resource.description).size);
+    }
+
+    RenderResult<nri::BufferDesc>
+    RenderGraphInstance::bufferDescription(const CompiledResource& resource, std::uint64_t bytes) const noexcept
+    {
         const auto& limits = session_->description();
-        auto bytes = std::get<GraphBufferDesc>(resource.description).size;
         const bool needs_padding = limits.graphicsAPI == nri::GraphicsAPI::D3D12 &&
             (resource.buffer_usage & nri::BufferUsageBits::CONSTANT) != 0;
         if (needs_padding)
@@ -821,6 +879,15 @@ namespace lux::render::detail
             }
             const auto& frame = frames_[i];
             std::uint64_t bytes = 0;
+            std::size_t prepared_buffers = 0;
+            for (const auto& prepared : frame.prepared_buffers)
+            {
+                if (!prepared.buffer) continue;
+                nri::MemoryDesc memory{};
+                session_->nriCore().GetBufferMemoryDesc(*prepared.buffer, nri::MemoryLocation::DEVICE, memory);
+                bytes += memory.size;
+                ++prepared_buffers;
+            }
             for (auto* buffer : frame.buffers)
             {
                 nri::MemoryDesc memory{};
@@ -856,13 +923,17 @@ namespace lux::render::detail
             output += "{\"slot\":" + std::to_string(i) +
                       ",\"imported_revision\":" + std::to_string(frame.imported_revision) +
                       ",\"owned_command_buffers\":" + std::to_string(command_count) +
-                      ",\"owned_buffers\":" + std::to_string(frame.buffers.size() + frame.draw_lists.size() * 2) +
+                      ",\"owned_buffers\":" +
+                          std::to_string(frame.buffers.size() + frame.draw_lists.size() * 2 + prepared_buffers) +
                       ",\"owned_textures\":" + std::to_string(frame.images.size()) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) +
                       ",\"explicit_memory_count\":" + std::to_string(frame.memories.size()) +
                       ",\"explicit_memory_bytes\":" + std::to_string(allocated) + ",\"memory_bindings\":[";
             constexpr std::array
-                reasons{"excluded", "dedicated", "rendering_scope", "distinct_requirements", "unordered", "aliased"};
+                reasons{
+                    "excluded", "dedicated", "rendering_scope", "distinct_requirements", "incompatible_layout",
+                    "unordered", "aliased"
+                };
             for (std::size_t s = 0; s < frame.memory_bindings.size(); ++s)
             {
                 if (s)
@@ -927,6 +998,46 @@ namespace lux::render::detail
         return frames_[slot].bindings[resource].buffer;
     }
 
+    void RenderGraphInstance::collectRasterViews(
+        FrameResources& frame, nri::Buffer* buffer, nri::Texture* image, std::vector<nri::Descriptor*>& views
+    ) noexcept
+    {
+        if (!buffer && !image) return;
+        if (image)
+        {
+            std::erase_if(frame.raster_attachment_views, [&](const auto& attachment) noexcept
+            {
+                if (attachment.image != image) return false;
+                views.push_back(attachment.view);
+                return true;
+            });
+        }
+        for (auto& record : frame.raster_bindings)
+        {
+            for (std::size_t i = 0; i < record.inputs.size(); ++i)
+            {
+                const auto& input = record.inputs[i];
+                const bool matches = (buffer && input.buffer == buffer) || (image && input.image == image);
+                if (!matches) continue;
+                if (auto* view = std::exchange(record.views[i], nullptr)) views.push_back(view);
+                record.inputs[i] = {};
+            }
+        }
+    }
+
+    void RenderGraphInstance::retireRasterViews(FrameResources& frame, nri::Buffer* buffer, nri::Texture* image) noexcept
+    {
+        std::vector<nri::Descriptor*> views;
+        collectRasterViews(frame, buffer, image, views);
+        if (!views.empty())
+        {
+            session_->deferRelease([core = &session_->nriCore(), views = std::move(views)]() noexcept
+            {
+                for (auto* view : views) core->DestroyDescriptor(view);
+            });
+        }
+    }
+
     void
     RenderGraphInstance::setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput& value) noexcept
     {
@@ -960,26 +1071,9 @@ namespace lux::render::detail
                     ++frame.unavailable_buffers;
                 }
             }
-            if (binding.buffer && binding.buffer != value.buffer)
-            {
-                // Private raster recipes borrow this physical resource too. A later pool rebuild
-                // must not replay a view whose Buffer owner has already replaced its allocation.
-                std::vector<nri::Descriptor*> obsolete;
-                for (auto& record : frame.raster_bindings)
-                {
-                    for (std::size_t i = 0; i < record.inputs.size(); ++i)
-                    {
-                        if (record.inputs[i].buffer != binding.buffer) continue;
-                        if (auto* view = std::exchange(record.views[i], nullptr)) obsolete.push_back(view);
-                        record.inputs[i] = {};
-                    }
-                }
-                if (!obsolete.empty())
-                    session_->deferRelease([core = &session_->nriCore(), views = std::move(obsolete)]() noexcept
-                    {
-                        for (auto* view : views) core->DestroyDescriptor(view);
-                    });
-            }
+            // A pool rebuild must replay only views whose owners still hold the allocation.
+            retireRasterViews(frame, binding.buffer != value.buffer ? binding.buffer : nullptr,
+                binding.image != value.image ? binding.image : nullptr);
             binding.image = value.image;
             binding.buffer = value.buffer;
             binding.buffer_offset = value.offset;

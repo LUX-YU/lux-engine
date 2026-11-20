@@ -63,6 +63,7 @@ namespace lux::render::detail
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
             std::uint64_t preparation_serial = 0;
+            std::uint64_t uniform_upload_serial = 0;
             std::vector<InstanceExecution> instances;
             std::vector<SubmissionOrder> order;
             std::vector<BatchExecution> batches;
@@ -95,6 +96,7 @@ namespace lux::render::detail
         struct RasterReads final
         {
             std::uint64_t buffer_ranges = 0, buffer_bytes = 0, image_ranges = 0, image_subresources = 0;
+            std::uint64_t geometry_ranges = 0, geometry_bytes = 0;
         };
 
         class LUX_RENDER_PUBLIC Workspace final
@@ -124,6 +126,10 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const std::optional<RenderError>& cancel) noexcept;
         void acceptPreparation(std::uint64_t serial) noexcept;
+        void waitForUniformUpload(std::uint64_t serial) noexcept
+        {
+            slot_.uniform_upload_serial = std::max(slot_.uniform_upload_serial, serial);
+        }
         void rejectSuffix(RenderError) noexcept;
         [[nodiscard]] bool complete() const noexcept { return slot_.remaining_batches == 0; }
         [[nodiscard]] bool prepared() const noexcept { return slot_.graph_started; }

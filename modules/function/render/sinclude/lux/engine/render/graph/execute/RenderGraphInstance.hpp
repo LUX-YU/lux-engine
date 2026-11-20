@@ -9,7 +9,9 @@
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/extensions/graph/InstanceData.hpp>
 #include <lux/engine/render/extensions/graph/ParameterSource.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::detail
@@ -18,6 +20,12 @@ namespace lux::render::detail
     struct DrawListResources;
     struct RasterDrawList;
     struct PassBindings;
+    struct RasterDescriptorInput;
+    struct LinkedUniformBlock;
+    struct DynamicRasterPrograms;
+    class SampledTexture2DStorage;
+    class IndexedTriangleMeshStorage;
+    class RasterMaterialStorage;
 
     class LUX_RENDER_PUBLIC RenderGraphInstance final : public InstanceAccess
     {
@@ -36,6 +44,32 @@ namespace lux::render::detail
             std::span<const ResourceInstanceId>
         ) noexcept;
         [[nodiscard]] RenderResult<bool> prepareData(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
+        struct SnapshotSource final
+        {
+            ResourceInstanceId id;
+            const void* storage;
+            const StorageSnapshotOps* ops;
+        };
+
+        struct RasterOwners final
+        {
+            const SampledTexture2DStorage* textures = nullptr;
+            const IndexedTriangleMeshStorage* meshes = nullptr;
+            const RasterMaterialStorage* materials = nullptr;
+        };
+
+        [[nodiscard]] RenderResult<void>
+        createProducers(
+            const PreparationPlan&, const ResourceRegistry&, std::span<const SnapshotSource>,
+            std::vector<RasterOwners>
+        ) noexcept;
+        [[nodiscard]] RenderResult<void> prepareProducers(std::uint32_t frame_slot) noexcept;
+        [[nodiscard]] RenderResult<bool>
+        stagePreparedBuffers(std::uint32_t frame_slot, ResourceUploader*, Preparation&) noexcept;
+        void selectViewParameters(const ViewGpuParameters& value, std::uint64_t revision) noexcept
+        {
+            view_parameters_ = {value, revision};
+        }
         [[nodiscard]] bool requiresDataPrograms() const noexcept;
         [[nodiscard]] RenderResult<void>
         setIndexedDrawData(IndexedDrawStreamSlot, std::uint32_t, const IndexedDrawData&) noexcept override;
@@ -50,6 +84,9 @@ namespace lux::render::detail
         ) noexcept;
 
         [[nodiscard]] RenderResult<void> initialize(const GraphAssemblyPlan&) noexcept;
+        [[nodiscard]] RenderResult<void> initialize() noexcept;
+        [[nodiscard]] RenderResult<void>
+        writeInlineConstant(std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes) noexcept;
         // Caller holds the writable FIF until recording and all accepted GPU uses are complete.
         // Each batch part has an exclusive allocator; encoders only borrow its prepared data.
         [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
@@ -94,7 +131,7 @@ namespace lux::render::detail
             std::span<const ResourceInput>
         ) noexcept;
         // Remove recipes before their professional Owner is destroyed; GPU views retire by accepted frontiers.
-        void releaseRasterBindings(std::span<const PassBindings* const>) noexcept;
+        void releaseRasterBindings(std::span<const PassBindings* const>, std::uint32_t pass = kGraphInvalidIndex) noexcept;
         [[nodiscard]] const CompiledPass* compiledPass(GraphPassId) const noexcept;
         // The selected writable FIF slot owns the list. Features fill physical packets before
         // prepareFrame seals attachments and barriers; no list is mutated during recording.
@@ -182,6 +219,7 @@ namespace lux::render::detail
         }
 
         // Trusted compiled resource index and Session slot, not a business resource lookup.
+        void linkUniformBlocks(std::span<const LinkedUniformBlock>) noexcept;
         void setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput&) noexcept;
         [[nodiscard]] ResourceInput resourceInput(GraphResourceId, std::uint32_t slot) const noexcept;
         // Cold diagnostics: sum actual NRI allocation requirements for this instance's owned resources.
@@ -206,7 +244,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> createRecordings(std::uint32_t frame_slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> prepareDescriptors(const GraphAssemblyPlan&) noexcept;
+        [[nodiscard]] RenderResult<void> initialize(const GraphAssemblyPlan*) noexcept;
+        [[nodiscard]] RenderResult<void> prepareDescriptors(const GraphAssemblyPlan*) noexcept;
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
         void markParameters(std::uint32_t pass, std::uint32_t slot) noexcept;
         void markInstanceParameters(std::uint32_t offset, std::uint32_t bytes) noexcept;
@@ -233,12 +272,26 @@ namespace lux::render::detail
 
         struct HistoryState;
         struct FrameResources;
+
+        [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
+            std::uint32_t, const PassBindings&, std::uint64_t, std::span<const ResourceInput>,
+            std::span<const RasterDescriptorInput>
+        ) noexcept;
+        static void
+        collectRasterViews(FrameResources&, nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;
+        void retireRasterViews(FrameResources&, nri::Buffer*, nri::Texture*) noexcept;
         [[nodiscard]] RenderResult<nri::BufferDesc> bufferDescription(const CompiledResource&) const noexcept;
+        [[nodiscard]] RenderResult<nri::BufferDesc>
+        bufferDescription(const CompiledResource&, std::uint64_t bytes) const noexcept;
         [[nodiscard]] nri::Result createBufferView(nri::BufferViewDesc, nri::Descriptor*&) const noexcept;
         [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
         [[nodiscard]] RenderResult<nri::TextureDesc>
         textureDescription(const CompiledResource&, const TargetDesc&) const noexcept;
         [[nodiscard]] RenderResult<void> createDrawListResources(std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<void> materializeRasterStreams(std::uint32_t slot) noexcept;
+        RenderResult<void> prepareRasterSections(std::uint32_t slot) noexcept;
+        RenderResult<void>
+        materializeRasterSections(std::uint32_t slot, std::uint32_t pass, const OwnedRasterStream&) noexcept;
         void prepareStreamedDraws(std::uint32_t slot) noexcept;
         void freezeRecordInput(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
@@ -288,6 +341,61 @@ namespace lux::render::detail
             std::vector<ResourceInput> inputs;
         };
         std::vector<Data> data_;
+        class ProducerFrame;
+        class ProgramSelection;
+        [[nodiscard]] exec::task<RenderResult<bool>> prepareRasterPrograms(
+            std::uint32_t, execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
+        ) noexcept;
+        void releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept;
+        struct PreparedBytes final
+        {
+            std::vector<std::byte> bytes;
+            bool written = false;
+        };
+
+        struct Producer final
+        {
+            std::unique_ptr<::lux::render::InstanceData> value;
+            std::vector<PreparedBytes> constants;
+            std::vector<OwnedRasterStream> streams;
+            std::vector<std::byte> node_state;
+            std::vector<std::uint32_t> runtime_streams{};
+            std::span<const std::uint32_t> program_snapshots{};
+            std::vector<std::uint64_t> program_revisions{};
+        };
+
+        [[nodiscard]] bool
+        rasterProgramMatches(const Producer& producer, std::span<const std::uint64_t> revisions) const noexcept;
+        [[nodiscard]] std::uint64_t programStorageRevision(std::uint32_t slot) const noexcept;
+        [[nodiscard]] RenderResult<extension_detail::SelectedStorageSnapshot>
+        readStorageSnapshot(std::span<const std::uint32_t>, std::uint32_t, cxx::basic_type_info) const noexcept;
+
+        struct PreparedBufferInput final
+        {
+            PreparedBytes payload;
+            std::uint64_t revision = 0, size = 0;
+        };
+
+        const PreparationPlan* preparation_plan_ = nullptr;
+        struct StorageSnapshot final
+        {
+            SnapshotSource source;
+            StorageSnapshotOps::Selection value;
+            std::uint64_t revision = 0;
+        };
+
+        const ResourceRegistry* snapshot_registry_ = nullptr;
+        std::vector<RasterOwners> raster_owners_;
+        std::vector<StorageSnapshot> storage_snapshots_;
+        std::vector<Producer> producers_;
+        std::vector<std::uint32_t> program_producers_;
+        std::vector<std::unique_ptr<DynamicRasterPrograms>> dynamic_raster_programs_;
+        std::vector<PreparedBytes> cpu_data_;
+        std::vector<PreparedBufferInput> prepared_buffer_inputs_;
+        std::uint64_t preparation_revision_ = 0;
+        std::span<const LinkedUniformBlock> uniform_blocks_;
+        std::vector<SubmissionFrontiers*> uniform_accepted_;
+        PreparedCpuValue<ViewGpuParameters> view_parameters_{};
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
         const RenderGraphExecutable* plan_;
@@ -312,7 +420,7 @@ namespace lux::render::detail
             std::uint32_t source_offset, destination_offset, bytes;
         };
         std::vector<SourceCopy> source_copies_;
-        std::array<std::uint32_t, 3> source_sizes_{};
+        std::array<std::uint32_t, 2> source_sizes_{};
         std::vector<std::byte> instance_values_;
         std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;

@@ -49,9 +49,11 @@ namespace lux::render::detail
         {
             ResourceInput vertices, indices;
             std::uint32_t vertex_stride = 0, index_stride = 0;
+            const MeshDescription* layout = nullptr;
         };
 
         [[nodiscard]] RenderResult<BufferViews> bufferViews(MeshId) const noexcept;
+        [[nodiscard]] RenderResult<MeshArenaSection> arenaSection(MeshId, std::uint32_t submesh) const noexcept;
         [[nodiscard]] RenderResult<void> release(MeshId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 

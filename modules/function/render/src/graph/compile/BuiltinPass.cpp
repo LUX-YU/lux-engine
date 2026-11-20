@@ -9,6 +9,11 @@ namespace lux::render::detail
 {
     namespace
     {
+        bool isSameWrite(const ResourceAccess& left, const ResourceAccess& right) noexcept
+        {
+            return left.version == right.version && left.range == right.range && left.access == right.access;
+        }
+
         RenderResult<void> validateTransfer(const TransferWork& work, std::span<const GraphResource> resources) noexcept
         {
             for (const auto& operation : work.operations)
@@ -277,8 +282,11 @@ namespace lux::render::detail
         }
         else
         {
-            recorded.draw =
-                RasterListCommands{(*context.raster_list_count)++, std::get<RasterPassTemplate>(raster->program)};
+            const auto& stage = std::get<RasterPassTemplate>(raster->program);
+            const bool uses_producer = stage.usesStreamProducer();
+            recorded.draw = RasterListCommands{
+                (*context.raster_list_count)++, uses_producer ? RasterPassTemplate{} : stage, uses_producer
+            };
         }
         return recorded;
     }
@@ -327,27 +335,52 @@ namespace lux::render::detail
     }
 
     RenderResult<TransferCommands>
-    TransferPass::compile(const TransferWork& value, PassCompileContext& context) noexcept
+    TransferPass::compile(
+        const TransferWork& value, std::span<const ResourceAccess> storage_fills, PassCompileContext& context
+    ) noexcept
     {
         if (auto valid = validateTransfer(value, context.resources); !valid)
         {
             return cxx::unexpected(valid.error());
         }
-        return TransferCommands{value.operations};
+        TransferCommands commands{value.operations, {}};
+        const bool serialize_buffer_writes = context.limits.graphicsAPI == nri::GraphicsAPI::D3D12;
+        std::vector<std::uint32_t> filled_resources;
+        std::uint32_t next_descriptor = 0;
+        for (std::size_t i = 0; i < value.operations.size(); ++i)
+        {
+            const auto* fill = std::get_if<FillBuffer>(&value.operations[i]);
+            if (!fill) continue;
+            if (commands.buffer_fills.empty()) commands.buffer_fills.resize(value.operations.size());
+            auto& native = commands.buffer_fills[i];
+            if (next_descriptor < storage_fills.size() &&
+                isSameWrite(fill->destination, storage_fills[next_descriptor]))
+            {
+                native.descriptor = next_descriptor++;
+            }
+            if (fill->value && native.descriptor == kGraphInvalidIndex)
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if (serialize_buffer_writes)
+            {
+                const auto resource = fill->destination.version.resource.index;
+                native.sync_before = std::ranges::find(filled_resources, resource) != filled_resources.end();
+                if (!native.sync_before) filled_resources.push_back(resource);
+            }
+        }
+        if (next_descriptor != storage_fills.size())
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        return commands;
     }
-} // namespace lux::render::detail
 
-namespace lux::render::detail
-{
     std::optional<PassNativeAccess> TransferPass::access(
-        const TransferWork& work, const ResourceAccess& use, const VGraphResourceDesc& description,
-        nri::GraphicsAPI backend
+        const TransferWork& work, std::span<const ResourceAccess> storage_fills, const ResourceAccess& use,
+        const VGraphResourceDesc& description, nri::GraphicsAPI backend
     ) noexcept
     {
         for (const auto& operation : work.operations)
         {
             if (const auto* clear = std::get_if<ClearImage>(&operation);
-                clear && clear->destination.version.resource == use.version.resource)
+                clear && isSameWrite(clear->destination, use))
             {
                 const auto& image = std::get<GraphImageDesc>(description);
                 const bool depth = rdesc::textureAspectMask(image.format) != 1;
@@ -358,11 +391,15 @@ namespace lux::render::detail
                 };
             }
             if (const auto* fill = std::get_if<FillBuffer>(&operation);
-                fill && fill->destination.version.resource == use.version.resource)
+                fill && isSameWrite(fill->destination, use))
             {
+                const bool storage = std::ranges::any_of(storage_fills, [&](const auto& write) noexcept
+                {
+                    return isSameWrite(write, use);
+                });
                 return PassNativeAccess{
-                    fill->value ? nri::AccessBits::CLEAR_STORAGE : nri::AccessBits::COPY_DESTINATION,
-                    fill->value ? nri::StageBits::CLEAR_STORAGE : zeroBufferStages(backend)
+                    storage ? nri::AccessBits::CLEAR_STORAGE : nri::AccessBits::COPY_DESTINATION,
+                    storage ? nri::StageBits::CLEAR_STORAGE : zeroBufferStages(backend)
                 };
             }
         }

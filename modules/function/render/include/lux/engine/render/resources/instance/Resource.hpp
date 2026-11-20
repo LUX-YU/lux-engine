@@ -15,14 +15,14 @@ namespace lux::render
             InstanceCommands::CreateInstance, InstanceCommands::CreateInstances,
             InstanceCommands::ReleaseInstance, InstanceCommands::Update
         >;
-        using PerFrameData = std::tuple<TransformUpdate, MeshInstanceUpdate>;
+        using PerFrameData = std::tuple<MeshInstanceUpdate>;
         using Config = void;
         static inline const ResourceDefinition descriptor{
             kInstanceResourceName,
             0,
             0,
             cxx::make_basic_type_info<MeshInstanceBinding>(),
-            "Paged raster transforms, indexed mesh/material references and live records; no skinning ABI.",
+            "Mesh, material and transform references with live records for raster draws.",
             EResourceDomain::SCENE,
             resourceCommandDescriptors(static_cast<Commands*>(nullptr)),
             resourceFrameTypes(static_cast<PerFrameData*>(nullptr))

@@ -278,7 +278,9 @@ namespace lux::render::detail
         }
         if (aliases)
         {
-            candidate.placements = instantiatePlacements(physical, resources, plan_->recording_, requirements);
+            candidate.placements = instantiatePlacements(
+                physical, resources, plan_->recording_, requirements, session_->description().graphicsAPI
+            );
             expandMemoryMigration(frame.memory_bindings, candidate.placements, candidate.replaced_slots);
             for (std::uint32_t slot = 0; slot < physical.slots.size(); ++slot)
             {
@@ -626,6 +628,12 @@ namespace lux::render::detail
             for (const auto& replacement : candidate.resources)
             {
                 auto& binding = frame.bindings[replacement.index];
+                collectRasterViews(
+                    frame,
+                    binding.buffer != replacement.binding.buffer ? binding.buffer : nullptr,
+                    binding.image != replacement.binding.image ? binding.image : nullptr,
+                    candidate.physical.views
+                );
                 // Do not overwrite parameter values or unrelated Storage updates made while Resize waited.
                 binding.image = replacement.binding.image;
                 binding.buffer = replacement.binding.buffer;
@@ -713,6 +721,13 @@ namespace lux::render::detail
         }
         for (auto& [index, replacement] : result.histories)
         {
+            for (std::size_t f = 0; f < frames_.size(); ++f)
+            {
+                for (const auto& old : histories_[index].slots)
+                {
+                    collectRasterViews(frames_[f], old.buffer, old.image, result.frames[f].physical.views);
+                }
+            }
             std::swap(histories_[index], replacement);
         }
         for (auto& history : histories_)
@@ -734,6 +749,7 @@ namespace lux::render::detail
         std::vector<nri::Descriptor*> views;
         for (auto& frame : frames_)
         {
+            collectRasterViews(frame, nullptr, frame.bindings[resource].image, views);
             frame.bindings[resource].image = nullptr;
             for (auto* output : frame.output_views)
             {

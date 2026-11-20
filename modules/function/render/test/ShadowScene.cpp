@@ -1,9 +1,17 @@
 #include "MaterialFixture.hpp"
 #include "FullscreenVertex.hpp"
 #include "GraphShadowSampler.hpp"
+#include "ClusterCompare.hpp"
+#include "ShadowReadback.hpp"
 #include "SceneCapture.hpp"
 #include "SceneComparison.hpp"
+#include <lux/engine/render/effect/ClusterLists.hpp>
+#include <lux/engine/render/effect/GBuffer.hpp>
+#include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/effect/MeshVisibility.hpp>
+#include <lux/engine/render/effect/Shadow.hpp>
 #include <cmath>
+#include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/render/resources/lighting/Commands.hpp>
@@ -11,48 +19,54 @@
 #include <lux/engine/render/resources/mesh/Commands.hpp>
 #include <lux/engine/render/resources/instance/Commands.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/features/lighting/ClusteredLightingFeature.hpp>
-#include <lux/engine/render/features/lighting/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/mesh/GBufferFeature.hpp>
-#include <lux/engine/render/features/shadow/MeshShadowFeature.hpp>
-#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
-#include <lux/engine/render/features/shadow/ShadowMapFeature.hpp>
-#include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
+#include <lux/engine/render/resources/transform/Binding.hpp>
+#include <lux/engine/render/resources/view/Resource.hpp>
+#include <lux/engine/render/features/shadow/ShadowInputs.hpp>
 
-struct SamplerProbe
+struct SamplerProbe final
 {
-    using Config = void;
-    static constexpr FeatureName name{"test.SamplerProbe"};
-    using Storages = std::tuple<>;
-    using Commands = std::tuple<>;
+    static constexpr std::string_view name = "test.graph.sampler_probe";
+    static constexpr auto color = effectPortSemantic("color");
 
-    using Ports = SamplerProbe;
-
-    static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
+    static CapabilityDefinition definition()
     {
-        GraphImageDesc color{64, 64};
-        color.extent.source = EImageExtentSource::TARGET;
-        ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
-        ports.resources.push_back(
-            {"depths", EFeaturePort::OUTPUT, GraphImageDesc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}}
-        );
-        return {};
+        return {
+            .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
+            .ports = {{color, "color", {std::string{ToneMapping::display_type}, 1}, lux::graph::EPinDirection::OUTPUT}}
+        };
     }
 
-    static RenderResult<void>
-    build(
-        const void*,
-        std::string_view key,
-        FeatureBuildContext& context
-    ) noexcept
+    static void registerWith(RenderServer& server)
     {
-        auto depth = context.resource("depths");
+        const auto capability = definition();
+        CHECK(server.registerEffectCapability(capability));
+        EffectImplementation implementation;
+        implementation.capability = capability.identity.id;
+        implementation.identity = {std::string{name}, 1};
+        implementation.supported_outputs = {color};
+        implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept
+            -> RenderResult<void> { return {}; };
+        implementation.build = build;
+        CHECK(server.registerEffectImplementation(std::move(implementation)));
+    }
+
+private:
+    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    {
+        auto& builder = context.builder();
+        GraphImageDesc color_image{64, 64, 1, 1, context.target().format};
+        color_image.extent.source = EImageExtentSource::TARGET;
+        const auto output = take(builder.declareResource({"sampler output", color_image}));
+        const auto depths = take(builder.declareResource(
+            {"sampler depths", GraphImageDesc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}}
+        ));
+        auto depth = ResourceVersion{depths, 0};
         // A culled sampler input leaves a hole before live inputs. Attach must not instantiate it.
-        (void)context.graph.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS});
+        (void)builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS});
         for (std::uint32_t layer = 0; layer < 2; ++layer)
         {
-            auto cleared = context.graph.addTransferPass(
-                featureKey(FeatureName{"test.SamplerProbe"}, key, "clear" + std::to_string(layer)),
+            const auto cleared = builder.addTransferPass(
+                "clear sampler depth " + std::to_string(layer),
                 TransferWork{{ClearImage{{depth, GraphImageRange{2, 0, 1, layer, 1}}, {}, layer ? .75F : .25F}}}
             );
             if (!cleared)
@@ -70,58 +84,58 @@ struct SamplerProbe
         }
         RasterWork work;
         auto& fixed_work = work.fixed();
-        fixed_work.interface.program = take(context.graph.addProgram(std::move(shaders)));
+        fixed_work.interface.program = take(builder.addProgram(std::move(shaders)));
         fixed_work.interface.resources = {{"depths", {depth}}};
-        auto ordinary = context.graph.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE});
+        auto ordinary = builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE});
         auto comparison =
-            context.graph.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS_EQUAL});
+            builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS_EQUAL});
         fixed_work.interface.samplers = {
             {"ordinary", {ordinary}},
             {"comparison", {comparison}, kGraphInvalidIndex, true}
         };
-        work.colors.push_back({{context.resource("color")}});
-        auto drawn =
-            context.graph.addRasterPass(featureKey(FeatureName{"test.SamplerProbe"}, key, "sample"), std::move(work));
+        work.colors.push_back({{{output, 0}}});
+        const auto drawn = builder.addRasterPass("sample shadow layers", std::move(work));
         if (!drawn)
         {
             return lux::cxx::unexpected(drawn.error());
         }
-        if (auto published = context.publish("depths", depth); !published)
-        {
-            return published;
-        }
-        return context.publish("color", drawn->written.front());
+        return context.publish(color, {{color, drawn->written.front()}});
     }
 };
 
 
 static void verifySamplers(RenderServer& server, const RenderServerConfig& config, const DeviceOptions& device)
 {
-    const auto probe = take(server.registerFeature<SamplerProbe>());
-    take(server.registerResource<CaptureBuffer>());
-    const auto capture = take(server.registerFeature<CaptureFeature>());
+    SamplerProbe::registerWith(server);
+    ColorCapture::registerWith(server);
 
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     std::thread thread([&] { CHECK(server.run()); });
     const auto commands = queryCommands(*client);
     const auto session = call<CreateDeviceSession>(*client, commands, device).device;
-    const auto catalog = call<ListCapabilities>(*client, commands, {session, std::string(kRasterSurfaceCapability)});
-    CHECK(catalog.implementations.size() == 1);
-    CHECK(catalog.implementations.front().unavailable.type == kStorageCapability);
+    CHECK(call<GetOrCreateResource>(*client, commands, {session, DeviceScope{}, kTextureResourceName}, false)
+        .error.type == kStorageCapability);
     CapturedPixels pixels;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-    CreateEffectRequest request{{target.format}};
-    auto& recipe = request.definition;
-    recipe.features.push_back({probe, "samplers", {}});
-    recipe.features.push_back({capture, "pixels", take(ConfigValue::make(CaptureConfig{&pixels}))});
-    recipe.connections.push_back({{0, "color"}, {1, "color"}});
-    recipe.outputs = {{{0, "color"}, GraphOutputRequirements{target.format, 1}}, {{1, "pixels"}, {}}};
+    CreateEffectRequest request;
+    request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit edit{*request.graph};
+    const auto probe = take(edit.addNode(SamplerProbe::definition(), {std::string{SamplerProbe::name}, 1}));
+    const auto capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
+    const auto color = edit.pinId(probe, SamplerProbe::color);
+    CHECK(edit.connect(color, edit.pinId(capture, ColorCapture::color)));
+    CHECK(edit.setOutput("color", color, true));
+    CHECK(edit.setOutput("pixels", edit.pinId(capture, ColorCapture::pixels)));
+    CHECK(edit.commit());
     const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
-    const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect);
+    JobBinding binding;
+    const auto readback = GraphCaptureBuffer::bind(*client, commands, session, {scene, view}, {&pixels});
+    binding.resources.push_back({std::string{ColorCapture::name}, readback});
+    const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect, std::move(binding));
     const auto deadline = Clock::now() + 10s;
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) < 4)
     {
@@ -195,137 +209,149 @@ static std::array<double, 3> project(const MeshVisibilityView& view, std::array<
     return {clip[0] / clip[3], clip[1] / clip[3], clip[2] / clip[3]};
 }
 
-using ShadowProbeConfiguration = std::tuple<
-    GBufferFeatureConfig, ShadowMapFeatureConfig, MeshVisibilityFeatureConfig, MeshShadowFeatureConfig,
-    DeferredLightingFeatureConfig, std::array<CaptureConfig, 8>, bool, bool
->;
-
-static RenderResult<EffectDefinition> lowerShadowProbe(
-    const EffectOutputDesc& output, const ShadowProbeConfiguration& configuration, std::span<const FeatureId> features
-) noexcept
+struct ShadowReadback final
 {
-    const auto& [surface, projections, visibility_config, shadow_config, light_config, captures, clustered, radius] =
-        configuration;
-    const auto& target = output;
-    const auto& shape = shadow_config.shape;
-    const auto gbuffer = features[0], projection = features[1], visibility = features[2];
-    const auto shadow = features[3], lighting = features[4], tonemap = features[5];
-    const auto capture = features[6], cluster_feature = features[7], comparison = features[8];
-    EffectDefinition request;
-    request.features.push_back({gbuffer, "gbuffer", take(ConfigValue::make(surface))});
-    request.features.push_back({projection, "projection", take(ConfigValue::make(projections))});
-    request.features.push_back({visibility, "visibility", take(ConfigValue::make(visibility_config))});
-    request.features.push_back({shadow, "shadow", take(ConfigValue::make(shadow_config))});
-    request.features.push_back({lighting, "lighting", take(ConfigValue::make(light_config))});
-    request.features.push_back(
-        {tonemap, "tonemap", take(ConfigValue::make(TonemapFeatureConfig{target, EColorEncoding::LINEAR}))}
-    );
-    request.features.push_back({capture, "pixels", take(ConfigValue::make(captures[0]))});
-    auto view_capture = captures[1];
-    view_capture.bytes = shape.view_count * sizeof(MeshVisibilityView);
-    request.features.push_back({capture, "views", take(ConfigValue::make(view_capture))});
-    auto activity_capture = captures[2];
-    activity_capture.bytes = shape.view_count * kMeshWindingCount * sizeof(nri::DrawIndexedDesc);
-    request.features.push_back({capture, "activity_commands", take(ConfigValue::make(activity_capture))});
-    request.features.push_back(
-        {capture, "surface", take(ConfigValue::make(captures[3]))}
-    );
-    request.features.push_back(
-        {capture, "depth", take(ConfigValue::make(captures[4]))}
-    );
-    auto indirect_capture = captures[5];
-    indirect_capture.bytes = shape.view_count * kMeshWindingCount * 20;
-    request.features.push_back({capture, "indirect", take(ConfigValue::make(indirect_capture))});
-    auto& connections = request.connections;
-    for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
+    static constexpr std::string_view name = "test.shadow.readback";
+    static constexpr auto readback = effectPortSemantic("readback");
+    static constexpr auto reference = effectPortSemantic("reference");
+    static constexpr auto candidate = effectPortSemantic("candidate");
+
+    // Projection zero belongs to ColorCapture. Each remaining projection has its own FIF backings.
+    static constexpr std::array<std::string_view, 6> bindings{
+        "views", "shadow_commands", "surface_color", "surface_depth", "differences", "cluster_status"
+    };
+    static constexpr std::uint32_t maximum_views = 9;
+
+    static CapabilityDefinition definition()
     {
-        connections.push_back({{0, name}, {4, name}});
+        using enum lux::graph::EPinDirection;
+        return {
+            .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
+            .ports = {
+                {GBuffer::surface, "surface", {std::string{Lighting::surface_type}, 1}, INPUT, 1, true},
+                {Shadow::shadows, "shadows", {std::string{Lighting::shadow_type}, 1}, INPUT, 1, true},
+                {Shadow::draws, "draws", {std::string{MeshVisibility::draws_type}, 1}, INPUT, 1, true},
+                {reference, "reference", {std::string{Lighting::hdr_type}, 1}, INPUT, 1},
+                {candidate, "candidate", {std::string{Lighting::hdr_type}, 1}, INPUT, 1},
+                {Lighting::cluster_lists, "cluster_lists", {std::string{Lighting::cluster_lists_type}, 1}, INPUT, 1},
+                {readback, "readback", {"test.shadow.readback.bytes", 1}, OUTPUT}
+            }
+        };
     }
-    for (auto name : {"directional_lights", "point_lights", "spot_lights", "light_counts"})
+
+    static void registerWith(RenderServer& server)
     {
-        connections.push_back({{1, name}, {4, name}});
+        const auto capability = definition();
+        CHECK(server.registerEffectCapability(capability));
+        EffectImplementation implementation;
+        implementation.capability = capability.identity.id;
+        implementation.identity = {std::string{name}, 1};
+        implementation.supported_outputs = {readback};
+        implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept
+            -> RenderResult<void> { return {}; };
+        implementation.build = build;
+        CHECK(server.registerEffectImplementation(std::move(implementation)));
     }
-    connections.push_back({{1, "views"}, {2, "views"}});
-    connections.push_back({{1, "views"}, {3, "views"}});
-    connections.push_back({{1, "raster_states"}, {3, "raster_states"}});
-    connections.push_back({{1, "views"}, {4, "shadow_views"}});
-    connections.push_back({{1, "slices"}, {4, "shadow_slices"}});
-    connections.push_back({{1, "light_ranges"}, {4, "shadow_ranges"}});
-    for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
+
+private:
+    static ResourceVersion member(EffectBuildContext& context, lux::graph::PinSemanticId pin,
+        lux::graph::PinSemanticId semantic) noexcept
     {
-        connections.push_back({{2, port}, {3, port}});
+        const auto input = context.inputs(pin);
+        CHECK(input.size() == 1);
+        const auto found = std::ranges::find(input.front(), semantic, &EffectResourceValue::member);
+        CHECK(found != input.front().end());
+        return found->version;
     }
-    connections.push_back({{3, "depth"}, {4, "shadow_depth"}});
-    connections.push_back({{4, "hdr_color"}, {5, "hdr_color"}});
-    connections.push_back({{5, "color"}, {6, "color"}});
-    connections.push_back({{1, "views"}, {7, "color"}});
-    connections.push_back({{2, "commands"}, {8, "color"}});
-    connections.push_back({{0, "albedo_metallic"}, {9, "color"}});
-    connections.push_back({{0, "depth"}, {10, "color"}});
-    connections.push_back({{2, "commands"}, {11, "color"}});
-    request.outputs.push_back({{5, "color"}, GraphOutputRequirements{target.format, 1}});
-    for (unsigned capture_index : {6u, 7u, 8u, 9u, 10u, 11u})
+
+    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
     {
-        request.outputs.push_back({{capture_index, "pixels"}, {}});
-    }
-    if (clustered)
-    {
-        ClusteredLightingFeatureConfig clusters;
-        clusters.grid = {{7, 5, 9}, radius ? 1u : 65536u, EClusterDepth::LOGARITHMIC};
-        clusters.external_lights = true;
-        auto optimized = light_config;
-        optimized.clusters =
-            ClusterLightListShape{static_cast<std::uint32_t>(clusters.grid.count()), clusters.grid.index_capacity};
-        optimized.external_lights = true;
-        request.features.push_back({cluster_feature, "clusters", take(ConfigValue::make(clusters))}
-        ); // 12
-        request.features.push_back({lighting, "clustered_lighting", take(ConfigValue::make(optimized))}
-        );                                                                  // 13
-        request.features.push_back({comparison, "compare", {}}); // 14
-        auto compare_config = captures[6];
-        compare_config.bytes = 64 * 64 * 4;
-        request.features.push_back(
-            {capture, "difference_pixels", take(ConfigValue::make(compare_config))}
-        ); // 15
-        auto status_config = captures[7];
-        status_config.bytes = sizeof(ClusterStatusGpu);
-        request.features.push_back({capture, "cluster_status", take(ConfigValue::make(status_config))}
-        ); // 16
-        for (auto name : {"directional_lights", "point_lights", "spot_lights", "light_counts"})
+        auto& graph = context.builder();
+        const bool compare = !context.inputs(reference).empty();
+        const std::uint32_t count = compare ? bindings.size() : 4;
+        std::array<ResourceVersion, bindings.size()> sinks;
+        for (std::uint32_t i = 0; i < count; ++i)
         {
-            connections.push_back({{1, name}, {12, name}});
-            connections.push_back({{1, name}, {13, name}});
+            const auto buffer = context.importResource(
+                bindings[i], {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
+                {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
+                    EGraphUse::TRANSFER_DESTINATION}, i + 1
+            );
+            if (!buffer) return lux::cxx::unexpected(buffer.error());
+            sinks[i] = *buffer;
         }
-        for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
+
+        constexpr std::uint32_t views_bytes = maximum_views * sizeof(MeshVisibilityView);
+        constexpr std::uint32_t commands_bytes = maximum_views * kMeshWindingCount * sizeof(nri::DrawIndexedDesc);
+        static_assert(sizeof(MeshVisibilityView) == 44 * sizeof(std::uint32_t));
+        static_assert(kMeshWindingCount * sizeof(nri::DrawIndexedDesc) == 10 * sizeof(std::uint32_t));
+        const auto views = take(graph.declareResource({"readback views", GraphBufferDesc{views_bytes}}));
+        const auto commands = take(graph.declareResource({"readback indirect", GraphBufferDesc{commands_bytes}}));
+        ComputeWork snapshot;
+        snapshot.interface.program = take(graph.addProgram(GraphProgram{kShadowReadback.load(context.shaderTarget())}));
+        snapshot.interface.resources = {
+            {"shadow_views", {member(context, Shadow::shadows, effectPortSemantic(Lighting::shadow_members[0]))}},
+            {"shadow_commands", {member(context, Shadow::draws, MeshVisibility::commands)}},
+            {"views", {{views, 0}, {}, EGraphAccess::WRITE}},
+            {"commands", {{commands, 0}, {}, EGraphAccess::WRITE}}
+        };
+        constexpr auto threads_bytes = 64 * sizeof(std::uint32_t);
+        snapshot.dispatch = DispatchArguments{{(std::max(views_bytes, commands_bytes) + threads_bytes - 1) /
+            threads_bytes, 1, 1}};
+        const auto sampled = take(graph.addComputePass("sample shadow buffers", std::move(snapshot)));
+        const auto copy_buffer = [&](std::uint32_t index, ResourceVersion source, std::uint32_t bytes)
         {
-            connections.push_back({{0, name}, {13, name}});
-        }
-        for (auto name : {"grid", "offsets", "indices", "status"})
+            const auto cleared = take(graph.addTransferPass(
+                "clear " + std::string{bindings[index]}, TransferWork{{FillBuffer{{sinks[index]}, 0}}}
+            ));
+            const auto copied = take(graph.addTransferPass(
+                "copy " + std::string{bindings[index]}, TransferWork{{CopyBuffer{
+                    {source, GraphBufferRange{0, bytes}},
+                    {cleared.written.front(), GraphBufferRange{0, bytes}, EGraphAccess::READ_WRITE}
+                }}}
+            ));
+            sinks[index] = copied.written.front();
+        };
+        copy_buffer(0, sampled.written[0], views_bytes);
+        copy_buffer(1, sampled.written[1], commands_bytes);
+
+        for (std::uint32_t i : {2u, 3u})
         {
-            connections.push_back({{12, name}, {13, "cluster_" + std::string(name)}});
+            const bool depth = i == 3;
+            const auto semantic = effectPortSemantic(depth ? Lighting::surface_members.back() : Lighting::surface_members[0]);
+            const auto source = member(context, GBuffer::surface, semantic);
+            const auto copied = take(graph.addTransferPass("copy " + std::string{bindings[i]},
+                TransferWork{{CopyImageBuffer{
+                    {source, GraphImageRange{depth ? 2u : 1u}}, {sinks[i]}, 256, GraphCaptureBuffer::image_bytes,
+                    ImageCopyRegion{0, 0, 64, 64}
+                }}}
+            ));
+            sinks[i] = copied.written.front();
         }
-        connections.push_back({{1, "views"}, {13, "shadow_views"}});
-        connections.push_back({{1, "slices"}, {13, "shadow_slices"}});
-        connections.push_back({{1, "light_ranges"}, {13, "shadow_ranges"}});
-        connections.push_back({{3, "depth"}, {13, "shadow_depth"}});
-        connections.push_back({{4, "hdr_color"}, {14, "reference"}});
-        connections.push_back({{13, "hdr_color"}, {14, "candidate"}});
-        connections.push_back({{14, "differences"}, {15, "color"}});
-        connections.push_back({{12, "status"}, {16, "color"}});
-        request.outputs.push_back({{15, "pixels"}, {}});
-        request.outputs.push_back({{16, "pixels"}, {}});
+        if (compare)
+        {
+            const auto difference = take(graph.declareResource(
+                {"HDR differences", GraphBufferDesc{GraphCaptureBuffer::image_bytes}}
+            ));
+            ComputeWork comparison;
+            comparison.interface.program = take(graph.addProgram(GraphProgram{kClusterCompare.load(context.shaderTarget())}));
+            comparison.interface.resources = {
+                {"reference_image", {member(context, reference, Lighting::hdr)}},
+                {"candidate_image", {member(context, candidate, Lighting::hdr)}},
+                {"differences", {{difference, 0}, {}, EGraphAccess::WRITE}}
+            };
+            comparison.dispatch = DispatchArguments{{8, 8, 1}};
+            const auto compared = take(graph.addComputePass("compare shadow lighting HDR", std::move(comparison)));
+            copy_buffer(4, compared.written.front(), GraphCaptureBuffer::image_bytes);
+            copy_buffer(5, member(context, Lighting::cluster_lists, effectPortSemantic(Lighting::cluster_members.back())),
+                sizeof(ClusterStatusGpu));
+        }
+        EffectResourceBundle outputs;
+        for (std::uint32_t i = 0; i < count; ++i)
+            outputs.push_back({effectPortSemantic(bindings[i]), sinks[i]});
+        return context.publish(readback, std::move(outputs));
     }
-    MeshVisibilityFeatureConfig main_visibility;
-    main_visibility.camera_view = true;
-    const auto visibility_index = static_cast<std::uint32_t>(request.features.size());
-    request.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
-    );
-    for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
-    {
-        connections.push_back({{visibility_index, port}, {0, port}});
-    }
-    return request;
-}
+};
 
 static void runPresets(
     ipc::IpcRequester& client,
@@ -333,31 +359,13 @@ static void runPresets(
     DeviceSessionId session,
     SceneId scene,
     ResourceInstanceId lights,
-    FeatureId capture,
-    CapabilityImplementationId capture_probe,
+    const JobBinding& scene_binding,
     const TargetDesc& target,
-    CameraInput camera,
+    ViewGpuParameters camera,
     unsigned fif,
     std::uint32_t profile_frames
 )
 {
-    const EffectOutputDesc output{target.format};
-    const auto catalog = call<ListCapabilities>(client, commands, {session, {}, {}, output});
-    const auto select = [&](std::string_view name) -> const CapabilityImplementationInfo&
-    {
-        const auto found = std::ranges::find(catalog.implementations, name,
-            [](const auto& entry) { return entry.capability.type.name(); });
-        CHECK(found != catalog.implementations.end() && !found->unavailable.type);
-        return *found;
-    };
-    const auto& surface = select(kRasterSurfaceCapability);
-    const auto& lighting = select(kDeferredLightingCapability);
-    const auto unsupported = call<ListCapabilities>(client, commands, {
-        session, std::string(kDeferredLightingCapability), {}, EffectOutputDesc{rdesc::ETextureFormat::RGBA16_SFLOAT}
-    });
-    CHECK(unsupported.implementations.size() == 1);
-    CHECK(unsupported.implementations.front().unavailable.type == kRuntimeUnsupported);
-
     const std::array<VDirectLight, 2> sources{
         DirectionalLightGpu{{1, 1, 1, 0}, {.6F, 0, -.8F, 0}},
         PointLightGpu{{-1, 0, 2, 6}, {.2F, .2F, .2F, 0}, {1, 0, 0, 0}}
@@ -370,31 +378,61 @@ static void runPresets(
     std::array<std::vector<std::byte>, 4> results;
     for (std::uint32_t variant = profile_frames ? 3u : 0u; variant < results.size(); ++variant)
     {
-        DeferredLightingConfiguration options;
-        options.shadows = (variant & 1) != 0;
-        options.clustered = (variant & 2) != 0;
-        options.encoding = EColorEncoding::LINEAR;
-        options.shadow = {64, 0, 3};
-        options.clusters = {{7, 5, 9}, 4096, EClusterDepth::LINEAR};
-        auto request = take(makeDeferredRenderEffect(output, surface, lighting, {}, options));
-        CHECK(request.definition.features.size() == 4u + 3u * options.shadows + options.clustered);
-        request.parameters.exposure = 0;
+        const bool shadows = (variant & 1) != 0;
+        const bool clustered = (variant & 2) != 0;
+        CreateEffectRequest request;
+        request.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit edit{*request.graph};
+        const auto surface = take(edit.addNode(GBuffer::definition(), {std::string{GBuffer::indexed}, GBuffer::version}));
+        const auto lighting_impl = clustered ? Lighting::clustered : Lighting::direct;
+        const auto lighting = take(edit.addNode(Lighting::definition(), {std::string{lighting_impl}, Lighting::version},
+            clustered ? "7,5,9,4096,linear" : ""));
+        const auto tone = take(edit.addNode(ToneMapping::definition(),
+            {std::string{ToneMapping::linear}, ToneMapping::version}, "0"));
+        CHECK(edit.connect(edit.pinId(surface, GBuffer::surface), edit.pinId(lighting, Lighting::surface)));
+        CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
+        const auto display = edit.pinId(tone, ToneMapping::color);
+        CHECK(edit.setOutput("color", display, true));
+        if (shadows)
+        {
+            const auto shadow = take(edit.addNode(Shadow::definition(), {std::string{Shadow::indexed}, Shadow::version},
+                "64,3,0"));
+            CHECK(edit.connect(edit.pinId(shadow, Shadow::shadows), edit.pinId(lighting, Lighting::shadows)));
+        }
         CapturedPixels pixels;
         if (!profile_frames)
         {
-            auto& recipe = request.definition;
-            const auto copy = static_cast<std::uint32_t>(recipe.features.size());
-            request.implementations.push_back({capture_probe, "capture"});
-            recipe.features.push_back({capture, "capture/pixels", take(ConfigValue::make(CaptureConfig{&pixels}))});
-            recipe.connections.push_back({recipe.outputs.front().source, {copy, "color"}});
-            recipe.outputs.push_back({{copy, "pixels"}, {}});
+            const auto capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
+            CHECK(edit.connect(display, edit.pinId(capture, ColorCapture::color)));
+            CHECK(edit.setOutput("pixels", edit.pinId(capture, ColorCapture::pixels)));
         }
-
+        CHECK(edit.commit());
         const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(client, commands, {scene}).view;
         const auto image = call<CreateTarget>(client, commands, {session, target}).target;
-        call<UpdateViewCamera>(client, commands, {{scene, view}, camera});
-        const auto attached = startRenderJob(client, commands, session, scene, view, image, effect);
+        const ViewRequest view_scope{scene, view};
+        JobBinding binding = scene_binding;
+        binding.view_parameters = call<GetOrCreateResource>(client, commands,
+            {session, view_scope, kViewParameterResourceName}).resource_id;
+        call<ViewParameterCommands::Update>(client, commands, {binding.view_parameters, std::span{&camera, 1}});
+        if (shadows)
+            binding.resources.push_back({std::string{Shadow::lights_binding}, lights, 0, EJobResourceUse::CPU_SNAPSHOT});
+        if (!profile_frames)
+        {
+            const auto readback = GraphCaptureBuffer::bind(client, commands, session, view_scope, {&pixels, target.format});
+            binding.resources.push_back({std::string{ColorCapture::name}, readback});
+        }
+        const auto attached = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+        if (variant == 0)
+        {
+            auto unsupported = target;
+            unsupported.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+            const auto wrong_format = call<CreateTarget>(client, commands, {session, unsupported}).target;
+            CHECK(call<StartRenderJob>(client, commands, {session, attached, wrong_format, binding}, false).error.type ==
+                kCapabilityDeclaration);
+            call<RemoveTarget>(client, commands, wrong_format);
+        }
+        call<StartRenderJob>(client, commands, {session, attached, image, std::move(binding)});
         const auto deadline = Clock::now() + 20s;
         while (call<QueryExecutionProgress>(client, commands, attached).progress.count(EExecutionOutcome::EXECUTED)
                < fif + 2)
@@ -454,9 +492,13 @@ int main(int argc, char** argv)
     auto runtime = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(runtime);
     RenderServerConfig config{"test.shadow", nativeValidationEnabled()};
-    config.diagnostics = {nullptr, [](void*, const RenderDiagnostic& diagnostic) noexcept
+    bool report_warnings = std::getenv("LUX_TEST_NATIVE_WARNINGS") != nullptr;
+    config.diagnostics = {&report_warnings, [](void* context, const RenderDiagnostic& diagnostic) noexcept
     {
-        if (diagnostic.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE)
+        const bool is_error = diagnostic.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE;
+        const bool is_requested_warning = diagnostic.severity == ERenderDiagnosticSeverity::WARNING &&
+            *static_cast<const bool*>(context);
+        if (is_error || is_requested_warning)
             std::fprintf(stderr, "%.*s:%u %.*s\n", int(diagnostic.file.size()), diagnostic.file.data(),
                 diagnostic.line, int(diagnostic.message.size()), diagnostic.message.data());
     }};
@@ -523,30 +565,8 @@ int main(int argc, char** argv)
         runtime->reset(); // The Runtime owns its stop/join boundary.
         return 0;
     }
-    const auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
-    const auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
-    const auto tonemap = take(server->featureId("lux.render.feature.TonemapFeature"));
-    const auto projection = take(server->featureId("lux.render.feature.ShadowMapFeature"));
-    const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
-    const auto shadow = take(server->featureId("lux.render.feature.MeshShadowFeature"));
-    take(server->registerResource<CaptureBuffer>());
-    const auto capture = take(server->registerFeature<CaptureFeature>());
-    const auto capture_probe = presets ? registerCaptureProbe(*server, capture) : CapabilityImplementationId{};
-    const auto cluster_feature = take(server->featureId("lux.render.feature.ClusteredLightingFeature"));
-    const auto comparison = take(server->registerFeature<SceneComparison>());
-    const auto shadow_probe = registerRenderProbe<ShadowProbeConfiguration>(
-        *server, "test.shadow", {gbuffer, projection, visibility, shadow, lighting, tonemap, capture,
-            cluster_feature, comparison},
-        probePorts({"color"}, {"pixels", "views", "activity_commands", "surface", "depth", "indirect"}), lowerShadowProbe
-    );
-    const auto clustered_probe = registerRenderProbe<ShadowProbeConfiguration>(
-        *server, "test.clustered_shadow", {gbuffer, projection, visibility, shadow, lighting, tonemap, capture,
-            cluster_feature, comparison},
-        probePorts(
-            {"color"},
-            {"pixels", "views", "activity_commands", "surface", "depth", "indirect", "differences", "cluster_status"}
-        ), lowerShadowProbe
-    );
+    ColorCapture::registerWith(*server);
+    ShadowReadback::registerWith(*server);
 
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
@@ -562,9 +582,8 @@ int main(int argc, char** argv)
     ).resource_id;
     const auto instances = call<GetOrCreateResource>(*client, commands, {session, scene, kInstanceResourceName}).resource_id;
     const auto light_storage = call<GetOrCreateResource>(*client, commands, {session, scene, kLightResourceName}).resource_id;
-    const auto scene_inputs = installInputs(*client, commands, session, scene);
-    const auto instance_updates = scene_inputs.instances;
-    const auto light_updates = scene_inputs.lights;
+    const auto instance_updates = instances;
+    const auto light_updates = light_storage;
 
     struct Vertex
     {
@@ -609,13 +628,16 @@ int main(int argc, char** argv)
         {{mesh, material_id}, {caster_mesh, material_id}, {caster_mesh, material_id}, {mesh, unlit_material}}
     };
     for (auto& value : descriptions) value.render_enabled = true;
-    descriptions[1].transform[0] = -.25F; // Mirrored caster with nonuniform scale.
-    descriptions[1].transform[5] = .2F;
-    descriptions[1].transform[14] = .5F;
-    descriptions[2].transform[12] = 100;
-    descriptions[3].transform[0] = descriptions[3].transform[5] = .08F;
-    descriptions[3].transform[12] = descriptions[3].transform[13] = .8F;
-    descriptions[3].transform[14] = .2F;
+    std::array matrices{kIdentityTransform, kIdentityTransform, kIdentityTransform, kIdentityTransform};
+    matrices[1][0] = -.25F; // Mirrored caster with nonuniform scale.
+    matrices[1][5] = .2F;
+    matrices[1][14] = .5F;
+    matrices[2][12] = 100;
+    matrices[3][0] = matrices[3][5] = .08F;
+    matrices[3][12] = matrices[3][13] = .8F;
+    matrices[3][14] = .2F;
+    const auto transform_storage = sceneTransformStorage(*client, commands, session, scene);
+    bindTransforms(*client, commands, transform_storage, descriptions, matrices);
     // The readback probes the caster group's streams. Dynamic grouping follows first membership,
     // so create that group first; the receiver and marker remain ordinary color-only instances.
     const std::array ordered_descriptions{descriptions[1], descriptions[2], descriptions[0], descriptions[3]};
@@ -628,20 +650,43 @@ int main(int argc, char** argv)
     std::rotate(instance_ids.begin(), instance_ids.begin() + 2, instance_ids.begin() + 3);
     // Positive-height viewport: this unmirrored quad is clockwise in framebuffer coordinates.
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-    CameraInput camera;
+    ViewGpuParameters camera;
     camera.view[10] = -1;
     camera.view[14] = 2;
     camera.projection[10] = 1 / 2.9F;
     camera.projection[14] = -.1F / 2.9F;
     camera.inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -2.9F, 0, 0, 0, 1.9F, 1};
-    camera.position = {0, 0, 2};
-    camera.far_distance = 3;
+    camera.position_near[2] = 2;
+    camera.direction_far[3] = 3;
     camera.background = {0, 0, 0, 1};
+    const auto transform_projection = device.buffer_device_address ?
+        ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
+    const auto instance_projection = device.buffer_device_address ?
+        EMeshInstanceBinding::PAGED_ROOT : EMeshInstanceBinding::PROPERTIES;
+    JobBinding scene_binding;
+    scene_binding.resources = {
+        {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
+        {std::string{MeshVisibility::transforms_binding}, transform_storage, static_cast<std::uint32_t>(transform_projection)},
+        {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(instance_projection)},
+        {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::RASTER_MESHES},
+        {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::RASTER_MATERIALS}
+    };
+    if (!device.buffer_device_address)
+    {
+        scene_binding.resources.push_back({
+            std::string{MeshVisibility::alive_binding}, instances, static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)
+        });
+    }
+    for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
+        scene_binding.resources.push_back({std::string{Lighting::light_bindings[i]}, light_storage, i});
     if (presets || profile_frames)
     {
-        runPresets(*client, commands, session, scene, light_storage, capture, capture_probe, target, camera, fif,
-                   profile_frames);
+        runPresets(*client, commands, session, scene, light_storage, scene_binding, target, camera, fif, profile_frames);
     }
+    const auto update_camera = [&](ResourceInstanceId resource, const ViewGpuParameters& input)
+    {
+        call<ViewParameterCommands::Update>(*client, commands, {resource, std::span{&input, 1}});
+    };
     std::array<unsigned, 4> reference_lit{}, reference_occluded{};
     bool masked = false;
 
@@ -707,9 +752,6 @@ int main(int argc, char** argv)
             : kind == EDirectLightingBuffer::POINT       ? 6u
                                                          : 1u
         };
-        ShadowMapFeatureConfig projections;
-        projections.shape = shape;
-        projections.pcf_radius = radius;
         std::vector<DirectLightUpdate> shadow_updates;
         const auto add_shadow = [&](std::size_t index, bool directional)
         {
@@ -727,56 +769,97 @@ int main(int argc, char** argv)
             add_shadow(2, false);
             add_shadow(3, false);
         }
-        projections.distance = 3;
         updateSceneData(*client, commands, light_updates, std::span<const DirectLightUpdate>{shadow_updates});
-        MeshVisibilityFeatureConfig visibility_config;
-        visibility_config.view_count = shape.view_count;
-        visibility_config.frustum_culling = cull;
-        visibility_config.shadow_pass = true;
-        MeshShadowFeatureConfig shadow_config{shape};
-        GBufferFeatureConfig surface{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
-        surface.front_counter_clockwise = false;
-        DeferredLightingFeatureConfig light_config;
-        light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        light_config.extent.extent.source = EImageExtentSource::TARGET;
-        light_config.shadows = shape;
-        light_config.external_lights = true;
-        CapturedPixels pixels, view_bytes, activity_commands, surface_pixels, depth_pixels;
+        CapturedPixels pixels, view_bytes, surface_pixels, depth_pixels;
         CapturedPixels indirect, differences, cluster_status;
-        auto request = probeRequest(
-            target, clustered ? clustered_probe : shadow_probe,
-            ShadowProbeConfiguration{surface, projections, visibility_config, shadow_config, light_config,
-                {CaptureConfig{&pixels}, CaptureConfig{&view_bytes}, CaptureConfig{&activity_commands},
-                 CaptureConfig{&surface_pixels}, CaptureConfig{&depth_pixels, rdesc::ETextureFormat::D32_SFLOAT},
-                 CaptureConfig{&indirect}, CaptureConfig{&differences}, CaptureConfig{&cluster_status}},
-                clustered, radius != 0},
-            clustered ? std::initializer_list<std::string_view>{
-                "color", "pixels", "views", "activity_commands", "surface", "depth", "indirect",
-                "differences", "cluster_status"
-            } : std::initializer_list<std::string_view>{
-                "color", "pixels", "views", "activity_commands", "surface", "depth", "indirect"
-            }
-        );
-        request.parameters.exposure = 0;
+        CreateEffectRequest request;
+        request.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit edit{*request.graph};
+        const auto surface = take(edit.addNode(
+            GBuffer::definition(), {std::string{GBuffer::indexed_clockwise}, GBuffer::version}
+        ));
+        const auto shadow = take(edit.addNode(
+            Shadow::definition(), {std::string{Shadow::indexed_clockwise}, Shadow::version},
+            "64,3," + std::to_string(radius) + (cull ? "" : ",unculled")
+        ));
+        const auto direct = take(edit.addNode(Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}));
+        const auto tone = take(edit.addNode(
+            ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}, "0"
+        ));
+        const auto color_capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
+        const auto diagnostic = take(edit.addNode(ShadowReadback::definition(), {std::string{ShadowReadback::name}, 1}));
+        const auto surface_port = edit.pinId(surface, GBuffer::surface);
+        const auto shadows_port = edit.pinId(shadow, Shadow::shadows);
+        const auto direct_hdr = edit.pinId(direct, Lighting::hdr);
+        const auto display = edit.pinId(tone, ToneMapping::color);
+        CHECK(edit.connect(surface_port, edit.pinId(direct, Lighting::surface)));
+        CHECK(edit.connect(shadows_port, edit.pinId(direct, Lighting::shadows)));
+        CHECK(edit.connect(direct_hdr, edit.pinId(tone, ToneMapping::hdr_color)));
+        CHECK(edit.connect(display, edit.pinId(color_capture, ColorCapture::color)));
+        CHECK(edit.connect(surface_port, edit.pinId(diagnostic, GBuffer::surface)));
+        CHECK(edit.connect(shadows_port, edit.pinId(diagnostic, Shadow::shadows)));
+        CHECK(edit.connect(edit.pinId(shadow, Shadow::draws), edit.pinId(diagnostic, Shadow::draws)));
+        if (clustered)
+        {
+            const auto candidate = take(edit.addNode(
+                Lighting::definition(), {std::string{Lighting::clustered}, Lighting::version},
+                radius ? "7,5,9,1,logarithmic" : "7,5,9,65536,logarithmic"
+            ));
+            CHECK(edit.connect(surface_port, edit.pinId(candidate, Lighting::surface)));
+            CHECK(edit.connect(shadows_port, edit.pinId(candidate, Lighting::shadows)));
+            CHECK(edit.connect(direct_hdr, edit.pinId(diagnostic, ShadowReadback::reference)));
+            CHECK(edit.connect(edit.pinId(candidate, Lighting::hdr), edit.pinId(diagnostic, ShadowReadback::candidate)));
+            CHECK(edit.connect(
+                edit.pinId(candidate, Lighting::cluster_lists), edit.pinId(diagnostic, Lighting::cluster_lists)
+            ));
+        }
+        CHECK(edit.setOutput("color", display, true));
+        CHECK(edit.setOutput("pixels", edit.pinId(color_capture, ColorCapture::pixels)));
+        CHECK(edit.setOutput("diagnostics", edit.pinId(diagnostic, ShadowReadback::readback)));
+        CHECK(edit.commit());
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        const auto make_binding = [&](ViewId view, const ViewGpuParameters& input)
+        {
+            const ViewRequest scope{scene, view};
+            auto binding = scene_binding;
+            binding.view_parameters = call<GetOrCreateResource>(
+                *client, commands, {session, scope, kViewParameterResourceName}
+            ).resource_id;
+            update_camera(binding.view_parameters, input);
+            const std::array configurations{
+                CaptureConfig{&pixels}, CaptureConfig{&view_bytes}, CaptureConfig{&indirect},
+                CaptureConfig{&surface_pixels}, CaptureConfig{&depth_pixels, rdesc::ETextureFormat::D32_SFLOAT},
+                CaptureConfig{&differences}, CaptureConfig{&cluster_status}
+            };
+            const auto capture_count = clustered ? configurations.size() : configurations.size() - 2;
+            const auto readback = GraphCaptureBuffer::bind(
+                *client, commands, session, scope, std::span{configurations}.first(capture_count)
+            );
+            binding.resources.push_back({std::string{Shadow::lights_binding}, light_storage, 0, EJobResourceUse::CPU_SNAPSHOT});
+            binding.resources.push_back({std::string{ColorCapture::name}, readback});
+            for (std::uint32_t i = 0; i < capture_count - 1; ++i)
+                binding.resources.push_back({std::string{ShadowReadback::bindings[i]}, readback, i + 1});
+            return binding;
+        };
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
-        call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
-        const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect);
+        const auto binding = make_binding(view, camera);
+        const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect, binding);
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;
         const auto second_target = call<CreateTarget>(*client, commands, {session, target}).target;
         auto second_camera = camera;
         second_camera.projection[0] = 1.02F;
         second_camera.inverse_view_projection[0] = 1.F / second_camera.projection[0];
-        call<UpdateViewCamera>(*client, commands, {{scene, second_view}, second_camera});
-        const auto second = startRenderJob(*client, commands, session, scene, second_view, second_target, effect);
+        const auto second = startRenderJob(
+            *client, commands, session, scene, second_view, second_target, effect, make_binding(second_view, second_camera)
+        );
         const auto compile_count = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
         auto moving = camera;
-        moving.position[0] = -.2F;
+        moving.position_near[0] = -.2F;
         moving.view[12] = .2F;
         moving.inverse_view_projection[12] = -.2F;
-        call<UpdateViewCamera>(*client, commands, {{scene, view}, moving});
-        call<UpdateViewCamera>(*client, commands, {{scene, view}, camera});
+        update_camera(binding.view_parameters, moving);
+        update_camera(binding.view_parameters, camera);
         CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compile_count);
         // A live attachment observes dense reordering; an old cached index must not shadow another light.
         if (!projection_revisions || !cast)
@@ -802,6 +885,22 @@ int main(int argc, char** argv)
             }
             const std::array restore{DirectLightUpdate{lights[2], values[2], point_shadows}};
             updateSceneData(*client, commands, light_updates, std::span<const DirectLightUpdate>{restore});
+            // Alternating two Jobs can keep each on a subset of the device's frame slots.
+            // Overwrite every replica this Job could have written while the light was moved.
+            std::vector<std::uint8_t> restored(fif);
+            auto remaining = fif;
+            const auto restore_deadline = Clock::now() + 10s;
+            while (remaining)
+            {
+                const auto frame = call<RequestRenderJob>(*client, commands, {attachment});
+                CHECK(frame.job == attachment && frame.slot_index < restored.size() && Clock::now() < restore_deadline);
+                auto& refreshed = restored[frame.slot_index];
+                if (!refreshed)
+                {
+                    refreshed = 1;
+                    --remaining;
+                }
+            }
         }
         const auto before =
             call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED);
@@ -927,14 +1026,14 @@ int main(int argc, char** argv)
                 std::printf("PROJECTION BEGIN %s expected=1\n", name);
                 std::fflush(stdout);
                 const auto before = copy_bytes();
-                call<UpdateViewCamera>(
-                    *client, commands, {{scene, view}, moved_camera ? moving : camera}
-                );
+                update_camera(binding.view_parameters, moved_camera ? moving : camera);
                 for (unsigned frame = 0; frame < fif; ++frame) renderFrame(*client, commands, attachment);
                 CHECK(copy_bytes() > before + stable_bytes);
                 std::printf("PROJECTION END %s\n", name);
                 std::fflush(stdout);
             }
+            // This Job's last capture preceded the dense light removal.
+            for (unsigned frame = 0; frame < fif; ++frame) renderFrame(*client, commands, second);
         }
         stopAndRemoveJob(*client, commands, attachment);
         stopAndRemoveJob(*client, commands, second);
@@ -942,7 +1041,6 @@ int main(int argc, char** argv)
         call<RemoveView>(*client, commands, {scene, second_view});
         while (pixels.ready.load(std::memory_order_acquire) != 2 ||
                view_bytes.ready.load(std::memory_order_acquire) != 2 ||
-               activity_commands.ready.load(std::memory_order_acquire) != 2 ||
                surface_pixels.ready.load(std::memory_order_acquire) != 2 ||
                depth_pixels.ready.load(std::memory_order_acquire) != 2 ||
                indirect.ready.load(std::memory_order_acquire) != 2 ||
@@ -1101,7 +1199,7 @@ int main(int argc, char** argv)
             }
         }
         bool have_count = false;
-        for (const auto& frame : activity_commands.frames)
+        for (const auto& frame : indirect.frames)
         {
             for (unsigned v = 0; v < shape.view_count * kMeshWindingCount; ++v)
             {
@@ -1152,6 +1250,8 @@ int main(int argc, char** argv)
             CHECK(observed_empty);
         }
         call<RemoveEffect>(*client, commands, {effect});
+        call<RemoveTarget>(*client, commands, output);
+        call<RemoveTarget>(*client, commands, second_target);
         for (std::size_t i = 1; i < lights.size(); ++i)
         {
             call<LightingCommands::ReleaseLight>(

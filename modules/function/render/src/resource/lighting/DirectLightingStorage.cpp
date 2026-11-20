@@ -374,36 +374,37 @@ namespace lux::render::detail
         };
     }
 
-    bool DirectLightingStorage::read(LightId id, VDirectLight& result, std::uint32_t& dense_index) const noexcept
+    RenderResult<std::uint64_t> DirectLightingStorage::captureShadows(ShadowLightSnapshot& snapshot) const noexcept
     {
-        const auto* entry = extension_detail::ResourceIdentity::parent(id) == id_
-                                ? entries_.find(extension_detail::ResourceIdentity::local(id))
-                                : nullptr;
-        if (!entry)
+        if (updating_) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (snapshot.revision == shadow_revision_) return snapshot.revision;
+
+        snapshot.counts = counts();
+        snapshot.casters.clear();
+        const auto capture = [&]<class Light>(EDirectLightingBuffer projection) noexcept
         {
-            return false;
-        }
-        dense_index = entry->position;
-        const auto* bytes = arrays_[entry->kind].records.data() + std::size_t(entry->position) * strides[entry->kind];
-        const auto copy = [&]<class T>() noexcept
-        {
-            T light;
-            std::memcpy(&light, bytes, sizeof(light));
-            result = light;
+            const auto& array = arrays_[static_cast<std::size_t>(projection)];
+            for (const auto key : array.identities)
+            {
+                const auto& entry = *entries_.find(key);
+                if (!entry.shadows.enabled) continue;
+                Light light;
+                const auto offset = std::size_t(entry.position) * sizeof(Light);
+                std::memcpy(&light, array.records.data() + offset, sizeof(Light));
+                // The shadow revision tracks spatial properties only.
+                light.radiance = Light{}.radiance;
+                if constexpr (std::same_as<Light, PointLightGpu>) light.attenuation = Light{}.attenuation;
+                if constexpr (std::same_as<Light, SpotLightGpu>) light.attenuation_inner = Light{}.attenuation_inner;
+                snapshot.casters.push_back({
+                    extension_detail::ResourceIdentity::make<LightId>(id_, key), light, entry.shadows, entry.position
+                });
+            }
         };
-        switch (entry->kind)
-        {
-        case 0:
-            copy.template operator()<DirectionalLightGpu>();
-            break;
-        case 1:
-            copy.template operator()<PointLightGpu>();
-            break;
-        case 2:
-            copy.template operator()<SpotLightGpu>();
-            break;
-        }
-        return true;
+        capture.template operator()<DirectionalLightGpu>(EDirectLightingBuffer::DIRECTIONAL);
+        capture.template operator()<PointLightGpu>(EDirectLightingBuffer::POINT);
+        capture.template operator()<SpotLightGpu>(EDirectLightingBuffer::SPOT);
+        snapshot.revision = shadow_revision_;
+        return snapshot.revision;
     }
 
     exec::task<RenderResult<void>>
@@ -728,6 +729,8 @@ namespace lux::render::detail
             CommandBinding::declare<LightingCommands::ReleaseLight, &removeLight>(),
             CommandBinding::declare<LightingCommands::Update, &updateLightsCommand>()
         };
+        static constexpr auto snapshot =
+            StorageSnapshotOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::captureShadows>();
         static const StorageBindingOps binding{
             [](void* value,
                const VGraphResourceDesc& resource,
@@ -741,7 +744,22 @@ namespace lux::render::detail
             [](void* value, std::uint32_t frame, ResourceUploader& uploads, Preparation& preparation) noexcept
             { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame, uploads, preparation); },
             [](const void* value) noexcept
-            { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; }
+            { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; },
+            [](const void*, std::uint32_t projection) noexcept -> RenderResult<StorageGraphImport>
+            {
+                if (projection >= strides.size()) return cxx::unexpected(RenderError{kStorageContract});
+                const auto bytes = strides[projection];
+                return StorageGraphImport{GraphBufferDesc{bytes}, {GraphBufferRange{0, bytes}}, EGraphUse::STORAGE_READ};
+            },
+            [](void* value, std::uint32_t projection, const VGraphResourceDesc& resource,
+               StorageSubscription& node, std::span<ResourceInput> output) noexcept -> RenderResult<void>
+            {
+                if (projection >= strides.size()) return cxx::unexpected(RenderError{kStorageContract});
+                return static_cast<DirectLightingStorage*>(value)->resolve(
+                    resource, DirectLightingBinding{static_cast<EDirectLightingBuffer>(projection)}, node, output
+                );
+            },
+            &snapshot
         };
         using Created = RenderResult<std::unique_ptr<DirectLightingStorage>>;
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept -> Created

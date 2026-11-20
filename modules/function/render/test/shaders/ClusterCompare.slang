@@ -17,5 +17,6 @@ struct Value
     }
     float4 a = reference_image.Load(int3(id.xy, 0));
     float4 b = candidate_image.Load(int3(id.xy, 0));
-    differences[id.y * width + id.x].value = all(a == b) ? 1u : 2u;
+    const uint matched = any(a.rgb != 0.0) ? 3u : 1u;
+    differences[id.y * width + id.x].value = all(a == b) ? matched : 2u;
 }

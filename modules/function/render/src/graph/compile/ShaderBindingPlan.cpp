@@ -4,8 +4,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
-#include <lux/engine/render/resource/view/CameraParameters.hpp>
-#include <lux/engine/render/features/common/ParameterLayout.hpp>
+#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <map>
 #include <spirv-tools/libspirv.h>
 
@@ -13,6 +12,56 @@ namespace lux::render::detail
 {
     namespace
     {
+        bool matchesConstantBlock(
+            ConstantBlockContract contract, rdesc::EShaderTarget target, const rdesc::ShaderBlock& shader
+        ) noexcept
+        {
+            const auto layout = contract.layout(target);
+            const auto same_member = [](const ConstantMemberLayout& host, const rdesc::ShaderMember& device) noexcept
+            {
+                return host.path == device.path && host.offset == device.offset && host.scalar == device.scalar &&
+                    host.rows == device.rows && host.columns == device.columns &&
+                    host.matrix_stride == device.matrix_stride && host.matrix_order == device.matrix_order &&
+                    std::ranges::equal(host.array_dimensions, device.array_dimensions);
+            };
+            const bool qualified_storage = contract.type.isValid() && layout.bytes == contract.bytes;
+            return qualified_storage && shader.hasConstantLayoutEvidence() && layout.bytes == shader.size &&
+                layout.alignment == shader.alignment &&
+                std::ranges::equal(layout.members, shader.fields, same_member);
+        }
+
+        RenderResult<void> qualifyUniformBlock(
+            const ResourceParameter& input,
+            const ShaderBinding& binding,
+            const GraphResource& resource,
+            const nri::DeviceDesc& limits
+        ) noexcept
+        {
+            const bool fixed_read = binding.kind == EDescriptorKind::UNIFORM_BUFFER && binding.count == 1 &&
+                input.descriptor_count == 0 && input.elements.empty() && input.access.access == EGraphAccess::READ;
+            const auto* range = std::get_if<GraphBufferRange>(&input.access.range);
+            const auto* buffer = std::get_if<GraphBufferDesc>(&resource.description);
+            const bool has_exact_range = range && buffer && !input.access.whole_resource &&
+                range->size == input.uniform_constant.bytes;
+            const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
+                ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+            const bool aligned_type = binding.block.alignment <= input.uniform_constant.alignment;
+            if (!fixed_read || !has_exact_range || !aligned_type ||
+                !matchesConstantBlock(input.uniform_constant, target, binding.block))
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+
+            const auto alignment = limits.memoryAlignment.constantBufferOffset;
+            const bool valid_offset = alignment != 0 && range->offset % alignment == 0;
+            const bool inside_buffer = range->offset <= buffer->size && range->size <= buffer->size - range->offset;
+            if (!valid_offset || !inside_buffer) return cxx::unexpected(RenderError{kGraphInvalidRange});
+            const auto physical_size = limits.graphicsAPI == nri::GraphicsAPI::D3D12
+                ? range->size + (alignment - range->size % alignment) % alignment
+                : range->size;
+            if (physical_size > limits.memory.constantBufferMaxRange)
+                return cxx::unexpected(RenderError{kDeviceCapacity, {physical_size, limits.memory.constantBufferMaxRange}});
+            return {};
+        }
+
         enum class ED3DTable : std::uint8_t { SRV, UAV, CBV, SAMPLER };
 
         ED3DTable tableKind(nri::DescriptorType type) noexcept
@@ -285,6 +334,18 @@ namespace lux::render::detail
         }
         PassBindings output;
         const auto& parameters = reflected->parameters;
+        const auto& authored = input.parameters;
+        if (authored.inline_constant.layout)
+        {
+            const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
+                ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+            const bool has_other_writers = authored.source != EParameterSource::INSTANCE ||
+                authored.instance_layout.size != 0 || !authored.fields.empty() || !authored.device_fields.empty();
+            const bool compatible = authored.inline_constant.bytes == authored.values.size() &&
+                matchesConstantBlock(authored.inline_constant, target, parameters);
+            if (has_other_writers || !compatible)
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        }
         const bool is_invalid_values = input.parameters.zero_fill_tail
             ? input.parameters.values.size() > parameters.size : input.parameters.values.size() != parameters.size;
         const bool invalid_parameters = is_invalid_values ||
@@ -411,6 +472,12 @@ namespace lux::render::detail
             if (invalid)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
+            if (selected->uniform_constant.layout)
+            {
+                const auto& source = graph_resources[selected->access.version.resource.index];
+                if (auto valid = qualifyUniformBlock(*selected, binding, source, limits); !valid)
+                    return cxx::unexpected(valid.error());
             }
             if (selected->descriptor_count)
             {
@@ -573,6 +640,7 @@ namespace lux::render::detail
             {
                 SamplerParameter sampler{binding.name};
                 sampler.field = field;
+                sampler.comparison = slot->comparison_sampler;
                 sampler.inputs.assign(binding.count, index);
                 input.samplers.push_back(std::move(sampler));
             }
@@ -620,9 +688,14 @@ namespace lux::render::detail
             for (const auto& write : input->typed_buffer_writes)
             {
                 const auto binding = static_cast<std::uint32_t>(output.bindings.size());
-                output.bindings.push_back(
-                    {0, binding, EDescriptorKind::TYPED_STORAGE_BUFFER, 1, {}, {}, 4, EShaderAccess::WRITE_ONLY}
-                );
+                output.bindings.push_back({
+                    .binding = binding,
+                    .kind = EDescriptorKind::TYPED_STORAGE_BUFFER,
+                    .count = 1,
+                    .stages = 4,
+                    .access = EShaderAccess::WRITE_ONLY,
+                    .shader_register = binding
+                });
                 output.uses.push_back({write.version.resource.index, 0, binding,
                     EDescriptorKind::TYPED_STORAGE_BUFFER, write.range, binding});
             }
@@ -643,6 +716,8 @@ namespace lux::render::detail
             plan.passes[id.index].instance_region = region;
             if (!input || input->program == kGraphInvalidIndex)
             {
+                if (parameters.inline_constant.layout)
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 // Dynamic programs receive layouts when prepared; the pass retains only instance input data.
                 plan.passes[id.index].initial_parameters = parameters.values;
                 continue;
@@ -665,8 +740,7 @@ namespace lux::render::detail
             if (!recipe->parameter_bytes || recipe->parameter_source == EParameterSource::INSTANCE) continue;
             const auto region = regionFor(recipe->parameter_group, recipe->parameter_source);
             auto& layout = plan.parameter_regions[region].layout;
-            auto canonical = recipe->parameter_source == EParameterSource::VIEW ? cameraParameterLayout()
-                                                                                  : effectParameterLayout();
+            auto canonical = viewParameterLayout();
             const bool incompatible_layout = layout.size != 0 && layout != canonical;
             if (incompatible_layout || recipe->parameter_bytes > canonical.size)
             {
@@ -674,7 +748,7 @@ namespace lux::render::detail
             }
             layout = std::move(canonical);
         }
-        // The caller's byte block contains only local regions. Shared View and Effect copies
+        // The caller's byte block contains only local regions. Shared View copies
         // use the same backing allocation, after the local prefix.
         for (const bool local : {true, false})
         {

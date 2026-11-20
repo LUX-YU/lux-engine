@@ -2,7 +2,6 @@
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 
@@ -34,8 +33,7 @@ namespace lux::render
             {"lux.render.runtime.outcome_unknown", "Accepted side effects have an unknown outcome"},
             {"lux.render.capability", "Invalid capability declaration"},
             {"lux.render.capability.conflict", "Conflicting declarations for the same capability type"},
-            {"lux.render.capability.prerequisite", "Required capability is missing"},
-            {"lux.render.capability.cycle", "Capability prerequisites contain a cycle"},
+            {"lux.render.capability.cycle", "Effect Graph contains a cycle"},
             {"lux.render.capability.in_use", "Capability implementation or dependency is still in use"}
         };
         return descriptors;
@@ -48,7 +46,6 @@ namespace lux::render
             renderCommandErrorDescriptors(),
             renderRuntimeErrorDescriptors(),
             renderResourceErrorDescriptors(),
-            renderFeatureErrorDescriptors(),
             renderGraphErrorDescriptors(),
             deviceErrorDescriptors()
         };

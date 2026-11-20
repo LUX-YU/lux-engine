@@ -34,14 +34,14 @@ namespace lux::render
             }
         }
 
-        // A contribution supplies a default for passes that have no explicit View or Effect source.
+        // A contribution supplies a default View source for passes with field-linked parameters.
         void applyDefaultParameterSource(std::size_t first, EParameterSource source) noexcept
         {
             if (source == EParameterSource::INSTANCE) return;
             for (std::size_t i = first; i < candidate_.passes_.size(); ++i)
             {
                 auto& parameters = candidate_.passes_[i].interface.parameters;
-                if (parameters.source == EParameterSource::INSTANCE)
+                if (parameters.source == EParameterSource::INSTANCE && !parameters.inline_constant.layout)
                 {
                     parameters.source = source;
                 }
@@ -51,6 +51,13 @@ namespace lux::render
         [[nodiscard]] std::size_t resourceCount() const noexcept
         {
             return candidate_.resources().size();
+        }
+
+        // Borrow a declaration until the next Builder mutation.
+        [[nodiscard]] const VGraphResourceDesc* resourceDescription(GraphResourceId resource) const noexcept
+        {
+            const auto resources = candidate_.resources();
+            return resource.index < resources.size() ? &resources[resource.index].description : nullptr;
         }
 
         [[nodiscard]] std::size_t passCount() const noexcept

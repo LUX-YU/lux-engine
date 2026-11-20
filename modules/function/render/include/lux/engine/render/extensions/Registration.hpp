@@ -2,28 +2,13 @@
 
 #include <array>
 #include <lux/cxx/compile_time/tuple_traits.hpp>
-#include <lux/engine/render/extensions/CapabilityImplementation.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
-#include <lux/engine/render/extensions/detail/FeatureEntry.hpp>
 #include <lux/engine/render/extensions/detail/HandlerRecord.hpp>
-#include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 
 namespace lux::render::runtime_detail
 {
-    template <class Declaration> constexpr cxx::basic_type_info configurationType() noexcept
-    {
-        if constexpr (std::is_void_v<typename Declaration::Config>)
-        {
-            return {};
-        }
-        else
-        {
-            return cxx::make_basic_type_info<typename Declaration::Config>();
-        }
-    }
-
     // Use type_identity so lux-cxx's tuple utilities never construct a Storage or Handler.
     template <class... Types> constexpr auto uniqueTypes(std::tuple<Types...>*) noexcept
     {
@@ -79,67 +64,6 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
-    // Graph factories are independent of capability methods and professional Storage installation.
-    template <class Feature> RenderResult<FeatureId> RenderServer::registerFeature() noexcept
-    {
-        return registerFeature(runtime_detail::FeatureEntry{
-            Feature::name,
-            runtime_detail::configurationType<Feature>(),
-            FeatureGraphOps::make<Feature>()
-        });
-    }
-
-    // Reference an already registered module closure. No factory/callback payload is resubmitted.
-    template <class Implementation>
-    RenderResult<CapabilityImplementationId> RenderServer::registerCapabilityImplementation() noexcept
-    {
-        auto capability = capabilityId(cxx::make_basic_type_info<typename Implementation::Capability>());
-        if (!capability) return cxx::unexpected(capability.error());
-        auto implementation = Implementation::implementation();
-        implementation.features.clear();
-        implementation.command_bindings.clear();
-        RenderResult<void> resolved;
-        std::apply([&](auto... feature) noexcept
-        {
-            ([&]() noexcept
-            {
-                if (!resolved) return;
-                using Feature = typename decltype(feature)::type;
-                auto id = featureId(Feature::name.name());
-                if (!id) resolved = cxx::unexpected(id.error());
-                else implementation.features.push_back(*id);
-            }(), ...);
-        }, runtime_detail::uniqueTypes(static_cast<typename Implementation::Features*>(nullptr)));
-        std::apply([&](auto... method) noexcept
-        {
-            ([&]() noexcept
-            {
-                if (!resolved) return;
-                using Method = typename decltype(method)::type;
-                HandlerId handler;
-                if constexpr (!std::is_void_v<typename Method::Handler>)
-                {
-                    auto id = handlerId(cxx::make_basic_type_info<typename Method::Handler>());
-                    if (!id)
-                    {
-                        resolved = cxx::unexpected(id.error());
-                        return;
-                    }
-                    handler = *id;
-                }
-                auto location = commandBinding(
-                    commandDescriptor<typename Method::Command>(),
-                    cxx::make_basic_type_info<Method>(),
-                    handler
-                );
-                if (!location) resolved = cxx::unexpected(location.error());
-                else implementation.command_bindings.push_back(*location);
-            }(), ...);
-        }, runtime_detail::uniqueTypes(static_cast<typename Implementation::Bindings*>(nullptr)));
-        if (!resolved) return cxx::unexpected(resolved.error());
-        return addCapabilityImplementation(*capability, implementation);
-    }
-
     template <class Storage>
         requires(!std::is_void_v<typename Storage::Descriptor::Config>)
     RenderResult<ResourceTypeId>

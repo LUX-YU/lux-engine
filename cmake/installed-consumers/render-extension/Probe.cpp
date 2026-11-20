@@ -2,15 +2,18 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/extensions/CommandMethod.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
@@ -116,6 +119,7 @@ struct ProbeEffectCommand final
     struct Request final
     {
         EffectId effect;
+        graph::NodeId node;
         std::optional<std::uint32_t> value;
     };
     struct Response final
@@ -127,6 +131,7 @@ struct ProbeEffectCommand final
     using Data = std::uint32_t;
 
     static EffectId effectId(const Request& request) noexcept { return request.effect; }
+    static graph::NodeId nodeId(const Request& request) noexcept { return request.node; }
 };
 
 struct ProbeEffectState final
@@ -135,75 +140,101 @@ struct ProbeEffectState final
     std::uint64_t revision = 1;
 };
 
-struct RoutedCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<ProbeEffectCommand>;
-    using Resources = std::tuple<>;
-};
+static constexpr std::string_view routed_capability = "example.effect.route";
+static constexpr std::string_view route_a = "example.effect.route.a";
+static constexpr std::string_view route_b = "example.effect.route.b";
+static constexpr std::string_view route_failure = "example.effect.route.failed_state";
+static constexpr std::string_view transfer_capability = "example.graph.transfer";
+static constexpr auto previous_color = effectPortSemantic("previous");
+static constexpr auto output_color = effectPortSemantic("color");
+static constexpr auto readback_value = effectPortSemantic("value");
+static constexpr std::string_view color_type = "example.graph.color";
+static constexpr std::string_view readback_binding = "readback";
+static constexpr std::uint32_t transfer_bytes = 4096;
+static constexpr std::uint32_t history_distance = 2;
+static constexpr std::uint32_t readback_frames = history_distance + 1;
+static constexpr std::uint32_t fallback_value = 17;
+static constexpr std::uint32_t expected_value = 42;
 
-template <std::uint32_t Value> struct RoutedImplementation final
+static CapabilityDefinition routedDefinition(CommandId command)
 {
-    using Capability = RoutedCapability;
-    using Features = std::tuple<>;
+    return {
+        .identity = {graph::nodeTypeId(routed_capability), std::string{routed_capability}, 1},
+        .ports = {
+            {previous_color, "previous", {std::string{color_type}, 1}, graph::EPinDirection::INPUT},
+            {output_color, "color", {std::string{color_type}, 1}, graph::EPinDirection::OUTPUT}
+        },
+        .commands = {command}
+    };
+}
 
-    static RenderResult<std::unique_ptr<ProbeEffectState>> createState() noexcept
+static RenderResult<ResourceVersion> clearColor(EffectBuildContext& context) noexcept
+{
+    const auto& target = context.target();
+    if (target.format != rdesc::ETextureFormat::RGBA8_UNORM || target.samples != 1)
+        return cxx::unexpected(RenderError{kRuntimeUnsupported});
+    GraphImageDesc image{16, 16};
+    image.extent.source = EImageExtentSource::TARGET;
+    auto& builder = context.builder();
+    const auto output = builder.declareResource({"color", image});
+    if (!output) return cxx::unexpected(output.error());
+    const auto clear = builder.addTransferPass("clear", TransferWork{{ClearImage{{{*output, 0}}, {0, 0, 0, 1}}}});
+    if (!clear) return cxx::unexpected(clear.error());
+    return clear->written.front();
+}
+
+static RenderResult<void> buildRouted(EffectBuildContext& context, std::string_view) noexcept
+{
+    const auto previous = context.inputs(previous_color);
+    if (!previous.empty()) return context.publish(output_color, previous.front());
+    const auto color = clearColor(context);
+    if (!color) return cxx::unexpected(color.error());
+    return context.publish(output_color, {{output_color, *color}});
+}
+
+template <std::uint32_t Value>
+static void updateRouted(
+    ProbeEffectState& state, const ProbeEffectCommand::Request& request, ProbeEffectCommand::Response& response
+) noexcept
+{
+    if (request.value && *request.value > 100)
     {
-        return std::make_unique<ProbeEffectState>(ProbeEffectState{Value});
+        response.error = {kInvalidConfig};
+        return;
     }
-
-    static void update(
-        ProbeEffectState& state, const ProbeEffectCommand::Request& request, ProbeEffectCommand::Response& response
-    ) noexcept
+    if (request.value)
     {
-        if (request.value && *request.value > 100)
+        if (state.revision == UINT64_MAX)
         {
-            response.error = {kInvalidConfig};
+            response.error = {kRuntimeCapacity};
             return;
         }
-        if (request.value && *request.value != state.value)
-        {
-            if (state.revision == UINT64_MAX)
-            {
-                response.error = {kRuntimeCapacity};
-                return;
-            }
-            state.value = *request.value;
-            ++state.revision;
-        }
-        response = {{}, state.value, state.revision};
+        state.value = *request.value;
+        ++state.revision;
     }
+    response = {{}, state.value, state.revision};
+}
 
-    using Bindings = std::tuple<EffectCommandMethod<ProbeEffectCommand, ProbeEffectState, &update>>;
-    static CapabilityImplementation implementation() noexcept
-    {
-        CapabilityImplementation result;
-        result.implementation = Value == 17 ? "example.effect.route.a" : "example.effect.route.b";
-        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-        result.state_factory = EffectStateFactory::declare<ProbeEffectState, &createState>();
-        return result;
-    }
-};
-
-struct FailingRoutedImplementation final
+template <std::uint32_t Value>
+static RenderResult<void> initializeRouted(EffectInitializationContext& context, std::string_view arguments) noexcept
 {
-    using Capability = RoutedCapability;
-    using Features = std::tuple<>;
-    using Bindings = RoutedImplementation<17>::Bindings;
+    if (!arguments.empty()) return cxx::unexpected(RenderError{kInvalidConfig});
+    return context.initializeState<ProbeEffectState>(ProbeEffectState{Value});
+}
 
-    static RenderResult<std::unique_ptr<ProbeEffectState>> createState() noexcept
-    {
-        return lux::cxx::unexpected(RenderError{kInvalidConfig});
-    }
-
-    static CapabilityImplementation implementation() noexcept
-    {
-        auto result = RoutedImplementation<17>::implementation();
-        result.implementation = "example.effect.route.failed_state";
-        result.state_factory = EffectStateFactory::declare<ProbeEffectState, &createState>();
-        return result;
-    }
-};
+static EffectImplementation routedImplementation(
+    std::string_view name, CommandBindingLocation command, EffectImplementation::Initialize initialize
+)
+{
+    return {
+        .capability = graph::nodeTypeId(routed_capability),
+        .identity = {std::string{name}, 1},
+        .supported_outputs = {output_color},
+        .command_bindings = {command},
+        .initialize = initialize,
+        .build = buildRouted
+    };
+}
 
 template <bool Alternate> struct ProbeResource final
 {
@@ -270,17 +301,21 @@ struct ProbeStorage final
     static ResourceRegistration factory() noexcept
     {
         static const detail::StorageBindingOps binding{
-            [](void* object,
-               const VGraphResourceDesc&,
-               const void*,
-               detail::StorageSubscription&,
-               std::span<detail::ResourceInput> outputs) noexcept -> RenderResult<void>
+            .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
+                -> RenderResult<detail::StorageGraphImport>
+            {
+                if (projection != 0) return cxx::unexpected(RenderError{kStorageContract});
+                return detail::StorageGraphImport{
+                    GraphBufferDesc{4096}, {}, EGraphUse::TRANSFER_DESTINATION
+                };
+            },
+            .resolveGraphImport = [](
+                void* object, std::uint32_t, const VGraphResourceDesc&, detail::StorageSubscription&,
+                std::span<detail::ResourceInput> outputs
+            ) noexcept -> RenderResult<void>
             {
                 auto& storage = *static_cast<ProbeStorage*>(object);
-                for (auto& output : outputs)
-                {
-                    output = {storage.buffer, 0, 4096};
-                }
+                for (auto& output : outputs) output = {storage.buffer, 0, 4096};
                 return {};
             }
         };
@@ -330,13 +365,6 @@ template <bool Alternate> struct ProbeStorageType final
         result.descriptor = &Descriptor::descriptor;
         return result;
     }
-};
-
-struct ProbeCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Resources = std::tuple<ProbeResource<false>, ProbeResource<true>>;
 };
 
 struct ProbeReference final
@@ -392,94 +420,147 @@ struct DomainStorage final
     }
 };
 
-struct ProbeGraphCapability final
+struct ProbeReadback final
 {
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Resources = std::tuple<ProbeResource<false>>;
-};
-
-struct QualificationAuditCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Resources = std::tuple<>;
-};
-
-template <bool Alternate> struct ProbeFeature final
-{
-    using Capability = ProbeCapability;
-    using Features = std::tuple<>;
-    using Config = void;
-    using Storages = std::tuple<ProbeStorageType<false>, ProbeStorageType<true>>;
-    using Bindings = std::tuple<>;
-    static constexpr FeatureName name{Alternate ? "example.buffer.b" : "example.buffer.a"};
-
-    static CapabilityImplementation implementation() noexcept
+    struct Descriptor final
     {
-        CapabilityImplementation result;
-        result.implementation = name.name();
-        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-        return result;
-    }
-};
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"example.resource.readback"}, 0, 0, {}, "An offscreen transfer result.",
+            EResourceDomain::VIEW
+        };
+    };
 
-template <bool Matching> struct ProbeEffect final
-{
-    using Capability = ProbeGraphCapability;
-    using Features = std::tuple<ProbeEffect>;
-    using Config = void;
-    using Storages = ProbeFeature<false>::Storages;
-    using Bindings = ProbeFeature<false>::Bindings;
-    static constexpr FeatureName name{Matching ? "example.graph.match" : "example.graph.mismatch"};
+    static inline std::array<std::uint32_t, readback_frames> observed{};
+    detail::DeviceSession& device;
+    std::array<nri::Buffer*, readback_frames> buffers{};
 
-    using Ports = ProbeEffect;
+    explicit ProbeReadback(ResourceCreateContext& context) noexcept : device(context.device) {}
 
-    static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
+    ~ProbeReadback() noexcept
     {
-        (Matching ? ports.resource_bindings.device : ports.resource_bindings.scene).push_back(
-            {"buffer",
-             EFeaturePort::OUTPUT,
-             GraphBufferDesc{4096},
-             EGraphOrigin::IMPORTED,
-             {},
-             ResourceRequirement{ResourceName{
-                 ProbeResource<false>::descriptor.type.name()
-             }}}
-        );
-        GraphImageDesc image{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
-        ports.resources.push_back({"color", EFeaturePort::OUTPUT, image});
-        return {};
-    }
-
-    static RenderResult<void> build( const void*, std::string_view, FeatureBuildContext& context ) noexcept
-    {
-        auto pass = context.graph.addTransferPass(
-            "fill",
-            TransferWork{
-                {FillBuffer{{context.resource("buffer")}, 42},
-                 ClearImage{{context.resource("color")}, {0, 0, 0, 1}}}
+        if (!buffers.front()) return;
+        device.deferRelease([session = &device, buffers = buffers]() noexcept
+        {
+            const auto& core = session->nriCore();
+            for (std::size_t slot = 0; slot < buffers.size(); ++slot)
+            {
+                auto* buffer = buffers[slot];
+                const auto* mapped = core.MapBuffer(*buffer, 0, sizeof(observed[slot]));
+                CHECK(mapped);
+                CHECK(session->invalidateMappedRange(*buffer, 0, sizeof(observed[slot])) == nri::Result::SUCCESS);
+                std::memcpy(&observed[slot], mapped, sizeof(observed[slot]));
+                core.UnmapBuffer(*buffer);
+                core.DestroyBuffer(buffer);
             }
-        );
-        if (!pass)
-        {
-            return cxx::unexpected(pass.error());
-        }
-        return context.publish("color", pass->written[1]);
+        });
     }
 
-    static CapabilityImplementation implementation() noexcept
+    static RenderResult<std::unique_ptr<ProbeReadback>>
+    create(ResourceCreateContext& context, ResourceInstanceId) noexcept
     {
-        static const auto result = []
+        auto storage = std::make_unique<ProbeReadback>(context);
+        const auto& session = storage->device;
+        if (context.frame_count != readback_frames) return cxx::unexpected(RenderError{kStorageContract});
+        for (auto*& buffer : storage->buffers)
         {
-            auto value = ProbeFeature<false>::implementation();
-            value.implementation = name.name();
-            value.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-            return value;
-        }();
-        return result;
+            const auto result = session.nriCore().CreatePlacedBuffer(
+                session.device(), NriHostReadbackHeap, {transfer_bytes, 0, nri::BufferUsageBits::NONE}, buffer
+            );
+            if (result == nri::Result::SUCCESS) continue;
+            for (auto* allocated : storage->buffers)
+                if (allocated) session.nriCore().DestroyBuffer(allocated);
+            storage->buffers = {};
+            return cxx::unexpected(RenderError{kDeviceFailure});
+        }
+        return storage;
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
+        static const detail::StorageBindingOps binding{
+            .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
+                -> RenderResult<detail::StorageGraphImport>
+            {
+                if (projection != 0) return cxx::unexpected(RenderError{kStorageContract});
+                return detail::StorageGraphImport{GraphBufferDesc{transfer_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+            },
+            .resolveGraphImport = [](
+                void* object, std::uint32_t, const VGraphResourceDesc&, detail::StorageSubscription&,
+                std::span<detail::ResourceInput> outputs
+            ) noexcept -> RenderResult<void>
+            {
+                auto& storage = *static_cast<ProbeReadback*>(object);
+                if (outputs.size() != storage.buffers.size()) return cxx::unexpected(RenderError{kStorageContract});
+                for (std::size_t slot = 0; slot < outputs.size(); ++slot)
+                    outputs[slot] = {storage.buffers[slot], 0, transfer_bytes};
+                return {};
+            }
+        };
+        return makeResourceRegistration<Descriptor, ProbeReadback, &create>(nullptr, &binding);
     }
 };
+
+static CapabilityDefinition transferDefinition()
+{
+    return {
+        .identity = {graph::nodeTypeId(transfer_capability), std::string{transfer_capability}, 1},
+        .ports = {
+            {output_color, "color", {std::string{color_type}, 1}, graph::EPinDirection::OUTPUT},
+            {readback_value, "value", {"example.graph.readback", 1}, graph::EPinDirection::OUTPUT}
+        }
+    };
+}
+
+static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string_view) noexcept
+{
+    if (context.outputDemanded(output_color))
+    {
+        const auto color = clearColor(context);
+        if (!color) return cxx::unexpected(color.error());
+        if (auto published = context.publish(output_color, {{output_color, *color}}); !published) return published;
+    }
+    if (!context.outputDemanded(readback_value)) return {};
+
+    auto& builder = context.builder();
+    const auto readback = context.importResource(
+        readback_binding, {ResourceName{ProbeReadback::Descriptor::descriptor.type.name()}},
+        {"", GraphBufferDesc{transfer_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
+    );
+    if (!readback) return cxx::unexpected(readback.error());
+    const GraphBufferDesc description{transfer_bytes};
+    const auto history = take(
+        builder.declareHistory("samples", description, {}, EGraphUse::TRANSFER_SOURCE, history_distance)
+    );
+    const auto fallback = take(builder.declareResource({"history fallback", description}));
+    const auto seeded = take(builder.addTransferPass("initialize history fallback", TransferWork{{
+        FillBuffer{{{fallback, 0}}, fallback_value}
+    }}));
+    const auto written = take(builder.addTransferPass("write current history", TransferWork{{
+        FillBuffer{{{history.current, 0}}, expected_value}
+    }}));
+    CHECK(builder.publishHistory(written.written.front()));
+    const auto copied = take(builder.addTransferPass("read earlier history", TransferWork{{
+        CopyBuffer{{{history.previous, 0}, {}, EGraphAccess::READ, 0, seeded.written.front()}, {*readback}}
+    }}));
+    return context.publish(readback_value, {{readback_value, copied.written.front()}});
+}
+
+static EffectImplementation transferImplementation()
+{
+    return {
+        .capability = graph::nodeTypeId(transfer_capability),
+        .identity = {std::string{transfer_capability}, 1},
+        .supported_outputs = {output_color, readback_value},
+        .initialize = [](EffectInitializationContext&, std::string_view arguments) noexcept -> RenderResult<void>
+        {
+            if (!arguments.empty()) return cxx::unexpected(RenderError{kInvalidConfig});
+            return {};
+        },
+        .build = buildTransfer
+    };
+}
 
 struct RejectedStorage final
 {
@@ -500,47 +581,6 @@ struct RejectedStorage final
     {
         return makeResourceRegistration<Descriptor, RejectedStorage, &create>(nullptr);
     }
-};
-
-struct RejectedCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Resources = std::tuple<ProbeResource<false>, RejectedStorage::Descriptor>;
-};
-
-struct RejectedInstallation final
-{
-    using Capability = RejectedCapability;
-    using Features = std::tuple<>;
-    using Config = void;
-    using Storages = std::tuple<ProbeStorageType<false>, RejectedStorage>;
-    using Bindings = std::tuple<>;
-
-    static CapabilityImplementation implementation() noexcept
-    {
-        CapabilityImplementation result;
-        result.implementation = "example.install.failure";
-        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-        return result;
-    }
-};
-
-struct UndeclaredEffectCapability final
-{
-    using PrerequisiteCapabilities = std::tuple<>;
-    using Commands = std::tuple<ProbeSize>;
-    using Resources = std::tuple<>;
-};
-
-struct UndeclaredInputFeature final
-{
-    using Capability = UndeclaredEffectCapability;
-    using Features = std::tuple<>;
-    using Config = void;
-    using Storages = ProbeFeature<false>::Storages;
-    using Bindings = std::tuple<>;
-    static CapabilityImplementation implementation() noexcept { return ProbeFeature<false>::implementation(); }
 };
 
 template <RenderCommand Command>
@@ -666,65 +706,55 @@ int main(int argc, char** argv)
     config.uploads.emplace();
     DeviceOptions device;
     if (argc > 1 && std::string_view(argv[1]) == "d3d12") device.backend = EGraphicsBackend::D3D12;
+    config.frames_in_flight = readback_frames;
     auto server = take(RenderServer::create(config, *execution));
-    // The module installs its unique declarations once; implementations reference that closure.
     take(server->registerResource<ProbeStorageType<false>>());
     take(server->registerResource<ProbeStorageType<true>>());
     take(server->registerResource(DomainStorage::factory<EResourceDomain::SCENE>()));
     take(server->registerResource(DomainStorage::factory<EResourceDomain::VIEW>()));
+    take(server->registerResource(ProbeReadback::factory()));
     take(server->registerResource<RejectedStorage>());
-    take(server->registerCapability<RoutedCapability>());
-    const std::array effect_calls{
-        CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &RoutedImplementation<17>::update>(),
-        CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &RoutedImplementation<29>::update>()
-    };
-    CHECK(server->registerCommands(effect_calls));
-    const auto route_a = take(server->registerCapabilityImplementation<RoutedImplementation<17>>());
-    const auto route_b = take(server->registerCapabilityImplementation<RoutedImplementation<29>>());
-    const auto route_fails = take(server->registerCapabilityImplementation<FailingRoutedImplementation>());
-    take(server->registerCapability<ProbeCapability>());
-    take(server->registerCapability<ProbeGraphCapability>());
-    take(server->registerCapability<RejectedCapability>());
-    take(server->registerCapability<UndeclaredEffectCapability>());
-    const auto graph_feature = take(server->registerFeature<ProbeEffect<true>>());
-    take(server->registerFeature<ProbeEffect<false>>());
-    // Registration is metadata only. Order does not choose the requested implementation.
-    take(server->registerCapabilityImplementation<ProbeFeature<true>>());
-    const auto original = take(server->registerCapabilityImplementation<ProbeFeature<false>>());
-    take(server->registerCapabilityImplementation<RejectedInstallation>());
-    take(server->registerCapabilityImplementation<ProbeEffect<true>>());
-    take(server->registerCapabilityImplementation<ProbeEffect<false>>());
-    const auto audit = take(server->registerCapability<QualificationAuditCapability>());
-    auto candidate = ProbeFeature<false>::implementation();
-    candidate.implementation = "example.audit.undeclared_resource";
-    candidate.features = {graph_feature};
-    const auto undeclared_resource = take(server->addCapabilityImplementation(audit, candidate));
-    const auto graph_capability = take(server->capabilityId(cxx::make_basic_type_info<ProbeGraphCapability>()));
-    candidate.implementation = "example.graph.output_matrix";
-    candidate.outputs.push_back(candidate.outputs.front());
-    candidate.outputs.push_back({rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE});
-    const auto output_matrix = take(server->addCapabilityImplementation(graph_capability, candidate));
-    candidate.outputs.push_back({rdesc::ETextureFormat::BGRA8_UNORM, 4, ETargetKind::SURFACE});
-    const auto invalid = server->replaceCapabilityImplementation(output_matrix, candidate);
-    CHECK(!invalid && invalid.error().type == kInvalidTargetKind);
     const auto duplicate_resource = server->registerResource<ProbeStorageType<false>>();
     CHECK(!duplicate_resource && duplicate_resource.error().type == kStorageMismatch);
-    const auto duplicate_feature = server->registerFeature<ProbeEffect<true>>();
-    CHECK(!duplicate_feature && duplicate_feature.error().type == kFeatureDuplicate);
-    const auto duplicate_implementation = server->registerCapabilityImplementation<ProbeFeature<false>>();
+
+    const auto setter_a = take(server->registerNodeEffectCommand(
+        CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &updateRouted<17>>()
+    ));
+    const auto setter_b = take(server->registerNodeEffectCommand(
+        CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &updateRouted<29>>()
+    ));
+    CHECK(setter_a.command == setter_b.command && setter_a.binding != setter_b.binding);
+    const auto routed = routedDefinition(setter_a.command);
+    CHECK(server->registerEffectCapability(routed));
+    CHECK(server->registerEffectImplementation(routedImplementation(route_b, setter_b, initializeRouted<29>)));
+    CHECK(server->registerEffectImplementation(routedImplementation(route_a, setter_a, initializeRouted<17>)));
+    CHECK(server->registerEffectImplementation(routedImplementation(
+        route_failure,
+        setter_a,
+        [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
+        {
+            return cxx::unexpected(RenderError{kInvalidConfig});
+        }
+    )));
+    const auto transfer = transferDefinition();
+    CHECK(server->registerEffectCapability(transfer));
+    CHECK(server->registerEffectImplementation(transferImplementation()));
+
+    const auto duplicate_node = server->registerEffectCapability(routed);
+    CHECK(!duplicate_node && duplicate_node.error().type == kCapabilityConflict);
+    auto changed = routedImplementation(route_a, setter_a, initializeRouted<17>);
+    changed.display_name = "Conflicting implementation metadata";
+    const auto duplicate_implementation = server->registerEffectImplementation(std::move(changed));
     CHECK(!duplicate_implementation && duplicate_implementation.error().type == kCapabilityConflict);
-    auto changed = ProbeFeature<false>::implementation();
-    changed.description = "A different payload must not replace the registered identity.";
-    const auto capability = take(server->capabilityId(cxx::make_basic_type_info<ProbeCapability>()));
-    const auto conflicting = server->addCapabilityImplementation(capability, changed);
-    CHECK(!conflicting && conflicting.error().type == kCapabilityConflict);
-    const auto replacement = take(server->replaceCapabilityImplementation(original, changed));
-    CHECK(replacement != original);
-    CHECK(!server->removeCapabilityImplementation(original));
-    auto temporary = ProbeFeature<false>::implementation();
-    temporary.implementation = "example.temporary";
-    const auto temporary_id = take(server->addCapabilityImplementation(capability, temporary));
-    CHECK(server->removeCapabilityImplementation(temporary_id));
+    auto unknown_output = transferImplementation();
+    unknown_output.identity.canonical_name = "example.graph.unknown_output";
+    unknown_output.supported_outputs.push_back(effectPortSemantic("missing"));
+    const auto unsupported_port = server->registerEffectImplementation(std::move(unknown_output));
+    CHECK(!unsupported_port && unsupported_port.error().type == kCapabilityDeclaration);
+    auto missing_command = routedImplementation("example.effect.missing_command", setter_a, initializeRouted<17>);
+    missing_command.command_bindings.clear();
+    const auto incomplete = server->registerEffectImplementation(std::move(missing_command));
+    CHECK(!incomplete && incomplete.error().type == kCapabilityDeclaration);
 
     const auto handler = take(server->registerHandler<ProbeHandler, ProbeHandler::Bindings>());
     const auto duplicate_handler = server->registerHandler<ProbeHandler, ProbeHandler::Bindings>();
@@ -732,200 +762,162 @@ int main(int argc, char** argv)
     CHECK(take(server->handlerId(cxx::make_basic_type_info<ProbeHandler>())) == handler);
     const auto other_handler = server->registerHandler<ProbeHandler, ProbeHandler::Bindings>("other");
     CHECK(!other_handler);
-    // Implementations cannot replace a Capability's Resource identity or duplicate its commands.
-    auto remapped_description = describeCapability<ProbeCapability>();
-    const std::array remapped_resources{&ProbeResource<false>::descriptor};
-    remapped_description.resources = remapped_resources;
-    const auto remapped = server->registerCapability(remapped_description);
-    CHECK(!remapped && remapped.error().type == kCapabilityConflict);
-    auto repeated_description = describeCapability<ProbeGraphCapability>();
-    const std::array repeated_commands{&commandDescriptor<ProbeSize>()};
-    repeated_description.commands = repeated_commands;
-    const auto repeated = server->registerCapability(repeated_description);
-    CHECK(!repeated && repeated.error().type == kCapabilityDeclaration);
-    const auto undeclared = server->registerCapabilityImplementation<UndeclaredInputFeature>();
-    CHECK(!undeclared && undeclared.error().type == kCapabilityDeclaration);
+
     auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     RenderResult<void> ran;
     std::thread thread([&]() noexcept { ran = server->run(); });
-    const std::array device_names{CommandName{CreateDeviceSession::name}};
-    const auto create_device = call<QueryCommandIds>(client, QueryCommandIds::id, device_names).ids.front();
-    const auto created_device = call<CreateDeviceSession>(client, create_device, device);
-    CHECK(!created_device.error.type && !created_device.device.isNull());
-    const auto session = created_device.device;
-    const auto handler_commands = call<QueryCommandIds>(client, QueryCommandIds::id,
-        std::array{CommandName{ProbeIdentity::name}});
-    CHECK(handler_commands.error.type == 0 && handler_commands.ids.size() == 1);
-    const auto identity = call<ProbeIdentity>(client, handler_commands.ids.front(), 42);
-    CHECK(identity.error.type == 0 && identity.value == 42);
-    const std::array names{
-        CommandName{ListCapabilities::name}, CommandName{CreateEffect::name}, CommandName{ProbeUpload::name},
-        CommandName{ProbeSize::name}, CommandName{GetOrCreateResource::name}
-    };
-    const auto ids = call<QueryCommandIds>(client, QueryCommandIds::id, names);
-    CHECK(ids.error.type == 0 && ids.ids.size() == names.size());
-    const auto list = ids.ids[0], create_effect = ids.ids[1], upload = ids.ids[2], size = ids.ids[3];
-    const auto choices =
-        call<ListCapabilities>(client, list, {session, std::string(cxx::make_basic_type_info<ProbeCapability>().name())});
-    CHECK(choices.error.type == 0 && choices.implementations.size() == 2);
-    CHECK(ProbeStorage::allocations == 0);
-    const auto make_effect = [&](CapabilityImplementationId selected, ConfigValue config)
+    const auto command_id = [&](std::string_view command)
     {
-        const auto graph = call<ListCapabilities>(
-            client,
-            list,
-            {session, std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
-        );
-        CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
-        const auto& output = graph.implementations.front();
-        request.implementations = {{selected, "commands"}, {output.implementation_id, "output"}};
-        request.definition.features.push_back({output.features.front(), "output", std::move(config)});
-        request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
-        return call<CreateEffect>(client, create_effect, std::move(request));
+        const auto found = call<QueryCommandIds>(client, QueryCommandIds::id, std::array{CommandName{command}});
+        CHECK(!found.error.type && found.ids.size() == 1);
+        return found.ids.front();
     };
-    const auto graph_choice = call<ListCapabilities>(
-        client, list, {session, std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), "example.graph.match"}
-    ).implementations.front();
-    {
-        auto qualify = [&](std::vector<EffectImplementationUse> implementations, std::string contribution,
-                           EffectOutputDesc output = {rdesc::ETextureFormat::RGBA8_UNORM})
-        {
-            CreateEffectRequest request{output};
-            request.implementations = std::move(implementations);
-            request.definition.features.push_back({graph_feature, std::move(contribution), {}});
-            request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
-            return call<CreateEffect>(client, create_effect, std::move(request));
-        };
-        const auto owner = graph_choice.implementation_id;
-        const auto wrong_feature = qualify({{route_a, "commands"}, {owner, "output"}}, "commands/node");
-        const auto wrong_resource = qualify({{undeclared_resource, "output"}}, "output/node");
-        CHECK(wrong_feature.error.type == kCapabilityDeclaration && wrong_feature.effect.isNull());
-        CHECK(wrong_resource.error.type == kCapabilityDeclaration && wrong_resource.effect.isNull());
-        CHECK(qualify({{owner, "output"}}, "output_invalid").error.type == kCapabilityDeclaration);
-        CHECK(qualify({{owner, "output"}, {owner, "output/nested"}}, "output/nested/node").error.type ==
-            kCapabilityDeclaration);
-        CHECK(!qualify({{owner, "output"}, {undeclared_resource, "other"}}, "other/node").error.type);
-        CHECK(!qualify({}, "free").error.type);
+    const auto identity = call<ProbeIdentity>(client, command_id(ProbeIdentity::name), 42);
+    CHECK(!identity.error.type && identity.value == 42);
+    const auto create_effect = command_id(CreateEffect::name);
+    const auto remove_effect = command_id(RemoveEffect::name);
+    const auto route_id = command_id(ProbeEffectCommand::name);
+    CHECK(route_id == setter_a.command);
 
-        const EffectOutputDesc supported{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-        const EffectOutputDesc crossed{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE};
-        const auto output_status = [&](EffectOutputDesc output)
-        {
-            const auto options = call<ListCapabilities>(client, list, {session, {}, candidate.implementation, output});
-            CHECK(!options.error.type && options.implementations.size() == 1);
-            return options.implementations.front().unavailable.type;
-        };
-        CHECK(!output_status(supported));
-        CHECK(!qualify({{output_matrix, "output"}}, "output/node", supported).error.type);
-        CHECK(output_status(crossed) == kRuntimeUnsupported);
-        CHECK(qualify({{output_matrix, "output"}}, "output/node", crossed).error.type == kRuntimeUnsupported);
-        std::puts("SDK QUALIFICATION: contribution ownership, resource union, free graph and exact output tuples");
-    }
-    auto make_routed = [&](std::span<const CapabilityImplementationId> routes)
+    struct RoutedEffect final
     {
-        CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
-        request.implementations.push_back({graph_choice.implementation_id, "output"});
-        for (std::size_t i = 0; i < routes.size(); ++i)
-            request.implementations.push_back({routes[i], i == 0 ? "a" : "b"});
-        request.definition.features.push_back({graph_choice.features.front(), "output", {}});
-        request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
-        return call<CreateEffect>(client, create_effect, std::move(request));
+        EffectCreated reply;
+        graph::NodeId first;
+        graph::NodeId last;
     };
-    const auto effect_a = make_routed({&route_a, 1});
-    const auto effect_b = make_routed({&route_b, 1});
-    const auto effect_a_peer = make_routed({&route_a, 1});
-    const std::array incompatible{route_a, route_b};
-    const std::array ambiguous_state{route_a, route_a};
-    CHECK(!effect_a.error.type && !effect_b.error.type && !effect_a_peer.error.type);
-    CHECK(make_routed(incompatible).error.type == kCapabilityConflict);
-    CHECK(make_routed(ambiguous_state).error.type == kCapabilityConflict);
-    const auto failed_state = make_routed({&route_fails, 1});
-    CHECK(failed_state.error.type == kInvalidConfig && failed_state.effect.isNull());
-    const std::array route_names{CommandName{ProbeEffectCommand::name}, CommandName{RemoveEffect::name}};
-    const auto route_ids = call<QueryCommandIds>(client, QueryCommandIds::id, route_names).ids;
-    CHECK(route_ids.size() == route_names.size());
-    const auto route_id = route_ids.front();
-    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_a.effect}).value == 17);
-    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_b.effect}).value == 29);
-    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_a.effect, 101}).error.type == kInvalidConfig);
-    const auto updated = call<ProbeEffectCommand>(client, route_id, {effect_a.effect, 42});
+    const auto make_routed = [&](std::string_view primary, std::string_view secondary = {}, std::string args = {})
+    {
+        CreateEffectRequest request;
+        request.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit edit{*request.graph};
+        const auto first = take(edit.addNode(routed, {std::string{primary}, 1}, std::move(args)));
+        auto last = first;
+        if (!secondary.empty())
+        {
+            last = take(edit.addNode(routed, {std::string{secondary}, 1}));
+            CHECK(edit.connect(edit.pinId(first, output_color), edit.pinId(last, previous_color)));
+        }
+        CHECK(edit.setOutput("color", edit.pinId(last, output_color), true));
+        CHECK(edit.commit());
+        return RoutedEffect{call<CreateEffect>(client, create_effect, std::move(request)), first, last};
+    };
+    const auto pair = make_routed(route_a, route_b);
+    const auto peer = make_routed(route_a);
+    CHECK(!pair.reply.error.type && !peer.reply.error.type && pair.first != pair.last);
+    const auto failed_state = make_routed(route_a, route_failure);
+    CHECK(failed_state.reply.error.type == kInvalidConfig && failed_state.reply.effect.isNull());
+    CHECK(make_routed(route_a, {}, "invalid").reply.error.type == kInvalidConfig);
+    CHECK(make_routed(transfer_capability).reply.error.type == kCapabilityDeclaration);
+    const auto read = [&](const RoutedEffect& effect, graph::NodeId node)
+    {
+        return call<ProbeEffectCommand>(client, route_id, {effect.reply.effect, node});
+    };
+    CHECK(read(pair, pair.first).value == 17 && read(pair, pair.last).value == 29);
+    CHECK(read(pair, {}).error.type == kCommandContract);
+    const auto rejected = call<ProbeEffectCommand>(client, route_id, {pair.reply.effect, pair.first, 101});
+    CHECK(rejected.error.type == kInvalidConfig && read(pair, pair.first).revision == 1);
+    const auto updated = call<ProbeEffectCommand>(client, route_id, {pair.reply.effect, pair.first, 42});
     CHECK(!updated.error.type && updated.value == 42 && updated.revision == 2);
-    const auto unchanged = call<ProbeEffectCommand>(client, route_id, {effect_a.effect, 42});
-    CHECK(!unchanged.error.type && unchanged.revision == 2);
-    const auto peer = call<ProbeEffectCommand>(client, route_id, {effect_a_peer.effect});
-    CHECK(!peer.error.type && peer.value == 17 && peer.revision == 1);
-    CHECK(call<ProbeEffectCommand>(client, route_id, {}).error.type == kRuntimeIdentity);
-    CHECK(!call<RemoveEffect>(client, route_ids.back(), {effect_a.effect}).error.type);
-    const auto replacement_effect = make_routed({&route_b, 1});
-    CHECK(!replacement_effect.error.type && replacement_effect.effect != effect_a.effect);
-    CHECK(call<ProbeEffectCommand>(client, route_id, {effect_a.effect}).error.type == kRuntimeIdentity);
-    CHECK(call<ProbeEffectCommand>(client, route_id, {replacement_effect.effect}).value == 29);
-    std::puts("EFFECT ROUTING PASS: typed state isolation, revisions, ambiguity, factory rejection and stale EffectId");
+    const auto repeated = call<ProbeEffectCommand>(client, route_id, {pair.reply.effect, pair.first, 42});
+    CHECK(!repeated.error.type && repeated.revision == 3);
+    CHECK(read(pair, pair.last).value == 29 && read(pair, pair.last).revision == 1);
+    CHECK(read(peer, peer.first).value == 17 && read(peer, peer.first).revision == 1);
+    CHECK(!call<RemoveEffect>(client, remove_effect, {pair.reply.effect}).error.type);
+    const auto replacement = make_routed(route_b);
+    CHECK(!replacement.reply.error.type && replacement.reply.effect != pair.reply.effect);
+    CHECK(read(pair, pair.first).error.type == kRuntimeIdentity);
+    CHECK(read(replacement, replacement.first).value == 29);
+    CHECK(ProbeStorage::allocations == 0);
+    std::puts("EFFECT ROUTING PASS: no-device node state, shared command identity, rollback, and stale EffectId");
 
-    std::vector<CapabilityImplementationId> implementations;
-    for (const auto& choice : choices.implementations)
-    {
-        const auto effect = make_effect(choice.implementation_id, ConfigValue{});
-        CHECK(effect.error.type == 0 && ProbeStorage::allocations == 0);
-        implementations.push_back(choice.implementation_id);
-    }
-    CHECK(implementations[0] != implementations[1]);
+    CreateEffectRequest request;
+    request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit edit{*request.graph};
+    const auto node = take(edit.addNode(transfer, {std::string{transfer_capability}, 1}));
+    CHECK(edit.setOutput("color", edit.pinId(node, output_color), true));
+    CHECK(edit.setOutput("value", edit.pinId(node, readback_value)));
+    CHECK(edit.commit());
+    const auto effect = call<CreateEffect>(client, create_effect, std::move(request));
+    CHECK(!effect.error.type && ProbeStorage::allocations == 0);
+
+    const auto opened = call<CreateDeviceSession>(client, command_id(CreateDeviceSession::name), device);
+    CHECK(!opened.error.type && !opened.device.isNull());
+    const auto session = opened.device;
+    const auto get_resource = command_id(GetOrCreateResource::name);
+    const auto upload = command_id(ProbeUpload::name);
+    const auto size = command_id(ProbeSize::name);
+    const auto refused = call<GetOrCreateResource>(client, get_resource, {
+        session, DeviceScope{}, RejectedStorage::Descriptor::descriptor.type
+    });
+    CHECK(refused.error.type == kDeviceCapacity && refused.resource_id.isNull());
     std::array<std::byte, 1024> bytes{};
     std::vector<ResourceInstanceId> resources;
     for (auto name : {ProbeResource<false>::descriptor.type, ProbeResource<true>::descriptor.type})
     {
-        const auto created = call<GetOrCreateResource>(client, ids.ids[4], {session, DeviceScope{}, name});
-        CHECK(created.error.type == 0);
+        const auto created = call<GetOrCreateResource>(client, get_resource, {session, DeviceScope{}, name});
+        CHECK(!created.error.type);
         resources.push_back(created.resource_id);
         const auto written = call<ProbeUpload>(client, upload, {created.resource_id, bytes});
-        CHECK(written.error.type == 0 && written.bytes == bytes.size());
+        CHECK(!written.error.type && written.bytes == bytes.size());
         const auto observed = call<ProbeSize>(client, size, {created.resource_id});
-        CHECK(observed.error.type == 0 && observed.bytes == bytes.size());
+        CHECK(!observed.error.type && observed.bytes == bytes.size());
     }
-    CHECK(resources[0] != resources[1]);
-    for (const char* name : {"example.graph.match", "example.graph.mismatch"})
+    CHECK(resources[0] != resources[1] && ProbeStorage::allocations == 2);
+    const auto scene = call<CreateScene>(client, command_id(CreateScene::name), {});
+    const auto view = call<CreateView>(client, command_id(CreateView::name), {scene.scene});
+    CHECK(!scene.error.type && !view.error.type);
+    const auto readback = call<GetOrCreateResource>(client, get_resource, {
+        session, ViewRequest{scene.scene, view.view}, ProbeReadback::Descriptor::descriptor.type
+    });
+    CHECK(!readback.error.type);
+    const auto create_target = command_id(CreateTarget::name);
+    const auto target = call<CreateTarget>(
+        client, create_target, {session, {16, 16, rdesc::ETextureFormat::RGBA8_UNORM}}
+    );
+    const auto alternate = call<CreateTarget>(
+        client, create_target, {session, {16, 16, rdesc::ETextureFormat::RGBA16_SFLOAT}}
+    );
+    const auto job = call<CreateRenderJob>(
+        client, command_id(CreateRenderJob::name), {scene.scene, view.view, effect.effect, EJobCadence::REQUESTED}
+    );
+    CHECK(!target.error.type && !alternate.error.type && !job.error.type);
+    const auto start = command_id(StartRenderJob::name);
+    CHECK(call<StartRenderJob>(client, start, {session, job.job, target.target}).error.type == kStorageIdentity);
+    JobBinding binding;
+    binding.resources = {{std::string{readback_binding}, resources.front()}};
+    const auto wrong_owner = call<StartRenderJob>(client, start, {session, job.job, target.target, binding});
+    CHECK(wrong_owner.error.type == kStorageMismatch);
+    binding.resources.front().resource = readback.resource_id;
+    CHECK(call<StartRenderJob>(client, start, {session, job.job, alternate.target, binding}).error.type ==
+        kRuntimeUnsupported);
+    CHECK(!call<StartRenderJob>(client, start, {session, job.job, target.target, binding}).error.type);
+    const auto render = command_id(RequestRenderJob::name);
+    std::array<std::uint32_t, readback_frames> slots;
+    for (std::size_t frame = 0; frame < slots.size(); ++frame)
     {
-        const auto choice = call<ListCapabilities>(
-            client,
-            list,
-            {session, std::string(cxx::make_basic_type_info<ProbeGraphCapability>().name()), name}
-        );
-        CHECK(choice.error.type == 0 && choice.implementations.size() == 1);
-        CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
-        const auto& selected = choice.implementations.front();
-        request.implementations.push_back({selected.implementation_id, "probe"});
-        request.definition.features.push_back({selected.features.front(), "probe", {}});
-        request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
-        const auto effect = call<CreateEffect>(client, create_effect, std::move(request));
-        if (std::string_view(name) == "example.graph.match")
-        {
-            CHECK(effect.error.type == 0 && !effect.effect.isNull());
-        }
-        else
-        {
-            CHECK(effect.error.type == kStorageMismatch && effect.effect.isNull());
-        }
-        CHECK(ProbeStorage::allocations == 2);
+        const auto submitted = call<RequestRenderJob>(client, render, {job.job});
+        CHECK(!submitted.error.type && submitted.job == job.job);
+        CHECK(submitted.frame_index == frame && submitted.slot_index < slots.size());
+        const auto selected = std::span{slots}.first(frame);
+        CHECK(std::ranges::find(selected, submitted.slot_index) == selected.end());
+        slots[frame] = submitted.slot_index;
     }
-    const auto rejected =
-        make_effect(choices.implementations.front().implementation_id, take(ConfigValue::make(std::uint32_t{1})));
-    CHECK(rejected.error.type == kInvalidConfig && ProbeStorage::allocations == 2);
-    const auto failure_choice =
-        call<ListCapabilities>(client, list, {session, std::string(cxx::make_basic_type_info<RejectedCapability>().name())});
-    CHECK(failure_choice.implementations.size() == 1);
-    const auto failed = make_effect(failure_choice.implementations.front().implementation_id, ConfigValue{});
-    // Storage factories are not called by CreateEffect. A rejected unused dependency has no allocation side effect.
-    CHECK(failed.error.type == 0 && ProbeStorage::allocations == 2);
+
     const auto retained = call<ProbeSize>(client, size, {resources.front()});
-    CHECK(retained.error.type == 0 && retained.bytes == bytes.size());
+    CHECK(!retained.error.type && retained.bytes == bytes.size());
     checkResourceDomains(client, session, resources.front());
     client.reset();
     server->stop();
     thread.join();
     CHECK(ran && server->stats().validation_errors == 0 && ProbeStorage::submitted_copies > 0);
     server.reset();
+    for (std::size_t frame = 0; frame < slots.size(); ++frame)
+    {
+        const auto expected = frame < history_distance ? fallback_value : expected_value;
+        CHECK(ProbeReadback::observed[slots[frame]] == expected);
+    }
     CHECK(ProbeStorage::allocations == ProbeStorage::releases);
     CHECK(DomainStorage::destroyed.size() == 5);
     execution.reset();
-    std::puts("SDK: real upload, shared Device Resource, Scene/View isolation and stale IDs, ordered cleanup");
+    std::puts("SDK PASS: EffectGraph qualification, distance-two History, Resource upload, scopes and cleanup");
 }

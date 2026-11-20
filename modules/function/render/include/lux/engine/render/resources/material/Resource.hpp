@@ -12,9 +12,9 @@ namespace lux::render
     public:
         using Commands = std::tuple<
             MaterialCommands::RegisterProgram, MaterialCommands::CreateInstance, MaterialCommands::Update,
-            MaterialCommands::ReleaseInstance, MaterialCommands::UnregisterProgram
+            MaterialCommands::UpdateColor, MaterialCommands::ReleaseInstance, MaterialCommands::UnregisterProgram
         >;
-        using PerFrameData = std::tuple<>;
+        using PerFrameData = std::tuple<MaterialColorUpdate>;
         using Config = void;
         static inline const ResourceDefinition descriptor{
             kMaterialResourceName,
@@ -23,7 +23,8 @@ namespace lux::render
             cxx::make_basic_type_info<MaterialBinding>(),
             "Reflected raster material pages with stable GPU references and sampled texture dependencies.",
             EResourceDomain::DEVICE,
-            resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+            resourceCommandDescriptors(static_cast<Commands*>(nullptr)),
+            resourceFrameTypes(static_cast<PerFrameData*>(nullptr))
         };
 
         using Ops = void;

@@ -1,5 +1,6 @@
 #include <lux/engine/render/runtime/FrameProgress.hpp>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
+#include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -24,6 +25,20 @@ namespace lux::render::detail
         {
             auto updated = co_await resource.upload(std::move(input.data));
             co_return MaterialCommands::Update::Response{updated ? RenderError{} : updated.error()};
+        }
+
+        RenderResult<void>
+        applyMaterialColors(RasterMaterialStorage& storage, std::span<const MaterialColorUpdate> updates) noexcept
+        {
+            return storage.updateColors(updates);
+        }
+
+        void updateMaterialColors(
+            RasterMaterialStorage& storage, const MaterialCommands::UpdateColor::Request& input, AckResponse& reply
+        ) noexcept
+        {
+            const auto updated = applyMaterialColors(storage, input.updates);
+            reply.error = updated ? RenderError{} : updated.error();
         }
 
         exec::task<MaterialCommands::RegisterProgram::Response>
@@ -609,8 +624,6 @@ namespace lux::render::detail
                 sizeof(input.parameters[p])
             );
         }
-        std::vector<const nri::Texture*> images;
-        images.reserve(input.textures.size());
         for (std::size_t t = 0; t < input.textures.size(); ++t)
         {
             const auto texture = resolveTexture(input.textures[t]);
@@ -620,10 +633,6 @@ namespace lux::render::detail
             }
             const auto& gpu = texture->reference;
             const rdesc::MaterialTextureGpuRef reference{0, gpu.image_index, gpu.sampler_index, gpu.flags};
-            if (texture->image)
-            {
-                images.push_back(texture->image);
-            }
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         {
@@ -666,10 +675,7 @@ namespace lux::render::detail
             ++program->instances;
             page.free_slots.pop_back();
         }
-        if (existing->images != images)
-        {
-            existing->images = std::move(images);
-        }
+        existing->textures = std::move(input.textures);
         if constexpr (creating)
         {
             co_return id;
@@ -689,6 +695,42 @@ namespace lux::render::detail
     exec::task<RenderResult<Ack>> RasterMaterialStorage::upload(MaterialUpdate input) noexcept
     {
         return write(std::move(input));
+    }
+
+    RenderResult<void> RasterMaterialStorage::updateColors(std::span<const MaterialColorUpdate> updates) noexcept
+    {
+        if (updates.empty()) return {};
+        if (preparation_revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
+        cxx::scope_exit clear_selection([&]() noexcept { color_destinations_.clear(); });
+        color_destinations_.reserve(updates.size());
+        for (const auto& update : updates)
+        {
+            auto* entry = findEntry(update.material);
+            if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
+            auto* page = entry->page;
+            const bool has_parameter = page && update.parameter < page->definition.parameter_offsets.size();
+            const bool is_finite = std::ranges::all_of(update.linear_rgba, [](float value) noexcept
+            {
+                return std::isfinite(value);
+            });
+            if (!has_parameter || !is_finite) return cxx::unexpected(RenderError{kStorageContract});
+            if (page->updating) return cxx::unexpected(RenderError{kDeviceBusy});
+            const auto field = page->definition.parameter_offsets[update.parameter];
+            const auto offset = std::size_t(entry->slot) * page->definition.stride + field;
+            color_destinations_.push_back({page, offset, entry->slot});
+        }
+        for (std::size_t i = 0; i < updates.size(); ++i)
+        {
+            const auto& destination = color_destinations_[i];
+            const auto& color = updates[i].linear_rgba;
+            std::memcpy(destination.page->records.data() + destination.offset, color.data(), sizeof(color));
+            for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
+            {
+                markDirty(*destination.page, frame, destination.record);
+            }
+        }
+        ++preparation_revision_;
+        return {};
     }
 
     const RasterMaterialStorage::Entry* RasterMaterialStorage::findEntry(MaterialId id) const noexcept
@@ -723,6 +765,25 @@ namespace lux::render::detail
     {
         const auto* entry = findEntry(id);
         return entry ? entry->program : MaterialProgramId{};
+    }
+
+    RenderResult<RasterMaterialStorage::RasterRecord>
+    RasterMaterialStorage::selectRasterRecord(
+        MaterialId id, std::uint32_t frame, const rdesc::ShaderBlock& layout
+    ) const noexcept
+    {
+        const auto* entry = findEntry(id);
+        if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (frame >= frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto* page = entry->page;
+        if (!page || page->definition.layout != layout)
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        const auto& slice = page->gpu[frame];
+        const auto stride = page->definition.stride;
+        return RasterRecord{
+            {slice.slot.index, entry->slot}, {slice.parameters, std::uint64_t(entry->slot) * stride, stride},
+            entry->textures
+        };
     }
 
     std::shared_ptr<const MaterialProgramRecord> RasterMaterialStorage::borrowProgram(MaterialProgramId id) const noexcept
@@ -768,7 +829,12 @@ namespace lux::render::detail
             const auto* program = programs_.find(extension_detail::ResourceIdentity::local(entry->program));
             if (program->record->samples_textures[purpose_index])
             {
-                images.insert(images.end(), entry->images.begin(), entry->images.end());
+                for (const auto id : entry->textures)
+                {
+                    auto texture = resolveTexture(id);
+                    if (!texture) return cxx::unexpected(texture.error());
+                    if (texture->image) images.push_back(texture->image);
+                }
             }
         }
         return {};
@@ -949,10 +1015,13 @@ namespace lux::render::detail
     ResourceRegistration RasterMaterialStorage::factory() noexcept
     {
 
+        static const auto frame_call =
+            FrameDataCall::declare<MaterialResource, RasterMaterialStorage, &applyMaterialColors>();
         static const std::array commands{
             CommandBinding::declare<MaterialCommands::RegisterProgram, &handleRegisterProgram>(),
             CommandBinding::declare<MaterialCommands::CreateInstance, &handleCreateInstance>(),
             CommandBinding::declare<MaterialCommands::Update, &updateMaterial>(),
+            CommandBinding::declare<MaterialCommands::UpdateColor, &updateMaterialColors>(),
             CommandBinding::declare<MaterialCommands::ReleaseInstance, &releaseInstance>(),
             CommandBinding::declare<MaterialCommands::UnregisterProgram, &handleUnregisterProgram>()
         };
@@ -983,7 +1052,8 @@ namespace lux::render::detail
         return makeResourceRegistration<render::MaterialResource, RasterMaterialStorage, create>(
             nullptr,
             &binding,
-            commands
+            commands,
+            frame_call
         );
     }
 } // namespace lux::render::detail

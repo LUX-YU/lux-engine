@@ -24,16 +24,16 @@ namespace lux::render::detail
         struct Request final
         {
             using Complete = void (*)(void*, RenderResult<JobReceipt>) noexcept;
-            void* receiver;
-            Complete complete;
-            const FrameData* data;
+            void* receiver = nullptr;
+            Complete complete = nullptr;
 
-            explicit Request(void* object, Complete done, const FrameData* packet = nullptr) noexcept
-                : receiver(object), complete(done), data(packet)
+            Request() noexcept = default;
+            explicit Request(void* object, Complete done) noexcept : receiver(object), complete(done)
             {
             }
 
             ~Request() noexcept;
+            Request(Request&& other) noexcept;
             Request(const Request&) = delete;
             Request& operator=(const Request&) = delete;
 
@@ -63,7 +63,7 @@ namespace lux::render::detail
         [[nodiscard]] Start* pendingStart() const noexcept { return starting_; }
         [[nodiscard]] bool hasRun() const noexcept { return admitted_ != nullptr; }
         [[nodiscard]] bool hasRequest() const noexcept { return requested_ != nullptr; }
-        [[nodiscard]] const FrameData* takeRequestedData() noexcept;
+
         [[nodiscard]] bool eligible() const noexcept;
         [[nodiscard]] bool canRemove() const noexcept;
 

@@ -335,13 +335,15 @@ namespace lux::render::detail
                 output += ',';
             }
             const auto& resource = plan.resources_[i];
+            const bool borrowed = resource.origin == EGraphOrigin::IMPORTED || i == plan.output_;
             output += "{\"id\":" + std::to_string(i) + ",\"key\":" +
                       quoteDumpText(graph.diagnostics.resource_keys[i]) + ",\"allocation\":" +
                       quoteDumpText(
-                          !resource.used                                                   ? "culled"
-                          : !resource.memory_used                                          ? "CPU-parameter-input"
-                          : resource.origin == EGraphOrigin::IMPORTED || i == plan.output_ ? "borrowed"
-                                                                                           : "independent-per-FIF-slot"
+                          !resource.used                                ? "culled"
+                          : !resource.memory_used                       ? "CPU-parameter-input"
+                          : borrowed                                    ? "borrowed"
+                          : resource.origin == EGraphOrigin::FRAME_BUFFER ? "frame-prepared"
+                                                                           : "independent-per-FIF-slot"
                       ) +
                       ",\"physical_bytes\":\"backend allocation size available after instantiation\"}";
         }

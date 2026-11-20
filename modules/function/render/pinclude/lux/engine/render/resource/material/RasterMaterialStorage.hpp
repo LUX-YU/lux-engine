@@ -29,7 +29,7 @@ namespace lux::render::detail
             Page* page = nullptr;
             std::uint32_t slot = 0;
             StorageSubscription* bindings = nullptr;
-            std::vector<const nri::Texture*> images;
+            std::vector<TextureId> textures;
         };
 
         struct ProgramSlot final
@@ -41,6 +41,7 @@ namespace lux::render::detail
 
     public:
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
+        [[nodiscard]] RenderResult<void> updateColors(std::span<const MaterialColorUpdate>) noexcept;
         [[nodiscard]] RenderResult<MaterialProgramId> registerProgram(rdesc::MaterialProgramSet) noexcept;
         [[nodiscard]] exec::task<RenderResult<MaterialId>>
         createInstance(MaterialCommands::CreateInstance::Request) noexcept;
@@ -61,6 +62,15 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<rdesc::MaterialGpuReference>
         gpuReference(MaterialId, std::uint32_t frame) const noexcept;
+        struct RasterRecord final
+        {
+            rdesc::MaterialGpuReference reference;
+            ResourceInput buffer;
+            std::span<const TextureId> textures;
+        };
+
+        [[nodiscard]] RenderResult<RasterRecord>
+        selectRasterRecord(MaterialId, std::uint32_t frame, const rdesc::ShaderBlock& layout) const noexcept;
         [[nodiscard]] MaterialProgramId programId(MaterialId) const noexcept;
         [[nodiscard]] std::shared_ptr<const MaterialProgramRecord> borrowProgram(MaterialProgramId) const noexcept;
         // Append the instance's physical parameter page and sampled images for this FIF.
@@ -114,7 +124,15 @@ namespace lux::render::detail
         ResourceRegistry& resources_;
 
         ResourceInstanceId id_;
+        struct ColorDestination final
+        {
+            Page* page;
+            std::size_t offset;
+            std::uint32_t record;
+        };
+
         std::uint64_t preparation_revision_ = 1;
+        std::vector<ColorDestination> color_destinations_;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
         cxx::StableSlotMap<ProgramSlot, MaterialProgramTag> programs_;
         std::unordered_multimap<std::size_t, std::unique_ptr<Table>> tables_;

@@ -1,8 +1,10 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
-#include <lux/engine/render/features/common/ParameterLayout.hpp>
-#include <lux/engine/render/resource/view/CameraParameters.hpp>
+#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
+#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
+#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 
 namespace lux::render::runtime_detail
 {
@@ -16,14 +18,35 @@ namespace lux::render::runtime_detail
         DeviceSessionId session,
         detail::DeviceSession& device,
         std::uint32_t frame_count,
-        detail::RenderGraphExecutable&& plan,
-        detail::NativeGraphPrograms&& native_programs,
+        std::shared_ptr<const JobGraphPlan> plan,
         TargetId output,
         detail::TargetOutput physical
     ) noexcept
-        : recipe{effect}, device(session), target(output), executable(std::move(plan)),
-          fixed_programs(std::move(native_programs)), instance(device, frame_count, executable, fixed_programs, physical)
+        : recipe{effect}, device(session), target(output), graph_plan(std::move(plan)), executable(graph_plan->executable),
+          instance(device, frame_count, executable, graph_plan->programs, physical)
     {
+    }
+
+    JobExecution::StorageUses::~StorageUses() noexcept
+    {
+        for (auto id : retained) registry->releaseExecution(id);
+    }
+
+    RenderResult<void> JobExecution::retainStorage(ResourceRegistry& registry, ResourceInstanceId id) noexcept
+    {
+        if (std::ranges::find(storage_uses.retained, id) != storage_uses.retained.end()) return {};
+        if (auto retained = registry.retainExecution(id); !retained) return retained;
+        storage_uses.registry = &registry;
+        storage_uses.retained.push_back(id);
+        resources.push_back(id);
+        return {};
+    }
+
+    void JobExecution::selectViewParameters() noexcept
+    {
+        if (!view_parameters || view_revision == view_parameters->revision()) return;
+        view_revision = view_parameters->revision();
+        instance.selectViewParameters(view_parameters->parameters(), view_revision);
     }
 
     JobExecution::~JobExecution() noexcept
@@ -38,8 +61,8 @@ namespace lux::render::runtime_detail
         std::uint32_t resource,
         const detail::StorageBindingOps& ops,
         void* native,
-        const void* argument,
-        std::uint32_t frame_count
+        std::uint32_t frame_count,
+        std::uint32_t projection
     ) noexcept
     {
         auto& use = storage_inputs.emplace_back(&instance, resource);
@@ -50,13 +73,9 @@ namespace lux::render::runtime_detail
             link.instance->setResource(link.resource, slot, resource);
         };
         std::array<detail::ResourceInput, 3> slices;
-        auto resolved = ops.resolve(
-            native,
-            executable.resources()[resource].description,
-            argument,
-            use.subscription,
-            std::span(slices).first(frame_count)
-        );
+        const auto& description = executable.resources()[resource].description;
+        auto output = std::span(slices).first(frame_count);
+        auto resolved = ops.resolveGraphImport(native, projection, description, use.subscription, output);
         if (!resolved)
         {
             return cxx::unexpected(resolved.error());
@@ -72,66 +91,42 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
-    RenderResult<std::vector<ResourceInstanceId>>
-    RenderServer::Impl::resolveJobResources(const RenderEffect& effect, detail::DeviceEntry& device, ViewRequest scope) noexcept
+    RenderResult<void>
+    RenderServer::Impl::bindGraphSamplers(JobExecution& candidate, std::span<const SamplerDescription> samplers) noexcept
     {
-        auto context = device.resourceCreateContext();
-        std::vector<ResourceInstanceId> dependency_storages;
-        dependency_storages.reserve(effect.resource_dependencies.size());
-        for (const auto& dependency : effect.resource_dependencies)
+        auto& pool = runtime_->device(candidate.device)->session().descriptors();
+        auto& instance = candidate.instance;
+        for (std::uint32_t slot = 0; slot < instance.samplerInputCount(); ++slot)
         {
-            auto* owner = dependency.scope == EResourceDomain::DEVICE ? &device.resources() :
-                device.scopedResources(scope.scene, dependency.scope == EResourceDomain::VIEW ? scope.view : ViewId{}, true);
-            auto instance = owner->getOrCreate(context, dependency.declaration);
-            if (!instance)
-            {
-                return cxx::unexpected(instance.error());
-            }
-            dependency_storages.push_back(*instance);
+            if (!instance.usesSampler(slot)) continue;
+            if (slot >= samplers.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            auto sampler = pool.sampler(samplers[slot]);
+            if (!sampler) return cxx::unexpected(sampler.error());
+            if (auto bound = instance.bindSampler(slot, **sampler, samplers[slot].comparison.has_value()); !bound)
+                return bound;
         }
-        return dependency_storages;
+        return {};
     }
 
-    RenderResult<void> RenderServer::Impl::assembleExecution(
-        const detail::GraphAssemblyPlan& assembly,
-        JobExecution& candidate,
-        RenderView& view,
-        std::span<const ResourceInstanceId> dependency_storages,
-        const JobBinding& binding
-    ) noexcept
+    RenderResult<void> RenderServer::Impl::assembleExecution(JobExecution& candidate, const JobBinding& binding) noexcept
     {
-        const auto& effect = candidate.recipe.effect;
         const auto& plan = candidate.executable;
         const auto target_images = std::span(binding.target_images);
         const auto& input = binding.inputs;
         auto& entry = *runtime_->device(candidate.device);
-        candidate.resources.assign(dependency_storages.begin(), dependency_storages.end());
-        for (std::size_t i = 0; i < dependency_storages.size(); ++i)
-        {
-            const auto& dependency = effect.resource_dependencies[i];
-            if (dependency.columns.empty())
-            {
-                continue;
-            }
-            const auto id = dependency_storages[i];
-            const auto& call = runtime_->resources_.factory(dependency.declaration)->frame_call;
-            candidate.inputs.emplace_back(id, runtime_->resources_.resourceInstance(id), &call, dependency.columns);
-        }
         candidate.target_images.reserve(target_images.size());
-        for (const auto& input : target_images)
+        if (candidate.graph_plan->target_imports.size() != target_images.size())
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        for (std::size_t index = 0; index < target_images.size(); ++index)
         {
+            const auto& input = target_images[index];
+            const auto id = candidate.graph_plan->target_imports[index];
+            if (id.index == kGraphInvalidIndex) continue;
             const auto* source = runtime_->targets_.find(input.target);
             if (!source || !targetDescription(*source).sampled)
             {
                 return cxx::unexpected(RenderError{kRuntimeIdentity});
             }
-            const auto bound =
-                std::ranges::find(effect.external_images, input.destination, &RenderEffect::ExternalImage::destination);
-            if (bound == effect.external_images.end())
-            {
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            }
-            const auto id = bound->resource;
             const auto& resource = plan.resources()[id.index];
             const auto* image = std::get_if<GraphImageDesc>(&resource.description);
             const bool duplicate = std::ranges::any_of(
@@ -168,96 +163,73 @@ namespace lux::render
                 candidate.instance.bindImage(id, slot, *images.frames[slot].image);
             }
         }
-        candidate.storage_inputs.reserve(plan.resources().size());
-        std::vector<ResourceInstanceId> resolved(plan.resources().size());
-        for (std::size_t dependency_index = 0; dependency_index < effect.resource_dependencies.size();
-             ++dependency_index)
+        const auto& slots = candidate.graph_plan->storage_imports;
+        if (slots.size() != binding.resources.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        candidate.storage_inputs.reserve(slots.size());
+        auto& registry = runtime_->resources_;
+        for (std::size_t i = 0; i < slots.size(); ++i)
         {
-            const auto& dependency = effect.resource_dependencies[dependency_index];
-            const auto* factory = runtime_->resources_.factory(dependency.declaration);
-            const auto id = dependency_storages[dependency_index];
-            for (const auto& argument : dependency.bindings)
+            const auto slot = slots[i].index;
+            if (slot == kGraphInvalidIndex) continue;
+            const auto& input = binding.resources[i];
+            const auto id = input.resource;
+            if (auto retained = candidate.retainStorage(registry, id); !retained) return retained;
+            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
+                candidate.gpu_resources.push_back(id);
+            const auto* factory = registry.factory(registry.declarationOf(id));
+            const auto& ops = *static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
+            if (auto bound = candidate.bindStorage(
+                    slot, ops, registry.resourceInstance(id), entry.frameProgress().frameCount(),
+                    input.projection
+                ); !bound) return bound;
+        }
+        const auto samplers = std::span{candidate.graph_plan->samplers};
+        if (auto bound = bindGraphSamplers(candidate, samplers); !bound) return bound;
+        if (auto ready = candidate.instance.initialize(); !ready) return ready;
+        const auto& preparation = candidate.graph_plan->preparation;
+        std::vector<detail::RenderGraphInstance::SnapshotSource> sources;
+        sources.reserve(preparation.snapshots.size());
+        for (const auto& snapshot : preparation.snapshots)
+        {
+            const auto id = binding.resources[snapshot.binding].resource;
+            if (auto retained = candidate.retainStorage(registry, id); !retained) return retained;
+            const auto* factory = registry.factory(registry.declarationOf(id));
+            const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
+            sources.push_back({id, registry.resourceInstance(id), ops->cpu_snapshot});
+        }
+        const auto bindOwner = [&]<class Storage>(std::uint32_t slot, const Storage*& owner) noexcept
+            -> RenderResult<void>
+        {
+            if (slot == kGraphInvalidIndex) return {};
+            const auto id = binding.resources[slot].resource;
+            if (auto retained = candidate.retainStorage(registry, id); !retained) return retained;
+            auto storage = registry.borrow<Storage>(id);
+            if (!storage) return cxx::unexpected(storage.error());
+            owner = *storage;
+            return {};
+        };
+        std::vector<detail::RenderGraphInstance::RasterOwners> raster_owners;
+        raster_owners.reserve(preparation.raster_bindings.size());
+        for (const auto& bindings : preparation.raster_bindings)
+        {
+            auto& owners = raster_owners.emplace_back();
+            if (auto ready = bindOwner(bindings.textures, owners.textures); !ready) return ready;
+            if (auto ready = bindOwner(bindings.meshes, owners.meshes); !ready) return ready;
+            if (auto ready = bindOwner(bindings.materials, owners.materials); !ready) return ready;
+            if (owners.materials)
             {
-                const auto index = argument.resource.index;
-                const auto type = argument.type();
-                if (type != factory->descriptor->binding_type)
-                {
-                    return cxx::unexpected(RenderError{kStorageContract});
-                }
-                const auto* value = argument.data();
-                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
-                resolved[index] = id;
-                if (auto bound =
-                        candidate
-                            .bindStorage(index, *ops, runtime_->resources_.resourceInstance(id), value, entry.frameProgress().frameCount());
-                    !bound)
-                {
-                    return cxx::unexpected(bound.error());
-                }
+                const auto id = owners.materials->id();
+                if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
+                    candidate.gpu_resources.push_back(id);
             }
         }
-        const auto created = candidate.instance.createData(
-            assembly, effect.graph.instanceData(), runtime_->resources_, resolved
-        );
-        if (!created)
-            return cxx::unexpected(created.error());
-        for (std::uint32_t input = 0; input < candidate.instance.samplerInputCount(); ++input)
-        {
-            if (!candidate.instance.usesSampler(input))
-            {
-                continue;
-            }
-            auto sampler = entry.session().descriptors().sampler(effect.graph.samplers()[input]);
-            if (!sampler)
-            {
-                return cxx::unexpected(sampler.error());
-            }
-            if (auto bound =
-                    candidate.instance.bindSampler(input, **sampler, effect.graph.samplers()[input].comparison.has_value());
-                !bound)
-            {
-                return cxx::unexpected(bound.error());
-            }
-        }
-        if (auto ready = candidate.instance.initialize(assembly); !ready)
-        {
-            return cxx::unexpected(ready.error());
-        }
-        auto& instance = candidate.instance;
-        auto view_source = instance.bindParameterSource(
-            assembly, EParameterSource::VIEW, detail::cameraParameterLayout()
-        );
-        if (!view_source)
-        {
-            return cxx::unexpected(view_source.error());
-        }
-        auto effect_source = instance.bindParameterSource(
-            assembly, EParameterSource::EFFECT, detail::effectParameterLayout()
-        );
-        if (!effect_source)
-        {
-            return cxx::unexpected(effect_source.error());
-        }
-        if (auto values = instance.setInputs(input.parameters, input.conditions); !values)
-            return cxx::unexpected(values.error());
-        instance.setViewport(input.viewport);
-        detail::CameraParameters camera;
-        if (auto encoded = detail::projectCameraParameters(view.camera, std::as_writable_bytes(std::span{&camera, 1}));
-            !encoded)
-        {
-            return cxx::unexpected(encoded.error());
-        }
-        if (auto applied = instance.setParameterSource(EParameterSource::VIEW, std::as_bytes(std::span{&camera, 1}));
-            !applied)
-        {
-            return cxx::unexpected(applied.error());
-        }
-        if (instance.usesParameterSource(EParameterSource::VIEW))
-        {
-            const auto& viewport = view.camera.viewport;
-            instance.setViewport({viewport[0], viewport[1], viewport[2], viewport[3]});
-        }
-        candidate.camera_revision = view.camera_revision;
+        if (auto ready = candidate.instance.createProducers(
+                preparation, registry, sources, std::move(raster_owners)
+            ); !ready) return ready;
+        candidate.instance.linkUniformBlocks(candidate.graph_plan->uniforms);
+        if (auto values = candidate.instance.setInputs(input.parameters, input.conditions); !values) return values;
+        candidate.instance.setViewport(input.viewport);
+        candidate.selectViewParameters();
         return {};
     }
 } // namespace lux::render

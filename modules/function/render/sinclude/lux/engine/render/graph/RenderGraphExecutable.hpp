@@ -23,6 +23,7 @@ namespace lux::render::detail
     class DeviceSession;
     class RenderGraphExecutable;
     class NativeGraphPrograms;
+    struct CompiledRasterStream;
     struct PreparedRenderGraph;
     [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
@@ -124,6 +125,7 @@ namespace lux::render::detail
     {
         std::uint32_t data_index;
         RasterPassTemplate description;
+        bool producer_stream = false;
     };
 
     using VRasterDraw =
@@ -149,7 +151,14 @@ namespace lux::render::detail
 
     struct TransferCommands final
     {
+        struct BufferFill final
+        {
+            std::uint32_t descriptor = kGraphInvalidIndex;
+            bool sync_before = false;
+        };
+
         std::vector<VTransferOperation> operations;
+        std::vector<BufferFill> buffer_fills;
 
         [[nodiscard]] RenderResult<void>
         record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
@@ -172,6 +181,7 @@ namespace lux::render::detail
     {
         bool exclusive = false;
         std::array<float, 2> depth_bias{};
+        bool section_depth_bias = false;
     };
 
     struct CompiledPass final
@@ -433,6 +443,8 @@ namespace lux::render::detail
             return submissions_;
         }
 
+        [[nodiscard]] std::span<const ImportedAccess> importedAccesses() const noexcept { return imported_accesses_; }
+
         [[nodiscard]] const PhysicalResourcePlan& physicalResources() const noexcept
         {
             return physical_resources_;
@@ -505,6 +517,10 @@ namespace lux::render::detail
 
         [[nodiscard]] std::size_t size() const noexcept { return slots_.size(); }
         [[nodiscard]] const DeviceSession* session() const noexcept { return session_; }
+        [[nodiscard]] const CompiledRasterStream* rasterStream(std::uint32_t pass) const noexcept
+        {
+            return streams_[pass].get();
+        }
 
     private:
         friend class GraphCompiler;
@@ -512,6 +528,7 @@ namespace lux::render::detail
 
         DeviceSession* session_;
         std::vector<NativeGraphProgram> slots_;
+        std::vector<std::unique_ptr<CompiledRasterStream>> streams_;
         std::vector<CompiledPrograms::Program*> program_uses_;
         std::vector<CompiledPrograms::Layout*> layout_uses_;
     };

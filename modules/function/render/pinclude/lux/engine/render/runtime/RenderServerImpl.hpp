@@ -6,7 +6,6 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -22,7 +21,7 @@
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
-#include <lux/engine/render/capabilities/CapabilityRegistry.hpp>
+#include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
@@ -31,7 +30,7 @@
 #include <lux/engine/render/runtime/RenderJob.hpp>
 #include <deque>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
-#include <lux/engine/render/runtime/EffectBuild.hpp>
+#include <lux/engine/render/runtime/RenderEffect.hpp>
 #include <lux/engine/render/runtime/DeviceRound.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/commands/ResponseOutbox.hpp>
@@ -45,12 +44,6 @@ namespace lux::render
 
     struct RenderServer::Impl final
     {
-        FeatureId publishFeature(FeatureEntry) noexcept;
-        RenderResult<void>
-        validateImplementationDescription(const CapabilityDescription&, const CapabilityImplementation&) const noexcept;
-        RenderResult<void>
-        validateCapabilityImplementation(const CapabilityDescription&, const CapabilityImplementation&) const noexcept;
-        RenderResult<void> validateFeature(const FeatureEntry&) const noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
 
         void stop() noexcept
@@ -66,9 +59,7 @@ namespace lux::render
         execution::CpuScheduler cpu_scheduler_; // Borrowed from the application's ExecutionRuntime.
         execution::CpuScheduler program_scheduler_, recording_scheduler_;
         ipc::IpcResponder responder_;
-        cxx::StableSlotMap<FeatureEntry, FeatureTag> features_;
-        std::map<std::string_view, FeatureId, std::less<>> features_by_name_;
-        CapabilityRegistry capability_registry_;
+        EffectCatalog effect_catalog_;
         std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
         struct RuntimeState final
         {
@@ -79,6 +70,7 @@ namespace lux::render
                 const auto* entry = devices_.find(id);
                 return entry ? entry->get() : nullptr;
             }
+            std::vector<object::CodeLease> effect_command_code_;
             CommandRegistry command_registry_;
             cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
             cxx::StableSlotMap<VRenderTarget, TargetTag> targets_;
@@ -122,6 +114,7 @@ namespace lux::render
         std::atomic<std::uint64_t> program_preparation_ns_{0}, program_preparations_{0}, discarded_preparations_{0};
         std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
         std::atomic<std::uint64_t> raster_image_subresources_{0};
+        std::atomic<std::uint64_t> raster_geometry_ranges_{0}, raster_geometry_bytes_{0};
         std::chrono::steady_clock::time_point program_preparation_started_at_;
 #endif
 
@@ -140,7 +133,7 @@ namespace lux::render
         void removeJob(const RenderJobId&, AckResponse&) noexcept;
         void setJobCadence(const SetRenderJobCadence::Request&, AckResponse&) noexcept;
         void setJobDependencies(const SetRenderJobDependencies::Request&, AckResponse&) noexcept;
-        exec::task<JobSubmitted> requestJob(RequestRenderJob::Request&&) noexcept;
+        auto requestJob(RequestRenderJob::Request&&) noexcept;
         void stopJob(RenderJob&) noexcept;
         void retireStoppedExecution(RenderJob&) noexcept;
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
@@ -151,12 +144,22 @@ namespace lux::render
         [[nodiscard]] std::vector<detail::JobRelationEntry> jobRelations() noexcept;
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
-        [[nodiscard]] RenderResult<std::vector<ResourceInstanceId>>
-        resolveJobResources(const RenderEffect&, detail::DeviceEntry&, ViewRequest) noexcept;
+        [[nodiscard]] RenderResult<void> bindGraphSamplers(JobExecution&, std::span<const SamplerDescription>) noexcept;
 
-        [[nodiscard]] RenderResult<void> assembleExecution(
-            const detail::GraphAssemblyPlan&, JobExecution&, RenderView&, std::span<const ResourceInstanceId>,
-            const JobBinding&
+        [[nodiscard]] RenderResult<void> assembleExecution(JobExecution&, const JobBinding&) noexcept;
+
+        [[nodiscard]] RenderResult<std::vector<EffectTargetImport>>
+        qualifyEffectTargetImports(std::span<const TargetImageInput>) const noexcept;
+
+        [[nodiscard]] RenderResult<EffectImportContracts>
+        qualifyEffectImports(const detail::DeviceEntry&, const JobBinding&) const noexcept;
+
+        exec::task<RenderEffect::VariantResult> acquireEffectVariant(
+            RenderEffect&, detail::DeviceEntry&, EffectOutputDesc, const EffectImportContracts&
+        ) noexcept;
+
+        exec::task<RenderEffect::VariantResult> compileEffectVariant(
+            RenderEffect&, detail::DeviceEntry&, const EffectOutputDesc&, const EffectImportContracts&
         ) noexcept;
 
         exec::task<AckResponse>
@@ -176,7 +179,7 @@ namespace lux::render
 
         void rebuildFrameInputs(detail::DeviceEntry&) noexcept;
         [[nodiscard]] RenderError selectFrameInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> applyParameterSources(detail::DeviceEntry&, std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<void> selectGraphInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> acquireFrameOutputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
         void progressTargetFlights(detail::DeviceEntry&) noexcept;
         [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
@@ -189,14 +192,12 @@ namespace lux::render
         void waitForService(std::uint64_t observed) const noexcept;
         void progressUploads(detail::DeviceEntry&) noexcept;
         [[nodiscard]] bool progressFrame(detail::DeviceEntry&) noexcept;
-        [[nodiscard]] bool progressInputUpdates(detail::DeviceEntry&) noexcept;
+
         [[nodiscard]] bool progressProgramPreparations(detail::DeviceEntry&) noexcept;
         void startProgramPreparation(RenderJob&, JobExecution&) noexcept;
         void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
-        exec::task<AckResponse> updateFrameData(UpdateFrameData::Request&&) noexcept;
-        [[nodiscard]] RenderResult<void> applyFrameData(const JobExecution&, const FrameData&) noexcept;
-        void setEffectParameters(const SetEffectParameters::Request&, AckResponse&) noexcept;
-        void updateViewCamera(const UpdateViewCamera::Request&, AckResponse&) noexcept;
+        void updateFrameData(const UpdateFrameData::Request&, AckResponse&) noexcept;
+        [[nodiscard]] RenderResult<void> adoptFrameData(const JobExecution&, const FrameData&) noexcept;
         void finishFrame(detail::DeviceEntry&, RenderError) noexcept;
         [[nodiscard]] bool beginFrame(detail::DeviceEntry&) noexcept;
         void submitFrameRendering(detail::DeviceEntry&) noexcept;
@@ -225,21 +226,8 @@ namespace lux::render
         exec::task<AckResponse> removeTarget(RemoveTarget::Request&&) noexcept;
         void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
-        using EffectBuildResult = RenderResult<RenderEffect>;
-        [[nodiscard]] exec::task<EffectCreated>
-        adoptBuiltEffect(EffectBuildResult, runtime_detail::EffectContributions) noexcept;
         auto createEffect(CreateEffect::Request&&) noexcept;
-        [[nodiscard]] RenderResult<runtime_detail::QualifiedEffectRecipe>
-        qualifyEffectRecipe(const CreateEffectRequest&) const noexcept;
         void bindCreateEffectCommand() noexcept;
-
-        [[nodiscard]] static RenderError
-        capabilityOutputError(const CapabilityImplementation&, const EffectOutputDesc&) noexcept;
-
-        void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
-
-
-
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
@@ -248,6 +236,7 @@ namespace lux::render
         void queryRenderDevice(const QueryRenderDevice::Request&, QueryRenderDevice::Response&) noexcept;
         void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
 
+        void listEffectCapabilities(const EmptyRequest&, ListEffectCapabilities::Response&) noexcept;
         void listCommands(const ListCommands::Request&, ListCommands::Response&) noexcept;
         void queryCommandIds(const QueryCommandIds::Request&, QueryCommandIds::Response&) noexcept;
 

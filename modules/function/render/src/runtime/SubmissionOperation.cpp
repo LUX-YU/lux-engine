@@ -41,6 +41,7 @@ namespace lux::render::detail
         slot_.graph_started = false;
         slot_.submitted_batches = 0;
         slot_.preparation_serial = 0;
+        slot_.uniform_upload_serial = 0;
         slot_.remaining_batches = 0;
         slot_.recorded_passes = slot_.recorded_instances = 0;
     }
@@ -514,6 +515,11 @@ namespace lux::render::detail
                     workspace_.raster_reads_.image_subresources +=
                         std::uint64_t(range.mip_count) * range.layer_count * std::popcount(range.aspects);
                 }
+                else if (read.usage == EGraphUse::VERTEX || read.usage == EGraphUse::INDEX)
+                {
+                    ++workspace_.raster_reads_.geometry_ranges;
+                    workspace_.raster_reads_.geometry_bytes += std::get<GraphBufferRange>(read.range).size;
+                }
             }
         }
 #endif
@@ -602,16 +608,17 @@ namespace lux::render::detail
             frame.wait_fences.clear();
             frame.signal_fences.clear();
             const auto graphics = device_.queueIndex(device_.queue());
-            if (selected_queue != graphics && frame.preparation_serial > first.waits.serials()[graphics])
+            const auto preparation_serial = std::max(frame.preparation_serial, frame.uniform_upload_serial);
+            if (selected_queue != graphics && preparation_serial > first.waits.serials()[graphics])
             {
-                auto wait = device_.queue().dependency(frame.preparation_serial, nri::StageBits::ALL);
+                auto wait = device_.queue().dependency(preparation_serial, nri::StageBits::ALL);
                 if (!wait) co_return cxx::unexpected(wait.error());
                 frame.wait_fences.push_back(*wait);
             }
             for (std::uint32_t q = 0; q < queue_count; ++q)
             {
                 const bool covered_by_preparation =
-                    q == graphics && selected_queue != graphics && frame.preparation_serial > first.waits.serials()[q];
+                    q == graphics && selected_queue != graphics && preparation_serial > first.waits.serials()[q];
                 if (first.waits.serials()[q] == 0 || covered_by_preparation)
                 {
                     continue;

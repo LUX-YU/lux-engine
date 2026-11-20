@@ -22,6 +22,8 @@ namespace lux::render::runtime_detail
                 if (other.descriptor()->name != binding.descriptor()->name) continue;
                 if (auto valid = compatibleCommands(*other.descriptor(), *binding.descriptor()); !valid) return valid;
                 const bool is_duplicate_call = !binding.effect_ || other.methodType() == binding.methodType();
+                const bool mismatched_address = binding.isNodeEffectCommand() != other.isNodeEffectCommand();
+                if (mismatched_address) return cxx::unexpected(RenderError{kCommandContract});
                 if (is_duplicate_call) return cxx::unexpected(RenderError{kCommandContract});
             }
             const auto found = commands_by_name_.find(binding.descriptor()->name.name());
@@ -31,7 +33,8 @@ namespace lux::render::runtime_detail
             {
                 if (auto valid = compatibleCommands(*command.description, *binding.descriptor()); !valid) return valid;
             }
-            const bool is_route_mismatch = !binding.effect_ || !command.effect || command.storage;
+            const bool mismatched_address = binding.isNodeEffectCommand() != (command.effect_node != nullptr);
+            const bool is_route_mismatch = !binding.effect_ || !command.effect || command.storage || mismatched_address;
             if (is_route_mismatch) return cxx::unexpected(RenderError{kCommandContract});
             const bool is_duplicate_call = std::ranges::any_of(command.bindings, [&](const auto& previous) noexcept
             {
@@ -168,7 +171,8 @@ namespace lux::render::runtime_detail
             binding.make_error_,
             {{{}, binding.call_, binding.method_type_, binding.storage_type_, binding.effect_state_type_}},
             binding.effect_,
-            binding.storage_
+            binding.storage_,
+            binding.effect_node_
         });
         commands_by_name_.emplace(binding.descriptor_->name.name(), id);
         return id;
@@ -283,7 +287,8 @@ namespace lux::render::runtime_detail
                 binding.make_error_,
                 {method},
                 binding.effect_,
-                binding.storage_
+                binding.storage_,
+                binding.effect_node_
             });
             commands_by_name_.emplace(binding.descriptor()->name.name(), id);
             return {id, 0};

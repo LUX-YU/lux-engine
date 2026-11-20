@@ -21,6 +21,7 @@ namespace lux::render::detail
         DEDICATED,
         RENDERING_SCOPE,
         DISTINCT_REQUIREMENTS,
+        INCOMPATIBLE_LAYOUT,
         UNORDERED,
         ALIASED
     };
@@ -43,6 +44,7 @@ namespace lux::render::detail
         const PhysicalResourcePlan& physical,
         std::span<const CompiledResource> resources,
         const RecordingProgram& recording,
-        std::span<const nri::MemoryDesc> requirements
+        std::span<const nri::MemoryDesc> requirements,
+        nri::GraphicsAPI backend
     ) noexcept;
 } // namespace lux::render::detail

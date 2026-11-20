@@ -2,13 +2,20 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/capabilities/RenderPresets.hpp>
+#include <lux/engine/render/effect/GBuffer.hpp>
+#include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/effect/Shadow.hpp>
+#include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/engine/render/resources/texture/Commands.hpp>
 #include <lux/engine/render/resources/texture/Resource.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -113,7 +120,7 @@ struct Monitor final
                 hold.wait(true);
             }
             const auto& actual = original(device);
-            if (!deny.exchange(false)) return actual;
+            if (on_server || !deny.exchange(false)) return actual;
             rejected = actual;
             rejected.dimensions.texture2DMaxDim = 0;
             rejected.dimensions.textureLayerMaxNum = 0;
@@ -219,9 +226,10 @@ struct ColdResource final
     static inline void (*complete)(void*) noexcept = nullptr;
     static inline std::atomic<bool> entered = false;
 
-    static exec::task<AckResponse> hold(ColdResource&, HoldSceneResource::Request&&) noexcept
+    static exec::task<AckResponse> hold(ColdResource& storage, HoldSceneResource::Request&&) noexcept
     {
-        co_return co_await exec::create<stdexec::set_value_t(AckResponse)>([](auto& context) noexcept
+        storage.ready_ = false;
+        const auto result = co_await exec::create<stdexec::set_value_t(AckResponse)>([](auto& context) noexcept
         {
             using Context = std::remove_cvref_t<decltype(context)>;
             CHECK(!pending);
@@ -233,6 +241,8 @@ struct ColdResource final
             };
             entered.store(true);
         });
+        storage.ready_ = true;
+        co_return result;
     }
 
     static void resume(const EmptyRequest&, AckResponse& output) noexcept
@@ -254,56 +264,136 @@ struct ColdResource final
     static ResourceRegistration factory() noexcept
     {
         static const std::array commands{CommandBinding::declare<HoldSceneResource, &hold>()};
-        return makeResourceRegistration<Descriptor, ColdResource, &create>(nullptr, nullptr, commands);
+        static constexpr auto snapshot = detail::StorageSnapshotOps::make<ColdResource, bool, &ColdResource::capture>();
+        static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
+        return makeResourceRegistration<Descriptor, ColdResource, &create>(nullptr, &binding, commands);
     }
-};
 
-struct ClearCapability final
-{
-    using Resources = std::tuple<ColdResource>;
-    using Commands = std::tuple<>;
-    using PrerequisiteCapabilities = std::tuple<>;
-};
-
-struct ClearFeature final
-{
-    using Config = void;
-    using Ports = ClearFeature;
-    static constexpr FeatureName name{"test.effect.clear"};
-
-    static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
+private:
+    RenderResult<std::uint64_t> capture(bool& ready) const noexcept
     {
-        GraphImageDesc image{32, 32, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
-        image.extent.source = EImageExtentSource::TARGET;
-        ports.resources.push_back({"color", EFeaturePort::OUTPUT, image});
+        ready = ready_;
+        return 1;
+    }
+
+    bool ready_ = true;
+};
+
+struct ClearPreparation final : InstanceData
+{
+    using Configuration = GraphStorageSnapshotId;
+    using ResolvedInputs = StorageSnapshotSlot<bool>;
+
+    explicit ClearPreparation(ResolvedInputs ready) noexcept : ready_(ready) {}
+
+    static RenderResult<ResolvedInputs> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
+    {
+        return link.resolveStorageSnapshot<bool>(source);
+    }
+
+    static InstanceDataResult instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
+    {
+        return std::make_unique<ClearPreparation>(input);
+    }
+
+    RenderResult<void> prepare(FramePreparation& frame) noexcept override
+    {
+        const auto selected = frame.readStorage(ready_);
+        if (!selected) return cxx::unexpected(selected.error());
+        if (!selected->value.get()) return cxx::unexpected(RenderError{kDeviceBusy});
         return {};
     }
 
-    static RenderResult<void> build(const void*, std::string_view, FeatureBuildContext& context) noexcept
-    {
-        TransferWork clear{{ClearImage{{context.resource("color")}, {0, 1, 0, 1}}}};
-        auto pass = context.graph.addTransferPass("clear", std::move(clear));
-        if (!pass) return cxx::unexpected(pass.error());
-        return context.publish("color", pass->written.front());
-    }
+private:
+    ResolvedInputs ready_;
 };
 
-struct ClearImplementation final
+static constexpr std::string_view clear_node = "test.effect.clear";
+static constexpr std::string_view clear_resource = "scene_state";
+static constexpr auto clear_color = effectPortSemantic("color");
+
+static CapabilityDefinition clearDefinition()
 {
-    using Capability = ClearCapability;
-    using Features = std::tuple<ClearFeature>;
-    using Config = void;
-    using Storages = std::tuple<>;
-    using Bindings = std::tuple<>;
+    return {
+        .identity = {graph::nodeTypeId(clear_node), std::string{clear_node}, 1},
+        .ports = {{clear_color, "color", {std::string{ToneMapping::display_type}, 1}, graph::EPinDirection::OUTPUT}}
+    };
+}
 
-    static CapabilityImplementation implementation() noexcept
+static void registerClearNode(RenderServer& server)
+{
+    CHECK(server.registerEffectCapability(clearDefinition()));
+    EffectImplementation implementation;
+    implementation.capability = graph::nodeTypeId(clear_node);
+    implementation.identity = {std::string{clear_node}, 1};
+    implementation.supported_outputs = {clear_color};
+    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
     {
-        CapabilityImplementation result;
-        result.implementation = "test.effect.clear";
-        result.outputs = {{rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN}};
-        return result;
+        return {};
+    };
+    implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    {
+        const auto state = take(context.importStorageSnapshot<bool>(
+            clear_resource, {ResourceName{ColdResource::descriptor.type.name()}}
+        ));
+        auto& builder = context.builder();
+        GraphImageDesc image{32, 32, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
+        image.extent.source = EImageExtentSource::TARGET;
+        const auto output = take(builder.declareResource({"clear color", image}));
+        const auto cleared = take(builder.addTransferPass(
+            "clear", TransferWork{{ClearImage{{{output, 0}}, {0, 1, 0, 1}}}}
+        ));
+        GraphPreparation preparation{
+            InstanceDataFactory::make<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
+            {cleared.pass}, {}, {state}
+        };
+        if (auto added = context.addPreparation(std::move(preparation)); !added) return added;
+        return context.publish(clear_color, {{clear_color, cleared.written.front()}});
+    };
+    CHECK(server.registerEffectImplementation(std::move(implementation)));
+}
+
+static CreateEffectRequest clearEffect()
+{
+    CreateEffectRequest request;
+    request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit edit{*request.graph};
+    const auto node = take(edit.addNode(clearDefinition(), {std::string{clear_node}, 1}));
+    CHECK(edit.setOutput("color", edit.pinId(node, clear_color), true));
+    CHECK(edit.commit());
+    return request;
+}
+
+static JobBinding clearBinding(ResourceInstanceId resource)
+{
+    JobBinding binding;
+    binding.resources = {{std::string{clear_resource}, resource, 0, EJobResourceUse::CPU_SNAPSHOT}};
+    return binding;
+}
+
+static CreateEffectRequest deferredEffect(bool shadows, bool clustered)
+{
+    CreateEffectRequest request;
+    request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit edit{*request.graph};
+    const auto gbuffer = take(edit.addNode(GBuffer::definition(), {std::string{GBuffer::indexed}, GBuffer::version}));
+    const auto lighting = take(edit.addNode(
+        Lighting::definition(), {std::string{clustered ? Lighting::clustered : Lighting::direct}, Lighting::version}
+    ));
+    const auto tone = take(edit.addNode(
+        ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}
+    ));
+    CHECK(edit.connect(edit.pinId(gbuffer, GBuffer::surface), edit.pinId(lighting, Lighting::surface)));
+    if (shadows)
+    {
+        const auto shadow = take(edit.addNode(Shadow::definition(), {std::string{Shadow::indexed}, Shadow::version}));
+        CHECK(edit.connect(edit.pinId(shadow, Shadow::shadows), edit.pinId(lighting, Lighting::shadows)));
     }
-};
+    CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
+    CHECK(edit.setOutput("color", edit.pinId(tone, ToneMapping::color), true));
+    CHECK(edit.commit());
+    return request;
+}
 
 static std::uint64_t correlation = 0;
 
@@ -413,6 +503,13 @@ template <class Stats> static std::uint64_t jobInputCpuNs(const Stats& stats)
     return stats.input_rebuild_ns; // Legacy rebuild timing includes its selection.
 }
 
+static ResourceInstanceId getSceneState(ipc::IpcRequester& client, DeviceSessionId device, SceneId scene)
+{
+    const auto resource = call<GetOrCreateResource>(client, {device, scene, ColdResource::descriptor.type});
+    CHECK(!resource.error.type && !resource.resource_id.isNull());
+    return resource.resource_id;
+}
+
 static void profileJobRounds(
     RenderServer& server, ipc::IpcRequester& client, std::string_view channel, DeviceSessionId session, EffectId effect, unsigned job_count
 )
@@ -429,6 +526,7 @@ static void profileJobRounds(
     };
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
+    const auto binding = clearBinding(getSceneState(client, session, scene));
     const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     std::vector<Job> jobs;
     jobs.reserve(job_count);
@@ -440,7 +538,7 @@ static void profileJobRounds(
             const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
             const auto output = call<CreateTarget>(client, {session, target});
             CHECK(!created.error.type && !output.error.type);
-            CHECK(!call<StartRenderJob>(client, {session, created.job, output.target}).error.type);
+            CHECK(!call<StartRenderJob>(client, {session, created.job, output.target, binding}).error.type);
             jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
         }
         return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
@@ -490,7 +588,7 @@ static void profileJobRounds(
         std::printf("JOB_ANCESTRY native_acceptance=2,1,2 rejection=%llu same_frame_and_slot=1\n", rejected.error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {}, {}}).error.type);
         CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {}, {}}).error.type);
-        CHECK(!call<StartRenderJob>(client, {session, jobs[1].id, jobs[1].target}).error.type);
+        CHECK(!call<StartRenderJob>(client, {session, jobs[1].id, jobs[1].target, binding}).error.type);
     };
     verify_ancestry();
     const auto setup_elapsed = initial_setup + create_jobs(job_count);
@@ -596,17 +694,15 @@ static void profileJobRounds(
 }
 
 
-static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOptions device, unsigned profile_jobs = 0)
+static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptions device, unsigned profile_jobs = 0)
 {
     RenderServerConfig config{"installed.effect.open_raster", enableNativeValidation()};
     config.uploads.emplace();
     device.texture_descriptors = true;
     auto server = take(RenderServer::create(config, execution));
-    take(server->registerResource<Monitor>());
-    take(server->registerResource<ColdResource>());
-    take(server->registerCapability<ClearCapability>());
-    const auto feature = take(server->registerFeature<ClearFeature>());
-    const auto implementation = take(server->registerCapabilityImplementation<ClearImplementation>());
+    take(server->registerResource(Monitor::factory()));
+    take(server->registerResource(ColdResource::factory()));
+    registerClearNode(*server);
     const std::array gate_commands{
         CommandBinding::declare<ResumeSceneResource, &ColdResource::resume>(),
         CommandBinding::declare<ParkDispatch, &ParkDispatch::park>()
@@ -623,11 +719,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(!opened.error.type);
     const auto session = opened.device;
     CHECK(call<GetOrCreateResource>(client, {session, DeviceScope{}, MonitorResource::descriptor.type}).error.type == 0);
-    CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
-    request.definition.features.push_back({feature, "clear", {}});
-        request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
-        request.implementations.push_back({implementation, "clear"});
-    const auto effect = call<CreateEffect>(client, std::move(request));
+    const auto effect = call<CreateEffect>(client, clearEffect());
     CHECK(!effect.error.type);
     if (profile_jobs)
     {
@@ -640,15 +732,18 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     }
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
+    const auto cold = getSceneState(client, session, scene);
+    const auto binding = clearBinding(cold);
     const auto target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto job = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED});
     CHECK(effect.error.type == 0 && job.error.type == 0);
-    CHECK(call<StartRenderJob>(client, {session, job.job, target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, job.job, target, binding}).error.type == 0);
     const auto other_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto other_scene = call<CreateScene>(client, {}).scene;
     const auto other_view = call<CreateView>(client, {other_scene}).view;
     const auto other_job = call<CreateRenderJob>(client, {other_scene, other_view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {session, other_job, other_target}).error.type == 0);
+    const auto other_binding = clearBinding(getSceneState(client, session, other_scene));
+    CHECK(call<StartRenderJob>(client, {session, other_job, other_target, other_binding}).error.type == 0);
     auto park_wire = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     auto second_wire = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const std::array names{CommandName{RequestRenderJob::name}};
@@ -687,8 +782,6 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(accepted() == ordered_before + 2 && Monitor::parallel_arrivals == 2);
     Monitor::require_overlap.store(false);
     CHECK(call<SetRenderJobDependencies>(client, {other_job, {}, {}}).error.type == 0);
-    const auto cold = call<QueryResource>(client, {session, scene, ColdResource::descriptor.type}).resource_id;
-    CHECK(!cold.isNull());
     auto holding = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const auto held = send<HoldSceneResource>(holding, cold);
     const auto hold_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -716,7 +809,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
     CHECK(receive<HoldSceneResource>(holding, held).error.type == 0);
     CHECK(receive<RequestRenderJob>(second_wire, blocked_run).job == job.job);
     holding.reset();
-    const auto sealed = server->featureId("test.effect.clear");
+    const auto sealed = server->registerEffectCapability(clearDefinition());
     CHECK(!sealed && sealed.error().type == kCapabilityInUse);
     std::puts("SERVER INTERLEAVE PASS: IPC, exclusive Resource, unrelated Job and GPU retirement before terminal delivery");
     CHECK(call<RemoveRenderJob>(client, other_job).error.type == 0);
@@ -775,7 +868,7 @@ static void recordOpenFeature(execution::ExecutionRuntime& execution, DeviceOpti
 
     const auto suffix_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto suffix = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {session, suffix, suffix_target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, suffix, suffix_target, binding}).error.type == 0);
     CHECK(call<SetRenderJobDependencies>(client, {suffix, {job.job}, {}}).error.type == 0);
     const auto executed = [&](RenderJobId id)
     {
@@ -853,7 +946,6 @@ static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const Dev
 {
     const TargetDesc output{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     CHECK(call<QueryRenderDevice>(client, {}).error.type == kRuntimeIdentity);
-    CHECK(call<ListCapabilities>(client, {}).error.type == kRuntimeIdentity);
     const auto scene = call<CreateScene>(client, {});
     CHECK(!scene.error.type);
     CHECK(call<CreateTarget>(client, {{}, output}).error.type == kRuntimeIdentity);
@@ -879,13 +971,14 @@ static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const Dev
     CHECK(first.backend == options.backend && second.backend == options.backend);
     CHECK(first.physical_queues > 0 && second.physical_queues > 0);
     CHECK(first.resource_capabilities != second.resource_capabilities);
-    const auto surface = [&](DeviceSessionId device)
+    const auto has_texture_descriptors = [&](DeviceSessionId device)
     {
-        const auto choices = call<ListCapabilities>(client, {device, std::string(kRasterSurfaceCapability)});
-        CHECK(!choices.error.type && choices.implementations.size() == 1);
-        return choices.implementations.front().unavailable.type;
+        const auto info = call<QueryRenderDevice>(client, device);
+        CHECK(!info.error.type);
+        const auto capability = static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY);
+        return (info.resource_capabilities & capability) != 0;
     };
-    CHECK(!surface(primary.device) && surface(secondary.device) == kStorageCapability);
+    CHECK(has_texture_descriptors(primary.device) && !has_texture_descriptors(secondary.device));
 
     const auto target = call<CreateTarget>(client, {primary.device, output});
     CHECK(!target.error.type);
@@ -893,15 +986,13 @@ static DeviceSessionId verifyDeviceSessions(ipc::IpcRequester& client, const Dev
     CHECK(!call<RemoveDeviceSession>(client, secondary.device).error.type);
     CHECK(call<RemoveDeviceSession>(client, secondary.device).error.type == kRuntimeIdentity);
     CHECK(call<QueryRenderDevice>(client, secondary.device).error.type == kRuntimeIdentity);
-    const auto stale_catalog = call<ListCapabilities>(client, {secondary.device});
-    CHECK(stale_catalog.error.type == kRuntimeIdentity && stale_catalog.implementations.empty());
-    CHECK(!surface(primary.device));
+    CHECK(has_texture_descriptors(primary.device));
 
     const auto replacement = call<CreateDeviceSession>(client, options);
     CHECK(!replacement.error.type && replacement.device.index == secondary.device.index);
     CHECK(replacement.device.gen != secondary.device.gen);
     CHECK(call<QueryRenderDevice>(client, secondary.device).error.type == kRuntimeIdentity);
-    CHECK(surface(replacement.device) == kStorageCapability);
+    CHECK(!has_texture_descriptors(replacement.device));
     CHECK(!call<RemoveTarget>(client, target.target).error.type);
     CHECK(!call<RemoveDeviceSession>(client, primary.device).error.type);
     CHECK(call<QueryRenderDevice>(client, primary.device).error.type == kRuntimeIdentity);
@@ -933,14 +1024,8 @@ static void verifyDeviceOwnership(
     CHECK(!second.error.type);
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
-    const auto get = [&](DeviceSessionId device)
-    {
-        const auto resource = call<GetOrCreateResource>(client, {device, scene, ColdResource::descriptor.type});
-        CHECK(!resource.error.type && !resource.resource_id.isNull());
-        return resource.resource_id;
-    };
-    const auto resource_a = get(first);
-    const auto resource_b = get(second.device);
+    const auto resource_a = getSceneState(client, first, scene);
+    const auto resource_b = getSceneState(client, second.device, scene);
     CHECK(resource_a != resource_b);
     CHECK(call<QueryResource>(client, {second.device, ViewRequest{scene, view}, ColdResource::descriptor.type})
         .resource_id == resource_b);
@@ -962,11 +1047,14 @@ static void verifyDeviceOwnership(
     const auto job_b = make_job();
     const auto dormant = make_job();
     CHECK(call<StartRenderJob>(client, {second.device, job_a, a.target}).error.type == kJobState);
-    JobBinding foreign_image;
-    foreign_image.target_images.push_back({{0, "color"}, imported.target});
+    const auto binding_a = clearBinding(resource_a);
+    const auto binding_b = clearBinding(resource_b);
+    auto foreign_image = binding_a;
+    foreign_image.target_images.push_back({.target = imported.target, .binding = "foreign"});
     CHECK(call<StartRenderJob>(client, {first, job_a, a.target, foreign_image}).error.type == kJobState);
-    CHECK(!call<StartRenderJob>(client, {first, job_a, a.target}).error.type);
-    CHECK(!call<StartRenderJob>(client, {second.device, job_b, b.target}).error.type);
+    CHECK(call<StartRenderJob>(client, {first, job_a, a.target, binding_b}).error.type == kStorageMismatch);
+    CHECK(!call<StartRenderJob>(client, {first, job_a, a.target, binding_a}).error.type);
+    CHECK(!call<StartRenderJob>(client, {second.device, job_b, b.target, binding_b}).error.type);
     CHECK(call<RebindRenderJobEffect>(client, {second.device, job_a, effect, b.target}).error.type == kJobState);
     CHECK(call<RebindRenderJobEffect>(client, {first, job_a, effect, a.target, foreign_image}).error.type == kJobState);
     CHECK(call<SetRenderJobDependencies>(client, {job_b, {job_a}, {}}).error.type == kJobState);
@@ -1059,14 +1147,12 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
 {
     RenderServerConfig config{"installed.effect.independent_devices", enableNativeValidation()};
     auto server = take(RenderServer::create(config, execution));
-    take(server->registerResource<Monitor>());
-    take(server->registerResource<AdapterProbe>());
-    take(server->registerResource<ColdResource>());
+    take(server->registerResource(Monitor::factory()));
+    take(server->registerResource(AdapterProbe::factory()));
+    take(server->registerResource(ColdResource::factory()));
     const std::array gate_commands{CommandBinding::declare<ResumeSceneResource, &ColdResource::resume>()};
     CHECK(server->registerCommands(gate_commands));
-    take(server->registerCapability<ClearCapability>());
-    const auto feature = take(server->registerFeature<ClearFeature>());
-    const auto implementation = take(server->registerCapabilityImplementation<ClearImplementation>());
+    registerClearNode(*server);
     auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     auto pending_b = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     RenderResult<void> ran;
@@ -1111,11 +1197,7 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     CHECK(!call<GetOrCreateResource>(client, {b.device, DeviceScope{}, MonitorResource::descriptor.type}).error.type);
 
     const TargetDesc desc{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
-    CreateEffectRequest recipe{{desc.format}};
-    recipe.definition.features.push_back({feature, "clear", {}});
-    recipe.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{desc.format, 1}});
-    recipe.implementations.push_back({implementation, "clear"});
-    const auto effect = call<CreateEffect>(client, std::move(recipe));
+    const auto effect = call<CreateEffect>(client, clearEffect());
     CHECK(!effect.error.type);
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
@@ -1137,7 +1219,8 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
         const auto output = call<CreateTarget>(client, {device, desc});
         const auto job = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED});
         CHECK(!output.error.type && !job.error.type);
-        CHECK(!call<StartRenderJob>(client, {device, job.job, output.target}).error.type);
+        const auto binding = clearBinding(getSceneState(client, device, scene));
+        CHECK(!call<StartRenderJob>(client, {device, job.job, output.target, binding}).error.type);
         return std::pair{job.job, output.target};
     };
     const auto [job_a, output_a] = start(a.device);
@@ -1224,15 +1307,13 @@ int main(int argc, char** argv)
     if (physical_pair) return verifyIndependentDevices(*execution, device, true) ? 0 : 77;
     if (profile_jobs)
     {
-        recordOpenFeature(*execution, device, profile_jobs);
+        recordClearGraph(*execution, device, profile_jobs);
         return 0;
     }
     auto server = take(RenderServer::create(config, *execution));
-    take(server->registerResource<Monitor>());
-    take(server->registerResource<ColdResource>());
-    take(server->registerCapability<ClearCapability>());
-    const auto feature = take(server->registerFeature<ClearFeature>());
-    const auto implementation = take(server->registerCapabilityImplementation<ClearImplementation>());
+    take(server->registerResource(Monitor::factory()));
+    take(server->registerResource(ColdResource::factory()));
+    registerClearNode(*server);
     auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     RenderResult<void> ran;
     std::thread render([&]() noexcept
@@ -1240,35 +1321,28 @@ int main(int argc, char** argv)
         Monitor::on_server = true;
         ran = server->run();
     });
+    const auto catalog = call<ListEffectCapabilities>(client, {});
+    CHECK(catalog.error.type == 0);
+    const auto clear = std::ranges::find_if(catalog.capabilities, [](const EffectCapabilityInfo& capability)
+    {
+        return capability.definition->identity.canonical_name == clear_node;
+    });
+    CHECK(clear != catalog.capabilities.end());
+    CHECK(clear->definition->identity.version == 1);
+    CHECK(clear->implementations.size() == 1);
+    CHECK(clear->implementations.front().identity == (ImplementationSelection{std::string{clear_node}, 1}));
+    CHECK(call<CreateEffect>(client, {}).error.type == kCapabilityDeclaration);
     const auto session = verifyDeviceSessions(client, device);
     CHECK(call<GetOrCreateResource>(client, {session, DeviceScope{}, MonitorResource::descriptor.type}).error.type == 0);
     const auto create = [&]
     {
-        CreateEffectRequest request{{rdesc::ETextureFormat::RGBA8_UNORM}};
-        request.definition.features.push_back({feature, "clear", {}});
-        request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{request.output.format, 1}});
-        request.implementations.push_back({implementation, "clear"});
-        return call<CreateEffect>(client, std::move(request));
+        return call<CreateEffect>(client, clearEffect());
     };
     Monitor::queries.store(0);
     Monitor::deny.store(true);
-    const auto choices = call<ListCapabilities>(client, {session});
-    CHECK(choices.error.type == 0);
-    const auto surface = std::ranges::find(choices.implementations, kRasterSurfaceCapability,
-        [](const auto& entry) { return entry.capability.type.name(); });
-    const auto lighting = std::ranges::find(choices.implementations, kDeferredLightingCapability,
-        [](const auto& entry) { return entry.capability.type.name(); });
-    CHECK(surface != choices.implementations.end() && lighting != choices.implementations.end());
     for (unsigned variant = 0; variant < 4; ++variant)
     {
-        DeferredLightingConfiguration options;
-        options.shadows = (variant & 1) != 0;
-        options.clustered = (variant & 2) != 0;
-        auto recipe = take(makeDeferredRenderEffect(
-            {rdesc::ETextureFormat::RGBA8_UNORM}, *surface, *lighting, {}, options
-        ));
-        CHECK(recipe.definition.features.size() == 4u + 3u * options.shadows + options.clustered);
-        const auto created = call<CreateEffect>(client, std::move(recipe));
+        const auto created = call<CreateEffect>(client, deferredEffect((variant & 1) != 0, (variant & 2) != 0));
         CHECK(created.error.type == 0);
         CHECK(call<RemoveEffect>(client, {created.effect}).error.type == 0);
     }
@@ -1286,11 +1360,13 @@ int main(int argc, char** argv)
     const auto current = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
     const ResourceRequest resource_request{session, scene, ColdResource::descriptor.type};
     CHECK(call<QueryResource>(client, resource_request).error.type == kStorageIdentity);
+    const auto resource = getSceneState(client, session, scene);
+    const auto binding = clearBinding(resource);
     Monitor::deny.store(true);
-    CHECK(call<StartRenderJob>(client, {session, current, target}).error.type == kDeviceUnsupported);
+    CHECK(call<StartRenderJob>(client, {session, current, target, binding}).error.type == kDeviceUnsupported);
     const auto retained = call<QueryResource>(client, resource_request);
-    CHECK(retained.error.type == 0 && !retained.resource_id.isNull());
-    CHECK(call<StartRenderJob>(client, {session, current, target}).error.type == 0);
+    CHECK(retained.error.type == 0 && retained.resource_id == resource);
+    CHECK(call<StartRenderJob>(client, {session, current, target, binding}).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
     CHECK(server->stats().submissions == 0);
 
@@ -1300,7 +1376,7 @@ int main(int argc, char** argv)
     const auto rival = call<CreateRenderJob>(client, {scene, view, replacement.effect, EJobCadence::REQUESTED}).job;
     CHECK(call<SetRenderJobDependencies>(client, {rival, {current}, {}}).error.type == 0);
     CHECK(call<SetRenderJobDependencies>(client, {current, {rival}, {rival}}).error.type == kJobCycle);
-    CHECK(call<StartRenderJob>(client, {session, rival, target}).error.type == kTargetInUse);
+    CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == kTargetInUse);
     const auto old_schema = call<QueryRenderJobInputLayout>(client, current).layout;
     Monitor::deny.store(true);
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == kDeviceUnsupported);
@@ -1308,7 +1384,7 @@ int main(int argc, char** argv)
     CHECK(call<UpdateJobInputs>(client, {current}).error.type == 0);
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect, moved_target}).error.type == 0);
     CHECK(!call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
-    CHECK(call<StartRenderJob>(client, {session, rival, target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == 0);
     CHECK(call<StopRenderJob>(client, rival).error.type == 0);
 
     auto asynchronous = take(ipc::IpcCore::instance().createRequester(config.channel_name));
@@ -1330,34 +1406,29 @@ int main(int argc, char** argv)
     CHECK(call<HoldSceneResource>(client, retained.resource_id).error.type == kDeviceBusy);
     CHECK(call<RemoveTarget>(client, moved_target).error.type == kDeviceBusy);
     CHECK(call<RequestRenderJob>(client, {current}).error.type == kJobBusy);
-    auto updates = take(ipc::IpcCore::instance().createRequester(config.channel_name));
-    auto queued = take(FrameData::create<std::tuple<>>(layout));
-    CHECK(queued.seal());
-    const std::array update_names{CommandName{UpdateFrameData::name}, CommandName{QueryRenderStats::name}};
-    const auto update_ids = call<QueryCommandIds>(updates, update_names).ids;
-    CHECK(update_ids.size() == update_names.size());
-    const auto update = sendBound<UpdateFrameData>(updates, update_ids[0], {current, &queued});
-    const auto barrier = sendBound<QueryRenderStats>(updates, update_ids[1], {});
-    receive<QueryRenderStats>(updates, barrier);
+    auto adopted = take(FrameData::create<std::tuple<>>(layout));
+    CHECK(adopted.seal());
+    CHECK(call<UpdateFrameData>(client, {current, &adopted}).error.type == 0);
+    adopted.release();
+    CHECK(adopted.writable());
     CHECK(call<StopRenderJob>(client, current).error.type == 0);
-    CHECK(!queued.writable());
+    CHECK(packet.sealed());
     auto rejected_packet = take(FrameData::create<std::tuple<>>(layout));
     CHECK(rejected_packet.seal());
     CHECK(call<UpdateFrameData>(client, {current, &rejected_packet}).error.type == kJobStopped);
     rejected_packet.release();
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
-    CHECK(call<StartRenderJob>(client, {session, rival, moved_target}).error.type == kJobBusy);
+    CHECK(call<StartRenderJob>(client, {session, rival, moved_target, binding}).error.type == kJobBusy);
     Monitor::hold_submit.store(false);
     Monitor::hold_submit.notify_all();
     const auto receipt = receive<RequestRenderJob>(asynchronous, run);
     CHECK(receipt.error.type == 0 && receipt.job == current);
     packet.release();
-    CHECK(receive<UpdateFrameData>(updates, update).error.type == kJobStopped);
-    queued.release();
     CHECK(receipt.frame_index == 0 && receipt.slot_index == 0);
     std::puts("STRICT FIF PASS: a frame with no ready Job did not advance the device round");
+    std::puts("FRAME DATA PASS: owner adopted an update while a native QueueSubmit was held");
     std::puts("JOB RUN PASS: Stop closed admission while a native QueueSubmit was held");
-    CHECK(call<StartRenderJob>(client, {session, rival, moved_target}).error.type == 0);
+    CHECK(call<StartRenderJob>(client, {session, rival, moved_target, binding}).error.type == 0);
     CHECK(call<StopRenderJob>(client, current).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, current).error.type == 0);
     CHECK(call<RequestRenderJob>(client, {rival}).job == rival);
@@ -1381,8 +1452,11 @@ int main(int argc, char** argv)
     peer.reset();
     CHECK(call<StopRenderJob>(client, rival).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, rival).error.type == kJobBusy);
-    const auto next = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {session, next, moved_target}).error.type == 0);
+    // Keep the new writer independent of the deliberately parked compilation of the first Effect.
+    const auto next_effect = create();
+    CHECK(!next_effect.error.type);
+    const auto next = call<CreateRenderJob>(client, {scene, view, next_effect.effect, EJobCadence::REQUESTED}).job;
+    CHECK(call<StartRenderJob>(client, {session, next, moved_target, binding}).error.type == 0);
     Monitor::hold.store(false);
     Monitor::hold.notify_all();
     CHECK(receive<RebindRenderJobEffect>(asynchronous, pending).error.type == kJobStopped);
@@ -1407,7 +1481,7 @@ int main(int argc, char** argv)
     CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);
     client.reset();
     server.reset();
-    recordOpenFeature(*execution, device);
+    recordClearGraph(*execution, device);
     CHECK(verifyIndependentDevices(*execution, device, false));
     execution.reset();
     std::puts("JOB LIFECYCLE PASS: Start, schema Rebind, native failure rollback, retained Resource, exact Run and writer hand-off");

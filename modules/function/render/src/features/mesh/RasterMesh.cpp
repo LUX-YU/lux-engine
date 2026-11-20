@@ -1,15 +1,9 @@
-#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/mesh/RasterMesh.hpp>
-#include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
 
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
-#include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/resources/material/Binding.hpp>
-#include <lux/engine/render/features/mesh/MeshVisibilityInputs.hpp>
-#include <lux/engine/render/features/mesh/RasterMeshDraws.hpp>
-#include <lux/engine/render/resource/view/CameraParameters.hpp>
+#include <lux/engine/description/GBufferLayout.hpp>
+#include <lux/engine/render/extensions/graph/GraphError.hpp>
 
 #include "BasicMeshNoUvPagedReflectedVertex.hpp"
 #include "BasicMeshNoUvPagedVertex.hpp"
@@ -107,7 +101,7 @@ namespace lux::render::detail
                         const auto location = std::ranges::find(locations, input.semantic_index);
                         if (input.semantic != "TEXCOORD" || location == locations.end())
                         {
-                            return cxx::unexpected(RenderError{kFeatureContract});
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                         }
                         mask |= std::size_t{1} << (location - locations.begin());
                     }
@@ -273,7 +267,7 @@ namespace lux::render::detail
             }
             if (shader.stages.empty())
             {
-                return cxx::unexpected(RenderError{kFeatureContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             return shader;
         }
@@ -289,7 +283,7 @@ namespace lux::render::detail
         const auto* use = program.find(purpose);
         if (!use)
         {
-            return cxx::unexpected(RenderError{kFeatureContract});
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         if (purpose == rdesc::EMaterialPurpose::GBUFFER)
         {
@@ -297,7 +291,7 @@ namespace lux::render::detail
                                        program.shading_model != rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
             if (invalid_model || use->output_semantic != rdesc::GBufferLayout::semantic)
             {
-                return cxx::unexpected(RenderError{kFeatureContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
         }
         auto shader =
@@ -322,7 +316,7 @@ namespace lux::render::detail
                                      binding.type == rdesc::EDescriptorType::SAMPLER;
                 if (!material_table && !sampled)
                 {
-                    return cxx::unexpected(RenderError{kFeatureContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 auto destination =
                     std::ranges::find(shader->interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
@@ -356,7 +350,7 @@ namespace lux::render::detail
             const auto attribute = std::ranges::find(attributes, mesh_location, &MeshAttribute::location);
             if (attribute == attributes.end())
             {
-                return cxx::unexpected(RenderError{kFeatureContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             state.vertex_attributes.push_back({input.location, 0, attribute->offset, attribute->format});
         }
@@ -369,31 +363,9 @@ namespace lux::render::detail
         return state;
     }
 
-    void describeMeshDrawInputs(FeaturePorts& ports)
+    std::vector<RasterPassTemplate::Input> meshRasterInputs()
     {
-        constexpr std::array<std::uint64_t, kMeshDrawInputPorts.size()>
-            sizes{64, 64, sizeof(MeshInstanceGpuProperty), 8, 256, 20 * kMeshWindingCount};
-        for (std::size_t i = 0; i < kMeshDrawInputPorts.size(); ++i)
-        {
-            FeaturePort port{kMeshDrawInputPorts[i], EFeaturePort::INPUT, GraphBufferDesc{sizes[i]}};
-            if (i == 0)
-            {
-                port.semantic = kMeshDrawGroups;
-            }
-            if (i == 4)
-            {
-                port.semantic = kMeshVisibleMembers;
-            }
-            ports.resources.push_back(std::move(port));
-        }
-    }
-
-    RasterWork meshRasterStage(FeatureBuildContext& context, bool camera_view)
-    {
-        RasterWork result;
-        RasterPassTemplate stage;
-        stage.purpose = "indexed-mesh";
-        stage.inputs = {
+        return {
             {"transforms", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
             {"properties", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
             {"alive", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1},
@@ -405,146 +377,5 @@ namespace lux::render::detail
             {"vertices", {}, EGraphUse::VERTEX},
             {"indices", {}, EGraphUse::INDEX}
         };
-        for (const auto name : kMeshDrawInputPorts)
-        {
-            ResourceAccess access{context.resource(name)};
-            access.usage = std::string_view(name) == "commands" ? EGraphUse::INDIRECT : EGraphUse::STORAGE_READ;
-            stage.resources.push_back(access);
-        }
-        stage.parameters.values.resize(sizeof(MeshViewParameters));
-        if (camera_view)
-        {
-            stage.parameters.source = EParameterSource::VIEW;
-            stage.parameters.instance_layout = cameraParameterLayout();
-            stage.parameters.fields = {{"view", {}, "view"}, {"projection", {}, "projection"}};
-        }
-        result.program = std::move(stage);
-        return result;
     }
-
-    RenderResult<void> bindMeshDraws(
-        FeatureBuildContext& context,
-        GraphPassId pass,
-        rdesc::EMaterialPurpose purpose,
-        GraphResourceId views,
-        GraphResourceId raster_states,
-        bool front_counter_clockwise
-    ) noexcept
-    {
-        MeshDrawConfiguration value;
-        value.pass = pass;
-        value.purpose = purpose;
-        value.front_counter_clockwise = front_counter_clockwise;
-        value.views = views;
-        value.raster_states = raster_states;
-        if (views.index != kGraphInvalidIndex)
-        {
-            value.depth = context.resource("depth").resource;
-        }
-        for (std::size_t i = 0; i < kMeshDrawInputPorts.size(); ++i)
-        {
-            value.inputs[i] = context.resource(kMeshDrawInputPorts[i]).resource;
-        }
-        auto configuration = ConfigValue::make(value);
-        if (!configuration)
-        {
-            return cxx::unexpected(configuration.error());
-        }
-        InstanceDataRecipe binding;
-        binding.configuration = std::move(*configuration);
-        binding.create = &RasterMeshDraws::create;
-        binding.passes.push_back(pass);
-        binding.inputs.assign(value.inputs.begin(), value.inputs.end());
-        if (views.index != kGraphInvalidIndex)
-        {
-            binding.inputs.push_back(views);
-            binding.inputs.push_back(raster_states);
-        }
-        else
-        {
-            binding.parameter_bytes = sizeof(CameraParameters);
-            binding.parameter_source = EParameterSource::VIEW;
-        }
-        context.graph.addInstanceData(std::move(binding));
-        return {};
-    }
-
-    template <bool Depth> RenderResult<void> describe(const void* value, std::string_view, FeaturePorts& ports) noexcept
-    {
-        const auto& config = *static_cast<const MeshFeatureConfig*>(value);
-        if (auto valid = validateEffectOutput(config.output); !valid)
-        {
-            return valid;
-        }
-        const bool supported = config.output.format == rdesc::ETextureFormat::RGBA8_UNORM ||
-                               config.output.format == rdesc::ETextureFormat::RGBA8_SRGB;
-        if (!supported)
-        {
-            return cxx::unexpected(RenderError{kFeatureContract});
-        }
-        describeMeshDrawInputs(ports);
-        GraphImageDesc color{0, 0, 1, 1, config.output.format};
-        GraphImageDesc depth{0, 0, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
-        color.extent.source = depth.extent.source = EImageExtentSource::TARGET;
-        ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
-        ports.resources.push_back({"depth", EFeaturePort::OUTPUT, depth});
-        return {};
-    }
-
-    template <bool Depth>
-    RenderResult<void>
-    build(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
-    {
-        const auto& config = *static_cast<const MeshFeatureConfig*>(value);
-        const auto purpose = Depth ? rdesc::EMaterialPurpose::SHADOW : rdesc::EMaterialPurpose::FORWARD;
-        auto depth = context.resource("depth");
-        auto color = context.resource("color");
-        const auto name = Depth ? detail::MeshDepthRaster::name : detail::MaterialMeshRaster::name;
-        auto draw = meshRasterStage(context);
-        draw.depth = RasterAttachment{{depth}};
-        if constexpr (!Depth)
-        {
-            draw.colors.push_back({{color}});
-        }
-        auto pass = context.graph.addRasterPass(featureKey(name, key, "draw"), std::move(draw));
-        if (!pass)
-        {
-            return cxx::unexpected(pass.error());
-        }
-        if (auto bound = bindMeshDraws(context, pass->pass, purpose, {}, {}, config.front_counter_clockwise);
-            !bound)
-        {
-            return bound;
-        }
-        depth = pass->written.back();
-        if constexpr (!Depth)
-        {
-            color = pass->written.front();
-        }
-        if (auto result = context.publish("depth", depth); !result)
-        {
-            return result;
-        }
-        if constexpr (Depth)
-        {
-            auto cleared = context.graph.addTransferPass(
-                featureKey(name, key, "clear"),
-                TransferWork{{ClearImage{{context.resource("color")}}}}
-            );
-            if (!cleared)
-            {
-                return cxx::unexpected(cleared.error());
-            }
-            return context.publish("color", cleared->written.front());
-        }
-        else
-        {
-            return context.publish("color", color);
-        }
-    }
-
-    template RenderResult<void> describe<false>(const void*, std::string_view, FeaturePorts&) noexcept;
-    template RenderResult<void> describe<true>(const void*, std::string_view, FeaturePorts&) noexcept;
-    template RenderResult<void> build<false>(const void*, std::string_view, FeatureBuildContext&) noexcept;
-    template RenderResult<void> build<true>(const void*, std::string_view, FeatureBuildContext&) noexcept;
 } // namespace lux::render::detail

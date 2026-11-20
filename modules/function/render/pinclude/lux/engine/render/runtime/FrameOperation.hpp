@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
@@ -24,6 +25,8 @@ namespace lux::render::detail
             Preparation preparation;
             std::vector<std::vector<PreparedStorage>> replicas;
             SubmissionFrontiers blocked_completion;
+            SubmissionFrontiers uniform_completed;
+            std::vector<SelectedUniformBlock> uniforms;
         };
 
         FrameOperation(
@@ -63,6 +66,7 @@ namespace lux::render::detail
     private:
         void finish() noexcept;
         void settlePreparation(RenderResult<void>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareUniforms(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameUse>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareDrawLists(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
@@ -82,8 +86,11 @@ namespace lux::render::detail
         bool worker_pending_ = false;
         bool recording_pending_ = false;
         bool copies_flushed_ = false;
+        bool uniforms_ready_ = false;
         bool resources_ready_ = false;
+        bool producer_selections_ready_ = false;
         bool draw_data_ready_ = false;
         bool waiting_for_gpu_ = false;
+        bool native_bindings_pinned_ = false;
     };
 } // namespace lux::render::detail

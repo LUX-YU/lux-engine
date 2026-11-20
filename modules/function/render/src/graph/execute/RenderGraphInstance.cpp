@@ -4,6 +4,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -58,8 +59,10 @@ namespace lux::render::detail
                 plan.resources(),
                 [](const auto& resource)
                 {
+                    const bool runtime_bound = resource.origin == EGraphOrigin::IMPORTED ||
+                        resource.origin == EGraphOrigin::FRAME_BUFFER;
                     return resource.memory_used && std::holds_alternative<GraphBufferDesc>(resource.description) &&
-                           resource.origin == EGraphOrigin::IMPORTED;
+                        runtime_bound;
                 }
             );
             frame.images.reserve(std::ranges::count_if(
@@ -78,7 +81,10 @@ namespace lux::render::detail
 
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
+        while (!producers_.empty()) producers_.pop_back();
         while (!data_.empty()) data_.pop_back();
+        for (std::uint32_t pass = 0; pass < dynamic_raster_programs_.size(); ++pass)
+            releaseDynamicRasterPrograms(pass, false);
         // Physical cleanup is owned by the Session; it never calls back into this instance.
         session_->deferRelease(
             uses_,
@@ -98,6 +104,16 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RenderGraphInstance::initialize(const GraphAssemblyPlan& assembly) noexcept
+    {
+        return initialize(&assembly);
+    }
+
+    RenderResult<void> RenderGraphInstance::initialize() noexcept
+    {
+        return initialize(nullptr);
+    }
+
+    RenderResult<void> RenderGraphInstance::initialize(const GraphAssemblyPlan* assembly) noexcept
     {
         auto& session = *session_;
         const auto& plan = *plan_;
@@ -190,6 +206,7 @@ namespace lux::render::detail
             auto& binding = frame.bindings[plan_->output()];
             if (binding.image != output.image)
             {
+                retireRasterViews(frame, nullptr, binding.image);
                 binding.image = output.image;
                 // A presentation image has one writer and cannot be sampled by another instance.
                 // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
@@ -279,6 +296,10 @@ namespace lux::render::detail
         {
             return cxx::unexpected(parameters.error());
         }
+        if (auto sections = prepareRasterSections(slot); !sections)
+            return cxx::unexpected(sections.error());
+        if (auto streams = materializeRasterStreams(slot); !streams)
+            return cxx::unexpected(streams.error());
         prepareStreamedDraws(slot);
         const bool has_dynamic_record_input =
             !histories_.empty() || !frame.draw_lists.empty() || !frame.raster_draws.empty();

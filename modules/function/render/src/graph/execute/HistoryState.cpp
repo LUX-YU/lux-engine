@@ -1,3 +1,4 @@
+#include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <algorithm>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
@@ -437,6 +438,11 @@ namespace lux::render::detail
     void RenderGraphInstance::acceptedBatch(std::uint32_t batch, SubmissionPoint point) noexcept
     {
         uses_.accept(point);
+        for (std::size_t i = 0; i < uniform_blocks_.size(); ++i)
+        {
+            if (std::ranges::binary_search(uniform_blocks_[i].batches, batch))
+                uniform_accepted_[i]->accept(point);
+        }
         const auto mark = [&](HistoryState::HistorySlot& slot)
         {
             slot.last_use.accept(point);

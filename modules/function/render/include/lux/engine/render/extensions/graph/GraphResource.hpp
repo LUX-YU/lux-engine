@@ -81,7 +81,8 @@ namespace lux::render
         TRANSIENT,
         IMPORTED,
         HISTORY_PREVIOUS,
-        HISTORY_CURRENT
+        HISTORY_CURRENT,
+        FRAME_BUFFER // Per-FIF buffer sized by an Effect preparation and defined by GPU work.
     };
     enum class EGraphPassKind : std::uint8_t
     {
@@ -111,7 +112,8 @@ namespace lux::render
         VERTEX,
         INDEX,
         INDIRECT,
-        DEPTH_ATTACHMENT
+        DEPTH_ATTACHMENT,
+        UNIFORM_READ
     };
 
     struct GraphResource final

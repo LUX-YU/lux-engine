@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphLiveness.hpp>
 
 #include <lux/engine/render/graph/Range.hpp>
 #include <queue>
@@ -153,6 +153,12 @@ namespace lux::render
     } // namespace
 
     RenderResult<RenderGraphAnalysis> analyzeRenderGraph(const RenderGraph& definition) noexcept
+    {
+        return detail::analyzeGraphWithPreparation(definition, nullptr);
+    }
+
+    RenderResult<RenderGraphAnalysis>
+    detail::analyzeGraphWithPreparation(const RenderGraph& definition, PreparationLiveness* preparation) noexcept
     {
         const auto resources = definition.resources();
         const auto passes = definition.passes();
@@ -345,9 +351,28 @@ namespace lux::render
                 retain({p});
             }
         }
+        std::vector<std::uint32_t> pending_producers;
+        const auto retain_producer = [&](std::uint32_t index) noexcept
+        {
+            auto& producer = preparation->producers[index];
+            if (producer.live) return;
+            producer.live = true;
+            pending_producers.push_back(index);
+        };
+        std::size_t producer_cursor = 0;
         for (std::size_t cursor = 0; cursor < work.size(); ++cursor)
         {
             const auto pass = work[cursor];
+            if (preparation)
+            {
+                for (auto owner : preparation->pass_producers[pass.index]) retain_producer(owner);
+                while (producer_cursor < pending_producers.size())
+                {
+                    const auto& producer = preparation->producers[pending_producers[producer_cursor++]];
+                    for (auto input : producer.inputs) retain_producer(input);
+                    for (auto member : producer.passes) retain(member);
+                }
+            }
             for (auto before : predecessors[pass.index])
             {
                 retain({before});

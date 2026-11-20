@@ -12,7 +12,7 @@ namespace lux::render
     {
         bool compatibleUse(const VGraphResourceDesc& description, EGraphUse usage) noexcept
         {
-            if (usage > EGraphUse::DEPTH_ATTACHMENT)
+            if (usage > EGraphUse::UNIFORM_READ)
             {
                 return false;
             }
@@ -33,6 +33,7 @@ namespace lux::render
             case EGraphUse::VERTEX:
             case EGraphUse::INDEX:
             case EGraphUse::INDIRECT:
+            case EGraphUse::UNIFORM_READ:
                 return !image;
             default:
                 return true;
@@ -106,12 +107,15 @@ namespace lux::render
                 image->width = image->height = 0;
             }
 
-            const bool is_invalid_origin = resource.origin > EGraphOrigin::HISTORY_CURRENT ||
+            const bool is_invalid_origin = resource.origin > EGraphOrigin::FRAME_BUFFER ||
                                            !compatibleUse(resource.description, resource.initial_use);
             const bool has_illegal_initial = !resource.initial_ranges.empty() &&
                                              resource.origin != EGraphOrigin::IMPORTED &&
                                              resource.origin != EGraphOrigin::HISTORY_PREVIOUS;
-            if (resource.key.empty() || is_invalid_origin || has_illegal_initial)
+            const bool is_invalid_frame_buffer = resource.origin == EGraphOrigin::FRAME_BUFFER &&
+                (!std::holds_alternative<GraphBufferDesc>(resource.description) ||
+                    resource.initial_use != EGraphUse::UNSPECIFIED);
+            if (resource.key.empty() || is_invalid_origin || has_illegal_initial || is_invalid_frame_buffer)
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor));
             }
@@ -546,10 +550,38 @@ namespace lux::render
                     else
                     {
                         auto& dynamic = std::get<RasterPassTemplate>(value.program);
-                        if (dynamic.purpose.empty())
+                        const bool no_bias_source = !dynamic.usesStreamProducer() || !value.depth || value.state_input;
+                        const bool invalid_bias = dynamic.section_depth_bias && no_bias_source;
+                        const bool mixed_program_sources = dynamic.runtime_stream_programs && !dynamic.stream_programs.empty();
+                        const bool external_owners = dynamic.shared_textures || dynamic.mesh_geometry ||
+                            dynamic.shared_materials;
+                        const bool invalid_owners = external_owners && !dynamic.usesStreamProducer();
+                        if (dynamic.purpose.empty() || invalid_bias || mixed_program_sources || invalid_owners)
                         {
                             failure = graphError(kGraphInvalidDescriptor);
                             return;
+                        }
+                        for (const auto& program : dynamic.stream_programs)
+                        {
+                            const bool unknown = program.program >= candidate_.programs_.size();
+                            const bool duplicate =
+                                std::ranges::count(dynamic.stream_programs, program.program,
+                                    &RasterPassTemplate::StreamProgram::program) != 1;
+                            if (unknown || duplicate)
+                            {
+                                failure = graphError(kGraphInvalidDescriptor);
+                                return;
+                            }
+                        }
+                        for (auto sampler : dynamic.stream_samplers)
+                        {
+                            const bool unknown = sampler >= candidate_.samplers_.size();
+                            const bool duplicate = std::ranges::count(dynamic.stream_samplers, sampler) != 1;
+                            if (unknown || duplicate || !dynamic.usesStreamProducer())
+                            {
+                                failure = graphError(kGraphInvalidDescriptor);
+                                return;
+                            }
                         }
                         for (const auto& input : dynamic.inputs)
                         {
@@ -562,9 +594,18 @@ namespace lux::render
                             const bool is_invalid_stage =
                                 is_shader_input ? input.stages == 0 || (input.stages & ~3u) != 0 : input.stages != 0;
                             const bool is_invalid_kind = !is_shader_input && input.kind.has_value();
-                            const bool is_invalid_slot =
-                                input.name.empty() || !is_read || is_invalid_stage || is_invalid_kind ||
+                            const bool is_invalid_comparison = input.comparison_sampler &&
+                                input.kind != rdesc::EDescriptorType::SAMPLER;
+                            const bool is_image_or_sampler = input.kind == rdesc::EDescriptorType::SAMPLED_IMAGE ||
+                                input.kind == rdesc::EDescriptorType::SAMPLER;
+                            const auto descriptor_usage =
+                                is_image_or_sampler ? EGraphUse::SAMPLED : EGraphUse::STORAGE_READ;
+                            const bool is_wrong_stream_use = dynamic.usesStreamProducer() && input.kind &&
+                                input.usage != descriptor_usage;
+                            const bool duplicate =
                                 std::ranges::count(dynamic.inputs, input.name, &RasterPassTemplate::Input::name) != 1;
+                            const bool is_invalid_slot = input.name.empty() || !is_read || is_invalid_stage ||
+                                is_invalid_kind || is_invalid_comparison || is_wrong_stream_use || duplicate;
                             if (is_invalid_slot)
                             {
                                 failure = graphError(kGraphInvalidDescriptor);
@@ -808,10 +849,18 @@ namespace lux::render
                 }
                 else
                 {
+                    std::vector<GraphResourceId> storage_fills;
                     for (const auto& operation : value.operations)
                     {
                         const auto* fill = std::get_if<FillBuffer>(&operation);
-                        if (fill && fill->value)
+                        if (fill && fill->value) storage_fills.push_back(fill->destination.version.resource);
+                    }
+                    // All fills of one buffer use the same native write scope within the pass.
+                    for (const auto& operation : value.operations)
+                    {
+                        const auto* fill = std::get_if<FillBuffer>(&operation);
+                        if (fill && std::ranges::find(storage_fills, fill->destination.version.resource) !=
+                                        storage_fills.end())
                         {
                             pass.interface.typed_buffer_writes.push_back(fill->destination);
                         }
@@ -916,8 +965,11 @@ namespace lux::render
                 (!image || pass.kind != EGraphPassKind::GRAPHICS ||
                  !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT) ||
                  (use.access != EGraphAccess::WRITE && use.access != EGraphAccess::ATTACHMENT_LOAD));
+            const bool invalid_uniform = use.usage == EGraphUse::UNIFORM_READ &&
+                (image || pass.kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
             const bool is_invalid_usage =
-                use.usage > EGraphUse::DEPTH_ATTACHMENT || invalid_storage || invalid_geometry || invalid_depth ||
+                use.usage > EGraphUse::UNIFORM_READ || invalid_storage || invalid_geometry || invalid_depth ||
+                invalid_uniform ||
                 (use.usage == EGraphUse::STORAGE_READ && use.access != EGraphAccess::READ) || is_invalid_color ||
                 is_invalid_source || is_invalid_destination || is_invalid_sample;
             if (is_invalid_usage)
@@ -1000,7 +1052,7 @@ namespace lux::render
     {
         const auto id = output.version.resource;
         if (output.final_use &&
-            (*output.final_use == EGraphUse::UNSPECIFIED || *output.final_use > EGraphUse::DEPTH_ATTACHMENT))
+            (*output.final_use == EGraphUse::UNSPECIFIED || *output.final_use > EGraphUse::UNIFORM_READ))
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
         }

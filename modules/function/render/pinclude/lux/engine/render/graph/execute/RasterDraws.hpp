@@ -23,6 +23,7 @@ namespace lux::render::detail
             std::uint32_t stride = sizeof(nri::DrawIndexedDesc);
             nri::Buffer* count_buffer = nullptr;
             std::uint64_t count_offset = 0;
+            bool mergeable = false;
         };
 
         using VDraw = std::variant<nri::DrawDesc, nri::DrawIndexedDesc, Indirect>;
@@ -68,6 +69,7 @@ namespace lux::render::detail
             nri::VertexBufferDesc buffer;
         };
 
+        bool has_explicit_sections = false;
         std::vector<Section> sections;
         std::vector<RasterDrawPacket> packets;
         std::vector<nri::AttachmentDesc> colors;
@@ -79,4 +81,6 @@ namespace lux::render::detail
         std::vector<Read> reads;
         std::vector<Read> dependency_reads;
     };
+
+    void mergeIndexedIndirectDraws(RasterDrawList& draws, std::uint32_t limit) noexcept;
 } // namespace lux::render::detail

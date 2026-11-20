@@ -1,28 +1,42 @@
 #include "MaterialFixture.hpp"
 #include "ClusterScan.hpp"
+#include "ClusterCompare.hpp"
 #include "SceneComparison.hpp"
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
+#include <lux/engine/render/capabilities/ClusterGrid.hpp>
 #include <lux/engine/render/resources/lighting/Commands.hpp>
 #include <lux/engine/render/resources/material/Commands.hpp>
 #include <lux/engine/render/resources/mesh/Commands.hpp>
 #include <lux/engine/render/resources/instance/Commands.hpp>
 #include <lux/engine/render/resources/lighting/Binding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/features/lighting/ClusteredLightingFeature.hpp>
-#include <lux/engine/render/features/lighting/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/mesh/GBufferFeature.hpp>
-#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/effect/ClusterLists.hpp>
+#include <lux/engine/render/effect/GBuffer.hpp>
+#include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/effect/MeshVisibility.hpp>
+#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/resources/instance/Binding.hpp>
+#include <lux/engine/render/resources/transform/Binding.hpp>
+#include <lux/engine/render/resources/view/Resource.hpp>
+#include <numeric>
 
-struct ClusterCaptureConfig
-{
-    ClusterGrid grid;
-    CapturedPixels* pixels = nullptr;
-    bool operator==(const ClusterCaptureConfig&) const noexcept = default;
-};
+namespace graph = lux::graph;
 
-static constexpr std::array<std::string_view, 6> outputs{"grid", "bounds", "counts", "offsets", "indices", "status"};
+static constexpr auto outputs = Lighting::cluster_members;
+static constexpr std::uint32_t difference_bytes = 64 * 64 * sizeof(std::uint32_t);
+static constexpr std::uint32_t scan_offset_bytes = 130 * sizeof(std::uint32_t);
+static constexpr std::uint32_t scan_status_bytes = sizeof(ClusterStatusGpu);
+static constexpr std::array<std::string_view, 2> readback_bindings{"first", "second"};
+static constexpr auto first_bytes = effectPortSemantic("first");
+static constexpr auto second_bytes = effectPortSemantic("second");
+static constexpr auto reference_hdr = effectPortSemantic("reference");
+static constexpr auto candidate_hdr = effectPortSemantic("candidate");
+static constexpr std::string_view cluster_inspection = "test.cluster.inspect";
+static constexpr std::string_view scan_inspection = "test.cluster.scan";
 
 static auto sizes(const ClusterGrid& grid)
 {
@@ -30,124 +44,193 @@ static auto sizes(const ClusterGrid& grid)
     return std::array<std::uint32_t, 6>{128, n * 32, n * 4, (n + 1) * 4, grid.index_capacity * 4, 16};
 }
 
-struct ClusterCapture
-{
-    using Config = ClusterCaptureConfig;
-    static constexpr FeatureName name{"test.ClusterCapture"};
-    using Storages = std::tuple<CaptureBuffer>;
-    using Commands = std::tuple<>;
-
-    using Ports = ClusterCapture;
-
-    static RenderResult<void> describe(const void* data, std::string_view key, FeaturePorts& ports) noexcept
-    {
-        const auto& config = *static_cast<const ClusterCaptureConfig*>(data);
-        std::uint32_t bytes = 0;
-        const auto lengths = sizes(config.grid);
-        for (std::size_t i = 0; i < outputs.size(); ++i)
-        {
-            ports.resources.push_back({std::string(outputs[i]), EFeaturePort::INPUT, GraphBufferDesc{lengths[i]}});
-            bytes += lengths[i];
-        }
-        CaptureConfig capture{config.pixels};
-        capture.bytes = bytes;
-        ports.resource_bindings.view.push_back(
-            {"pixels",
-             EFeaturePort::OUTPUT,
-             GraphBufferDesc{bytes},
-             EGraphOrigin::IMPORTED,
-             {},
-             ResourceRequirement{ResourceName(CaptureDescriptor::descriptor.type.name())}}
-        );
-        return {};
-    }
-
-    static RenderResult<void>
-    build(
-        const void* data,
-        std::string_view key,
-        FeatureBuildContext& context
-    ) noexcept
-    {
-        const auto& config = *static_cast<const ClusterCaptureConfig*>(data);
-        const auto lengths = sizes(config.grid);
-        CaptureConfig capture{config.pixels};
-        for (auto bytes : lengths) capture.bytes += bytes;
-        context.require(StorageArgument::make(context.resource("pixels").resource, capture));
-        TransferWork work;
-        std::uint64_t offset = 0;
-        for (std::size_t i = 0; i < outputs.size(); ++i)
-        {
-            work.operations.push_back(CopyBuffer{
-                {context.resource(outputs[i])},
-                {context.resource("pixels"), GraphBufferRange{offset, lengths[i]}, EGraphAccess::WRITE}
-            });
-            offset += lengths[i];
-        }
-        auto copied =
-            context.graph.addTransferPass(featureKey(FeatureName{"test.ClusterCapture"}, key, "copy"), std::move(work));
-        if (!copied)
-        {
-            return lux::cxx::unexpected(copied.error());
-        }
-        return context.publish("pixels", copied->written[0]);
-    }
-};
-
-struct ScanProbe
+struct ClusterReadbackDescriptor final
 {
     using Config = void;
-    static constexpr FeatureName name{"test.Scan"};
-    using Storages = std::tuple<>;
-    using Commands = std::tuple<>;
-
-    using Ports = ScanProbe;
-
-    static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
-    {
-        for (auto [name, size] : {std::pair{"counts", 129u * 4}, {"offsets", 130u * 4}, {"status", 16u}})
-        {
-            ports.resources.push_back({name, EFeaturePort::OUTPUT, GraphBufferDesc{size}});
-        }
-        return {};
-    }
-
-    static RenderResult<void>
-    build(
-        const void*,
-        std::string_view key,
-        FeatureBuildContext& context
-    ) noexcept
-    {
-        auto initialized = take(context.graph.addTransferPass(
-            featureKey(FeatureName{"test.Scan"}, key, "initialize"),
-            TransferWork{
-                {FillBuffer{{context.resource("counts")}, UINT32_MAX}, FillBuffer{{context.resource("status")}, 0}}
-            }
-        ));
-        ComputeWork work;
-        work.interface.program = take(context.graph.addProgram(GraphProgram{kClusterScan}));
-        work.interface.resources = {
-            {"counts", {initialized.written[0]}},
-            {"offsets", {context.resource("offsets"), {}, EGraphAccess::WRITE}},
-            {"status", {initialized.written[1], {}, EGraphAccess::READ_WRITE}}
-        };
-        const std::array<std::uint32_t, 2> constants{129, 32};
-        const auto bytes = std::as_bytes(std::span(constants));
-        work.interface.parameters.values.assign(bytes.begin(), bytes.end());
-        work.dispatch = DispatchArguments{{1, 1, 1}};
-        auto scanned =
-            take(context.graph.addComputePass(featureKey(FeatureName{"test.Scan"}, key, "scan"), std::move(work)));
-        CHECK(context.publish("offsets", scanned.written[0]));
-        return context.publish("status", scanned.written[1]);
-    }
+    using Ops = void;
+    static inline const ResourceDefinition descriptor{
+        ResourceNameView{"test.cluster.readback"}, 0, 0, {}, "View-owned Clustered Lighting readback.",
+        EResourceDomain::VIEW
+    };
 };
 
-
-
-static CameraInput parameters(bool perspective)
+struct ClusterReadback final
 {
-    CameraInput result;
+    using Descriptor = ClusterReadbackDescriptor;
+    using Configuration = std::array<CaptureConfig, 2>;
+
+    // The fixture sets this before synchronous Resource creation. Each owner copies its own configuration.
+    static inline std::atomic<const Configuration*> creation_input{};
+
+    explicit ClusterReadback(ResourceCreateContext& context, const Configuration& config) noexcept
+        : storage(context), configuration(config)
+    {
+    }
+
+    static RenderResult<std::unique_ptr<ClusterReadback>>
+    create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+    {
+        const auto* config = creation_input.load();
+        if (!config) return lux::cxx::unexpected(RenderError{kInvalidConfig});
+        return std::make_unique<ClusterReadback>(context, *config);
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
+        static const StorageBindingOps binding{
+            .describeGraphImport = [](const void* object, std::uint32_t projection) noexcept
+                -> RenderResult<StorageGraphImport>
+            {
+                const auto& readback = *static_cast<const ClusterReadback*>(object);
+                if (projection >= readback.configuration.size())
+                    return lux::cxx::unexpected(RenderError{kStorageContract});
+                return StorageGraphImport{
+                    GraphBufferDesc{readback.configuration[projection].bytes}, {}, EGraphUse::TRANSFER_DESTINATION
+                };
+            },
+            .resolveGraphImport = [](
+                void* object, std::uint32_t projection, const VGraphResourceDesc& description,
+                StorageSubscription& subscription, std::span<ResourceInput> output
+            ) noexcept
+            {
+                auto& readback = *static_cast<ClusterReadback*>(object);
+                return CaptureBuffer::resolve(
+                    &readback.storage, description, &readback.configuration[projection], subscription, output
+                );
+            }
+        };
+        return makeResourceRegistration<Descriptor, ClusterReadback, &create>(nullptr, &binding);
+    }
+
+    CaptureBuffer storage;
+    Configuration configuration;
+};
+
+static RenderResult<void> copyReadback(
+    EffectBuildContext& context, std::uint32_t projection, std::span<const ResourceVersion> sources
+) noexcept
+{
+    std::uint64_t bytes = 0;
+    auto& builder = context.builder();
+    TransferWork work;
+    for (const auto source : sources)
+    {
+        const auto* description = builder.resourceDescription(source.resource);
+        const auto* buffer = description ? std::get_if<GraphBufferDesc>(description) : nullptr;
+        if (!buffer) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        work.operations.push_back(CopyBuffer{{source}, {{}, GraphBufferRange{bytes, buffer->size}}});
+        bytes += buffer->size;
+    }
+    const auto bound = context.importResource(
+        readback_bindings[projection], {ResourceName{ClusterReadbackDescriptor::descriptor.type.name()}},
+        {"", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
+    );
+    if (!bound) return lux::cxx::unexpected(bound.error());
+    for (auto& operation : work.operations) std::get<CopyBuffer>(operation).destination.version = *bound;
+    const auto copied = builder.addTransferPass(std::string{readback_bindings[projection]}, std::move(work));
+    if (!copied) return lux::cxx::unexpected(copied.error());
+    const auto name = projection == 0 ? first_bytes : second_bytes;
+    return context.publish(name, {{name, copied->written.front()}});
+}
+
+static CapabilityDefinition inspectionDefinition(std::string_view name, bool scene)
+{
+    CapabilityDefinition definition;
+    definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
+    definition.ports = {
+        {first_bytes, "first", {"test.cluster.readback-bytes", 1}, graph::EPinDirection::OUTPUT},
+        {second_bytes, "second", {"test.cluster.readback-bytes", 1}, graph::EPinDirection::OUTPUT}
+    };
+    if (scene)
+    {
+        const EffectValueType hdr{std::string{Lighting::hdr_type}, 1};
+        definition.ports.push_back({reference_hdr, "reference", hdr, graph::EPinDirection::INPUT, 1, true});
+        definition.ports.push_back({candidate_hdr, "candidate", hdr, graph::EPinDirection::INPUT, 1, true});
+        definition.ports.push_back({
+            Lighting::cluster_lists, "cluster_lists", {std::string{Lighting::cluster_lists_type}, 1},
+            graph::EPinDirection::INPUT, 1, true
+        });
+    }
+    return definition;
+}
+
+static RenderResult<void> compareClustered(EffectBuildContext& context, std::string_view) noexcept
+{
+    const auto reference = context.inputs(reference_hdr);
+    const auto candidate = context.inputs(candidate_hdr);
+    const auto lists = context.inputs(Lighting::cluster_lists);
+    CHECK(reference.size() == 1 && reference.front().size() == 1 && reference.front().front().member == Lighting::hdr);
+    CHECK(candidate.size() == 1 && candidate.front().size() == 1 && candidate.front().front().member == Lighting::hdr);
+    CHECK(lists.size() == 1 && lists.front().size() == outputs.size());
+    auto& builder = context.builder();
+    const auto difference = take(builder.declareResource({"HDR differences", GraphBufferDesc{difference_bytes}}));
+    ComputeWork work;
+    work.interface.program = take(builder.addProgram(GraphProgram{kClusterCompare.load(context.shaderTarget())}));
+    work.interface.resources = {
+        {"reference_image", {reference.front().front().version}},
+        {"candidate_image", {candidate.front().front().version}},
+        {"differences", {{difference, 0}, {}, EGraphAccess::WRITE}}
+    };
+    work.dispatch = DispatchArguments{{8, 8, 1}};
+    const auto compared = take(builder.addComputePass("compare HDR", std::move(work)));
+    if (auto copied = copyReadback(context, 0, compared.written); !copied) return copied;
+
+    std::array<ResourceVersion, outputs.size()> ordered;
+    for (std::size_t i = 0; i < ordered.size(); ++i)
+    {
+        const auto semantic = effectPortSemantic(outputs[i]);
+        const auto member = std::ranges::find(lists.front(), semantic, &EffectResourceValue::member);
+        CHECK(member != lists.front().end());
+        ordered[i] = member->version;
+    }
+    return copyReadback(context, 1, ordered);
+}
+
+static RenderResult<void> testScanOverflow(EffectBuildContext& context, std::string_view) noexcept
+{
+    auto& builder = context.builder();
+    const auto counts = take(builder.declareResource({"counts", GraphBufferDesc{129 * sizeof(std::uint32_t)}}));
+    const auto offsets = take(builder.declareResource({"offsets", GraphBufferDesc{scan_offset_bytes}}));
+    const auto status = take(builder.declareResource({"status", GraphBufferDesc{scan_status_bytes}}));
+    const auto initialized = take(builder.addTransferPass("initialize scan inputs", TransferWork{{
+        FillBuffer{{{counts, 0}}, UINT32_MAX}, FillBuffer{{{status, 0}}, 0}
+    }}));
+    ComputeWork work;
+    work.interface.program = take(builder.addProgram(GraphProgram{kClusterScan.load(context.shaderTarget())}));
+    work.interface.resources = {
+        {"counts", {initialized.written[0]}},
+        {"offsets", {{offsets, 0}, {}, EGraphAccess::WRITE}},
+        {"status", {initialized.written[1], {}, EGraphAccess::READ_WRITE}}
+    };
+    const std::array<std::uint32_t, 2> constants{129, 32};
+    const auto bytes = std::as_bytes(std::span{constants});
+    work.interface.parameters.values.assign(bytes.begin(), bytes.end());
+    work.dispatch = DispatchArguments{{1, 1, 1}};
+    const auto scanned = take(builder.addComputePass("scan", std::move(work)));
+    const auto written = std::span{scanned.written};
+    if (auto copied = copyReadback(context, 0, written.first(1)); !copied) return copied;
+    return copyReadback(context, 1, written.subspan(1, 1));
+}
+
+static void
+registerInspection(RenderServer& server, std::string_view name, bool scene, EffectImplementation::Build build)
+{
+    CHECK(server.registerEffectCapability(inspectionDefinition(name, scene)));
+    EffectImplementation implementation;
+    implementation.identity = {std::string{name}, 1};
+    implementation.capability = graph::nodeTypeId(name);
+    implementation.supported_outputs = {first_bytes, second_bytes};
+    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
+    {
+        return {};
+    };
+    implementation.build = build;
+    CHECK(server.registerEffectImplementation(std::move(implementation)));
+}
+
+static ViewGpuParameters parameters(bool perspective)
+{
+    ViewGpuParameters result;
     result.view[10] = -1;
     result.view[14] = 2;
     const float near_z = .1F, far_z = 8, q = far_z / (far_z - near_z), r = near_z * q;
@@ -162,9 +245,8 @@ static CameraInput parameters(bool perspective)
         result.projection[14] = -near_z / (far_z - near_z);
         result.inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, near_z - far_z, 0, 0, 0, 2 - near_z, 1};
     }
-    result.position = {0, 0, 2};
-    result.near_distance = near_z;
-    result.far_distance = far_z;
+    result.position_near = {0, 0, 2, near_z};
+    result.direction_far = {0, 0, -1, far_z};
     result.background = {0, 0, 0, 1};
     return result;
 }
@@ -286,84 +368,55 @@ static void verifyLists(
     CHECK(observed);
 }
 
-using ClusterProbeConfiguration = std::tuple<
-    GBufferFeatureConfig, DeferredLightingFeatureConfig, ClusteredLightingFeatureConfig,
-    ClusterCaptureConfig, CaptureConfig
->;
-
-static RenderResult<EffectDefinition> lowerClusterProbe(
-    const EffectOutputDesc& output, const ClusterProbeConfiguration& configuration, std::span<const FeatureId> features
-) noexcept
+static CreateEffectRequest inspectionEffect(const ClusterGrid* grid = nullptr)
 {
-    const auto& [surface, reference, clustered, list_capture, capture_diff] =
-        configuration;
-    const auto& grid = clustered.grid;
-    auto optimized = reference;
-    optimized.clusters = ClusterLightListShape{static_cast<std::uint32_t>(grid.count()), grid.index_capacity};
-    optimized.external_lights = true;
-    const auto gbuffer = features[0], lighting = features[1], cluster = features[2];
-    const auto compare = features[3], capture = features[4], cluster_capture = features[5];
-    const auto visibility = features[6];
-    EffectDefinition request;
-    request.features.push_back({gbuffer, "surface", take(ConfigValue::make(surface))});
-    request.features.push_back({lighting, "reference", take(ConfigValue::make(reference))});
-    request.features.push_back({cluster, "cluster", take(ConfigValue::make(clustered))});
-    request.features.push_back({lighting, "optimized", take(ConfigValue::make(optimized))});
-    request.features.push_back({compare, "compare", {}});
-    request.features.push_back({capture, "differences", take(ConfigValue::make(capture_diff))});
-    request.features.push_back(
-        {cluster_capture, "lists", take(ConfigValue::make(list_capture))}
-    );
-    auto& connections = request.connections;
-    for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
+    const bool scene = grid != nullptr;
+    const auto name = scene ? cluster_inspection : scan_inspection;
+    CreateEffectRequest request;
+    request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit edit{*request.graph};
+    const auto inspection = take(edit.addNode(inspectionDefinition(name, scene), {std::string{name}, 1}));
+    if (grid)
     {
-        connections.push_back({{0, name}, {1, name}});
-        connections.push_back({{0, name}, {3, name}});
+        const auto surface = take(edit.addNode(
+            GBuffer::definition(), {std::string{GBuffer::indexed_clockwise}, GBuffer::version}
+        ));
+        const auto reference = take(edit.addNode(
+            Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}
+        ));
+        const auto args = std::to_string(grid->cells[0]) + "," + std::to_string(grid->cells[1]) + "," +
+            std::to_string(grid->cells[2]) + "," + std::to_string(grid->index_capacity) +
+            (grid->depth == EClusterDepth::LINEAR ? ",linear" : ",logarithmic");
+        const auto clustered = take(edit.addNode(
+            Lighting::definition(), {std::string{Lighting::clustered}, Lighting::version}, args
+        ));
+        const auto gbuffer = edit.pinId(surface, GBuffer::surface);
+        CHECK(edit.connect(gbuffer, edit.pinId(reference, Lighting::surface)));
+        CHECK(edit.connect(gbuffer, edit.pinId(clustered, Lighting::surface)));
+        CHECK(edit.connect(edit.pinId(reference, Lighting::hdr), edit.pinId(inspection, reference_hdr)));
+        CHECK(edit.connect(edit.pinId(clustered, Lighting::hdr), edit.pinId(inspection, candidate_hdr)));
+        CHECK(edit.connect(
+            edit.pinId(clustered, Lighting::cluster_lists), edit.pinId(inspection, Lighting::cluster_lists)
+        ));
     }
-    for (auto name : {"directional_lights", "point_lights", "spot_lights", "light_counts"})
-    {
-        connections.push_back({{2, name}, {3, name}});
-    }
-    for (auto name : {"grid", "offsets", "indices", "status"})
-    {
-        connections.push_back({{2, name}, {3, "cluster_" + std::string(name)}});
-    }
-    for (auto name : outputs)
-    {
-        connections.push_back({{2, std::string(name)}, {6, std::string(name)}});
-    }
-    connections.push_back({{1, "hdr_color"}, {4, "reference"}});
-    connections.push_back({{3, "hdr_color"}, {4, "candidate"}});
-    connections.push_back({{4, "differences"}, {5, "color"}});
-    request.outputs = {{{5, "pixels"}, {}}, {{6, "pixels"}, {}}};
-    MeshVisibilityFeatureConfig main_visibility;
-    main_visibility.camera_view = true;
-    const auto visibility_index = static_cast<std::uint32_t>(request.features.size());
-    request.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
-    );
-    for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
-    {
-        connections.push_back({{visibility_index, port}, {0, port}});
-    }
+    CHECK(edit.setOutput("first", edit.pinId(inspection, first_bytes)));
+    CHECK(edit.setOutput("second", edit.pinId(inspection, second_bytes)));
+    CHECK(edit.commit());
     return request;
 }
 
-using ScanProbeConfiguration = std::array<CaptureConfig, 2>;
-
-static RenderResult<EffectDefinition> lowerScanProbe(
-    const EffectOutputDesc& output, const ScanProbeConfiguration& configuration, std::span<const FeatureId> features
-) noexcept
+static void bindReadback(
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session, ViewRequest view,
+    const ClusterReadback::Configuration& config, JobBinding& binding
+)
 {
-    const auto& [offset_config, status_config] =
-        configuration;
-    const auto scan_probe = features[0], capture = features[1];
-    EffectDefinition scan_request;
-    scan_request.features.push_back({scan_probe, "scan", {}});
-    scan_request.features.push_back({capture, "offsets", take(ConfigValue::make(offset_config))});
-    scan_request.features.push_back({capture, "status", take(ConfigValue::make(status_config))});
-    scan_request.connections = {{{0, "offsets"}, {1, "color"}}, {{0, "status"}, {2, "color"}}};
-    scan_request.outputs = {{{1, "pixels"}, {}}, {{2, "pixels"}, {}}};
-    return scan_request;
+    ClusterReadback::creation_input.store(&config);
+    const auto readback = call<GetOrCreateResource>(client, commands, {
+        session, view, ClusterReadbackDescriptor::descriptor.type
+    }).resource_id;
+    ClusterReadback::creation_input.store(nullptr);
+    for (std::uint32_t projection = 0; projection < readback_bindings.size(); ++projection)
+        binding.resources.push_back({std::string{readback_bindings[projection]}, readback, projection});
 }
 
 int main(int argc, char** argv)
@@ -394,22 +447,9 @@ int main(int argc, char** argv)
         device.backend = EGraphicsBackend::D3D12;
     }
     auto server = take(RenderServer::create(config, **execution));
-    auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
-    auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
-    auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
-    auto cluster = take(server->featureId("lux.render.feature.ClusteredLightingFeature"));
-    auto capture = take(server->registerFeature<CaptureFeature>());
-    auto cluster_capture = take(server->registerFeature<ClusterCapture>());
-    auto compare = take(server->registerFeature<SceneComparison>());
-    auto scan_probe = take(server->registerFeature<ScanProbe>());
-    take(server->registerResource<CaptureBuffer>());
-    const auto cluster_probe = registerRenderProbe<ClusterProbeConfiguration>(
-        *server, "test.clustered", {gbuffer, lighting, cluster, compare, capture, cluster_capture, visibility},
-        probePorts({}, {"differences", "lists"}), lowerClusterProbe
-    );
-    const auto scan_implementation = registerRenderProbe<ScanProbeConfiguration>(
-        *server, "test.scan", {scan_probe, capture}, probePorts({}, {"offsets", "status"}), lowerScanProbe
-    );
+    take(server->registerResource(ClusterReadback::factory()));
+    registerInspection(*server, cluster_inspection, true, compareClustered);
+    registerInspection(*server, scan_inspection, false, testScanOverflow);
 
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
@@ -467,14 +507,20 @@ int main(int argc, char** argv)
     {
         const bool perspective = scenario % 2 != 0;
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
-        auto instances = call<GetOrCreateResource>(*client, commands, {session, scene, kInstanceResourceName}).resource_id;
-        const std::array descriptions{MeshInstanceData{mesh, material, 0, kIdentityTransform, true}};
+        const auto instances = call<GetOrCreateResource>(
+            *client, commands, {session, scene, kInstanceResourceName}
+        ).resource_id;
+        const auto storage = sceneTransformStorage(*client, commands, session, scene);
+        const auto transform = createTransform(*client, commands, storage);
+        const std::array descriptions{MeshInstanceData{mesh, material, 0, transform, true}};
         call<InstanceCommands::CreateInstances>(
             *client,
             commands,
             {instances, descriptions}
         );
-        auto light_storage = call<GetOrCreateResource>(*client, commands, {session, scene, kLightResourceName}).resource_id;
+        const auto light_storage = call<GetOrCreateResource>(
+            *client, commands, {session, scene, kLightResourceName}
+        ).resource_id;
         std::vector<VDirectLight> lights;
         if (scenario)
         {
@@ -506,21 +552,12 @@ int main(int argc, char** argv)
             perspective ? EClusterDepth::LOGARITHMIC : EClusterDepth::LINEAR
         };
         CapturedPixels differences, lists;
-        GBufferFeatureConfig surface{EffectOutputDesc{target.format, target.samples, target.kind, target.sampled}};
-        surface.front_counter_clockwise = false;
-        DeferredLightingFeatureConfig reference;
-        reference.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        reference.extent.extent.source = EImageExtentSource::TARGET;
-        ClusteredLightingFeatureConfig clustered;
-        clustered.grid = grid;
-        CaptureConfig capture_diff{&differences};
-        capture_diff.bytes = 64 * 64 * 4;
-        auto request = probeRequest(
-            target, cluster_probe,
-            ClusterProbeConfiguration{surface, reference, clustered, ClusterCaptureConfig{grid, &lists}, capture_diff},
-            {"differences", "lists"}
-        );
-        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        const auto lengths = sizes(grid);
+        const ClusterReadback::Configuration capture{{
+            {.result = &differences, .bytes = difference_bytes},
+            {.result = &lists, .bytes = std::accumulate(lengths.begin(), lengths.end(), 0u)}
+        }};
+        const auto effect = call<CreateEffect>(*client, commands, inspectionEffect(&grid)).effect;
         std::array<RenderJobId, 2> attachments;
         for (unsigned i = 0; i < 2; ++i)
         {
@@ -528,7 +565,7 @@ int main(int argc, char** argv)
             if (i)
             {
                 input.view[12] = -.3F;
-                input.position[0] = .3F;
+                input.position_near[0] = .3F;
                 for (unsigned c = 0; c < 4; ++c)
                 {
                     input.inverse_view_projection[c * 4] +=
@@ -537,8 +574,46 @@ int main(int argc, char** argv)
             }
             auto view = call<CreateView>(*client, commands, {scene}).view;
             auto output = call<CreateTarget>(*client, commands, {session, target}).target;
-            call<UpdateViewCamera>(*client, commands, {{scene, view}, input});
-            attachments[i] = startRenderJob(*client, commands, session, scene, view, output, effect);
+            JobBinding binding;
+            const ViewRequest scope{scene, view};
+            binding.view_parameters = call<GetOrCreateResource>(*client, commands, {
+                session, scope, kViewParameterResourceName
+            }).resource_id;
+            call<ViewParameterCommands::Update>(*client, commands, {
+                binding.view_parameters, std::span{&input, 1}
+            });
+            bindReadback(*client, commands, session, scope, capture, binding);
+            const auto transforms = device.buffer_device_address ?
+                ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
+            const auto properties = device.buffer_device_address ?
+                EMeshInstanceBinding::PAGED_ROOT : EMeshInstanceBinding::PROPERTIES;
+            binding.resources.push_back({
+                std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT
+            });
+            binding.resources.push_back({
+                std::string{MeshVisibility::transforms_binding}, storage, static_cast<std::uint32_t>(transforms)
+            });
+            binding.resources.push_back({
+                std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties)
+            });
+            if (!device.buffer_device_address)
+            {
+                binding.resources.push_back({
+                    std::string{MeshVisibility::alive_binding}, instances,
+                    static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)
+                });
+            }
+            binding.resources.push_back({
+                std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::RASTER_MESHES
+            });
+            binding.resources.push_back({
+                std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::RASTER_MATERIALS
+            });
+            for (std::uint32_t light = 0; light < Lighting::light_bindings.size(); ++light)
+                binding.resources.push_back({std::string{Lighting::light_bindings[light]}, light_storage, light});
+            attachments[i] = startRenderJob(
+                *client, commands, session, scene, view, output, effect, std::move(binding)
+            );
         }
         const auto deadline = Clock::now() + 30s;
         for (auto attachment : attachments)
@@ -558,24 +633,25 @@ int main(int argc, char** argv)
             CHECK(Clock::now() < deadline);
             std::this_thread::yield();
         }
-        verifyEqualPixels(differences);
+        verifyEqualPixels(differences, scenario != 0);
         verifyLists(lists, grid, lights, perspective);
         call<RemoveEffect>(*client, commands, {effect});
     }
     // Inject unrepresentable count sums into the actual production Scan shader, not a CPU imitation.
     CapturedPixels offsets, status;
-    CaptureConfig offset_config{&offsets};
-    offset_config.bytes = 130 * 4;
-    CaptureConfig status_config{&status};
-    status_config.bytes = 16;
-    auto scan_request = probeRequest(
-        target, scan_implementation, ScanProbeConfiguration{offset_config, status_config}, {"offsets", "status"}
-    );
-    auto scan_effect = call<CreateEffect>(*client, commands, std::move(scan_request)).effect;
+    const ClusterReadback::Configuration scan_capture{{
+        {.result = &offsets, .bytes = scan_offset_bytes},
+        {.result = &status, .bytes = scan_status_bytes}
+    }};
+    auto scan_effect = call<CreateEffect>(*client, commands, inspectionEffect()).effect;
     auto scan_scene = call<CreateScene>(*client, commands, {}).scene;
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
     auto scan_target = call<CreateTarget>(*client, commands, {session, target}).target;
-    auto attachment = startRenderJob(*client, commands, session, scan_scene, scan_view, scan_target, scan_effect);
+    JobBinding scan_binding;
+    bindReadback(*client, commands, session, ViewRequest{scan_scene, scan_view}, scan_capture, scan_binding);
+    const auto attachment = startRenderJob(
+        *client, commands, session, scan_scene, scan_view, scan_target, scan_effect, std::move(scan_binding)
+    );
     const auto deadline = Clock::now() + 20s;
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) <
            fif + 2)

@@ -1,4 +1,6 @@
+#include <exec/variant_sender.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
@@ -14,6 +16,7 @@
 #include <lux/engine/render/graph/compile/RenderingPlan.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <ranges>
 
 #include <algorithm>
@@ -421,8 +424,13 @@ namespace lux::render::detail
                 }
                 const auto& raster = std::get<RasterWork>(source.command);
                 const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster.program);
+                const auto* stream = std::get_if<RasterPassTemplate>(&raster.program);
+                const bool section_depth_bias = stream && stream->section_depth_bias;
+                if (section_depth_bias && !limits.features.dynamicDepthBias)
+                    return cxx::unexpected(RenderError{kDeviceUnsupported, {id.index}});
                 const bool owns_draw_sections = !fixed || std::holds_alternative<DrawIndexedList>(fixed->draw);
                 pass.rendering = CompiledRasterScope{*scope, owns_draw_sections};
+                pass.rendering->section_depth_bias = section_depth_bias;
             }
             if (source.graphics && pass.rendering)
             {
@@ -809,6 +817,172 @@ namespace lux::render::detail
         return plan;
     }
 
+    static exec::task<RenderResult<CompiledPrograms::Program*>> prepareGraphProgram(
+        RasterProgramKey key, const rdesc::ShaderProgramArtifact& shader, PassBindings& bindings,
+        DeviceSession& session, execution::CpuScheduler cpu, bool is_raster,
+        std::optional<cxx::function_ref<bool() noexcept>> runtime_current = {}
+    ) noexcept
+    {
+        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        auto& program_cache = session.programs();
+        auto relocated = co_await (
+            stdexec::schedule(cpu) |
+            stdexec::then([&]() noexcept { return relocateShader(shader, bindings.bindings); }) |
+            stdexec::upon_stopped(
+                []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
+                { return cxx::unexpected(RenderError{kCpuStopped}); }
+            ) |
+            stdexec::continues_on(owner_scheduler) |
+            stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
+        );
+        if (!relocated)
+        {
+            co_return cxx::unexpected(relocated.error());
+        }
+        if (runtime_current && !(*runtime_current)()) co_return cxx::unexpected(RenderError{kCommandCancelled});
+        key.shader = std::make_shared<const PreparedShader>(std::move(*relocated));
+        auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
+        if (!layout)
+        {
+            co_return cxx::unexpected(layout.error());
+        }
+        cxx::scope_exit release_layout([&]() noexcept { program_cache.releaseLayout(*layout); });
+        const auto lookup = is_raster ? program_cache.lookupRaster(key, **layout)
+                                      : program_cache.lookupCompute(key.shader, **layout);
+        auto* program = lookup.hit();
+        if (!program)
+        {
+            if (stop.stop_requested())
+            {
+                co_return cxx::unexpected(RenderError{kCommandCancelled});
+            }
+            const auto compile = [
+                &key, layout = bindings.layout, is_raster, device = &session.device(), core = &session.nriCore(),
+                enabled = session.enabledFeatures(), limits = &session.description(), formats = session.formatSupport(),
+                vertex_limits = std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}
+            ]() noexcept -> RenderResult<nri::Pipeline*>
+            {
+                if (!is_raster) return compileCompute(*device, *core, enabled, *layout, key.shader->artifact);
+                nri::Pipeline* pipeline = nullptr;
+                const auto created = createRasterProgram(
+                    *device, *core, *limits, enabled, formats, vertex_limits, *layout, key, pipeline
+                );
+                if (created) return pipeline;
+                if (pipeline) core->DestroyPipeline(pipeline);
+                return cxx::unexpected(created.error());
+            };
+            // Native pipeline creation is thread-safe. Runtime program preparation uses its CPU worker
+            // so a stalled driver call cannot prevent native queue operations for ready Jobs.
+            using VSchedule = exec::variant_sender<decltype(stdexec::schedule(cpu)),
+                decltype(stdexec::schedule(session.nativeScheduler()))>;
+            auto scheduled = runtime_current ? VSchedule{stdexec::schedule(cpu)}
+                                             : VSchedule{stdexec::schedule(session.nativeScheduler())};
+            auto compiled = co_await (
+                std::move(scheduled) | stdexec::then(compile) |
+                stdexec::upon_error(NativeScheduleFailure<nri::Pipeline*>{}) |
+                stdexec::upon_stopped([]() noexcept -> RenderResult<nri::Pipeline*>
+                {
+                    return cxx::unexpected(RenderError{kCommandCancelled});
+                }) |
+                stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<nri::Pipeline*>{})
+            );
+            if (runtime_current && !(*runtime_current)())
+            {
+                if (compiled) session.nriCore().DestroyPipeline(*compiled);
+                co_return cxx::unexpected(RenderError{kCommandCancelled});
+            }
+            if (!compiled)
+            {
+                co_return cxx::unexpected(compiled.error());
+            }
+            program = is_raster ? program_cache.publishRaster(std::move(key), lookup, *compiled)
+                                : program_cache.publishCompute(std::move(key.shader), lookup, *compiled);
+        }
+        co_return program;
+    }
+
+    exec::task<RenderResult<PreparedRasterStreamProgram>>
+    prepareRasterStreamProgram(
+        DeviceSession& session, execution::CpuScheduler cpu, const RasterPassTemplate& stage,
+        const RasterStreamTarget& target, const rdesc::ShaderProgramArtifact& artifact, const GraphicsState& graphics,
+        std::optional<cxx::function_ref<bool() noexcept>> runtime_current
+    ) noexcept
+    {
+        if (artifact.target != session.enabledFeatures().shader_target)
+            co_return cxx::unexpected(RenderError{kDeviceUnsupported});
+        auto layout = planRasterLayout(session.description(), artifact.interface, stage);
+        if (!layout) co_return cxx::unexpected(layout.error());
+        std::uint32_t shared_texture_stages = 0;
+        std::uint32_t material_stages = 0;
+        rdesc::ShaderBlock material_layout;
+        for (const auto& field : layout->bindings)
+        {
+            const bool supported_kind = field.kind == EDescriptorKind::UNIFORM_BUFFER ||
+                field.kind == EDescriptorKind::STORAGE_BUFFER || field.kind == EDescriptorKind::SAMPLED_IMAGE ||
+                field.kind == EDescriptorKind::SAMPLER;
+            if (!supported_kind) co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            if (field.count != 0) continue;
+
+            const bool shared_image = field.kind == EDescriptorKind::SAMPLED_IMAGE && !field.image_arrayed &&
+                !field.image_depth;
+            const auto slot = std::ranges::find(stage.inputs, field.name, &RasterPassTemplate::Input::name);
+            const bool shared_sampler = field.kind == EDescriptorKind::SAMPLER &&
+                slot != stage.inputs.end() && !slot->comparison_sampler;
+            const bool material_argument = slot != stage.inputs.end() && slot->usage == EGraphUse::STORAGE_READ;
+            const bool material_record = field.block.runtime_records && field.block.hasStructuredLayout();
+            const bool shared_material = field.kind == EDescriptorKind::STORAGE_BUFFER &&
+                field.name == rdesc::kMaterialTableName && material_argument && material_record && !material_stages;
+            if (shared_material && target.shared_materials)
+            {
+                material_stages = field.stages;
+                material_layout = field.block;
+                continue;
+            }
+            if (!target.shared_textures || (!shared_image && !shared_sampler))
+                co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            if (shared_image) shared_texture_stages |= field.stages;
+        }
+        const bool uses_sources = !layout->parameters.empty() || !layout->device_parameters.empty();
+        if (uses_sources) co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+
+        // Shared descriptors are supplied by the device tables. Each draw provides private bindings only.
+        std::erase_if(layout->uses, [&](const auto& use) noexcept { return layout->bindings[use.field].count == 0; });
+
+        RasterProgramKey key{{}, graphics, target.colors, target.depth, target.samples};
+        if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
+        auto lease = co_await prepareGraphProgram(std::move(key), artifact, *layout, session, cpu, true, runtime_current);
+        if (!lease) co_return cxx::unexpected(lease.error());
+        for (auto& field : layout->bindings)
+        {
+            field.name.clear();
+            field.block.fields.clear();
+        }
+        for (auto& field : layout->private_bindings)
+        {
+            field.name.clear();
+            field.block.fields.clear();
+        }
+        layout->initial_parameters = {};
+        auto mesh_attributes = graphics.vertex_attributes;
+        if (artifact.target == rdesc::EShaderTarget::DXIL)
+        {
+            for (auto& attribute : mesh_attributes)
+            {
+                const auto input = std::ranges::find(
+                    artifact.interface.vertex_inputs, attribute.location, &rdesc::ShaderIoVariable::location
+                );
+                if (input != artifact.interface.vertex_inputs.end() && input->semantic == "TEXCOORD")
+                    attribute.location = input->semantic_index;
+            }
+        }
+        CompiledRasterStream::Program program{
+            CompiledPrograms::native(**lease), std::move(*layout), graphics.vertex_bindings,
+            std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
+        };
+        co_return PreparedRasterStreamProgram{std::move(program), *lease};
+    }
+
     exec::task<RenderResult<void>>
     GraphCompiler::prepareOperations(
         const RenderGraphExecutable& plan,
@@ -820,7 +994,6 @@ namespace lux::render::detail
         execution::CpuScheduler cpu
     ) noexcept
     {
-        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         auto& program_cache = session.programs();
         for (auto& pass : plan.recording_.passes)
@@ -838,7 +1011,7 @@ namespace lux::render::detail
             if (const auto* scope = pass.rasterScope())
             {
                 rendering.emplace();
-                rendering->dynamic_depth_bias = scope->state_input.has_value();
+                rendering->dynamic_depth_bias = scope->state_input.has_value() || scope->section_depth_bias;
                 for (const auto& color : scope->colors)
                 {
                     const auto& image =
@@ -862,92 +1035,20 @@ namespace lux::render::detail
                 {
                     co_return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
-                auto relocated = co_await (
-                    stdexec::schedule(cpu) |
-                    stdexec::then([&]() noexcept { return relocateShader(*shader, bindings.bindings); }) |
-                    stdexec::upon_stopped(
-                        []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
-                        { return cxx::unexpected(RenderError{kCpuStopped}); }
-                    ) |
-                    stdexec::continues_on(owner_scheduler) |
-                    stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
-                );
-                if (!relocated)
-                {
-                    co_return cxx::unexpected(relocated.error());
-                }
                 RasterProgramKey key;
-                key.shader = std::make_shared<const PreparedShader>(std::move(*relocated));
                 const bool is_raster = source.kind == EGraphPassKind::GRAPHICS;
                 if (is_raster)
                 {
                     key.state = source.graphics.value_or(GraphicsState{});
-                    if (rendering->dynamic_depth_bias)
-                    {
-                        key.state.depth_bias_constant = 1;
-                    }
+                    if (rendering->dynamic_depth_bias) key.state.depth_bias_constant = 1;
                     key.colors = colors;
                     key.depth = rendering->depth;
                     key.samples = rendering->samples;
                 }
-                auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
-                if (!layout)
-                {
-                    co_return cxx::unexpected(layout.error());
-                }
-                cxx::scope_exit release_layout([&]() noexcept { program_cache.releaseLayout(*layout); });
-                const auto lookup = is_raster ? program_cache.lookupRaster(key, **layout)
-                                              : program_cache.lookupCompute(key.shader, **layout);
-                auto* program = lookup.hit();
-                if (!program)
-                {
-                    if (stop.stop_requested())
-                    {
-                        co_return cxx::unexpected(RenderError{kCommandCancelled});
-                    }
-                    // key/layout belong to this coroutine operation and are frozen until native return.
-                    // The worker sees native facts only; cache/Plan publication stays on the control owner.
-                    auto compiled = co_await (
-                        stdexec::schedule(session.nativeScheduler()) |
-                        stdexec::then(
-                            [&key, layout = bindings.layout, raster = is_raster, device = &session.device(),
-                             core = &session.nriCore(), enabled = session.enabledFeatures(),
-                             limits = &session.description(),
-                             formats = session.formatSupport(),
-                             vertex_limits =
-                                 std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}]() noexcept
-                            {
-                                if (raster)
-                                {
-                                    nri::Pipeline* pipeline = nullptr;
-                                    const auto created = createRasterProgram(
-                                        *device, *core, *limits, enabled, formats, vertex_limits, *layout, key, pipeline
-                                    );
-                                    if (!created)
-                                    {
-                                        if (pipeline) core->DestroyPipeline(pipeline);
-                                        return RenderResult<nri::Pipeline*>{cxx::unexpected(created.error())};
-                                    }
-                                    return RenderResult<nri::Pipeline*>{pipeline};
-                                }
-                                return compileCompute(*device, *core, enabled, *layout, key.shader->artifact);
-                            }
-                        ) |
-                        stdexec::upon_error(NativeScheduleFailure<nri::Pipeline*>{}) |
-                        stdexec::upon_stopped(
-                            []() noexcept -> RenderResult<nri::Pipeline*>
-                            { return cxx::unexpected(RenderError{kCommandCancelled}); }
-                        ) |
-                        stdexec::continues_on(owner_scheduler) |
-                        stdexec::upon_error(NativeDeliveryFailure<nri::Pipeline*>{})
-                    );
-                    if (!compiled)
-                    {
-                        co_return cxx::unexpected(compiled.error());
-                    }
-                    program = is_raster ? program_cache.publishRaster(std::move(key), lookup, *compiled)
-                                        : program_cache.publishCompute(std::move(key.shader), lookup, *compiled);
-                }
+                auto prepared =
+                    co_await prepareGraphProgram(std::move(key), *shader, bindings, session, cpu, is_raster);
+                if (!prepared) co_return cxx::unexpected(prepared.error());
+                auto* program = *prepared;
                 native.program_uses_.push_back(program);
                 native.slots_[pass.binding_slot].pipeline = CompiledPrograms::native(*program);
             }
@@ -959,6 +1060,58 @@ namespace lux::render::detail
                     co_return cxx::unexpected(layout.error());
                 }
                 native.layout_uses_.push_back(*layout);
+            }
+            const auto* raster = std::get_if<RasterWork>(&source.command);
+            const auto* description = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
+            if (description && description->usesStreamProducer())
+            {
+                auto stream = std::make_unique<CompiledRasterStream>();
+                for (const auto& resource : description->resources)
+                {
+                    if (const auto* range = std::get_if<GraphBufferRange>(&resource.range))
+                    {
+                        const auto index = resource.version.resource.index;
+                        const bool dynamic_extent = resource.whole_resource &&
+                            plan.resources_[index].origin == EGraphOrigin::FRAME_BUFFER;
+                        stream->buffers.push_back({index, *range, resource.usage, resource.whole_resource, dynamic_extent});
+                        continue;
+                    }
+                    if (resource.usage != EGraphUse::SAMPLED) continue;
+                    const auto id = resource.version.resource.index;
+                    const auto& image = std::get<GraphImageDesc>(plan.resources_[id].description);
+                    if (image.samples != 1) co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                    const auto fallback = resource.fallback ? resource.fallback->resource.index : kGraphInvalidIndex;
+                    stream->images.push_back({id, std::get<GraphImageRange>(resource.range), fallback});
+                }
+                for (const auto sampler : description->stream_samplers)
+                {
+                    const auto& authored = graph.samplers()[sampler];
+                    auto descriptor = session.descriptors().sampler(authored);
+                    if (!descriptor) co_return cxx::unexpected(descriptor.error());
+                    stream->samplers.push_back({*descriptor, authored.comparison.has_value()});
+                }
+                for (const auto& input : description->inputs) stream->argument_uses.push_back(input.usage);
+                const RasterStreamTarget target{
+                    colors, rendering->depth, rendering->samples, rendering->dynamic_depth_bias,
+                    description->shared_textures.has_value(), description->shared_materials.has_value()
+                };
+                if (description->runtime_stream_programs)
+                    stream->runtime = CompiledRasterStream::RuntimeContract{description->inputs, target};
+                RasterPassTemplate stage;
+                stage.inputs = description->inputs;
+                for (const auto& authored : description->stream_programs)
+                {
+                    const auto* artifact = graph.programs()[authored.program].find(
+                        session.enabledFeatures().shader_target, plan.device_addresses_
+                    );
+                    if (!artifact) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
+                    stage.parameters = authored.parameters;
+                    auto program = co_await prepareRasterStreamProgram(session, cpu, stage, target, *artifact, authored.graphics);
+                    if (!program) co_return cxx::unexpected(program.error());
+                    native.program_uses_.push_back(program->lease);
+                    stream->programs.push_back(std::move(program->data));
+                }
+                native.streams_[pass.binding_slot] = std::move(stream);
             }
             native.slots_[pass.binding_slot].descriptors = bindings.recordBindings();
             bindings.layout = nullptr;
@@ -1023,7 +1176,9 @@ namespace lux::render::detail
                     else
                     {
                         return append(
-                            TransferPass::compile(command, context), ERecordKernel::TRANSFER, plan.recording_.transfer
+                            TransferPass::compile(command, source.interface.typed_buffer_writes, context),
+                            ERecordKernel::TRANSFER,
+                            plan.recording_.transfer
                         );
                     }
                 },

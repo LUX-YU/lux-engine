@@ -27,11 +27,11 @@ namespace lux::render
         {
             return !view.jobs.empty();
         });
-        const bool has_commands = std::ranges::any_of(runtime_->devices_, [scene_id](const auto& device) noexcept
+        const bool has_resource_borrows = std::ranges::any_of(runtime_->devices_, [scene_id](const auto& device) noexcept
         {
-            return device->scopedResourceCommands(scene_id);
+            return device->scopedResourceBorrows(scene_id);
         });
-        if (has_jobs || has_commands)
+        if (has_jobs || has_resource_borrows)
         {
             output_response.error = {kDeviceBusy};
             return;
@@ -65,11 +65,11 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        const bool has_commands = std::ranges::any_of(runtime_->devices_, [&](const auto& device) noexcept
+        const bool has_resource_borrows = std::ranges::any_of(runtime_->devices_, [&](const auto& device) noexcept
         {
-            return device->scopedResourceCommands(input->scene, input->view);
+            return device->scopedResourceBorrows(input->scene, input->view);
         });
-        if (has_commands || !view->jobs.empty())
+        if (has_resource_borrows || !view->jobs.empty())
         {
             output_response.error = RenderError{kDeviceBusy};
             return;

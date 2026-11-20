@@ -4,6 +4,7 @@
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/visibility.h>
 #include <exec/task.hpp>
+#include <span>
 
 namespace lux::render::detail
 {
@@ -79,6 +80,7 @@ namespace lux::render::detail
         [[nodiscard]] std::uint32_t nextSlot() const noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
         [[nodiscard]] const SubmissionFrontiers& frontiers(std::uint32_t slot) const noexcept { return slots_[slot]; }
+        [[nodiscard]] std::span<const SubmissionFrontiers> frontiers() const noexcept { return slots_; }
 
         [[nodiscard]] std::uint64_t nextFrameIndex() const noexcept
         {

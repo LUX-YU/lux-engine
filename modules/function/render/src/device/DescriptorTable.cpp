@@ -176,6 +176,10 @@ namespace lux::render::detail
 
     void DescriptorTable::clear() noexcept
     {
+        if (binding_pins_ != 0 || !pinned_pools_.empty())
+        {
+            std::terminate();
+        }
         const auto& core = session_.nriCore();
         for (std::size_t i = 0; i < tables_.size(); ++i)
         {
@@ -207,6 +211,28 @@ namespace lux::render::detail
         }
         samplers_.clear();
         pool_capacity_ = 0;
+    }
+
+    void DescriptorTable::pinNativeBindings() noexcept
+    {
+        ++binding_pins_;
+    }
+
+    void DescriptorTable::unpinNativeBindings() noexcept
+    {
+        if (binding_pins_ == 0) std::terminate();
+        if (--binding_pins_ != 0) return;
+        for (const auto& pool : pinned_pools_) retirePool(pool);
+        pinned_pools_.clear();
+    }
+
+    void DescriptorTable::retirePool(RetiredPool pool) noexcept
+    {
+        session_.deferRelease([this, pool]() noexcept
+        {
+            session_.nriCore().DestroyDescriptorPool(pool.pool);
+            allocated_descriptors_ -= pool.capacity;
+        });
     }
 
     RenderResult<void> DescriptorTable::reserve(nri::DescriptorType type, std::uint32_t required) noexcept
@@ -284,13 +310,9 @@ namespace lux::render::detail
         allocated_descriptors_ += capacity;
         if (old_pool)
         {
-            session_.deferRelease(
-                [this, old_pool, old_capacity]() noexcept
-                {
-                    session_.nriCore().DestroyDescriptorPool(old_pool);
-                    allocated_descriptors_ -= old_capacity;
-                }
-            );
+            const RetiredPool old{old_pool, old_capacity};
+            if (binding_pins_) pinned_pools_.push_back(old);
+            else retirePool(old);
         }
         return {};
     }

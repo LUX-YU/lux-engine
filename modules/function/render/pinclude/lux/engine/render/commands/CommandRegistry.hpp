@@ -30,6 +30,7 @@ namespace lux::render::runtime_detail
         std::vector<HandlerBinding> bindings;
         EffectId (*effect)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         ResourceInstanceId (*storage)(const platform::ipc::IpcMessage&) noexcept = nullptr;
+        graph::NodeId (*effect_node)(const platform::ipc::IpcMessage&) noexcept = nullptr;
 
         [[nodiscard]] const HandlerBinding* binding(std::uint32_t index) const noexcept
         {

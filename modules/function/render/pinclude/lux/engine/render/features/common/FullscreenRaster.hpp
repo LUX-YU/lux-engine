@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 
 namespace lux::render::detail
 {
     [[nodiscard]] RenderResult<RasterWork>
-    fullscreenRaster(FeatureBuildContext&, GraphProgram fragment) noexcept;
+    fullscreenRaster(RenderGraphBuilder&, GraphProgram fragment) noexcept;
 } // namespace lux::render::detail

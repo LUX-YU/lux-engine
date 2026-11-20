@@ -1,54 +1,8 @@
 #pragma once
 
-#include "ClusterCompare.hpp"
 #include "SceneCapture.hpp"
 
-// Exact comparison of the actual RGBA16F images before exposure, quantization or Tonemap.
-struct SceneComparison
-{
-    using Config = void;
-    static constexpr FeatureName name{"test.Compare"};
-    using Storages = std::tuple<>;
-    using Commands = std::tuple<>;
-    using Ports = SceneComparison;
-
-    static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
-    {
-        GraphImageDesc image{64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        image.extent.source = EImageExtentSource::TARGET;
-        ports.resources.push_back({"reference", EFeaturePort::INPUT, image});
-        ports.resources.push_back({"candidate", EFeaturePort::INPUT, image});
-        ports.resources.push_back({"differences", EFeaturePort::OUTPUT, GraphBufferDesc{64 * 64 * 4}});
-        return {};
-    }
-
-    static RenderResult<void>
-    build(
-        const void*,
-        std::string_view key,
-        FeatureBuildContext& context
-    ) noexcept
-    {
-        ComputeWork work;
-        work.interface.program = take(context.graph.addProgram(GraphProgram{kClusterCompare}));
-        work.interface.resources = {
-            {"reference_image", {context.resource("reference")}},
-            {"candidate_image", {context.resource("candidate")}},
-            {"differences", {context.resource("differences"), {}, EGraphAccess::WRITE}}
-        };
-        work.dispatch = DispatchArguments{{8, 8, 1}};
-        auto compared =
-            context.graph.addComputePass(featureKey(FeatureName{"test.Compare"}, key, "compare"), std::move(work));
-        if (!compared)
-        {
-            return lux::cxx::unexpected(compared.error());
-        }
-        return context.publish("differences", compared->written[0]);
-    }
-};
-
-
-static void verifyEqualPixels(const CapturedPixels& pixels)
+static void verifyEqualPixels(const CapturedPixels& pixels, bool expect_lit = false)
 {
     unsigned observed = 0;
     for (const auto& frame : pixels.frames)
@@ -59,15 +13,19 @@ static void verifyEqualPixels(const CapturedPixels& pixels)
         {
             continue;
         }
+        bool saw_lit_pixel = false;
         for (std::size_t i = 0; i < 64 * 64; ++i)
         {
             std::memcpy(&marker, frame.data() + i * 4, 4);
-            if (marker != 1)
+            const bool matched = marker == 1 || marker == 3;
+            if (!matched)
             {
                 std::fprintf(stderr, "HDR mismatch pixel=%zu marker=%u\n", i, marker);
             }
-            CHECK(marker == 1);
+            CHECK(matched);
+            saw_lit_pixel |= marker == 3;
         }
+        CHECK(!expect_lit || saw_lit_pixel);
         ++observed;
     }
     CHECK(observed);

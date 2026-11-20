@@ -1,3 +1,4 @@
+#include <lux/engine/render/resources/transform/Resource.hpp>
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
 
@@ -7,10 +8,17 @@
 #include <set>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/features/mesh/GBufferFeature.hpp>
-#include <lux/engine/render/features/mesh/MeshVisibilityFeature.hpp>
-#include <lux/engine/render/features/mesh/RasterMeshParameters.hpp>
-#include <lux/engine/render/features/postprocess/TonemapFeature.hpp>
+#include <lux/engine/render/effect/DepthPyramid.hpp>
+#include <lux/engine/render/effect/GBuffer.hpp>
+#include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/effect/MeshRaster.hpp>
+#include <lux/engine/render/effect/MeshVisibility.hpp>
+#include <lux/engine/render/effect/ToneMapping.hpp>
+#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/resources/transform/Binding.hpp>
+#include <lux/engine/render/resources/view/Resource.hpp>
 #ifdef _WIN32
 #include "Allocation.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -254,32 +262,269 @@ namespace
         nri::CoreInterface& core_;
     };
 
-    using RasterProbeConfig = std::tuple<EMaterialPurpose, CaptureConfig>;
+    namespace graph = lux::graph;
 
-    RenderResult<EffectDefinition> rasterRecipe(
-        const EffectOutputDesc& output, const RasterProbeConfig& configuration, std::span<const FeatureId> features
-    ) noexcept
+    constexpr std::uint32_t kFif = 3;
+    constexpr TargetDesc kTarget{64, 64, ETextureFormat::RGBA8_UNORM};
+    constexpr std::uint32_t row_pitch = 256;
+    constexpr std::uint32_t capture_bytes = row_pitch * 64;
+    constexpr std::array<std::string_view, 2> capture_bindings{"pixels", "sampled_pixels"};
+    constexpr std::string_view imported_hdr = "sampled_hdr";
+    constexpr std::string_view hdr_capability = "test.material.hdr";
+    constexpr std::string_view clear_hdr = "test.material.hdr.clear";
+    constexpr std::string_view sample_hdr = "test.material.hdr.sample";
+    constexpr auto capture_input = effectPortSemantic("input");
+    constexpr auto capture_output = effectPortSemantic("bytes");
+
+    using MaterialFrameResources = std::tuple<
+        MaterialResource, InstanceResource, TransformResource, ViewParameterResource
+    >;
+
+    struct MaterialReadbackDescriptor final
     {
-        const auto& [purpose, capture] = configuration;
-        const bool gbuffer = purpose == EMaterialPurpose::GBUFFER;
-        ConfigValue raster = gbuffer ? take(ConfigValue::make(GBufferFeatureConfig{output, false}))
-                                     : take(ConfigValue::make(MeshFeatureConfig{output, false}));
-        MeshVisibilityFeatureConfig visibility;
-        visibility.camera_view = true;
-        EffectDefinition recipe;
-        recipe.features.push_back({features[0], "raster", std::move(raster)});
-        recipe.features.push_back({features[1], "capture", take(ConfigValue::make(capture))});
-        recipe.features.push_back({features[2], "visibility", take(ConfigValue::make(visibility))});
-        for (auto port : {"groups", "transforms", "properties", "alive", "visible", "commands"})
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.material.readback"}, 0, 0, {}, "View-owned material capture.", EResourceDomain::VIEW
+        };
+    };
+
+    struct MaterialReadback final
+    {
+        using Descriptor = MaterialReadbackDescriptor;
+        using Configuration = std::array<CaptureConfig, 2>;
+
+        // The fixture supplies the configuration through the synchronous Resource creation call.
+        static inline std::atomic<const Configuration*> creation_input{};
+
+        explicit MaterialReadback(ResourceCreateContext& context, const Configuration& config) noexcept
+            : storage(context), configuration(config)
         {
-            recipe.connections.push_back({{2, port}, {0, port}});
         }
-        const std::string color = gbuffer ? std::string(kGBufferPorts[0]) : "color";
-        const auto captured = purpose == EMaterialPurpose::SHADOW ? "depth" : color;
-        recipe.connections.push_back({{0, captured}, {1, "color"}});
-        recipe.outputs.push_back({{0, color}, GraphOutputRequirements{output.format, 1}});
-        recipe.outputs.push_back({{1, "pixels"}, {}});
-        return recipe;
+
+        static RenderResult<std::unique_ptr<MaterialReadback>>
+        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        {
+            const auto* config = creation_input.load();
+            if (!config) return lux::cxx::unexpected(RenderError{kInvalidConfig});
+            return std::make_unique<MaterialReadback>(context, *config);
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            static const StorageBindingOps binding{
+                .describeGraphImport = [](const void* object, std::uint32_t projection) noexcept
+                    -> RenderResult<StorageGraphImport>
+                {
+                    const auto& capture = *static_cast<const MaterialReadback*>(object);
+                    if (projection >= capture.configuration.size() || !capture.configuration[projection].result)
+                        return lux::cxx::unexpected(RenderError{kStorageContract});
+                    return StorageGraphImport{GraphBufferDesc{capture_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+                },
+                .resolveGraphImport = [](
+                    void* object, std::uint32_t projection, const VGraphResourceDesc& description,
+                    StorageSubscription& subscription, std::span<ResourceInput> output
+                ) noexcept
+                {
+                    auto& capture = *static_cast<MaterialReadback*>(object);
+                    return CaptureBuffer::resolve(
+                        &capture.storage, description, &capture.configuration[projection], subscription, output
+                    );
+                }
+            };
+            return makeResourceRegistration<Descriptor, MaterialReadback, &create>(nullptr, &binding);
+        }
+
+        CaptureBuffer storage;
+        Configuration configuration;
+    };
+
+    CapabilityDefinition captureDefinition(EMaterialPurpose purpose)
+    {
+        constexpr auto direction = graph::EPinDirection::INPUT;
+        const auto name = purpose == EMaterialPurpose::GBUFFER ? "test.material.capture.gbuffer" :
+            purpose == EMaterialPurpose::SHADOW ? "test.material.capture.depth" : "test.material.capture.color";
+        const auto type = purpose == EMaterialPurpose::GBUFFER ? Lighting::surface_type :
+            purpose == EMaterialPurpose::SHADOW ? DepthPyramid::depth_type : ToneMapping::display_type;
+        return {
+            .identity = {graph::nodeTypeId(name), name, 1},
+            .ports = {
+                {capture_input, "input", {std::string{type}, 1}, direction, 1, true},
+                {capture_output, "bytes", {"test.material.readback.bytes", 1}, graph::EPinDirection::OUTPUT}
+            }
+        };
+    }
+
+    template <EMaterialPurpose Purpose>
+    RenderResult<void> buildMaterialCapture(EffectBuildContext& context, std::string_view arguments) noexcept
+    {
+        constexpr bool depth = Purpose == EMaterialPurpose::SHADOW;
+        constexpr auto member = Purpose == EMaterialPurpose::GBUFFER ?
+            effectPortSemantic(Lighting::surface_members.front()) : depth ? MeshRaster::depth : MeshRaster::color;
+        const auto inputs = context.inputs(capture_input);
+        CHECK(inputs.size() == 1);
+        const auto source = std::ranges::find(inputs.front(), member, &EffectResourceValue::member);
+        CHECK(source != inputs.front().end());
+        const std::uint32_t projection = arguments == "extra" ? 1 : 0;
+        const auto readback = take(context.importResource(
+            capture_bindings[projection], {ResourceName{MaterialReadbackDescriptor::descriptor.type.name()}},
+            {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
+        ));
+        const auto copied = take(context.builder().addTransferPass(
+            "copy " + std::string{capture_bindings[projection]}, TransferWork{{
+                CopyImageBuffer{
+                    {source->version, GraphImageRange{depth ? 2u : 1u}},
+                    {readback}, row_pitch, capture_bytes, ImageCopyRegion{0, 0, 64, 64}
+                }
+            }}
+        ));
+        return context.publish(capture_output, {{capture_output, copied.written.front()}});
+    }
+
+    CapabilityDefinition hdrDefinition()
+    {
+        return {
+            .identity = {graph::nodeTypeId(hdr_capability), std::string{hdr_capability}, 1},
+            .ports = {{Lighting::hdr, "hdr_color", {std::string{Lighting::hdr_type}, 1}, graph::EPinDirection::OUTPUT}}
+        };
+    }
+
+    template <bool Import>
+    RenderResult<void> buildHdr(EffectBuildContext& context, std::string_view) noexcept
+    {
+        ResourceVersion color;
+        if constexpr (Import)
+        {
+            const auto imported = context.importTargetImage(imported_hdr, ETextureFormat::RGBA16_SFLOAT);
+            if (!imported) return lux::cxx::unexpected(imported.error());
+            color = *imported;
+        }
+        else
+        {
+            GraphImageDesc image{0, 0, 1, 1, ETextureFormat::RGBA16_SFLOAT};
+            image.extent.source = EImageExtentSource::TARGET;
+            const auto output = take(context.builder().declareResource({"HDR source", image}));
+            const auto cleared = take(context.builder().addTransferPass(
+                "clear HDR", TransferWork{{ClearImage{{{output, 0}}, {.25F, .5F, .75F, 1}}}}
+            ));
+            color = cleared.written.front();
+        }
+        return context.publish(Lighting::hdr, {{Lighting::hdr, color}});
+    }
+
+    void registerMaterialNode(
+        RenderServer& server, graph::NodeTypeId type, std::string_view name, graph::PinSemanticId output,
+        EffectImplementation::Build build
+    )
+    {
+        EffectImplementation implementation;
+        implementation.capability = type;
+        implementation.identity = {std::string{name}, 1};
+        implementation.supported_outputs = {output};
+        implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
+        {
+            return {};
+        };
+        implementation.build = build;
+        CHECK(server.registerEffectImplementation(std::move(implementation)));
+    }
+
+    template <EMaterialPurpose Purpose> void registerMaterialCapture(RenderServer& server)
+    {
+        const auto definition = captureDefinition(Purpose);
+        CHECK(server.registerEffectCapability(definition));
+        registerMaterialNode(
+            server, definition.identity.id, definition.identity.canonical_name, capture_output,
+            buildMaterialCapture<Purpose>
+        );
+    }
+
+    graph::PinId addMaterialCapture(EffectGraphEdit& edit, EMaterialPurpose purpose, graph::PinId source,
+                                    std::string arguments = {})
+    {
+        const auto definition = captureDefinition(purpose);
+        const auto node = take(edit.addNode(definition, {definition.identity.canonical_name, 1}, std::move(arguments)));
+        CHECK(edit.connect(source, edit.pinId(node, capture_input)));
+        return edit.pinId(node, capture_output);
+    }
+
+    CreateEffectRequest rasterEffect(EMaterialPurpose purpose, bool samples_hdr = false)
+    {
+        CreateEffectRequest request;
+        request.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit edit{*request.graph};
+        graph::PinId output;
+        if (purpose == EMaterialPurpose::GBUFFER)
+        {
+            const auto node = take(edit.addNode(
+                GBuffer::definition(), {std::string{GBuffer::indexed_clockwise}, GBuffer::version}
+            ));
+            output = edit.pinId(node, GBuffer::surface);
+        }
+        else
+        {
+            const bool forward = purpose == EMaterialPurpose::FORWARD;
+            const auto name = forward ? MeshRaster::forward_clockwise : MeshRaster::depth_only_clockwise;
+            const auto node = take(edit.addNode(MeshRaster::definition(), {std::string{name}, MeshRaster::version}));
+            output = edit.pinId(node, forward ? MeshRaster::color : MeshRaster::depth);
+            if (forward) CHECK(edit.setOutput("color", output, true));
+        }
+        CHECK(edit.setOutput("pixels", addMaterialCapture(edit, purpose, output)));
+        if (samples_hdr)
+        {
+            const auto input = take(edit.addNode(hdrDefinition(), {std::string{sample_hdr}, 1}));
+            const auto tone = take(edit.addNode(
+                ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}
+            ));
+            CHECK(edit.connect(edit.pinId(input, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
+            const auto converted = edit.pinId(tone, ToneMapping::color);
+            CHECK(edit.setOutput("sampled_pixels", addMaterialCapture(edit, EMaterialPurpose::FORWARD, converted, "extra")));
+        }
+        CHECK(edit.commit());
+        return request;
+    }
+
+    CreateEffectRequest hdrEffect()
+    {
+        CreateEffectRequest request;
+        request.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit edit{*request.graph};
+        const auto node = take(edit.addNode(hdrDefinition(), {std::string{clear_hdr}, 1}));
+        CHECK(edit.setOutput("color", edit.pinId(node, Lighting::hdr), true));
+        CHECK(edit.commit());
+        return request;
+    }
+
+    JobBinding materialBinding(
+        ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session, ViewRequest view,
+        const MaterialReadback::Configuration& capture
+    )
+    {
+        const auto local = [&](ResourceNameView name)
+        {
+            return call<GetOrCreateResource>(ipc, commands, {session, view, name}).resource_id;
+        };
+        JobBinding binding;
+        binding.view_parameters = local(kViewParameterResourceName);
+        MaterialReadback::creation_input.store(&capture);
+        const auto readback = local(MaterialReadbackDescriptor::descriptor.type);
+        MaterialReadback::creation_input.store(nullptr);
+        const auto instances = local(kInstanceResourceName);
+        binding.resources = {
+            {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {std::string{MeshVisibility::transforms_binding}, local(kTransformResourceName),
+                static_cast<std::uint32_t>(ETransformGraphProjection::RECORDS)},
+            {std::string{MeshVisibility::properties_binding}, instances,
+                static_cast<std::uint32_t>(EMeshInstanceBinding::PROPERTIES)},
+            {std::string{MeshVisibility::alive_binding}, instances,
+                static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)},
+            {std::string{GBuffer::geometry_binding}, local(kMeshResourceName), 0, EJobResourceUse::RASTER_MESHES},
+            {std::string{GBuffer::materials_binding}, local(kMaterialResourceName), 0, EJobResourceUse::RASTER_MATERIALS},
+            {std::string{GBuffer::textures_binding}, local(kTextureResourceName), 0, EJobResourceUse::RASTER_TEXTURES},
+            {std::string{capture_bindings[0]}, readback}
+        };
+        if (capture[1].result) binding.resources.push_back({std::string{capture_bindings[1]}, readback, 1});
+        return binding;
     }
 
     rdesc::MaterialProgramSet cookProgram(
@@ -350,10 +595,6 @@ namespace
         return call<TextureCommands::Upload>(ipc, commands, {textures, {info, rgba}}).texture;
     }
 
-    using Probes = std::array<RenderProbe<RasterProbeConfig>, 3>;
-    constexpr std::uint32_t kFif = 3;
-    constexpr TargetDesc kTarget{64, 64, ETextureFormat::RGBA8_UNORM};
-
     struct RasterSample final
     {
         std::array<std::byte, 4> center;
@@ -370,19 +611,32 @@ namespace
 
     RasterSample sampleRaster(
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
-        const RenderProbe<RasterProbeConfig>& probe, EMaterialPurpose purpose, SceneId scene,
-        const InstanceSwitch* change = nullptr
+        EMaterialPurpose purpose, SceneId scene,
+        const InstanceSwitch* change = nullptr,
+        std::span<const MaterialColorUpdate> colors = {},
+        bool reject_transform = false
     )
     {
         CapturedPixels pixels;
         const auto format = purpose == EMaterialPurpose::SHADOW ? ETextureFormat::D32_SFLOAT : kTarget.format;
-        auto request = probeRequest(kTarget, probe, RasterProbeConfig{purpose, CaptureConfig{&pixels, format}},
-            {"color", "pixels"});
-        const auto effect = call<CreateEffect>(ipc, commands, std::move(request)).effect;
+        const auto effect = call<CreateEffect>(ipc, commands, rasterEffect(purpose)).effect;
         const auto view = call<CreateView>(ipc, commands, {scene}).view;
         const auto output = call<CreateTarget>(ipc, commands, {session, kTarget}).target;
-        call<UpdateViewCamera>(ipc, commands, {{scene, view}, {}});
-        const auto job = startRenderJob(ipc, commands, session, scene, view, output, effect);
+        const MaterialReadback::Configuration capture{{{&pixels, format}, {}}};
+        auto binding = materialBinding(ipc, commands, session, {scene, view}, capture);
+        const auto job = startRenderJob(ipc, commands, session, scene, view, output, effect, std::move(binding));
+        if (!colors.empty())
+        {
+            const auto schema = call<QueryRenderJobInputLayout>(ipc, commands, job).layout;
+            auto packet = take(FrameData::create<MaterialFrameResources>(schema));
+            for (const auto& value : colors) CHECK(packet.addData<MaterialResource>(value));
+            if (reject_transform) CHECK(packet.addData<TransformResource>(TransformRecordUpdate{}));
+            CHECK(packet.seal());
+            const auto reply = call<RequestRenderJob>(ipc, commands, {job, &packet}, !reject_transform);
+            if (reject_transform) CHECK(reply.error.type == kStorageIdentity);
+            else CHECK(reply.job == job);
+            packet.release();
+        }
         const auto before = server.developmentStats();
         CHECK(before);
         for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(ipc, commands, job);
@@ -391,7 +645,7 @@ namespace
         std::uint64_t switched_image_ranges = 0;
         if (change)
         {
-            call<InstanceCommands::Update>(ipc, commands, {change->resource, {}, {&change->update, 1}});
+            call<InstanceCommands::Update>(ipc, commands, {change->resource, {&change->update, 1}});
             for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(ipc, commands, job);
             const auto switched = server.developmentStats();
             CHECK(switched);
@@ -426,7 +680,7 @@ namespace
     }
 
     void verifyPurposes(
-        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session, const Probes& probes,
+        RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
         SceneId scene, ResourceInstanceId materials, ResourceInstanceId instances, MeshId mesh,
         std::span<const TextureId, 2> textures, lux::shader::ShaderCompiler& compiler,
         rdesc::EShaderTarget target
@@ -437,12 +691,15 @@ namespace
         CHECK(program.programs.size() == purposes.size());
         const auto registered = registerMaterialProgram(ipc, commands, materials, std::move(program));
         const auto material = createMaterialInstance(ipc, commands, registered, {{1, 0, 0, 0}}, {textures[0]});
+        const auto transform_storage = sceneTransformStorage(ipc, commands, session, scene);
         MeshInstanceData input{mesh, material};
+        input.transform_id = createTransform(ipc, commands, transform_storage);
+        const auto original_transform = input.transform_id;
         input.render_enabled = true;
         const auto instance = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
-        const auto forward = sampleRaster(server, ipc, commands, session, probes[0], purposes[0], scene);
-        const auto gbuffer = sampleRaster(server, ipc, commands, session, probes[1], purposes[1], scene);
-        const auto shadow = sampleRaster(server, ipc, commands, session, probes[2], purposes[2], scene);
+        const auto forward = sampleRaster(server, ipc, commands, session, purposes[0], scene);
+        const auto gbuffer = sampleRaster(server, ipc, commands, session, purposes[1], scene);
+        const auto shadow = sampleRaster(server, ipc, commands, session, purposes[2], scene);
         CHECK(std::abs(std::to_integer<int>(forward.center[0]) - 96) <= 1);
         CHECK(std::abs(std::to_integer<int>(gbuffer.center[0]) - 64) <= 1);
         CHECK(std::to_integer<int>(forward.center[1]) == 96 && gbuffer.center[1] == forward.center[1]);
@@ -451,22 +708,50 @@ namespace
         CHECK(forward.image_ranges == kFif && gbuffer.image_ranges == kFif);
         CHECK(shadow.image_ranges == 0);
         CHECK(forward.buffer_ranges == kFif && gbuffer.buffer_ranges == kFif && shadow.buffer_ranges == kFif);
-        call<MaterialCommands::Update>(ipc, commands, {{material, {{.25F, 0, 0, 0}}, {textures[0]}}});
-        const auto masked = sampleRaster(server, ipc, commands, session, probes[2], purposes[2], scene);
+        const std::array mask_color{MaterialColorUpdate{material, 0, {.25F, 0, 0, 0}}};
+        call<MaterialCommands::UpdateColor>(ipc, commands, {materials, mask_color});
+        const auto masked = sampleRaster(server, ipc, commands, session, purposes[2], scene);
         CHECK(std::bit_cast<float>(masked.center) == 1);
-        call<MaterialCommands::Update>(ipc, commands, {{material, {{1, 0, 0, 0}}, {textures[0]}}});
+        const std::array invalid_batch{
+            MaterialColorUpdate{material, 0, {1, 0, 0, 0}}, MaterialColorUpdate{material, 1, {1, 0, 0, 0}}
+        };
+        CHECK(call<MaterialCommands::UpdateColor>(ipc, commands, {materials, invalid_batch}, false).error.type ==
+            kStorageContract);
+        CHECK(sampleRaster(server, ipc, commands, session, purposes[2], scene).center == masked.center);
+        const std::array colors{
+            MaterialColorUpdate{material, 0, {.5F, 0, 0, 0}}, MaterialColorUpdate{material, 0, {1, 0, 0, 0}}
+        };
+        const auto restored = sampleRaster(server, ipc, commands, session, purposes[0], scene, nullptr, colors);
+        CHECK(restored.center == forward.center);
+        const auto restored_shadow = sampleRaster(server, ipc, commands, session, purposes[2], scene);
+        CHECK(restored_shadow.center == shadow.center);
+        const auto partial = sampleRaster(
+            server, ipc, commands, session, purposes[2], scene, nullptr, mask_color, true
+        );
+        CHECK(partial.center == masked.center);
+        call<MaterialCommands::UpdateColor>(ipc, commands, {materials, colors});
+        std::puts("MATERIAL COLOR PASS: Command, FrameData and partial Resource adoption reached forward and shadow");
         const auto other = createMaterialInstance(ipc, commands, registered, {{.75F, 0, 0, 0}}, {textures[1]});
         input.material = other;
-        input.transform[0] = input.transform[5] = .25F;
-        input.transform[12] = .5F;
+        auto sibling_matrix = kIdentityTransform;
+        sibling_matrix[0] = sibling_matrix[5] = .25F;
+        sibling_matrix[12] = .5F;
+        input.transform_id = createTransform(ipc, commands, transform_storage, sibling_matrix);
         const auto sibling = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
         input.material = material;
         const InstanceSwitch change{instances, {sibling, input}, kFif};
-        const auto together = sampleRaster(server, ipc, commands, session, probes[0], purposes[0], scene, &change);
+        const auto together = sampleRaster(server, ipc, commands, session, purposes[0], scene, &change);
+        if (together.buffer_ranges != kFif || together.image_ranges != 2 * kFif)
+            std::fprintf(stderr, "Grouped material reads: buffers=%llu images=%llu\n",
+                static_cast<unsigned long long>(together.buffer_ranges),
+                static_cast<unsigned long long>(together.image_ranges)
+            );
         CHECK(together.buffer_ranges == kFif && together.image_ranges == 2 * kFif);
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {sibling});
+        call<TransformCommands::Release>(ipc, commands, input.transform_id);
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {other});
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {instance});
+        call<TransformCommands::Release>(ipc, commands, original_transform);
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {material});
         call<MaterialCommands::UnregisterProgram>(ipc, commands, {registered});
         std::printf(
@@ -523,6 +808,7 @@ namespace
         JobBinding binding;
         ResourceInstanceId instances;
         MeshInstanceId member;
+        TransformId transform;
     };
 
     struct ProbeMaterial final
@@ -540,9 +826,10 @@ namespace
         const auto changeMaterial = [&](MaterialId material)
         {
             MeshInstanceData value{mesh, material};
+            value.transform_id = job.transform;
             value.render_enabled = true;
             const MeshInstanceUpdate update{job.member, value};
-            call<InstanceCommands::Update>(client, commands, {job.instances, {}, {&update, 1}});
+            call<InstanceCommands::Update>(client, commands, {job.instances, {&update, 1}});
         };
         const auto snapshot = [&]()
         {
@@ -613,8 +900,9 @@ namespace
         renderFrame(client, commands, job.job);
 
         const auto layout = call<QueryRenderJobInputLayout>(client, commands, job.job).layout;
-        auto packet = take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout));
+        auto packet = take(FrameData::create<MaterialFrameResources>(layout));
         MeshInstanceData value{mesh, variants[1].instance};
+        value.transform_id = job.transform;
         value.render_enabled = true;
         CHECK(packet.addData<InstanceResource>(MeshInstanceUpdate{job.member, value}));
         CHECK(packet.seal());
@@ -645,9 +933,9 @@ namespace
     void verifyPipelineIsolation(
         RenderServer& server, std::thread& server_thread, ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session,
         std::string_view channel,
-        const RenderProbe<RasterProbeConfig>& forward, std::array<SceneId, 2> scenes, ResourceInstanceId materials,
+        std::array<SceneId, 2> scenes, ResourceInstanceId materials,
         MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target,
-        FeatureId clear, bool expect_progress, unsigned workers, bool stop_server
+        bool expect_progress, unsigned workers, bool stop_server
     )
     {
         CapturedPixels imported_pixels;
@@ -665,10 +953,7 @@ namespace
         {
             constexpr auto hdr = ETextureFormat::RGBA16_SFLOAT;
             source = call<CreateTarget>(client, commands, {session, {64, 64, hdr, 1, ETargetKind::OFFSCREEN, true}}).target;
-            CreateEffectRequest produce{{hdr, 1, ETargetKind::OFFSCREEN, true}};
-            produce.definition.features.push_back({clear, "hdr", take(ConfigValue::make(WindowClear::Config{hdr}))});
-            produce.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{hdr, 1}});
-            const auto effect = call<CreateEffect>(client, commands, std::move(produce)).effect;
+            const auto effect = call<CreateEffect>(client, commands, hdrEffect()).effect;
             const auto view = call<CreateView>(client, commands, {scenes[0]}).view;
             const auto writer = startRenderJob(client, commands, session, scenes[0], view, source, effect);
             renderFrame(client, commands, writer);
@@ -684,39 +969,19 @@ namespace
             job.material = created.instance;
             job.instances = call<GetOrCreateResource>(client, commands, {session, scenes[i], kInstanceResourceName}).resource_id;
             MeshInstanceData input{mesh, job.material};
+            job.transform = createTransform(client, commands, sceneTransformStorage(client, commands, session, scenes[i]));
+            input.transform_id = job.transform;
             input.render_enabled = true;
             job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
-            auto request = probeRequest(
-                kTarget, forward, RasterProbeConfig{purposes[0], CaptureConfig{&job.pixels, kTarget.format}},
-                {"color", "pixels"}
-            );
-            if (i == 1 && expect_progress)
-            {
-                const auto tone = static_cast<std::uint32_t>(request.definition.features.size());
-                const auto capture = tone + 1;
-                const FeaturePortRef destination{tone, "hdr_color"};
-                request.definition.features.push_back({
-                    forward.features[3], "probe/tone",
-                    take(ConfigValue::make(TonemapFeatureConfig{{kTarget.format}, EColorEncoding::LINEAR}))
-                });
-                request.definition.features.push_back({
-                    forward.features[1], "probe/import",
-                    take(ConfigValue::make(CaptureConfig{&imported_pixels, kTarget.format}))
-                });
-                GraphImageDesc image{64, 64, 1, 1, ETextureFormat::RGBA16_SFLOAT};
-                image.extent.source = EImageExtentSource::TARGET;
-                request.definition.inputs.push_back({
-                    destination, {"pipeline_gate.import", image, EGraphOrigin::IMPORTED, {GraphImageRange{}},
-                    EGraphUse::SAMPLED}, "lux.color.linear-hdr.v1"
-                });
-                request.definition.connections.push_back({{tone, "color"}, {capture, "color"}});
-                request.definition.outputs.push_back({{capture, "pixels"}, {}});
-                job.binding.target_images.push_back({destination, source});
-            }
-            job.effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+            const bool samples_hdr = i == 1 && expect_progress;
+            job.effect = call<CreateEffect>(client, commands, rasterEffect(purposes[0], samples_hdr)).effect;
             job.view = call<CreateView>(client, commands, {scenes[i]}).view;
             job.target = call<CreateTarget>(client, commands, {session, kTarget}).target;
-            call<UpdateViewCamera>(client, commands, {{scenes[i], job.view}, {}});
+            const MaterialReadback::Configuration capture{{
+                {&job.pixels, kTarget.format}, {samples_hdr ? &imported_pixels : nullptr, kTarget.format}
+            }};
+            job.binding = materialBinding(client, commands, session, {scenes[i], job.view}, capture);
+            if (samples_hdr) job.binding.target_images.push_back({.target = source, .binding = std::string{imported_hdr}});
             job.job = call<CreateRenderJob>(client, commands, {
                 scenes[i], job.view, job.effect, EJobCadence::REQUESTED
             }).job;
@@ -735,8 +1000,9 @@ namespace
         if (stop_server)
         {
             const auto layout = call<QueryRenderJobInputLayout>(client, commands, cold).layout;
-            stop_packet.emplace(take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout)));
+            stop_packet.emplace(take(FrameData::create<MaterialFrameResources>(layout)));
             MeshInstanceData value{mesh, jobs[1].material};
+            value.transform_id = jobs[1].transform;
             value.render_enabled = true;
             CHECK(stop_packet->addData<InstanceResource>(MeshInstanceUpdate{jobs[1].member, value}));
             CHECK(stop_packet->seal());
@@ -774,11 +1040,10 @@ namespace
         if (expect_progress)
         {
             const auto layout = call<QueryRenderJobInputLayout>(client, commands, warm).layout;
-            warm_packet.emplace(take(FrameData::create<std::tuple<InstanceResource, LightResource>>(layout)));
-            MeshInstanceData moved{mesh, jobs[0].material};
-            moved.render_enabled = true;
-            moved.transform[12] = .125F;
-            CHECK(warm_packet->addData<InstanceResource>(MeshInstanceUpdate{jobs[0].member, moved}));
+            warm_packet.emplace(take(FrameData::create<MaterialFrameResources>(layout)));
+            auto moved = kIdentityTransform;
+            moved[12] = .125F;
+            CHECK(warm_packet->addData<TransformResource>(TransformRecordUpdate{jobs[0].transform, moved}));
             CHECK(warm_packet->seal());
         }
         const auto warm_request = requestFrame(client, commands, warm, warm_packet ? &*warm_packet : nullptr);
@@ -803,6 +1068,13 @@ namespace
         const auto cold_reply = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 15s);
         CHECK(warm_reply && !warm_reply->error.type && warm_reply->job == warm);
         if (warm_packet) warm_packet->release();
+        if (cold_reply && cold_reply->error.type)
+            std::fprintf(stderr, "Cold Job error %llu with arguments %llu/%llu/%llu\n",
+                static_cast<unsigned long long>(cold_reply->error.type),
+                static_cast<unsigned long long>(cold_reply->error.args[0]),
+                static_cast<unsigned long long>(cold_reply->error.args[1]),
+                static_cast<unsigned long long>(cold_reply->error.args[2])
+            );
         CHECK(cold_reply && !cold_reply->error.type && cold_reply->job == cold);
         CHECK(blocked);
         const auto holding_slot = blocked->program_preparations_holding_slot - before->program_preparations_holding_slot;
@@ -887,7 +1159,7 @@ namespace
 
     void verifyScale(
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
-        const RenderProbe<RasterProbeConfig>& forward, SceneId scene, ResourceInstanceId materials,
+        SceneId scene, ResourceInstanceId materials,
         ResourceInstanceId instances, MeshId mesh, std::span<const TextureId> textures,
         lux::shader::ShaderCompiler& compiler, rdesc::EShaderTarget target, unsigned count, bool varied
     )
@@ -928,7 +1200,6 @@ namespace
         const auto pages = abi_count * pagesFor(count / abi_count);
         std::vector<MaterialId> ids;
         ids.reserve(count);
-        std::uint64_t resident_buffer_bytes = 0;
         for (unsigned round = 0; round < 5; ++round)
         {
             const auto before = MaterialAllocationProbe::sample();
@@ -953,7 +1224,6 @@ namespace
             const auto uploaded = after.upload_bytes - before.upload_bytes;
             CHECK(allocated == pages * kFif && views == allocated);
             CHECK(memory_bytes >= buffer_bytes && uploaded == record_bytes);
-            resident_buffer_bytes = buffer_bytes;
             std::printf(
                 "MATERIAL_ALLOC programs=%u abis=%u round=%u pages=%u fif_buffers=%llu descriptors=%llu "
                 "buffer_bytes=%llu native_memory_requirement_bytes=%llu upload_bytes=%llu utilization=%.6f "
@@ -971,24 +1241,29 @@ namespace
 
         std::vector<MeshInstanceData> input;
         input.reserve(count);
+        std::vector<TransformMatrix> matrices;
+        matrices.reserve(count);
         for (unsigned index = 0; index < count; ++index)
         {
             MeshInstanceData value{mesh, ids[index]};
             value.render_enabled = true;
+            auto matrix = kIdentityTransform;
             if (index == 0)
             {
                 // The readback point stays well inside this quad on either backend.
-                value.transform[0] = value.transform[5] = .125F;
+                matrix[0] = matrix[5] = .125F;
             }
             else
             {
                 const auto pixel = index - 1;
-                value.transform[0] = value.transform[5] = 1.0F / 64;
-                value.transform[12] = (2 * float(pixel % 64) + 1) / 64 - 1;
-                value.transform[13] = 1 - (2 * float(pixel / 64) + 1) / 64;
+                matrix[0] = matrix[5] = 1.0F / 64;
+                matrix[12] = (2 * float(pixel % 64) + 1) / 64 - 1;
+                matrix[13] = 1 - (2 * float(pixel / 64) + 1) / 64;
             }
             input.push_back(value);
+            matrices.push_back(matrix);
         }
+        bindTransforms(ipc, commands, sceneTransformStorage(ipc, commands, session, scene), input, matrices);
         constexpr unsigned sparse = 8;
         std::size_t previous = 0;
         for (const auto active : {sparse, count})
@@ -998,27 +1273,13 @@ namespace
             );
             CHECK(created.instances.size() == active - previous);
             previous = active;
-            const auto reads = sampleRaster(server, ipc, commands, session, forward, purposes[0], scene);
+            const auto reads = sampleRaster(server, ipc, commands, session, purposes[0], scene);
             const auto expected_pages = active == count ? pages : (varied ? sparse : 1);
             const auto expected_images = std::min<unsigned>(active, 9);
             CHECK(reads.buffer_ranges == expected_pages * kFif);
-            if (active == count)
-            {
-                CHECK(reads.buffer_bytes == resident_buffer_bytes);
-            }
-            else
-            {
-                std::uint64_t expected_bytes = programs.front().stride * 16ull;
-                if (varied)
-                {
-                    expected_bytes = 0;
-                    for (unsigned index = 0; index < active; ++index)
-                    {
-                        expected_bytes += programs[index].stride * 16ull;
-                    }
-                }
-                CHECK(reads.buffer_bytes == expected_bytes * kFif);
-            }
+            std::uint64_t expected_bytes = 0;
+            for (const auto& program : std::span{programs}.first(active)) expected_bytes += program.stride;
+            CHECK(reads.buffer_bytes == expected_bytes * kFif);
             CHECK(reads.image_ranges == expected_images * kFif && reads.image_ranges == reads.image_subresources);
             CHECK(reads.center[1] == std::byte{96} && reads.center[3] == std::byte{255});
             std::printf(
@@ -1037,7 +1298,7 @@ namespace
 
     void profileInstances(
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
-        const RenderProbe<RasterProbeConfig>& forward, SceneId scene, ResourceInstanceId materials,
+        SceneId scene, ResourceInstanceId materials,
         ResourceInstanceId instances, MeshId mesh, TextureId texture, lux::shader::ShaderCompiler& compiler,
         rdesc::EShaderTarget target
     )
@@ -1111,9 +1372,14 @@ namespace
         std::fflush(stdout);
 
         std::array live{MeshInstanceData{mesh, ids.front()}, MeshInstanceData{mesh, ids.back()}};
-        for (auto& instance : live) instance.render_enabled = true;
+        const auto pose = createTransform(ipc, commands, sceneTransformStorage(ipc, commands, session, scene));
+        for (auto& instance : live)
+        {
+            instance.transform_id = pose;
+            instance.render_enabled = true;
+        }
         call<InstanceCommands::CreateInstances>(ipc, commands, {instances, live});
-        const auto sampled = sampleRaster(server, ipc, commands, session, forward, purposes[0], scene);
+        const auto sampled = sampleRaster(server, ipc, commands, session, purposes[0], scene);
         CHECK(sampled.buffer_ranges == 2 * kFif);
         CHECK(sampled.image_ranges == kFif);
         CHECK(std::abs(std::to_integer<int>(sampled.center[0]) - 96) <= 1);
@@ -1159,6 +1425,11 @@ int main(int argc, char** argv)
     auto runtime = lux::execution::ExecutionRuntime::create({workers, 128, {128}});
     CHECK(runtime);
     RenderServerConfig config{"test.material.scale", nativeValidationEnabled()};
+    config.diagnostics.report = [](void*, const RenderDiagnostic& value) noexcept
+    {
+        if (value.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE)
+            std::fprintf(stderr, "%.*s\n", int(value.message.size()), value.message.data());
+    };
     config.frames_in_flight = kFif;
     config.uploads.emplace();
     config.uploads->chunk_bytes = 4 * 1024 * 1024;
@@ -1166,24 +1437,17 @@ int main(int argc, char** argv)
     auto server = take(RenderServer::create(config, **runtime));
     take(server->registerResource<MaterialAllocationProbe>());
     if (pipeline_isolation.has_value()) take(server->registerResource<PipelineIsolationProbe>());
-    const auto clear = pipeline_isolation.value_or(false) ? take(server->registerFeature<WindowClear>()) : FeatureId{};
-    take(server->registerResource<CaptureBuffer>());
-    const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
-    const auto capture = take(server->registerFeature<CaptureFeature>());
-    const auto probe = [&](std::string_view feature)
+    take(server->registerResource(MaterialReadback::factory()));
+    registerMaterialCapture<EMaterialPurpose::FORWARD>(*server);
+    registerMaterialCapture<EMaterialPurpose::GBUFFER>(*server);
+    registerMaterialCapture<EMaterialPurpose::SHADOW>(*server);
+    if (pipeline_isolation.value_or(false))
     {
-        std::vector features{take(server->featureId(feature)), capture, visibility};
-        if (pipeline_isolation.value_or(false))
-            features.push_back(take(server->featureId("lux.render.feature.TonemapFeature")));
-        return registerRenderProbe<RasterProbeConfig>(
-            *server, std::string(feature), std::move(features),
-            {"color", "pixels"}, rasterRecipe
-        );
-    };
-    const Probes probes{
-        probe("lux.render.feature.MaterialMeshRaster"), probe("lux.render.feature.GBufferFeature"),
-        probe("lux.render.feature.MeshDepthRaster")
-    };
+        const auto hdr = hdrDefinition();
+        CHECK(server->registerEffectCapability(hdr));
+        registerMaterialNode(*server, hdr.identity.id, clear_hdr, Lighting::hdr, buildHdr<false>);
+        registerMaterialNode(*server, hdr.identity.id, sample_hdr, Lighting::hdr, buildHdr<true>);
+    }
     auto ipc = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(ipc);
     std::thread thread([&] { CHECK(server->run()); });
@@ -1214,24 +1478,24 @@ int main(int argc, char** argv)
     {
         const auto other = call<CreateScene>(*ipc, commands, {}).scene;
         verifyPipelineIsolation(
-            *server, thread, *ipc, commands, session, config.channel_name, probes[0], {scene, other}, materials, mesh,
-            images.front(), **compiler, shader_target, clear, *pipeline_isolation, workers, stop_server
+            *server, thread, *ipc, commands, session, config.channel_name, {scene, other}, materials, mesh,
+            images.front(), **compiler, shader_target, *pipeline_isolation, workers, stop_server
         );
     }
     else if (instance_profile)
     {
         CHECK(!count && !varied);
-        profileInstances(*server, *ipc, commands, session, probes[0], scene, materials, instances, mesh, images.front(),
+        profileInstances(*server, *ipc, commands, session, scene, materials, instances, mesh, images.front(),
             **compiler, shader_target);
     }
     else if (count)
     {
-        verifyScale(*server, *ipc, commands, session, probes[0], scene, materials, instances, mesh, images, **compiler,
+        verifyScale(*server, *ipc, commands, session, scene, materials, instances, mesh, images, **compiler,
             shader_target, count, varied);
     }
     else
     {
-        verifyPurposes(*server, *ipc, commands, session, probes, scene, materials, instances, mesh,
+        verifyPurposes(*server, *ipc, commands, session, scene, materials, instances, mesh,
             std::span<const TextureId, 2>(images.data(), 2), **compiler, shader_target);
         call<RemoveScene>(*ipc, commands, {scene});
     }

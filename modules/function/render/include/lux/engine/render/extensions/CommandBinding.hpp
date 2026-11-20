@@ -3,6 +3,7 @@
 #include <lux/engine/render/visibility.h>
 
 #include <lux/cxx/execution/ManualContext.hpp>
+#include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/platform/ipc/IpcMessage.hpp>
 #include <lux/engine/render/commands/CommandBindingLocation.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -28,6 +29,7 @@ namespace lux::render
     concept EffectCommand = RenderCommand<C> && requires(const typename C::Request& request)
     {
         { C::effectId(request) } noexcept -> std::same_as<EffectId>;
+        { C::nodeId(request) } noexcept -> std::same_as<graph::NodeId>;
     } && !requires(const typename C::Request& request) { C::resourceId(request); };
 
     template <EffectCommand C, class State, auto Method>
@@ -75,6 +77,8 @@ namespace lux::render
             return storage_ != nullptr;
         }
 
+        [[nodiscard]] bool isNodeEffectCommand() const noexcept { return effect_node_ != nullptr; }
+
         [[nodiscard]] bool valid() const noexcept
         {
             return descriptor_ && call_.invoke;
@@ -92,6 +96,10 @@ namespace lux::render
             result.effect_ = [](const platform::ipc::IpcMessage& message) noexcept
             {
                 return C::effectId(message.get<typename C::Request>());
+            };
+            result.effect_node_ = [](const platform::ipc::IpcMessage& message) noexcept
+            {
+                return C::nodeId(message.get<typename C::Request>());
             };
             result.call_.invoke = [](void* object, runtime_detail::CommandDispatchContext& context) noexcept
             {
@@ -116,7 +124,7 @@ namespace lux::render
         [[nodiscard]] static CommandBinding declare() noexcept
         {
             static_assert(!requires(const typename C::Request& request) { C::effectId(request); },
-                "Effect commands use a typed contribution state");
+                "Effect commands use typed node state");
             CommandBinding result;
             result.initializeDeclaration<C>();
             if constexpr (!std::is_void_v<H>)
@@ -267,5 +275,6 @@ namespace lux::render
         void (*make_error_)(platform::ipc::IpcMessage&, RenderError) noexcept = nullptr;
         EffectId (*effect_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         ResourceInstanceId (*storage_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
+        graph::NodeId (*effect_node_)(const platform::ipc::IpcMessage&) noexcept = nullptr;
     };
 } // namespace lux::render

@@ -30,6 +30,14 @@ namespace lux::render
         std::vector<TextureId> textures;
     };
 
+    struct MaterialColorUpdate final
+    {
+        MaterialId material;
+        // Index in the selected program's reflected float4 parameter projection.
+        std::uint32_t parameter = 0;
+        std::array<float, 4> linear_rgba{};
+    };
+
     template <> struct ConfigValueTraits<rdesc::MaterialProgramSet> final
     {
         [[nodiscard]] LUX_RENDER_PUBLIC static RenderResult<std::size_t>

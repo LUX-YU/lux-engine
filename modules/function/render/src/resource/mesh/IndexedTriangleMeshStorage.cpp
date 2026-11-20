@@ -243,7 +243,30 @@ namespace lux::render::detail
             {vertices.buffer, vertices.offset, vertices.size},
             {indices.buffer, indices.offset, indices.size},
             entry->description.vertex_stride,
-            entry->description.index_stride
+            entry->description.index_stride,
+            &entry->description
+        };
+    }
+
+    RenderResult<MeshArenaSection>
+    IndexedTriangleMeshStorage::arenaSection(MeshId id, std::uint32_t submesh) const noexcept
+    {
+        const auto* entry = findEntry(id);
+        if (!entry || submesh >= entry->description.submeshes.size())
+            return cxx::unexpected(RenderError{kStorageIdentity});
+        const auto& section = entry->description.submeshes[submesh];
+        const auto index_base = entry->geometry.indices.offset / entry->description.index_stride;
+        const auto vertex_base = entry->geometry.vertices.offset / entry->description.vertex_stride;
+        const bool invalid_index = index_base > UINT32_MAX || section.first_index > UINT32_MAX - index_base;
+        if (invalid_index || vertex_base > UINT32_MAX)
+            return cxx::unexpected(RenderError{kStorageCapacity});
+        const auto vertex_offset = static_cast<std::int64_t>(vertex_base) + section.vertex_offset;
+        if (vertex_offset < INT32_MIN || vertex_offset > INT32_MAX)
+            return cxx::unexpected(RenderError{kStorageCapacity});
+        return MeshArenaSection{
+            {section.index_count, static_cast<std::uint32_t>(index_base + section.first_index),
+                static_cast<std::int32_t>(vertex_offset)},
+            entry->description.bounds
         };
     }
 

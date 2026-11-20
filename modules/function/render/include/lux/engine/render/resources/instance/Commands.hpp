@@ -79,7 +79,6 @@ namespace lux::render::InstanceCommands
         struct Request final
         {
             ResourceInstanceId resource;
-            std::span<const TransformUpdate> transforms;
             std::span<const MeshInstanceUpdate> instances;
         };
         using Response = AckResponse;

@@ -25,6 +25,7 @@ struct Property
     uint material_record;
     uint section_index;
     uint render_flags;
+    uint transform_record;
 };
 #ifdef PAGED_INSTANCES
 struct Address
@@ -34,7 +35,6 @@ struct Address
 
 struct PageAddresses
 {
-    uvec2 transforms;
     uvec2 properties;
     uvec2 alive;
 };
@@ -122,21 +122,28 @@ void luxMain()
         uint root = instance >> 23;
         uint leaf = (instance >> 14) & 511;
         uint slot = instance & 16383;
-        mat4 model =
-            ((Transform*)luxAddress(((PageAddresses*)luxAddress(transforms[root].value))[leaf].transforms))[slot].model;
+        Property property =
+            ((Property*)luxAddress(((PageAddresses*)luxAddress(properties[root].value))[leaf].properties))[slot];
         uint present = ((Word*)luxAddress(((PageAddresses*)luxAddress(alive[root].value))[leaf].alive))[slot].value;
-        uint flags =
-            ((Property*)luxAddress(((PageAddresses*)luxAddress(properties[root].value))[leaf].properties))[slot]
-                .render_flags;
 #else
-        mat4 model = transforms[instance].model;
+        Property property = properties[instance];
         uint present = alive[instance].value;
-        uint flags = properties[instance].render_flags;
 #endif
-        float determinant = dot(transpose(model)[0].xyz, cross(transpose(model)[1].xyz, transpose(model)[2].xyz));
-        winding = determinant < 0 ? 1 : 0;
         uint required = parameters.shadow_pass != 0 ? 3u : 1u;
-        included = present != 0 && determinant != 0 && (flags & required) == required;
+        included = present != 0 && (property.render_flags & required) == required;
+        mat4 model = {};
+        if (included)
+        {
+#ifdef PAGED_INSTANCES
+            uint transform = property.transform_record;
+            model = ((Transform*)luxAddress(transforms[transform >> 14].value))[transform & 16383].model;
+#else
+            model = transforms[property.transform_record].model;
+#endif
+            float determinant = dot(transpose(model)[0].xyz, cross(transpose(model)[1].xyz, transpose(model)[2].xyz));
+            winding = determinant < 0 ? 1 : 0;
+            included = determinant != 0;
+        }
         if (included && parameters.frustum_culling != 0 && group.center.w != 0)
         {
             // Legacy frustumCull half-space test. The support radius uses the transformed AABB axes,

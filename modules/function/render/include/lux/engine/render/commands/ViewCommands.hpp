@@ -1,7 +1,5 @@
 #pragma once
 
-#include <lux/engine/render/inputs/CameraInputs.hpp>
-
 #include <lux/engine/render/commands/Command.hpp>
 
 namespace lux::render
@@ -30,16 +28,6 @@ namespace lux::render
         static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.view.remove"};
         using Request = ViewRequest;
-        using Response = AckResponse;
-    };
-    struct UpdateViewCamera final
-    {
-        static constexpr std::string_view name = "render.view.update_camera";
-        struct Request final
-        {
-            ViewRequest view;
-            CameraInput camera;
-        };
         using Response = AckResponse;
     };
 } // namespace lux::render

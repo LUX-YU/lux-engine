@@ -80,10 +80,56 @@ namespace lux::render
         };
     }
 
-    bool ResourceRegistry::hasCommands(ResourceInstanceId id) const noexcept
+    bool ResourceRegistry::hasBorrows(ResourceInstanceId id) const noexcept
     {
         const auto* entry = entries_.find(id);
-        return entry && entry->command_uses != 0;
+        return entry && (entry->command_uses != 0 || entry->execution_uses != 0);
+    }
+
+    bool ResourceRegistry::hasDependents(ResourceInstanceId id) const noexcept
+    {
+        const auto* entry = entries_.find(id);
+        return entry && entry->dependent_storages != 0;
+    }
+
+    RenderResult<ResourceInstanceId> ResourceRegistry::requireDuringConstruction(
+        ResourceCreateContext& context, ResourceInstanceId consumer, ResourceTypeId type
+    ) noexcept
+    {
+        auto* entry = entries_.find(consumer);
+        const auto* definition = factory(type);
+        if (!entry || entry->instance || !definition) return cxx::unexpected(RenderError{kStorageContract});
+        auto* scope = entry->storage_set->ownerFor(definition->descriptor->domain);
+        if (!scope) return cxx::unexpected(RenderError{kStorageMismatch});
+        auto dependency = scope->getOrCreate(context, type);
+        if (!dependency) return cxx::unexpected(dependency.error());
+
+        auto& dependencies = entries_.find(consumer)->dependencies;
+        if (std::ranges::find(dependencies, *dependency) == dependencies.end())
+        {
+            auto& count = entries_.find(*dependency)->dependent_storages;
+            if (count == UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
+            dependencies.push_back(*dependency);
+            ++count;
+        }
+        return *dependency;
+    }
+
+    RenderResult<void> ResourceRegistry::retainExecution(ResourceInstanceId id) noexcept
+    {
+        auto* entry = entries_.find(id);
+        if (!entry || !entry->instance) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (entry->exclusive_command) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (entry->execution_uses == UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
+        ++entry->execution_uses;
+        return {};
+    }
+
+    void ResourceRegistry::releaseExecution(ResourceInstanceId id) noexcept
+    {
+        auto* entry = entries_.find(id);
+        if (!entry || !entry->execution_uses) std::terminate();
+        --entry->execution_uses;
     }
 
     bool ResourceRegistry::hasExclusiveCommand(ResourceInstanceId id) const noexcept
@@ -313,9 +359,15 @@ namespace lux::render
 
     void ResourceRegistry::revoke(ResourceInstanceId id) noexcept
     {
-        if (hasCommands(id))
+        if (hasBorrows(id) || hasDependents(id))
         {
             std::terminate();
+        }
+        for (auto dependency : entries_.find(id)->dependencies)
+        {
+            auto* owner = entries_.find(dependency);
+            if (!owner || !owner->dependent_storages) std::terminate();
+            --owner->dependent_storages;
         }
         entries_.erase(id);
     }

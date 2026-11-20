@@ -1,10 +1,17 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/capabilities/BuiltinImplementations.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/resource/instance/RasterMeshInstanceStorage.hpp>
+#include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
+#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
+#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
+#include <lux/engine/render/resource/transform/TransformStorage.hpp>
+#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
+#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <optional>
-#include <set>
 
 namespace lux::render
 {
@@ -54,225 +61,27 @@ namespace lux::render
 
     RenderResult<void> RenderServer::registerBuiltins() noexcept
     {
-        // Deduplicate the module closure once; every definition uses the public registration entry.
-        using Storages = decltype([]<class... Implementations>(std::tuple<Implementations...>*)
+        using Storages = std::tuple<
+            detail::SampledTexture2DStorage, detail::IndexedTriangleMeshStorage, detail::RasterMaterialStorage,
+            detail::RasterMeshInstanceStorage, detail::TransformStorage, detail::DirectLightingStorage
+        >;
+        if (auto added = registerResource(detail::ViewParameterStorage::factory()); !added)
+            return cxx::unexpected(added.error());
+        RenderResult<void> registered;
+        cxx::tuple_traits::for_each_type<Storages>([&]<class Storage, std::size_t>() noexcept
         {
-            return std::tuple_cat(uniqueTypes(static_cast<typename Implementations::Storages*>(nullptr))...);
-        }(static_cast<detail::BuiltinImplementations*>(nullptr)));
-        using UniqueStorages = decltype([]<class... Types>(std::tuple<Types...>*)
-        {
-            return uniqueTypes(static_cast<std::tuple<typename Types::type...>*>(nullptr));
-        }(static_cast<Storages*>(nullptr)));
-        RenderResult<void> result;
-        cxx::tuple_traits::for_each_type<UniqueStorages>([&]<class Type, std::size_t>() noexcept
-        {
-            if (!result) return;
-            auto added = registerResource<typename Type::type>();
-            if (!added) result = cxx::unexpected(added.error());
+            if (!registered) return;
+            auto added = registerResource<Storage>();
+            if (!added) registered = cxx::unexpected(added.error());
         });
-        cxx::tuple_traits::for_each_type<detail::BuiltinFeatures>([&]<class Feature, std::size_t>() noexcept
-        {
-            if (!result) return;
-            auto added = registerFeature<Feature>();
-            if (!added) result = cxx::unexpected(added.error());
-        });
-        cxx::tuple_traits::for_each_type<detail::BuiltinImplementations>(
-            [&]<class Implementation, std::size_t>() noexcept
-            {
-                if (!result) return;
-                static_assert(std::tuple_size_v<typename Implementation::Bindings> == 0);
-                auto added = registerCapability<typename Implementation::Capability>();
-                if (!added) result = cxx::unexpected(added.error());
-            }
-        );
-        cxx::tuple_traits::for_each_type<detail::BuiltinImplementations>(
-            [&]<class Implementation, std::size_t>() noexcept
-            {
-                if (!result) return;
-                auto added = registerCapabilityImplementation<Implementation>();
-                if (!added) result = cxx::unexpected(added.error());
-            }
-        );
-        if (!result) return result;
-        return impl_->capability_registry_.validateDeclarations();
-    }
-
-    FeatureId RenderServer::Impl::publishFeature(FeatureEntry entry) noexcept
-    {
-        const auto id = features_.emplace(std::move(entry));
-        auto& stored = *features_.find(id);
-        features_by_name_.emplace(stored.name, id);
-        return id;
-    }
-
-    RenderResult<void> RenderServer::Impl::validateImplementationDescription(
-        const CapabilityDescription& capability,
-        const CapabilityImplementation& implementation
-    ) const noexcept
-    {
-        if (implementation.implementation.empty()) return cxx::unexpected(RenderError{kFeatureContract});
-        for (const auto& output : implementation.outputs)
-        {
-            if (auto valid = validateEffectOutput({output.format, output.samples, output.kind}); !valid)
-            {
-                return valid;
-            }
-        }
-        for (const auto prerequisite : capability.prerequisites)
-        {
-            if (capability_registry_.find(prerequisite).isNull())
-            {
-                return cxx::unexpected(RenderError{kCapabilityPrerequisite});
-            }
-        }
-        return {};
-    }
-
-    RenderResult<void> RenderServer::Impl::validateFeature(const FeatureEntry& entry) const noexcept
-    {
-        const bool is_invalid_graph = entry.name.empty() || !entry.graph.describe_ports || !entry.graph.build;
-        if (is_invalid_graph)
-        {
-            return cxx::unexpected(RenderError{kFeatureContract});
-        }
-        const auto found = features_by_name_.find(entry.name);
-        if (found != features_by_name_.end())
-        {
-            return cxx::unexpected(RenderError{kFeatureDuplicate});
-        }
-        return {};
-    }
-
-    RenderResult<FeatureId> RenderServer::registerFeature(FeatureEntry entry) noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        auto& state = *impl_;
-        if (auto valid = state.validateFeature(entry); !valid)
-        {
-            return cxx::unexpected(valid.error());
-        }
-        return state.publishFeature(std::move(entry));
-    }
-
-    RenderResult<CapabilityId> RenderServer::registerCapability(const CapabilityDescription& description) noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        std::vector<ResourceTypeId> resources;
-        resources.reserve(description.resources.size());
-        for (const auto* resource : description.resources)
-        {
-            if (!resource) return cxx::unexpected(RenderError{kCapabilityDeclaration});
-            const auto id = impl_->runtime_->resources_.typeId(resource->type);
-            const auto* factory = impl_->runtime_->resources_.factory(id);
-            if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
-            if (resource != factory->descriptor)
-            {
-                if (auto valid = compatibleStorage(*resource, *factory->descriptor); !valid)
-                    return cxx::unexpected(valid.error());
-            }
-            resources.push_back(id);
-        }
-        return impl_->capability_registry_.add(description, std::move(resources));
-    }
-
-    RenderResult<void> RenderServer::Impl::validateCapabilityImplementation(
-        const CapabilityDescription& capability,
-        const CapabilityImplementation& implementation
-    ) const noexcept
-    {
-        if (auto valid = validateImplementationDescription(capability, implementation); !valid)
-        {
-            return valid;
-        }
-        const auto commands = capability.commands;
-        for (const auto& binding : implementation.command_bindings)
-        {
-            const auto* method = runtime_->command_registry_.binding(binding);
-            const auto* command = runtime_->command_registry_.findCommand(binding.command);
-            const auto& factory = implementation.state_factory;
-            const bool invalid_call = !method || !method->call.invoke;
-            const bool already_bound = method && (!method->handler.isNull() || method->call.object);
-            const bool invalid_route = !command || !command->effect || command->storage;
-            const bool invalid_state = !factory.create_ || !method || method->effect_state_type != factory.type_;
-            if (invalid_call || already_bound || invalid_route || invalid_state)
-                return cxx::unexpected(RenderError{kCommandContract});
-        }
-        for (const auto* command : commands)
-        {
-            const auto id = runtime_->command_registry_.findCommand(*command);
-            const bool has_exact_call =
-                id && std::ranges::count_if(
-                          implementation.command_bindings,
-                          [&](const auto& binding) noexcept { return binding.command == *id; }
-                      ) == 1;
-            if (!has_exact_call)
-            {
-                return cxx::unexpected(RenderError{kCapabilityDeclaration});
-            }
-        }
-
-        // Extension authors provide resolved Features, not a synthetic root or another name graph.
-        std::set<std::pair<std::uint32_t, std::uint32_t>> unique_features;
-        for (const auto feature : implementation.features)
-        {
-            const auto* entry = features_.find(feature);
-            if (!entry || !unique_features.emplace(feature.index, feature.gen).second)
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-        }
-        return {};
-    }
-
-    RenderResult<CapabilityImplementationId> RenderServer::addCapabilityImplementation(
-        CapabilityId capability,
-        const CapabilityImplementation& declaration
-    ) noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        auto& state = *impl_;
-        const auto* description = state.capability_registry_.get(capability);
-        if (!description)
-        {
-            return cxx::unexpected(RenderError{kRuntimeIdentity});
-        }
-        if (auto valid = state.validateCapabilityImplementation(*description, declaration); !valid)
-        {
-            return cxx::unexpected(valid.error());
-        }
-        return state.capability_registry_.addImplementation(capability, declaration);
-    }
-
-    RenderResult<CapabilityImplementationId> RenderServer::replaceCapabilityImplementation(
-        CapabilityImplementationId previous,
-        const CapabilityImplementation& declaration
-    ) noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        auto& state = *impl_;
-        if (!state.capability_registry_.find(previous))
-        {
-            return cxx::unexpected(RenderError{kRuntimeIdentity});
-        }
-        const auto capability = state.capability_registry_.capabilityOf(previous);
-        const auto& description = *state.capability_registry_.get(capability);
-        if (auto valid = state.validateCapabilityImplementation(description, declaration); !valid)
-        {
-            return cxx::unexpected(valid.error());
-        }
-        return state.capability_registry_.replaceImplementation(previous, declaration);
-    }
-
-    RenderResult<void> RenderServer::removeCapabilityImplementation(CapabilityImplementationId id) noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        return impl_->capability_registry_.removeImplementation(id);
-    }
-
-    RenderResult<void> RenderServer::removeCapability(CapabilityId id) noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        return impl_->capability_registry_.remove(id);
+        if (!registered) return registered;
+        if (auto depth = detail::registerDepthPyramid(*this); !depth) return depth;
+        if (auto lighting = detail::registerLighting(*this); !lighting) return lighting;
+        if (auto visibility = detail::registerMeshVisibility(*this); !visibility) return visibility;
+        if (auto gbuffer = detail::registerGBuffer(*this); !gbuffer) return gbuffer;
+        if (auto mesh_raster = detail::registerMeshRaster(*this); !mesh_raster) return mesh_raster;
+        if (auto shadow = detail::registerShadow(*this); !shadow) return shadow;
+        return detail::registerToneMapping(*this);
     }
 
     RenderResult<ResourceTypeId>
@@ -318,22 +127,50 @@ namespace lux::render
         return id;
     }
 
+    RenderResult<void> RenderServer::registerEffectCapability(CapabilityDefinition definition) noexcept
+    {
+        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
+        return impl_->effect_catalog_.addCapability(std::make_unique<CapabilityDefinition>(std::move(definition)));
+    }
+
+    RenderResult<void> RenderServer::registerEffectImplementation(EffectImplementation implementation) noexcept
+    {
+        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
+        const auto& registry = impl_->runtime_->command_registry_;
+        for (const auto binding : implementation.command_bindings)
+        {
+            const auto* command = registry.findCommand(binding.command);
+            const auto* method = registry.binding(binding);
+            const bool invalid_command = !command || !command->effect_node || !command->effect || command->storage;
+            const bool invalid_method = !method || !method->effect_state_type.isValid() || !method->handler.isNull();
+            if (invalid_command || invalid_method) return cxx::unexpected(RenderError{kCommandContract});
+        }
+        return impl_->effect_catalog_.addImplementation(std::make_unique<EffectImplementation>(std::move(implementation)));
+    }
+
+    RenderResult<CommandBindingLocation>
+    RenderServer::registerNodeEffectCommand(const CommandBinding& binding, object::CodeLease code) noexcept
+    {
+        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
+        if (!code.valid() || !binding.isNodeEffectCommand())
+            return cxx::unexpected(RenderError{kCommandContract});
+        auto& runtime = *impl_->runtime_;
+        auto& registry = runtime.command_registry_;
+        if (auto valid = registry.validateStaticBindings({&binding, 1}); !valid) return cxx::unexpected(valid.error());
+        runtime.effect_command_code_.push_back(std::move(code));
+        return registry.publishBinding({}, binding);
+    }
+
     RenderResult<void> RenderServer::registerCommands(std::span<const CommandBinding> bindings) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
         if (impl_->stop_requested_.load()) return cxx::unexpected(RenderError{kRuntimeState});
         if (auto valid = impl_->runtime_->command_registry_.validateStaticBindings(bindings); !valid) return valid;
+        if (std::ranges::any_of(bindings, &CommandBinding::isNodeEffectCommand))
+            return cxx::unexpected(RenderError{kCommandContract});
         impl_->runtime_->command_registry_.reserve(bindings.size(), 0);
         impl_->runtime_->command_registry_.publishStaticBindings(bindings);
         return {};
-    }
-
-    RenderResult<CapabilityId> RenderServer::capabilityId(cxx::basic_type_info type) const noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        const auto id = impl_->capability_registry_.find(type);
-        if (id.isNull()) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        return id;
     }
 
     RenderResult<HandlerId> RenderServer::handlerId(cxx::basic_type_info type, std::string_view key) const noexcept
@@ -343,27 +180,6 @@ namespace lux::render
         if (!id) return id;
         if (id->isNull()) return cxx::unexpected(RenderError{kRuntimeIdentity});
         return id;
-    }
-
-    RenderResult<CommandBindingLocation> RenderServer::commandBinding(
-        const CommandDescriptor& command, cxx::basic_type_info method, HandlerId handler
-    ) const noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        auto id = impl_->runtime_->command_registry_.findCommand(command);
-        if (!id) return cxx::unexpected(id.error());
-        return impl_->runtime_->command_registry_.findBinding(*id, method, handler);
-    }
-
-    RenderResult<FeatureId> RenderServer::featureId(std::string_view implementation) const noexcept
-    {
-        if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        const auto found = impl_->features_by_name_.find(implementation);
-        if (found == impl_->features_by_name_.end())
-        {
-            return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        }
-        return found->second;
     }
 
     RenderResult<void> RenderServer::run() noexcept

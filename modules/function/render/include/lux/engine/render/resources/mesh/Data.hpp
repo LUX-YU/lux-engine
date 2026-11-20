@@ -77,6 +77,12 @@ namespace lux::render
 
     static_assert(sizeof(MeshGpuSection) == 12);
 
+    struct MeshArenaSection final
+    {
+        MeshGpuSection section;
+        MeshGpuBounds bounds;
+    };
+
     template <> struct ConfigValueTraits<MeshDescription> final
     {
         [[nodiscard]] LUX_RENDER_PUBLIC static RenderResult<std::size_t> retainedBytes(const MeshDescription&) noexcept;

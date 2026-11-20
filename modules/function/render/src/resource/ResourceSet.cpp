@@ -136,7 +136,7 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (registry_.hasCommands(id))
+        if (registry_.hasBorrows(id) || registry_.hasDependents(id))
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
@@ -150,33 +150,33 @@ namespace lux::render
         instances_by_type_.erase(record.type);
         registry_.revoke(record.id);
         auto instance = std::move(records_[position].instance);
-        if (position + 1 != records_.size())
+        // Keep construction order so dependent instances are destroyed before their dependencies.
+        records_.erase(records_.begin() + position);
+        for (auto i = position; i < records_.size(); ++i)
         {
-            records_[position] = std::move(records_.back());
-            registry_.relocate(records_[position].id, position);
+            registry_.relocate(records_[i].id, i);
         }
-        records_.pop_back();
         // All indexes are repaired before a Implementation destructor can release another actual instance.
     }
 
-    bool ResourceSet::hasCommands() const noexcept
+    bool ResourceSet::hasBorrows() const noexcept
     {
         return std::ranges::any_of(
             records_,
-            [&](const auto& record) noexcept { return registry_.hasCommands(record.id); }
+            [&](const auto& record) noexcept { return registry_.hasBorrows(record.id); }
         );
     }
 
     void ResourceSet::clear() noexcept
     {
-        if (constructing_ || clearing_ || hasCommands())
+        if (constructing_ || clearing_ || hasBorrows())
         {
             std::terminate();
         }
         clearing_ = true;
-        for (const auto& record : records_)
+        for (auto record = records_.rbegin(); record != records_.rend(); ++record)
         {
-            registry_.revoke(record.id);
+            registry_.revoke(record->id);
         }
         instances_by_type_.clear();
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.

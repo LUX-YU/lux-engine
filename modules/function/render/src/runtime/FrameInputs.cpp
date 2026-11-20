@@ -50,15 +50,12 @@ namespace lux::render
             inputs.jobs.push_back({id, &execution, std::move(reads)});
             running.insert(id, index);
             writers.insert(execution.target, index);
-            const auto& effect = execution.recipe.effect;
-            for (std::size_t i = 0; i < effect.resource_dependencies.size(); ++i)
+            for (const auto storage : execution.gpu_resources)
             {
-                const auto& dependency = effect.resource_dependencies[i];
-                const auto* factory = runtime_->resources_.factory(dependency.declaration);
+                if (storage.isNull()) continue;
+                const auto* factory = runtime_->resources_.factory(runtime_->resources_.declarationOf(storage));
                 const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->storage->binding_ops);
                 if (!ops || !ops->prepareFrame) continue;
-                const auto storage = execution.resources[i];
-                if (storage.isNull()) continue;
                 auto* native = runtime_->resources_.resourceInstance(storage);
                 ids.push_back(storage);
                 inputs.storages.push_back({

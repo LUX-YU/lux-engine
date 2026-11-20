@@ -7,7 +7,11 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/cxx/compile_time/type_info.hpp>
+#include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 namespace lux::render::detail
 {
@@ -115,11 +119,58 @@ namespace lux::render::detail
         StorageSubscription** previous_ = nullptr;
     };
 
+    struct StorageGraphImport final
+    {
+        VGraphResourceDesc description;
+        std::vector<VGraphRange> initial_ranges;
+        EGraphUse initial_use = EGraphUse::UNSPECIFIED;
+        // When set, the graph may only read the projection in this use.
+        std::optional<EGraphUse> read_use{};
+        bool operator==(const StorageGraphImport&) const noexcept = default;
+    };
+
+    struct StorageSnapshotOps final
+    {
+        using Selection = std::unique_ptr<void, void (*)(void*) noexcept>;
+
+        cxx::basic_type_info type;
+        Selection (*create)() noexcept;
+        RenderResult<std::uint64_t> (*capture)(const void*, void*) noexcept;
+        // Optional owner-side revision for program selection. A selectable revision starts at one.
+        std::uint64_t (*revision)(const void*) noexcept = nullptr;
+
+        // Capture fills Job-owned reusable memory on the Server owner. Copy every value
+        // needed by the producer, including any variable-length data.
+        template <
+            class Storage, class T, RenderResult<std::uint64_t> (Storage::*Capture)(T&) const noexcept,
+            std::uint64_t Storage::*Revision = nullptr
+        >
+        [[nodiscard]] static constexpr StorageSnapshotOps make() noexcept
+        {
+            StorageSnapshotOps ops{
+                cxx::make_basic_type_info<T>(),
+                []() noexcept -> Selection
+                {
+                    return {new T{}, [](void* output) noexcept { delete static_cast<T*>(output); }};
+                },
+                [](const void* storage, void* output) noexcept
+                {
+                    return (static_cast<const Storage*>(storage)->*Capture)(*static_cast<T*>(output));
+                }
+            };
+            if constexpr (Revision != nullptr)
+            {
+                ops.revision = [](const void* storage) noexcept { return static_cast<const Storage*>(storage)->*Revision; };
+            }
+            return ops;
+        }
+    };
+
     struct StorageBindingOps final
     {
         using Resolve = RenderResult<
             void> (*)(void*, const VGraphResourceDesc&, const void*, StorageSubscription&, std::span<ResourceInput>) noexcept;
-        Resolve resolve;
+        Resolve resolve = nullptr;
         // Freeze all dirty data or return a capacity error. False only awaits acceptance of a complete
         // replacement before its binding can be published; it never requests another partial copy window.
         using PrepareFrame = RenderResult<bool> (*)(void*, std::uint32_t, ResourceUploader&, Preparation&) noexcept;
@@ -127,6 +178,16 @@ namespace lux::render::detail
         // Cold borrow. The producer advances it before any attempt that may dirty a replica,
         // including a failed upload which leaves repair work. No callback is needed to read it.
         const std::uint64_t* (*preparationRevision)(const void*) noexcept = nullptr;
+
+        // A projection identifies one complete graph binding of this owner. Distinct projections must keep
+        // disjoint backing through replacements. Shape, initialized ranges and boundary use remain stable.
+        using DescribeGraphImport = RenderResult<StorageGraphImport> (*)(const void*, std::uint32_t) noexcept;
+        DescribeGraphImport describeGraphImport = nullptr;
+        using ResolveGraphImport = RenderResult<void> (*)(
+            void*, std::uint32_t, const VGraphResourceDesc&, StorageSubscription&, std::span<ResourceInput>
+        ) noexcept;
+        ResolveGraphImport resolveGraphImport = nullptr;
+        const StorageSnapshotOps* cpu_snapshot = nullptr;
     };
 
     // A cold-qualified preparation borrow. The active execution list owns its lifetime.

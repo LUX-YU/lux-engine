@@ -81,6 +81,9 @@ namespace lux::render::detail
                                          )
                                        : 0u
         };
+        constexpr std::array kinds{
+            EDescriptorLimit::SAMPLED_RESOURCE, EDescriptorLimit::SAMPLER, EDescriptorLimit::STORAGE_BUFFER
+        };
         std::array<std::uint32_t, 3> capacities{};
         for (std::size_t i = 0; i < capacities.size(); ++i)
         {
@@ -94,11 +97,10 @@ namespace lux::render::detail
             const auto requested = options.descriptor_layout_limits[i];
             const bool invalid_layout = requested > available;
             const bool empty_allocation = options.descriptor_initial_counts[i] == 0;
-            const bool invalid_capacity = invalid_reserve || invalid_layout || empty_allocation;
-            if (invalid_capacity)
-            {
-                return cxx::unexpected(RenderError{kDeviceCapacity, {requested, available, i}});
-            }
+            if (invalid_reserve)
+                return cxx::unexpected(descriptorLimit(kinds[i], std::uint64_t(reserve) + 1, maxima[i]));
+            if (invalid_layout) return cxx::unexpected(descriptorLimit(kinds[i], requested, available));
+            if (empty_allocation) return cxx::unexpected(RenderError{kDeviceArgument});
             capacities[i] = requested ? requested : available;
         }
         if (limits.graphicsAPI == nri::GraphicsAPI::D3D12)
@@ -121,7 +123,7 @@ namespace lux::render::detail
             }
             if (committed >= budget)
             {
-                return cxx::unexpected(RenderError{kDeviceCapacity, {committed, budget}});
+                return cxx::unexpected(deviceBudget(EDeviceBudget::SHADER_HEAP, committed, budget));
             }
             auto remaining = static_cast<std::uint32_t>(budget - committed);
             for (auto kind : {0U, 2U})
@@ -252,7 +254,9 @@ namespace lux::render::detail
                                   : table.layout_capacity;
         if (allocated_descriptors_ + capacity > pool_capacity_)
         {
-            return cxx::unexpected(RenderError{kDeviceCapacity, {allocated_descriptors_ + capacity, pool_capacity_}});
+            return cxx::unexpected(
+                deviceBudget(EDeviceBudget::DESCRIPTOR_POOL, allocated_descriptors_ + capacity, pool_capacity_)
+            );
         }
         nri::DescriptorPoolDesc description{};
         description.descriptorSetMaxNum = 1;

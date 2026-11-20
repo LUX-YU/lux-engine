@@ -111,7 +111,7 @@ namespace lux::render
         return impl_ ? impl_->layout.find(declaration, element) : SIZE_MAX;
     }
 
-    FrameData::Column FrameData::column(std::size_t index) const noexcept
+    FrameData::Column FrameData::column(std::size_t index) const & noexcept
     {
         if (!impl_ || index >= impl_->columns.size()) std::terminate();
         const auto& column = impl_->columns[index];

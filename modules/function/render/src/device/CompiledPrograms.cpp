@@ -198,7 +198,7 @@ namespace lux::render::detail
             auto& layout = *item->second;
             if (!layout.key.matches(key)) continue;
             if (color_count > layout.max_colors)
-                return cxx::unexpected(RenderError{kDeviceCapacity, {color_count, layout.max_colors}});
+                return cxx::unexpected(deviceBudget(EDeviceBudget::COLOR_ATTACHMENTS, color_count, layout.max_colors));
             ++layout.references;
             bindings.layout = layout.native;
             return &layout;

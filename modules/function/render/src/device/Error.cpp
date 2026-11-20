@@ -6,6 +6,9 @@ namespace lux::render
 {
     std::span<const error::ErrorDescriptor> deviceErrorDescriptors() noexcept
     {
+        constexpr std::array capacity_arguments{
+            error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED
+        };
         static constexpr std::array descriptors{
             error::ErrorDescriptor{
                 "lux.render.native.thread_start", "Native worker creation failed, system code {0}",
@@ -41,6 +44,14 @@ namespace lux::render
                 "Bounded native capacity exhausted",
                 error::ERecovery::PERMANENT,
                 {}
+            },
+            error::ErrorDescriptor{
+                "lux.render.device.descriptor_limit", "Requested {0} descriptors, {1} available for kind {2}",
+                error::ERecovery::PERMANENT, capacity_arguments
+            },
+            error::ErrorDescriptor{
+                "lux.render.device.budget", "Requested usage {0}, budget {1} for native limit {2}",
+                error::ERecovery::PERMANENT, capacity_arguments
             },
             error::ErrorDescriptor{
                 "lux.render.device.busy",

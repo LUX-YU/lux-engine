@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/features/mesh/MeshGrouping.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityInputs.hpp>
 #include <algorithm>
@@ -181,7 +182,10 @@ namespace lux::render::detail
         {
             const auto axis = exceeds_x ? 0u : 1u;
             const auto requested = exceeds_x ? work_groups : source_.view_count;
-            return cxx::unexpected(RenderError{kDeviceCapacity, {requested, dispatch_limit[axis], axis}});
+            constexpr std::array budgets{
+                EDeviceBudget::DISPATCH_X, EDeviceBudget::DISPATCH_Y, EDeviceBudget::DISPATCH_Z
+            };
+            return cxx::unexpected(deviceBudget(budgets[axis], requested, dispatch_limit[axis]));
         }
         dispatch_ = {
             static_cast<std::uint32_t>(chunks_.size()),

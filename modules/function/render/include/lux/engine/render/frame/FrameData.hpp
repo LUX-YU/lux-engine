@@ -145,7 +145,7 @@ namespace lux::render
 
         template <class Resource, class T>
         requires(frame_detail::FrameElement<T> && frame_detail::declaredElement<Resource, T>)
-        [[nodiscard]] RenderResult<std::span<T>> appendData(std::size_t count) noexcept
+        [[nodiscard]] RenderResult<std::span<T>> appendData(std::size_t count) & noexcept
         {
             static_assert(frame_detail::FrameElement<T>);
             auto appended = append(channel<Resource, T>(), count);
@@ -173,16 +173,19 @@ namespace lux::render
 
         template <class Resource, class T>
         requires(frame_detail::FrameElement<T> && frame_detail::declaredElement<Resource, T>)
-        [[nodiscard]] std::span<const T> getData() const noexcept
+        [[nodiscard]] std::span<const T> getData() const & noexcept
         {
             const auto values = column(channel<Resource, T>());
             return {static_cast<const T*>(values.data), values.count};
         }
 
+        template <class Resource, class T> std::span<const T> getData() const && = delete;
+
         [[nodiscard]] const FrameLayout& layout() const & noexcept;
         [[nodiscard]] const FrameLayout& layout() const && = delete;
         [[nodiscard]] FrameLayoutKey layoutKey() const noexcept;
-        [[nodiscard]] Column column(std::size_t index) const noexcept;
+        [[nodiscard]] Column column(std::size_t index) const & noexcept;
+        [[nodiscard]] Column column(std::size_t index) const && = delete;
         [[nodiscard]] std::size_t capacity(std::size_t index) const noexcept;
         [[nodiscard]] bool writable() const noexcept;
         [[nodiscard]] bool sealed() const noexcept;

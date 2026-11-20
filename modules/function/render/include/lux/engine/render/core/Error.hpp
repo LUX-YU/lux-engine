@@ -4,6 +4,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/error/ErrorDescriptor.hpp>
+#include <cstdint>
 #include <span>
 
 namespace lux::render
@@ -12,11 +13,38 @@ namespace lux::render
 
     template <typename T> using RenderResult = cxx::expected<T, RenderError>;
 
+    enum class EDescriptorLimit : std::uint8_t
+    {
+        SAMPLER,
+        CONSTANT_BUFFER,
+        STORAGE_BUFFER,
+        SAMPLED_RESOURCE,
+        STORAGE_TEXTURE
+    };
+
+    enum class EDeviceBudget : std::uint8_t
+    {
+        SHADER_HEAP,
+        DESCRIPTOR_POOL,
+        COLOR_ATTACHMENTS,
+        CONSTANT_BUFFER_BYTES,
+        ROOT_BYTES,
+        DESCRIPTOR_SETS,
+        VERTEX_STAGE_RESOURCES,
+        FRAGMENT_STAGE_RESOURCES,
+        COMPUTE_STAGE_RESOURCES,
+        DISPATCH_X,
+        DISPATCH_Y,
+        DISPATCH_Z
+    };
+
     inline constexpr auto kDeviceFailure = error::errorId("lux.render.device.native_failure");
     inline constexpr auto kDeviceDiagnostic = error::errorId("lux.render.device.diagnostic");
     inline constexpr auto kDeviceArgument = error::errorId("lux.render.device.invalid_argument");
     inline constexpr auto kDeviceUnsupported = error::errorId("lux.render.device.unsupported");
     inline constexpr auto kDeviceCapacity = error::errorId("lux.render.device.capacity");
+    inline constexpr auto kDescriptorLimitExceeded = error::errorId("lux.render.device.descriptor_limit");
+    inline constexpr auto kDeviceBudgetExceeded = error::errorId("lux.render.device.budget");
     inline constexpr auto kNativeThreadStart = error::errorId("lux.render.native.thread_start");
     inline constexpr auto kNativeExecutionClosed = error::errorId("lux.render.native.closed");
 

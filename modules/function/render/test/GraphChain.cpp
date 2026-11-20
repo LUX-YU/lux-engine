@@ -782,8 +782,9 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
             ETransientAllocation::ALIAS_MEMORY, true
         ));
         core.GetDeviceDesc = get_device_desc;
-        CHECK(!rejected && rejected.error().type == kDeviceCapacity);
+        CHECK(!rejected && rejected.error().type == kDeviceBudgetExceeded);
         CHECK(rejected.error().args[0] == 72 && rejected.error().args[1] == 64);
+        CHECK(rejected.error().args[2] == static_cast<std::uint64_t>(EDeviceBudget::ROOT_BYTES));
         std::puts("ROOT RANGE PASS: table DWORDs exhaust the native D3D12 budget before layout creation");
     }
     auto plan = compile(*session, graph, analysis, nullptr);

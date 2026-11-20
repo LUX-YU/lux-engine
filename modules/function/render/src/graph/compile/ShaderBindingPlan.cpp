@@ -57,7 +57,11 @@ namespace lux::render::detail
                 ? range->size + (alignment - range->size % alignment) % alignment
                 : range->size;
             if (physical_size > limits.memory.constantBufferMaxRange)
-                return cxx::unexpected(RenderError{kDeviceCapacity, {physical_size, limits.memory.constantBufferMaxRange}});
+                return cxx::unexpected(
+                    deviceBudget(
+                        EDeviceBudget::CONSTANT_BUFFER_BYTES, physical_size, limits.memory.constantBufferMaxRange
+                    )
+                );
             return {};
         }
 
@@ -182,12 +186,12 @@ namespace lux::render::detail
         const auto root_limit = limits.pipelineLayout.rootConstantMaxSize;
         if (root_bytes > root_limit)
         {
-            return cxx::unexpected(RenderError{kDeviceCapacity, {root_bytes, root_limit}});
+            return cxx::unexpected(deviceBudget(EDeviceBudget::ROOT_BYTES, root_bytes, root_limit));
         }
         if (sets.size() > limits.pipelineLayout.descriptorSetMaxNum)
         {
             return cxx::unexpected(
-                RenderError{kDeviceCapacity, {sets.size(), limits.pipelineLayout.descriptorSetMaxNum}}
+                deviceBudget(EDeviceBudget::DESCRIPTOR_SETS, sets.size(), limits.pipelineLayout.descriptorSetMaxNum)
             );
         }
         // Sampler, uniform buffer, storage buffer, sampled image/texel, storage image/texel.
@@ -222,6 +226,14 @@ namespace lux::render::detail
         };
         constexpr auto stages =
             std::array{nri::StageBits::VERTEX_SHADER, nri::StageBits::FRAGMENT_SHADER, nri::StageBits::COMPUTE_SHADER};
+        constexpr std::array kinds{
+            EDescriptorLimit::SAMPLER, EDescriptorLimit::CONSTANT_BUFFER, EDescriptorLimit::STORAGE_BUFFER,
+            EDescriptorLimit::SAMPLED_RESOURCE, EDescriptorLimit::STORAGE_TEXTURE
+        };
+        constexpr std::array stage_budgets{
+            EDeviceBudget::VERTEX_STAGE_RESOURCES, EDeviceBudget::FRAGMENT_STAGE_RESOURCES,
+            EDeviceBudget::COMPUTE_STAGE_RESOURCES
+        };
         max_colors = UINT32_MAX;
         for (unsigned subset = 0; subset < 2; ++subset)
         {
@@ -265,7 +277,7 @@ namespace lux::render::detail
                     subset == 0 ? ordinary_sets[kind] : std::max(ordinary_sets[kind], indexed_sets[kind]);
                 if (totals[kind] > limit)
                 {
-                    return cxx::unexpected(RenderError{kDeviceCapacity, {totals[kind], limit, kind}});
+                    return cxx::unexpected(descriptorLimit(kinds[kind], totals[kind], limit));
                 }
             }
             for (std::size_t stage = 0; stage < stages.size(); ++stage)
@@ -278,7 +290,7 @@ namespace lux::render::detail
                         subset == 0 ? ordinary_stages[kind] : std::max(ordinary_stages[kind], indexed_stages[kind]);
                     if (count > limit)
                     {
-                        return cxx::unexpected(RenderError{kDeviceCapacity, {count, limit, kind}});
+                        return cxx::unexpected(descriptorLimit(kinds[kind], count, limit));
                     }
                     if (kind != 0)
                     {
@@ -292,7 +304,7 @@ namespace lux::render::detail
                 const auto required = resources + (stage == 1 ? color_count : 0);
                 if (required > limit)
                 {
-                    return cxx::unexpected(RenderError{kDeviceCapacity, {required, limit, stage}});
+                    return cxx::unexpected(deviceBudget(stage_budgets[stage], required, limit));
                 }
                 if (stage == 1)
                 {

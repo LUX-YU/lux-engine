@@ -77,13 +77,15 @@ namespace lux::render
             }
             const auto& factory = types_.find(entry->type)->factory;
             const bool is_wrong_descriptor = factory.descriptor->type != T::descriptor.type;
-            const bool is_wrong_operations = factory.storage->ops_type != cxx::make_basic_type_info<typename T::Ops>();
+            const auto& metadata = *factory.storage();
+            const bool is_wrong_operations = metadata.ops_type != cxx::make_basic_type_info<typename T::Ops>();
             const bool is_wrong_interface = is_wrong_descriptor || is_wrong_operations;
             if (is_wrong_interface)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            return typename T::Access(entry->instance, *static_cast<const typename T::Ops*>(factory.storage->ops.get()));
+            const auto& operations = *static_cast<const typename T::Ops*>(metadata.ops.get());
+            return typename T::Access(entry->instance, operations);
         }
 
         // One qualified boundary lookup for typed callers and registered command thunks alike.
@@ -94,7 +96,7 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            if (types_.find(entry->type)->factory.storage->implementation_type != implementation)
+            if (types_.find(entry->type)->factory.storage()->implementation_type != implementation)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }

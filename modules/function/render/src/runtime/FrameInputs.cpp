@@ -54,7 +54,7 @@ namespace lux::render
             {
                 if (storage.isNull()) continue;
                 const auto* factory = runtime_->resources_.factory(runtime_->resources_.declarationOf(storage));
-                const auto* ops = factory->storage->bindings();
+                const auto* ops = factory->storage()->bindings();
                 if (!ops || !ops->prepareFrame) continue;
                 auto* native = runtime_->resources_.resourceInstance(storage);
                 ids.push_back(storage);

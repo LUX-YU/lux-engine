@@ -1060,7 +1060,7 @@ namespace
             if (!watched_instances.isNull())
             {
                 const auto* factory = context.resources.factory(kInstanceResourceName);
-                const auto& ops = *factory->storage->bindings();
+                const auto& ops = *factory->storage()->bindings();
                 capture->paged_probe_.changed = [](void*, std::uint32_t frame, const ResourceInput& input) noexcept
                 {
                     if (frame >= published_paged_reads.size()) return;

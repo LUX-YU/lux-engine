@@ -34,7 +34,7 @@ namespace lux::render
         if (entry->command_uses == UINT32_MAX) std::terminate();
         ++entry->command_uses;
         entry->exclusive_command = exclusive;
-        return ResolvedCommand{*location, definition.factory.storage->implementation_type};
+        return ResolvedCommand{*location, definition.factory.storage()->implementation_type};
     }
 
     bool ResourceRegistry::hasBorrows(ResourceInstanceId id) const noexcept
@@ -225,7 +225,7 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageCapability});
         }
-        if (definition->factory.storage->config_type.isValid() && !definition->configuration)
+        if (definition->factory.storage()->config_type.isValid() && !definition->configuration)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
@@ -234,7 +234,7 @@ namespace lux::render
 
     RenderResult<void> ResourceRegistry::validateFactory(const ResourceRegistration& factory) const noexcept
     {
-        if (!factory.descriptor || !factory.storage)
+        if (!factory.descriptor || !factory.storage())
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
@@ -257,9 +257,9 @@ namespace lux::render
         {
             return valid;
         }
-        const bool is_missing_config = factory.storage->config_type.isValid() && !configuration;
+        const bool is_missing_config = factory.storage()->config_type.isValid() && !configuration;
         if (is_missing_config) return cxx::unexpected(RenderError{kStorageContract});
-        const bool is_wrong_config_type = configuration && factory.storage->config_type != configuration.type();
+        const bool is_wrong_config_type = configuration && factory.storage()->config_type != configuration.type();
         if (is_wrong_config_type)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -319,7 +319,7 @@ namespace lux::render
         }
         call.channels = frame_channels;
 
-        auto& storage = *factory.storage;
+        auto& storage = *factory.storage_;
         own_type(storage.config_type);
         own_type(storage.ops_type);
         own_type(storage.implementation_type);
@@ -356,7 +356,7 @@ namespace lux::render
     ) noexcept
     {
         const auto type = entries_.find(id)->type;
-        return types_.find(type)->factory.storage->create(dependencies, id, configuration);
+        return types_.find(type)->factory.storage()->create(dependencies, id, configuration);
     }
 
     void ResourceRegistry::publish(ResourceInstanceId id, std::size_t position, void* instance) noexcept

@@ -1111,6 +1111,9 @@ Engine's decision to derive a new purpose remains separate integration work.
 
 ## Scene, View and UI data
 
+Scene and View identities are logical scopes shared by Jobs on multiple Devices. Each Device owns its Resource
+instances for those scopes. A Scene or View removal checks Jobs and active Resource use across all of its Devices.
+
 Transform, Mesh instances and direct lights are Scene-owned Resources. Use their typed FrameData columns
 `TransformRecordUpdate`, `MeshInstanceUpdate` and `DirectLightUpdate`. Targets resolve during Job assembly.
 Standalone Resource commands invoke the same typed updates without an Effect.

@@ -9,6 +9,7 @@
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <memory>
 #include <optional>
+#include <utility>
 
 namespace lux::render
 {
@@ -37,10 +38,26 @@ namespace lux::render
 
     struct ResourceRegistration final
     {
+        ResourceRegistration(
+            const ResourceDefinition* definition,
+            std::unique_ptr<StorageMeta> metadata,
+            std::span<const CommandBinding> bindings,
+            FrameDataCall inputs
+        ) noexcept
+            : descriptor(definition), commands(bindings), frame_call(inputs), storage_(std::move(metadata))
+        {
+        }
+
+        [[nodiscard]] const StorageMeta* storage() const & noexcept { return storage_.get(); }
+        [[nodiscard]] const StorageMeta* storage() const && = delete;
+
         const ResourceDefinition* descriptor;
-        std::unique_ptr<StorageMeta> storage;
         std::span<const CommandBinding> commands;
         FrameDataCall frame_call;
+
+    private:
+        friend class ResourceRegistry;
+        std::unique_ptr<StorageMeta> storage_;
     };
 
     template <class Declaration> [[nodiscard]] constexpr cxx::basic_type_info storageOpsType() noexcept

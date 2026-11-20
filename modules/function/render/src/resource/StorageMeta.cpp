@@ -7,14 +7,14 @@ namespace lux::render
     RenderResult<void>
     validateResourceRegistration(const ResourceRegistration& factory) noexcept
     {
-        if (!factory.descriptor || !factory.storage)
+        if (!factory.descriptor || !factory.storage())
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
-        const bool has_ops = factory.storage->ops_type.isValid();
-        const bool is_invalid_ops = has_ops != (factory.storage->ops != nullptr);
+        const bool has_ops = factory.storage()->ops_type.isValid();
+        const bool is_invalid_ops = has_ops != (factory.storage()->ops != nullptr);
         const bool invalid_factory =
-            !factory.descriptor || !factory.storage->create || is_invalid_ops;
+            !factory.descriptor || !factory.storage()->create || is_invalid_ops;
         if (invalid_factory)
         {
             return cxx::unexpected(RenderError{kStorageFactory});
@@ -32,7 +32,7 @@ namespace lux::render
             const auto& command = factory.commands[i];
             const bool is_invalid_route =
                 !command.valid() || !command.isResourceCommand() || command.handlerType().isValid();
-            const bool is_wrong_storage = command.storageType() != factory.storage->implementation_type;
+            const bool is_wrong_storage = command.storageType() != factory.storage()->implementation_type;
             if (is_invalid_route || is_wrong_storage)
             {
                 return cxx::unexpected(RenderError{kCommandContract});
@@ -49,7 +49,7 @@ namespace lux::render
             call.channels.size() != type.frame_inputs.size();
         if (is_invalid_call) return cxx::unexpected(RenderError{kStorageContract});
         if (has_inputs && (!call.declaration_type.isValid() || !call.method_type.isValid() ||
-            call.storage_type != factory.storage->implementation_type))
+            call.storage_type != factory.storage()->implementation_type))
             return cxx::unexpected(RenderError{kStorageContract});
         for (std::size_t i = 0; i < call.channels.size(); ++i)
         {

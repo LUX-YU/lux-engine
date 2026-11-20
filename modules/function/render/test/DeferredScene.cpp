@@ -665,7 +665,9 @@ static void descriptorTables()
     auto rejected = DeviceSession::create(
         invalid_options, diagnostics(validation), nativeValidationEnabled(), rejection_host->scheduler()
     );
-    CHECK(!rejected && rejected.error().type == kDeviceCapacity);
+    CHECK(!rejected && rejected.error().type == kDescriptorLimitExceeded);
+    CHECK(rejected.error().args[0] > rejected.error().args[1]);
+    CHECK(rejected.error().args[2] == static_cast<std::uint64_t>(EDescriptorLimit::SAMPLER));
     const auto fixed_ranges = DescriptorTable::layoutRanges({32, 16, 16}, false);
     for (const auto& range : fixed_ranges)
         CHECK((range.flags & nri::DescriptorRangeBits::VARIABLE_SIZED_ARRAY) == 0);

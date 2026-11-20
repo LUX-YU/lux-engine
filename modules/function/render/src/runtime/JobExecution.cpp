@@ -159,7 +159,7 @@ namespace lux::render
             if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
             const auto* factory = registry.factory(registry.declarationOf(id));
-            const auto& ops = *factory->storage->bindings();
+            const auto& ops = *factory->storage()->bindings();
             if (auto bound = candidate.bindStorage(
                     slot, ops, registry.resourceInstance(id), entry.frameProgress().frameCount(),
                     input.projection
@@ -176,7 +176,7 @@ namespace lux::render
             const auto id = binding.resources[snapshot.binding].resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             const auto* factory = registry.factory(registry.declarationOf(id));
-            const auto* ops = factory->storage->bindings();
+            const auto* ops = factory->storage()->bindings();
             sources.push_back({id, registry.resourceInstance(id), ops->cpu_snapshot});
         }
         const auto bindOwner = [&]<class Storage>(std::uint32_t slot, const Storage*& owner) noexcept

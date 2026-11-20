@@ -306,7 +306,7 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageMismatch, {i}});
             if (registry.hasExclusiveCommand(input.resource))
                 return cxx::unexpected(RenderError{kDeviceBusy, {i}});
-            const auto* ops = factory->storage->bindings();
+            const auto* ops = factory->storage()->bindings();
             const auto same_binding = std::ranges::find_if(inputs.first(i), [&](const JobResourceInput& earlier) noexcept
             {
                 return earlier.resource == input.resource && earlier.projection == input.projection &&

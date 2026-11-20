@@ -1448,6 +1448,8 @@ int main(int argc, char** argv)
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == kDeviceUnsupported);
     CHECK(call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     CHECK(call<UpdateJobInputs>(client, {current}).error.type == 0);
+    CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == 0);
+    CHECK(call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect, moved_target}).error.type == 0);
     CHECK(!call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     const auto warm_compiles = server->stats().compiled_graphs;

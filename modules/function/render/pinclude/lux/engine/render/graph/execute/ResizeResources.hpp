@@ -41,9 +41,9 @@ namespace lux::render::detail
             std::vector<View> views;
             std::vector<Extent> extents;
             std::vector<std::uint8_t> replaced_slots;
-            std::vector<MemoryPlacement> placements;
+            std::vector<BoundMemoryPlacement> placements;
             std::vector<std::uint32_t> allocation_candidates;
-            std::vector<std::uint32_t> previous_allocations;
+            std::vector<MemoryGroupId> previous_allocations;
             std::vector<FrameResources::MemoryAllocation> adopted_memories;
             std::vector<std::optional<nri::GlobalBarrierDesc>> alias_barriers;
             FrameResources physical;

@@ -67,7 +67,13 @@ namespace lux::render
         template <class T> concept FrameElement =
             std::same_as<T, std::remove_cvref_t<T>> && !std::same_as<T, bool> &&
             std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T> &&
-            std::is_nothrow_default_constructible_v<T> && std::is_nothrow_move_constructible_v<T>;
+            std::is_nothrow_default_constructible_v<T> && std::constructible_from<T, T&&>;
+
+        template <class T, class U>
+        concept FrameAssignableFrom = FrameElement<T> && requires(T& target, U&& source)
+        {
+            { target = std::forward<U>(source) } noexcept -> std::same_as<T&>;
+        };
 
         template <class Resource, class... Elements>
         void appendChannels(std::vector<FrameChannel>& output, std::type_identity<std::tuple<Elements...>>) noexcept

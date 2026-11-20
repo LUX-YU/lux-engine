@@ -26,21 +26,37 @@ namespace lux::render::detail
         ALIASED
     };
 
-    struct MemoryPlacement final
+    struct AllocationRootSlot final
     {
-        std::uint32_t allocation;
+        std::uint32_t index;
+    };
+
+    struct MemoryGroupId final
+    {
+        std::uint32_t index;
+    };
+
+    struct RootMemoryPlacement final
+    {
+        AllocationRootSlot root;
+        EMemoryPlacement reason;
+    };
+
+    struct BoundMemoryPlacement final
+    {
+        MemoryGroupId group;
         EMemoryPlacement reason;
     };
 
     // Resize transfers the connected closure of old/new allocation groups, including fixed-size members.
     void expandMemoryMigration(
-        std::span<const MemoryPlacement> previous,
-        std::span<const MemoryPlacement> next,
+        std::span<const BoundMemoryPlacement> previous,
+        std::span<const RootMemoryPlacement> next,
         std::span<std::uint8_t> changed
     ) noexcept;
 
-    // Resolve actual requirements at Attach/Resize; allocation initially names a physical slot.
-    [[nodiscard]] std::vector<MemoryPlacement> instantiatePlacements(
+    // Resolve actual requirements at Attach/Resize; each group is identified by its root physical slot.
+    [[nodiscard]] std::vector<RootMemoryPlacement> instantiatePlacements(
         const PhysicalResourcePlan& physical,
         std::span<const CompiledResource> resources,
         const RecordingProgram& recording,

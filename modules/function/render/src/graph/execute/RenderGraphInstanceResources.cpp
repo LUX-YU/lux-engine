@@ -467,7 +467,7 @@ namespace lux::render::detail
         std::vector<nri::AllocateMemoryDesc> descriptions(physical.slots.size());
         for (std::uint32_t s = 0; s < placements.size(); ++s)
         {
-            auto& description = descriptions[placements[s].allocation];
+            auto& description = descriptions[placements[s].root.index];
             const auto& required = requirements[s];
             description.size = std::max(description.size, required.size);
             description.type = required.type;
@@ -477,10 +477,10 @@ namespace lux::render::detail
                 std::get_if<GraphImageDesc>(&plan_->resources()[physical.slots[s].resource.index].description);
             description.allowMultisampleTextures |= image && image->samples > 1;
         }
-        frame.memory_bindings = placements;
+        std::vector<MemoryGroupId> root_to_group(placements.size());
         for (std::uint32_t s = 0; s < placements.size(); ++s)
         {
-            if (placements[s].allocation != s)
+            if (placements[s].root.index != s)
             {
                 continue;
             }
@@ -490,16 +490,18 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(nativeError(allocated));
             }
-            frame.memory_bindings[s].allocation = static_cast<std::uint32_t>(frame.memories.size());
+            root_to_group[s] = {static_cast<std::uint32_t>(frame.memories.size())};
             frame.memories.push_back({memory, descriptions[s].size});
         }
         std::vector<nri::BindBufferMemoryDesc> buffers;
         std::vector<nri::BindTextureMemoryDesc> images;
+        frame.memory_bindings.resize(placements.size());
         for (std::uint32_t s = 0; s < placements.size(); ++s)
         {
-            const auto group = frame.memory_bindings[placements[s].allocation].allocation;
-            frame.memory_bindings[s].allocation = group;
-            auto* memory = frame.memories[group].memory;
+            const auto& placement = placements[s];
+            const auto group = root_to_group[placement.root.index];
+            frame.memory_bindings[s] = {group, placement.reason};
+            auto* memory = frame.memories[group.index].memory;
             const auto& binding = frame.bindings[physical.slots[s].resource.index];
             if (binding.image)
             {
@@ -535,7 +537,7 @@ namespace lux::render::detail
         const auto& slots = plan_->physical_resources_.slots;
         for (std::uint32_t s = 0; s < frame.memory_bindings.size(); ++s)
         {
-            auto& previous = tails[frame.memory_bindings[s].allocation];
+            auto& previous = tails[frame.memory_bindings[s].group.index];
             if (previous != kGraphInvalidIndex)
             {
                 for (std::size_t q = 0; q < slots[s].first_pass.size(); ++q)
@@ -746,7 +748,7 @@ namespace lux::render::detail
                     output += ',';
                 }
                 const auto& binding = frame.memory_bindings[s];
-                output += "{\"allocation\":" + std::to_string(binding.allocation) + ",\"reason\":\"" +
+                output += "{\"allocation\":" + std::to_string(binding.group.index) + ",\"reason\":\"" +
                           reasons[static_cast<std::size_t>(binding.reason)] + "\"}";
             }
             output += "]}";

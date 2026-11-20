@@ -117,9 +117,8 @@ namespace lux::render
         }
 
         template <class Resource, class T>
-            requires frame_detail::FrameElement<std::remove_cvref_t<T>> &&
-                     frame_detail::declaredElement<Resource, T> &&
-                     std::is_nothrow_assignable_v<std::remove_cvref_t<T>&, T&&>
+            requires frame_detail::FrameAssignableFrom<std::remove_cvref_t<T>, T> &&
+                     frame_detail::declaredElement<Resource, T>
         [[nodiscard]] bool addData(T&& value) noexcept
         {
             auto added = appendData<Resource, std::remove_cvref_t<T>>(1);

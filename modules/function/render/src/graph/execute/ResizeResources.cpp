@@ -278,10 +278,10 @@ namespace lux::render::detail
         }
         if (aliases)
         {
-            candidate.placements = instantiatePlacements(
+            const auto placements = instantiatePlacements(
                 physical, resources, plan_->recording_, requirements, session_->description().graphicsAPI
             );
-            expandMemoryMigration(frame.memory_bindings, candidate.placements, candidate.replaced_slots);
+            expandMemoryMigration(frame.memory_bindings, placements, candidate.replaced_slots);
             for (std::uint32_t slot = 0; slot < physical.slots.size(); ++slot)
             {
                 if (candidate.replaced_slots[slot] && !replacements[slot].image && !replacements[slot].buffer)
@@ -295,7 +295,7 @@ namespace lux::render::detail
             std::vector<nri::AllocateMemoryDesc> allocations(physical.slots.size());
             for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
             {
-                auto& allocation = allocations[candidate.placements[s].allocation];
+                auto& allocation = allocations[placements[s].root.index];
                 allocation.size = std::max(allocation.size, requirements[s].size);
                 allocation.type = requirements[s].type;
                 allocation.vma.enable = !requirements[s].mustBeDedicated;
@@ -304,16 +304,16 @@ namespace lux::render::detail
                     std::get_if<GraphImageDesc>(&resources[physical.slots[s].resource.index].description);
                 allocation.allowMultisampleTextures |= image && image->samples > 1;
             }
-            std::vector<std::uint32_t> compact(physical.slots.size());
+            std::vector<MemoryGroupId> root_to_group(placements.size());
             for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
             {
-                if (candidate.placements[s].allocation != s)
+                if (placements[s].root.index != s)
                 {
                     continue;
                 }
-                compact[s] = static_cast<std::uint32_t>(candidate.adopted_memories.size());
+                root_to_group[s] = {static_cast<std::uint32_t>(candidate.adopted_memories.size())};
                 candidate.adopted_memories.push_back({});
-                candidate.previous_allocations.push_back(frame.memory_bindings[s].allocation);
+                candidate.previous_allocations.push_back(frame.memory_bindings[s].group);
                 candidate.allocation_candidates.push_back(kGraphInvalidIndex);
                 if (candidate.replaced_slots[s])
                 {
@@ -330,15 +330,17 @@ namespace lux::render::detail
             }
             std::vector<nri::BindTextureMemoryDesc> images;
             std::vector<nri::BindBufferMemoryDesc> buffers;
+            candidate.placements.resize(placements.size());
             for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
             {
-                candidate.placements[s].allocation = compact[candidate.placements[s].allocation];
+                const auto& placement = placements[s];
+                const auto group = root_to_group[placement.root.index];
+                candidate.placements[s] = {group, placement.reason};
                 if (!candidate.replaced_slots[s])
                 {
                     continue;
                 }
-                const auto group = candidate.placements[s].allocation;
-                auto* memory = candidate.physical.memories[candidate.allocation_candidates[group]].memory;
+                auto* memory = candidate.physical.memories[candidate.allocation_candidates[group.index]].memory;
                 const auto& binding = replacements[s];
                 if (binding.image)
                 {
@@ -509,7 +511,7 @@ namespace lux::render::detail
             std::vector<std::uint32_t> tails(candidate.adopted_memories.size(), kGraphInvalidIndex);
             for (std::uint32_t slot = 0; slot < candidate.placements.size(); ++slot)
             {
-                auto& previous = tails[candidate.placements[slot].allocation];
+                auto& previous = tails[candidate.placements[slot].group.index];
                 if (previous != kGraphInvalidIndex)
                 {
                     for (std::size_t q = 0; q < physical.slots[slot].first_pass.size(); ++q)
@@ -605,7 +607,7 @@ namespace lux::render::detail
                 {
                     const auto new_memory = candidate.allocation_candidates[group];
                     auto& incoming = new_memory == kGraphInvalidIndex
-                                         ? frame.memories[candidate.previous_allocations[group]]
+                                         ? frame.memories[candidate.previous_allocations[group].index]
                                          : candidate.physical.memories[new_memory];
                     candidate.adopted_memories[group] = std::exchange(incoming, {});
                 }

@@ -5,64 +5,8 @@
 #include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 
-#include "BasicMeshNoUvPagedReflectedVertex.hpp"
-#include "BasicMeshNoUvPagedVertex.hpp"
-#include "BasicMeshNoUvReflectedVertex.hpp"
-#include "BasicMeshNoUvVertex.hpp"
-#include "BasicMeshPagedReflectedVertex.hpp"
-#include "BasicMeshPagedVertex.hpp"
-#include "BasicMeshReflectedVertex.hpp"
 #include "MeshVertexDxil.hpp"
-#include "BasicMeshVertex.hpp"
-#include "DepthOnlyPagedReflectedVertex.hpp"
-#include "DepthOnlyPagedVertex.hpp"
-#include "DepthOnlyReflectedVertex.hpp"
-#include "DepthOnlyVertex.hpp"
-#include "SurfaceMeshNoUvPagedReflectedVertex.hpp"
-#include "SurfaceMeshNoUvPagedVertex.hpp"
-#include "SurfaceMeshNoUvReflectedVertex.hpp"
-#include "SurfaceMeshNoUvVertex.hpp"
-#include "SurfaceMeshPagedReflectedVertex.hpp"
-#include "SurfaceMeshPagedVertex.hpp"
-#include "SurfaceMeshReflectedVertex.hpp"
-#include "SurfaceMeshVertex.hpp"
-#include "TangentMeshNoUvPagedReflectedVertex.hpp"
-#include "TangentMeshNoUvPagedVertex.hpp"
-#include "TangentMeshNoUvReflectedVertex.hpp"
-#include "TangentMeshNoUvVertex.hpp"
-#include "TangentMeshPagedReflectedVertex.hpp"
-#include "TangentMeshPagedVertex.hpp"
-#include "TangentMeshReflectedVertex.hpp"
-#include "TangentMeshVertex.hpp"
-
-#include "BasicMeshNoUvPagedShadowReflectedVertex.hpp"
-#include "BasicMeshNoUvPagedShadowVertex.hpp"
-#include "BasicMeshNoUvShadowReflectedVertex.hpp"
-#include "BasicMeshNoUvShadowVertex.hpp"
-#include "BasicMeshPagedShadowReflectedVertex.hpp"
-#include "BasicMeshPagedShadowVertex.hpp"
-#include "BasicMeshShadowReflectedVertex.hpp"
-#include "BasicMeshShadowVertex.hpp"
-#include "DepthOnlyPagedShadowReflectedVertex.hpp"
-#include "DepthOnlyPagedShadowVertex.hpp"
-#include "DepthOnlyShadowReflectedVertex.hpp"
-#include "DepthOnlyShadowVertex.hpp"
-#include "SurfaceMeshNoUvPagedShadowReflectedVertex.hpp"
-#include "SurfaceMeshNoUvPagedShadowVertex.hpp"
-#include "SurfaceMeshNoUvShadowReflectedVertex.hpp"
-#include "SurfaceMeshNoUvShadowVertex.hpp"
-#include "SurfaceMeshPagedShadowReflectedVertex.hpp"
-#include "SurfaceMeshPagedShadowVertex.hpp"
-#include "SurfaceMeshShadowReflectedVertex.hpp"
-#include "SurfaceMeshShadowVertex.hpp"
-#include "TangentMeshNoUvPagedShadowReflectedVertex.hpp"
-#include "TangentMeshNoUvPagedShadowVertex.hpp"
-#include "TangentMeshNoUvShadowReflectedVertex.hpp"
-#include "TangentMeshNoUvShadowVertex.hpp"
-#include "TangentMeshPagedShadowReflectedVertex.hpp"
-#include "TangentMeshPagedShadowVertex.hpp"
-#include "TangentMeshShadowReflectedVertex.hpp"
-#include "TangentMeshShadowVertex.hpp"
+#include "MeshVertexSpirv.hpp"
 
 namespace lux::render::detail
 {
@@ -90,7 +34,6 @@ namespace lux::render::detail
         RenderResult<rdesc::ShaderProgramArtifact>
         buildDxilMeshVertex(const rdesc::MaterialShader* use, bool shadow, bool reflected) noexcept
         {
-            constexpr std::array<std::uint32_t, 6> locations{0, 1, 3, 4, 5, 6};
             std::size_t mask = 0;
             if (use)
             {
@@ -98,12 +41,12 @@ namespace lux::render::detail
                 {
                     for (const auto& input : entry.inputs)
                     {
-                        const auto location = std::ranges::find(locations, input.semantic_index);
-                        if (input.semantic != "TEXCOORD" || location == locations.end())
+                        const auto location = std::ranges::find(kMeshDxilVaryingLocations, input.semantic_index);
+                        if (input.semantic != "TEXCOORD" || location == kMeshDxilVaryingLocations.end())
                         {
                             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                         }
-                        mask |= std::size_t{1} << (location - locations.begin());
+                        mask |= std::size_t{1} << (location - kMeshDxilVaryingLocations.begin());
                     }
                 }
             }
@@ -123,148 +66,26 @@ namespace lux::render::detail
             {
                 return buildDxilMeshVertex(use, shadow, reflected);
             }
-            const bool tangents = readsVarying(use, 5) || readsVarying(use, 6);
-            const bool normals = readsVarying(use, 1) || tangents;
-            const bool depth_only = !use;
-            const bool uv = readsVarying(use, 3);
-            rdesc::ShaderProgramArtifact shader;
-            const auto select =
-                [&](const auto& normal, const auto& mirrored, const auto& depth, const auto& mirrored_depth) noexcept
+            auto layout = EMeshVertexLayout::DEPTH_ONLY;
+            if (use)
             {
-                shader = (shadow ? (reflected ? mirrored_depth : depth) : (reflected ? mirrored : normal)).load(target);
-            };
-            if (paged)
-            {
-                if (depth_only)
+                const bool tangents = readsVarying(use, 5) || readsVarying(use, 6);
+                const bool normals = readsVarying(use, 1) || tangents;
+                const bool uv = readsVarying(use, 3);
+                if (tangents)
                 {
-                    select(
-                        kDepthOnlyPagedVertex,
-                        kDepthOnlyPagedReflectedVertex,
-                        kDepthOnlyPagedShadowVertex,
-                        kDepthOnlyPagedShadowReflectedVertex
-                    );
-                }
-                else if (!uv && tangents)
-                {
-                    select(
-                        kTangentMeshNoUvPagedVertex,
-                        kTangentMeshNoUvPagedReflectedVertex,
-                        kTangentMeshNoUvPagedShadowVertex,
-                        kTangentMeshNoUvPagedShadowReflectedVertex
-                    );
-                }
-                else if (!uv && normals)
-                {
-                    select(
-                        kSurfaceMeshNoUvPagedVertex,
-                        kSurfaceMeshNoUvPagedReflectedVertex,
-                        kSurfaceMeshNoUvPagedShadowVertex,
-                        kSurfaceMeshNoUvPagedShadowReflectedVertex
-                    );
-                }
-                else if (!uv)
-                {
-                    select(
-                        kBasicMeshNoUvPagedVertex,
-                        kBasicMeshNoUvPagedReflectedVertex,
-                        kBasicMeshNoUvPagedShadowVertex,
-                        kBasicMeshNoUvPagedShadowReflectedVertex
-                    );
-                }
-                else if (tangents)
-                {
-                    select(
-                        kTangentMeshPagedVertex,
-                        kTangentMeshPagedReflectedVertex,
-                        kTangentMeshPagedShadowVertex,
-                        kTangentMeshPagedShadowReflectedVertex
-                    );
+                    layout = uv ? EMeshVertexLayout::TANGENT : EMeshVertexLayout::TANGENT_NO_UV;
                 }
                 else if (normals)
                 {
-                    select(
-                        kSurfaceMeshPagedVertex,
-                        kSurfaceMeshPagedReflectedVertex,
-                        kSurfaceMeshPagedShadowVertex,
-                        kSurfaceMeshPagedShadowReflectedVertex
-                    );
+                    layout = uv ? EMeshVertexLayout::SURFACE : EMeshVertexLayout::SURFACE_NO_UV;
                 }
                 else
                 {
-                    select(
-                        kBasicMeshPagedVertex,
-                        kBasicMeshPagedReflectedVertex,
-                        kBasicMeshPagedShadowVertex,
-                        kBasicMeshPagedShadowReflectedVertex
-                    );
+                    layout = uv ? EMeshVertexLayout::BASIC : EMeshVertexLayout::BASIC_NO_UV;
                 }
             }
-            else
-            {
-                if (depth_only)
-                {
-                    select(
-                        kDepthOnlyVertex,
-                        kDepthOnlyReflectedVertex,
-                        kDepthOnlyShadowVertex,
-                        kDepthOnlyShadowReflectedVertex
-                    );
-                }
-                else if (!uv && tangents)
-                {
-                    select(
-                        kTangentMeshNoUvVertex,
-                        kTangentMeshNoUvReflectedVertex,
-                        kTangentMeshNoUvShadowVertex,
-                        kTangentMeshNoUvShadowReflectedVertex
-                    );
-                }
-                else if (!uv && normals)
-                {
-                    select(
-                        kSurfaceMeshNoUvVertex,
-                        kSurfaceMeshNoUvReflectedVertex,
-                        kSurfaceMeshNoUvShadowVertex,
-                        kSurfaceMeshNoUvShadowReflectedVertex
-                    );
-                }
-                else if (!uv)
-                {
-                    select(
-                        kBasicMeshNoUvVertex,
-                        kBasicMeshNoUvReflectedVertex,
-                        kBasicMeshNoUvShadowVertex,
-                        kBasicMeshNoUvShadowReflectedVertex
-                    );
-                }
-                else if (tangents)
-                {
-                    select(
-                        kTangentMeshVertex,
-                        kTangentMeshReflectedVertex,
-                        kTangentMeshShadowVertex,
-                        kTangentMeshShadowReflectedVertex
-                    );
-                }
-                else if (normals)
-                {
-                    select(
-                        kSurfaceMeshVertex,
-                        kSurfaceMeshReflectedVertex,
-                        kSurfaceMeshShadowVertex,
-                        kSurfaceMeshShadowReflectedVertex
-                    );
-                }
-                else
-                {
-                    select(
-                        kBasicMeshVertex,
-                        kBasicMeshReflectedVertex,
-                        kBasicMeshShadowVertex,
-                        kBasicMeshShadowReflectedVertex
-                    );
-                }
-            }
+            auto shader = meshVertexSpirv({layout, paged, shadow, reflected}).load(target);
             if (shader.stages.empty())
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});

@@ -212,7 +212,7 @@ namespace lux::render::detail
         return result;
     }
 
-    std::vector<MemoryPlacement> instantiatePlacements(
+    std::vector<RootMemoryPlacement> instantiatePlacements(
         const PhysicalResourcePlan& physical,
         std::span<const CompiledResource> resources,
         const RecordingProgram& recording,
@@ -220,13 +220,13 @@ namespace lux::render::detail
         nri::GraphicsAPI backend
     ) noexcept
     {
-        std::vector<MemoryPlacement> placements(physical.slots.size());
+        std::vector<RootMemoryPlacement> placements(physical.slots.size());
         std::vector<std::uint32_t> tails;
         for (std::uint32_t i = 0; i < physical.slots.size(); ++i)
         {
             const auto& slot = physical.slots[i];
             auto& placement = placements[i];
-            placement = {i, EMemoryPlacement::EXCLUDED};
+            placement = {{i}, EMemoryPlacement::EXCLUDED};
             if (!slot.alias_eligible)
             {
                 continue;
@@ -283,12 +283,12 @@ namespace lux::render::detail
                         placement.reason = EMemoryPlacement::INCOMPATIBLE_LAYOUT;
                         continue;
                     }
-                    placement = {placements[tail].allocation, EMemoryPlacement::ALIASED};
+                    placement = {placements[tail].root, EMemoryPlacement::ALIASED};
                     tail = i;
                     break;
                 }
             }
-            if (placement.allocation == i)
+            if (placement.root.index == i)
             {
                 tails.push_back(i);
             }
@@ -297,8 +297,8 @@ namespace lux::render::detail
     }
 
     void expandMemoryMigration(
-        std::span<const MemoryPlacement> previous,
-        std::span<const MemoryPlacement> next,
+        std::span<const BoundMemoryPlacement> previous,
+        std::span<const RootMemoryPlacement> next,
         std::span<std::uint8_t> changed
     ) noexcept
     {
@@ -316,13 +316,13 @@ namespace lux::render::detail
         std::vector<std::uint32_t> previous_roots(changed.size(), kGraphInvalidIndex);
         for (std::uint32_t slot = 0; slot < changed.size(); ++slot)
         {
-            auto& first = previous_roots[previous[slot].allocation];
+            auto& first = previous_roots[previous[slot].group.index];
             if (first == kGraphInvalidIndex)
             {
                 first = slot;
             }
             parent[root(slot)] = root(first);
-            parent[root(slot)] = root(next[slot].allocation);
+            parent[root(slot)] = root(next[slot].root.index);
         }
         std::vector<std::uint8_t> migrate(parent.size());
         for (std::uint32_t slot = 0; slot < changed.size(); ++slot)

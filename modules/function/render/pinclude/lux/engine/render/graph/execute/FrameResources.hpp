@@ -145,7 +145,7 @@ namespace lux::render::detail
         };
 
         std::vector<MemoryAllocation> memories;
-        std::vector<MemoryPlacement> memory_bindings;
+        std::vector<BoundMemoryPlacement> memory_bindings;
         nri::DescriptorPool* descriptor_pool = nullptr;
         std::vector<nri::TextureBarrierDesc> final_images;
         std::vector<nri::BufferBarrierDesc> final_buffers;

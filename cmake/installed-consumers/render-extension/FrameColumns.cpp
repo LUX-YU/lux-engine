@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <string>
 #include <string_view>
 
 #if defined(VK_VERSION_1_0) || defined(_WINDOWS_)
@@ -11,6 +12,19 @@
 #endif
 
 using namespace lux::render;
+
+struct DynamicConfig final
+{
+    std::string label;
+};
+
+template <> struct lux::render::ConfigValueTraits<DynamicConfig> final
+{
+    static RenderResult<std::size_t> retainedBytes(const DynamicConfig& config) noexcept
+    {
+        return sizeof(config) + config.label.capacity();
+    }
+};
 
 namespace
 {
@@ -112,6 +126,7 @@ namespace
     };
 
     static_assert(CanMakeConfig<const std::uint32_t&> && CanMakeConfig<MoveOnlyConfig>);
+    static_assert(CanMakeConfig<const DynamicConfig&>);
     static_assert(!CanMakeConfig<MoveOnlyConfig&>);
     static_assert(CanBorrowConfig<const ConfigValue&> && !CanBorrowConfig<ConfigValue>);
 
@@ -124,6 +139,10 @@ namespace
 
     void columns()
     {
+        const DynamicConfig source{"dynamic config"};
+        const auto config = take(ConfigValue::make(source));
+        const auto* copied_config = config.borrow<DynamicConfig>();
+        CHECK(copied_config && copied_config->label == "dynamic config");
         const auto schema = layout();
         CHECK(schema.channels().size() == 3 && schema.revision() == 3);
         CHECK(!makeFrameLayout(std::type_identity<std::tuple<ResourceA, ConflictingResource>>{}, 3));

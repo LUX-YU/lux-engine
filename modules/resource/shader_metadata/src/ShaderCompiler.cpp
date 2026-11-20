@@ -29,6 +29,35 @@ namespace lux::shader
             return cxx::unexpected(ShaderCompileFailure{code, std::move(diagnostic)});
         }
 
+        bool collectDependencies(
+            slang::ISession& session, const std::filesystem::path& virtual_path, const ShaderCompileRequest& request
+        )
+        {
+            auto& dependencies = *request.dependencies;
+            dependencies.emplace_back(request.source_path);
+            const auto virtual_source = virtual_path.lexically_normal();
+            for (SlangInt index = 0; index < session.getLoadedModuleCount(); ++index)
+            {
+                auto* module = session.getLoadedModule(index);
+                for (SlangInt32 file = 0; file < module->getDependencyFileCount(); ++file)
+                {
+                    const char* reported = module->getDependencyFilePath(file);
+                    if (!reported || *reported == '\0')
+                    {
+                        return false;
+                    }
+                    const auto path = std::filesystem::path{reported}.lexically_normal();
+                    if (path != virtual_source)
+                    {
+                        dependencies.push_back(path.generic_string());
+                    }
+                }
+            }
+            std::ranges::sort(dependencies);
+            dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+            return true;
+        }
+
         std::string diagnostics(slang::IBlob* blob, const char* fallback)
         {
             return blob ? std::string(static_cast<const char*>(blob->getBufferPointer()), blob->getBufferSize())
@@ -580,6 +609,10 @@ namespace lux::shader
             result.interface.entry_points.push_back(std::move(entry_info));
             // Use the same canonical set order as the asset codec, independent of declaration order.
             std::ranges::sort(result.interface.sets, {}, &rdesc::DescriptorSetLayoutInfo::set);
+            if (request.dependencies && !collectDependencies(session, module_path, request))
+            {
+                return failure(EShaderCompileError::COMPILER_FAILURE, "cannot enumerate shader dependencies");
+            }
             return result;
         }
     } // namespace
@@ -639,6 +672,10 @@ namespace lux::shader
                 {
                     *request.report = {};
                 }
+                if (request.dependencies)
+                {
+                    request.dependencies->clear();
+                }
                 const bool has_invalid_option =
                     request.profile.find('\0') != std::string_view::npos ||
                     request.source_path.find('\0') != std::string_view::npos ||
@@ -659,8 +696,10 @@ namespace lux::shader
                 {
                     return failure(EShaderCompileError::COMPILER_FAILURE, "pinned DXC runtime is missing");
                 }
+                // Dependency enumeration uses loaded modules. Isolate requests that opt in from other batch inputs.
+                const bool can_reuse_session = previous && !previous->dependencies && !request.dependencies;
                 const bool same_options =
-                    previous && previous->target == request.target && previous->profile == request.profile &&
+                    can_reuse_session && previous->target == request.target && previous->profile == request.profile &&
                     std::ranges::equal(previous->include_directories, request.include_directories);
                 if (!same_options)
                 {

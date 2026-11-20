@@ -1,6 +1,8 @@
 #include <lux/engine/shader/ShaderCompiler.hpp>
 
+#include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 
@@ -20,6 +22,39 @@ namespace
         }
         stream << "};\n";
     }
+
+    void emitDepfilePath(std::ostream& stream, const std::filesystem::path& path)
+    {
+        for (const auto character : path.generic_string())
+        {
+            if (character == '$')
+            {
+                stream.put('$');
+            }
+            else if (character == ' ' || character == '\t' || character == '#')
+            {
+                stream.put('\\');
+            }
+            stream.put(character);
+        }
+    }
+
+    bool writeDepfile(std::string_view path, const char* target, std::vector<std::string>& dependencies)
+    {
+        std::ranges::sort(dependencies);
+        dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+        std::ofstream file(std::filesystem::path{path}, std::ios::binary);
+        emitDepfilePath(file, target);
+        file << ':';
+        for (const auto& dependency : dependencies)
+        {
+            file.put(' ');
+            emitDepfilePath(file, dependency);
+        }
+        file.put('\n');
+        file.close();
+        return static_cast<bool>(file);
+    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -28,7 +63,7 @@ int main(int argc, char** argv)
     {
         std::fputs(
             "usage: lux_shader_compile source entry vertex|fragment|compute spirv|dxil|bundle output [-Ipath] "
-            "[-Dname=value] [--symbol=name] [--physical-pointers] [--spirv-only|--dxil-only]\n",
+            "[-Dname=value] [--symbol=name] [--depfile=path] [--physical-pointers] [--spirv-only|--dxil-only]\n",
             stderr
         );
         return 2;
@@ -52,6 +87,7 @@ int main(int argc, char** argv)
         return 3;
     }
     std::string source, symbol;
+    std::string_view depfile;
     std::vector<std::string_view> includes;
     bool spirv_only = false, dxil_only = false;
     for (int index = 6; index < argc; ++index)
@@ -78,6 +114,10 @@ int main(int argc, char** argv)
         else if (option.starts_with("--symbol="))
         {
             symbol = option.substr(9);
+        }
+        else if (option.starts_with("--depfile=") && option.size() > 10)
+        {
+            depfile = option.substr(10);
         }
         else if (option == "--physical-pointers" || option == "--spirv-only")
         {
@@ -109,11 +149,21 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "%s\n", compiler.error().diagnostic.c_str());
         return 4;
     }
+    std::vector<std::string> dependencies;
     const auto compile = [&](EShaderTarget target)
     {
         lux::shader::ShaderCompileReport report;
-        auto result = (*compiler)->compile({source, argv[2], stage, target, "sm_6_6", argv[1], includes, &report});
+        std::vector<std::string> target_dependencies;
+        auto result = (*compiler)->compile({
+            source, argv[2], stage, target, "sm_6_6", argv[1], includes, &report,
+            depfile.empty() ? nullptr : &target_dependencies
+        });
         if (!report.diagnostic.empty()) std::fputs(report.diagnostic.c_str(), stderr);
+        if (result)
+        {
+            dependencies.insert(dependencies.end(), std::make_move_iterator(target_dependencies.begin()),
+                std::make_move_iterator(target_dependencies.end()));
+        }
         return result;
     };
     auto first = compile(target_name == "dxil" || dxil_only ? EShaderTarget::DXIL : EShaderTarget::SPIRV);
@@ -166,7 +216,8 @@ int main(int argc, char** argv)
             output << "{" << symbol << "DxilWords," << symbol << "DxilMetadata}";
         }
         output << "};\n";
-        return output ? 0 : 3;
+        output.close();
+        return output && (depfile.empty() || writeDepfile(depfile, argv[5], dependencies)) ? 0 : 3;
     }
     const auto& words = first->stages.front().words;
     const auto metadata = lux::rdesc::ShaderInfo::serialize(first->interface);
@@ -174,5 +225,7 @@ int main(int argc, char** argv)
     std::ofstream reflection(std::string(argv[5]) + ".meta", std::ios::binary);
     output.write(reinterpret_cast<const char*>(words.data()), words.size() * sizeof(std::uint32_t));
     reflection.write(reinterpret_cast<const char*>(metadata.data()), metadata.size());
-    return output && reflection ? 0 : 3;
+    output.close();
+    reflection.close();
+    return output && reflection && (depfile.empty() || writeDepfile(depfile, argv[5], dependencies)) ? 0 : 3;
 }

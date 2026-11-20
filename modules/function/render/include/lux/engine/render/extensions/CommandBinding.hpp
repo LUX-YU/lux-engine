@@ -32,7 +32,11 @@ namespace lux::render
         { C::nodeId(request) } noexcept -> std::same_as<graph::NodeId>;
     } && !requires(const typename C::Request& request) { C::resourceId(request); };
 
-    template <EffectCommand C, class State, auto Method>
+    template <class C, class State, auto Method>
+    concept EffectCommandMethodFor = EffectCommand<C> &&
+        std::same_as<decltype(Method), void (*)(State&, const typename C::Request&, typename C::Response&) noexcept>;
+
+    template <class C, class State, auto Method> requires EffectCommandMethodFor<C, State, Method>
     struct EffectCommandMethod final
     {
         using Command = C;
@@ -84,9 +88,7 @@ namespace lux::render
             return descriptor_ && call_.invoke;
         }
 
-        template <EffectCommand C, class State, auto Method>
-            requires std::same_as<decltype(Method),
-                void (*)(State&, const typename C::Request&, typename C::Response&) noexcept>
+        template <class C, class State, auto Method> requires EffectCommandMethodFor<C, State, Method>
         [[nodiscard]] static CommandBinding declareForEffect() noexcept
         {
             CommandBinding result;
@@ -123,8 +125,6 @@ namespace lux::render
             requires(SyncCommandHandlerFor<C, H, Method> || AsyncCommandHandlerFor<C, H, Method>)
         [[nodiscard]] static CommandBinding declare() noexcept
         {
-            static_assert(!requires(const typename C::Request& request) { C::effectId(request); },
-                "Effect commands use typed node state");
             CommandBinding result;
             result.initializeDeclaration<C>();
             if constexpr (!std::is_void_v<H>)
@@ -136,7 +136,6 @@ namespace lux::render
             using Storage = typename Invocation::Storage;
             if constexpr (!std::is_void_v<Storage>)
             {
-                static_assert(CapabilityCommand<C>);
                 result.storage_type_ = cxx::make_basic_type_info<std::remove_const_t<Storage>>();
             }
             if constexpr (requires(const typename C::Request& request) { C::resourceId(request); })
@@ -146,12 +145,6 @@ namespace lux::render
                     const auto resource = C::resourceId(message.get<typename C::Request>());
                     return extension_detail::ResourceIdentity::parent(resource);
                 };
-            }
-            if constexpr (!std::is_void_v<Storage>)
-            {
-                static_assert(
-                    requires(const typename C::Request& request) { C::resourceId(request); }
-                );
             }
             result.call_ = {
                 [](void* object, runtime_detail::CommandDispatchContext& context) noexcept

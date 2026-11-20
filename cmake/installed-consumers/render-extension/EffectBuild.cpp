@@ -2,6 +2,7 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/effect/EffectDiagnostic.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
 #include <lux/engine/render/effect/Shadow.hpp>
@@ -21,6 +22,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <mutex>
 #include <random>
 #include <cstdlib>
 #include <source_location>
@@ -1333,6 +1335,24 @@ int main(int argc, char** argv)
         recordClearGraph(*execution, device, profile_jobs);
         return 0;
     }
+    struct DiagnosticProbe final
+    {
+        std::mutex mutex;
+        std::optional<EffectDiagnostic> effect;
+    } diagnostics;
+    config.diagnostics = {
+        &diagnostics,
+        [](void* context, const RenderDiagnostic& diagnostic) noexcept
+        {
+            if (!diagnostic.effect)
+            {
+                return;
+            }
+            auto& capture = *static_cast<DiagnosticProbe*>(context);
+            const std::lock_guard lock{capture.mutex};
+            capture.effect = *diagnostic.effect;
+        }
+    };
     auto server = take(RenderServer::create(config, *execution));
     take(server->registerResource(Monitor::factory()));
     take(server->registerResource(ColdResource::factory()));
@@ -1355,6 +1375,25 @@ int main(int argc, char** argv)
     CHECK(clear->implementations.size() == 1);
     CHECK(clear->implementations.front().identity == (ImplementationSelection{std::string{clear_node}, 1}));
     CHECK(call<CreateEffect>(client, {}).error.type == kCapabilityDeclaration);
+    CreateEffectRequest missing{std::make_unique<EffectGraph>()};
+    graph::NodeId missing_node;
+    graph::PinId missing_pin;
+    {
+        EffectGraphEdit edit{*missing.graph};
+        missing_node = take(edit.addNode(
+            ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}
+        ));
+        missing_pin = edit.pinId(missing_node, ToneMapping::hdr_color);
+        CHECK(edit.setOutput("color", edit.pinId(missing_node, ToneMapping::color), true));
+        CHECK(edit.commit());
+    }
+    CHECK(call<CreateEffect>(client, std::move(missing)).error.type == kCapabilityDeclaration);
+    {
+        const std::lock_guard lock{diagnostics.mutex};
+        CHECK(diagnostics.effect);
+        CHECK(diagnostics.effect->issue == EEffectIssue::MISSING_INPUT);
+        CHECK(diagnostics.effect->node == missing_node && diagnostics.effect->pin == missing_pin);
+    }
     const auto session = verifyDeviceSessions(client, device);
     CHECK(call<GetOrCreateResource>(client, {session, DeviceScope{}, MonitorResource::descriptor.type}).error.type == 0);
     const auto create = [&]

@@ -6,6 +6,8 @@
 
 namespace lux::render
 {
+    struct EffectDiagnostic;
+
     enum class ERenderDiagnosticSeverity : std::uint8_t
     {
         INFORMATION,
@@ -20,6 +22,8 @@ namespace lux::render
         std::string_view message;
         std::string_view file;
         std::uint32_t line = 0;
+        // Present for cold Effect failures. Copy the value to retain it beyond report().
+        const EffectDiagnostic* effect = nullptr;
     };
 
     // Borrowed until RenderServer destruction, including device initialization and teardown.

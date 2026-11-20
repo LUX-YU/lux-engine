@@ -71,10 +71,9 @@ namespace
 
     [[nodiscard]] EEffectIssue rejected(const EffectGraph& graph, const EffectCatalog& catalog)
     {
-        std::vector<EffectDiagnostic> diagnostics;
-        check(!validateEffectGraph(graph, catalog, diagnostics));
-        check(diagnostics.size() == 1);
-        return diagnostics.front().issue;
+        auto result = validateEffectGraph(graph, catalog);
+        check(!result);
+        return result.error().issue;
     }
 }
 
@@ -153,9 +152,9 @@ int main()
     check(!catalog.addCapability(std::make_unique<CapabilityDefinition>()));
     check(catalog.listImplementations(source->identity.id, 1).size() == 1);
 
-    std::vector<EffectDiagnostic> diagnostics;
-    const auto compiled = take(validateEffectGraph(graph, catalog, diagnostics));
-    check(diagnostics.empty());
+    const auto validated = validateEffectGraph(graph, catalog);
+    check(validated);
+    const auto& compiled = *validated;
     check(compiled.nodes.size() == 3);
     check(compiled.nodes[0].source == producer && compiled.nodes[0].live);
     check(compiled.nodes[1].source == active && compiled.nodes[1].live);

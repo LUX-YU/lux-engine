@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
+#include <lux/engine/render/core/RenderErrorSink.hpp>
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
@@ -77,11 +78,12 @@ namespace lux::render::runtime_detail
     };
 
     [[nodiscard]] RenderResult<void> initializeEffectGraph(
-        RenderEffect&, std::unique_ptr<EffectGraph>, const EffectCatalog&, const CommandRegistry&, std::size_t max_config_bytes
+        RenderEffect&, std::unique_ptr<EffectGraph>, const EffectCatalog&, const CommandRegistry&,
+        std::size_t max_config_bytes, const RenderErrorSink&
     ) noexcept;
 
     [[nodiscard]] RenderResult<EffectGraphBuild> lowerEffectGraph(
         const EffectGraph&, const EffectCatalog&, const EffectOutputDesc&, const EffectBuildDevice&,
-        const EffectImportContracts&
+        const EffectImportContracts&, const RenderErrorSink&
     ) noexcept;
 }

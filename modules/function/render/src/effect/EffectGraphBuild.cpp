@@ -15,6 +15,30 @@ namespace lux::render::runtime_detail
         using effect_detail::ValidatedEffectGraph;
         using effect_detail::ValidatedEffectNode;
 
+        [[nodiscard]] RenderError reportEffectFailure(
+            const RenderErrorSink& sink, RenderError error, const EffectDiagnostic& diagnostic,
+            std::string_view message
+        ) noexcept
+        {
+            if (sink.report)
+            {
+                sink.report(sink.context, {ERenderDiagnosticSeverity::ERROR_MESSAGE, error, message, {}, 0, &diagnostic});
+            }
+            return error;
+        }
+
+        [[nodiscard]] RenderResult<ValidatedEffectGraph>
+        validateForBuild(const EffectGraph& source, const EffectCatalog& catalog, const RenderErrorSink& sink) noexcept
+        {
+            auto result = effect_detail::validateEffectGraph(source, catalog);
+            if (result)
+            {
+                return std::move(*result);
+            }
+            const auto code = result.error().issue == EEffectIssue::CYCLE ? kCapabilityCycle : kCapabilityDeclaration;
+            return cxx::unexpected(reportEffectFailure(sink, {code}, result.error(), "Effect graph validation failed"));
+        }
+
         class NodeInitialization final : public EffectInitializationContext
         {
         public:
@@ -367,7 +391,8 @@ namespace lux::render::runtime_detail
     RenderResult<void> initializeEffectGraph(
         RenderEffect& candidate, std::unique_ptr<EffectGraph> graph, const EffectCatalog& catalog,
         const CommandRegistry& registry,
-        std::size_t max_config_bytes
+        std::size_t max_config_bytes,
+        const RenderErrorSink& sink
     ) noexcept
     {
         for (const auto& [id, node] : graph->nodes())
@@ -376,8 +401,7 @@ namespace lux::render::runtime_detail
                 return cxx::unexpected(RenderError{kInvalidConfig, {id.value}});
             max_config_bytes -= node.arguments.size();
         }
-        std::vector<effect_detail::EffectDiagnostic> diagnostics;
-        auto validated = effect_detail::validateEffectGraph(*graph, catalog, diagnostics);
+        auto validated = validateForBuild(*graph, catalog, sink);
         if (!validated) return cxx::unexpected(validated.error());
         for (auto index : validated->topological_order)
         {
@@ -385,7 +409,12 @@ namespace lux::render::runtime_detail
             if (!node.live) continue;
             NodeInitialization context{node.source, node.implementation->code, candidate};
             if (auto initialized = node.implementation->initialize(context, node.arguments); !initialized)
-                return cxx::unexpected(initialized.error());
+            {
+                return cxx::unexpected(reportEffectFailure(
+                    sink, initialized.error(), {EEffectIssue::INITIALIZATION_FAILURE, node.source, {}, {}},
+                    "Effect node initialization failed"
+                ));
+            }
             const auto* state = context.state();
             for (auto binding : node.implementation->command_bindings)
             {
@@ -413,11 +442,10 @@ namespace lux::render::runtime_detail
     RenderResult<EffectGraphBuild>
     lowerEffectGraph(
         const EffectGraph& graph, const EffectCatalog& catalog, const EffectOutputDesc& target,
-        const EffectBuildDevice& device, const EffectImportContracts& imports
+        const EffectBuildDevice& device, const EffectImportContracts& imports, const RenderErrorSink& sink
     ) noexcept
     {
-        std::vector<effect_detail::EffectDiagnostic> diagnostics;
-        auto validated = effect_detail::validateEffectGraph(graph, catalog, diagnostics);
+        auto validated = validateForBuild(graph, catalog, sink);
         if (!validated) return cxx::unexpected(validated.error());
         RenderGraphBuilder builder;
         std::vector<EffectResourceBundle> bundles(validated->pins.size());
@@ -437,7 +465,11 @@ namespace lux::render::runtime_detail
                 *validated, node, target, device, builder, bundles, imports, slots, preparation, uniforms
             };
             if (auto built = node.implementation->build(context, node.arguments); !built)
-                return cxx::unexpected(built.error());
+            {
+                return cxx::unexpected(reportEffectFailure(
+                    sink, built.error(), {EEffectIssue::BUILD_FAILURE, node.source, {}, {}}, "Effect node build failed"
+                ));
+            }
             if (!context.complete() || builder.outputCount() != 0)
                 return cxx::unexpected(RenderError{kCapabilityDeclaration, {node.source.value}});
         }

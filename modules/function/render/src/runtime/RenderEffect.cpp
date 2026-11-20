@@ -51,7 +51,12 @@ namespace lux::render
         if (!request.graph) return stdexec::just(EffectCreated{RenderError{kCapabilityDeclaration}});
         RenderEffect candidate;
         auto initialized = initializeEffectGraph(
-            candidate, std::move(request.graph), effect_catalog_, runtime_->command_registry_, config_.max_config_bytes
+            candidate,
+            std::move(request.graph),
+            effect_catalog_,
+            runtime_->command_registry_,
+            config_.max_config_bytes,
+            config_.diagnostics
         );
         if (!initialized) return stdexec::just(EffectCreated{initialized.error()});
         return stdexec::just(EffectCreated{{}, runtime_->effects_.emplace(std::move(candidate))});

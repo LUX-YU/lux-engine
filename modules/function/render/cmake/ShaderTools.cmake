@@ -60,18 +60,16 @@ install(FILES "${spirv_headers_SOURCE_DIR}/LICENSE"
 function(lux_render_shader output source stage symbol)
     set(shader_options ${ARGN})
     get_filename_component(render_shader_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
-    file(GLOB_RECURSE shader_dependencies CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang"
-        "${render_shader_root}/shaders/*.slang"
-        "${render_shader_root}/../material/shaders/*.glsl"
-        "${render_shader_root}/../material/shaders/*.slang"
-    )
+    get_filename_component(shader_source "${source}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    set(shader_depfile "${output}.d")
     add_custom_command(
         OUTPUT "${output}"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
-        COMMAND lux_shader_compile "${CMAKE_CURRENT_SOURCE_DIR}/${source}" main ${stage} bundle "${output}"
-            "--symbol=${symbol}" "-I${render_shader_root}/../material/shaders" ${shader_options}
-        DEPENDS "${source}" ${shader_dependencies} lux_shader_compile "$<TARGET_FILE:shader_compiler>"
+        COMMAND lux_shader_compile "${shader_source}" main ${stage} bundle "${output}"
+            "--symbol=${symbol}" "--depfile=${shader_depfile}" "-I${render_shader_root}/../material/shaders"
+            ${shader_options}
+        DEPENDS "${shader_source}" lux_shader_compile "$<TARGET_FILE:shader_compiler>"
+        DEPFILE "${shader_depfile}"
         VERBATIM
     )
 endfunction()

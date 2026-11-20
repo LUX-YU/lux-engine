@@ -138,14 +138,22 @@ namespace lux::render
         };
     } // namespace extension_detail
 
+    template <class C, auto Method>
+    concept CommandMethodFor = RenderCommand<C> &&
+        requires { typename extension_detail::CommandInvocation<C, Method>::Handler; } &&
+        (!requires(const typename C::Request& request) { C::effectId(request); }) &&
+        (std::is_void_v<typename extension_detail::CommandInvocation<C, Method>::Storage> ||
+         (CapabilityCommand<C> && requires(const typename C::Request& request) { C::resourceId(request); }));
+
     template <class C, class H, auto Method>
     concept SyncCommandHandlerFor =
-        RenderCommand<C> && requires { typename extension_detail::CommandInvocation<C, Method>::Handler; } &&
+        CommandMethodFor<C, Method> &&
         std::same_as<H, typename extension_detail::CommandInvocation<C, Method>::Handler> &&
         extension_detail::CommandInvocation<C, Method>::synchronous;
 
     // Compile-time association only. Runtime installation creates the actual call thunk.
-    template <RenderCommand C, auto Method> struct CommandMethod final
+    template <class C, auto Method> requires CommandMethodFor<C, Method>
+    struct CommandMethod final
     {
         using Command = C;
         using Handler = typename extension_detail::CommandInvocation<C, Method>::Handler;

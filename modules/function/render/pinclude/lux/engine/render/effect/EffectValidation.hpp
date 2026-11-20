@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/effect/EffectCatalog.hpp>
+#include <lux/engine/render/effect/EffectDiagnostic.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
 #include <cstdint>
 #include <limits>
@@ -11,36 +12,6 @@
 
 namespace lux::render::effect_detail
 {
-    // Cold, source-located supplements to the existing RenderError channel.
-    // They never add strings or registration work to a frame failure path.
-    enum class EEffectIssue : std::uint8_t
-    {
-        CATALOG_NOT_SEALED,
-        CAPACITY,
-        MISSING_NODE_PAYLOAD,
-        UNKNOWN_CAPABILITY,
-        UNKNOWN_IMPLEMENTATION,
-        SCHEMA_MISMATCH,
-        INSTANCE_LIMIT,
-        INVALID_LINK,
-        TYPE_MISMATCH,
-        FAN_LIMIT,
-        CYCLE,
-        INVALID_OUTPUT,
-        MISSING_INPUT,
-        UNSUPPORTED_OUTPUT,
-        INITIALIZATION_FAILURE
-    };
-
-    struct EffectDiagnostic final
-    {
-        EEffectIssue issue;
-        graph::NodeId node;
-        graph::PinId pin;
-        graph::PinId related_pin;
-        std::uint32_t detail = 0;
-    };
-
     inline constexpr auto kInvalidEffectIndex = std::numeric_limits<std::uint32_t>::max();
 
     struct EffectTableRange final
@@ -96,9 +67,8 @@ namespace lux::render::effect_detail
         std::vector<ValidatedEffectOutput> outputs;
     };
 
-    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<ValidatedEffectGraph> validateEffectGraph(
-        const EffectGraph& source,
-        const EffectCatalog& catalog,
-        std::vector<EffectDiagnostic>& diagnostics
-    ) noexcept;
+    using EffectValidationResult = cxx::expected<ValidatedEffectGraph, EffectDiagnostic>;
+
+    [[nodiscard]] LUX_RENDER_PUBLIC EffectValidationResult
+    validateEffectGraph(const EffectGraph&, const EffectCatalog&) noexcept;
 }

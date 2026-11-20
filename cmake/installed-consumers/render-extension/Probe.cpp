@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exec/create.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
@@ -112,6 +113,46 @@ struct ProbeHandler final
     }
     using Bindings = std::tuple<CommandMethod<ProbeIdentity, &ProbeHandler::read>>;
 };
+
+struct CommandContractProbe final
+{
+    static void mayThrow(const ProbeIdentity::Request&, ProbeIdentity::Response&) {}
+    static void wrongRequest(const std::string&, ProbeIdentity::Response&) noexcept {}
+
+    static auto validSender(ProbeIdentity::Request&&) noexcept
+    {
+        return stdexec::just(ProbeIdentity::Response{}) | stdexec::then([](auto value) noexcept { return value; });
+    }
+
+    static auto wrongError(ProbeIdentity::Request&&) noexcept
+    {
+        return exec::create<stdexec::set_value_t(ProbeIdentity::Response), stdexec::set_error_t(int)>(
+            [](auto& context) noexcept { stdexec::set_error(std::move(context.receiver), 1); }
+        );
+    }
+};
+
+template <auto Method>
+concept DeclaresIdentityCommand = requires { CommandBinding::declare<ProbeIdentity, Method>(); };
+
+template <auto Method>
+concept NamesIdentityMethod = requires { typename CommandMethod<ProbeIdentity, Method>; };
+
+template <class Handler, class Bindings>
+concept RegistersHandler = requires(RenderServer& server) { server.registerHandler<Handler, Bindings>(); };
+
+template <class Storage>
+concept RegistersStorage = requires(RenderServer& server) { server.registerResource<Storage>(); };
+
+static_assert(NamesIdentityMethod<&ProbeHandler::read> && DeclaresIdentityCommand<&ProbeHandler::read>);
+static_assert(!NamesIdentityMethod<&CommandContractProbe::mayThrow>);
+static_assert(!DeclaresIdentityCommand<&CommandContractProbe::wrongRequest>);
+static_assert(DeclaresIdentityCommand<&CommandContractProbe::validSender>);
+static_assert(!DeclaresIdentityCommand<&CommandContractProbe::wrongError>);
+static_assert(RegistersHandler<ProbeHandler, ProbeHandler::Bindings>);
+static_assert(!RegistersHandler<CommandContractProbe, ProbeHandler::Bindings>);
+static_assert(!RegistersHandler<ProbeHandler, std::tuple<int>>);
+static_assert(!RegistersStorage<CommandContractProbe>);
 
 struct ProbeEffectCommand final
 {

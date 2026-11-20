@@ -25,10 +25,35 @@ namespace lux::render
     struct CapabilityDefinition;
     struct EffectImplementation;
     class CommandBinding;
+    class ResourceRegistry;
 
     namespace runtime_detail
     {
         struct HandlerRecord;
+
+        template <class Storage>
+        concept ResourceStorage = requires
+        {
+            typename Storage::Descriptor::Config;
+            { Storage::factory() } noexcept -> std::same_as<ResourceRegistration>;
+        };
+
+        template <class Storage>
+        concept ConfiguredResourceStorage = ResourceStorage<Storage> &&
+            (!std::is_void_v<typename Storage::Descriptor::Config>) &&
+            requires(const typename Storage::Descriptor::Config& config) { ConfigValue::make(config); };
+
+        template <class Handler>
+        concept HandlerFactory = std::is_nothrow_destructible_v<Handler> && requires
+        {
+            requires std::same_as<decltype(Handler::create), Handler*(ResourceRegistry&) noexcept>;
+            std::string(Handler::name);
+        };
+
+        template <class Bindings> struct HandlerBindings;
+
+        template <class Bindings>
+        concept HandlerBindingList = requires { &HandlerBindings<Bindings>::make; };
     } // namespace runtime_detail
 
     struct RenderServerConfig final
@@ -109,17 +134,18 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> registerCommands(std::span<const CommandBinding>) noexcept;
 
         // Installs the Resource definition, creation policy and its declaration-owned static command thunks.
-        template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>)
+        template <runtime_detail::ConfiguredResourceStorage Storage>
         [[nodiscard]] RenderResult<ResourceTypeId>
         registerResource(const typename Storage::Descriptor::Config& config = {}) noexcept;
 
-        template <class Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
+        template <runtime_detail::ResourceStorage Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
         [[nodiscard]] RenderResult<ResourceTypeId>
         registerResource() noexcept;
 
         // Registers a Handler factory and its typed methods, without constructing the Handler.
         // A repeated (type, key) is a conflict; references use handlerId without another factory payload.
-        template <class Handler, class Bindings> [[nodiscard]] RenderResult<HandlerId>
+        template <runtime_detail::HandlerFactory Handler, runtime_detail::HandlerBindingList Bindings>
+        [[nodiscard]] RenderResult<HandlerId>
         registerHandler(std::string_view key = {}) noexcept;
 
         // Runs once, blocking the calling thread. Drains accepted work and replies before returning.

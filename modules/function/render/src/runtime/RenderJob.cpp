@@ -355,7 +355,7 @@ namespace lux::render
             stdexec::schedule(cpu_scheduler_) |
             stdexec::then([&]() noexcept
             {
-                return lowerEffectGraph(*effect.source, effect_catalog_, target, device, imports);
+                return lowerEffectGraph(*effect.source, effect_catalog_, target, device, imports, config_.diagnostics);
             }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<EffectGraphBuild>
             {

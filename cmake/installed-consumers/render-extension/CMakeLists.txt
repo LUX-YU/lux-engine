@@ -68,7 +68,7 @@ endif()
 
 foreach(header IN ITEMS
     core/ConfigValue core/RenderErrorSink
-    effect/CapabilityDefinition effect/EffectCatalog effect/EffectGraph
+    effect/CapabilityDefinition effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
     extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/Diagnostics

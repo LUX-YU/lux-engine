@@ -4,6 +4,10 @@
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/shader/visibility.h>
 #include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace lux::shader
 {
@@ -52,6 +56,8 @@ namespace lux::shader
         std::string_view source_path = "lux_shader.slang";
         std::span<const std::string_view> include_directories;
         ShaderCompileReport* report = nullptr;
+        // Optional file dependencies of this request, including imported modules and their includes.
+        std::vector<std::string>* dependencies = nullptr;
     };
 
     using ShaderCompileResult = cxx::expected<rdesc::ShaderProgramArtifact, ShaderCompileFailure>;

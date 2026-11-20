@@ -191,7 +191,7 @@ namespace lux::render::detail
     };
 
     // A cold-qualified preparation borrow. The active execution list owns its lifetime.
-    struct StorageFrameUse final
+    struct StorageFrameBinding final
     {
         void* storage;
         const StorageBindingOps* ops;

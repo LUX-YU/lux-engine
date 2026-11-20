@@ -42,11 +42,24 @@ namespace lux::render::runtime_detail
         class NodeInitialization final : public EffectInitializationContext
         {
         public:
-            NodeInitialization(graph::NodeId node, RenderEffect& owner) noexcept : node_(node), owner_(owner)
+            NodeInitialization(graph::NodeId node, RenderEffect& owner, std::size_t& config_budget) noexcept
+                : node_(node), owner_(owner), config_budget_(config_budget)
             {
             }
 
             graph::NodeId nodeId() const noexcept override { return node_; }
+
+            RenderResult<void> setConfiguration(ConfigValue configuration) noexcept override
+            {
+                if (has_configuration_) return cxx::unexpected(RenderError{kCapabilityConflict, {node_.value}});
+                const auto bytes = configuration.retainedBytes();
+                if (!configuration || bytes > config_budget_)
+                    return cxx::unexpected(RenderError{kInvalidConfig, {node_.value}});
+                owner_.node_configurations.push_back({node_, std::move(configuration)});
+                config_budget_ -= bytes;
+                has_configuration_ = true;
+                return {};
+            }
 
             const RenderEffect::NodeState* state() const noexcept
             {
@@ -68,7 +81,9 @@ namespace lux::render::runtime_detail
 
             graph::NodeId node_;
             RenderEffect& owner_;
+            std::size_t& config_budget_;
             bool has_state_ = false;
+            bool has_configuration_ = false;
         };
 
         struct ImportSlots final
@@ -86,6 +101,7 @@ namespace lux::render::runtime_detail
             NodeBuild(
                 const ValidatedEffectGraph& source,
                 const ValidatedEffectNode& node,
+                const ConfigValue* configuration,
                 const EffectOutputDesc& target,
                 const EffectBuildDevice& device,
                 RenderGraphBuilder& builder,
@@ -94,7 +110,7 @@ namespace lux::render::runtime_detail
                 ImportSlots& slots,
                 PreparationDefinition& preparation,
                 std::vector<UniformBlockDeclaration>& uniforms
-            ) noexcept : node_(node), target_(target), device_(device), builder_(builder),
+            ) noexcept : node_(node), configuration_(configuration), target_(target), device_(device), builder_(builder),
                          bundles_(bundles), imports_(imports), slots_(slots), preparation_(preparation),
                          uniforms_(uniforms), pins_(node.pins.view(source.pins)), inputs_(pins_.size())
             {
@@ -108,6 +124,7 @@ namespace lux::render::runtime_detail
             }
 
             graph::NodeId nodeId() const noexcept override { return node_.source; }
+            const ConfigValue* nodeConfiguration() const noexcept override { return configuration_; }
             const EffectOutputDesc& target() const noexcept override { return target_; }
             const EffectBuildDevice& device() const noexcept override { return device_; }
             RenderGraphBuilder& builder() noexcept override { return builder_; }
@@ -373,6 +390,7 @@ namespace lux::render::runtime_detail
             }
 
             const ValidatedEffectNode& node_;
+            const ConfigValue* configuration_;
             const EffectOutputDesc& target_;
             const EffectBuildDevice& device_;
             RenderGraphBuilder& builder_;
@@ -405,7 +423,7 @@ namespace lux::render::runtime_detail
         {
             const auto& node = validated->nodes[index];
             if (!node.live) continue;
-            NodeInitialization context{node.source, candidate};
+            NodeInitialization context{node.source, candidate, max_config_bytes};
             if (auto initialized = node.implementation->initialize(context, node.arguments); !initialized)
             {
                 return cxx::unexpected(reportEffectFailure(
@@ -433,14 +451,20 @@ namespace lux::render::runtime_detail
         std::ranges::sort(routes, {}, &RenderEffect::CommandRoute::key);
         if (std::ranges::adjacent_find(routes, std::ranges::equal_to{}, &RenderEffect::CommandRoute::key) != routes.end())
             return cxx::unexpected(RenderError{kCapabilityConflict});
+        std::ranges::sort(candidate.node_configurations, {}, &EffectNodeConfiguration::node);
         candidate.source = std::move(graph);
         return {};
     }
 
     RenderResult<EffectGraphBuild>
     lowerEffectGraph(
-        const EffectGraph& graph, const EffectCatalog& catalog, const EffectOutputDesc& target,
-        const EffectBuildDevice& device, const EffectImportContracts& imports, const RenderErrorSink& sink
+        const EffectGraph& graph,
+        std::span<const EffectNodeConfiguration> configurations,
+        const EffectCatalog& catalog,
+        const EffectOutputDesc& target,
+        const EffectBuildDevice& device,
+        const EffectImportContracts& imports,
+        const RenderErrorSink& sink
     ) noexcept
     {
         auto validated = validateForBuild(graph, catalog, sink);
@@ -459,8 +483,10 @@ namespace lux::render::runtime_detail
         {
             const auto& node = validated->nodes[index];
             if (!node.live) continue;
+            const auto config = std::ranges::lower_bound(configurations, node.source, {}, &EffectNodeConfiguration::node);
+            const auto* value = config != configurations.end() && config->node == node.source ? &config->value : nullptr;
             NodeBuild context{
-                *validated, node, target, device, builder, bundles, imports, slots, preparation, uniforms
+                *validated, node, value, target, device, builder, bundles, imports, slots, preparation, uniforms
             };
             if (auto built = node.implementation->build(context, node.arguments); !built)
             {

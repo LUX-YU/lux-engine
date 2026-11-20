@@ -191,7 +191,7 @@ namespace lux::render::detail
         auto shared = session_->descriptors().createSnapshot(*pool);
         if (!shared) return cxx::unexpected(shared.error());
         std::vector<std::pair<nri::DescriptorSet**, nri::DescriptorSet*>> replacements;
-        const auto allocate = [&](std::span<const DescriptorUse> uses, PassDescriptorBindings native,
+        const auto allocate = [&](std::span<const DescriptorAccess> uses, PassDescriptorBindings native,
                                   nri::DescriptorSet*& destination, const auto& view) noexcept -> RenderResult<void>
         {
             nri::DescriptorSet* set = nullptr;

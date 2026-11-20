@@ -139,7 +139,7 @@ namespace lux::render::detail
     }
 
     exec::task<RenderResult<std::uint32_t>> FrameOperation::run(
-        std::span<RenderGraphInstance* const> instances, std::span<const StorageFrameUse> storages,
+        std::span<RenderGraphInstance* const> instances, std::span<const StorageFrameBinding> storages,
         std::span<const SubmissionOrder> order
     ) noexcept
     {
@@ -332,7 +332,7 @@ namespace lux::render::detail
         return ready;
     }
 
-    RenderResult<bool> FrameOperation::prepareStorages(std::span<const StorageFrameUse> storages) noexcept
+    RenderResult<bool> FrameOperation::prepareStorages(std::span<const StorageFrameBinding> storages) noexcept
     {
         auto& replicas = workspace_.replicas[slot()];
         bool resources_ready = true;

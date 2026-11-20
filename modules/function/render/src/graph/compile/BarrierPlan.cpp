@@ -381,8 +381,8 @@ namespace lux::render::detail
         }
         auto apply = [&](std::uint32_t index, std::size_t cell, Access current, BarrierBatch& batch)
         {
-            const auto slot = physical ? physical->resource_slots[index] : kGraphInvalidIndex;
-            const auto identity = slot == kGraphInvalidIndex ? index : physical->slots[slot].resource.index;
+            const auto slot = physical ? physical->resource_slots[index] : PhysicalResourceSlotIndex{};
+            const auto identity = slot.valid() ? physical->slots[slot.index].resource.index : index;
             auto& previous = states[identity][cell];
             current.resource = index;
             const bool cross_queue = previous.queue != current.queue;

@@ -1,6 +1,7 @@
 #include "TonemapLinear.hpp"
 #include "TonemapSrgb.hpp"
-#include <charconv>
+#include <cmath>
+#include <lux/engine/render/effect/EffectArguments.hpp>
 #include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
@@ -57,15 +58,12 @@ namespace lux::render
         RenderResult<void>
         initializeToneMapping(EffectInitializationContext& context, std::string_view argument) noexcept
         {
-            float exposure = 1;
-            if (!argument.empty())
-            {
-                const auto end = argument.data() + argument.size();
-                const auto parsed = std::from_chars(argument.data(), end, exposure);
-                if (parsed.ec != std::errc{} || parsed.ptr != end || !std::isfinite(exposure))
-                    return cxx::unexpected(RenderError{kInvalidConfig, {context.nodeId().value}});
-            }
-            return context.initializeState<detail::TonemapExposure>(detail::TonemapExposure{{exposure}});
+            constexpr auto exposure = cxx::args::Option<float, "exposure">{}.def(1.0f).check(
+                [](float value) noexcept { return std::isfinite(value); }
+            );
+            const auto parsed = cxx::args::parse(argument, exposure);
+            if (!parsed) return cxx::unexpected(detail::effectArgumentError(context.nodeId(), parsed.error()));
+            return context.initializeState<detail::TonemapExposure>(detail::TonemapExposure{{*parsed.get<"exposure">()}});
         }
 
         template <bool Srgb>

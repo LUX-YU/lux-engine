@@ -10,6 +10,7 @@
 namespace lux::render
 {
     inline constexpr auto kInvalidConfig = error::errorId("lux.render.data.invalid_config");
+    inline constexpr auto kInvalidEffectArguments = error::errorId("lux.render.data.invalid_effect_arguments");
 
     // Dynamic configurations count their own allocations/capacity, excluding externally borrowed data.
     template <class T> struct ConfigValueTraits

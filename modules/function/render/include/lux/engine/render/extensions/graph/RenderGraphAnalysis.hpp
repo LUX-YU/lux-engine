@@ -28,14 +28,14 @@ namespace lux::render
     // A resolved range's producer/consumer relation, including initial contents
     // (invalid producer) and output observation (invalid consumer). Fallback reads
     // retain their selected source; no borrowed GraphPass/GraphResource pointers.
-    struct GraphVersionUse final
+    struct GraphVersionAccess final
     {
         ResourceVersion version;
         VGraphRange range;
         GraphPassId producer;
         GraphPassId consumer;
         bool fallback = false;
-        bool operator==(const GraphVersionUse&) const noexcept = default;
+        bool operator==(const GraphVersionAccess&) const noexcept = default;
     };
 
     struct GraphLifetime final
@@ -53,7 +53,7 @@ namespace lux::render
         std::vector<GraphPassId> execution_order;
         std::vector<GraphDependency> dependencies;
         std::vector<GraphHazard> hazards;
-        std::vector<GraphVersionUse> versions;
+        std::vector<GraphVersionAccess> versions;
         std::vector<GraphLifetime> lifetimes;
         // Live CPU parameter inputs are not GPU memory reads and introduce no synthetic barriers.
         bool operator==(const RenderGraphAnalysis&) const noexcept = default;

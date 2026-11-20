@@ -28,7 +28,7 @@ namespace lux::render::detail
         }
         OffscreenTarget result(session, description);
         const auto count = frame_count;
-        result.uses_.assign(count, ImageUse{session.makeFrontiers(), session.makeFrontiers()});
+        result.uses_.assign(count, ImageProgress{session.makeFrontiers(), session.makeFrontiers()});
         result.images_.reserve(count);
         result.views_.reserve(count);
         result.frames_.reserve(count);

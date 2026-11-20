@@ -2,6 +2,7 @@
 
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <memory>
 #include <type_traits>
@@ -15,6 +16,17 @@ namespace lux::render
     public:
         virtual ~EffectInitializationContext() noexcept = default;
         [[nodiscard]] virtual graph::NodeId nodeId() const noexcept = 0;
+
+        // Publishes one immutable value for the device builds of this logical node.
+        [[nodiscard]] virtual RenderResult<void> setConfiguration(ConfigValue) noexcept = 0;
+
+        template <class T> requires requires(T&& value) { ConfigValue::make(std::forward<T>(value)); }
+        [[nodiscard]] RenderResult<void> setConfiguration(T&& value) noexcept
+        {
+            auto configuration = ConfigValue::make(std::forward<T>(value));
+            if (!configuration) return cxx::unexpected(configuration.error());
+            return setConfiguration(std::move(*configuration));
+        }
 
         template <class State, class... Args>
             requires std::is_nothrow_constructible_v<State, Args...> && std::is_nothrow_destructible_v<State>

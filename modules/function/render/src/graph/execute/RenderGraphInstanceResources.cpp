@@ -146,7 +146,7 @@ namespace lux::render::detail
 
         struct View final
         {
-            ImageViewUse use;
+            ImageViewBinding use;
             nri::Descriptor* descriptor;
         };
 
@@ -169,7 +169,7 @@ namespace lux::render::detail
                 }
             }
         );
-        const auto add_view = [&](ImageViewUse use, nri::TextureView kind, std::uint32_t count) -> RenderResult<void>
+        const auto add_view = [&](ImageViewBinding use, nri::TextureView kind, std::uint32_t count) -> RenderResult<void>
         {
             nri::TextureViewDesc view{
                 image,
@@ -389,7 +389,7 @@ namespace lux::render::detail
                 continue;
             }
             const auto physical = plan.physical_resources_.resource_slots[i];
-            binding = frame.bindings[plan.physical_resources_.slots[physical].resource.index];
+            binding = frame.bindings[plan.physical_resources_.slots[physical.index].resource.index];
         }
         return {};
     }

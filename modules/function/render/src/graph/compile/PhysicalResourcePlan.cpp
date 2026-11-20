@@ -54,7 +54,7 @@ namespace lux::render::detail
     {
         PhysicalResourcePlan result;
         result.allocation = allocation;
-        result.resource_slots.resize(resources.size(), kGraphInvalidIndex);
+        result.resource_slots.resize(resources.size());
         reasons.assign(resources.size(), EResourceReuse::UNUSED);
         std::vector<ResourceInterval> intervals(resources.size());
         std::vector<Frontier> completed(submissions.size());
@@ -184,23 +184,23 @@ namespace lux::render::detail
                     reason = EResourceReuse::UNORDERED;
                     if (precedes(intervals[previous], intervals[i]))
                     {
-                        result.resource_slots[i] = s;
+                        result.resource_slots[i] = {s};
                         tails[s] = i;
                         reason = EResourceReuse::REUSED;
                         break;
                     }
                 }
             }
-            if (result.resource_slots[i] == kGraphInvalidIndex)
+            if (!result.resource_slots[i].valid())
             {
-                result.resource_slots[i] = static_cast<std::uint32_t>(result.slots.size());
+                result.resource_slots[i] = {static_cast<std::uint32_t>(result.slots.size())};
                 auto& slot = result.slots.emplace_back();
                 slot.resource = {i};
                 slot.before = intervals[i].before;
                 slot.alias_eligible = alias_eligible;
                 tails.push_back(i);
             }
-            auto& slot = result.slots[result.resource_slots[i]];
+            auto& slot = result.slots[result.resource_slots[i].index];
             for (std::size_t q = 0; q < queues.size(); ++q)
             {
                 slot.before[q] = std::min(slot.before[q], intervals[i].before[q]);

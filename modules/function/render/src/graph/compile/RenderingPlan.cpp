@@ -42,7 +42,7 @@ namespace lux::render::detail
     {
         // Ported from Legacy RenderPassPlanner::plan / collect_pass_refs:
         // consecutive live graphics work only. Identity and subranges strengthen its format-only key.
-        std::vector<std::vector<const GraphVersionUse*>> readers(resources.size());
+        std::vector<std::vector<const GraphVersionAccess*>> readers(resources.size());
         std::vector<std::vector<const GraphLifetime*>> lifetimes(resources.size());
         for (const auto& use : analysis.versions)
         {

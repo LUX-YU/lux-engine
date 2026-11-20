@@ -423,7 +423,7 @@ namespace lux::render::detail
             }
             ++frame.imported_group_counts[group.size()];
 #endif
-            if (std::ranges::any_of(group, &ImportedUse::write))
+            if (std::ranges::any_of(group, &ImportedResourceAccess::write))
             {
                 for (std::size_t a = 0; a < group.size(); ++a)
                 {
@@ -692,13 +692,13 @@ namespace lux::render::detail
         co_return submissions;
     }
 
-    SubmissionOperation::InstanceUse
+    SubmissionOperation::InstanceSubmissionResult
     SubmissionOperation::Workspace::acceptedFrameUse(
         std::uint32_t slot, const RenderGraphInstance& instance, SubmissionFrontiers& uses
     ) const noexcept
     {
         uses.clear();
-        InstanceUse result;
+        InstanceSubmissionResult result;
         const auto& frame = slots_[slot];
         if (!frame.graph_started) return result;
         const auto execution = std::ranges::find(frame.instances, &instance, &InstanceExecution::instance);

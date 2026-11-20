@@ -18,6 +18,12 @@ namespace lux::render::runtime_detail
     class CommandRegistry;
     struct RenderEffect;
 
+    struct EffectNodeConfiguration final
+    {
+        graph::NodeId node;
+        ConfigValue value;
+    };
+
     struct EffectTargetImport final
     {
         std::string binding;
@@ -83,7 +89,7 @@ namespace lux::render::runtime_detail
     ) noexcept;
 
     [[nodiscard]] RenderResult<EffectGraphBuild> lowerEffectGraph(
-        const EffectGraph&, const EffectCatalog&, const EffectOutputDesc&, const EffectBuildDevice&,
-        const EffectImportContracts&, const RenderErrorSink&
+        const EffectGraph&, std::span<const EffectNodeConfiguration>, const EffectCatalog&, const EffectOutputDesc&,
+        const EffectBuildDevice&, const EffectImportContracts&, const RenderErrorSink&
     ) noexcept;
 }

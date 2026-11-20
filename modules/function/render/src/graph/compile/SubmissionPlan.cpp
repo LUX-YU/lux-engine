@@ -169,11 +169,11 @@ namespace lux::render::detail
         for (std::size_t resource = 0; resource < baseline.resource_slots.size(); ++resource)
         {
             const auto baseline_slot = baseline.resource_slots[resource];
-            if (baseline_slot == kGraphInvalidIndex)
+            if (!baseline_slot.valid())
             {
                 continue;
             }
-            const auto owner = baseline.slots[baseline_slot].resource.index;
+            const auto owner = baseline.slots[baseline_slot.index].resource.index;
             if (candidate.resource_slots[resource] != candidate.resource_slots[owner])
             {
                 return false;

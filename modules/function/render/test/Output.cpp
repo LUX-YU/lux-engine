@@ -210,7 +210,7 @@ static void graphOutput(Validation& validation)
     CHECK(!missing_output && missing_output.error().type == kDeviceArgument);
     CHECK(execution->target() == target); // Rejection must not withdraw the adopted output.
     const std::array contexts{execution.get()};
-    std::vector<StorageFrameUse> storage_preparation;
+    std::vector<StorageFrameBinding> storage_preparation;
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
     CHECK(
@@ -328,7 +328,7 @@ static void importedIdentityReuse(Validation& validation)
     };
     // A viewport can change sampled resources several times, then be detached and recreated
     // at the same allocator address. Local ++ used to collide with the next global identity.
-    const auto raster_slot = plan.assembly.source_pass_slots[pass.pass.index];
+    const auto raster_slot = plan.assembly.source_pass_slots[pass.pass.index].index;
     CHECK(raster_slot < plan.executable.passes().size());
     const auto& raster_pass = plan.executable.passes()[raster_slot];
     for (std::uint64_t update = 0; update < 2 * creation_revisions; ++update)
@@ -563,7 +563,7 @@ namespace
         ));
         const auto implementation = encoding == EColorEncoding::SRGB ? ToneMapping::srgb : ToneMapping::linear;
         const auto tone = take(edit.addNode(ToneMapping::definition(), {std::string{implementation}, 1},
-            std::move(exposure)));
+            "exposure=" + exposure));
         const auto capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
         CHECK(edit.connect(edit.pinId(hdr, ToneMapping::color), edit.pinId(tone, ToneMapping::hdr_color)));
         CHECK(edit.connect(edit.pinId(tone, ToneMapping::color), edit.pinId(capture, ColorCapture::color)));
@@ -2052,8 +2052,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     {
         EffectGraphEdit tone_edit{*tone_request.graph};
         const auto hdr_input = take(tone_edit.addNode(capability, selected, "tone input"));
-        const auto left_tone = take(tone_edit.addNode(tone_node, {std::string{ToneMapping::linear}, 1}, "-1"));
-        const auto right_tone = take(tone_edit.addNode(tone_node, {std::string{ToneMapping::srgb}, 1}, "1"));
+        const auto left_tone = take(tone_edit.addNode(tone_node, {std::string{ToneMapping::linear}, 1}, "exposure=-1"));
+        const auto right_tone = take(tone_edit.addNode(tone_node, {std::string{ToneMapping::srgb}, 1}, "exposure=1"));
         tone_left_node = left_tone;
         tone_right_node = right_tone;
         const auto sink = take(tone_edit.addNode(tone_capture, tone_capture_selection, ""));
@@ -4482,7 +4482,7 @@ static void lightingGraphOutput(bool d3d12)
         ));
         const auto tone = take(edit.addNode(ToneMapping::definition(), {
             std::string{ToneMapping::linear}, ToneMapping::version
-        }, "0"));
+        }, "exposure=0"));
         const auto capture = take(edit.addNode(sink, sink_selection));
         CHECK(edit.connect(edit.pinId(surface, Lighting::surface), edit.pinId(lighting, Lighting::surface)));
         CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
@@ -4506,12 +4506,17 @@ static void lightingGraphOutput(bool d3d12)
     const auto shadow_effect = call<CreateEffect>(*client, commands, make_effect(true).first).effect;
     const auto clustered_shadow = call<CreateEffect>(*client, commands, make_effect(true, Lighting::clustered).first).effect;
     const auto clustered = call<CreateEffect>(*client, commands,
-        make_effect(false, Lighting::clustered, "7,5,9,65536,logarithmic").first).effect;
+        make_effect(false, Lighting::clustered, "depth=logarithmic y=5 x=7 index-capacity=65536 z=9").first).effect;
     const auto overflow = call<CreateEffect>(*client, commands,
-        make_effect(false, Lighting::clustered, "1,1,1,1,linear").first).effect;
+        make_effect(false, Lighting::clustered, "x=1 y=1 z=1 index-capacity=1 depth=linear").first).effect;
     const auto invalid_grid = call<CreateEffect>(*client, commands,
-        make_effect(false, Lighting::clustered, "1,0,1,1,linear").first, false);
-    CHECK(invalid_grid.error.type == kInvalidConfig);
+        make_effect(false, Lighting::clustered, "x=1 y=0 z=1 index-capacity=1 depth=linear").first, false);
+    CHECK(invalid_grid.error.type == kInvalidEffectArguments);
+    const auto invalid_depth = call<CreateEffect>(
+        *client, commands, make_effect(false, Lighting::clustered, "depth=unknown").first, false
+    );
+    CHECK(invalid_depth.error.type == kInvalidEffectArguments);
+    CHECK(invalid_depth.error.args[1] != 0 && invalid_depth.error.args[2] == 0);
     call<SetLightingEnvironment>(*client, commands, {effect, lighting, {}});
     const auto device = call<CreateDeviceSession>(*client, commands, options).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
@@ -4709,7 +4714,8 @@ static void basicFeatureOutputs(bool d3d12)
         EffectGraphEdit edit{*result.graph};
         const auto depth = take(edit.addNode(depth_source, depth_selection, ""));
         const auto pyramid = take(edit.addNode(
-            DepthPyramid::definition(), {std::string{DepthPyramid::forward_zo}, DepthPyramid::version}, std::string{mips}
+            DepthPyramid::definition(), {std::string{DepthPyramid::forward_zo}, DepthPyramid::version},
+            "mips=" + std::string{mips}
         ));
         CHECK(edit.connect(edit.pinId(depth, DepthPyramid::depth), edit.pinId(pyramid, DepthPyramid::depth)));
         const auto connect = [&](graph::PinSemanticId port, std::string key)
@@ -4723,7 +4729,7 @@ static void basicFeatureOutputs(bool d3d12)
         CHECK(edit.commit());
         return result;
     };
-    CHECK(call<CreateEffect>(*client, commands, request(true, "0"), false).error.type == kInvalidConfig);
+    CHECK(call<CreateEffect>(*client, commands, request(true, "0"), false).error.type == kInvalidEffectArguments);
     const auto history = call<CreateEffect>(*client, commands, request(true, "4")).effect;
     const auto current_only = call<CreateEffect>(*client, commands, request(false, "4")).effect;
     const auto session = call<CreateDeviceSession>(*client, commands, options).device;

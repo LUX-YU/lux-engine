@@ -387,9 +387,9 @@ static void runPresets(
         const auto surface = take(edit.addNode(GBuffer::definition(), {std::string{GBuffer::indexed}, GBuffer::version}));
         const auto lighting_impl = clustered ? Lighting::clustered : Lighting::direct;
         const auto lighting = take(edit.addNode(Lighting::definition(), {std::string{lighting_impl}, Lighting::version},
-            clustered ? "7,5,9,4096,linear" : ""));
+            clustered ? "x=7 y=5 z=9 index-capacity=4096 depth=linear" : ""));
         const auto tone = take(edit.addNode(ToneMapping::definition(),
-            {std::string{ToneMapping::linear}, ToneMapping::version}, "0"));
+            {std::string{ToneMapping::linear}, ToneMapping::version}, "exposure=0"));
         CHECK(edit.connect(edit.pinId(surface, GBuffer::surface), edit.pinId(lighting, Lighting::surface)));
         CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
         const auto display = edit.pinId(tone, ToneMapping::color);
@@ -397,7 +397,7 @@ static void runPresets(
         if (shadows)
         {
             const auto shadow = take(edit.addNode(Shadow::definition(), {std::string{Shadow::indexed}, Shadow::version},
-                "64,3,0"));
+                "resolution=64 distance=3 pcf-radius=0"));
             CHECK(edit.connect(edit.pinId(shadow, Shadow::shadows), edit.pinId(lighting, Lighting::shadows)));
         }
         CapturedPixels pixels;
@@ -781,11 +781,11 @@ int main(int argc, char** argv)
         ));
         const auto shadow = take(edit.addNode(
             Shadow::definition(), {std::string{Shadow::indexed_clockwise}, Shadow::version},
-            "64,3," + std::to_string(radius) + (cull ? "" : ",unculled")
+            "resolution=64 distance=3 pcf-radius=" + std::to_string(radius) + (cull ? "" : " frustum-culling=false")
         ));
         const auto direct = take(edit.addNode(Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}));
         const auto tone = take(edit.addNode(
-            ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}, "0"
+            ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}, "exposure=0"
         ));
         const auto color_capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
         const auto diagnostic = take(edit.addNode(ShadowReadback::definition(), {std::string{ShadowReadback::name}, 1}));
@@ -804,7 +804,7 @@ int main(int argc, char** argv)
         {
             const auto candidate = take(edit.addNode(
                 Lighting::definition(), {std::string{Lighting::clustered}, Lighting::version},
-                radius ? "7,5,9,1,logarithmic" : "7,5,9,65536,logarithmic"
+                radius ? "x=7 y=5 z=9 index-capacity=1 depth=logarithmic" : "x=7 y=5 z=9 index-capacity=65536 depth=logarithmic"
             ));
             CHECK(edit.connect(surface_port, edit.pinId(candidate, Lighting::surface)));
             CHECK(edit.connect(shadows_port, edit.pinId(candidate, Lighting::shadows)));

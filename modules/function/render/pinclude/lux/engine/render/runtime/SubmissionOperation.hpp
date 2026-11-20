@@ -46,7 +46,7 @@ namespace lux::render::detail
             nri::StageBits stages = nri::StageBits::ALL;
         };
 
-        struct ImportedUse final
+        struct ImportedResourceAccess final
         {
             const void* physical = nullptr;
             VGraphRange range;
@@ -69,7 +69,7 @@ namespace lux::render::detail
             std::vector<BatchExecution> batches;
             std::vector<BatchDependency> dependencies;
             std::vector<std::vector<std::uint32_t>> ready_batches;
-            std::vector<ImportedUse> imported_uses;
+            std::vector<ImportedResourceAccess> imported_uses;
             std::vector<std::uint32_t> recording_batches;
             struct Recording final
             {
@@ -87,7 +87,7 @@ namespace lux::render::detail
         };
 
     public:
-        struct InstanceUse final
+        struct InstanceSubmissionResult final
         {
             bool wrote_output = false;
             bool completed = false;
@@ -104,7 +104,7 @@ namespace lux::render::detail
         public:
             Workspace(std::uint32_t slots, std::size_t queues) noexcept;
             [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
-            [[nodiscard]] InstanceUse acceptedFrameUse(
+            [[nodiscard]] InstanceSubmissionResult acceptedFrameUse(
                 std::uint32_t, const RenderGraphInstance&, SubmissionFrontiers&
             ) const noexcept;
             [[nodiscard]] SubmissionFrontiers acceptedUses(

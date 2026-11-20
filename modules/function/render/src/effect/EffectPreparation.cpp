@@ -128,7 +128,7 @@ namespace lux::render::runtime_detail
             {
                 if (std::ranges::find(producer_.passes, pass) == producer_.passes.end())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
-                const auto slot = assembly_.source_pass_slots[pass.index];
+                const auto slot = assembly_.source_pass_slots[pass.index].index;
                 if (slot >= executable_.passes().size() || !programs_.rasterStream(slot))
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
                 return slot;
@@ -151,7 +151,7 @@ namespace lux::render::runtime_detail
             {
                 if (std::ranges::find(producer_.inline_blocks, id) == producer_.inline_blocks.end())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {id.index}});
-                const auto slot = assembly_.source_pass_slots[id.index];
+                const auto slot = assembly_.source_pass_slots[id.index].index;
                 const auto& contract = source_.passes()[id.index].interface.parameters.inline_constant;
                 const bool valid_slot = slot < executable_.passes().size();
                 const bool compatible = valid_slot && executable_.passes()[slot].parameter_size == bytes &&
@@ -366,7 +366,7 @@ namespace lux::render::runtime_detail
         detail::PreparationPlan plan;
         for (std::size_t p = 0; p < source.passes().size(); ++p)
         {
-            const auto slot = assembly.source_pass_slots[p];
+            const auto slot = assembly.source_pass_slots[p].index;
             if (slot == kGraphInvalidIndex) continue;
             const auto* raster = std::get_if<RasterWork>(&source.passes()[p].command);
             const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
@@ -428,7 +428,7 @@ namespace lux::render::runtime_detail
             if (!prototype) return cxx::unexpected(prototype.error());
             const auto expected_writers = std::ranges::count_if(declaration.inline_blocks, [&](GraphPassId pass)
             {
-                return assembly.source_pass_slots[pass.index] != kGraphInvalidIndex;
+                return assembly.source_pass_slots[pass.index].valid();
             });
             if (constants.size() != static_cast<std::size_t>(expected_writers) ||
                 buffers.size() != declaration.gpu_buffers.size())

@@ -47,7 +47,7 @@ namespace lux::render::detail
             return submitting() && submission_->refersTo(instance);
         }
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> run(
-            std::span<RenderGraphInstance* const>, std::span<const StorageFrameUse>,
+            std::span<RenderGraphInstance* const>, std::span<const StorageFrameBinding>,
             std::span<const SubmissionOrder> order = {}
         ) noexcept;
         void setRecordingPolicy(execution::CpuScheduler cpu, bool parallel) noexcept
@@ -67,7 +67,7 @@ namespace lux::render::detail
         void finish() noexcept;
         void settlePreparation(RenderResult<void>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareUniforms(std::span<RenderGraphInstance* const>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameUse>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameBinding>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
         [[nodiscard]] std::uint32_t slot() const noexcept { return round_.context().slot_index; }

@@ -1129,10 +1129,10 @@ namespace lux::render::detail
         {
             diagnostics.resource_keys.push_back(resource.key);
         }
-        assembly.source_pass_slots.resize(graph.passes().size(), kGraphInvalidIndex);
+        assembly.source_pass_slots.resize(graph.passes().size());
         for (std::uint32_t slot = 0; slot < analysis.execution_order.size(); ++slot)
         {
-            assembly.source_pass_slots[analysis.execution_order[slot].index] = slot;
+            assembly.source_pass_slots[analysis.execution_order[slot].index] = {slot};
         }
         co_return PreparedRenderGraph{
             std::move(*candidate), std::move(native), std::move(assembly), std::move(diagnostics)

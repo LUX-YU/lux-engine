@@ -23,7 +23,7 @@ namespace lux::render::detail
 
         struct View final
         {
-            ImageViewUse use;
+            ImageViewBinding use;
             nri::Descriptor* descriptor;
             bool owned;
         };

@@ -2,6 +2,7 @@
 
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
 #include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
@@ -43,6 +44,15 @@ namespace lux::render
     public:
         virtual ~EffectBuildContext() noexcept = default;
         [[nodiscard]] virtual graph::NodeId nodeId() const noexcept = 0;
+        // Borrows the immutable value published during CreateEffect for this build call.
+        template <class T> [[nodiscard]] const T* configuration() const & noexcept
+        {
+            const auto* configuration = nodeConfiguration();
+            return configuration ? configuration->borrow<T>() : nullptr;
+        }
+
+        template <class T> const T* configuration() const && = delete;
+
         // Extents are evaluated per instance from graph declarations, including through compatible resize.
         [[nodiscard]] virtual const EffectOutputDesc& target() const noexcept = 0;
         [[nodiscard]] virtual const EffectBuildDevice& device() const noexcept = 0;
@@ -111,6 +121,7 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<void> publish(graph::PinSemanticId, EffectResourceBundle) noexcept = 0;
 
     private:
+        [[nodiscard]] virtual const ConfigValue* nodeConfiguration() const noexcept = 0;
         [[nodiscard]] virtual RenderResult<ResourceVersion>
         declareUniformBlock(std::string_view, extension_detail::EffectUniformSource) noexcept = 0;
         [[nodiscard]] virtual RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info, std::size_t) noexcept = 0;

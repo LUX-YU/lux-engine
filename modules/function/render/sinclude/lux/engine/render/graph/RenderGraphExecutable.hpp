@@ -19,7 +19,7 @@
 namespace lux::render::detail
 {
     struct GraphBindingPlan;
-    struct DescriptorUse;
+    struct DescriptorAccess;
     class DeviceSession;
     class RenderGraphExecutable;
     class NativeGraphPrograms;
@@ -37,7 +37,7 @@ namespace lux::render::detail
         CLEAR
     };
 
-    struct ImageViewUse final
+    struct ImageViewBinding final
     {
         std::uint32_t pass, index;
         EImageViewTarget target;
@@ -59,7 +59,7 @@ namespace lux::render::detail
         // Immutable reverse indexes shared by every Context frame slice.
         std::vector<std::pair<std::uint32_t, std::uint32_t>> barrier_uses, descriptor_uses;
         std::vector<std::uint32_t> final_barrier_uses;
-        std::vector<ImageViewUse> image_views;
+        std::vector<ImageViewBinding> image_views;
         std::vector<std::uint32_t> extent_uses;
     };
 
@@ -342,11 +342,18 @@ namespace lux::render::detail
     };
 
     // Logical bindings borrow these unique physical slots; the instance owns one set per FIF.
+    struct PhysicalResourceSlotIndex final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+        [[nodiscard]] bool valid() const noexcept { return index != kGraphInvalidIndex; }
+        bool operator==(const PhysicalResourceSlotIndex&) const noexcept = default;
+    };
+
     struct PhysicalResourcePlan final
     {
         ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS;
         std::vector<PhysicalResourceSlot> slots;
-        std::vector<std::uint32_t> resource_slots;
+        std::vector<PhysicalResourceSlotIndex> resource_slots;
     };
 
     // The execution candidate owns this immutable result; its graph instance borrows it until teardown.
@@ -404,7 +411,7 @@ namespace lux::render::detail
             return recording_;
         }
 
-        [[nodiscard]] std::span<const DescriptorUse> descriptorUses(std::uint32_t binding_slot) const noexcept;
+        [[nodiscard]] std::span<const DescriptorAccess> descriptorUses(std::uint32_t binding_slot) const noexcept;
 
         [[nodiscard]] std::uint32_t output() const noexcept
         {

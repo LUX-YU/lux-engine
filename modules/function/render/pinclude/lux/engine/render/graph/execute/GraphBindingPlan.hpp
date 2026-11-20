@@ -7,7 +7,7 @@
 
 namespace lux::render::detail
 {
-    struct DescriptorUse final
+    struct DescriptorAccess final
     {
         std::uint32_t resource;
         std::uint32_t set;
@@ -21,7 +21,7 @@ namespace lux::render::detail
         std::uint32_t fallback = kGraphInvalidIndex;
         bool comparison_sampler = false;
 
-        bool operator==(const DescriptorUse&) const noexcept = default;
+        bool operator==(const DescriptorAccess&) const noexcept = default;
     };
 
     struct FixedDescriptorBinding final
@@ -53,7 +53,7 @@ namespace lux::render::detail
     struct FixedPassBindingView final
     {
         std::span<const FixedDescriptorBinding> bindings;
-        std::span<const DescriptorUse> uses;
+        std::span<const DescriptorAccess> uses;
         std::span<const std::byte> initial_parameters;
         bool has_private_set;
     };
@@ -77,7 +77,7 @@ namespace lux::render::detail
 
         std::vector<FixedPassBindings> passes;
         std::vector<FixedDescriptorBinding> descriptor_fields;
-        std::vector<DescriptorUse> descriptor_uses;
+        std::vector<DescriptorAccess> descriptor_uses;
         std::vector<std::byte> initial_parameters;
         nri::DescriptorPoolDesc private_pool{};
     };

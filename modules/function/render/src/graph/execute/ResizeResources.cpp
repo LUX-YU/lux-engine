@@ -371,9 +371,9 @@ namespace lux::render::detail
         for (std::uint32_t r = 0; r < resources.size(); ++r)
         {
             const auto slot = physical.resource_slots[r];
-            if (slot != kGraphInvalidIndex && candidate.replaced_slots[slot])
+            if (slot.valid() && candidate.replaced_slots[slot.index])
             {
-                candidate.resources.push_back({r, replacements[slot]});
+                candidate.resources.push_back({r, replacements[slot.index]});
             }
         }
         return {};

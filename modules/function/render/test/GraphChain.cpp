@@ -448,7 +448,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 3, plan.executable, plan.programs);
-    const auto count_pass = plan.assembly.source_pass_slots[generated.pass.index];
+    const auto count_pass = plan.assembly.source_pass_slots[generated.pass.index].index;
     CHECK(count_pass != kGraphInvalidIndex);
     CHECK(instance->initialize());
     plan.assembly = {};
@@ -1289,8 +1289,8 @@ private:
         const auto uses = executable_.descriptorUses(pass.binding_slot);
         CHECK(uses.size() == 2);
         // The production layout packs private fields by name, placing current_sample before previous_sample.
-        const auto output = std::ranges::find(uses, 0u, &DescriptorUse::binding);
-        const auto input = std::ranges::find(uses, 1u, &DescriptorUse::binding);
+        const auto output = std::ranges::find(uses, 0u, &DescriptorAccess::binding);
+        const auto input = std::ranges::find(uses, 1u, &DescriptorAccess::binding);
         CHECK(input != uses.end() && output != uses.end());
         auto previous = words(input->resource, input->whole_resource ? VGraphRange{} : input->range);
         auto current = words(output->resource, output->whole_resource ? VGraphRange{} : output->range);
@@ -1649,7 +1649,7 @@ static void historySequence(
         return (input == 0 && use_fallback ? 17 : input) + 1;
     };
     CHECK(plan.diagnostics.resource_reuse[history.previous.index] == EResourceReuse::HISTORY);
-    CHECK(plan.executable.physicalResources().resource_slots[history.current.index] == kGraphInvalidIndex);
+    CHECK(!plan.executable.physicalResources().resource_slots[history.current.index].valid());
     const std::uint8_t enabled_initial = 1;
     CHECK(instance->setConditions({&enabled_initial, 1}));
     CHECK(take(instance->prepareFrame(0)));

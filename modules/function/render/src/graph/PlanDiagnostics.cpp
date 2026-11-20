@@ -243,7 +243,7 @@ namespace lux::render::detail
                 output += ',';
             }
             output += "{\"resource\":" + std::to_string(i) +
-                      ",\"slot\":" + std::to_string(plan.physical_resources_.resource_slots[i]) + ",\"reason\":" +
+                      ",\"slot\":" + std::to_string(plan.physical_resources_.resource_slots[i].index) + ",\"reason\":" +
                       quoteDumpText(reuse_reasons[static_cast<unsigned>(graph.diagnostics.resource_reuse[i])]) + "}";
         }
         output += "],\"physical_object_count\":" + std::to_string(plan.physical_resources_.slots.size()) +

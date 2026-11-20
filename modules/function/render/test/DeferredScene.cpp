@@ -551,13 +551,13 @@ static DeferredNodes addDeferredNodes(EffectGraphEdit& edit, bool frustum_cullin
 {
     const auto surface = take(edit.addNode(
         GBuffer::definition(), {std::string{GBuffer::indexed_clockwise}, GBuffer::version},
-        frustum_culling ? "" : "unculled"
+        frustum_culling ? "" : "frustum-culling=false"
     ));
     const auto lighting = take(edit.addNode(
         Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}
     ));
     const auto tone = take(edit.addNode(
-        ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}, std::move(exposure)
+        ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}, exposure.empty() ? "" : "exposure=" + exposure
     ));
     CHECK(edit.connect(edit.pinId(surface, GBuffer::surface), edit.pinId(lighting, Lighting::surface)));
     CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
@@ -1075,7 +1075,7 @@ int main(int argc, char** argv)
         {
             const auto shadow = take(edit.addNode(Shadow::definition(), {
                 std::string{Shadow::indexed_clockwise}, Shadow::version
-            }, "64,3,1"));
+            }, "resolution=64 distance=3 pcf-radius=1"));
             const auto lighting = take(edit.addNode(Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}));
             const auto tone = take(edit.addNode(ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}));
             CHECK(edit.connect(edit.pinId(surface, GBuffer::surface), edit.pinId(lighting, Lighting::surface)));

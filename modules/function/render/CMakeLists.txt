@@ -1,4 +1,4 @@
-find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution)
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core execution arguments)
 
 find_package(stdexec CONFIG REQUIRED GLOBAL)
 
@@ -282,7 +282,7 @@ target_link_libraries(render
         lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
         STDEXEC::stdexec lux::cxx::execution lux::engine::core::core_execution
         lux::engine::function::graph
-    PRIVATE NRI Eigen3::Eigen lux::engine::core::math
+    PRIVATE NRI Eigen3::Eigen lux::engine::core::math lux::cxx::arguments
         lux::engine::core::serialization
         spirv-cross-c SPIRV-Tools-static
         lux::engine::platform::platform_process

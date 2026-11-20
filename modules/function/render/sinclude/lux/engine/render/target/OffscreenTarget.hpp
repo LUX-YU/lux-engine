@@ -71,14 +71,14 @@ namespace lux::render::detail
         std::vector<nri::Descriptor*>   views_;
         std::vector<TargetFrame>        frames_;
         std::vector<DescriptorTable::Slot> sampled_slots_;
-        struct ImageUse final
+        struct ImageProgress final
         {
             SubmissionFrontiers all;
             SubmissionFrontiers writes;
             std::uint64_t content = 0;
         };
 
-        std::vector<ImageUse>           uses_;
+        std::vector<ImageProgress>           uses_;
         std::uint64_t                   content_revision_ = 0;
     };
 } // namespace lux::render::detail

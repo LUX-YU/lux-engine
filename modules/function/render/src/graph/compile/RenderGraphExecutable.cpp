@@ -17,7 +17,7 @@ namespace lux::render::detail
 
     RenderGraphExecutable::RenderGraphExecutable(RenderGraphExecutable&&) noexcept = default;
 
-    std::span<const DescriptorUse> RenderGraphExecutable::descriptorUses(std::uint32_t binding_slot) const noexcept
+    std::span<const DescriptorAccess> RenderGraphExecutable::descriptorUses(std::uint32_t binding_slot) const noexcept
     {
         return binding_plan_->pass(binding_slot).uses;
     }

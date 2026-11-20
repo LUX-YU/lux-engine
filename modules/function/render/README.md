@@ -74,7 +74,8 @@ and takes its View data from `JobBinding::view_parameters`. `SetLightingEnvironm
 ambient radiance. Its HDR output connects to `ToneMapping`.
 Select `Lighting::clustered` to build the bounds, count, scan and fill passes inside the node. The
 default grid is 16 by 9 by 24, with logarithmic depth and capacity for 65,536 light indices. Override it
-with `x,y,z,index-capacity,linear` or `x,y,z,index-capacity,logarithmic`. Both the list builder and the
+with named arguments such as `x=7 y=5 z=9 index-capacity=4096 depth=linear`. Depth accepts `linear` or
+`logarithmic`. Both the list builder and the
 deferred shader consume the same View snapshot. If a list overflows its capacity, shading evaluates the
 complete local light list.
 
@@ -129,7 +130,7 @@ The built-in `MeshVisibility` camera implementation generates a `draws` bundle w
 visible members, and indexed indirect commands. Bind the Job's `view_parameters` and use the named
 `mesh.instances`, `mesh.properties`, `mesh.transforms`, and contiguous `mesh.alive` inputs.
 The address-enabled implementation reads both instance fields through the `PAGED_ROOT` projection.
-The node defaults to frustum culling. Pass `unculled` as the node argument to keep every enabled instance
+The node defaults to frustum culling. Pass `frustum-culling=false` as the node argument to keep every enabled instance
 with a nonsingular transform. Each group has one command per winding. Consumers use the bundle inside
 the same graph, where the compiler schedules the visibility writes before their reads.
 
@@ -150,8 +151,8 @@ forward-Z camera depth that can feed `DepthPyramid`.
 Use `Shadow::definition()` to connect the indexed shadow caster path to `Lighting::shadows`.
 Choose `Shadow::indexed` or `Shadow::indexed_clockwise` and supply the same Mesh, Material, Transform,
 and View bindings as GBuffer. Bind `shadow.lights` to the Light resource's CPU snapshot. Optional
-node arguments are `resolution,distance,pcf_radius`, with defaults `1024,100,1`.
-Append `,unculled` to those arguments to disable frustum culling for shadow casters.
+node arguments default to `resolution=1024 distance=100 pcf-radius=1`.
+Pass `frustum-culling=false` to disable frustum culling for shadow casters.
 The number of active cascades and light faces determines the depth array layers for each prepared frame.
 The RasterStream applies each light's depth bias and publishes the layer and light mappings with the depth image.
 The optional `Shadow::draws` port exposes the visibility groups, members, and indirect commands used by the caster
@@ -179,8 +180,13 @@ lifetime. Command dispatch updates the logical state, and recording consumes the
 
 Use `ToneMapping::definition()` to author the built-in HDR-to-display node. Choose the `linear` or `srgb`
 implementation, connect a `lux.color.linear-hdr` input to `hdr_color`, and consume the display value from
-`color`. The node argument is an optional numeric exposure in stops with a default of 1.
+`color`. Pass an optional `exposure=1` in stops. Exposure defaults to 1.
 `SetToneMappingExposure` addresses an Effect and a node, including before a Job is attached.
+
+Built-in node arguments use named options from the installed `lux-cxx` arguments component
+(`lux/cxx/arguments/TypedOptions.hpp`). The Server parses live nodes during `CreateEffect`. Extensions can
+publish a typed immutable value with `EffectInitializationContext::setConfiguration` and borrow it in
+a device build with `EffectBuildContext::configuration<T>()`. The value belongs to the logical Effect.
 
 `effect/EffectBundles.hpp` defines the GBuffer, Shadow, HDR and cluster-list schemas shared by Effect producers
 and consumers. Use the schema's type, version and member names when declaring or connecting these bundles.
@@ -579,7 +585,7 @@ Rendering groups may merge within a region but never across its boundary. There 
 GPU-to-CPU reads.
 
 The `DepthPyramid` EffectGraph node consumes single-layer D32 forward-Z depth and produces an R32 depth pyramid.
-Its argument is a decimal mip count and defaults to one. Connect the `previous` output to request History with a
+Its `mips` argument defaults to one. Connect the `previous` output to request History with a
 first-frame far-depth value of 1. The current-only path uses a transient image. Each compute dispatch reduces
 the complete footprint of its mip, including odd dimensions. `ImageDispatchArguments` resolves group counts
 from the actual mip extent, including after Resize.

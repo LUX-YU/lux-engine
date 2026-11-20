@@ -64,7 +64,7 @@ namespace lux::render
             }
         }
         std::ranges::sort(inputs.storages, {}, [](const auto& use) noexcept { return storageOrder(use.identity); });
-        const auto duplicates = std::ranges::unique(inputs.storages, {}, &detail::StorageFrameUse::identity);
+        const auto duplicates = std::ranges::unique(inputs.storages, {}, &detail::StorageFrameBinding::identity);
         inputs.storages.erase(duplicates.begin(), duplicates.end());
         const auto count = inputs.jobs.size();
         for (std::uint32_t consumer = 0; consumer < count; ++consumer)

@@ -385,9 +385,9 @@ static CreateEffectRequest inspectionEffect(const ClusterGrid* grid = nullptr)
         const auto reference = take(edit.addNode(
             Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}
         ));
-        const auto args = std::to_string(grid->cells[0]) + "," + std::to_string(grid->cells[1]) + "," +
-            std::to_string(grid->cells[2]) + "," + std::to_string(grid->index_capacity) +
-            (grid->depth == EClusterDepth::LINEAR ? ",linear" : ",logarithmic");
+        const auto args = "x=" + std::to_string(grid->cells[0]) + " y=" + std::to_string(grid->cells[1]) +
+            " z=" + std::to_string(grid->cells[2]) + " index-capacity=" + std::to_string(grid->index_capacity) +
+            (grid->depth == EClusterDepth::LINEAR ? " depth=linear" : " depth=logarithmic");
         const auto clustered = take(edit.addNode(
             Lighting::definition(), {std::string{Lighting::clustered}, Lighting::version}, args
         ));

@@ -1,4 +1,5 @@
 #include "MeshView.hpp"
+#include <lux/engine/render/effect/EffectArguments.hpp>
 #include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
@@ -25,7 +26,6 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <NRI.h>
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 
 namespace lux::render
@@ -246,10 +246,18 @@ namespace lux::render
             std::uint64_t selection_ = 0;
         };
 
-        RenderResult<void> initializeVisibility(EffectInitializationContext& context, std::string_view args) noexcept
+        struct MeshVisibilityConfiguration final
         {
-            if (args.empty() || args == "unculled") return {};
-            return cxx::unexpected(RenderError{kInvalidConfig, {context.nodeId().value}});
+            bool frustum_culling;
+        };
+
+        constexpr auto kFrustumCulling = cxx::args::Option<bool, "frustum-culling">{}.def(true);
+
+        RenderResult<void> initializeVisibility(EffectInitializationContext& context, std::string_view arguments) noexcept
+        {
+            const auto parsed = cxx::args::parse(arguments, kFrustumCulling);
+            if (!parsed) return cxx::unexpected(detail::effectArgumentError(context.nodeId(), parsed.error()));
+            return context.setConfiguration(MeshVisibilityConfiguration{*parsed.get<"frustum-culling">()});
         }
 
         struct ShadowNodeConfiguration final
@@ -258,46 +266,31 @@ namespace lux::render
             bool frustum_culling = true;
         };
 
-        RenderResult<ShadowNodeConfiguration> parseShadow(std::string_view arguments) noexcept
+        RenderResult<void> initializeShadow(EffectInitializationContext& context, std::string_view arguments) noexcept
         {
-            ShadowNodeConfiguration configuration;
-            if (arguments.empty()) return configuration;
-            constexpr std::string_view unculled = ",unculled";
-            if (arguments.ends_with(unculled))
-            {
-                arguments.remove_suffix(unculled.size());
-                configuration.frustum_culling = false;
-            }
-            const auto delimiter = arguments.find(',');
-            const auto next = delimiter == std::string_view::npos ? delimiter : arguments.find(',', delimiter + 1);
-            if (next == std::string_view::npos) return cxx::unexpected(RenderError{kInvalidConfig});
-            const auto read = [](std::string_view text, auto& value) noexcept
-            {
-                const auto end = text.data() + text.size();
-                const auto result = std::from_chars(text.data(), end, value);
-                return result.ec == std::errc{} && result.ptr == end;
-            };
+            constexpr ShadowNodeConfiguration defaults;
+            constexpr auto resolution = cxx::args::Option<std::uint32_t, "resolution">{}
+                .def(defaults.projection.shape.resolution);
+            constexpr auto distance = cxx::args::Option<float, "distance">{}.def(defaults.projection.distance).check(
+                [](float value) noexcept { return std::isfinite(value) && value > 0; }
+            );
+            constexpr auto radius = cxx::args::Option<std::uint32_t, "pcf-radius">{}
+                .def(defaults.projection.pcf_radius).check(cxx::args::inRange(0u, 4u));
+            const auto parsed = cxx::args::parse(arguments, resolution, distance, radius, kFrustumCulling);
+            if (!parsed) return cxx::unexpected(detail::effectArgumentError(context.nodeId(), parsed.error()));
+            auto configuration = defaults;
             auto& settings = configuration.projection;
-            const bool parsed_size = read(arguments.substr(0, delimiter), settings.shape.resolution);
-            const bool parsed_distance = read(arguments.substr(delimiter + 1, next - delimiter - 1), settings.distance);
-            const bool parsed_radius = read(arguments.substr(next + 1), settings.pcf_radius);
-            const bool invalid_distance = !std::isfinite(settings.distance) || settings.distance <= 0;
-            const bool invalid_shape = settings.pcf_radius > 4 ||
-                settings.shape.resolution <= 2 * (settings.pcf_radius + 2);
-            if (!parsed_size || !parsed_distance || !parsed_radius || invalid_distance || invalid_shape)
-                return cxx::unexpected(RenderError{kInvalidConfig});
-            return configuration;
-        }
-
-        RenderResult<void> initializeShadow(EffectInitializationContext& context, std::string_view args) noexcept
-        {
-            if (const auto parsed = parseShadow(args); !parsed)
+            settings.shape.resolution = *parsed.get<"resolution">();
+            settings.distance = *parsed.get<"distance">();
+            settings.pcf_radius = *parsed.get<"pcf-radius">();
+            configuration.frustum_culling = *parsed.get<"frustum-culling">();
+            if (settings.shape.resolution <= 2 * (settings.pcf_radius + 2))
                 return cxx::unexpected(RenderError{kInvalidConfig, {context.nodeId().value}});
-            return {};
+            return context.setConfiguration(configuration);
         }
 
         template <EMeshEffect Effect, bool CounterClockwise = true>
-        RenderResult<void> buildVisibility(EffectBuildContext& context, std::string_view args) noexcept
+        RenderResult<void> buildVisibility(EffectBuildContext& context, std::string_view) noexcept
         {
             const auto& device = context.device();
             const auto max_bytes = std::min(device.storage_buffer_max_range, UINT64_MAX / 2) & ~std::uint64_t{3};
@@ -334,12 +327,12 @@ namespace lux::render
             ResourceVersion views;
             std::vector<GraphPassId> inline_blocks;
             std::optional<PrepareMeshVisibility::ShadowConfiguration> shadow;
-            bool frustum_culling = args.empty();
+            bool frustum_culling;
             if constexpr (Effect == EMeshEffect::SHADOW)
             {
-                auto configuration = parseShadow(args);
-                if (!configuration) return cxx::unexpected(configuration.error());
-                auto& settings = configuration->projection;
+                const auto* configuration = context.configuration<ShadowNodeConfiguration>();
+                if (!configuration) return cxx::unexpected(RenderError{kCapabilityDeclaration, {context.nodeId().value}});
+                auto settings = configuration->projection;
                 settings.maximum_layers = device.texture_layer_limit;
                 frustum_culling = configuration->frustum_culling;
                 const auto lights = context.importStorageSnapshot<ShadowLightSnapshot>(
@@ -367,6 +360,9 @@ namespace lux::render
             }
             else
             {
+                const auto* configuration = context.configuration<MeshVisibilityConfiguration>();
+                if (!configuration) return cxx::unexpected(RenderError{kCapabilityDeclaration, {context.nodeId().value}});
+                frustum_culling = configuration->frustum_culling;
                 const auto view_resource = graph.declareResource({key + "views", GraphBufferDesc{sizeof(MeshVisibilityView)}});
                 if (!view_resource) return cxx::unexpected(view_resource.error());
                 const auto shader = graph.addProgram(GraphProgram{kMeshView.load(context.shaderTarget())});

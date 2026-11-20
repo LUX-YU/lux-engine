@@ -3,8 +3,8 @@
 #include "DeferredLightingClusteredShadow.hpp"
 #include "DeferredLightingShadow.hpp"
 #include <algorithm>
-#include <charconv>
 #include <cmath>
+#include <lux/engine/render/effect/EffectArguments.hpp>
 #include <lux/engine/render/effect/EffectBundles.hpp>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
@@ -209,24 +209,29 @@ namespace lux::render
 
         RenderResult<ClusterGrid> parseClusterGrid(graph::NodeId node, std::string_view arguments) noexcept
         {
-            ClusterGrid grid;
-            if (arguments.empty()) return grid;
-            const std::array fields{&grid.cells[0], &grid.cells[1], &grid.cells[2], &grid.index_capacity};
-            for (std::size_t i = 0; i < fields.size(); ++i)
-            {
-                const auto comma = arguments.find(',');
-                if (comma == std::string_view::npos || !comma)
-                    return cxx::unexpected(RenderError{kInvalidConfig, {node.value, i}});
-                const auto last = arguments.data() + comma;
-                const auto parsed = std::from_chars(arguments.data(), last, *fields[i]);
-                if (parsed.ec != std::errc{} || parsed.ptr != last)
-                    return cxx::unexpected(RenderError{kInvalidConfig, {node.value, i}});
-                arguments.remove_prefix(comma + 1);
-            }
-            if (arguments == "linear")
-                grid.depth = EClusterDepth::LINEAR;
-            else if (arguments != "logarithmic")
-                return cxx::unexpected(RenderError{kInvalidConfig, {node.value, fields.size()}});
+            constexpr ClusterGrid defaults;
+            constexpr auto count_range = cxx::args::inRange(1u, UINT32_MAX - 1);
+            constexpr auto x = cxx::args::Option<std::uint32_t, "x">{}.def(defaults.cells[0]).check(count_range);
+            constexpr auto y = cxx::args::Option<std::uint32_t, "y">{}.def(defaults.cells[1]).check(count_range);
+            constexpr auto z = cxx::args::Option<std::uint32_t, "z">{}.def(defaults.cells[2]).check(count_range);
+            constexpr auto capacity = cxx::args::Option<std::uint32_t, "index-capacity">{}
+                .def(defaults.index_capacity).check(count_range);
+            constexpr auto depth = cxx::args::Option<EClusterDepth, "depth">{}.def(defaults.depth).convert(
+                [](std::string_view text, EClusterDepth& value) noexcept
+                {
+                    if (text == "linear") value = EClusterDepth::LINEAR;
+                    else if (text == "logarithmic") value = EClusterDepth::LOGARITHMIC;
+                    else return cxx::args::EErrorCode::INVALID_VALUE;
+                    return cxx::args::EErrorCode::OK;
+                }
+            );
+            const auto parsed = cxx::args::parse(arguments, x, y, z, capacity, depth);
+            if (!parsed) return cxx::unexpected(detail::effectArgumentError(node, parsed.error()));
+            const ClusterGrid grid{
+                {*parsed.get<"x">(), *parsed.get<"y">(), *parsed.get<"z">()},
+                *parsed.get<"index-capacity">(),
+                *parsed.get<"depth">()
+            };
             if (!grid.valid()) return cxx::unexpected(RenderError{kInvalidConfig, {node.value}});
             return grid;
         }
@@ -238,6 +243,7 @@ namespace lux::render
             {
                 auto grid = parseClusterGrid(context.nodeId(), arguments);
                 if (!grid) return cxx::unexpected(grid.error());
+                if (auto configured = context.setConfiguration(*grid); !configured) return configured;
             }
             else if (!arguments.empty())
                 return cxx::unexpected(RenderError{kInvalidConfig, {context.nodeId().value}});
@@ -245,7 +251,7 @@ namespace lux::render
         }
 
         template <bool Clustered>
-        RenderResult<void> buildLighting(EffectBuildContext& context, std::string_view arguments) noexcept
+        RenderResult<void> buildLighting(EffectBuildContext& context, std::string_view) noexcept
         {
             const auto node = context.nodeId();
             auto surface = resolveLightingBundle(context.inputs(Lighting::surface), GBufferBundle::members, node);
@@ -296,8 +302,8 @@ namespace lux::render
             std::vector<GraphPassId> writers;
             if constexpr (Clustered)
             {
-                const auto grid = parseClusterGrid(node, arguments);
-                if (!grid) return cxx::unexpected(grid.error());
+                const auto* grid = context.configuration<ClusterGrid>();
+                if (!grid) return cxx::unexpected(RenderError{kCapabilityDeclaration, {node.value}});
                 const auto cluster_key = key + "/clusters";
                 auto buffers = detail::declareClusterBuffers(builder, cluster_key, *grid);
                 if (!buffers) return cxx::unexpected(buffers.error());

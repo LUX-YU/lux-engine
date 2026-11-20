@@ -24,7 +24,7 @@ namespace lux::render::detail
 
         std::vector<ShaderBinding> bindings;
         std::vector<ShaderBinding> private_bindings;
-        std::vector<DescriptorUse> uses;
+        std::vector<DescriptorAccess> uses;
         nri::PipelineLayout* layout = nullptr;
         std::uint32_t private_set = 0;
         // Texture, sampler and buffer table positions; absent kinds consume no set.

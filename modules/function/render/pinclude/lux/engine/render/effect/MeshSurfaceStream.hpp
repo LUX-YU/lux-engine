@@ -66,7 +66,7 @@ namespace lux::render::detail
         ) noexcept;
 
     private:
-        struct ProgramUse final
+        struct ProgramBinding final
         {
             std::uint32_t first;
             bool reads_material;
@@ -85,7 +85,7 @@ namespace lux::render::detail
 
         using GroupKey = std::pair<MeshId, MaterialProgramId>;
         Inputs inputs_;
-        std::map<GroupKey, ProgramUse> programs_;
+        std::map<GroupKey, ProgramBinding> programs_;
         std::vector<std::pair<std::uint32_t, MaterialId>> materials_;
         std::vector<RasterStreamDraw> draws_;
         std::vector<RasterStreamBinding> bindings_;

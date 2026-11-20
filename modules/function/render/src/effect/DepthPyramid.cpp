@@ -1,10 +1,10 @@
 #include "HzbDownsample.hpp"
 #include <algorithm>
 #include <bit>
-#include <charconv>
 #include <limits>
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
+#include <lux/engine/render/effect/EffectArguments.hpp>
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
@@ -15,30 +15,26 @@ namespace lux::render
 {
     namespace
     {
-        RenderResult<std::uint32_t> parseMipCount(graph::NodeId node, std::string_view argument) noexcept
+        struct DepthPyramidConfiguration final
         {
-            if (argument.empty()) return 1;
-            std::uint32_t count = 0;
-            const auto end = argument.data() + argument.size();
-            const auto parsed = std::from_chars(argument.data(), end, count);
-            const bool invalid_count = count == 0 || count > std::numeric_limits<std::uint32_t>::digits;
-            if (parsed.ec != std::errc{} || parsed.ptr != end || invalid_count)
-                return cxx::unexpected(RenderError{kInvalidConfig, {node.value}});
-            return count;
-        }
+            std::uint32_t mip_count;
+        };
 
         RenderResult<void>
         initializeDepthPyramid(EffectInitializationContext& context, std::string_view argument) noexcept
         {
-            const auto count = parseMipCount(context.nodeId(), argument);
-            if (!count) return cxx::unexpected(count.error());
-            return {};
+            constexpr auto mips = cxx::args::Option<std::uint32_t, "mips">{}
+                .def(1u).check(cxx::args::inRange(1u, std::uint32_t{std::numeric_limits<std::uint32_t>::digits}));
+            const auto parsed = cxx::args::parse(argument, mips);
+            if (!parsed) return cxx::unexpected(detail::effectArgumentError(context.nodeId(), parsed.error()));
+            return context.setConfiguration(DepthPyramidConfiguration{*parsed.get<"mips">()});
         }
 
-        RenderResult<void> buildDepthPyramid(EffectBuildContext& context, std::string_view argument) noexcept
+        RenderResult<void> buildDepthPyramid(EffectBuildContext& context, std::string_view) noexcept
         {
-            const auto mip_count = parseMipCount(context.nodeId(), argument);
-            if (!mip_count) return cxx::unexpected(mip_count.error());
+            const auto* configuration = context.configuration<DepthPyramidConfiguration>();
+            if (!configuration) return cxx::unexpected(RenderError{kCapabilityDeclaration, {context.nodeId().value}});
+            const auto mip_count = configuration->mip_count;
             const auto input = context.inputs(DepthPyramid::depth);
             if (input.size() != 1 || input.front().size() != 1)
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {context.nodeId().value}});
@@ -50,13 +46,13 @@ namespace lux::render
             const bool invalid_format = depth->format != rdesc::ETextureFormat::D32_SFLOAT;
             const bool invalid_layers = depth->layers != 1 || depth->runtime_layers || depth->samples != 1;
             const bool invalid_mips = depth->extent.source == EImageExtentSource::FIXED &&
-                *mip_count > std::bit_width(std::max(depth->width, depth->height));
+                mip_count > std::bit_width(std::max(depth->width, depth->height));
             if (invalid_format || invalid_layers || invalid_mips)
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {context.nodeId().value}});
 
             auto pyramid = *depth;
             pyramid.format = rdesc::ETextureFormat::R32_SFLOAT;
-            pyramid.mips = *mip_count;
+            pyramid.mips = mip_count;
             const std::string key = "depth-pyramid/" + std::to_string(context.nodeId().value);
             const bool needs_history = context.outputDemanded(DepthPyramid::previous);
             ResourceVersion current, previous;
@@ -78,8 +74,8 @@ namespace lux::render
             const auto first = builder.nextWriteVersion(current.resource);
             if (!first) return cxx::unexpected(first.error());
             std::vector<ComputeWork> commands;
-            commands.reserve(*mip_count);
-            for (std::uint32_t mip = 0; mip < *mip_count; ++mip)
+            commands.reserve(mip_count);
+            for (std::uint32_t mip = 0; mip < mip_count; ++mip)
             {
                 const auto source = mip ? current : depth_version;
                 const GraphImageRange read{mip ? 1u : 2u, mip ? mip - 1 : 0, 1, 0, 1};

@@ -21,6 +21,7 @@ namespace lux::render::runtime_detail
     struct RenderEffect final
     {
         std::unique_ptr<const EffectGraph> source;
+        std::vector<EffectNodeConfiguration> node_configurations;
         using VariantPlan = std::shared_ptr<const JobGraphPlan>;
         using VariantResult = RenderResult<VariantPlan>;
 

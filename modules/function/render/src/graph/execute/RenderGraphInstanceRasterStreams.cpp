@@ -369,7 +369,7 @@ namespace lux::render::detail
                 return ResourceInput{source.buffer, range.offset, range.size};
             };
 
-            const auto descriptorInput = [&](const RasterStreamBinding& entry, const DescriptorUse& use,
+            const auto descriptorInput = [&](const RasterStreamBinding& entry, const DescriptorAccess& use,
                                               const ShaderBinding& shader) noexcept
                 -> RenderResult<RasterDescriptorInput>
             {

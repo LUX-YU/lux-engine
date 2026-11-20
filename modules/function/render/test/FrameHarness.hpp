@@ -46,7 +46,7 @@ namespace foundation_test
         }
 
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
-        render(std::span<RenderGraphInstance* const> instances, std::span<const StorageFrameUse> storages) noexcept
+        render(std::span<RenderGraphInstance* const> instances, std::span<const StorageFrameBinding> storages) noexcept
         {
             if (auto error = device_.terminalError(); error.type) co_return lux::cxx::unexpected(error);
             const bool in_flight = operation_ && operation_->active();

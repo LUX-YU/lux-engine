@@ -10,6 +10,7 @@
 #include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
@@ -353,12 +354,14 @@ static void registerClearNode(RenderServer& server)
     implementation.capability = graph::nodeTypeId(clear_node);
     implementation.identity = {std::string{clear_node}, 1};
     implementation.supported_outputs = {clear_color};
-    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
+    implementation.initialize = [](EffectInitializationContext& context, std::string_view) noexcept -> RenderResult<void>
     {
-        return {};
+        return context.setConfiguration(std::array{0.0f, 1.0f, 0.0f, 1.0f});
     };
     implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
     {
+        const auto* color = context.configuration<std::array<float, 4>>();
+        if (!color) return cxx::unexpected(RenderError{kInvalidConfig});
         const auto state = take(context.importStorageSnapshot<bool>(
             clear_resource, {ResourceName{ColdResource::descriptor.type.name()}}
         ));
@@ -367,7 +370,7 @@ static void registerClearNode(RenderServer& server)
         image.extent.source = EImageExtentSource::TARGET;
         const auto output = take(builder.declareResource({"clear color", image}));
         const auto cleared = take(builder.addTransferPass(
-            "clear", TransferWork{{ClearImage{{{output, 0}}, {0, 1, 0, 1}}}}
+            "clear", TransferWork{{ClearImage{{{output, 0}}, *color}}}
         ));
         GraphPreparation preparation{
             InstanceDataFactory::make<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},

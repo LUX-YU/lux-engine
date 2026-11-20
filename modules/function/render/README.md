@@ -1038,7 +1038,7 @@ Both backends retain the same ordinary mesh, shadow, lighting and postprocess fe
 This backend integration does not establish WSI, rendering-output or performance qualification.
 
 The [Editor UI extension](../../../editor/ui/render/README.md) owns the ImGui dependency and its shaders.
-Render provides the same generic indexed stream, staging and descriptor ownership to all extensions.
+Render extensions link RasterStream slots and use prepared graph buffers for staging, with frame-owned descriptors.
 
 ## Mesh and Texture Resources
 

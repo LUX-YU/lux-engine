@@ -666,8 +666,7 @@ namespace lux::render::detail
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
         std::span<const std::uint32_t> parameter_groups,
-        bool device_addresses,
-        std::span<const InstanceDataRecipe* const> instance_data
+        bool device_addresses
     ) noexcept
     {
         ShaderBindingPlan plan;
@@ -733,20 +732,6 @@ namespace lux::render::detail
             }
             program->instance_region = region;
             plan.passes[id.index] = std::move(*program);
-        }
-        // A CPU preparation consumer can read a shared snapshot even without a shader using it.
-        for (const auto* recipe : instance_data)
-        {
-            if (!recipe->parameter_bytes || recipe->parameter_source == EParameterSource::INSTANCE) continue;
-            const auto region = regionFor(recipe->parameter_group, recipe->parameter_source);
-            auto& layout = plan.parameter_regions[region].layout;
-            auto canonical = viewParameterLayout();
-            const bool incompatible_layout = layout.size != 0 && layout != canonical;
-            if (incompatible_layout || recipe->parameter_bytes > canonical.size)
-            {
-                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            }
-            layout = std::move(canonical);
         }
         // The caller's byte block contains only local regions. Shared View copies
         // use the same backing allocation, after the local prefix.

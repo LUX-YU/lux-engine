@@ -136,8 +136,7 @@ namespace lux::render::detail
             buffer_barriers += pass.before.buffers.size();
             if (const auto* raster = plan.rasterCommands(pass))
             {
-                dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw) ||
-                                         std::holds_alternative<IndexedListCommands>(raster->draw);
+                dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw);
             }
             const auto& native = graph.programs[pass.binding_slot];
             if (native.pipeline) pipelines.insert(native.pipeline);

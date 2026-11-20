@@ -90,7 +90,7 @@ namespace lux::render::detail
                             {0,
                              list.parameters.data() + packet.parameter_offset,
                              packet.parameter_size,
-                             packet.parameter_destination,
+                             0,
                              nri::BindPoint::GRAPHICS}
                         );
                     }
@@ -151,13 +151,6 @@ namespace lux::render::detail
         const auto& bindings = input.resources;
         const auto* raster = this;
 
-        if (const auto* list = std::get_if<IndexedListCommands>(&raster->draw))
-        {
-            recordRasterDraws(
-                core, pass.shared_descriptors, command, *pass.draws, binding_state
-            );
-            return {};
-        }
         if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
         {
             const auto& draws = *pass.draws;
@@ -196,7 +189,7 @@ namespace lux::render::detail
             [&](const auto& draw)
             {
                 using Draw = std::decay_t<decltype(draw)>;
-                if constexpr (std::same_as<Draw, RasterListCommands> || std::same_as<Draw, IndexedListCommands>)
+                if constexpr (std::same_as<Draw, RasterListCommands>)
                 {
                     // Prepared lists were consumed before entering the fixed-program path.
                 }

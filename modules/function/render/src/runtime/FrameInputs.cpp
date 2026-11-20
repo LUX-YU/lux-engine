@@ -28,7 +28,6 @@ namespace lux::render
         auto& round = device.round;
         auto& inputs = round.inputs;
         inputs.revision = job_structure_revision_;
-        inputs.output_uses_revision = runtime_->resources_.outputUsesRevision();
         inputs.jobs.clear();
         inputs.relations.clear();
         inputs.storages.clear();
@@ -44,7 +43,8 @@ namespace lux::render
             auto& execution = *job.execution;
             if (execution.device != device.id) continue;
             auto& ids = storage_ids.emplace_back();
-            auto reads = execution.instance.sampledTargets();
+            std::vector<TargetId> reads;
+            reads.reserve(execution.target_images.size());
             for (const auto& image : execution.target_images)
                 if (std::ranges::find(reads, image.target) == reads.end()) reads.push_back(image.target);
             inputs.jobs.push_back({id, &execution, std::move(reads)});

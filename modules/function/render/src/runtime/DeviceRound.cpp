@@ -70,8 +70,7 @@ namespace lux::render
         auto& round = entry.round;
         auto& progress = entry.frameProgress();
         const auto& inputs = round.inputs;
-        const bool structure_changed = inputs.revision != job_structure_revision_ ||
-            inputs.output_uses_revision != runtime_->resources_.outputUsesRevision();
+        const bool structure_changed = inputs.revision != job_structure_revision_;
         if (structure_changed) rebuildFrameInputs(entry);
         if (const auto selection = selectFrameInputs(entry, progress.nextSlot()); selection.type)
         {
@@ -203,7 +202,7 @@ namespace lux::render
         programs.failure = {};
         programs.active.emplace(execution);
         preparing_execution_ = &execution;
-        preparation_targets_ = execution.instance.sampledTargets();
+        preparation_targets_.clear();
         preparation_targets_.push_back(execution.target);
         for (const auto& input : execution.target_images) preparation_targets_.push_back(input.target);
         const auto stop = programs.active->stop.get_token();
@@ -213,7 +212,7 @@ namespace lux::render
 #endif
         const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         auto prepared =
-            execution.instance.prepareDataPrograms(program_scheduler_, programs.revisions, stop) |
+            execution.instance.prepareProducerPrograms(program_scheduler_, programs.revisions, stop) |
             stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<bool> { std::terminate(); }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<bool> { return false; }) |
             stdexec::continues_on(scheduler) |
@@ -234,7 +233,7 @@ namespace lux::render
                     if (!discarded)
                     {
                         if (!result) programs.failure = result.error();
-                        else if (!*result || execution.instance.requiresDataPrograms()) programs.failure = {kFrameContract};
+                        else if (!*result || execution.instance.requiresProducerPrograms()) programs.failure = {kFrameContract};
                     }
                     programs.active.reset();
                     preparing_execution_ = nullptr;

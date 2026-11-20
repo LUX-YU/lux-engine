@@ -82,7 +82,6 @@ namespace lux::render::detail
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
         while (!producers_.empty()) producers_.pop_back();
-        while (!data_.empty()) data_.pop_back();
         for (std::uint32_t pass = 0; pass < dynamic_raster_programs_.size(); ++pass)
             releaseDynamicRasterPrograms(pass, false);
         // Physical cleanup is owned by the Session; it never calls back into this instance.
@@ -145,10 +144,7 @@ namespace lux::render::detail
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
-            if (auto lists = createDrawListResources(slot); !lists)
-            {
-                return lists;
-            }
+            initializeRasterStreams(slot);
             if (auto resources = createFrameResources(slot); !resources)
             {
                 return resources;
@@ -173,12 +169,6 @@ namespace lux::render::detail
             updateHistoryViews(slot);
         }
         return {};
-    }
-
-    const CompiledPass* RenderGraphInstance::compiledPass(GraphPassId id) const noexcept
-    {
-        const auto index = id.index < source_pass_slots_.size() ? source_pass_slots_[id.index] : kGraphInvalidIndex;
-        return index == kGraphInvalidIndex ? nullptr : &plan_->passes()[index];
     }
 
     RenderResult<void> RenderGraphInstance::setConditions(std::span<const std::uint8_t> values) noexcept
@@ -302,7 +292,7 @@ namespace lux::render::detail
             return cxx::unexpected(streams.error());
         prepareStreamedDraws(slot);
         const bool has_dynamic_record_input =
-            !histories_.empty() || !frame.draw_lists.empty() || !frame.raster_draws.empty();
+            !histories_.empty() || !frame.raster_draws.empty();
         if (!frame.record_inputs_valid || has_dynamic_record_input)
         {
             freezeRecordInput(slot);

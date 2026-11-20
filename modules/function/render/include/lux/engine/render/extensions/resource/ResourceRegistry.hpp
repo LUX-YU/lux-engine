@@ -8,7 +8,6 @@
 #include <lux/engine/render/extensions/resource/ResourceCommandUse.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <map>
-#include <lux/engine/render/extensions/graph/IndexedDrawData.hpp>
 #include <optional>
 
 namespace lux::render
@@ -25,23 +24,6 @@ namespace lux::render
         ~ResourceRegistry() noexcept;
         ResourceRegistry(const ResourceRegistry&) = delete;
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
-
-        struct SampledImage final
-        {
-            const nri::Texture* image;
-            std::uint32_t descriptor;
-        };
-        using ResolveOutput = RenderResult<SampledImage> (*)(void*, const detail::DeviceSession&, TargetId, std::uint32_t) noexcept;
-        void setOutputResolver(void* owner, ResolveOutput resolve) noexcept
-        {
-            output_owner_ = owner;
-            resolve_output_ = resolve;
-        }
-        [[nodiscard]] RenderResult<SampledImage>
-        sampledImage(const detail::DeviceSession&, SampledImageReference, std::uint32_t slot) const noexcept;
-
-        void outputUsesChanged() noexcept { ++output_revision_; }
-        [[nodiscard]] std::uint64_t outputUsesRevision() const noexcept { return output_revision_; }
 
         // Configuration/device-thread cold transaction; no instance creation or GPU side effect.
         [[nodiscard]] RenderResult<ResourceTypeId>
@@ -145,9 +127,6 @@ namespace lux::render
         }
 
     private:
-        std::uint64_t output_revision_ = 1;
-        void* output_owner_ = nullptr;
-        ResolveOutput resolve_output_ = nullptr;
         friend class ResourceSet;
         friend class detail::RasterMeshInstanceStorage;
         friend class RenderServer;

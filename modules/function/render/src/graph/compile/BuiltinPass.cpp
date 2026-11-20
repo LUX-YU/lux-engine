@@ -182,16 +182,6 @@ namespace lux::render::detail
                             }
                         }
                     }
-                    else if constexpr (std::is_same_v<Draw, DrawIndexedList>)
-                    {
-                        const bool invalid_list = work.vertex_buffers.size() != 1 || draw.index_offset != 0 ||
-                                                  work.vertex_buffers.front().offset != 0 ||
-                                                  draw.selection_parameter.empty();
-                        if (invalid_list)
-                        {
-                            return cxx::unexpected(RenderError{kDeviceArgument});
-                        }
-                    }
                     else
                     {
                         if (!draw.count || !draw.instances)
@@ -237,42 +227,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(valid.error());
             }
-            if (const auto* list = std::get_if<DrawIndexedList>(&fixed->draw))
-            {
-                const auto reflected = shaderInterface(*context.shader);
-                if (!reflected)
-                {
-                    return cxx::unexpected(reflected.error());
-                }
-                const auto& fields = reflected->parameters.fields;
-                const auto field = std::ranges::find(fields, list->selection_parameter, &rdesc::ShaderMember::path);
-                const bool missing_selection = field == fields.end();
-                const bool wrong_selection =
-                    !missing_selection && (field->scalar != rdesc::EDataScalar::UINT || field->rows != 1 ||
-                                           field->columns != 1 || field->array_stride != 0);
-                if (missing_selection || wrong_selection)
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                }
-                recorded.draw = IndexedListCommands{
-                    list->index_resource, list->index_offset, list->type, field->offset, (*context.indexed_list_count)++
-                };
-                auto& compiled_list = std::get<IndexedListCommands>(recorded.draw);
-                compiled_list.partial_parameters = limits.features.rootConstantsOffset;
-            }
-            else
-            {
-                std::visit(
-                    [&](const auto& draw) noexcept
-                    {
-                        if constexpr (!std::same_as<std::decay_t<decltype(draw)>, DrawIndexedList>)
-                        {
-                            recorded.draw = draw;
-                        }
-                    },
-                    fixed->draw
-                );
-            }
+            std::visit([&](const auto& draw) noexcept { recorded.draw = draw; }, fixed->draw);
             for (const auto& source : fixed->vertex_buffers)
             {
                 const auto binding =

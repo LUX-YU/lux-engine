@@ -31,7 +31,7 @@ namespace lux::render::detail
         PassDescriptorBindings bindings;
         std::uint32_t first_descriptor = 0, descriptor_count = 0;
         std::uint32_t first_vertex = 0, vertex_count = 0;
-        std::uint32_t parameter_offset = 0, parameter_size = 0, parameter_destination = 0;
+        std::uint32_t parameter_offset = 0, parameter_size = 0;
         nri::Buffer* index = nullptr;
         std::uint64_t index_offset = 0;
         nri::IndexType index_type = nri::IndexType::UINT32;

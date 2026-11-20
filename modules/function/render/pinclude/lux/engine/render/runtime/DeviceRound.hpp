@@ -52,7 +52,7 @@ namespace lux::render::runtime_detail
             [[nodiscard]] bool ready() const noexcept { return availability == EAvailability::READY; }
         };
 
-        std::uint64_t revision = 0, output_uses_revision = 0;
+        std::uint64_t revision = 0;
         std::vector<Job> jobs;
         std::vector<Relation> relations;
         std::vector<detail::StorageFrameUse> storages;

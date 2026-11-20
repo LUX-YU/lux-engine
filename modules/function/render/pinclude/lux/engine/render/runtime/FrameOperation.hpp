@@ -68,7 +68,6 @@ namespace lux::render::detail
         void settlePreparation(RenderResult<void>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareUniforms(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameUse>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareDrawLists(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
         [[nodiscard]] std::uint32_t slot() const noexcept { return round_.context().slot_index; }
@@ -89,7 +88,7 @@ namespace lux::render::detail
         bool uniforms_ready_ = false;
         bool resources_ready_ = false;
         bool producer_selections_ready_ = false;
-        bool draw_data_ready_ = false;
+        bool producer_uploads_ready_ = false;
         bool waiting_for_gpu_ = false;
         bool native_bindings_pinned_ = false;
     };

@@ -379,10 +379,9 @@ namespace lux::render::detail
             for (std::uint32_t batch = 0; batch < instance.plan_->submissions_.size(); ++batch)
             {
                 const auto& submission = instance.plan_->submissions_[batch];
-                for (const auto& source : submission.shared_draw_reads)
+                for (auto source : submission.shared_draw_reads)
                 {
-                    const auto& list = source.streamed ? physical.draw_lists[source.list].draws :
-                        physical.raster_draws[source.list];
+                    const auto& list = physical.raster_draws[source];
                     for (const auto& read : list.reads)
                     {
                         frame.imported_uses.push_back({read.physical, read.range, i, base + batch, base + batch, false});
@@ -498,10 +497,9 @@ namespace lux::render::detail
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto& lists = instance.frames_[slotIndex()].raster_draws;
         const auto& plan = instance.plan_->submissions_[batch.local_batch];
-        for (const auto& source : plan.shared_draw_reads)
+        for (auto source : plan.shared_draw_reads)
         {
-            if (source.streamed) continue;
-            for (const auto& read : lists[source.list].reads)
+            for (const auto& read : lists[source].reads)
             {
                 if (read.usage == EGraphUse::STORAGE_READ)
                 {

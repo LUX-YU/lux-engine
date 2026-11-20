@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/render/graph/execute/DrawListResources.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/execute/HistoryState.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
@@ -106,7 +105,6 @@ namespace lux::render::detail
         std::array<nri::DescriptorSet*, 3> shared_descriptors{};
         std::array<std::uint32_t, 3> shared_descriptor_counts{};
 
-        std::vector<DrawListResources> draw_lists;
         std::vector<RasterDrawList> raster_draws;
         std::vector<std::byte> parameters;
         std::vector<std::uint8_t> parameter_dirty;

@@ -113,13 +113,5 @@ namespace lux::render
 
     // Cold recipe. Geometry and draw ranges are supplied to this pass in a complete frame.
     // One interleaved vertex stream; selection_parameter names a scalar uint push constant.
-    struct DrawIndexedList final
-    {
-        ResourceVersion index_resource;
-        std::uint64_t index_offset = 0;
-        EIndexType type = EIndexType::UINT32;
-        std::string selection_parameter;
-    };
-
-    using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, DrawIndexedList>;
+    using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect>;
 } // namespace lux::render

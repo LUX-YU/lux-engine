@@ -112,15 +112,6 @@ namespace lux::render::detail
     };
 
     // Recording values contain neither author names, Shader artifacts nor pipeline construction state.
-    struct IndexedListCommands final
-    {
-        ResourceVersion index_resource;
-        std::uint64_t index_offset;
-        EIndexType type;
-        std::uint32_t selection_offset, data_index;
-        bool partial_parameters = false;
-    };
-
     struct RasterListCommands final
     {
         std::uint32_t data_index;
@@ -129,7 +120,7 @@ namespace lux::render::detail
     };
 
     using VRasterDraw =
-        std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, IndexedListCommands, RasterListCommands>;
+        std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, RasterListCommands>;
 
     struct RasterCommands final
     {
@@ -298,13 +289,6 @@ namespace lux::render::detail
 
     struct SubmissionBatch final
     {
-        struct DrawRead final
-        {
-            std::uint32_t list;
-            bool streamed;
-            bool operator==(const DrawRead&) const noexcept = default;
-        };
-
         EQueueRole queue = EQueueRole::GRAPHICS;
         std::uint32_t first_pass = 0;
         std::uint32_t pass_count = 0;
@@ -313,7 +297,7 @@ namespace lux::render::detail
         std::vector<GraphResourceId> histories;
         std::uint32_t output_begin = kGraphInvalidIndex;
         bool reusable_recording = true;
-        std::vector<DrawRead> shared_draw_reads;
+        std::vector<std::uint32_t> shared_draw_reads;
     };
 
     struct ImportedAccess final

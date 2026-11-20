@@ -135,41 +135,23 @@ namespace lux::render::detail
             const auto& compiled = *pass.compiled_pass;
             const auto* raster = plan_->rasterCommands(compiled);
             const auto* scope = compiled.rasterScope();
-            const auto* streamed = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
             const auto* dynamic = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
-            if (!streamed && !dynamic)
+            if (!dynamic)
             {
                 continue;
             }
-            auto& draws =
-                streamed ? frame.draw_lists[streamed->data_index].draws : frame.raster_draws[dynamic->data_index];
+            auto& draws = frame.raster_draws[dynamic->data_index];
             if (draws.dependency_reads != draws.reads)
             {
                 draws.dependency_reads = draws.reads;
                 frame.invalidateImportedBindings();
             }
-            const bool has_feature_sections = dynamic && !dynamic->producer_stream && !draws.sections.empty();
-            if (draws.has_explicit_sections || has_feature_sections)
+            const bool has_authored_sections = !dynamic->producer_stream && !draws.sections.empty();
+            if (draws.has_explicit_sections || has_authored_sections)
             {
-                continue; // The feature supplied explicit per-layer rendering sections for this reusable slice.
+                continue;
             }
-            const auto& program = (*programs_)[compiled.binding_slot];
             draws.colors.assign(pass.colors.begin(), pass.colors.end());
-            if (streamed)
-            {
-                draws.descriptors.clear();
-                if (pass.private_descriptors) draws.descriptors.push_back(pass.private_descriptors);
-                draws.vertices.resize(raster->vertices.size());
-            }
-            for (std::size_t v = 0; streamed && v < raster->vertices.size(); ++v)
-            {
-                const auto& source = raster->vertices[v];
-                const auto& binding = frame.bindings[source.resource.index];
-                draws.vertices[v] = {
-                    source.binding,
-                    {binding.buffer, binding.buffer_offset + source.offset, source.stride}
-                };
-            }
             const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
             const auto& image =
                 session_->nriCore().GetTextureDesc(*frame.bindings[attachment.access.version.resource.index].image);
@@ -193,43 +175,21 @@ namespace lux::render::detail
                 area.max_depth,
                 true
             };
-            section.parameter_size = dynamic ? (dynamic->producer_stream ? 0 :
-                                                  static_cast<std::uint32_t>(draws.parameters.size()))
-                                     : streamed->partial_parameters
-                                         ? static_cast<std::uint32_t>(compiled.parameter_size)
-                                         : 0;
+            section.parameter_size = dynamic->producer_stream ? 0 : static_cast<std::uint32_t>(draws.parameters.size());
             section.draw_count = static_cast<std::uint32_t>(draws.packets.size());
             if (scope->state_input)
             {
                 section.depth_bias =
                     nri::DepthBiasDesc{pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope};
             }
-            if (dynamic)
-            {
-                const nri::Rect scissor{
-                    static_cast<std::int16_t>(area.x * width),
-                    static_cast<std::int16_t>(area.y * height),
-                    static_cast<nri::Dim_t>(area.width * width),
-                    static_cast<nri::Dim_t>(area.height * height)
-                };
-                for (auto& packet : draws.packets)
-                {
-                    packet.scissor = scissor;
-                }
-                continue;
-            }
-            const auto& index = frame.bindings[streamed->index_resource.resource.index];
+            const nri::Rect scissor{
+                static_cast<std::int16_t>(area.x * width),
+                static_cast<std::int16_t>(area.y * height),
+                static_cast<nri::Dim_t>(area.width * width),
+                static_cast<nri::Dim_t>(area.height * height)
+            };
             for (auto& packet : draws.packets)
-            {
-                packet.pipeline = program.pipeline;
-                packet.bindings = program.descriptors;
-                packet.descriptor_count = static_cast<std::uint32_t>(draws.descriptors.size());
-                packet.vertex_count = static_cast<std::uint32_t>(draws.vertices.size());
-                packet.index = index.buffer;
-                packet.index_offset = index.buffer_offset + streamed->index_offset;
-                packet.index_type =
-                    streamed->type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
-            }
+                packet.scissor = scissor;
         }
     }
 
@@ -274,9 +234,7 @@ namespace lux::render::detail
             native.shared_descriptors = frame.shared_descriptors;
             if (const auto* raster = plan_->rasterCommands(*pass.compiled_pass))
             {
-                if (const auto* streamed = std::get_if<IndexedListCommands>(&raster->draw))
-                    native.draws = &frame.draw_lists[streamed->data_index].draws;
-                else if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
+                if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
                     native.draws = &frame.raster_draws[dynamic->data_index];
             }
             if (const auto* scope = pass.compiled_pass->rasterScope())
@@ -385,80 +343,5 @@ namespace lux::render::detail
     std::uint32_t RenderGraphInstance::recordedPassCount(std::uint32_t slot) const noexcept
     {
         return frames_[slot].enabled_pass_count;
-    }
-
-    RenderResult<IndexedDrawStreamSlot> RenderGraphInstance::indexedDrawStream(GraphPassId id) const noexcept
-    {
-        const auto* pass = compiledPass(id);
-        const auto* packet = pass ? plan_->rasterCommands(*pass) : nullptr;
-        if (!packet || !std::holds_alternative<IndexedListCommands>(packet->draw))
-        {
-            return cxx::unexpected(RenderError{kGraphUnknownPass, {id.index}});
-        }
-        return IndexedDrawStreamSlot{pass->binding_slot};
-    }
-
-    RenderResult<void> RenderGraphInstance::setIndexedDrawData(
-        IndexedDrawStreamSlot stream, std::uint32_t slot, const IndexedDrawData& input
-    ) noexcept
-    {
-        const auto passes = plan_->passes();
-        const auto* pass = stream.index < passes.size() ? &passes[stream.index] : nullptr;
-        const auto* raster = pass ? plan_->rasterCommands(*pass) : nullptr;
-        const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
-        const bool has_layout = list && raster->vertices.size() == 1;
-        const bool is_matching_layout = has_layout && input.vertex_stride == raster->vertices[0].stride &&
-            input.index_stride == (list->type == EIndexType::UINT16 ? 2u : 4u) &&
-            input.parameters.size() <= pass->parameter_size;
-        if (!is_matching_layout || slot >= frames_.size() || !resources_)
-            return cxx::unexpected(RenderError{kFrameContract,
-                {input.vertex_stride, has_layout ? raster->vertices[0].stride : 0, pass ? pass->parameter_size : 0}});
-        auto prepared = prepareDrawList(
-            *pass, slot, std::max((input.vertices.size() + 3) & ~std::size_t{3}, std::size_t{input.vertex_stride}),
-            std::max((input.indices.size() + 3) & ~std::size_t{3}, std::size_t{4})
-        );
-        if (!prepared) return cxx::unexpected(prepared.error());
-        auto& physical = **prepared;
-        physical.vertex_data.assign(input.vertices.begin(), input.vertices.end());
-        physical.index_data.assign(input.indices.begin(), input.indices.end());
-        physical.vertex_data.resize((physical.vertex_data.size() + 3) & ~std::size_t{3});
-        physical.index_data.resize((physical.index_data.size() + 3) & ~std::size_t{3});
-        physical.upload_writes.clear();
-        if (!physical.vertex_data.empty())
-        {
-            physical.upload_writes.push_back({physical.vertices, 0, physical.vertex_data});
-        }
-        if (!physical.index_data.empty()) physical.upload_writes.push_back({physical.indices, 0, physical.index_data});
-        auto& draws = physical.draws;
-        draws.reads.clear();
-        std::fill(draws.parameters.begin(), draws.parameters.end(), std::byte{});
-        std::ranges::copy(input.parameters, draws.parameters.begin());
-        for (const auto& command : input.draws)
-        {
-            if (command.image >= input.images.size()) return cxx::unexpected(RenderError{kFrameContract});
-            auto image = resources_->sampledImage(*session_, input.images[command.image], slot);
-            if (!image) return cxx::unexpected(image.error());
-            const RasterDrawList::Read read{image->image, GraphImageRange{1, 0, 1, 0, 1}, EGraphUse::SAMPLED, 2};
-            if (std::ranges::find(draws.reads, read) == draws.reads.end()) draws.reads.push_back(read);
-            const auto offset = draws.parameters.size();
-            const auto bytes = list->partial_parameters ? sizeof(std::uint32_t) : pass->parameter_size;
-            draws.parameters.resize(offset + bytes);
-            auto* destination = draws.parameters.data() + offset;
-            if (!list->partial_parameters)
-            {
-                std::memcpy(destination, draws.parameters.data(), pass->parameter_size);
-                destination += list->selection_offset;
-            }
-            std::memcpy(destination, &image->descriptor, sizeof(image->descriptor));
-            RasterDrawPacket packet;
-            packet.parameter_offset = static_cast<std::uint32_t>(offset);
-            packet.parameter_size = static_cast<std::uint32_t>(bytes);
-            packet.parameter_destination = list->partial_parameters ? list->selection_offset : 0;
-            packet.scissor = command.scissor;
-            packet.draw = command.draw;
-            draws.packets.push_back(packet);
-        }
-        invalidateRecordings(slot);
-        return {};
     }
 } // namespace lux::render::detail

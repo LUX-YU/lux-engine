@@ -30,50 +30,8 @@ namespace lux::render::detail
         };
     }
 
-    RenderResult<void> RenderGraphInstance::createData(
-        const GraphAssemblyPlan& assembly,
-        std::span<const InstanceDataRecipe> recipes,
-        ResourceRegistry& resources,
-        std::span<const ResourceInstanceId> resolved
-    ) noexcept
+    bool RenderGraphInstance::requiresProducerPrograms() const noexcept
     {
-        resources_ = &resources;
-        if (!data_.empty()) return cxx::unexpected(RenderError{kDeviceArgument});
-        source_pass_slots_ = assembly.source_pass_slots;
-        cxx::scope_exit release_source_mapping([&]() noexcept { source_pass_slots_ = {}; });
-        for (auto index : assembly.instance_recipes)
-        {
-            if (index >= recipes.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            const auto& recipe = recipes[index];
-            const auto [offset, bytes] = plan_->parameterRegion(recipe.parameter_group, recipe.parameter_source);
-            if (recipe.parameter_bytes > bytes) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            auto created = recipe.create(*session_, resources, *this, resolved, recipe.configuration.data());
-            if (!created) return cxx::unexpected(created.error());
-            data_.push_back({recipe.inputs, std::move(*created), offset, bytes, {}});
-            data_.back().inputs.resize(recipe.inputs.size());
-        }
-        return {};
-    }
-
-    RenderResult<bool> RenderGraphInstance::prepareData(
-        std::uint32_t slot, ResourceUploader& uploads, Preparation& preparation
-    ) noexcept
-    {
-        for (auto& data : data_)
-        {
-            for (std::size_t i = 0; i < data.inputs.size(); ++i)
-                data.inputs[i] = resourceInput(data.input_slots[i], slot);
-            const InstanceInputs input{slot,
-                instanceParameters().subspan(data.parameter_offset, data.parameter_bytes), data.inputs};
-            auto ready = data.value->prepare(input, uploads, preparation);
-            if (!ready || !*ready) return ready;
-        }
-        return true;
-    }
-
-    bool RenderGraphInstance::requiresDataPrograms() const noexcept
-    {
-        if (std::ranges::any_of(data_, [](const auto& data) { return data.value->requiresPrograms(); })) return true;
         return std::ranges::any_of(program_producers_, [&](auto index) noexcept
         {
             const auto& producer = producers_[index];
@@ -84,7 +42,6 @@ namespace lux::render::detail
     void RenderGraphInstance::captureProgramRevisions(std::vector<std::uint64_t>& revisions) const noexcept
     {
         revisions.clear();
-        for (const auto& data : data_) revisions.push_back(data.value->programRevision());
         for (auto index : program_producers_)
         {
             const auto& producer = producers_[index];
@@ -95,13 +52,6 @@ namespace lux::render::detail
 
     bool RenderGraphInstance::matchesProgramRevisions(std::span<const std::uint64_t> revisions) const noexcept
     {
-        if (revisions.size() < data_.size()) return false;
-        const bool legacy_matches = std::ranges::equal(data_, revisions.first(data_.size()), {}, [](const auto& data) noexcept
-        {
-            return data.value->programRevision();
-        });
-        if (!legacy_matches) return false;
-        revisions = revisions.subspan(data_.size());
         for (auto index : program_producers_)
         {
             const auto& producer = producers_[index];
@@ -112,20 +62,12 @@ namespace lux::render::detail
         return revisions.empty();
     }
 
-    exec::task<RenderResult<bool>> RenderGraphInstance::prepareDataPrograms(
+    exec::task<RenderResult<bool>> RenderGraphInstance::prepareProducerPrograms(
         execution::CpuScheduler cpu, std::span<const std::uint64_t> revisions, stdexec::inplace_stop_token stop
     ) noexcept
     {
         if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
-        for (std::size_t i = 0; i < data_.size(); ++i)
-        {
-            auto& data = *data_[i].value;
-            if (!data.requiresPrograms()) continue;
-            auto compiled = co_await data.preparePrograms(cpu, revisions[i], stop);
-            if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
-            if (!compiled || !*compiled) co_return compiled;
-        }
-        auto offset = data_.size();
+        std::size_t offset = 0;
         for (auto index : program_producers_)
         {
             const auto& producer = producers_[index];
@@ -151,142 +93,17 @@ namespace lux::render::detail
         setResource(resource.index, slot, binding);
     }
 
-    RenderResult<void> RenderGraphInstance::createDrawListResources(std::uint32_t slot) noexcept
+    void RenderGraphInstance::initializeRasterStreams(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
-        const auto& core = session_->nriCore();
-        for (std::size_t p = 0; p < plan_->passes().size(); ++p)
+        for (const auto& pass : plan_->passes())
         {
-            const auto& pass = plan_->passes()[p];
             const auto* raster = plan_->rasterCommands(pass);
-            const auto* dynamic = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
-            if (dynamic)
-            {
-                if (dynamic->producer_stream && frame.stream_inputs.empty())
-                    frame.stream_inputs.resize(plan_->passes().size());
-                frame.raster_draws.emplace_back();
-                continue;
-            }
-            const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
-            if (!list)
-            {
-                continue;
-            }
-            auto& physical = frame.draw_lists.emplace_back();
-            const auto vertex = raster->vertices.front();
-            physical.vertex_capacity = std::max<std::uint64_t>(vertex.stride, 4);
-            physical.index_capacity = 4;
-            auto status = core.CreatePlacedBuffer(
-                session_->device(),
-                NriDeviceHeap,
-                {physical.vertex_capacity, 0, nri::BufferUsageBits::VERTEX},
-                physical.vertices
-            );
-            if (status == nri::Result::SUCCESS)
-            {
-                status = core.CreatePlacedBuffer(
-                    session_->device(),
-                    NriDeviceHeap,
-                    {physical.index_capacity, 0, nri::BufferUsageBits::INDEX},
-                    physical.indices
-                );
-            }
-            if (status != nri::Result::SUCCESS)
-            {
-                return cxx::unexpected(nativeError(status));
-            }
-            physical.draws.parameters.resize(pass.parameter_size);
-            setResource(vertex.resource.index, slot, {physical.vertices, 0, physical.vertex_capacity});
-            setResource(list->index_resource.resource.index, slot, {physical.indices, 0, physical.index_capacity});
-        }
-        return {};
-    }
-
-    RenderResult<DrawListResources*> RenderGraphInstance::prepareDrawList(
-        const CompiledPass& pass,
-        std::uint32_t slot,
-        std::size_t vertex_bytes,
-        std::size_t index_bytes
-    ) noexcept
-    {
-        const auto* raster = plan_->rasterCommands(pass);
-        const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
-        if (!list)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        const auto vertex = raster->vertices.front();
-        auto& physical = frames_[slot].draw_lists[list->data_index];
-        const auto& core = session_->nriCore();
-        const auto grow =
-            [&](nri::Buffer*& buffer, std::uint64_t& capacity, std::size_t bytes, nri::BufferUsageBits usage
-            ) -> RenderResult<void>
-        {
-            if (bytes <= capacity)
-            {
-                return {};
-            }
-            if (bytes > (std::uint64_t{1} << 63))
-            {
-                return cxx::unexpected(RenderError{kDeviceCapacity});
-            }
-            const auto size = std::bit_ceil(std::max(std::uint64_t(bytes), std::uint64_t{4}));
-            nri::Buffer* candidate = nullptr;
-            const auto status = core.CreatePlacedBuffer(session_->device(), NriDeviceHeap, {size, 0, usage}, candidate);
-            if (status != nri::Result::SUCCESS)
-            {
-                return cxx::unexpected(nativeError(status));
-            }
-            auto* previous = std::exchange(buffer, candidate);
-            capacity = size;
-            session_->deferRelease([native = &core, previous]() noexcept { native->DestroyBuffer(previous); });
-            return {};
-        };
-        physical.draws.packets.clear();
-        physical.draws.parameters.resize(pass.parameter_size);
-        auto vertices =
-            grow(physical.vertices, physical.vertex_capacity, vertex_bytes, nri::BufferUsageBits::VERTEX);
-        if (!vertices)
-        {
-            return cxx::unexpected(vertices.error());
-        }
-        setResource(vertex.resource.index, slot, {physical.vertices, 0, physical.vertex_capacity});
-        auto indices = grow(physical.indices, physical.index_capacity, index_bytes, nri::BufferUsageBits::INDEX);
-        if (!indices)
-        {
-            return cxx::unexpected(indices.error());
-        }
-        setResource(list->index_resource.resource.index, slot, {physical.indices, 0, physical.index_capacity});
-        return &physical;
-    }
-
-    RenderResult<bool>
-    RenderGraphInstance::prepareDrawListUploads(std::uint32_t slot, ResourceUploader& uploads) noexcept
-    {
-        for (auto& list : frames_[slot].draw_lists)
-        {
-            for (const auto& write : list.upload_writes)
-            {
-                auto staged = uploads.stageBuffer(write);
-                if (!staged)
-                {
-                    return cxx::unexpected(staged.error());
-                }
-            }
-        }
-        return true;
-    }
-
-    void RenderGraphInstance::finishDrawListUploads(std::uint32_t slot, RenderResult<void> accepted) noexcept
-    {
-        for (auto& list : frames_[slot].draw_lists)
-        {
-            list.upload_writes.clear();
-            if (!accepted)
-            {
-                list.draws.packets.clear();
-                list.draws.reads.clear();
-            }
+            const auto* stream = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
+            if (!stream) continue;
+            if (stream->producer_stream && frame.stream_inputs.empty())
+                frame.stream_inputs.resize(plan_->passes().size());
+            frame.raster_draws.emplace_back();
         }
     }
 
@@ -900,15 +717,6 @@ namespace lux::render::detail
                 session_->nriCore().GetTextureMemoryDesc(*image, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
             }
-            for (const auto& list : frame.draw_lists)
-            {
-                for (auto* buffer : {list.vertices, list.indices})
-                {
-                    nri::MemoryDesc memory{};
-                    session_->nriCore().GetBufferMemoryDesc(*buffer, nri::MemoryLocation::DEVICE, memory);
-                    bytes += memory.size;
-                }
-            }
             const auto allocated = std::accumulate(
                 frame.memories.begin(),
                 frame.memories.end(),
@@ -924,7 +732,7 @@ namespace lux::render::detail
                       ",\"imported_revision\":" + std::to_string(frame.imported_revision) +
                       ",\"owned_command_buffers\":" + std::to_string(command_count) +
                       ",\"owned_buffers\":" +
-                          std::to_string(frame.buffers.size() + frame.draw_lists.size() * 2 + prepared_buffers) +
+                          std::to_string(frame.buffers.size() + prepared_buffers) +
                       ",\"owned_textures\":" + std::to_string(frame.images.size()) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) +
                       ",\"explicit_memory_count\":" + std::to_string(frame.memories.size()) +
@@ -1100,14 +908,5 @@ namespace lux::render::detail
                 frame.changed_resources.push_back(resource);
             }
         }
-    }
-
-    std::vector<TargetId> RenderGraphInstance::sampledTargets() const noexcept
-    {
-        std::vector<TargetId> result;
-        for (const auto& item : data_)
-            for (auto target : item.value->sampledTargets())
-                if (std::ranges::find(result, target) == result.end()) result.push_back(target);
-        return result;
     }
 } // namespace lux::render::detail

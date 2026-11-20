@@ -385,30 +385,3 @@ namespace lux::render
     }
 
 } // namespace lux::render
-
-#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
-
-namespace lux::render
-{
-    RenderResult<ResourceRegistry::SampledImage>
-    ResourceRegistry::sampledImage(
-        const detail::DeviceSession& device, SampledImageReference input, std::uint32_t slot
-    ) const noexcept
-    {
-        if (!input.texture.isNull() && input.target.isNull())
-        {
-            const auto parent = extension_detail::ResourceIdentity::parent(input.texture);
-            const auto* entry = entries_.find(parent);
-            if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
-            if (&entry->storage_set->device_ != &device)
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            auto storage = borrow<detail::SampledTexture2DStorage>(parent);
-            const auto* value = storage ? (*storage)->find(input.texture) : nullptr;
-            if (!value) return cxx::unexpected(RenderError{kStorageIdentity});
-            return SampledImage{&value->image(), value->gpuReference().image_index};
-        }
-        if (input.texture.isNull() && !input.target.isNull() && resolve_output_)
-            return resolve_output_(output_owner_, device, input.target, slot);
-        return cxx::unexpected(RenderError{kFrameContract});
-    }
-}

@@ -473,7 +473,6 @@ namespace lux::render::runtime_detail
         const bool unused_target = std::ranges::find(slots.used_targets, 0) != slots.used_targets.end();
         const bool unused_storage = std::ranges::find(slots.used_storages, 0) != slots.used_storages.end();
         if (unused_target || unused_storage) return cxx::unexpected(RenderError{kCommandContract});
-        if (!source->instanceData().empty()) return cxx::unexpected(RenderError{kRuntimeUnsupported});
         std::vector<bool> linked_targets(source->resources().size());
         std::vector<bool> linked_storages(source->resources().size());
         std::vector<bool> linked_buffers(source->resources().size());

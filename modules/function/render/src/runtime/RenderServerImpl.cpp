@@ -47,20 +47,6 @@ namespace lux::render
         bindFrameworkCommand<QueryExecutionProgress, &Impl::queryExecutionProgress>();
         bindFrameworkCommand<ListEffectCapabilities, &Impl::listEffectCapabilities>();
         bindFrameworkCommand<ListCommands, &Impl::listCommands>();
-        runtime_->resources_.setOutputResolver(this, [](void* owner, const detail::DeviceSession& device, TargetId id, std::uint32_t slot) noexcept
-            -> RenderResult<ResourceRegistry::SampledImage>
-        {
-            auto& self = *static_cast<Impl*>(owner);
-            const auto* target = self.runtime_->targets_.find(id);
-            if (!target || !targetDescription(*target).sampled || targetState(*target).resizing)
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            if (!targetBelongsTo(*target, device)) return cxx::unexpected(RenderError{kJobState});
-            const auto& entry = *self.runtime_->device(targetState(*target).device);
-            const auto selected = self.outputSlot(entry, id, slot);
-            if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
-            const auto frame = targetOutput(*target).frames[selected];
-            return ResourceRegistry::SampledImage{frame.image, frame.sampled_index};
-        });
     }
 
     void NRI_CALL RenderServer::Impl::diagnostic(
@@ -232,8 +218,7 @@ namespace lux::render
             ) != execution->target_images.end();
             const auto* target = runtime_->targets_.find(source);
             if (!target || targetState(*target).device != execution->device) continue;
-            const auto sampled = execution->instance.sampledTargets();
-            if (binds_source || std::ranges::find(sampled, source) != sampled.end())
+            if (binds_source)
                 result.push_back(job.control.id());
         }
         return result;
@@ -474,9 +459,13 @@ namespace lux::render
             auto& instance = execution.instance;
             for (const auto& imported : execution.target_images)
             {
-                auto sampled = runtime_->resources_.sampledImage(device.session(), {{}, imported.target}, slot);
-                if (!sampled) return cxx::unexpected(sampled.error());
-                instance.bindImage(imported.resource, slot, *const_cast<nri::Texture*>(sampled->image));
+                const auto* source = runtime_->targets_.find(imported.target);
+                const bool unavailable = !source || !targetDescription(*source).sampled || targetState(*source).resizing;
+                if (unavailable) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                if (targetState(*source).device != device.id) return cxx::unexpected(RenderError{kJobState});
+                const auto selected = outputSlot(device, imported.target, slot);
+                if (selected == kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeState});
+                instance.bindImage(imported.resource, slot, *targetOutput(*source).frames[selected].image);
             }
             execution.selectViewParameters();
         }

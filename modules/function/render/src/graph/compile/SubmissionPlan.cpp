@@ -217,15 +217,11 @@ namespace lux::render::detail
             ++batches.back().pass_count;
             if (const auto* raster = recording.rasterCommands(pass))
             {
-                auto& reads = batches.back().shared_draw_reads;
-                const auto add = [&](SubmissionBatch::DrawRead source) noexcept
+                if (const auto* stream = std::get_if<RasterListCommands>(&raster->draw))
                 {
-                    if (std::ranges::find(reads, source) == reads.end()) reads.push_back(source);
-                };
-                if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
-                    add({dynamic->data_index, false});
-                if (const auto* streamed = std::get_if<IndexedListCommands>(&raster->draw))
-                    add({streamed->data_index, true});
+                    auto& reads = batches.back().shared_draw_reads;
+                    if (std::ranges::find(reads, stream->data_index) == reads.end()) reads.push_back(stream->data_index);
+                }
             }
             pass_batches[analysis.execution_order[p].index] = batch;
             for (const auto& use : graph.passes()[analysis.execution_order[p].index].uses)

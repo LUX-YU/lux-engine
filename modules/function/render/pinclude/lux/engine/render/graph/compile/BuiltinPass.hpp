@@ -17,7 +17,6 @@ namespace lux::render::detail
         const nri::DeviceDesc& limits;
         const rdesc::ShaderInfo* shader;
         std::span<const GraphResource> resources;
-        std::uint32_t* indexed_list_count = nullptr;
         std::uint32_t* raster_list_count = nullptr;
         std::span<const std::uint8_t> materialized_resources;
     };

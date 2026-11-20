@@ -86,7 +86,7 @@ namespace lux::render::runtime_detail
 
         [[nodiscard]] bool programsReady() const noexcept
         {
-            return !programs.active && !instance.requiresDataPrograms();
+            return !programs.active && !instance.requiresProducerPrograms();
         }
 
         FrameLayout input_layout;

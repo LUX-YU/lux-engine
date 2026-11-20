@@ -43,7 +43,7 @@ namespace lux::render::detail
             uniforms_ready_ = false;
             resources_ready_ = false;
             producer_selections_ready_ = false;
-            draw_data_ready_ = false;
+            producer_uploads_ready_ = false;
             waiting_for_gpu_ = false;
             submission_.emplace(device_, round_, workspace_.submissions);
             if (uploads_) uploads_->reservePreparationStaging(true);
@@ -214,55 +214,31 @@ namespace lux::render::detail
             }
             producer_selections_ready_ = true;
         }
-        bool producer_uploads_ready = resources_ready_;
-        if (resources_ready_ && !draw_data_ready_)
+        if (resources_ready_ && !producer_uploads_ready_)
         {
+            bool ready = true;
             for (auto* instance : instances)
             {
                 auto staged = instance->stagePreparedBuffers(slot(), uploads_, workspace_.preparation);
                 if (!staged) co_return cxx::unexpected(track(staged).error());
-                producer_uploads_ready = *staged;
-                if (!producer_uploads_ready) break;
+                ready = *staged;
+                if (!ready) break;
             }
             if (uploads_ && uploads_->hasFrameCopies())
                 co_return track(co_await submitPreparation());
-            if (!producer_uploads_ready && !device_.pendingGpuWork())
+            if (!ready && !device_.pendingGpuWork())
             {
                 cancellation_ = RenderError{kDeviceCapacity};
                 co_return cxx::unexpected(*cancellation_);
             }
-        }
-        if (producer_uploads_ready && !draw_data_ready_)
-        {
-            for (auto* instance : instances)
-            {
-                if (!instance->hasData()) continue;
-                if (!uploads_)
-                {
-                    cancellation_ = RenderError{kDeviceArgument};
-                    co_return cxx::unexpected(*cancellation_);
-                }
-                auto prepared = instance->prepareData(slot(), *uploads_, workspace_.preparation);
-                if (!prepared || !*prepared)
-                {
-                    cancellation_ = prepared ? RenderError{kDeviceCapacity} : prepared.error();
-                    co_return cxx::unexpected(*cancellation_);
-                }
-            }
-            auto draws = prepareDrawLists(instances);
-            if (!draws || !*draws)
-            {
-                cancellation_ = draws ? RenderError{kDeviceCapacity} : draws.error();
-                co_return cxx::unexpected(*cancellation_);
-            }
-            draw_data_ready_ = true;
+            producer_uploads_ready_ = ready;
         }
         if (uploads_ && uploads_->hasFrameCopies())
         {
             auto copied = co_await submitPreparation();
             co_return track(copied);
         }
-        bool ready = draw_data_ready_;
+        bool ready = producer_uploads_ready_;
         if (ready)
         {
             // Vulkan frame replicas borrow the native tables through recording and submission receipt adoption.
@@ -384,39 +360,6 @@ namespace lux::render::detail
             }
         }
         return resources_ready;
-    }
-
-    RenderResult<bool> FrameOperation::prepareDrawLists(std::span<RenderGraphInstance* const> instances) noexcept
-    {
-        bool ready = true;
-        for (auto* instance : instances)
-        {
-            if (instance->frames_[slot()].draw_lists.empty())
-            {
-                continue;
-            }
-            if (!uploads_)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            auto prepared = instance->prepareDrawListUploads(slot(), *uploads_);
-            // No staging progress needs no submission callback. Terminal frame delivery also
-            // settles unprepared sources, including frames with no active output.
-            if (!prepared || uploads_->hasFrameCopies())
-            {
-                workspace_.preparation.onSubmitted(
-                    instance,
-                    [](void* value, std::uint32_t slot, RenderResult<void> result) noexcept
-                    { static_cast<RenderGraphInstance*>(value)->finishDrawListUploads(slot, result); }
-                );
-            }
-            if (!prepared)
-            {
-                return cxx::unexpected(prepared.error());
-            }
-            ready &= *prepared;
-        }
-        return ready;
     }
 
     RenderResult<bool> FrameOperation::prepareInstances(std::span<RenderGraphInstance* const> instances) noexcept

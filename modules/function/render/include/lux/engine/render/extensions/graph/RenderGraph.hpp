@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lux/engine/render/extensions/graph/Work.hpp>
-#include <lux/engine/render/extensions/graph/InstanceData.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/GraphProgram.hpp>
 #include <lux/engine/render/extensions/graph/Sampler.hpp>
@@ -41,7 +40,6 @@ namespace lux::render
         RenderGraph(const RenderGraph&) = delete;
         RenderGraph& operator=(const RenderGraph&) = delete;
 
-        [[nodiscard]] std::span<const InstanceDataRecipe> instanceData() const noexcept { return instance_data_; }
 
         [[nodiscard]] std::span<const GraphResource> resources() const noexcept
         {
@@ -85,7 +83,6 @@ namespace lux::render
 
     private:
         friend class RenderGraphBuilder;
-        std::vector<InstanceDataRecipe> instance_data_;
         std::vector<GraphProgram> programs_;
         std::vector<SamplerDescription> samplers_;
         std::vector<GraphResource> resources_;

@@ -255,7 +255,6 @@ namespace lux::render::detail
             }
         };
         for (auto& list : frame.raster_draws) relocate(list);
-        for (auto& list : frame.draw_lists) relocate(list.draws);
         invalidateRecordings(slot);
         auto* old_pool = std::exchange(frame.descriptor_pool, pool);
         frame.descriptor_capacity = capacity;

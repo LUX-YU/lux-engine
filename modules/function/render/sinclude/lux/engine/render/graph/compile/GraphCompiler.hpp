@@ -46,7 +46,7 @@ namespace lux::render::detail
         [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
             nri::Device*, const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
             const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation, std::span<const std::uint32_t>,
-            bool, std::vector<std::uint32_t>&, ShaderBindingPlan&
+            bool, ShaderBindingPlan&
         ) noexcept;
         [[nodiscard]] static RenderResult<void> finishPlan(
             RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,

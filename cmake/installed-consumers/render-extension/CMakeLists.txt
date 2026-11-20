@@ -66,12 +66,16 @@ if(WIN32)
     add_test(NAME installed.render.compute_output_d3d12 COMMAND compute_output d3d12)
 endif()
 
-foreach(header IN ITEMS RenderGraphBuilder Work IndexedDrawData Diagnostics)
-    set(source "${CMAKE_CURRENT_BINARY_DIR}/${header}Header.cpp")
-    file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/extensions/graph/${header}.hpp>\n")
-    add_library(header_${header} OBJECT "${source}")
-    target_link_libraries(header_${header} PRIVATE lux::engine::function::render_extensions)
-    target_compile_features(header_${header} PRIVATE cxx_std_20)
+foreach(header IN ITEMS
+    graph/RenderGraphBuilder graph/Work graph/Diagnostics
+    execution/InstanceDataFactory execution/RasterStream
+)
+    get_filename_component(name "${header}" NAME)
+    set(source "${CMAKE_CURRENT_BINARY_DIR}/${name}Header.cpp")
+    file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/extensions/${header}.hpp>\n")
+    add_library(header_${name} OBJECT "${source}")
+    target_link_libraries(header_${name} PRIVATE lux::engine::function::render_extensions)
+    target_compile_features(header_${name} PRIVATE cxx_std_20)
 endforeach()
 
 option(LUX_TEST_INSTALLED_EDITOR_UI "Run the Editor UI output probe against installed packages" OFF)

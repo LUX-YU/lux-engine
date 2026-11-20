@@ -7,7 +7,6 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
-#include <lux/engine/render/extensions/graph/InstanceData.hpp>
 #include <lux/engine/render/extensions/graph/ParameterSource.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
@@ -17,7 +16,6 @@
 namespace lux::render::detail
 {
     class DeviceSession;
-    struct DrawListResources;
     struct RasterDrawList;
     struct PassBindings;
     struct RasterDescriptorInput;
@@ -27,7 +25,7 @@ namespace lux::render::detail
     class IndexedTriangleMeshStorage;
     class RasterMaterialStorage;
 
-    class LUX_RENDER_PUBLIC RenderGraphInstance final : public InstanceAccess
+    class LUX_RENDER_PUBLIC RenderGraphInstance final
     {
     public:
         RenderGraphInstance(
@@ -38,12 +36,6 @@ namespace lux::render::detail
             TargetOutput = {}
         ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
-        [[nodiscard]] RenderResult<void>
-        createData(
-            const GraphAssemblyPlan&, std::span<const InstanceDataRecipe>, ResourceRegistry&,
-            std::span<const ResourceInstanceId>
-        ) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareData(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
         struct SnapshotSource final
         {
             ResourceInstanceId id;
@@ -70,16 +62,11 @@ namespace lux::render::detail
         {
             view_parameters_ = {value, revision};
         }
-        [[nodiscard]] bool requiresDataPrograms() const noexcept;
-        [[nodiscard]] RenderResult<void>
-        setIndexedDrawData(IndexedDrawStreamSlot, std::uint32_t, const IndexedDrawData&) noexcept override;
-        [[nodiscard]] std::vector<TargetId> sampledTargets() const noexcept;
-        [[nodiscard]] RenderResult<IndexedDrawStreamSlot> indexedDrawStream(GraphPassId) const noexcept override;
-        [[nodiscard]] bool hasData() const noexcept { return !data_.empty(); }
+        [[nodiscard]] bool requiresProducerPrograms() const noexcept;
         void captureProgramRevisions(std::vector<std::uint64_t>&) const noexcept;
         [[nodiscard]] bool matchesProgramRevisions(std::span<const std::uint64_t>) const noexcept;
         [[nodiscard]] exec::task<RenderResult<bool>>
-        prepareDataPrograms(
+        prepareProducerPrograms(
             execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
         ) noexcept;
 
@@ -112,16 +99,6 @@ namespace lux::render::detail
         void commitResize(ResizeResources&&) noexcept;
         // After accepted uses complete, withdraw borrowed SwapChain objects before their presentation owner closes.
         void releaseOutputReferences() noexcept;
-        // The caller first reserves the reusable physical replica. This only
-        // prepares that reusable slice; the professional Handler performs its data conversion/upload.
-        [[nodiscard]] RenderResult<DrawListResources*>
-        prepareDrawList(
-            const CompiledPass&, std::uint32_t slot, std::size_t vertex_bytes, std::size_t index_bytes
-        ) noexcept;
-        // Copies borrowed frame input into finite staging windows; accepted copies, not GPU completion,
-        // release that input. A terminal frame failure must settle the remaining borrow before delivery.
-        [[nodiscard]] RenderResult<bool> prepareDrawListUploads(std::uint32_t slot, ResourceUploader&) noexcept;
-        void finishDrawListUploads(std::uint32_t slot, RenderResult<void>) noexcept;
         // Caller owns the binding recipe and supplies one stable key per distinct private input set.
         // Only the writable FIF is modified; the returned set remains owned by this instance.
         [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterBindings(
@@ -132,7 +109,6 @@ namespace lux::render::detail
         ) noexcept;
         // Remove recipes before their professional Owner is destroyed; GPU views retire by accepted frontiers.
         void releaseRasterBindings(std::span<const PassBindings* const>, std::uint32_t pass = kGraphInvalidIndex) noexcept;
-        [[nodiscard]] const CompiledPass* compiledPass(GraphPassId) const noexcept;
         // The selected writable FIF slot owns the list. Features fill physical packets before
         // prepareFrame seals attachments and barriers; no list is mutated during recording.
         [[nodiscard]] RasterDrawList&
@@ -287,7 +263,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
         [[nodiscard]] RenderResult<nri::TextureDesc>
         textureDescription(const CompiledResource&, const TargetDesc&) const noexcept;
-        [[nodiscard]] RenderResult<void> createDrawListResources(std::uint32_t slot) noexcept;
+        void initializeRasterStreams(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> materializeRasterStreams(std::uint32_t slot) noexcept;
         RenderResult<void> prepareRasterSections(std::uint32_t slot) noexcept;
         RenderResult<void>
@@ -331,16 +307,7 @@ namespace lux::render::detail
 
         DeviceSession* session_;
         SubmissionFrontiers uses_;
-        ResourceRegistry* resources_ = nullptr;
 
-        struct Data final
-        {
-            std::vector<GraphResourceId> input_slots;
-            std::unique_ptr<InstanceData> value;
-            std::uint32_t parameter_offset, parameter_bytes;
-            std::vector<ResourceInput> inputs;
-        };
-        std::vector<Data> data_;
         class ProducerFrame;
         class ProgramSelection;
         [[nodiscard]] exec::task<RenderResult<bool>> prepareRasterPrograms(
@@ -400,7 +367,6 @@ namespace lux::render::detail
         std::vector<HistoryState> histories_;
         const RenderGraphExecutable* plan_;
         const NativeGraphPrograms* programs_;
-        std::span<const std::uint32_t> source_pass_slots_;
         RasterViewport viewport_;
         TargetOutput output_;
 

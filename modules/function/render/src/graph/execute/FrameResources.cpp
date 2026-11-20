@@ -15,7 +15,7 @@ namespace lux::render::detail
             const bool same_scissor = a.scissor.x == b.scissor.x && a.scissor.y == b.scissor.y &&
                 a.scissor.width == b.scissor.width && a.scissor.height == b.scissor.height;
             const bool same_counts = a.descriptor_count == b.descriptor_count && a.vertex_count == b.vertex_count &&
-                a.parameter_size == b.parameter_size && a.parameter_destination == b.parameter_destination;
+                a.parameter_size == b.parameter_size;
             if (!same_pipeline || !same_index || !same_scissor || !same_counts) return false;
             const auto descriptors = std::span(draws.descriptors);
             if (!std::ranges::equal(
@@ -129,11 +129,6 @@ namespace lux::render::detail
         }
         for (const auto& buffer : prepared_buffers)
             if (buffer.buffer) nri_core.DestroyBuffer(buffer.buffer);
-        for (auto& list : draw_lists)
-        {
-            nri_core.DestroyBuffer(list.vertices);
-            nri_core.DestroyBuffer(list.indices);
-        }
         for (const auto& allocation : memories)
         {
             nri_core.FreeMemory(allocation.memory);

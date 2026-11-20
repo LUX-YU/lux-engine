@@ -189,7 +189,6 @@ namespace lux::render::detail
         ETransientAllocation allocation,
         std::span<const std::uint32_t> parameter_groups,
         bool device_addresses,
-        std::vector<std::uint32_t>& recipe_indices,
         ShaderBindingPlan& bindings
     ) noexcept
     {
@@ -223,47 +222,6 @@ namespace lux::render::detail
         {
             live[input.index] = true;
         }
-        std::vector<const InstanceDataRecipe*> instance_recipes;
-        for (const auto& data : graph.instanceData() | std::views::reverse)
-        {
-            if (!data.create)
-            {
-                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            }
-            for (auto id : data.inputs)
-            {
-                if (id.index >= live.size())
-                {
-                    return cxx::unexpected(RenderError{kGraphUnknownResource});
-                }
-            }
-            for (auto id : data.outputs)
-            {
-                if (id.index >= live.size())
-                {
-                    return cxx::unexpected(RenderError{kGraphUnknownResource});
-                }
-            }
-            const bool used =
-                std::ranges::any_of(data.outputs, [&](auto id) { return live[id.index]; }) ||
-                std::ranges::any_of(
-                    data.passes, [&](auto id)
-                    { return std::ranges::find(analysis.execution_order, id) != analysis.execution_order.end(); }
-                );
-            if (!used)
-            {
-                continue;
-            }
-            for (auto id : data.inputs)
-            {
-                live[id.index] = true;
-            }
-            const auto recipe = static_cast<std::uint32_t>(&data - graph.instanceData().data());
-            recipe_indices.push_back(recipe);
-            instance_recipes.push_back(&data);
-        }
-        std::ranges::reverse(recipe_indices);
-        std::ranges::reverse(instance_recipes);
         for (std::uint32_t i = 0; i < graph.resources().size(); ++i)
         {
             const auto& resource = graph.resources()[i];
@@ -385,7 +343,7 @@ namespace lux::render::detail
             plan.fixed_output_extent_ = {requirement.width, requirement.height};
             resource.target_sized = relative;
         }
-        auto layouts = planLayouts(limits, graph, analysis, parameter_groups, device_addresses, instance_recipes);
+        auto layouts = planLayouts(limits, graph, analysis, parameter_groups, device_addresses);
         if (!layouts)
         {
             return cxx::unexpected(layouts.error());
@@ -428,7 +386,7 @@ namespace lux::render::detail
                 const bool section_depth_bias = stream && stream->section_depth_bias;
                 if (section_depth_bias && !limits.features.dynamicDepthBias)
                     return cxx::unexpected(RenderError{kDeviceUnsupported, {id.index}});
-                const bool owns_draw_sections = !fixed || std::holds_alternative<DrawIndexedList>(fixed->draw);
+                const bool owns_draw_sections = !fixed;
                 pass.rendering = CompiledRasterScope{*scope, owns_draw_sections};
                 pass.rendering->section_depth_bias = section_depth_bias;
             }
@@ -687,8 +645,7 @@ namespace lux::render::detail
             {
                 const auto& pass = plan.recording_.passes[p];
                 const auto& source = graph.passes()[analysis.execution_order[p].index];
-                const auto* raster = plan.rasterCommands(pass);
-                if (source.side_effect || (raster && std::holds_alternative<IndexedListCommands>(raster->draw)))
+                if (source.side_effect)
                 {
                     batch.reusable_recording = false;
                 }
@@ -799,8 +756,7 @@ namespace lux::render::detail
         GraphAssemblyPlan assembly;
         ShaderBindingPlan bindings;
         auto plan = planStructure(
-            nullptr, limits, queues, graph, analysis, nullptr, allocation, {}, false,
-            assembly.instance_recipes, bindings
+            nullptr, limits, queues, graph, analysis, nullptr, allocation, {}, false, bindings
         );
         if (!plan)
         {
@@ -1127,7 +1083,7 @@ namespace lux::render::detail
     {
         const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
             ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
-        std::uint32_t indexed_lists = 0, raster_lists = 0;
+        std::uint32_t raster_lists = 0;
         std::vector<std::uint8_t> materialized;
         materialized.reserve(plan.resources_.size());
         for (const auto& resource : plan.resources_) materialized.push_back(resource.memory_used);
@@ -1147,7 +1103,7 @@ namespace lux::render::detail
             }
             PassCompileContext context{
                 limits, shader_info, graph.resources(),
-                &indexed_lists, &raster_lists, materialized
+                &raster_lists, materialized
             };
             const auto append = [&]<class T>(RenderResult<T> result, ERecordKernel kernel, std::vector<T>& table)
                 noexcept -> RenderResult<RecordBlock>
@@ -1213,7 +1169,7 @@ namespace lux::render::detail
                 {
                     return planStructure(
                         &session.device(), session.description(), queues, graph, analysis, target, allocation,
-                        parameter_groups, session.usesDeviceAddresses(), assembly.instance_recipes, bindings
+                        parameter_groups, session.usesDeviceAddresses(), bindings
                     );
                 }
             ) |

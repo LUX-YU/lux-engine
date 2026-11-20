@@ -19,7 +19,6 @@ namespace lux::render::detail
 
     struct GraphAssemblyPlan final
     {
-        std::vector<std::uint32_t> instance_recipes;
         std::vector<std::uint32_t> source_pass_slots;
         std::vector<std::vector<ParameterUse>> parameter_links;
         std::vector<rdesc::ShaderBlock> parameter_layouts;

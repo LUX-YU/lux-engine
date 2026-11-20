@@ -12,7 +12,6 @@ namespace lux::render
 {
     class RenderGraph;
     struct RenderGraphAnalysis;
-    struct InstanceDataRecipe;
 }
 
 namespace lux::render::detail
@@ -92,8 +91,7 @@ namespace lux::render::detail
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
         std::span<const std::uint32_t> parameter_groups = {},
-        bool device_addresses = false,
-        std::span<const InstanceDataRecipe* const> instance_data = {}
+        bool device_addresses = false
     ) noexcept;
 
     [[nodiscard]] RenderResult<rdesc::ShaderProgramArtifact>

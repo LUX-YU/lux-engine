@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <exception>
 #include <functional>
-#include <unordered_set>
+#include <optional>
 #include <utility>
 
 namespace lux::render::detail
@@ -20,25 +20,8 @@ namespace lux::render::detail
             seed ^= std::hash<T>{}(value) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
         }
 
-        std::size_t keyDigest(const std::shared_ptr<const PreparedShader>& key) noexcept
+        std::size_t rasterDigest(const RasterProgramKey& key, std::size_t result) noexcept
         {
-            return key->digest;
-        }
-
-        bool matches(const std::shared_ptr<const PreparedShader>& stored,
-                     const std::shared_ptr<const PreparedShader>& candidate) noexcept
-        {
-            return stored->matches(*candidate);
-        }
-
-        bool matches(const RasterProgramKey& stored, const RasterProgramKey& candidate) noexcept
-        {
-            return stored.matches(candidate);
-        }
-
-        std::size_t keyDigest(const RasterProgramKey& key) noexcept
-        {
-            auto result = key.shader->digest;
             for (const auto& binding : key.state.vertex_bindings)
             {
                 combineHash(result, binding.binding);
@@ -72,14 +55,22 @@ namespace lux::render::detail
         }
     }
 
+    struct CompiledPrograms::Shader final
+    {
+        rdesc::ShaderProgramArtifact artifact;
+        std::uint64_t id;
+        std::size_t digest;
+        std::uint32_t references = 1;
+    };
+
     struct CompiledPrograms::Program final
     {
-        using VKey = std::variant<std::shared_ptr<const PreparedShader>, RasterProgramKey>;
-        VKey key;
+        std::optional<RasterProgramKey> raster;
         nri::Pipeline* pipeline;
-        Layout* layout;
-        std::uint32_t users = 0;
-        std::uint64_t last_acquired = 0;
+        std::uint64_t layout_id;
+        std::uint64_t shader_id;
+        std::uint32_t users;
+        std::uint64_t last_acquired;
         std::size_t digest;
         std::uint64_t publication;
         SubmissionFrontiers last_uses;
@@ -173,6 +164,7 @@ namespace lux::render::detail
         nri::PipelineLayout* native;
         std::uint32_t references;
         std::uint32_t max_colors;
+        std::uint64_t id;
         std::size_t digest;
     };
 
@@ -184,7 +176,9 @@ namespace lux::render::detail
     CompiledPrograms::~CompiledPrograms() noexcept
     {
         // clear() transfers GPU objects to Session cleanup before its admission closes.
-        if (!programs_.empty() || !layout_index_.empty()) std::terminate();
+        const bool has_live_records = !program_index_.empty() || !unused_.empty() || !layouts_.empty() ||
+            !shaders_.empty() || !layout_index_.empty() || !shader_index_.empty();
+        if (has_live_records) std::terminate();
     }
 
     RenderResult<CompiledPrograms::Layout*>
@@ -199,6 +193,7 @@ namespace lux::render::detail
             if (!layout.key.matches(key)) continue;
             if (color_count > layout.max_colors)
                 return cxx::unexpected(deviceBudget(EDeviceBudget::COLOR_ATTACHMENTS, color_count, layout.max_colors));
+            if (layout.references == UINT32_MAX) std::terminate();
             ++layout.references;
             bindings.layout = layout.native;
             return &layout;
@@ -209,9 +204,13 @@ namespace lux::render::detail
         );
         if (!created) return cxx::unexpected(created.error());
         bindings.layout = *created;
-        auto value = std::make_unique<Layout>(Layout{std::move(key), *created, 1, max_colors, digest});
-        auto item = layout_index_.emplace(digest, std::move(value));
-        return item->second.get();
+        if (layout_serial_ == UINT64_MAX) std::terminate();
+        const auto id = ++layout_serial_;
+        auto record = std::make_unique<Layout>(Layout{std::move(key), *created, 1, max_colors, id, digest});
+        auto* value = record.get();
+        layouts_.emplace(id, std::move(record));
+        layout_index_.emplace(digest, value);
+        return value;
     }
 
     void CompiledPrograms::dropLayout(Layout& layout) noexcept
@@ -221,9 +220,10 @@ namespace lux::render::detail
         const auto [first, last] = layout_index_.equal_range(layout.digest);
         for (auto item = first; item != last; ++item)
         {
-            if (item->second.get() != &layout) continue;
+            if (item->second != &layout) continue;
             session_.nriCore().DestroyPipelineLayout(layout.native);
             layout_index_.erase(item);
+            layouts_.erase(layout.id);
             return;
         }
         std::terminate();
@@ -234,79 +234,119 @@ namespace lux::render::detail
         dropLayout(*layout);
     }
 
-    template <class Key>
-    CompiledPrograms::Program* CompiledPrograms::find(const Key& key, const Lookup& lookup, std::uint64_t after) noexcept
+    CompiledPrograms::Shader& CompiledPrograms::acquireShader(rdesc::ShaderProgramArtifact artifact) noexcept
+    {
+        const auto digest = artifact.binaryDigest();
+        const auto [first, last] = shader_index_.equal_range(digest);
+        for (auto item = first; item != last; ++item)
+        {
+            auto& shader = *item->second;
+            if (shader.artifact != artifact) continue;
+            if (shader.references == UINT32_MAX) std::terminate();
+            ++shader.references;
+            return shader;
+        }
+        if (shader_serial_ == UINT64_MAX) std::terminate();
+        const auto id = ++shader_serial_;
+        auto record = std::make_unique<Shader>(Shader{std::move(artifact), id, digest});
+        auto* value = record.get();
+        shaders_.emplace(id, std::move(record));
+        shader_index_.emplace(digest, value);
+        return *value;
+    }
+
+    void CompiledPrograms::releaseShader(Shader& shader) noexcept
+    {
+        if (!shader.references) std::terminate();
+        if (--shader.references != 0) return;
+        const auto [first, last] = shader_index_.equal_range(shader.digest);
+        for (auto item = first; item != last; ++item)
+        {
+            if (item->second != &shader) continue;
+            shader_index_.erase(item);
+            shaders_.erase(shader.id);
+            return;
+        }
+        std::terminate();
+    }
+
+    const rdesc::ShaderProgramArtifact& CompiledPrograms::artifact(const Shader& shader) noexcept
+    {
+        return shader.artifact;
+    }
+
+    CompiledPrograms::Program*
+    CompiledPrograms::find(const RasterProgramKey* raster, const Lookup& lookup, std::uint64_t after) noexcept
     {
         const auto found = program_index_.find(lookup.digest_);
         if (found == program_index_.end()) return nullptr;
-        for (auto* program : found->second)
+        for (const auto& entry : found->second)
         {
-            if (program->publication <= after || program->layout != lookup.layout_) continue;
-            const auto* stored = std::get_if<Key>(&program->key);
-            if (!stored || !matches(*stored, key)) continue;
-            ++program->users;
-            program->last_acquired = ++acquisition_serial_;
-            return program;
+            auto& program = *entry;
+            const bool same_identity = program.shader_id == lookup.shader_->id &&
+                program.layout_id == lookup.layout_->id;
+            const bool same_kind = program.raster.has_value() == (raster != nullptr);
+            if (program.publication <= after || !same_identity || !same_kind) continue;
+            if (raster && !program.raster->matches(*raster)) continue;
+            if (!program.users && unused_.erase(program.last_acquired) != 1) std::terminate();
+            if (program.users == UINT32_MAX || acquisition_serial_ == UINT64_MAX) std::terminate();
+            ++program.users;
+            program.last_acquired = ++acquisition_serial_;
+            return &program;
         }
         return nullptr;
     }
 
-    template <class Key>
-    CompiledPrograms::Lookup CompiledPrograms::lookup(const Key& key, Layout& layout) noexcept
+    CompiledPrograms::Lookup CompiledPrograms::lookup(Shader& shader, Layout& layout, const RasterProgramKey* raster)
+        noexcept
     {
         Lookup result;
-        result.digest_ = keyDigest(key);
-        combineHash(result.digest_, &layout);
+        result.digest_ = 0;
+        combineHash(result.digest_, shader.id);
+        combineHash(result.digest_, layout.id);
+        combineHash(result.digest_, raster != nullptr);
+        if (raster) result.digest_ = rasterDigest(*raster, result.digest_);
+        result.shader_ = &shader;
         result.layout_ = &layout;
         result.publication_ = publication_serial_;
-        result.hit_ = find(key, result, 0);
+        result.hit_ = find(raster, result, 0);
         return result;
     }
 
-    CompiledPrograms::Lookup CompiledPrograms::lookupRaster(const RasterProgramKey& key, Layout& layout) noexcept
-    {
-        return lookup(key, layout);
-    }
-
-    CompiledPrograms::Lookup
-    CompiledPrograms::lookupCompute(const std::shared_ptr<const PreparedShader>& key, Layout& layout) noexcept
-    {
-        return lookup(key, layout);
-    }
-
-    template <class Key>
-    CompiledPrograms::Program* CompiledPrograms::publish(Key key, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
+    CompiledPrograms::Program*
+    CompiledPrograms::publish(RasterProgramKey* raster, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
     {
         // Only entries published while native creation was in flight can be new matches.
-        if (auto* existing = find(key, lookup, lookup.publication_))
+        if (auto* existing = find(raster, lookup, lookup.publication_))
         {
             session_.nriCore().DestroyPipeline(pipeline);
             return existing;
         }
-        auto* layout = lookup.layout_;
-        ++layout->references;
+        auto& layout = *lookup.layout_;
+        auto& shader = *lookup.shader_;
+        const bool exhausted_references = layout.references == UINT32_MAX || shader.references == UINT32_MAX;
+        const bool exhausted_serials = acquisition_serial_ == UINT64_MAX || publication_serial_ == UINT64_MAX;
+        if (exhausted_references || exhausted_serials) std::terminate();
+        ++layout.references;
+        ++shader.references;
         auto value = std::make_unique<Program>(Program{
-            std::move(key), pipeline, layout, 1, ++acquisition_serial_, lookup.digest_, ++publication_serial_,
-            session_.makeFrontiers()
+            raster ? std::optional{std::move(*raster)} : std::nullopt, pipeline, layout.id, shader.id, 1,
+            ++acquisition_serial_, lookup.digest_, ++publication_serial_, session_.makeFrontiers()
         });
         auto* program = value.get();
-        program_index_[lookup.digest_].push_back(program);
-        programs_.push_back(std::move(value));
-        trim();
+        program_index_[lookup.digest_].push_back(std::move(value));
         return program;
     }
 
     CompiledPrograms::Program*
     CompiledPrograms::publishRaster(RasterProgramKey key, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
     {
-        return publish(std::move(key), lookup, pipeline);
+        return publish(&key, lookup, pipeline);
     }
 
-    CompiledPrograms::Program* CompiledPrograms::publishCompute(
-        std::shared_ptr<const PreparedShader> key, const Lookup& lookup, nri::Pipeline* pipeline
-    ) noexcept
+    CompiledPrograms::Program* CompiledPrograms::publishCompute(const Lookup& lookup, nri::Pipeline* pipeline) noexcept
     {
-        return publish(std::move(key), lookup, pipeline);
+        return publish(nullptr, lookup, pipeline);
     }
 
     nri::Pipeline* CompiledPrograms::native(const Program& program) noexcept
@@ -324,41 +364,39 @@ namespace lux::render::detail
         {
             if (!program->users) std::terminate();
             program->last_uses.merge(accepted);
-            --program->users;
+            if (--program->users == 0) unused_.emplace(program->last_acquired, program);
         }
         trim();
     }
 
     void CompiledPrograms::trim() noexcept
     {
-        std::vector<Program*> unused;
-        for (const auto& program : programs_)
-            if (!program->users) unused.push_back(program.get());
-        if (unused.size() <= unused_limit_) return;
-        std::ranges::sort(unused, {}, &Program::last_acquired);
-        unused.resize(unused.size() - unused_limit_);
-        const std::unordered_set<Program*> removed(unused.begin(), unused.end());
-        std::erase_if(programs_, [&](auto& program) noexcept
+        while (unused_.size() > unused_limit_)
         {
-            if (!removed.contains(program.get())) return false;
-            auto position = program_index_.find(program->digest);
-            std::erase(position->second, program.get());
-            if (position->second.empty()) program_index_.erase(position);
-            const auto frontiers = program->last_uses;
-            session_.deferRelease(frontiers, [this, value = std::move(program)]() noexcept
+            const auto oldest = unused_.begin();
+            auto* program = oldest->second;
+            unused_.erase(oldest);
+            const auto index = program_index_.find(program->digest);
+            const auto pipeline = program->pipeline;
+            const auto layout_id = program->layout_id;
+            auto& shader = *shaders_.find(program->shader_id)->second;
+            auto frontiers = std::move(program->last_uses);
+            std::erase_if(index->second, [program](const auto& value) noexcept { return value.get() == program; });
+            if (index->second.empty()) program_index_.erase(index);
+            releaseShader(shader);
+            session_.deferRelease(std::move(frontiers), [this, pipeline, layout_id]() noexcept
             {
-                session_.nriCore().DestroyPipeline(value->pipeline);
-                // No new cleanup task here: this callback is already past every accepted GPU use.
-                dropLayout(*value->layout);
+                session_.nriCore().DestroyPipeline(pipeline);
+                dropLayout(*layouts_.find(layout_id)->second);
             });
-            return true;
-        });
+        }
     }
 
     void CompiledPrograms::clear() noexcept
     {
-        for (const auto& program : programs_) if (program->users) std::terminate();
         unused_limit_ = 0;
         trim();
+        if (!program_index_.empty() || !shaders_.empty()) std::terminate();
     }
+
 } // namespace lux::render::detail

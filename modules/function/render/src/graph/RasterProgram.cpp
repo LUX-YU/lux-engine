@@ -14,11 +14,11 @@ namespace lux::render::detail
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
         nri::PipelineLayout& layout,
+        const rdesc::ShaderProgramArtifact& shader,
         const RasterProgramKey& program,
         nri::Pipeline*& pipeline
     ) noexcept
     {
-        const auto& shader = program.shader->artifact;
         const auto& graphics = program.state;
         const auto& colors = program.colors;
         const auto depth = program.depth;

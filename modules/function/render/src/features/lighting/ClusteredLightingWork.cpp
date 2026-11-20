@@ -8,6 +8,33 @@
 
 namespace lux::render::detail
 {
+    struct ClusterScanConstants final
+    {
+        std::uint32_t cluster_count;
+        std::uint32_t capacity;
+    };
+}
+
+namespace lux::render
+{
+    template <> struct ConstantBlockTraits<detail::ClusterScanConstants> final
+    {
+        static ConstantBlockLayout layout(rdesc::EShaderTarget target) noexcept
+        {
+            using Block = detail::ClusterScanConstants;
+            static_assert(sizeof(Block) == 8);
+            static constexpr std::array members{
+                ConstantMemberLayout{"cluster_count", offsetof(Block, cluster_count), rdesc::EDataScalar::UINT},
+                ConstantMemberLayout{"capacity", offsetof(Block, capacity), rdesc::EDataScalar::UINT}
+            };
+            const auto alignment = target == rdesc::EShaderTarget::DXIL ? 16u : static_cast<std::uint32_t>(alignof(Block));
+            return {sizeof(Block), alignment, members};
+        }
+    };
+}
+
+namespace lux::render::detail
+{
     RenderResult<ClusterBuffers>
     declareClusterBuffers(RenderGraphBuilder& builder, std::string_view key, const ClusterGrid& grid) noexcept
     {
@@ -89,9 +116,7 @@ namespace lux::render::detail
             {"offsets", {initial.offsets, {}, EGraphAccess::WRITE}},
             {"status", {status, {}, EGraphAccess::READ_WRITE}}
         };
-        const std::array scan_parameters{count, grid.index_capacity};
-        const auto bytes = std::as_bytes(std::span(scan_parameters));
-        scan.interface.parameters.values.assign(bytes.begin(), bytes.end());
+        scan.interface.parameters.setInlineConstant(ClusterScanConstants{count, grid.index_capacity});
         scan.dispatch = DispatchArguments{{1, 1, 1}};
         scan.allow_async_compute = true;
         auto scanned = builder.addComputePass(prefix + "scan", std::move(scan));

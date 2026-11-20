@@ -712,15 +712,16 @@ namespace lux::render::detail
             co_return cxx::unexpected(relocated.error());
         }
         if (runtime_current && !(*runtime_current)()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        key.shader = std::make_shared<const PreparedShader>(std::move(*relocated));
+        auto& retained_shader = program_cache.acquireShader(std::move(*relocated));
+        cxx::scope_exit release_shader([&]() noexcept { program_cache.releaseShader(retained_shader); });
+        const auto& artifact = program_cache.artifact(retained_shader);
         auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
         if (!layout)
         {
             co_return cxx::unexpected(layout.error());
         }
         cxx::scope_exit release_layout([&]() noexcept { program_cache.releaseLayout(*layout); });
-        const auto lookup = is_raster ? program_cache.lookupRaster(key, **layout)
-                                      : program_cache.lookupCompute(key.shader, **layout);
+        const auto lookup = program_cache.lookup(retained_shader, **layout, is_raster ? &key : nullptr);
         auto* program = lookup.hit();
         if (!program)
         {
@@ -729,15 +730,15 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kCommandCancelled});
             }
             const auto compile = [
-                &key, layout = bindings.layout, is_raster, device = &session.device(), core = &session.nriCore(),
+                &key, &artifact, layout = bindings.layout, is_raster, device = &session.device(), core = &session.nriCore(),
                 enabled = session.enabledFeatures(), limits = &session.description(), formats = session.formatSupport(),
                 vertex_limits = std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}
             ]() noexcept -> RenderResult<nri::Pipeline*>
             {
-                if (!is_raster) return compileCompute(*device, *core, enabled, *layout, key.shader->artifact);
+                if (!is_raster) return compileCompute(*device, *core, enabled, *layout, artifact);
                 nri::Pipeline* pipeline = nullptr;
                 const auto created = createRasterProgram(
-                    *device, *core, *limits, enabled, formats, vertex_limits, *layout, key, pipeline
+                    *device, *core, *limits, enabled, formats, vertex_limits, *layout, artifact, key, pipeline
                 );
                 if (created) return pipeline;
                 if (pipeline) core->DestroyPipeline(pipeline);
@@ -768,7 +769,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(compiled.error());
             }
             program = is_raster ? program_cache.publishRaster(std::move(key), lookup, *compiled)
-                                : program_cache.publishCompute(std::move(key.shader), lookup, *compiled);
+                                : program_cache.publishCompute(lookup, *compiled);
         }
         co_return program;
     }
@@ -817,7 +818,7 @@ namespace lux::render::detail
         // Shared descriptors are supplied by the device tables. Each draw provides private bindings only.
         std::erase_if(layout->uses, [&](const auto& use) noexcept { return layout->bindings[use.field].count == 0; });
 
-        RasterProgramKey key{{}, graphics, target.colors, target.depth, target.samples};
+        RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
         if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
         auto lease = co_await prepareGraphProgram(std::move(key), artifact, *layout, session, cpu, true, runtime_current);
         if (!lease) co_return cxx::unexpected(lease.error());

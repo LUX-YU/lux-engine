@@ -191,7 +191,7 @@ namespace lux::render::detail
             {
                 retireRasterViews(frame, nullptr, binding.image);
                 invalidateResourceRecordings(slot, plan_->output());
-                binding.image = output.image;
+                binding.select(nullptr, output.image, session_->nriCore());
                 // A presentation image has one writer and cannot be sampled by another instance.
                 // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
                 if (output_.description.kind != ETargetKind::SURFACE)

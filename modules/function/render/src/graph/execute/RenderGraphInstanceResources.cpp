@@ -131,7 +131,7 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {resource.index, layers}});
             }
         }
-        auto description = core.GetTextureDesc(*binding.image);
+        auto description = *binding.image_description;
         const bool replace_image = description.layerNum != layers;
         description.layerNum = static_cast<nri::Dim_t>(layers);
         nri::Texture* image = binding.image;
@@ -298,7 +298,9 @@ namespace lux::render::detail
             collectRasterViews(frame, nullptr, binding.image, stream_views);
             for (auto* view : stream_views) core.DestroyDescriptor(view);
             *std::ranges::find(frame.images, binding.image) = image;
-            core.DestroyTexture(std::exchange(binding.image, image));
+            auto* old_image = binding.image;
+            binding.select(nullptr, image, core);
+            core.DestroyTexture(old_image);
             // Runtime-layer uses are whole-resource. Each compiled transition spans all nominal layers.
             for (const auto [pass, index] : compiled.barrier_uses)
             {
@@ -341,8 +343,7 @@ namespace lux::render::detail
                 const auto selected =
                     resource.origin == EGraphOrigin::HISTORY_PREVIOUS ? history.previous : history.current;
                 const auto& physical = history.slots[selected];
-                binding.image = physical.image;
-                binding.buffer = physical.buffer;
+                binding.select(physical.buffer, physical.image, core);
                 binding.buffer_size = physical.buffer_size;
                 continue;
             }
@@ -355,7 +356,8 @@ namespace lux::render::detail
                     {
                         return cxx::unexpected(RenderError{kDeviceArgument});
                     }
-                    const auto& actual = core.GetTextureDesc(*binding.image);
+                    binding.select(binding.buffer, binding.image, core);
+                    const auto& actual = *binding.image_description;
                     auto width = image->width, height = image->height;
                     if (resource.target_sized)
                     {
@@ -378,7 +380,7 @@ namespace lux::render::detail
             }
             if (i == plan.output())
             {
-                binding.image = output_.frames[slot].image;
+                binding.select(nullptr, output_.frames[slot].image, core);
                 continue;
             }
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description); image && image->runtime_layers)
@@ -394,6 +396,7 @@ namespace lux::render::detail
             const auto physical = plan.physical_resources_.resource_slots[i];
             binding = frame.bindings[plan.physical_resources_.slots[physical.index].resource.index];
         }
+        for (auto& binding : frame.bindings) binding.select(binding.buffer, binding.image, core);
         return {};
     }
 
@@ -884,8 +887,7 @@ namespace lux::render::detail
             // A pool rebuild must replay only views whose owners still hold the allocation.
             retireRasterViews(frame, binding.buffer != value.buffer ? binding.buffer : nullptr,
                 binding.image != value.image ? binding.image : nullptr);
-            binding.image = value.image;
-            binding.buffer = value.buffer;
+            binding.select(value.buffer, value.image, session_->nriCore());
             binding.buffer_offset = value.offset;
             binding.buffer_size = value.size;
             if (changed_physical) invalidateResourceRecordings(current, resource);

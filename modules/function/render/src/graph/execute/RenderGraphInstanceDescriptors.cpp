@@ -647,7 +647,7 @@ namespace lux::render::detail
                     const auto& pass = *frame.passes[p].compiled_pass;
                     if (pass.before.buffers[index].bind_initial_access)
                     {
-                        barrier.before.access = bufferAccess(core.GetBufferDesc(*source.buffer).usage);
+                        barrier.before.access = bufferAccess(source.buffer_description->usage);
                     }
                 }
             }

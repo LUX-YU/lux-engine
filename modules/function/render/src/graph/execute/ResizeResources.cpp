@@ -680,8 +680,7 @@ namespace lux::render::detail
                     candidate.physical.views
                 );
                 // Do not overwrite parameter values or unrelated Storage updates made while Resize waited.
-                binding.image = replacement.binding.image;
-                binding.buffer = replacement.binding.buffer;
+                binding.select(replacement.binding.buffer, replacement.binding.image, core);
                 binding.buffer_offset = replacement.binding.buffer_offset;
                 binding.buffer_size = replacement.binding.buffer_size;
                 binding.dirty = false;
@@ -770,7 +769,7 @@ namespace lux::render::detail
         for (auto& frame : frames_)
         {
             collectRasterViews(frame, nullptr, frame.bindings[resource].image, views);
-            frame.bindings[resource].image = nullptr;
+            frame.bindings[resource].select(nullptr, nullptr, session_->nriCore());
             for (auto* output : frame.output_views)
             {
                 *output = nullptr;

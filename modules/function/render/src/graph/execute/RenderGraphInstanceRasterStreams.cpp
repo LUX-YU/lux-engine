@@ -180,7 +180,7 @@ namespace lux::render::detail
         const auto& core = session_->nriCore();
         const auto* image = frame.bindings[first.access.version.resource.index].image;
         if (!image) return cxx::unexpected(RenderError{kDeviceArgument, {p}});
-        const auto& info = core.GetTextureDesc(*image);
+        const auto& info = *frame.bindings[first.access.version.resource.index].image_description;
         const auto width = std::max(1u, std::uint32_t(info.width) >> first_range.first_mip);
         const auto height = std::max(1u, std::uint32_t(info.height) >> first_range.first_mip);
         const auto& default_viewport = scope.viewport ? *scope.viewport : frame.viewport;
@@ -217,7 +217,7 @@ namespace lux::render::detail
                 view = found->view;
                 return {};
             }
-            const auto& native = core.GetTextureDesc(*texture);
+            const auto& native = *frame.bindings[resource.index].image_description;
             const auto kind = depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT;
             const nri::TextureViewDesc description{
                 texture, kind, native.format, static_cast<nri::Dim_t>(range.first_mip), 1,
@@ -310,7 +310,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceArgument, {slice.buffer.index}});
             input.offset += slice.offset;
             input.size = size;
-            const auto native_size = session_->nriCore().GetBufferDesc(*input.buffer).size;
+            const auto native_size = frame.bindings[slice.buffer.index].buffer_description->size;
             if (input.offset > native_size || input.size > native_size - input.offset)
                 return cxx::unexpected(RenderError{kDeviceArgument, {slice.buffer.index}});
             return input;
@@ -395,7 +395,7 @@ namespace lux::render::detail
                         {
                             const auto* image = frame.bindings[access.resource].image;
                             if (!image) return false;
-                            envelope.layer_count = session_->nriCore().GetTextureDesc(*image).layerNum;
+                            envelope.layer_count = frame.bindings[access.resource].image_description->layerNum;
                         }
                         return includes(envelope, range);
                     };
@@ -416,7 +416,7 @@ namespace lux::render::detail
                     if (use_fallback) selected = allowed->fallback;
                     auto* image = frame.bindings[selected].image;
                     if (!image) return cxx::unexpected(RenderError{kDeviceArgument, {p, entry.argument}});
-                    const auto& description = session_->nriCore().GetTextureDesc(*image);
+                    const auto& description = *frame.bindings[selected].image_description;
                     const auto graph_format = std::get<GraphImageDesc>(plan_->resources()[selected].description).format;
                     const auto format = imageFormat(graph_format).native;
                     const bool valid_mips = validInterval(range.first_mip, range.mip_count, description.mipNum);
@@ -640,9 +640,10 @@ namespace lux::render::detail
                 candidate.packets.push_back(packet);
             }
 
-            const auto readImage = [&](const nri::Texture* texture, std::uint32_t stages) noexcept
+            const auto readImage = [&](OwnedRasterStream::TextureRead texture, std::uint32_t stages) noexcept
             {
-                candidate.reads.push_back({texture, GraphImageRange{}, EGraphUse::SAMPLED, stages});
+                const GraphImageRange range{1, 0, texture.mips, 0, texture.layers};
+                candidate.reads.push_back({texture.image, range, EGraphUse::SAMPLED, stages});
             };
             for (const auto& material : input.materials)
             {
@@ -651,7 +652,7 @@ namespace lux::render::detail
                 candidate.reads.push_back({
                     material.buffer, material.range, EGraphUse::STORAGE_READ, program.material_stages
                 });
-                for (const auto* texture :
+                for (const auto texture :
                      std::span{input.material_images}.subspan(material.first_image, material.image_count))
                 {
                     readImage(texture, program.shared_texture_stages);
@@ -659,7 +660,7 @@ namespace lux::render::detail
             }
             if (texture_stages)
             {
-                for (const auto* texture : input.textures) readImage(texture, texture_stages);
+                for (const auto texture : input.textures) readImage(texture, texture_stages);
             }
             auto& reads = candidate.reads;
             std::ranges::sort(reads, [](const auto& a, const auto& b) noexcept
@@ -701,13 +702,6 @@ namespace lux::render::detail
                 reads[count++] = read;
             }
             reads.resize(count);
-            for (auto& read : reads)
-            {
-                if (read.usage != EGraphUse::SAMPLED) continue;
-                const auto& desc = session_->nriCore().GetTextureDesc(*static_cast<const nri::Texture*>(read.physical));
-                read.range = GraphImageRange{1, 0, desc.mipNum, 0, desc.layerNum};
-            }
-
             if (auto sections = materializeRasterSections(slot, p, input); !sections) return sections;
 
             std::size_t first_input = 0;

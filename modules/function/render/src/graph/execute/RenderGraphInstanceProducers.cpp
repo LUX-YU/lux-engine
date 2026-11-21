@@ -17,6 +17,11 @@ namespace lux::render::detail
 {
     namespace
     {
+        OwnedRasterStream::TextureRead textureRead(const SampledTexture2DStorage::SampledImage& image) noexcept
+        {
+            return {&image.image(), image.description().mipNum, image.description().layerNum};
+        }
+
         class InstantiationContext final : public InstanceInstantiationContext
         {
         public:
@@ -210,7 +215,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
             const auto* record = owners[slot.index].textures->find(id);
             if (!record) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
-            producer_.streams[use - linked_.raster_streams.begin()].textures.push_back(&record->image());
+            producer_.streams[use - linked_.raster_streams.begin()].textures.push_back(textureRead(*record));
             return record->gpuReference();
         }
 
@@ -282,7 +287,7 @@ namespace lux::render::detail
                         stream.material_images.resize(first);
                         return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
                     }
-                    stream.material_images.push_back(&image->image());
+                    stream.material_images.push_back(textureRead(*image));
                 }
             }
             const auto& buffer = record->buffer;

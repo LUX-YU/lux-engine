@@ -210,7 +210,7 @@ namespace lux::render::detail
         resource.width = resource.height = 0;
         if (binding.image)
         {
-            const auto& description = session_->nriCore().GetTextureDesc(*binding.image);
+            const auto& description = *binding.image_description;
             resource.width = description.width;
             resource.height = description.height;
         }
@@ -298,8 +298,8 @@ namespace lux::render::detail
                             nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT,
                             nri::StageBits::COLOR_ATTACHMENT
                         };
-                    transition.mipNum = selected.mip_count;
-                    transition.layerNum = selected.layer_count;
+                    transition.mipNum = selected.image_description->mipNum;
+                    transition.layerNum = selected.image_description->layerNum;
                     transition.planes = record.depth ? nri::PlaneBits::DEPTH : nri::PlaneBits::COLOR;
                     if (aspects & 4) transition.planes |= nri::PlaneBits::STENCIL;
                     if (record.depth) record.clear_value.depthStencil.depth = description.initial.depth;

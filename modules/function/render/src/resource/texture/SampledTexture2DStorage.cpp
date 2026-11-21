@@ -44,7 +44,8 @@ namespace lux::render::detail
     } // namespace
 
     SampledTexture2DStorage::SampledImage::SampledImage(SampledImage&& other) noexcept
-        : image_(std::exchange(other.image_, nullptr)), view_(std::exchange(other.view_, nullptr)),
+        : image_(std::exchange(other.image_, nullptr)), description_(std::exchange(other.description_, nullptr)),
+          view_(std::exchange(other.view_, nullptr)),
           descriptor_(std::exchange(other.descriptor_, {})), reference_(other.reference_)
     {
     }
@@ -199,7 +200,7 @@ namespace lux::render::detail
         std::span<const std::byte> source
     ) noexcept
     {
-        const auto& original = session_.nriCore().GetTextureDesc(*source_image.image_);
+        const auto& original = source_image.description();
         const auto& layout = *nri::nriGetFormatProps(original.format);
         // Check wide Client values before narrowing into NRI's dimension fields.
         const bool invalid = region.mip >= original.mipNum || region.x > original.width || region.y > original.height ||
@@ -304,6 +305,7 @@ namespace lux::render::detail
         }
         candidate.descriptor_ = *descriptor;
         const auto& description = session_.nriCore().GetTextureDesc(*candidate.image_);
+        candidate.description_ = &description;
         const nri::TextureViewDesc
             view{candidate.image_, nri::TextureView::TEXTURE, description.format, 0, description.mipNum, 0, 1};
         auto status = session_.nriCore().CreateTextureView(view, candidate.view_);

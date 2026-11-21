@@ -22,6 +22,12 @@ namespace lux::render::detail
             EGraphUse use;
         };
 
+        struct TextureRead final
+        {
+            const nri::Texture* image;
+            std::uint16_t mips, layers;
+        };
+
         struct MaterialRead final
         {
             const nri::Buffer* buffer;
@@ -34,10 +40,10 @@ namespace lux::render::detail
         std::vector<RasterStreamVertex> vertices;
         std::vector<std::byte> constants;
         std::vector<RasterStreamSection> sections;
-        std::vector<const nri::Texture*> textures;
+        std::vector<TextureRead> textures;
         std::vector<MeshBuffer> mesh_buffers;
         std::vector<MaterialRead> materials;
-        std::vector<const nri::Texture*> material_images;
+        std::vector<TextureRead> material_images;
         std::vector<std::uint8_t> used_material_programs;
         std::uint64_t selection = 0;
         bool written = false;

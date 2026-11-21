@@ -107,6 +107,7 @@ namespace lux::render::detail
                 slot.image = candidate.image;
                 slot.buffer = candidate.buffer;
                 slot.buffer_size = candidate.buffer_size;
+                if (slot.buffer) slot.buffer_description = &session_->nriCore().GetBufferDesc(*slot.buffer);
             }
             if (auto views = createHistoryViews(history); !views)
             {
@@ -276,8 +277,7 @@ namespace lux::render::detail
                 continue;
             }
             const auto& image = core.GetTextureDesc(*slot.image);
-            slot.mip_count = image.mipNum;
-            slot.layer_count = image.layerNum;
+            slot.image_description = &image;
             const auto& graph_image =
                 std::get<GraphImageDesc>(plan_->resources()[description.current.index].description);
             const bool depth = rdesc::textureAspectMask(graph_image.format) != 1;
@@ -341,7 +341,9 @@ namespace lux::render::detail
                 if (unchanged && !validity_changed) continue;
                 frame.pending_history_views.mark(h);
                 binding.image = physical.image;
+                binding.image_description = physical.image_description;
                 binding.buffer = physical.buffer;
+                binding.buffer_description = physical.buffer_description;
                 binding.buffer_size = physical.buffer_size;
                 invalidateResourceRecordings(frame_slot, resource.index);
                 if (!binding.dirty)

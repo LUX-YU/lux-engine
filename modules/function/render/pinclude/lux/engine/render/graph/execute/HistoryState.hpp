@@ -19,7 +19,8 @@ namespace lux::render::detail
             nri::Texture* image = nullptr;
             nri::Buffer* buffer = nullptr;
             std::uint64_t buffer_size = 0;
-            nri::Dim_t mip_count = 0, layer_count = 0;
+            const nri::TextureDesc* image_description = nullptr;
+            const nri::BufferDesc* buffer_description = nullptr;
             std::vector<nri::Descriptor*> views;
             std::vector<nri::Descriptor*> initial_views;
             SubmissionFrontiers last_use;

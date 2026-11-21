@@ -39,6 +39,8 @@ namespace lux::render::detail
                 return reference_;
             }
 
+            [[nodiscard]] const nri::TextureDesc& description() const noexcept { return *description_; }
+
             [[nodiscard]] const nri::Texture& image() const noexcept
             {
                 return *image_;
@@ -47,6 +49,7 @@ namespace lux::render::detail
         private:
             friend class SampledTexture2DStorage;
             nri::Texture* image_ = nullptr;
+            const nri::TextureDesc* description_ = nullptr;
             nri::Descriptor* view_ = nullptr;
             DescriptorTable::Slot descriptor_{};
             TextureGpuRef reference_{};

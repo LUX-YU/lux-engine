@@ -337,6 +337,9 @@ After Target prefetch, FrameProgress opens the next strict FIF slice for the rea
 Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces before releasing the device variant. Physical cleanup uses the Session scope.
 
 Each FIF freezes its physical resource rows and their dependent pass operands before recording.
+The physical bindings borrow immutable NRI descriptions for the selected buffer or texture. Draw sections and
+slice validation reuse those descriptions until replacement. Texture and material producers snapshot the
+selected texture's mip and layer counts for external reads.
 Initial preparation fills all rows. Later changes use the compiler's resource-to-pass index, including
 fallback operands and WSI tails. Viewport changes visit the raster passes that inherit the viewport.
 History rotation updates the selected views and initialization commands. A failed freeze retains the

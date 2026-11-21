@@ -5,7 +5,7 @@
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/upload/Preparation.hpp>
+#include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
 
 namespace lux::render::detail
@@ -21,15 +21,34 @@ namespace lux::render::detail
             std::uint64_t revision = 0;
         };
 
+        struct ResourceParticipant final
+        {
+            ResourceInstanceId resource;
+            std::size_t replica;
+            ReplicaFrame frame;
+            ReplicaCopyRange ranges;
+            std::uint64_t revision = 0;
+        };
+
+        struct ProducerParticipant final
+        {
+            RenderJobId job;
+            std::uint64_t generation;
+            ReplicaFrame frame;
+            std::size_t first, count;
+        };
+
     public:
         struct LUX_RENDER_PUBLIC Workspace final
         {
             Workspace(std::uint32_t slots, std::size_t queues, std::size_t preparation_capacity) noexcept;
 
             SubmissionOperation::Workspace submissions;
-            Preparation preparation;
             std::vector<std::vector<PreparedStorage>> replicas;
-            std::vector<std::pair<std::size_t, PreparedStorage>> staged_replicas;
+            std::vector<ResourceParticipant> resource_participants;
+            std::vector<ProducerParticipant> producer_participants;
+            std::vector<RenderGraphInstance*> producer_instances;
+            std::vector<PreparedBufferCopy> prepared_buffers;
             SubmissionFrontiers blocked_completion;
             SubmissionFrontiers uniform_completed;
             std::vector<SelectedUniformVersion> uniforms;
@@ -60,7 +79,7 @@ namespace lux::render::detail
         using UniformStateLookup = cxx::function_ref<const void*(EffectId, graph::NodeId, cxx::basic_type_info) noexcept>;
 
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> run(
-            std::span<RenderGraphInstance* const>, std::span<const StorageFrameBinding>,
+            std::span<RenderGraphInstance* const>, std::span<const ResourceInstanceId>,
             std::span<const SubmissionOrder> order = {}, std::optional<UniformStateLookup> uniform_state = {}
         ) noexcept;
         void setRecordingPolicy(execution::CpuScheduler cpu, bool parallel) noexcept
@@ -91,10 +110,13 @@ namespace lux::render::detail
         enum class EPreparationStatus : std::uint8_t { READY, AWAITING_PROGRESS };
 
         void finish() noexcept;
-        void settlePreparation(RenderResult<void>) noexcept;
+        void settlePreparation(SubmissionPoint accepted = {}, std::size_t ranges = 0, RenderError error = {}) noexcept;
+        [[nodiscard]] std::pair<void*, const StorageBindingOps*> frameStorage(ResourceInstanceId) const noexcept;
+
+        [[nodiscard]] ReplicaFrame replicaFrame() const noexcept { return {slot(), selection_->epoch}; }
         [[nodiscard]] RenderResult<EPreparationStatus>
         prepareUniforms(std::span<RenderGraphInstance* const>, std::optional<UniformStateLookup>) noexcept;
-        [[nodiscard]] RenderResult<EPreparationStatus> prepareStorages(std::span<const StorageFrameBinding>) noexcept;
+        [[nodiscard]] RenderResult<EPreparationStatus> prepareStorages(std::span<const ResourceInstanceId>) noexcept;
         [[nodiscard]] RenderResult<EPreparationStatus> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
         [[nodiscard]] std::uint32_t slot() const noexcept { return context().slot_index; }
@@ -112,6 +134,7 @@ namespace lux::render::detail
         std::optional<RenderError> cancellation_;
         std::size_t prepared_instances_ = 0;
         bool worker_pending_ = false;
+        bool settling_ = false;
         bool copies_flushed_ = false;
         bool waiting_for_gpu_ = false;
     };

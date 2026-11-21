@@ -210,17 +210,16 @@ static void graphOutput(Validation& validation)
     CHECK(!missing_output && missing_output.error().type == kDeviceArgument);
     CHECK(execution->target() == target); // Rejection must not withdraw the adopted output.
     const std::array contexts{execution.get()};
-    std::vector<StorageFrameBinding> storage_preparation;
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
     CHECK(
         session->nriCore().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
         nri::Result::SUCCESS
     );
-    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
-    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
-    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
-    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 0);
+    CHECK(take(runTask(frames->render(contexts, {}))) == 1);
+    CHECK(take(runTask(frames->render(contexts, {}))) == 1);
+    CHECK(take(runTask(frames->render(contexts, {}))) == 1);
+    CHECK(take(runTask(frames->render(contexts, {}))) == 0);
     CHECK(session->drain());
     for (auto id : {pixels, copied})
     {
@@ -247,7 +246,7 @@ static void graphOutput(Validation& validation)
     }
     auto prior_uses = session->makeFrontiers();
     physical->appendUses(prior_uses);
-    CHECK(take(runTask(frames->render(contexts, storage_preparation))) == 1);
+    CHECK(take(runTask(frames->render(contexts, {}))) == 1);
     auto last_uses = session->makeFrontiers();
     physical->appendUses(last_uses);
     CHECK(last_uses != prior_uses);

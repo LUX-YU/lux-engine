@@ -82,14 +82,14 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&, Preparation&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty>
         resolveReferences(const MeshInstanceData&, std::uint32_t frame) const noexcept;
         [[nodiscard]] const InstanceRecord& instanceRecord(const Entry&) const noexcept;
         void invalidateSelection() noexcept;
         void publishBuffers(std::uint32_t slot) noexcept;
         void adoptFrameBuffers(std::uint32_t slot) noexcept;
-        void finishFramePreparation(std::uint32_t slot, RenderResult<void>) noexcept;
+        void finishFramePreparation(const ReplicaSettlement&) noexcept;
         void release(GpuPage&) noexcept;
         void release(PageTable&) noexcept;
         void mark(std::uint32_t frame, std::uint32_t record, std::uint8_t fields) noexcept;

@@ -382,8 +382,9 @@ namespace lux::render::runtime_detail
         std::vector<std::uint32_t> data_slots(definition.cpu_data.size(), kGraphInvalidIndex);
         std::vector<std::uint32_t> buffer_slots(source.resources().size(), kGraphInvalidIndex);
         std::vector<std::uint32_t> snapshot_slots(definition.snapshots.size(), kGraphInvalidIndex);
-        for (auto producer : definition.live_order)
+        for (std::uint32_t dense = 0; dense < definition.live_order.size(); ++dense)
         {
+            const auto producer = definition.live_order[dense];
             for (auto input : definition.producers[producer].declaration.storage_inputs)
             {
                 auto& slot = snapshot_slots[input.index];
@@ -405,7 +406,7 @@ namespace lux::render::runtime_detail
                 buffer_slots[output.index] = static_cast<std::uint32_t>(plan.buffers.size());
                 plan.buffers.push_back({
                     output.index, buffer->minimum_bytes, buffer->maximum_bytes, buffer->upload,
-                    executable.resources()[output.index].memory_used
+                    executable.resources()[output.index].memory_used, dense
                 });
             }
         }

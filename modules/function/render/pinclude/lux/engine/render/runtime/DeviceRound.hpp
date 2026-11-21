@@ -54,7 +54,7 @@ namespace lux::render::runtime_detail
         std::uint64_t revision = 0;
         std::vector<Job> jobs;
         std::vector<Relation> relations;
-        std::vector<detail::StorageFrameBinding> storages;
+        std::vector<ResourceInstanceId> storages;
         // Reserved from the structural bounds and reused for the next device round.
         std::vector<Selection> selection;
         std::vector<std::uint32_t> blocked, ordered;
@@ -88,7 +88,7 @@ namespace lux::render::runtime_detail
         std::vector<detail::RenderGraphInstance*> instances;
         std::size_t run_count = 0;
         detail::SubmissionFrontiers target_uses;
-        std::vector<detail::StorageFrameBinding> storages;
+        std::vector<ResourceInstanceId> storages;
         std::vector<detail::SubmissionOrder> job_order;
 
         std::size_t preparation_cursor = 0;

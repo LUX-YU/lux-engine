@@ -1171,12 +1171,14 @@ by the frame owner through `recordPreservingCopies`, including its existing sour
 Uploader continues to own staging pages and transfer command windows; GraphInstance owns graph command resources.
 Both submit through the existing SubmissionQueue and NativeExecution with the same accepted/rejected/unknown facts.
 
-The active round borrows the device’s reusable Preparation workspace. Resource and producer preparation receive it
-alongside the Uploader, and register replica settlement with `Preparation::onSubmitted`. Uploader first commits/cancels its
-staging ranges; the frame owner then delivers the native result through `finishCallbacks`. Callbacks appended
-during delivery wait for a subsequent settlement. Reentrant settlement and destruction with pending callbacks
-are ownership errors. Each accepted frame-copy receipt names the physical queue, serial and staged range count.
-FrameProgress adopts that point before staging is settled and Resource or producer callbacks run.
+The active frame tracks Resource participants by instance ID and Producer uploads by Job generation and linked
+buffer slot. Registered Resource operations receive a slot and epoch at preparation. Each attempted participant
+receives a settlement, including zero-copy attempts and attempts that staged a prefix before failing. Return
+false from preparation when publishing a binding during settlement is required before its next use.
+
+Each accepted frame-copy receipt names the physical queue, serial and staged range count. FrameProgress adopts
+that point before staging and participants settle. Resource revisions become reusable only after successful
+settlement. A failed frame copy restores staged dirtiness while the Resource retains its authoritative values.
 
 Uploader retains source-byte credits, staging reservations and transfer command windows. Independent Mesh and Texture
 uploads progress during recording and when no Job is ready. Each accepted prefix keeps its queue frontier.

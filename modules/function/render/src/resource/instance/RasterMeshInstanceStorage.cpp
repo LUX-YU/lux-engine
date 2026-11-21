@@ -1,5 +1,4 @@
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
@@ -1005,8 +1004,7 @@ namespace lux::render::detail
     RenderResult<bool>
     RasterMeshInstanceStorage::prepareFrame(
         std::uint32_t frame,
-        ResourceUploader& uploads,
-        Preparation& preparation
+        ResourceUploader& uploads
     ) noexcept
     {
         if (frame >= frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
@@ -1023,7 +1021,6 @@ namespace lux::render::detail
             return true;
         }
         bool ready = true;
-        bool copied_any = false;
         // Every source is authoritative CPU data or an address table for this physical slice.
         // The selected masks are bounded by the current staging window, never all live records.
         auto stage = [&](DirtyRanges& dirty,
@@ -1061,7 +1058,6 @@ namespace lux::render::detail
                         {
                             return false;
                         }
-                        copied_any = true;
                         dirty.detachRange(accepted, first, records);
                         first += records;
                         count -= records;
@@ -1080,25 +1076,6 @@ namespace lux::render::detail
             }
             return true;
         };
-        // Register only real work, still before the caller can submit this synchronous segment.
-        // This also runs on failure so any already prepared ranges receive the failed acknowledgement.
-        cxx::scope_exit register_ack(
-            [&]() noexcept
-            {
-                if (!copied_any)
-                {
-                    return;
-                }
-                preparation.onSubmitted(
-                    this,
-                    [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
-                    {
-                        auto& storage = *static_cast<RasterMeshInstanceStorage*>(value);
-                        storage.finishFramePreparation(frame, accepted);
-                    }
-                );
-            }
-        );
         if (slice.table)
         {
             auto& table = *slice.table;
@@ -1244,8 +1221,11 @@ namespace lux::render::detail
         publishBuffers(frame);
     }
 
-    void RasterMeshInstanceStorage::finishFramePreparation(std::uint32_t frame, RenderResult<void> accepted) noexcept
+    void RasterMeshInstanceStorage::finishFramePreparation(const ReplicaSettlement& settlement) noexcept
     {
+        if (!settlement.copies.count) return;
+        const auto frame = settlement.frame.slot;
+        const bool accepted = !settlement.error.type;
         auto& slice = frames_->slices[frame];
         for (std::size_t field = 0; field < kStride.size(); ++field)
         {
@@ -1354,8 +1334,8 @@ namespace lux::render::detail
                 return static_cast<RasterMeshInstanceStorage*>(value)
                     ->resolve(plan, *static_cast<const MeshInstanceBinding*>(argument), subscription, output);
             },
-            [](void* value, std::uint32_t frame, ResourceUploader& uploads, Preparation& preparation) noexcept
-            { return static_cast<RasterMeshInstanceStorage*>(value)->prepareFrame(frame, uploads, preparation); },
+            [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
+            { return static_cast<RasterMeshInstanceStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
             { return &static_cast<const RasterMeshInstanceStorage*>(value)->preparation_revision_; },
             [](const void* value, std::uint32_t projection) noexcept
@@ -1363,7 +1343,9 @@ namespace lux::render::detail
             [](void* value, std::uint32_t projection, const VGraphResourceDesc& plan,
                StorageSubscription& node, std::span<ResourceInput> output) noexcept
             { return static_cast<RasterMeshInstanceStorage*>(value)->resolveGraphImport(projection, plan, node, output); },
-            &snapshot
+            &snapshot,
+            [](void* value, const ReplicaSettlement& settlement) noexcept
+            { static_cast<RasterMeshInstanceStorage*>(value)->finishFramePreparation(settlement); }
         };
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMeshInstanceStorage>>

@@ -56,15 +56,12 @@ namespace lux::render
                 const auto* factory = runtime_->resources_.factory(runtime_->resources_.declarationOf(storage));
                 const auto* ops = factory->storage()->bindings();
                 if (!ops || !ops->prepareFrame) continue;
-                auto* native = runtime_->resources_.resourceInstance(storage);
                 ids.push_back(storage);
-                inputs.storages.push_back({
-                    native, ops, storage, ops->preparationRevision ? ops->preparationRevision(native) : nullptr
-                });
+                inputs.storages.push_back(storage);
             }
         }
-        std::ranges::sort(inputs.storages, {}, [](const auto& use) noexcept { return storageOrder(use.identity); });
-        const auto duplicates = std::ranges::unique(inputs.storages, {}, &detail::StorageFrameBinding::identity);
+        std::ranges::sort(inputs.storages, {}, storageOrder);
+        const auto duplicates = std::ranges::unique(inputs.storages);
         inputs.storages.erase(duplicates.begin(), duplicates.end());
         const auto count = inputs.jobs.size();
         for (std::uint32_t consumer = 0; consumer < count; ++consumer)
@@ -84,8 +81,7 @@ namespace lux::render
             }
             for (auto storage : storage_ids[consumer])
             {
-                const auto found = std::ranges::lower_bound(inputs.storages, storageOrder(storage), {},
-                    [](const auto& use) noexcept { return storageOrder(use.identity); });
+                const auto found = std::ranges::lower_bound(inputs.storages, storageOrder(storage), {}, storageOrder);
                 entry.storages.push_back(static_cast<std::uint32_t>(found - inputs.storages.begin()));
             }
         }

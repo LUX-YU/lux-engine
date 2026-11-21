@@ -1,7 +1,6 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/resource/transform/TransformStorage.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
@@ -86,28 +85,18 @@ namespace lux::render::detail
     }
 
     RenderResult<bool> TransformStorage::prepareFrame(
-        std::uint32_t frame, ResourceUploader& uploader, Preparation& preparation
+        std::uint32_t frame, ResourceUploader& uploader
     ) noexcept
     {
         if (frame >= frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& replica = replicas_[frame];
         if (auto ready = ensureReplica(replica); !ready) return cxx::unexpected(ready.error());
         auto* binding = replica.candidate ? replica.candidate : replica.binding;
-        bool staged = false;
-        cxx::scope_exit register_callback([&]() noexcept
-        {
-            if (!staged) return;
-            preparation.onSubmitted(this, [](void* owner, std::uint32_t slot, RenderResult<void> result) noexcept
-            {
-                static_cast<TransformStorage*>(owner)->finishPreparation(slot, result);
-            });
-        });
         if (replica.table_dirty)
         {
             const auto bytes = std::as_bytes(std::span(replica.addresses));
             auto copied = uploader.stageBuffer({binding, 0, bytes}, sizeof(std::uint64_t));
             if (!copied) return cxx::unexpected(copied.error());
-            staged = *copied != 0;
             if (*copied != bytes.size()) return cxx::unexpected(RenderError{kDeviceCapacity});
             replica.table_staged = true;
         }
@@ -129,7 +118,6 @@ namespace lux::render::detail
                     return false;
                 }
                 if (*copied != bytes.size()) std::terminate();
-                staged = true;
                 replica.dirty.detachRange(replica.staged, first, count);
                 return true;
             }
@@ -153,8 +141,11 @@ namespace lux::render::detail
         };
     }
 
-    void TransformStorage::finishPreparation(std::uint32_t frame, RenderResult<void> result) noexcept
+    void TransformStorage::finishPreparation(const ReplicaSettlement& settlement) noexcept
     {
+        if (!settlement.copies.count) return;
+        const auto frame = settlement.frame.slot;
+        const bool result = !settlement.error.type;
         auto& replica = replicas_[frame];
         replica.dirty.finishSelection(replica.staged, bool(result));
         if (std::exchange(replica.table_staged, false) && result)

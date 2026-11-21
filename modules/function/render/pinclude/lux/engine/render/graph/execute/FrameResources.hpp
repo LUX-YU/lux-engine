@@ -127,11 +127,9 @@ namespace lux::render::detail
         std::vector<nri::Buffer*> buffers;
         struct PreparedBufferReplica final
         {
-            RenderGraphInstance* owner = nullptr;
             nri::Buffer* buffer = nullptr;
             std::uint64_t capacity = 0;
             std::uint64_t accepted_revision = 0, accepted_size = 0;
-            std::uint64_t pending_revision = 0, pending_size = 0;
             std::size_t staged_bytes = 0;
         };
         std::vector<PreparedBufferReplica> prepared_buffers;

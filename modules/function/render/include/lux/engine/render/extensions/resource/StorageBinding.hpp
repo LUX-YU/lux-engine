@@ -5,6 +5,7 @@
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
@@ -16,7 +17,6 @@
 namespace lux::render::detail
 {
     class ResourceUploader;
-    class Preparation;
 
     // Intrusive, non-owning change relationship. The consumer embeds this node in its actual
     // record; the Storage keeps only the list head. Heads and linked consumers have stable addresses.
@@ -166,14 +166,32 @@ namespace lux::render::detail
         }
     };
 
+    struct ReplicaFrame final
+    {
+        std::uint32_t slot;
+        std::uint64_t epoch;
+    };
+
+    struct ReplicaCopyRange final
+    {
+        std::size_t first, count;
+    };
+
+    struct ReplicaSettlement final
+    {
+        ReplicaFrame frame;
+        ReplicaCopyRange copies;
+        SubmissionPoint accepted_copy;
+        RenderError error;
+    };
+
     struct StorageBindingOps final
     {
         using Resolve = RenderResult<
             void> (*)(void*, const VGraphResourceDesc&, const void*, StorageSubscription&, std::span<ResourceInput>) noexcept;
         Resolve resolve = nullptr;
-        // Freeze all dirty data or return a capacity error. False only awaits acceptance of a complete
-        // replacement before its binding can be published; it never requests another partial copy window.
-        using PrepareFrame = RenderResult<bool> (*)(void*, std::uint32_t, ResourceUploader&, Preparation&) noexcept;
+        // Begin one preparation attempt on the device owner. False requests another attempt after progress.
+        using PrepareFrame = RenderResult<bool> (*)(void*, ReplicaFrame, ResourceUploader&) noexcept;
         PrepareFrame prepareFrame = nullptr;
         // Cold borrow. The producer advances it before any attempt that may dirty a replica,
         // including a failed upload which leaves repair work. No callback is needed to read it.
@@ -188,14 +206,10 @@ namespace lux::render::detail
         ) noexcept;
         ResolveGraphImport resolveGraphImport = nullptr;
         const StorageSnapshotOps* cpu_snapshot = nullptr;
+
+        // Each attempted preparation settles once, including zero-copy and partially staged failures.
+        // A nonzero accepted_copy is the native receipt for this participant's staged ranges.
+        void (*settleFrame)(void*, const ReplicaSettlement&) noexcept = nullptr;
     };
 
-    // A cold-qualified preparation borrow. The active execution list owns its lifetime.
-    struct StorageFrameBinding final
-    {
-        void* storage;
-        const StorageBindingOps* ops;
-        ResourceInstanceId identity;
-        const std::uint64_t* preparation_revision = nullptr;
-    };
 } // namespace lux::render::detail

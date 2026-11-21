@@ -3,7 +3,6 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
@@ -475,7 +474,6 @@ namespace lux::render::detail
         for (auto& frame : frames_)
         {
             frame.prepared_buffers.resize(plan.buffers.size());
-            for (auto& replica : frame.prepared_buffers) replica.owner = this;
         }
         producers_ = std::move(producers);
         program_producers_ = std::move(program_producers);
@@ -694,7 +692,7 @@ namespace lux::render::detail
     }
 
     RenderResult<bool> RenderGraphInstance::stagePreparedBuffers(
-        std::uint32_t slot, ResourceUploader* uploads, Preparation& preparation
+        std::uint32_t slot, ResourceUploader* uploads, std::vector<PreparedBufferCopy>& copies
     ) noexcept
     {
         auto& replicas = frames_[slot].prepared_buffers;
@@ -737,32 +735,42 @@ namespace lux::render::detail
             }
             if (replica.staged_bytes == size) continue;
 
-            auto staged = uploads->stageBufferPrefix({
-                replica.buffer, replica.staged_bytes, bytes.subspan(replica.staged_bytes)
-            });
+            const auto first = uploads->stagedFrameCopyCount();
+            const auto offset = replica.staged_bytes;
+            auto staged = uploads->stageBufferPrefix({replica.buffer, offset, bytes.subspan(offset)});
             if (!staged) return cxx::unexpected(staged.error());
             if (*staged == 0) return false;
             replica.staged_bytes += *staged;
-            replica.pending_revision = input.revision;
-            replica.pending_size = size;
-            preparation.onSubmitted(&replica, [](void* value, std::uint32_t, RenderResult<void> result) noexcept
-            {
-                auto& completed = *static_cast<FrameResources::PreparedBufferReplica*>(value);
-                if (result)
-                {
-                    auto& owner = *completed.owner;
-                    auto& device = *owner.session_;
-                    auto& queue = device.queue();
-                    owner.uses_.accept(device.submissionPoint(device.queueIndex(queue), queue.submitted()));
-                    // An accepted prefix can overwrite bytes of the previous revision.
-                    const bool complete = completed.staged_bytes == completed.pending_size;
-                    completed.accepted_revision = complete ? completed.pending_revision : 0;
-                    completed.accepted_size = complete ? completed.pending_size : 0;
-                }
+            copies.push_back({
+                contract.producer,
+                static_cast<std::uint32_t>(i),
+                {first, uploads->stagedFrameCopyCount() - first},
+                offset,
+                size,
+                input.revision
             });
             if (replica.staged_bytes != size) return false;
             setResource(contract.resource, slot, {replica.buffer, 0, size});
         }
         return true;
+    }
+
+    void RenderGraphInstance::settlePreparedBuffer(
+        std::uint32_t slot, const PreparedBufferCopy& copy, SubmissionPoint accepted, RenderError error
+    ) noexcept
+    {
+        auto& replica = frames_[slot].prepared_buffers[copy.buffer];
+        if (preparation_plan_->buffers[copy.buffer].producer != copy.producer) std::terminate();
+        if (error.type)
+        {
+            replica.staged_bytes = copy.offset;
+            return;
+        }
+        if (!accepted.serial) std::terminate();
+        uses_.accept(accepted);
+        // An accepted prefix can overwrite bytes of the previous revision.
+        const bool complete = replica.staged_bytes == copy.size;
+        replica.accepted_revision = complete ? copy.revision : 0;
+        replica.accepted_size = complete ? copy.size : 0;
     }
 } // namespace lux::render::detail

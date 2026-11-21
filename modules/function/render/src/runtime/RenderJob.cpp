@@ -614,6 +614,7 @@ namespace lux::render
         auto* previous = job.execution.get();
         if (auto published = job.control.publishStart(reservation.start_serial); !published)
             co_return AckResponse{published.error()};
+        candidate->instance.bindPreparationOwner(id, job.control.executionGeneration());
         targetState(target).writer = id;
         if (previous && previous->target != target_id)
         {

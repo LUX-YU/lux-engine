@@ -155,24 +155,3 @@ foreach(case IN ITEMS reset move assign destroy missing-read)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/CheckFrameRejection.cmake"
     )
 endforeach()
-
-add_executable(preparation_callbacks Preparation.cpp)
-
-target_link_libraries(preparation_callbacks PRIVATE lux::engine::function::render_extensions)
-
-target_compile_features(preparation_callbacks PRIVATE cxx_std_20)
-
-if(MSVC)
-    target_compile_options(preparation_callbacks PRIVATE /utf-8 /permissive- /Zc:__cplusplus /GR-)
-endif()
-
-add_test(NAME installed.render.preparation_callbacks COMMAND preparation_callbacks)
-
-foreach(case IN ITEMS pending reenter)
-    add_test(NAME installed.render.preparation_${case}
-        COMMAND ${CMAKE_COMMAND}
-            -DPROBE=$<TARGET_FILE:preparation_callbacks>
-            -DCASE=${case}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/CheckFrameRejection.cmake"
-    )
-endforeach()

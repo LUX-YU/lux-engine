@@ -1,5 +1,4 @@
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
@@ -611,25 +610,10 @@ namespace lux::render::detail
     RenderResult<bool>
     DirectLightingStorage::prepareFrame(
         std::uint32_t frame,
-        ResourceUploader& uploads,
-        Preparation& preparation
+        ResourceUploader& uploads
     ) noexcept
     {
         if (frame >= frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
-        bool progress = false;
-        cxx::scope_exit submit(
-            [&]() noexcept
-            {
-                if (progress)
-                {
-                    preparation.onSubmitted(
-                        this,
-                        [](void* value, std::uint32_t f, RenderResult<void> result) noexcept
-                        { static_cast<DirectLightingStorage*>(value)->finishPreparation(f, result); }
-                    );
-                }
-            }
-        );
         bool ready = true;
         for (std::uint32_t k = 0; k < arrays_.size(); ++k)
         {
@@ -684,7 +668,6 @@ namespace lux::render::detail
                     }
                     const auto accepted = static_cast<std::uint32_t>(*result / strides[k]);
                     slice.dirty.detachRange(slice.accepted, first, accepted);
-                    progress |= accepted != 0;
                     return accepted == count;
                 }
             );
@@ -701,8 +684,11 @@ namespace lux::render::detail
         return ready;
     }
 
-    void DirectLightingStorage::finishPreparation(std::uint32_t frame, RenderResult<void> accepted) noexcept
+    void DirectLightingStorage::finishPreparation(const ReplicaSettlement& settlement) noexcept
     {
+        if (!settlement.copies.count) return;
+        const auto frame = settlement.frame.slot;
+        const bool accepted = !settlement.error.type;
         for (std::uint32_t k = 0; k < arrays_.size(); ++k)
         {
             auto& slice = arrays_[k].frames[frame];
@@ -739,8 +725,8 @@ namespace lux::render::detail
                 return static_cast<DirectLightingStorage*>(value)
                     ->resolve(resource, *static_cast<const DirectLightingBinding*>(argument), node, output);
             },
-            [](void* value, std::uint32_t frame, ResourceUploader& uploads, Preparation& preparation) noexcept
-            { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame, uploads, preparation); },
+            [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
+            { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
             { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; },
             [](const void*, std::uint32_t projection) noexcept -> RenderResult<StorageGraphImport>
@@ -757,7 +743,9 @@ namespace lux::render::detail
                     resource, DirectLightingBinding{static_cast<EDirectLightingBuffer>(projection)}, node, output
                 );
             },
-            &snapshot
+            &snapshot,
+            [](void* value, const ReplicaSettlement& settlement) noexcept
+            { static_cast<DirectLightingStorage*>(value)->finishPreparation(settlement); }
         };
         using Created = RenderResult<std::unique_ptr<DirectLightingStorage>>;
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept -> Created

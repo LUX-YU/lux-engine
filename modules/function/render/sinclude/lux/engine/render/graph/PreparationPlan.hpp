@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/extensions/execution/InstanceDataPrototype.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <vector>
 
 namespace lux::render::detail
@@ -25,6 +26,14 @@ namespace lux::render::detail
         std::vector<std::uint32_t> program_snapshots;
     };
 
+    struct PreparedBufferCopy final
+    {
+        std::uint32_t producer, buffer;
+        ReplicaCopyRange ranges;
+        std::size_t offset, size;
+        std::uint64_t revision;
+    };
+
     struct PreparationPlan final
     {
         struct RasterBindings final
@@ -39,6 +48,7 @@ namespace lux::render::detail
             std::uint64_t minimum_bytes, maximum_bytes;
             bool upload;
             bool used;
+            std::uint32_t producer;
         };
 
         struct Snapshot final

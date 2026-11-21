@@ -14,6 +14,8 @@
 namespace lux::render::detail
 {
     class DeviceSession;
+    class FrameOperation;
+    class RenderGraphInstance;
     struct StagingRange;
     class StagingArena;
 
@@ -147,6 +149,8 @@ namespace lux::render::detail
         }
 
     private:
+        friend class FrameOperation;
+        friend class RenderGraphInstance;
         [[nodiscard]] std::size_t stagedFrameCopyCount() const noexcept;
         [[nodiscard]] bool canBeginCommands(const SubmissionQueue&) const noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;

@@ -58,8 +58,16 @@ namespace lux::render::detail
             std::vector<RasterOwners>
         ) noexcept;
         [[nodiscard]] RenderResult<void> prepareProducers(std::uint32_t frame_slot) noexcept;
-        [[nodiscard]] RenderResult<bool>
-        stagePreparedBuffers(std::uint32_t frame_slot, ResourceUploader*, Preparation&) noexcept;
+        void bindPreparationOwner(RenderJobId job, std::uint64_t generation) noexcept
+        {
+            preparation_job_ = job;
+            preparation_generation_ = generation;
+        }
+
+        [[nodiscard]] RenderResult<bool> stagePreparedBuffers(
+            std::uint32_t frame, ResourceUploader*, std::vector<PreparedBufferCopy>&
+        ) noexcept;
+        void settlePreparedBuffer(std::uint32_t, const PreparedBufferCopy&, SubmissionPoint, RenderError) noexcept;
         void selectViewParameters(const ViewGpuParameters& value, std::uint64_t revision) noexcept
         {
             view_parameters_ = {value, revision};
@@ -340,6 +348,8 @@ namespace lux::render::detail
         std::vector<std::unique_ptr<DynamicRasterPrograms>> dynamic_raster_programs_;
         std::vector<PreparedBytes> cpu_data_;
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;
+        RenderJobId preparation_job_;
+        std::uint64_t preparation_generation_ = 0;
         std::uint64_t preparation_revision_ = 0;
         std::span<const LinkedUniformBlock> uniform_blocks_;
         PreparedCpuValue<ViewGpuParameters> view_parameters_{};

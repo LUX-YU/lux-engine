@@ -85,8 +85,8 @@ namespace lux::render::detail
         template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>> write(Input) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(const VGraphResourceDesc&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
-        void finishFramePreparation(std::uint32_t frame, RenderResult<void>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
+        void finishFramePreparation(const ReplicaSettlement&) noexcept;
         void markDirty(Page&, std::uint32_t frame, std::uint32_t record) noexcept;
         void removeDirty(Page&, std::uint32_t frame) noexcept;
         [[nodiscard]] RenderResult<Page*> createPage(Table&) noexcept;

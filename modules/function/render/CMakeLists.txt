@@ -104,7 +104,6 @@ set(render_sources
     src/graph/Shader.cpp
     src/graph/RasterProgram.cpp
     src/graph/ShaderInterface.cpp
-    src/upload/Preparation.cpp
     src/upload/ResourceUploader.cpp
     src/upload/StagingArena.cpp
     src/device/BufferArena.cpp

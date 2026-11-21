@@ -190,8 +190,8 @@ namespace lux::render::detail
                StorageSubscription& subscription,
                std::span<ResourceInput> output) noexcept
             { return static_cast<TransformStorage*>(value)->resolve(plan, subscription, output); },
-            [](void* value, std::uint32_t frame, ResourceUploader& uploads, Preparation& preparation) noexcept
-            { return static_cast<TransformStorage*>(value)->prepareFrame(frame, uploads, preparation); },
+            [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
+            { return static_cast<TransformStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept { return &static_cast<const TransformStorage*>(value)->revision_; },
             [](const void* value, std::uint32_t projection) noexcept -> RenderResult<StorageGraphImport>
             {
@@ -216,7 +216,10 @@ namespace lux::render::detail
                 if (projection != static_cast<std::uint32_t>(expected))
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 return owner.resolve(plan, subscription, output);
-            }
+            },
+            nullptr,
+            [](void* value, const ReplicaSettlement& settlement) noexcept
+            { static_cast<TransformStorage*>(value)->finishPreparation(settlement); }
         };
         return makeResourceRegistration<TransformResource, TransformStorage, createTransformStorage>(
             nullptr, &binding, commands, frame_call

@@ -1,6 +1,7 @@
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
@@ -11,8 +12,9 @@ namespace lux::render::detail
     FrameOperation::Workspace::Workspace(
         std::uint32_t slots, std::size_t queues, std::size_t preparation_capacity
     ) noexcept
-        : submissions(slots, queues), preparation(preparation_capacity), replicas(slots)
+        : submissions(slots, queues), replicas(slots)
     {
+        resource_participants.reserve(preparation_capacity);
     }
 
     FrameOperation::FrameOperation(
@@ -85,36 +87,65 @@ namespace lux::render::detail
         if (uploads_) uploads_->reservePreparationStaging(false);
     }
 
-    void FrameOperation::settlePreparation(RenderResult<void> result) noexcept
+    void FrameOperation::settlePreparation(SubmissionPoint accepted, std::size_t ranges, RenderError error) noexcept
     {
-        if (result)
-        {
-            auto& replicas = workspace_.replicas[slot()];
-            for (const auto& [index, accepted] : workspace_.staged_replicas) replicas[index] = accepted;
-        }
-        else
+        if (settling_) std::terminate();
+        settling_ = true;
+        cxx::scope_exit settled([&]() noexcept { settling_ = false; });
+        if (error.type)
         {
             if (uploads_) uploads_->cancelFrameCopies();
             for (const auto& selected : workspace_.uniforms)
             {
-                owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, {}, result.error());
+                owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, {}, error);
             }
         }
-        workspace_.staged_replicas.clear();
-        workspace_.preparation.finishCallbacks(slot(), result);
+        const auto locate = [&](ReplicaCopyRange copy_ranges) noexcept -> SubmissionPoint
+        {
+            if (error.type || !copy_ranges.count) return {};
+            const bool outside = copy_ranges.first > ranges || copy_ranges.count > ranges - copy_ranges.first;
+            if (outside || !accepted.serial) std::terminate();
+            return accepted;
+        };
+        const auto frame = replicaFrame();
+        auto& replicas = workspace_.replicas[frame.slot];
+        for (const auto& participant : workspace_.resource_participants)
+        {
+            const auto [storage, ops] = frameStorage(participant.resource);
+            const bool wrong_frame = participant.frame.slot != frame.slot || participant.frame.epoch != frame.epoch;
+            if (!storage || !ops || !ops->settleFrame || wrong_frame) std::terminate();
+            ops->settleFrame(storage, {frame, participant.ranges, locate(participant.ranges), error});
+            if (!error.type && participant.revision)
+                replicas[participant.replica] = {participant.resource, participant.revision};
+        }
+        workspace_.resource_participants.clear();
+        for (std::size_t i = 0; i < workspace_.producer_participants.size(); ++i)
+        {
+            const auto& participant = workspace_.producer_participants[i];
+            auto& instance = *workspace_.producer_instances[i];
+            const bool wrong_execution = instance.preparation_job_ != participant.job ||
+                instance.preparation_generation_ != participant.generation;
+            const bool wrong_frame = participant.frame.slot != frame.slot || participant.frame.epoch != frame.epoch;
+            if (wrong_execution || wrong_frame) std::terminate();
+            for (const auto& copy : std::span{workspace_.prepared_buffers}.subspan(participant.first, participant.count))
+                instance.settlePreparedBuffer(frame.slot, copy, locate(copy.ranges), error);
+        }
+        workspace_.producer_participants.clear();
+        workspace_.producer_instances.clear();
+        workspace_.prepared_buffers.clear();
         copies_flushed_ = false;
     }
 
     void FrameOperation::cancel(RenderError error) noexcept
     {
         if (!active()) return;
-        if (worker_pending_)
+        if (worker_pending_ || settling_)
         {
             if (!cancellation_) cancellation_ = error;
             return;
         }
         cancellation_ = error;
-        settlePreparation(cxx::unexpected(error));
+        settlePreparation({}, 0, error);
         submission_->rejectSuffix(error);
         finish();
     }
@@ -138,16 +169,16 @@ namespace lux::render::detail
         {
             owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, receipt.point, {});
         }
-        settlePreparation({});
+        settlePreparation(receipt.point, receipt.ranges);
         co_return 1;
     }
 
     exec::task<RenderResult<std::uint32_t>> FrameOperation::run(
-        std::span<RenderGraphInstance* const> instances, std::span<const StorageFrameBinding> storages,
+        std::span<RenderGraphInstance* const> instances, std::span<const ResourceInstanceId> storages,
         std::span<const SubmissionOrder> order, std::optional<UniformStateLookup> uniform_state
     ) noexcept
     {
-        if (!active() || worker_pending_)
+        if (!active() || worker_pending_ || settling_)
         {
             co_return cxx::unexpected(RenderError{kFrameContract});
         }
@@ -221,7 +252,7 @@ namespace lux::render::detail
         {
             auto resources = prepareStorages(storages);
             if (!resources) co_return cxx::unexpected(track(resources).error());
-            if (uploads_ && !uploads_->hasFrameCopies()) settlePreparation({});
+            if (uploads_ && !uploads_->hasFrameCopies()) settlePreparation();
             if (*resources == EPreparationStatus::READY) phase_ = EPhase::PRODUCER_SELECTIONS;
         }
         auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
@@ -239,7 +270,16 @@ namespace lux::render::detail
             bool ready = true;
             for (auto* instance : instances)
             {
-                auto staged = instance->stagePreparedBuffers(slot(), uploads_, workspace_.preparation);
+                const auto first = workspace_.prepared_buffers.size();
+                auto staged = instance->stagePreparedBuffers(slot(), uploads_, workspace_.prepared_buffers);
+                const auto count = workspace_.prepared_buffers.size() - first;
+                if (count)
+                {
+                    workspace_.producer_participants.push_back({
+                        instance->preparation_job_, instance->preparation_generation_, replicaFrame(), first, count
+                    });
+                    workspace_.producer_instances.push_back(instance);
+                }
                 if (!staged) co_return cxx::unexpected(track(staged).error());
                 ready = *staged;
                 if (!ready) break;
@@ -280,7 +320,7 @@ namespace lux::render::detail
         }
         waiting_for_gpu_ = false;
         // Every graph now has a frozen view of its FIF replica. Workers own disjoint allocator/CB pairs.
-        settlePreparation({});
+        settlePreparation();
         if (uploads_) uploads_->reservePreparationStaging(false);
         if (auto prepared = submission_->prepare(instances, order); !prepared)
             co_return cxx::unexpected(track(prepared).error());
@@ -353,34 +393,41 @@ namespace lux::render::detail
         return ready ? EPreparationStatus::READY : EPreparationStatus::AWAITING_PROGRESS;
     }
 
-    RenderResult<FrameOperation::EPreparationStatus>
-    FrameOperation::prepareStorages(std::span<const StorageFrameBinding> storages) noexcept
+    std::pair<void*, const StorageBindingOps*> FrameOperation::frameStorage(ResourceInstanceId id) const noexcept
     {
-        auto& replicas = workspace_.replicas[slot()];
+        if (!owner_) return {};
+        auto& resources = owner_->resources().registry();
+        if (resources.deviceOf(id) != &device_) return {};
+        const auto* factory = resources.factory(resources.declarationOf(id));
+        return {resources.resourceInstance(id), factory ? factory->storage()->bindings() : nullptr};
+    }
+
+    RenderResult<FrameOperation::EPreparationStatus>
+    FrameOperation::prepareStorages(std::span<const ResourceInstanceId> storages) noexcept
+    {
+        const auto frame = replicaFrame();
+        auto& replicas = workspace_.replicas[frame.slot];
         bool resources_ready = true;
         replicas.resize(storages.size());
         for (std::size_t i = 0; i < storages.size(); ++i)
         {
-            const auto& use = storages[i];
-            auto& applied = replicas[i];
-            const auto revision = use.preparation_revision ? *use.preparation_revision : 0;
-            const bool already_prepared = revision != 0 && !use.identity.isNull() && applied.identity == use.identity &&
-                                          applied.revision == revision;
-            if (already_prepared)
-            {
-                continue;
-            }
-            auto prepared = use.ops->prepareFrame(use.storage, slot(), *uploads_, workspace_.preparation);
-            if (!prepared)
-            {
-                return cxx::unexpected(prepared.error());
-            }
+            const auto id = storages[i];
+            const auto [storage, ops] = frameStorage(id);
+            if (!storage || !ops || !ops->prepareFrame || !ops->settleFrame)
+                return cxx::unexpected(RenderError{kStorageContract});
+            const auto* source_revision = ops->preparationRevision ? ops->preparationRevision(storage) : nullptr;
+            const auto revision = source_revision ? *source_revision : 0;
+            const auto& applied = replicas[i];
+            const bool already_prepared = revision && applied.identity == id && applied.revision == revision;
+            if (already_prepared) continue;
+
+            const auto first = uploads_->stagedFrameCopyCount();
+            auto& participant = workspace_.resource_participants.emplace_back(id, i, frame, ReplicaCopyRange{first, 0});
+            auto prepared = ops->prepareFrame(storage, frame, *uploads_);
+            participant.ranges.count = uploads_->stagedFrameCopyCount() - first;
+            if (!prepared) return cxx::unexpected(prepared.error());
             resources_ready &= *prepared;
-            if (*prepared && revision)
-            {
-                // Even a zero-copy participant may publish a candidate during settlement.
-                workspace_.staged_replicas.emplace_back(i, PreparedStorage{use.identity, revision});
-            }
+            if (*prepared) participant.revision = revision;
         }
         return resources_ready ? EPreparationStatus::READY : EPreparationStatus::AWAITING_PROGRESS;
     }

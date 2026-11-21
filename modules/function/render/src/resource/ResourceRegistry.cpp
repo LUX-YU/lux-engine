@@ -3,6 +3,7 @@
 #include <exception>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
 
 namespace lux::render
@@ -241,6 +242,12 @@ namespace lux::render
         if (auto valid = validateResourceRegistration(factory); !valid)
         {
             return cxx::unexpected(valid.error());
+        }
+        if (const auto* ops = factory.storage()->bindings())
+        {
+            const bool has_prepare = ops->prepareFrame != nullptr;
+            const bool has_settle = ops->settleFrame != nullptr;
+            if (has_prepare != has_settle) return cxx::unexpected(RenderError{kStorageContract});
         }
         if (!typeId(factory.descriptor->type).isNull())
         {

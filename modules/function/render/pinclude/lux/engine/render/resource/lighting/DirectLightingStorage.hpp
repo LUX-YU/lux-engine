@@ -30,7 +30,7 @@ namespace lux::render::detail
             StorageSubscription&,
             std::span<ResourceInput>
         ) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         [[nodiscard]] std::array<std::uint32_t, 3> counts() const noexcept;
         [[nodiscard]] RenderResult<std::uint64_t> captureShadows(ShadowLightSnapshot&) const noexcept;
 
@@ -66,7 +66,7 @@ namespace lux::render::detail
 
         [[nodiscard]] exec::task<RenderResult<void>>
         write(std::span<const Write>, const std::array<std::uint32_t, 3>& counts) noexcept;
-        void finishPreparation(std::uint32_t, RenderResult<void>) noexcept;
+        void finishPreparation(const ReplicaSettlement&) noexcept;
         void publish(std::uint32_t kind, std::uint32_t frame) noexcept;
         DeviceSession& device_;
         ResourceUploader& uploads_;

@@ -1,5 +1,4 @@
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/extensions/upload/Preparation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
@@ -892,27 +891,9 @@ namespace lux::render::detail
     RenderResult<bool>
     RasterMaterialStorage::prepareFrame(
         std::uint32_t frame,
-        ResourceUploader& uploads,
-        Preparation& preparation
+        ResourceUploader& uploads
     ) noexcept
     {
-        bool copied_any = false;
-        cxx::scope_exit acknowledge(
-            [&]() noexcept
-            {
-                if (copied_any)
-                {
-                    preparation.onSubmitted(
-                        this,
-                        [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
-                        {
-                            auto& storage = *static_cast<RasterMaterialStorage*>(value);
-                            storage.finishFramePreparation(frame, accepted);
-                        }
-                    );
-                }
-            }
-        );
         auto& tables = dirty_pages_[frame];
         for (std::size_t i = 0; i < tables.size();)
         {
@@ -925,7 +906,6 @@ namespace lux::render::detail
             }
             ++i;
             slice.accepted.clear();
-            bool progress = false;
             RenderResult<void> staged;
             const auto word_limit =
                 (uploads.windowByteLimit() / table.definition.stride + 63) / 64 + uploads.windowRegionLimit();
@@ -944,12 +924,10 @@ namespace lux::render::detail
                         staged = cxx::unexpected(copied.error());
                         return false;
                     }
-                    progress = true;
                     slice.dirty.detachRange(slice.accepted, first, count);
                     return true;
                 }
             );
-            copied_any |= progress;
             if (!staged)
             {
                 return cxx::unexpected(staged.error());
@@ -962,8 +940,11 @@ namespace lux::render::detail
         return true;
     }
 
-    void RasterMaterialStorage::finishFramePreparation(std::uint32_t frame, RenderResult<void> accepted) noexcept
+    void RasterMaterialStorage::finishFramePreparation(const ReplicaSettlement& settlement) noexcept
     {
+        if (!settlement.copies.count) return;
+        const auto frame = settlement.frame.slot;
+        const bool accepted = !settlement.error.type;
         auto& dirty = dirty_pages_[frame];
         for (std::size_t index = 0; index < dirty.size();)
         {
@@ -1004,10 +985,13 @@ namespace lux::render::detail
                 return static_cast<RasterMaterialStorage*>(object)
                     ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);
             },
-            [](void* object, std::uint32_t slot, ResourceUploader& uploads, Preparation& preparation) noexcept
-            { return static_cast<RasterMaterialStorage*>(object)->prepareFrame(slot, uploads, preparation); },
+            [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
+            { return static_cast<RasterMaterialStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
-            { return &static_cast<const RasterMaterialStorage*>(value)->preparation_revision_; }
+            { return &static_cast<const RasterMaterialStorage*>(value)->preparation_revision_; },
+            nullptr, nullptr, nullptr,
+            [](void* value, const ReplicaSettlement& settlement) noexcept
+            { static_cast<RasterMaterialStorage*>(value)->finishFramePreparation(settlement); }
         };
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMaterialStorage>>

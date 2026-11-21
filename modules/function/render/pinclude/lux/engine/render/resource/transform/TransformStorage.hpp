@@ -67,11 +67,11 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<nri::Buffer*> allocate(std::uint64_t) noexcept;
         [[nodiscard]] RenderResult<void> ensureReplica(Replica&) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&, Preparation&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(const VGraphResourceDesc&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] ResourceInput binding(std::uint32_t) const noexcept;
-        void finishPreparation(std::uint32_t, RenderResult<void>) noexcept;
+        void finishPreparation(const ReplicaSettlement&) noexcept;
         void destroy(nri::Buffer*) noexcept;
 
         ResourceInstanceId id_;

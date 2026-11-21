@@ -584,19 +584,10 @@ namespace lux::render
         if (!qualified_view) co_return AckResponse{qualified_view.error()};
         auto* view_parameters = *qualified_view;
         auto& target = *runtime_->targets_.find(target_id);
-        const auto& graph_plan = entry.variantPlan(*variant);
-        if (!graph_plan.executable.compatible(targetDescription(target)))
+        const auto& selected = entry.readyVariant(*variant);
+        if (!selected.plan->executable.compatible(targetDescription(target)))
             co_return AckResponse{RenderError{kDeviceArgument}};
-        auto candidate = std::make_unique<JobExecution>(
-            effect_id,
-            device,
-            *variant,
-            entry.session(),
-            entry.frameProgress().frameCount(),
-            graph_plan,
-            target_id,
-            targetOutput(target)
-        );
+        auto candidate = std::make_unique<JobExecution>(entry, selected, target_id, targetOutput(target));
         release_variant.release();
         release_effect.release();
         cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
@@ -681,13 +672,18 @@ namespace lux::render
                 channels.push_back(channel);
             }
             candidate.inputs.emplace_back(
-                resource.id, registry.resourceInstance(resource.id), &call, std::span{columns}.subspan(first)
+                resource.id,
+                registry.resourceInstance(resource.id),
+                &call,
+                JobExecution::Input::ColumnRange{
+                    static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(call.channels.size())
+                }
             );
         }
         auto* previous = job.execution.get();
         const auto same_input = [](const auto& a, const auto& b) noexcept
         {
-            return a.identity == b.identity && std::ranges::equal(a.columns, b.columns);
+            return a.identity == b.identity && a.columns == b.columns;
         };
         const bool can_reuse_layout = previous && previous->target == candidate.target &&
             std::ranges::equal(previous->input_layout.channels(), channels) &&

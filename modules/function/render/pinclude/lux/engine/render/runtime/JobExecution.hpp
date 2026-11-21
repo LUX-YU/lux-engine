@@ -12,6 +12,8 @@
 
 namespace lux::render::detail
 {
+    class DeviceEntry;
+    struct EffectDeviceVariant;
     class ViewParameterStorage;
     struct DeviceVariantTag;
     using DeviceVariantId = cxx::SlotKey<DeviceVariantTag>;
@@ -32,10 +34,7 @@ namespace lux::render::runtime_detail
 
     struct JobExecution final
     {
-        JobExecution(
-            EffectId, DeviceSessionId, detail::DeviceVariantId, detail::DeviceSession&, std::uint32_t frame_count,
-            const JobGraphPlan&, TargetId, detail::TargetOutput
-        ) noexcept;
+        JobExecution(detail::DeviceEntry&, const detail::EffectDeviceVariant&, TargetId, detail::TargetOutput) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;
@@ -84,10 +83,22 @@ namespace lux::render::runtime_detail
             ResourceInstanceId identity;
             void* object;
             const FrameDataCall* call;
-            std::span<const std::uint32_t> columns;
+            struct ColumnRange final
+            {
+                std::uint32_t first, count;
+                bool operator==(const ColumnRange&) const noexcept = default;
+            };
+            ColumnRange columns;
         };
         std::vector<Input> inputs;
         std::vector<std::uint32_t> input_columns;
+
+        [[nodiscard]] std::span<const std::uint32_t> columnsFor(const Input& input) const & noexcept
+        {
+            return std::span(input_columns).subspan(input.columns.first, input.columns.count);
+        }
+        std::span<const std::uint32_t> columnsFor(const Input&) const && = delete;
+
         struct StorageInput final
         {
             detail::RenderGraphInstance* instance;

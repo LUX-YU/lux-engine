@@ -141,6 +141,14 @@ namespace lux::render
         std::uint32_t buffer = 0;
     };
 
+    struct HistoryDeclaration final
+    {
+        VGraphResourceDesc description;
+        HistoryInitialValue initial{};
+        EGraphUse canonical_use = EGraphUse::STORAGE_READ;
+        std::uint32_t distance = 1;
+    };
+
     struct HistoryDescription final
     {
         GraphResourceId previous;

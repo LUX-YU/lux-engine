@@ -31,30 +31,14 @@ namespace lux::render::detail
         }
     }
 
-    void
-    recordUpload(
-        const nri::CoreInterface& core,
-        nri::CommandBuffer& command,
-        nri::Texture& destination,
-        const nri::TextureRegionDesc& region,
-        const nri::Buffer& source,
-        const nri::TextureDataLayoutDesc& layout
-    ) noexcept
+    void recordUpload(const nri::CoreInterface& core, nri::CommandBuffer& command, const UploadRegion& copy) noexcept
     {
-        core.CmdUploadBufferToTexture(command, destination, region, source, layout);
+        core.CmdUploadBufferToTexture(command, copy.destination, copy.region, copy.source, copy.layout);
     }
 
-    void
-    recordReadback(
-        const nri::CoreInterface& core,
-        nri::CommandBuffer& command,
-        nri::Buffer& destination,
-        const nri::TextureDataLayoutDesc& layout,
-        const nri::Texture& source,
-        const nri::TextureRegionDesc& region
-    ) noexcept
+    void recordReadback(const nri::CoreInterface& core, nri::CommandBuffer& command, const ReadbackRegion& copy) noexcept
     {
-        core.CmdReadbackTextureToBuffer(command, destination, layout, source, region);
+        core.CmdReadbackTextureToBuffer(command, copy.destination, copy.layout, copy.source, copy.region);
     }
 
     void

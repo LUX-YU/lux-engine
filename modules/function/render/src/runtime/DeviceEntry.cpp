@@ -85,11 +85,11 @@ namespace lux::render::detail
         return variant;
     }
 
-    const runtime_detail::JobGraphPlan& DeviceEntry::variantPlan(DeviceVariantId id) const noexcept
+    const EffectDeviceVariant& DeviceEntry::readyVariant(DeviceVariantId id) const noexcept
     {
         const auto* variant = variants_.find(id);
         if (!variant || !variant->plan) std::terminate();
-        return *variant->plan;
+        return *variant;
     }
 
     void DeviceEntry::releaseVariant(DeviceVariantId id) noexcept

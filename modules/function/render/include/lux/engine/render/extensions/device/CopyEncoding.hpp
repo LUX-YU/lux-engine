@@ -27,24 +27,25 @@ namespace lux::render::detail
     LUX_RENDER_PUBLIC void recordCopy(const nri::CoreInterface&, nri::CommandBuffer&, const BufferCopyRegion&) noexcept;
     LUX_RENDER_PUBLIC void
     recordCopy(const nri::CoreInterface&, nri::CommandBuffer&, const TextureCopyRegion&) noexcept;
-    LUX_RENDER_PUBLIC void
-    recordUpload(
-        const nri::CoreInterface&,
-        nri::CommandBuffer&,
-        nri::Texture&,
-        const nri::TextureRegionDesc&,
-        const nri::Buffer&,
-        const nri::TextureDataLayoutDesc&
-    ) noexcept;
-    LUX_RENDER_PUBLIC void
-    recordReadback(
-        const nri::CoreInterface&,
-        nri::CommandBuffer&,
-        nri::Buffer&,
-        const nri::TextureDataLayoutDesc&,
-        const nri::Texture&,
-        const nri::TextureRegionDesc&
-    ) noexcept;
+
+    struct UploadRegion final
+    {
+        nri::Texture& destination;
+        nri::TextureRegionDesc region;
+        const nri::Buffer& source;
+        nri::TextureDataLayoutDesc layout;
+    };
+
+    struct ReadbackRegion final
+    {
+        nri::Buffer& destination;
+        nri::TextureDataLayoutDesc layout;
+        const nri::Texture& source;
+        nri::TextureRegionDesc region;
+    };
+
+    LUX_RENDER_PUBLIC void recordUpload(const nri::CoreInterface&, nri::CommandBuffer&, const UploadRegion&) noexcept;
+    LUX_RENDER_PUBLIC void recordReadback(const nri::CoreInterface&, nri::CommandBuffer&, const ReadbackRegion&) noexcept;
 
     // Professional buffer growth preserves source contents. Destinations are already COPY_DESTINATION;
     // final access transitions still belong to the preparation/consumer, not this recording helper.

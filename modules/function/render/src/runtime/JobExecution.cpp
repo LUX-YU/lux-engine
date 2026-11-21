@@ -1,5 +1,6 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
+#include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
@@ -9,18 +10,14 @@
 namespace lux::render::runtime_detail
 {
     JobExecution::JobExecution(
-        EffectId effect_id,
-        DeviceSessionId session,
-        detail::DeviceVariantId variant_id,
-        detail::DeviceSession& device,
-        std::uint32_t frame_count,
-        const JobGraphPlan& plan,
+        detail::DeviceEntry& entry,
+        const detail::EffectDeviceVariant& selected,
         TargetId output,
         detail::TargetOutput physical
     ) noexcept
-        : effect(effect_id), device(session), variant(variant_id), target(output),
-          graph_plan(&plan), executable(plan.executable),
-          instance(device, frame_count, executable, graph_plan->programs, physical)
+        : effect(selected.effect), device(entry.id), variant(selected.id), target(output),
+          graph_plan(selected.plan.get()), executable(graph_plan->executable),
+          instance(entry.session(), entry.frameProgress().frameCount(), executable, graph_plan->programs, physical)
     {
     }
 

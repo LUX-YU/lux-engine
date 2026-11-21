@@ -24,7 +24,7 @@ namespace lux::render
         }
         const auto has_updates = [&](const auto& input) noexcept
         {
-            return std::ranges::any_of(input.columns, [&](auto column) noexcept
+            return std::ranges::any_of(execution.columnsFor(input), [&](auto column) noexcept
             {
                 return packet.column(column).count != 0;
             });
@@ -44,7 +44,7 @@ namespace lux::render
         for (const auto& input : execution.inputs)
         {
             if (!has_updates(input)) continue;
-            if (auto applied = input.call->invoke(input.object, packet, input.columns); !applied) return applied;
+            if (auto applied = input.call->invoke(input.object, packet, execution.columnsFor(input)); !applied) return applied;
         }
         return {};
     }
@@ -80,9 +80,7 @@ namespace lux::render
         }
         if (round.outputs.empty() || !progress.canBegin(entry.session())) return false;
 
-        round.operation.emplace(
-            entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu_scheduler_, true, &entry
-        );
+        round.operation.emplace(entry, cpu_scheduler_);
         auto opened = round.operation->tryBegin();
         if (!opened || !*opened)
         {

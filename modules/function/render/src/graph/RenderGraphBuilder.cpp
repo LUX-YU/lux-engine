@@ -195,14 +195,10 @@ namespace lux::render
         return id;
     }
 
-    RenderResult<HistoryDescription> RenderGraphBuilder::declareHistory(
-        std::string key,
-        VGraphResourceDesc description,
-        HistoryInitialValue initial,
-        EGraphUse canonical_use,
-        std::uint32_t distance
-    ) noexcept
+    RenderResult<HistoryDescription>
+    RenderGraphBuilder::declareHistory(std::string key, HistoryDeclaration declaration) noexcept
     {
+        const auto& [description, initial, canonical_use, distance] = declaration;
         const bool invalid_capacity = candidate_.resources_.size() > kGraphInvalidIndex - 2;
         const bool invalid_use = canonical_use != EGraphUse::SAMPLED && canonical_use != EGraphUse::STORAGE_READ &&
                                  canonical_use != EGraphUse::TRANSFER_SOURCE;

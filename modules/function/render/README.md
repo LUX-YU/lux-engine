@@ -554,11 +554,12 @@ busy while such a window exists; it does not destroy objects referenced by futur
 finish or cancel that window before destroying its borrowed inputs. These checks end at CPU submission completion,
 not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope_.
 
-`declareHistory` creates a Previous/Current pair. `publishHistory` observes the complete resulting version,
+`declareHistory(key, HistoryDeclaration{...})` declares the resource shape, first-frame value, canonical use and
+backwards distance together and creates a Previous/Current pair. `publishHistory` observes the complete resulting version,
 including inherited mip ranges. Distance counts backwards over successful publications. Each bank retains
 the latest samples within that distance and allocates FIF plus distance physical slots.
 Image initial values are explicit; Buffer history currently
-starts at zero and requires a multiple-of-four byte size. The instance owns F+1 physical slots, chooses a free write
+starts at zero and requires a multiple-of-four byte size. The instance chooses a free write
 slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
 does not publish a sample. Descriptor views are created at Start, not on each rotation. Resize replaces only
 History banks whose physical extent changed; other banks retain their allocation and invalidate their samples.
@@ -1204,3 +1205,20 @@ stable slices during synchronous recording; it has no GraphInstance access and p
 queries. Changing author parameter bytes after preparation affects the next preparation, not this recording.
 Physical binding or recording invalidation requires preparation again. The caller retains exclusive access to
 the FIF data through recording and waits for accepted GPU uses before reusing its command allocators.
+
+### C++ parameter limit
+
+Render functions, constructors, factories, lambdas and callback contracts support at most four explicit parameters.
+Use the domain value or the actual owner at the call site. The first StorageBindingOps resolve slot retains its
+Editor consumer signature until their joint migration.
+
+From the repository root, run the source signature check with Python and the pinned grammar packages:
+
+```sh
+python -m pip install tree-sitter==0.26.1 tree-sitter-cpp==0.23.4
+python modules/function/render/test/CheckSignatureArity.py --base <commit-before-change>
+```
+
+The check compares tracked changes and new source files with the supplied commit. It scans source-spelled
+parameter lists, including constructors, lambdas and function pointer types. Compile template and macro consumers
+in the modules and installed SDK builds as well. The default base is HEAD for local uncommitted changes.

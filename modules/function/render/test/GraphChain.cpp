@@ -1581,10 +1581,9 @@ static void historySequence(
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
-    const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}, {}, EGraphUse::STORAGE_READ,
-                                                     distance));
+    const auto history = take(builder.declareHistory("samples", {GraphBufferDesc{16}, {}, EGraphUse::STORAGE_READ, distance}));
     const auto enabled = take(builder.declareCondition("update"));
-    const auto independent = take(builder.declareHistory("independent", GraphBufferDesc{16}));
+    const auto independent = take(builder.declareHistory("independent", {GraphBufferDesc{16}}));
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{52}}));
     const auto valid = take(builder.declareResource({"valid", GraphBufferDesc{4}}));
     std::optional<ResourceVersion> shader_fallback, copy_fallback;
@@ -1728,7 +1727,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
     image.extent.source = EImageExtentSource::TARGET;
     const auto source = take(builder.declareResource({"depth field", image}));
     image.mips = 4;
-    const auto history = take(builder.declareHistory("hzb", image, {{1, 1, 1, 1}}, EGraphUse::SAMPLED));
+    const auto history = take(builder.declareHistory("hzb", {image, {{1, 1, 1, 1}}, EGraphUse::SAMPLED}));
     const auto seed_image = take(builder.declareResource({"initial pyramid", image}));
     const auto seeded = take(builder.addTransferPass(
         "initialize pyramid",
@@ -1976,7 +1975,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
-    const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
+    const auto history = take(builder.declareHistory("samples", {GraphBufferDesc{16}}));
     const auto temporary = take(builder.declareResource({"temporary", GraphBufferDesc{16}}));
     const auto initial = take(builder.declareResource({"initial", GraphBufferDesc{16}}));
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));

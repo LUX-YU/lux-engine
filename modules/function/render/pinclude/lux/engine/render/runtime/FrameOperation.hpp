@@ -55,10 +55,8 @@ namespace lux::render::detail
             std::vector<DescriptorTable::NativeBindingSelection> native_bindings;
         };
 
-        FrameOperation(
-            DeviceSession&, ResourceUploader*, FrameProgress&, Workspace&, execution::CpuScheduler,
-            bool parallel_recording = true, DeviceEntry* owner = nullptr
-        ) noexcept;
+        FrameOperation(DeviceEntry&, execution::CpuScheduler) noexcept;
+        FrameOperation(DeviceSession&, FrameProgress&, Workspace&, execution::CpuScheduler) noexcept;
         ~FrameOperation() noexcept;
         FrameOperation(const FrameOperation&) = delete;
         FrameOperation& operator=(const FrameOperation&) = delete;

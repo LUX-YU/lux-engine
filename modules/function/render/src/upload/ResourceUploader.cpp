@@ -684,7 +684,7 @@ namespace lux::render::detail
             const auto slice_unit = std::lcm(chunk.row_pitch, handoff.slice_alignment);
             const auto slice_pitch = ((chunk.row_pitch * chunk.rows + slice_unit - 1) / slice_unit) * slice_unit;
             const nri::TextureDataLayoutDesc layout{range.offset, chunk.row_pitch, slice_pitch};
-            recordUpload(nri_core, command, target, chunk.region, *range.buffer, layout);
+            recordUpload(nri_core, command, {target, chunk.region, *range.buffer, layout});
         }
         if (chunk.final)
         {

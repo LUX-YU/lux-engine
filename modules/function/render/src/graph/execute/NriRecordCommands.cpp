@@ -430,26 +430,14 @@ namespace lux::render::detail
                                 const auto from = region(operation.source, operation.image_region);
                                 auto layout = pass.copy_layouts[i];
                                 layout.offset += destination.buffer_offset;
-                                recordReadback(
-                                    core, command,
-                                    *destination.buffer,
-                                    layout,
-                                    *source.image,
-                                    from
-                                );
+                                recordReadback(core, command, {*destination.buffer, layout, *source.image, from});
                             }
                             else
                             {
                                 const auto to = region(operation.destination, operation.image_region);
                                 auto layout = pass.copy_layouts[i];
                                 layout.offset += source.buffer_offset;
-                                recordUpload(
-                                    core, command,
-                                    *destination.image,
-                                    to,
-                                    *source.buffer,
-                                    layout
-                                );
+                                recordUpload(core, command, {*destination.image, to, *source.buffer, layout});
                             }
                         }
                     }

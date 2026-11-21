@@ -59,7 +59,7 @@ namespace foundation_test
         {
             if (operation_ && operation_->active()) return true;
             operation_.emplace(
-                device_, nullptr, progress_, workspace_, lux::execution::ExecutionRuntime::instance().cpuScheduler()
+                device_, progress_, workspace_, lux::execution::ExecutionRuntime::instance().cpuScheduler()
             );
             auto opened = operation_->tryBegin();
             return opened && *opened;

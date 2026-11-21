@@ -58,7 +58,7 @@ namespace lux::render
             ResourceVersion current, previous;
             if (needs_history)
             {
-                auto history = builder.declareHistory(key, pyramid, {{1, 1, 1, 1}}, EGraphUse::SAMPLED);
+                auto history = builder.declareHistory(key, {pyramid, {{1, 1, 1, 1}}, EGraphUse::SAMPLED});
                 if (!history) return cxx::unexpected(history.error());
                 previous = {history->previous, 0};
                 current = {history->current, 0};

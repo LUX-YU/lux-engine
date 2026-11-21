@@ -64,7 +64,7 @@ namespace lux::render::detail
         findVariant(EffectId, const EffectOutputDesc&, const runtime_detail::EffectImportContracts&) noexcept;
         [[nodiscard]] EffectDeviceVariant&
         beginVariant(EffectId, const EffectOutputDesc&, const runtime_detail::EffectImportContracts&) noexcept;
-        [[nodiscard]] const runtime_detail::JobGraphPlan& variantPlan(DeviceVariantId) const noexcept;
+        [[nodiscard]] const EffectDeviceVariant& readyVariant(DeviceVariantId) const noexcept;
         void releaseVariant(DeviceVariantId) noexcept;
 
         struct UniformPoolRecord final

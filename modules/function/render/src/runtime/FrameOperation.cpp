@@ -17,17 +17,18 @@ namespace lux::render::detail
         resource_participants.reserve(preparation_capacity);
     }
 
+    FrameOperation::FrameOperation(DeviceEntry& entry, execution::CpuScheduler cpu) noexcept
+        : FrameOperation(entry.session(), entry.frameProgress(), entry.frameWorkspace(), cpu)
+    {
+        uploads_ = entry.uploader();
+        owner_ = &entry;
+    }
+
     FrameOperation::FrameOperation(
-        DeviceSession& device,
-        ResourceUploader* uploads,
-        FrameProgress& progress,
-        Workspace& workspace,
-        execution::CpuScheduler cpu,
-        bool parallel_recording,
-        DeviceEntry* owner
+        DeviceSession& device, FrameProgress& progress, Workspace& workspace, execution::CpuScheduler cpu
     ) noexcept
-        : device_(device), uploads_(uploads), progress_(progress), workspace_(workspace), cpu_(cpu),
-          parallel_recording_(parallel_recording), owner_(owner)
+        : device_(device), uploads_(nullptr), progress_(progress), workspace_(workspace), cpu_(cpu),
+          parallel_recording_(true), owner_(nullptr)
     {
     }
 

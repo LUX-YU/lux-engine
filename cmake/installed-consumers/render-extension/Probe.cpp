@@ -572,7 +572,7 @@ static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string
     if (!readback) return cxx::unexpected(readback.error());
     const GraphBufferDesc description{transfer_bytes};
     const auto history = take(
-        builder.declareHistory("samples", description, {}, EGraphUse::TRANSFER_SOURCE, history_distance)
+        builder.declareHistory("samples", {description, {}, EGraphUse::TRANSFER_SOURCE, history_distance})
     );
     const auto fallback = take(builder.declareResource({"history fallback", description}));
     const auto seeded = take(builder.addTransferPass("initialize history fallback", TransferWork{{

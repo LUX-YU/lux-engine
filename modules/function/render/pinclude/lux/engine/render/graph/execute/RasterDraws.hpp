@@ -69,6 +69,13 @@ namespace lux::render::detail
             nri::VertexBufferDesc buffer;
         };
 
+        [[nodiscard]] std::span<const Section> recordSections() const & noexcept
+        {
+            if (!sections.empty()) return sections;
+            return implicit_section ? std::span(&*implicit_section, 1) : std::span<const Section>{};
+        }
+
+        std::optional<Section> implicit_section;
         bool has_explicit_sections = false;
         std::vector<Section> sections;
         std::vector<RasterDrawPacket> packets;

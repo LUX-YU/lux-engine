@@ -20,7 +20,7 @@ namespace lux::render::detail
             // Graph-local vertex indices cannot describe the physical arrays in a dynamic packet.
             state.vertices = {};
             std::span<const RasterDrawList::Vertex> previous_vertices;
-            for (const auto& section : list.sections)
+            for (const auto& section : list.recordSections())
             {
                 const auto colors = std::span(list.colors).subspan(section.first_color, section.color_count);
                 nri::RenderingDesc rendering{};
@@ -154,7 +154,7 @@ namespace lux::render::detail
         if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
         {
             const auto& draws = *pass.draws;
-            if (draws.sections.empty())
+            if (draws.recordSections().empty())
             {
                 // The complete dynamic stage still observes declared Clear/Load/Store with zero draws.
                 nri::RenderingDesc rendering{};
@@ -166,7 +166,7 @@ namespace lux::render::detail
             }
             else
             {
-                recordRasterDraws(core, pass.shared_descriptors, command, draws, binding_state);
+                recordRasterDraws(core, input.shared_descriptors, command, draws, binding_state);
             }
             return {};
         }

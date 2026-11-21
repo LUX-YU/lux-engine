@@ -336,6 +336,12 @@ resolves Resource borrows once; instance preparation uses those borrows and cont
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
 Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces before releasing the device variant. Physical cleanup uses the Session scope.
 
+Each FIF freezes its physical resource rows and their dependent pass operands before recording.
+Initial preparation fills all rows. Later changes use the compiler's resource-to-pass index, including
+fallback operands and WSI tails. Viewport changes visit the raster passes that inherit the viewport.
+History rotation updates the selected views and initialization commands. A failed freeze retains the
+pending rows for retry and leaves that FIF unavailable to record.
+
 The compiler indexes reusable recording batches by resource. The index includes command operands, fallback
 inputs, attachment views, extents and barriers, including final transitions. Changing a physical binding
 marks each dependent reusable batch dirty once until its next successful recording. The WSI tail is always

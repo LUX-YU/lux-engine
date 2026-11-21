@@ -59,24 +59,20 @@ namespace lux::render
     {
         std::span<const nri::AttachmentDesc> colors;
         nri::AttachmentDesc depth{};
-        nri::DescriptorSet* private_descriptors = nullptr;
         std::span<const detail::VFrozenTransfer> transfers;
         nri::DispatchDesc dispatch{};
         nri::Buffer* indirect_buffer = nullptr;
         std::uint64_t indirect_offset = 0;
-        std::array<nri::DescriptorSet*, 3> shared_descriptors{};
         nri::Viewport viewport{};
         nri::Rect scissor{};
-        nri::DepthBiasDesc depth_bias{};
         const detail::RasterDrawList* draws = nullptr;
         detail::BindingState* bindings = nullptr;
-        bool begin_rendering = false, end_rendering = false, reset_viewport = false;
     };
 
     struct PassRecordInput final
     {
         std::span<const PassResourceInput> resources;
-        std::span<const std::byte> parameters;
+        std::span<nri::DescriptorSet* const, 3> shared_descriptors;
         const PassNativeInput* native = nullptr;
     };
 } // namespace lux::render

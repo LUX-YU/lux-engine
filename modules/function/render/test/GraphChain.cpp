@@ -12,6 +12,7 @@
 #include <fstream>
 #include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include "FrameHarness.hpp"
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
@@ -1666,6 +1667,104 @@ static void cpuQueueCandidates()
     CHECK(batches[2].dependencies.size() == 1 && batches[2].dependencies.front().producer == 0);
 }
 
+static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, std::uint32_t static_count)
+{
+    RenderGraphBuilder builder;
+    for (std::uint32_t i = 0; i < static_count; ++i)
+    {
+        const auto key = "static image " + std::to_string(i);
+        const auto image = take(builder.declareResource({key, GraphImageDesc{4, 4}}));
+        const auto clear = take(builder.addTransferPass(key, TransferWork{{ClearImage{{{image, 0}}}}}));
+        CHECK(builder.exportOutput({clear.written.front()}));
+    }
+    const auto history = take(builder.declareHistory("counter", {GraphBufferDesc{16}}));
+    ComputeWork increment;
+    increment.interface.program = take(builder.addProgram(program(kGraphHistory, backend)));
+    increment.interface.resources = {
+        {"previous_sample", {{history.previous, 0}}}, {"current_sample", {{history.current, 0}, {}, EGraphAccess::WRITE}}
+    };
+    const auto updated = take(builder.addComputePass("increment", std::move(increment)));
+    CHECK(builder.publishHistory(updated.written.front()));
+    const auto output = take(builder.declareResource({"read counter", GraphBufferDesc{16}}));
+    const auto copied = take(builder.addTransferPass("copy counter", TransferWork{{
+        CopyBuffer{{updated.written.front()}, {{output, 0}}}
+    }}));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto color = take(builder.declareResource({"stream color", GraphImageDesc{4, 4}}));
+    RasterWork stream;
+    stream.program = RasterPassTemplate{"local freeze probe"};
+    stream.colors = {{{{color, 0}}}};
+    const auto drawn = take(builder.addRasterPass("stream", std::move(stream)));
+    CHECK(builder.exportOutput({drawn.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    RenderGraphInstance instance(session, 1, plan.executable, plan.programs);
+    CHECK(instance.initialize());
+    FrameHarness frames(session, 1);
+    const std::array instances{&instance};
+    const auto submit = [&]
+    {
+        CHECK(take(runTask(frames.render(instances, {}))) > 0);
+        finishSubmissions(session, frames);
+        CHECK(session.drain());
+    };
+    using Counts = RenderGraphInstance::FrozenPatchCounts;
+    CHECK(take(instance.prepareFrame(0)));
+    CHECK((instance.lastFrozenPatches(0) == Counts{plan.executable.resources().size(), plan.executable.passes().size()}));
+    auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
+    RecordTextureQueries::original = core.GetTextureDesc;
+    RecordTextureQueries::count = 0;
+    core.GetTextureDesc = RecordTextureQueries::get;
+    CHECK(take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{});
+    instance.setViewport({0, 0, 0.5f, 1});
+    CHECK((take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{0, 1}));
+    const auto stream_slot = plan.assembly.source_pass_slots[drawn.pass.index].index;
+    instance.rasterDraws(plan.executable.passes()[stream_slot], 0).parameters.resize(4);
+    CHECK((take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{0, 1}));
+    core.GetTextureDesc = RecordTextureQueries::original;
+    CHECK(RecordTextureQueries::count == 0);
+    submit();
+    CHECK(readHistoryResult<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 1);
+    CHECK(take(instance.prepareFrame(0)));
+    const auto rotation = instance.lastFrozenPatches(0);
+    CHECK((rotation == Counts{2, 2}));
+    const auto original = instance.resourceInput(output, 0);
+    auto short_view = original;
+    short_view.size = 4;
+    instance.setResource(output.index, 0, short_view);
+    CHECK(!instance.prepareFrame(0) && !instance.recordBatch(0, 0));
+    instance.setResource(output.index, 0, original);
+    CHECK((take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{1, 1}));
+    submit();
+    CHECK(readHistoryResult<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 2);
+    if (static_count == 4)
+    {
+        RenderGraphInstance isolated(session, 2, plan.executable, plan.programs);
+        CHECK(isolated.initialize());
+        CHECK(take(isolated.prepareFrame(1)));
+        isolated.setViewport({0, 0, 0.5f, 1});
+        CHECK(take(isolated.prepareFrame(0)));
+        static decltype(core.CmdSetViewports) set_viewports = nullptr;
+        static float width = 0;
+        set_viewports = core.CmdSetViewports;
+        core.CmdSetViewports = [](nri::CommandBuffer& cb, const nri::Viewport* values, std::uint32_t count) noexcept
+        {
+            if (count == 1) width = values[0].width;
+            set_viewports(cb, values, count);
+        };
+        const auto batch = plan.executable.passes()[stream_slot].submission;
+        width = 0;
+        CHECK(isolated.recordBatch(0, batch) && width == 2);
+        width = 0;
+        CHECK(isolated.recordBatch(1, batch) && width == 4);
+        core.CmdSetViewports = set_viewports;
+    }
+    std::printf(
+        "LOCAL FREEZE PASS: static=%u stable=0/0 viewport=0/1 stream=0/1 history=%zu/%zu retry=1/1 "
+        "stable texture queries=0 GPU counter=2\n", static_count, rotation.resources, rotation.passes
+    );
+}
+
 static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend backend)
 {
     TargetDesc target;
@@ -2725,6 +2824,16 @@ int main(int argc, char** argv)
     }
     const auto backend = argc > 2 && std::string_view(argv[2]) == "d3d12"
         ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
+    if (argc > 1 && std::string_view(argv[1]) == "local-freeze")
+    {
+        DeviceOptions options;
+        options.backend = backend;
+        TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+        localFrozenInputs(*session, backend, 4);
+        localFrozenInputs(*session, backend, 32);
+        CHECK(validation.errors == 0);
+        return 0;
+    }
     if (argc > 1 && std::string_view(argv[1]) == "batch-reuse")
     {
         nativeQueueCandidates(validation, backend, true);

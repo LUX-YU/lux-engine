@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/cxx/container/BasicSparseSet.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/execute/HistoryState.hpp>
@@ -72,8 +73,54 @@ namespace lux::render::detail
 
         std::vector<PassResourceInput> record_resources;
         std::vector<RecordPass> record_passes;
-        std::vector<RecordHistoryInitialization> history_initializations;
-        bool record_inputs_valid = false;
+        cxx::BasicSparseSet<std::size_t, RecordHistoryInitialization> history_initializations;
+        // Deduplicate pending slots without scanning the frame. Retain the complete set on freeze failure.
+        class PendingSlots final
+        {
+        public:
+            void initialize(std::size_t count) noexcept
+            {
+                marked_.resize(count);
+                slots_.reserve(count);
+                markAll();
+            }
+
+            void mark(std::uint32_t slot) noexcept
+            {
+                if (marked_[slot]) return;
+                marked_[slot] = 1;
+                slots_.push_back(slot);
+            }
+
+            void markAll() noexcept
+            {
+                for (std::uint32_t i = 0; i < marked_.size(); ++i) mark(i);
+            }
+
+            [[nodiscard]] std::span<const std::uint32_t> slots() const noexcept { return slots_; }
+
+            void clear() noexcept
+            {
+                for (const auto slot : slots_) marked_[slot] = 0;
+                slots_.clear();
+            }
+
+        private:
+            std::vector<std::uint8_t> marked_;
+            std::vector<std::uint32_t> slots_;
+        };
+
+        struct HistoryClear final
+        {
+            std::uint32_t slot = kGraphInvalidIndex;
+            bool initialized = false;
+            bool operator==(const HistoryClear&) const noexcept = default;
+        };
+
+        PendingSlots pending_resources, pending_passes;
+        FrozenPatchCounts last_patches;
+        std::vector<std::array<HistoryClear, 2>> history_clears;
+        PendingSlots pending_history_clears, pending_history_views;
         bool record_ready = false;
 
         std::vector<Binding> bindings;

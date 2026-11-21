@@ -90,7 +90,7 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         for (auto& image : frame.layered_images) image.requested_layers = 0;
 
-        for (std::uint32_t p = 0; p < frame.stream_inputs.size(); ++p)
+        for (const auto p : plan_->binding_plan_->recordings.producer_passes)
         {
             if (!programs_->rasterStream(p)) continue;
             const auto& stream = frame.stream_inputs[p];
@@ -318,7 +318,7 @@ namespace lux::render::detail
 
         auto& candidate = frame.stream_scratch;
         auto& inputs = frame.stream_binding_inputs;
-        for (std::uint32_t p = 0; p < frame.stream_inputs.size(); ++p)
+        for (const auto p : plan_->binding_plan_->recordings.producer_passes)
         {
             const auto* stream = programs_->rasterStream(p);
             if (!stream) continue;

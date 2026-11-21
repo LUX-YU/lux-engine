@@ -203,9 +203,13 @@ namespace lux::render::detail
                 extent(access.version.resource);
             };
             const auto& pass = recording.passes[p];
-            if (const auto* raster = recording.rasterScope(pass))
+            if (const auto* slot = std::get_if<RasterCommandSlot>(&pass.commands))
             {
+                auto* raster = &recording.raster_scopes[slot->index];
                 const auto& group = recording.groups[pass.rendering_group];
+                const auto* previous = p ? recording.rasterScope(recording.passes[p - 1]) : nullptr;
+                raster->reset_viewport = group.first_pass == p ||
+                    (previous && (previous->viewport != raster->viewport || previous->exclusive));
                 for (std::uint32_t i = 0; i < group.colors.size(); ++i)
                 {
                     view(group.colors[i].access, i, EImageViewTarget::COLOR);

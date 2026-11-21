@@ -191,6 +191,14 @@ namespace lux::render::detail
         // Explicit dirty notification for producers that opted out of rasterDraws' conservative default.
         void invalidateRasterDraws(const CompiledPass&, std::uint32_t frame_slot) noexcept;
 
+        struct FrozenPatchCounts final
+        {
+            std::size_t resources = 0, passes = 0;
+            bool operator==(const FrozenPatchCounts&) const noexcept = default;
+        };
+
+        [[nodiscard]] FrozenPatchCounts lastFrozenPatches(std::uint32_t slot) const noexcept;
+
     private:
         friend class FrameOperation;
         friend class SubmissionOperation;
@@ -258,6 +266,11 @@ namespace lux::render::detail
         RenderResult<void> prepareRasterSections(std::uint32_t slot) noexcept;
         RenderResult<void>
         materializeRasterSections(std::uint32_t slot, std::uint32_t pass, const OwnedRasterStream&) noexcept;
+        void linkRecordInputs(FrameResources&) noexcept;
+        void patchRecordResource(FrameResources&, std::uint32_t resource) noexcept;
+        [[nodiscard]] RenderResult<void> patchRecordPass(FrameResources&, std::uint32_t pass) noexcept;
+        void freezeHistoryInitializations(FrameResources&) const noexcept;
+        void patchDrawSection(FrameResources&, std::uint32_t pass) noexcept;
         void prepareStreamedDraws(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> freezeRecordInput(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;

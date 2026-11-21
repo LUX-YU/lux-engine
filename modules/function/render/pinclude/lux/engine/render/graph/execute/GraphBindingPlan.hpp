@@ -67,14 +67,20 @@ namespace lux::render::detail
             std::uint32_t batch, list;
         };
 
-        [[nodiscard]] std::span<const std::uint32_t> batchesFor(std::uint32_t resource) const noexcept
+        struct ResourceIndex final
         {
-            const auto first = offsets[resource];
-            return std::span(batches).subspan(first, offsets[resource + 1] - first);
-        }
+            [[nodiscard]] std::span<const std::uint32_t> operator[](std::uint32_t resource) const noexcept
+            {
+                const auto first = offsets[resource];
+                return std::span(slots).subspan(first, offsets[resource + 1] - first);
+            }
 
-        std::vector<std::size_t> offsets;
-        std::vector<std::uint32_t> batches;
+            std::vector<std::size_t> offsets;
+            std::vector<std::uint32_t> slots;
+        };
+
+        ResourceIndex resource_passes, resource_batches;
+        std::vector<std::uint32_t> viewport_passes, dynamic_passes, producer_passes;
         std::array<std::vector<std::uint32_t>, 3> shared_batches;
         std::vector<RasterList> raster_lists;
     };

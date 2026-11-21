@@ -47,9 +47,15 @@ namespace lux::render::detail
             frame.bindings.resize(plan.resources().size());
             frame.record_resources.resize(plan.resources().size());
             frame.record_passes.resize(plan.passes().size());
-            frame.history_initializations.reserve(plan.histories_.size() * 2);
+            frame.pending_resources.initialize(plan.resources().size());
+            frame.pending_passes.initialize(plan.passes().size());
+            const auto clear_capacity = plan.histories_.size() * 2;
+            frame.history_initializations.prepareCapacity(clear_capacity, clear_capacity);
+            frame.pending_history_clears.initialize(plan.histories_.size());
+            frame.pending_history_views.initialize(plan.histories_.size());
             frame.enabled_regions.resize(plan.recording_.conditions.size(), 1);
             frame.history_valid.resize(plan.histories_.size(), 0);
+            frame.history_clears.resize(plan.histories_.size());
             frame.changed_resources.reserve(plan.resources().size());
             frame.unavailable_buffers = std::ranges::count_if(
                 plan.resources(),
@@ -151,6 +157,7 @@ namespace lux::render::detail
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
+            linkRecordInputs(frames_[slot]);
             bindHistory(slot);
             updateHistoryViews(slot);
         }
@@ -231,7 +238,6 @@ namespace lux::render::detail
         }
         if (!frame.changed_resources.empty())
         {
-            frame.record_inputs_valid = false;
             if (auto rebound = rebind(slot); !rebound)
             {
                 return cxx::unexpected(rebound.error());
@@ -240,11 +246,7 @@ namespace lux::render::detail
         updateHistoryViews(slot);
         if (frame.viewport != viewport_)
         {
-            for (std::uint32_t p = 0; p < frame.passes.size(); ++p)
-            {
-                const auto* raster = plan_->recordingProgram().rasterScope(*frame.passes[p].compiled_pass);
-                if (raster && !raster->viewport) invalidateRecording(slot, p);
-            }
+            for (const auto p : plan_->binding_plan_->recordings.viewport_passes) invalidateRecording(slot, p);
             frame.viewport = viewport_;
         }
         const auto& shared = session_->descriptors();
@@ -286,20 +288,13 @@ namespace lux::render::detail
                 }
             }
             frame.shared_descriptors.generation = shared_generation;
-            frame.record_inputs_valid = false;
         }
         if (auto sections = prepareRasterSections(slot); !sections)
             return cxx::unexpected(sections.error());
         if (auto streams = materializeRasterStreams(slot); !streams)
             return cxx::unexpected(streams.error());
         prepareStreamedDraws(slot);
-        const bool has_dynamic_record_input =
-            !histories_.empty() || !frame.raster_draws.empty();
-        if (!frame.record_inputs_valid || has_dynamic_record_input)
-        {
-            if (auto frozen = freezeRecordInput(slot); !frozen) return cxx::unexpected(frozen.error());
-            frame.record_inputs_valid = true;
-        }
+        if (auto frozen = freezeRecordInput(slot); !frozen) return cxx::unexpected(frozen.error());
         frame.record_ready = true;
         return true;
     }

@@ -164,8 +164,9 @@ namespace lux::render::detail
     struct CompiledRasterScope final : RasterScope
     {
         bool exclusive = false;
-        std::array<float, 2> depth_bias{};
+        nri::DepthBiasDesc depth_bias{};
         bool section_depth_bias = false;
+        bool reset_viewport = false;
     };
 
     struct CompiledPass final

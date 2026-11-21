@@ -728,9 +728,11 @@ namespace lux::render::detail
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, use.binding, use.element, &destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);
+                    pass.history_views[view.use.index] = nullptr;
+                    const auto history = plan_->resources()[use.resource].history;
+                    if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
                 }
             }
-            frame.record_inputs_valid = false;
             frame.record_ready = false;
             frame.invalidateImportedBindings();
             std::ranges::fill(frame.history_valid, 0);
@@ -743,6 +745,8 @@ namespace lux::render::detail
                 {
                     collectRasterViews(frames_[f], old.buffer, old.image, result.frames[f].physical.views);
                 }
+                frames_[f].pending_history_clears.mark(index);
+                frames_[f].pending_history_views.mark(index);
             }
             std::swap(histories_[index], replacement);
         }

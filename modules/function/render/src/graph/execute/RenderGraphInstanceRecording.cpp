@@ -34,9 +34,9 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceBusy});
         cxx::scope_exit release([&]() noexcept { recording.recording.store(false, std::memory_order_release); });
         const FrameRecordInput input{
-            *plan_, frame.record_resources, frame.record_passes, frame.history_initializations,
-            frame.enabled_regions, frame.history_valid, frame.final_images, frame.final_buffers,
-            frame.descriptor_pool, frame.shared_descriptors.sets, frame.viewport
+            *plan_, *programs_, frame.record_resources, frame.record_passes, frame.history_initializations.values(),
+            frame.enabled_regions, frame.final_images, frame.final_buffers,
+            frame.descriptor_pool, frame.shared_descriptors.sets
         };
         auto& device = *session_;
         const auto& description = plan_->submissions()[batch];
@@ -69,7 +69,7 @@ namespace lux::render::detail
     void RenderGraphInstance::invalidateRecording(std::uint32_t frame_slot, std::uint32_t compiled_pass) noexcept
     {
         auto& frame = frames_[frame_slot];
-        frame.record_inputs_valid = false;
+        frame.pending_passes.mark(compiled_pass);
         frame.record_ready = false;
         if (frame.command_batches.empty()) return; // Inputs can precede initialize().
         const auto batch = plan_->passes()[compiled_pass].submission;
@@ -79,16 +79,18 @@ namespace lux::render::detail
     void RenderGraphInstance::invalidateResourceRecordings(std::uint32_t slot, std::uint32_t resource) noexcept
     {
         auto& frame = frames_[slot];
-        frame.record_inputs_valid = false;
+        frame.pending_resources.mark(resource);
+        const auto& dependencies = plan_->binding_plan_->recordings;
+        for (const auto p : dependencies.resource_passes[resource]) frame.pending_passes.mark(p);
         frame.record_ready = false;
         if (frame.command_batches.empty()) return;
-        for (const auto batch : plan_->binding_plan_->recordings.batchesFor(resource))
+        for (const auto batch : dependencies.resource_batches[resource])
             frame.command_batches[batch].invalidate();
     }
 
     void RenderGraphInstance::invalidateRecordings(std::uint32_t frame_slot) noexcept
     {
-        frames_[frame_slot].record_inputs_valid = false;
+        frames_[frame_slot].pending_passes.markAll();
         frames_[frame_slot].record_ready = false;
         for (auto& batch : frames_[frame_slot].command_batches) batch.invalidate();
     }
@@ -141,137 +143,120 @@ namespace lux::render::detail
     void RenderGraphInstance::prepareStreamedDraws(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
-        for (const auto& pass : frame.passes)
+        for (const auto p : plan_->binding_plan_->recordings.dynamic_passes)
         {
+            const auto& pass = frame.passes[p];
             const auto& compiled = *pass.compiled_pass;
-            const auto* raster = plan_->rasterCommands(compiled);
-            const auto* scope = plan_->recordingProgram().rasterScope(compiled);
-            const auto* dynamic = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
-            if (!dynamic)
-            {
-                continue;
-            }
-            auto& draws = frame.raster_draws[dynamic->data_index];
+            const auto& dynamic = std::get<RasterListCommands>(plan_->rasterCommands(compiled)->draw);
+            auto& draws = frame.raster_draws[dynamic.data_index];
             if (draws.dependency_reads != draws.reads)
             {
                 draws.dependency_reads = draws.reads;
                 frame.invalidateImportedBindings();
             }
-            const bool has_authored_sections = !dynamic->producer_stream && !draws.sections.empty();
-            if (draws.has_explicit_sections || has_authored_sections)
-            {
-                continue;
-            }
-            draws.colors.assign(pass.colors.begin(), pass.colors.end());
-            const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
-            const auto& image =
-                session_->nriCore().GetTextureDesc(*frame.bindings[attachment.access.version.resource.index].image);
-            const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
-            const auto width = std::max(1u, std::uint32_t(image.width) >> mip);
-            const auto height = std::max(1u, std::uint32_t(image.height) >> mip);
-            const auto& area = scope->viewport ? *scope->viewport : frame.viewport;
-            draws.sections.resize(1);
-            auto& section = draws.sections.front();
-            section = {};
-            section.color_count = static_cast<std::uint32_t>(draws.colors.size());
-            section.depth = pass.depth;
-            section.viewport = {
-                area.x * width,
-                area.y * height,
-                area.width * width,
-                area.height * height,
-                area.min_depth,
-                area.max_depth,
-                true
-            };
-            section.parameter_size = dynamic->producer_stream ? 0 : static_cast<std::uint32_t>(draws.parameters.size());
-            section.draw_count = static_cast<std::uint32_t>(draws.packets.size());
-            const nri::Rect scissor{
-                static_cast<std::int16_t>(area.x * width),
-                static_cast<std::int16_t>(area.y * height),
-                static_cast<nri::Dim_t>(area.width * width),
-                static_cast<nri::Dim_t>(area.height * height)
-            };
-            for (auto& packet : draws.packets)
-                packet.scissor = scissor;
         }
     }
 
-    RenderResult<void> RenderGraphInstance::freezeRecordInput(std::uint32_t slot) noexcept
+    void RenderGraphInstance::patchDrawSection(FrameResources& frame, std::uint32_t p) noexcept
     {
-        auto& frame = frames_[slot];
-        const auto& core = session_->nriCore();
-        for (std::size_t i = 0; i < frame.bindings.size(); ++i)
+        const auto& pass = frame.passes[p];
+        const auto& compiled = *pass.compiled_pass;
+        const auto& dynamic = std::get<RasterListCommands>(plan_->rasterCommands(compiled)->draw);
+        auto& draws = frame.raster_draws[dynamic.data_index];
+        const auto& native = frame.record_passes[p].native;
+        if (draws.has_explicit_sections || !draws.sections.empty())
         {
-            const auto& binding = frame.bindings[i];
-            auto& resource = frame.record_resources[i];
-            resource = {binding.buffer, binding.buffer_offset, binding.image, 0, 0, binding.buffer_size};
-            const auto history = plan_->resources()[i].history;
-            resource.history_valid = history == kGraphInvalidIndex || frame.history_valid[history] != 0;
-            if (binding.image)
-            {
-                const auto& description = core.GetTextureDesc(*binding.image);
-                resource.width = description.width;
-                resource.height = description.height;
-            }
+            draws.implicit_section.reset();
+            return;
         }
-        for (std::size_t i = 0; i < frame.passes.size(); ++i)
+        draws.colors.assign(pass.colors.begin(), pass.colors.end());
+        auto& section = draws.implicit_section.emplace();
+        section.color_count = static_cast<std::uint32_t>(draws.colors.size());
+        section.depth = pass.depth;
+        section.viewport = native.viewport;
+        section.parameter_size = dynamic.producer_stream ? 0 : static_cast<std::uint32_t>(draws.parameters.size());
+        section.draw_count = static_cast<std::uint32_t>(draws.packets.size());
+        for (auto& packet : draws.packets) packet.scissor = native.scissor;
+    }
+
+    void RenderGraphInstance::linkRecordInputs(FrameResources& frame) noexcept
+    {
+        const auto& recording = plan_->recordingProgram();
+        for (std::uint32_t i = 0; i < frame.passes.size(); ++i)
         {
-            auto& pass = frame.passes[i];
+            const auto& pass = frame.passes[i];
             auto& record = frame.record_passes[i];
-            record = {
-                pass.compiled_pass, pass.images, pass.buffers, pass.alias_barrier,
-                pass.private_descriptors, pass.parameters
-            };
-            const auto& program = (*programs_)[i];
-            record.program_bindings = program.descriptors;
-            record.pipeline = program.pipeline;
+            record.images = pass.images;
+            record.buffers = pass.buffers;
+            record.parameters = pass.parameters;
             auto& native = record.native;
             native.colors = pass.colors;
-            native.depth = pass.depth;
-            native.private_descriptors = pass.private_descriptors;
-            const auto condition = pass.compiled_pass->condition_region;
-            const bool enabled = condition == kGraphInvalidIndex || frame.enabled_regions[condition];
-            if (enabled)
-            {
-                auto ready = pass.freezeCommands(*plan_, frame.record_resources, session_->description(), native);
-                if (!ready) return ready;
-            }
-            native.shared_descriptors = frame.shared_descriptors.sets;
-            if (const auto* raster = plan_->rasterCommands(*pass.compiled_pass))
-            {
-                if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
-                    native.draws = &frame.raster_draws[dynamic->data_index];
-            }
-            if (const auto* scope = plan_->recordingProgram().rasterScope(*pass.compiled_pass))
-            {
-                const auto& group = plan_->recording_.groups[pass.compiled_pass->rendering_group];
-                native.begin_rendering = group.first_pass == i;
-                native.end_rendering = group.first_pass + group.pass_count == i + 1;
-                const auto* previous = i ? plan_->recordingProgram().rasterScope(*frame.passes[i - 1].compiled_pass) : nullptr;
-                const bool previous_changed = previous && (previous->viewport != scope->viewport || previous->exclusive);
-                native.reset_viewport = native.begin_rendering || previous_changed;
-                const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
-                const auto& image = frame.record_resources[attachment.access.version.resource.index];
-                const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
-                const auto width = std::max(1u, image.width >> mip);
-                const auto height = std::max(1u, image.height >> mip);
-                const auto& area = scope->viewport ? *scope->viewport : frame.viewport;
-                native.viewport = {
-                    area.x * width, area.y * height, area.width * width, area.height * height,
-                    area.min_depth, area.max_depth, true
-                };
-                native.scissor = {
-                    static_cast<std::int16_t>(area.x * width), static_cast<std::int16_t>(area.y * height),
-                    static_cast<nri::Dim_t>(area.width * width), static_cast<nri::Dim_t>(area.height * height)
-                };
-                native.depth_bias = {scope->depth_bias[0], 0, scope->depth_bias[1]};
-            }
+            const auto* raster = recording.rasterCommands(*pass.compiled_pass);
+            const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
+            if (list) native.draws = &frame.raster_draws[list->data_index];
         }
+    }
 
-        frame.history_initializations.clear();
-        for (const auto& history : histories_)
+    void RenderGraphInstance::patchRecordResource(FrameResources& frame, std::uint32_t i) noexcept
+    {
+        const auto& binding = frame.bindings[i];
+        auto& resource = frame.record_resources[i];
+        resource.buffer = binding.buffer;
+        resource.buffer_offset = binding.buffer_offset;
+        resource.buffer_size = binding.buffer_size;
+        resource.image = binding.image;
+        const auto history = plan_->resources()[i].history;
+        resource.history_valid = history == kGraphInvalidIndex || frame.history_valid[history] != 0;
+        resource.width = resource.height = 0;
+        if (binding.image)
         {
+            const auto& description = session_->nriCore().GetTextureDesc(*binding.image);
+            resource.width = description.width;
+            resource.height = description.height;
+        }
+    }
+
+    RenderResult<void> RenderGraphInstance::patchRecordPass(FrameResources& frame, std::uint32_t i) noexcept
+    {
+        auto& pass = frame.passes[i];
+        auto& record = frame.record_passes[i];
+        record.alias_barrier = pass.alias_barrier;
+        record.private_descriptors = pass.private_descriptors;
+        auto& native = record.native;
+        native.depth = pass.depth;
+        const auto condition = pass.compiled_pass->condition_region;
+        const bool enabled = condition == kGraphInvalidIndex || frame.enabled_regions[condition];
+        if (enabled)
+        {
+            auto ready = pass.freezeCommands(*plan_, frame.record_resources, session_->description(), native);
+            if (!ready) return ready;
+        }
+        if (const auto* scope = plan_->recordingProgram().rasterScope(*pass.compiled_pass))
+        {
+            const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
+            const auto& image = frame.record_resources[attachment.access.version.resource.index];
+            const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
+            const auto width = std::max(1u, image.width >> mip);
+            const auto height = std::max(1u, image.height >> mip);
+            const auto& area = scope->viewport ? *scope->viewport : frame.viewport;
+            native.viewport = {
+                area.x * width, area.y * height, area.width * width, area.height * height,
+                area.min_depth, area.max_depth, true
+            };
+            native.scissor = {
+                static_cast<std::int16_t>(area.x * width), static_cast<std::int16_t>(area.y * height),
+                static_cast<nri::Dim_t>(area.width * width), static_cast<nri::Dim_t>(area.height * height)
+            };
+        }
+        if (native.draws) patchDrawSection(frame, i);
+        return {};
+    }
+
+    void RenderGraphInstance::freezeHistoryInitializations(FrameResources& frame) const noexcept
+    {
+        for (const auto h : frame.pending_history_clears.slots())
+        {
+            const auto& history = histories_[h];
             const auto& description = history.plan->description;
             const auto canonical_layout = description.canonical_use == EGraphUse::SAMPLED ? nri::Layout::SHADER_RESOURCE
                 : description.canonical_use == EGraphUse::TRANSFER_SOURCE ? nri::Layout::COPY_SOURCE
@@ -280,17 +265,21 @@ namespace lux::render::detail
                 ? nri::AccessBits::SHADER_RESOURCE
                 : description.canonical_use == EGraphUse::TRANSFER_SOURCE ? nri::AccessBits::COPY_SOURCE
                                                                          : nri::AccessBits::SHADER_RESOURCE_STORAGE;
-            const std::array selections{
-                std::pair{history.previous, history.clear_previous}, std::pair{history.current, history.clear_current}
-            };
-            for (const auto [index, clear] : selections)
+            const auto& selections = frame.history_clears[h];
+            for (std::size_t side = 0; side < selections.size(); ++side)
             {
-                if (!clear) continue;
-                const auto& selected = history.slots[index];
-                auto& record = frame.history_initializations.emplace_back();
+                // History banks own disjoint resources. Each active clear is independently recordable.
+                const auto key = static_cast<std::size_t>(h) * selections.size() + side;
+                const auto selection = selections[side];
+                if (selection.slot == kGraphInvalidIndex)
+                {
+                    frame.history_initializations.erase(key);
+                    continue;
+                }
+                const auto& selected = history.slots[selection.slot];
+                auto& record = frame.history_initializations.emplace(key);
                 if (selected.image)
                 {
-                    const auto& image = core.GetTextureDesc(*selected.image);
                     const auto& graph_image =
                         std::get<GraphImageDesc>(plan_->resources()[description.current.index].description);
                     const auto aspects = rdesc::textureAspectMask(graph_image.format);
@@ -309,8 +298,8 @@ namespace lux::render::detail
                             nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT,
                             nri::StageBits::COLOR_ATTACHMENT
                         };
-                    transition.mipNum = image.mipNum;
-                    transition.layerNum = image.layerNum;
+                    transition.mipNum = selected.mip_count;
+                    transition.layerNum = selected.layer_count;
                     transition.planes = record.depth ? nri::PlaneBits::DEPTH : nri::PlaneBits::COLOR;
                     if (aspects & 4) transition.planes |= nri::PlaneBits::STENCIL;
                     if (record.depth) record.clear_value.depthStencil.depth = description.initial.depth;
@@ -338,7 +327,27 @@ namespace lux::render::detail
                 }
             }
         }
+        frame.pending_history_clears.clear();
+    }
+
+    RenderResult<void> RenderGraphInstance::freezeRecordInput(std::uint32_t slot) noexcept
+    {
+        auto& frame = frames_[slot];
+        for (const auto i : frame.pending_resources.slots()) patchRecordResource(frame, i);
+        for (const auto i : frame.pending_passes.slots())
+        {
+            if (auto patched = patchRecordPass(frame, i); !patched) return patched;
+        }
+        frame.last_patches = {frame.pending_resources.slots().size(), frame.pending_passes.slots().size()};
+        frame.pending_resources.clear();
+        frame.pending_passes.clear();
+        if (!frame.pending_history_clears.slots().empty()) freezeHistoryInitializations(frame);
         return {};
+    }
+
+    RenderGraphInstance::FrozenPatchCounts RenderGraphInstance::lastFrozenPatches(std::uint32_t slot) const noexcept
+    {
+        return frames_[slot].last_patches;
     }
 
     std::uint32_t RenderGraphInstance::recordedPassCount(std::uint32_t slot) const noexcept

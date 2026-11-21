@@ -276,6 +276,8 @@ namespace lux::render::detail
                 continue;
             }
             const auto& image = core.GetTextureDesc(*slot.image);
+            slot.mip_count = image.mipNum;
+            slot.layer_count = image.layerNum;
             const auto& graph_image =
                 std::get<GraphImageDesc>(plan_->resources()[description.current.index].description);
             const bool depth = rdesc::textureAspectMask(graph_image.format) != 1;
@@ -310,22 +312,41 @@ namespace lux::render::detail
     void RenderGraphInstance::bindHistory(std::uint32_t frame_slot) noexcept
     {
         auto& frame = frames_[frame_slot];
-        for (std::size_t h = 0; h < histories_.size(); ++h)
+        for (std::uint32_t h = 0; h < histories_.size(); ++h)
         {
             const auto& history = histories_[h];
-            frame.history_valid[h] = !history.clear_previous;
+            const auto clear = [&](bool required, std::uint32_t slot) noexcept
+            {
+                return required ? FrameResources::HistoryClear{slot, history.slots[slot].initialized}
+                                : FrameResources::HistoryClear{};
+            };
+            const std::array clears{clear(history.clear_previous, history.previous),
+                                    clear(history.clear_current, history.current)};
+            if (frame.history_clears[h] != clears)
+            {
+                frame.history_clears[h] = clears;
+                frame.pending_history_clears.mark(h);
+            }
+            const bool valid = !history.clear_previous;
+            const bool validity_changed = static_cast<bool>(frame.history_valid[h]) != valid;
+            frame.history_valid[h] = valid;
             const auto& description = history.plan->description;
             for (const auto [resource, selected] :
                  {std::pair{description.previous, history.previous}, std::pair{description.current, history.current}})
             {
-                const bool was_dirty = frame.bindings[resource.index].dirty;
                 const auto& physical = history.slots[selected];
-                frame.bindings[resource.index].image = physical.image;
-                frame.bindings[resource.index].buffer = physical.buffer;
-                frame.bindings[resource.index].buffer_size = physical.buffer_size;
-                frame.bindings[resource.index].dirty = true;
-                if (!was_dirty)
+                auto& binding = frame.bindings[resource.index];
+                const bool unchanged = binding.image == physical.image && binding.buffer == physical.buffer &&
+                    binding.buffer_size == physical.buffer_size;
+                if (unchanged && !validity_changed) continue;
+                frame.pending_history_views.mark(h);
+                binding.image = physical.image;
+                binding.buffer = physical.buffer;
+                binding.buffer_size = physical.buffer_size;
+                invalidateResourceRecordings(frame_slot, resource.index);
+                if (!binding.dirty)
                 {
+                    binding.dirty = true;
                     frame.changed_resources.push_back(resource.index);
                 }
             }
@@ -337,7 +358,7 @@ namespace lux::render::detail
         using Target = EImageViewTarget;
         auto& frame = frames_[frame_slot];
         const auto& core = session_->nriCore();
-        for (std::size_t h = 0; h < histories_.size(); ++h)
+        for (const auto h : frame.pending_history_views.slots())
         {
             const auto& history = histories_[h];
             const auto& description = history.plan->description;
@@ -357,6 +378,7 @@ namespace lux::render::detail
                     {
                         view = pass.private_views[use.index];
                     }
+                    if (pass.history_views[use.index] == view) break;
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, binding.binding, binding.element, &view, 1};
                     core.UpdateDescriptorRanges(&update, 1);
@@ -381,6 +403,7 @@ namespace lux::render::detail
                 }
             }
         }
+        frame.pending_history_views.clear();
     }
 
     RenderResult<void> RenderGraphInstance::invalidateHistory(std::span<const GraphResourceId> previous) noexcept

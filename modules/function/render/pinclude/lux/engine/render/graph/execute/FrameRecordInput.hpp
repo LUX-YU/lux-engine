@@ -1,7 +1,6 @@
 #pragma once
 
 #include <NRI.h>
-#include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <optional>
 #include <span>
@@ -9,19 +8,16 @@
 namespace lux::render::detail
 {
     class RenderGraphExecutable;
-    struct CompiledPass;
+    class NativeProgramBindings;
     struct RasterDrawList;
 
     struct RecordPass final
     {
-        const CompiledPass* compiled_pass = nullptr;
         std::span<const nri::TextureBarrierDesc> images;
         std::span<const nri::BufferBarrierDesc> buffers;
         std::optional<nri::GlobalBarrierDesc> alias_barrier;
         nri::DescriptorSet* private_descriptors = nullptr;
         std::span<const std::byte> parameters;
-        PassDescriptorBindings program_bindings;
-        nri::Pipeline* pipeline = nullptr;
         PassNativeInput native;
     };
 
@@ -41,14 +37,14 @@ namespace lux::render::detail
     struct FrameRecordInput final
     {
         const RenderGraphExecutable& plan;
+        const NativeProgramBindings& programs;
         std::span<const PassResourceInput> resources;
         std::span<const RecordPass> passes;
         std::span<const RecordHistoryInitialization> history_initializations;
-        std::span<const std::uint8_t> enabled_regions, history_valid;
+        std::span<const std::uint8_t> enabled_regions;
         std::span<const nri::TextureBarrierDesc> final_images;
         std::span<const nri::BufferBarrierDesc> final_buffers;
         nri::DescriptorPool* descriptor_pool = nullptr;
         std::array<nri::DescriptorSet*, 3> shared_descriptors{};
-        RasterViewport viewport;
     };
 } // namespace lux::render::detail

@@ -1008,7 +1008,7 @@ namespace lux::render::detail
                         auto& scope = recording.raster_scopes.emplace_back(command, !fixed);
                         scope.section_depth_bias = section_bias;
                         if (fixed)
-                            scope.depth_bias = {fixed->graphics.depth_bias_constant, fixed->graphics.depth_bias_slope};
+                            scope.depth_bias = {fixed->graphics.depth_bias_constant, 0, fixed->graphics.depth_bias_slope};
                         recording.raster.push_back(std::move(*packet));
                         return VCommandSlot{slot};
                     }

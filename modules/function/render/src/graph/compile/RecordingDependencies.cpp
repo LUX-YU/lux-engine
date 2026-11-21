@@ -58,22 +58,31 @@ namespace lux::render::detail
         RecordingDependencies result;
         const auto batches = plan.submissions();
         const auto& recording = plan.recordingProgram();
-        std::vector<std::pair<std::uint32_t, std::uint32_t>> uses;
+        using Edges = std::vector<std::pair<std::uint32_t, std::uint32_t>>;
+        Edges pass_uses, batch_uses;
         const auto add = [&](std::uint32_t resource, std::uint32_t p)
         {
+            if (resource == kGraphInvalidIndex) return;
+            pass_uses.emplace_back(resource, p);
             const auto batch = recording.passes[p].submission;
             if (batches[batch].reusable_recording && p < batches[batch].output_begin)
-                uses.emplace_back(resource, batch);
+                batch_uses.emplace_back(resource, batch);
         };
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             const auto& pass = recording.passes[p];
+            commandResources(recording, pass, [&](std::uint32_t resource) { add(resource, p); });
+            const auto* scope = recording.rasterScope(pass);
+            if (scope && !scope->viewport) result.viewport_passes.push_back(p);
+            const auto* raster = recording.rasterCommands(pass);
+            const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
+            if (list)
+            {
+                result.dynamic_passes.push_back(p);
+                if (list->producer_stream) result.producer_passes.push_back(p);
+            }
             const auto batch = pass.submission;
             if (!batches[batch].reusable_recording || p >= batches[batch].output_begin) continue;
-            commandResources(recording, pass, [&](std::uint32_t resource)
-            {
-                if (resource != kGraphInvalidIndex) uses.emplace_back(resource, batch);
-            });
             const auto& sets = bindings.passes[pass.binding_slot].shared_sets;
             for (std::size_t kind = 0; kind < sets.size(); ++kind)
             {
@@ -81,8 +90,6 @@ namespace lux::render::detail
                 if (sets[kind] != kGraphInvalidIndex && (consumers.empty() || consumers.back() != batch))
                     consumers.push_back(batch);
             }
-            const auto* raster = recording.rasterCommands(pass);
-            const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
             if (list) result.raster_lists.emplace_back(batch, list->data_index);
         }
         for (std::uint32_t r = 0; r < plan.resources().size(); ++r)
@@ -95,19 +102,24 @@ namespace lux::render::detail
             // Final transitions belong to the last CB, which can be a separately recorded WSI tail.
             if (!resource.final_barrier_uses.empty() && batches.back().reusable_recording &&
                 batches.back().output_begin == kGraphInvalidIndex)
-                uses.emplace_back(r, static_cast<std::uint32_t>(batches.size() - 1));
+                batch_uses.emplace_back(r, static_cast<std::uint32_t>(batches.size() - 1));
         }
-        std::ranges::sort(uses);
-        const auto unique = std::ranges::unique(uses);
-        uses.erase(unique.begin(), unique.end());
-        result.batches.reserve(uses.size());
-        result.offsets.resize(plan.resources().size() + 1);
-        for (const auto& [resource, batch] : uses)
+        const auto publish = [&](Edges& uses, RecordingDependencies::ResourceIndex& index)
         {
-            ++result.offsets[resource + 1];
-            result.batches.push_back(batch);
-        }
-        std::partial_sum(result.offsets.begin(), result.offsets.end(), result.offsets.begin());
+            std::ranges::sort(uses);
+            const auto unique = std::ranges::unique(uses);
+            uses.erase(unique.begin(), unique.end());
+            index.slots.reserve(uses.size());
+            index.offsets.resize(plan.resources().size() + 1);
+            for (const auto& [resource, slot] : uses)
+            {
+                ++index.offsets[resource + 1];
+                index.slots.push_back(slot);
+            }
+            std::partial_sum(index.offsets.begin(), index.offsets.end(), index.offsets.begin());
+        };
+        publish(pass_uses, result.resource_passes);
+        publish(batch_uses, result.resource_batches);
         return result;
     }
 } // namespace lux::render::detail

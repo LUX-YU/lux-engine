@@ -66,7 +66,7 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         frame.stream_descriptor_rows.resize(frame.stream_inputs.size());
         nri::DescriptorPoolDesc additional{};
-        for (std::uint32_t p = 0; p < frame.stream_inputs.size(); ++p)
+        for (const auto p : plan_->binding_plan_->recordings.producer_passes)
         {
             const auto* stream = programs_->rasterStream(p);
             if (!stream) continue;
@@ -724,6 +724,9 @@ namespace lux::render::detail
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, &candidate, 1};
                 core.UpdateDescriptorRanges(&update, 1);
+                pass.history_views[index] = nullptr;
+                const auto history = plan_->resources()[use.resource].history;
+                if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
                 invalidateRecording(slot, p);
             }
             source.dirty = false;

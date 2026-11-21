@@ -78,7 +78,7 @@ namespace lux::render::detail
         for (std::size_t p = first_pass; p < end_pass; ++p)
         {
             const auto& pass = frame.passes[p];
-            const auto& compiled = *pass.compiled_pass;
+            const auto& compiled = plan.passes()[p];
             const auto& parameters = pass.parameters;
             if (pass.alias_barrier)
             {
@@ -108,21 +108,21 @@ namespace lux::render::detail
                 binding_state.descriptor_pool = frame.descriptor_pool;
                 binding_state.descriptors = {};
             }
-            const auto& program = pass.program_bindings;
+            const auto& program = frame.programs[compiled.binding_slot];
             const auto* scope = plan.recordingProgram().rasterScope(compiled);
             const bool owns_draw_sections = scope && scope->exclusive;
-            if (program.layout && !pass.native.draws && !owns_draw_sections)
+            if (program.descriptors.layout && !pass.native.draws && !owns_draw_sections)
             {
                 const auto point = scope != nullptr
                     ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
-                if (binding_state.layout != program.layout || binding_state.point != point)
+                if (binding_state.layout != program.descriptors.layout || binding_state.point != point)
                 {
-                    core.CmdSetPipelineLayout(command, point, *program.layout);
-                    binding_state.layout = program.layout;
+                    core.CmdSetPipelineLayout(command, point, *program.descriptors.layout);
+                    binding_state.layout = program.descriptors.layout;
                     binding_state.point = point;
                     binding_state.descriptors = {};
                 }
-                auto* pipeline = pass.pipeline;
+                auto* pipeline = program.pipeline;
                 if (pipeline && binding_state.pipeline != pipeline)
                 {
                     core.CmdSetPipeline(command, *pipeline);
@@ -130,7 +130,7 @@ namespace lux::render::detail
                     binding_state.depth_bias.reset();
                 }
                 bindPassDescriptors(
-                    core, frame.shared_descriptors, command, program,
+                    core, frame.shared_descriptors, command, program.descriptors,
                     {&pass.private_descriptors, pass.private_descriptors ? 1u : 0u}, binding_state
                 );
                 if (!parameters.empty())
@@ -143,9 +143,9 @@ namespace lux::render::detail
             }
             auto native = pass.native;
             native.bindings = &binding_state;
-            const PassRecordInput input{frame.resources, pass.parameters, &native};
-            const bool managed_rendering = compiled.rendering_group != kGraphInvalidIndex && !owns_draw_sections;
-            if (managed_rendering && native.begin_rendering)
+            const PassRecordInput input{frame.resources, frame.shared_descriptors, &native};
+            const auto* group = scope && !owns_draw_sections ? &plan.recording_.groups[compiled.rendering_group] : nullptr;
+            if (group && group->first_pass == p)
             {
                 nri::RenderingDesc rendering{};
                 rendering.colors = native.colors.data();
@@ -153,15 +153,15 @@ namespace lux::render::detail
                 rendering.depth = native.depth;
                 core.CmdBeginRendering(command, rendering);
             }
-            if (managed_rendering)
+            if (group)
             {
-                if (native.reset_viewport || !binding_state.scissor)
+                if (scope->reset_viewport || !binding_state.scissor)
                 {
                     core.CmdSetViewports(command, &native.viewport, 1);
                     setPassScissor(core, command, native.scissor, binding_state);
                 }
                 if (binding_state.depth_bias)
-                    setPassDepthBias(core, command, native.depth_bias, binding_state);
+                    setPassDepthBias(core, command, scope->depth_bias, binding_state);
             }
             if (owns_draw_sections) binding_state.invalidate();
             const auto recorded = recordBlock(plan.recording_, compiled.commands, [&](const auto& packet) noexcept
@@ -176,7 +176,7 @@ namespace lux::render::detail
                 }
             });
             if (owns_draw_sections || std::holds_alternative<TransferCommandSlot>(compiled.commands)) binding_state.invalidate();
-            if (managed_rendering && (native.end_rendering || !recorded)) core.CmdEndRendering(command);
+            if (group && (group->first_pass + group->pass_count == p + 1 || !recorded)) core.CmdEndRendering(command);
             if (!recorded) return recorded;
         }
         if (last_part && batch_index + 1 == plan.submissions_.size() &&

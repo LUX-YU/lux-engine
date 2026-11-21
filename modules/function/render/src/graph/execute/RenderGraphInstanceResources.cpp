@@ -275,6 +275,9 @@ namespace lux::render::detail
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, destination, 1};
                 core.UpdateDescriptorRanges(&update, 1);
+                pass.history_views[replacement.use.index] = nullptr;
+                const auto history = plan_->resources()[use.resource].history;
+                if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
             }
             else
             {

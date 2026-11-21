@@ -4,12 +4,16 @@
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <cstring>
 #include <future>
 
 namespace
 {
     namespace graph = lux::graph;
+
+    // The deferred Editor consumer initializes the first slot positionally.
+    static_assert(requires(StorageBindingOps::Resolve resolver) { StorageBindingOps{resolver}; });
 
     // One 64-texel RGBA8 row matches the shared capture fixture's minimum pitch.
     constexpr std::uint32_t width = 64;
@@ -35,6 +39,7 @@ namespace
     struct ComputeCapture final
     {
         using Descriptor = ComputeCaptureDescriptor;
+        static inline std::atomic_bool reject_resolve{};
         static inline CapturedPixels result;
         static inline std::atomic_uint accepted{}, rejected{};
         static constexpr std::uint64_t preparation_revision = 1;
@@ -65,13 +70,14 @@ namespace
                     void* storage,
                     std::uint32_t,
                     const VGraphResourceDesc& description,
-                    StorageSubscription& subscription,
                     std::span<ResourceInput> output
                 ) noexcept
                 {
+                    if (reject_resolve.exchange(false))
+                        return RenderResult<void>{lux::cxx::unexpected(RenderError{kStorageMismatch})};
                     const CaptureConfig config{.result = &result, .bytes = capture_bytes};
                     return CaptureBuffer::resolve(
-                        &static_cast<ComputeCapture*>(storage)->buffer, description, &config, subscription, output
+                        &static_cast<ComputeCapture*>(storage)->buffer, description, &config, output
                     );
                 },
                 .settleFrame = [](void* owner, const ReplicaSettlement& receipt) noexcept
@@ -112,7 +118,7 @@ namespace
     {
         static constexpr bool requires_idle_resource = true;
         static constexpr std::string_view name = "test.sdk.initialize_replica";
-        enum class EProbe : std::uint8_t { WRITE, CANCEL, UNKNOWN };
+        enum class EProbe : std::uint8_t { WRITE, CANCEL, UNKNOWN, REPLACE };
         struct Request final
         {
             ResourceInstanceId resource;
@@ -150,7 +156,12 @@ namespace
         static inline std::atomic_uint injected{}, retired_candidates{};
         static inline decltype(nri::CoreInterface::QueueSubmit) submit{};
 
-        explicit MutableReplica(DeviceSession& device) noexcept : device(device) {}
+        ResourceRegistry& registry;
+        ResourceInstanceId identity;
+        static inline std::atomic_size_t notified{}, resolutions{};
+
+        MutableReplica(ResourceCreateContext& context, ResourceInstanceId id) noexcept
+            : device(context.device), registry(context.resources), identity(id) {}
 
         ~MutableReplica() noexcept
         {
@@ -163,17 +174,17 @@ namespace
         }
 
         static RenderResult<std::unique_ptr<MutableReplica>>
-        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        create(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         {
             if (!context.uploads || context.frame_count != 1)
                 return lux::cxx::unexpected(RenderError{kDeviceUnsupported});
-            return std::make_unique<MutableReplica>(context.device);
+            return std::make_unique<MutableReplica>(context, id);
         }
 
         static exec::task<AckResponse>
         initialize(MutableReplica& storage, ReplicaMutation& mutation, InitializeReplica::Request&& request) noexcept
         {
-            if (storage.buffer) co_return AckResponse{RenderError{kStorageContract}};
+            if (storage.buffer && request.probe != InitializeReplica::EProbe::REPLACE) co_return AckResponse{RenderError{kStorageContract}};
             const auto premature = co_await mutation.writeBuffers({});
             CHECK(!premature && premature.error().type == kFrameContract);
             const auto selected = co_await mutation.select();
@@ -218,7 +229,25 @@ namespace
                 });
                 co_return AckResponse{result.error()};
             }
-            storage.buffer = candidate;
+            const ResourceInput input{candidate, 0, replica_bytes};
+            const auto untouched = storage.registry.publishGraphInput(storage.identity, 1, 0, input);
+            CHECK(untouched && *untouched == 0);
+            const auto cleared = storage.registry.publishGraphInput(storage.identity, 0, UINT32_MAX, {});
+            CHECK(cleared);
+            if (*cleared)
+            {
+                const auto invalid = storage.registry.publishGraphInput(storage.identity, 0, 1, input);
+                CHECK(!invalid && invalid.error().type == kFrameContract);
+            }
+            const auto changed = storage.registry.publishGraphInput(storage.identity, 0, 0, input);
+            CHECK(changed && *changed == *cleared);
+            notified = *changed;
+            auto* previous = std::exchange(storage.buffer, candidate);
+            if (previous)
+            {
+                storage.device.deferRelease([destroy = core.DestroyBuffer, previous]() noexcept { destroy(previous); });
+                storage.resident.reset();
+            }
             co_return AckResponse{};
         }
 
@@ -282,10 +311,10 @@ namespace
                     };
                 },
                 .resolveGraphImport = [](
-                    void* owner, std::uint32_t, const VGraphResourceDesc&, StorageSubscription&,
-                    std::span<ResourceInput> output
+                    void* owner, std::uint32_t, const VGraphResourceDesc&, std::span<ResourceInput> output
                 ) noexcept -> RenderResult<void>
                 {
+                    ++resolutions;
                     const auto* resource = static_cast<MutableReplica*>(owner);
                     for (auto& value : output) value = {resource->buffer, 0, replica_bytes};
                     return {};
@@ -363,7 +392,7 @@ namespace
             CopyImageBuffer{{input.front().front().version}, {output}, row_pitch, readback_bytes, region}
         }}));
         const auto mutable_input = take(context.importResource(
-            "mutable", {ResourceName{MutableReplicaDescriptor::descriptor.type.name()}},
+            "a_mutable", {ResourceName{MutableReplicaDescriptor::descriptor.type.name()}},
             {
                 "", GraphBufferDesc{replica_bytes}, EGraphOrigin::IMPORTED,
                 {GraphBufferRange{0, replica_bytes}}, EGraphUse::TRANSFER_SOURCE
@@ -472,8 +501,27 @@ int main(int argc, char** argv)
     MutableReplica::resume.notify_all();
     CHECK(busy.error.type == kDeviceBusy && cancelled.get().error.type == kCommandCancelled);
     call<InitializeReplica>(*client, commands, {mutable_resource, marker});
-    binding.resources = {{"capture", readback}, {"mutable", mutable_resource}};
-    const auto job = startRenderJob(*client, commands, session, scene, view, target, created, std::move(binding));
+    binding.resources = {{"capture", readback}, {"a_mutable", mutable_resource}};
+    CHECK(MutableReplica::notified == 0);
+    const auto job = startRenderJob(*client, commands, session, scene, view, target, created, binding);
+    const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
+    const auto peer = startRenderJob(*client, commands, session, scene, view, peer_target, created, binding);
+    const auto replace = [&](std::uint32_t value, std::size_t expected)
+    {
+        call<InitializeReplica>(*client, commands, {mutable_resource, value, InitializeReplica::EProbe::REPLACE});
+        CHECK(MutableReplica::notified == expected);
+    };
+    replace(marker + 1, 2);
+    const auto before_rollback = MutableReplica::resolutions.load();
+    ComputeCapture::reject_resolve = true;
+    const auto rollback = call<RebindRenderJobEffect>(*client, commands, {session, job, created, target, binding}, false);
+    CHECK(rollback.error.type == kStorageMismatch && !ComputeCapture::reject_resolve);
+    CHECK(MutableReplica::resolutions == before_rollback + 1);
+    replace(marker + 2, 2);
+    call<RebindRenderJobEffect>(*client, commands, {session, job, created, target, binding});
+    replace(marker + 3, 2);
+    stopAndRemoveJob(*client, commands, peer);
+    replace(marker + 4, 1);
     constexpr std::uint32_t expected_replica = 0x12345678;
     call<SetReplicaValue>(*client, commands, {mutable_resource, expected_replica, true});
     const auto failed = call<RequestRenderJob>(*client, commands, {job}, false);
@@ -489,6 +537,8 @@ int main(int argc, char** argv)
     renderFrame(*client, commands, job);
     CHECK(MutableReplica::accepted_no_copy == 1 && MutableReplica::accepted_copies == 1);
     CHECK(ComputeCapture::rejected == 1 && ComputeCapture::accepted == 1);
+    stopAndRemoveJob(*client, commands, job);
+    replace(marker + 5, 0);
     server->stop();
     worker.join();
     CHECK(ran && server->stats().validation_errors == 0);
@@ -499,7 +549,7 @@ int main(int argc, char** argv)
     CHECK(data.size() >= capture_bytes);
     std::uint32_t observed_marker = 0;
     std::memcpy(&observed_marker, data.data() + readback_bytes + sizeof(std::uint32_t), sizeof(observed_marker));
-    CHECK(observed_marker == marker);
+    CHECK(observed_marker == marker + 4);
     std::uint32_t replica = 0;
     std::memcpy(&replica, data.data() + readback_bytes, sizeof(replica));
     CHECK(replica == expected_replica);

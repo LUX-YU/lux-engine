@@ -98,6 +98,8 @@ namespace lux::render
         const auto device = execution->device;
         const auto variant = execution->variant;
         auto resources = std::move(execution->resource_ids);
+        for (const auto& link : execution->storage_inputs)
+            runtime_->resources_.unbindGraphInput(link, execution->storage_start);
         execution.reset();
         for (const auto id : resources) runtime_->resources_.releaseExecution(id);
         runtime_->device(device)->releaseVariant(variant);
@@ -591,6 +593,7 @@ namespace lux::render
         release_variant.release();
         release_effect.release();
         cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
+        candidate->storage_start = reservation;
         candidate->view_parameters = view_parameters;
         if (auto assembled = assembleExecution(*candidate, binding); !assembled)
             co_return AckResponse{assembled.error()};

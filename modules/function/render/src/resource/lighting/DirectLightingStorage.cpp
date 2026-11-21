@@ -2,6 +2,7 @@
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -158,7 +159,8 @@ namespace lux::render::detail
     } // namespace
 
     DirectLightingStorage::DirectLightingStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
-        : device_(dependencies.device), frame_count_(dependencies.frame_count), id_(id)
+        : device_(dependencies.device), resources_(dependencies.resources),
+          frame_count_(dependencies.frame_count), id_(id)
     {
         for (std::size_t kind = 0; kind < arrays_.size(); ++kind)
         {
@@ -176,7 +178,6 @@ namespace lux::render::detail
     {
         for (auto& array : arrays_)
         {
-            StorageSubscription::disconnect(array.bindings);
             for (auto& frame : array.frames)
             {
                 releaseAfterGpu(device_, frame.buffer);
@@ -591,13 +592,13 @@ namespace lux::render::detail
     void DirectLightingStorage::publish(std::uint32_t kind, std::uint32_t frame) noexcept
     {
         const auto& slice = arrays_[kind].frames[frame];
-        StorageSubscription::publish(arrays_[kind].bindings, frame, {slice.buffer, 0, slice.capacity * strides[kind]});
+        if (!resources_.publishGraphInput(id_, kind, frame, {slice.buffer, 0, slice.capacity * strides[kind]}))
+            std::terminate();
     }
 
     RenderResult<void> DirectLightingStorage::resolve(
         const VGraphResourceDesc& resource,
         DirectLightingBinding binding,
-        StorageSubscription& subscription,
         std::span<ResourceInput> output
     ) noexcept
     {
@@ -610,7 +611,6 @@ namespace lux::render::detail
         }
         if (output.size() > frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& array = arrays_[field];
-        subscription.attach(array.bindings);
         for (std::uint32_t f = 0; f < output.size(); ++f)
         {
             const auto& slice = array.frames[f];
@@ -728,15 +728,7 @@ namespace lux::render::detail
         static constexpr auto snapshot =
             StorageSnapshotOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::captureShadows>();
         static const StorageBindingOps binding{
-            [](void* value,
-               const VGraphResourceDesc& resource,
-               const void* argument,
-               StorageSubscription& node,
-               std::span<ResourceInput> output) noexcept
-            {
-                return static_cast<DirectLightingStorage*>(value)
-                    ->resolve(resource, *static_cast<const DirectLightingBinding*>(argument), node, output);
-            },
+            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
@@ -748,11 +740,11 @@ namespace lux::render::detail
                 return StorageGraphImport{GraphBufferDesc{bytes}, {GraphBufferRange{0, bytes}}, EGraphUse::STORAGE_READ};
             },
             [](void* value, std::uint32_t projection, const VGraphResourceDesc& resource,
-               StorageSubscription& node, std::span<ResourceInput> output) noexcept -> RenderResult<void>
+               std::span<ResourceInput> output) noexcept -> RenderResult<void>
             {
                 if (projection >= strides.size()) return cxx::unexpected(RenderError{kStorageContract});
                 return static_cast<DirectLightingStorage*>(value)->resolve(
-                    resource, DirectLightingBinding{static_cast<EDirectLightingBuffer>(projection)}, node, output
+                    resource, DirectLightingBinding{static_cast<EDirectLightingBuffer>(projection)}, output
                 );
             },
             &snapshot,

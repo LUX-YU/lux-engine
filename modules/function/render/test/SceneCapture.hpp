@@ -530,8 +530,7 @@ public:
 
     static ResourceRegistration factory() noexcept
     {
-        static const StorageBindingOps bindings{resolve};
-        return makeResourceRegistration<CaptureDescriptor, CaptureBuffer, &CaptureBuffer::create>(nullptr, &bindings);
+        return makeResourceRegistration<CaptureDescriptor, CaptureBuffer, &CaptureBuffer::create>(nullptr, nullptr);
     }
 
     explicit CaptureBuffer(ResourceCreateContext& context) noexcept
@@ -570,8 +569,7 @@ public:
     }
 
     static RenderResult<void> resolve(
-        void* object, const VGraphResourceDesc&, const void* argument, StorageSubscription&,
-        std::span<ResourceInput> output
+        void* object, const VGraphResourceDesc&, const void* argument, std::span<ResourceInput> output
     ) noexcept
     {
         auto& value = *static_cast<CaptureBuffer*>(object);
@@ -666,13 +664,13 @@ private:
 
     static RenderResult<void> resolve(
         void* object, std::uint32_t projection, const VGraphResourceDesc& description,
-        StorageSubscription& subscription, std::span<ResourceInput> output
+        std::span<ResourceInput> output
     ) noexcept
     {
         auto& capture = *static_cast<GraphCaptureBuffer*>(object);
         if (projection >= capture.config_.size() || !capture.config_[projection].result)
             return lux::cxx::unexpected(RenderError{kStorageContract});
-        return CaptureBuffer::resolve(capture.storage_.get(), description, &capture.config_[projection], subscription, output);
+        return CaptureBuffer::resolve(capture.storage_.get(), description, &capture.config_[projection], output);
     }
 
     static inline std::atomic<const std::span<const CaptureConfig>*> creation_input_{};

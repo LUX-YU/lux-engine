@@ -53,7 +53,7 @@ namespace lux::render::detail
 
     TransformStorage::TransformStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         : id_(id), session_(context.device), progress_(context.retirement_progress_), frame_count_(context.frame_count),
-          paged_(session_.usesDeviceAddresses()), completed_(session_.makeFrontiers())
+          paged_(session_.usesDeviceAddresses()), completed_(session_.makeFrontiers()), resources_(context.resources)
     {
     }
 
@@ -184,12 +184,7 @@ namespace lux::render::detail
             CommandBinding::declare<TransformCommands::Release, &releaseTransform>()
         };
         static const StorageBindingOps binding{
-            [](void* value,
-               const VGraphResourceDesc& plan,
-               const void*,
-               StorageSubscription& subscription,
-               std::span<ResourceInput> output) noexcept
-            { return static_cast<TransformStorage*>(value)->resolve(plan, subscription, output); },
+            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<TransformStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept { return &static_cast<const TransformStorage*>(value)->revision_; },
@@ -208,14 +203,14 @@ namespace lux::render::detail
                 };
             },
             [](void* value, std::uint32_t projection, const VGraphResourceDesc& plan,
-               StorageSubscription& subscription, std::span<ResourceInput> output) noexcept -> RenderResult<void>
+               std::span<ResourceInput> output) noexcept -> RenderResult<void>
             {
                 auto& owner = *static_cast<TransformStorage*>(value);
                 const auto expected = owner.paged_ ? ETransformGraphProjection::PAGE_ADDRESSES :
                     ETransformGraphProjection::RECORDS;
                 if (projection != static_cast<std::uint32_t>(expected))
                     return cxx::unexpected(RenderError{kStorageMismatch});
-                return owner.resolve(plan, subscription, output);
+                return owner.resolve(plan, output);
             },
             nullptr,
             [](void* value, const ReplicaSettlement& settlement) noexcept

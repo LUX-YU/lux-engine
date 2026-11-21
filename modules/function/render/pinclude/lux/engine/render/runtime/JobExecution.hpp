@@ -14,6 +14,7 @@ namespace lux::render::detail
 {
     class DeviceEntry;
     struct EffectDeviceVariant;
+    struct GraphReaderTag;
     class ViewParameterStorage;
     struct DeviceVariantTag;
     using DeviceVariantId = cxx::SlotKey<DeviceVariantTag>;
@@ -21,6 +22,14 @@ namespace lux::render::detail
 
 namespace lux::render::runtime_detail
 {
+    struct StorageInput final
+    {
+        ResourceInstanceId storage;
+        std::uint32_t projection;
+        GraphResourceId resource;
+        cxx::SlotKey<detail::GraphReaderTag> reader{};
+    };
+
     struct JobGraphPlan final
     {
         detail::RenderGraphExecutable executable;
@@ -99,14 +108,7 @@ namespace lux::render::runtime_detail
         }
         std::span<const std::uint32_t> columnsFor(const Input&) const && = delete;
 
-        struct StorageInput final
-        {
-            detail::RenderGraphInstance* instance;
-            std::uint32_t resource;
-            detail::StorageSubscription subscription;
-        };
-
-        // Destruction disconnects professional data and inputs before the graph instance.
+        detail::TargetReservation storage_start;
         std::vector<StorageInput> storage_inputs;
 
         struct TargetImage final
@@ -116,13 +118,6 @@ namespace lux::render::runtime_detail
         };
 
         std::vector<TargetImage> target_images;
-        [[nodiscard]] RenderResult<void> bindStorage(
-            std::uint32_t resource,
-            const detail::StorageBindingOps&,
-            void* native,
-            std::uint32_t frame_count,
-            std::uint32_t projection
-        ) noexcept;
         void selectViewParameters() noexcept;
         const detail::ViewParameterStorage* view_parameters = nullptr;
         std::uint64_t view_revision = 0;

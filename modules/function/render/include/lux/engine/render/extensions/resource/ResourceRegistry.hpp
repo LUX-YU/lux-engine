@@ -16,11 +16,27 @@ namespace lux::render
 
     class ResourceSet;
     class RenderServer;
-    namespace detail { class RasterMeshInstanceStorage; }
+    namespace detail
+    {
+        class RasterMeshInstanceStorage;
+        class RenderGraphInstance;
+        struct TargetReservation;
+        struct GraphReaderTag;
+        struct ResourceInput;
+    }
+    namespace runtime_detail { struct StorageInput; }
 
     class LUX_RENDER_PUBLIC ResourceRegistry final
     {
     public:
+        // Device-owner notification. UINT32_MAX replaces every FIF slice of the projection.
+        [[nodiscard]] RenderResult<std::size_t> publishGraphInput(
+            ResourceInstanceId storage,
+            std::uint32_t projection,
+            std::uint32_t frame,
+            const detail::ResourceInput& value
+        ) noexcept;
+
         ResourceRegistry() noexcept = default;
         ~ResourceRegistry() noexcept;
         ResourceRegistry(const ResourceRegistry&) = delete;
@@ -134,6 +150,19 @@ namespace lux::render
         friend class RenderServer;
         friend void runtime_detail::finishResourceCommand(ResourceRegistry&, ResourceInstanceId) noexcept;
 
+        [[nodiscard]] RenderResult<cxx::SlotKey<detail::GraphReaderTag>> bindGraphInput(
+            const runtime_detail::StorageInput&, const detail::TargetReservation&, detail::RenderGraphInstance&
+        ) noexcept;
+        void unbindGraphInput(const runtime_detail::StorageInput&, const detail::TargetReservation&) noexcept;
+
+        struct InputReader final
+        {
+            RenderJobId job;
+            std::uint64_t start_serial;
+            GraphResourceId resource;
+            detail::RenderGraphInstance* instance;
+        };
+
         struct ResolvedCommand final
         {
             CommandBindingLocation binding;
@@ -197,6 +226,7 @@ namespace lux::render
             bool exclusive_command = false;
             std::uint32_t dependent_storages = 0;
             std::vector<ResourceInstanceId> dependencies{};
+            std::map<std::uint32_t, cxx::SlotMap<InputReader, detail::GraphReaderTag>> graph_readers{};
         };
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;

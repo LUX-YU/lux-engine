@@ -27,7 +27,6 @@ namespace lux::render::detail
         resolve(
             const VGraphResourceDesc&,
             DirectLightingBinding,
-            StorageSubscription&,
             std::span<ResourceInput>
         ) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
@@ -55,7 +54,6 @@ namespace lux::render::detail
             std::vector<std::byte> records;
             std::vector<cxx::SlotKey<DirectLightTag>> identities;
             std::array<Slice, 3> frames;
-            StorageSubscription* bindings = nullptr;
         };
 
         struct Write final
@@ -69,6 +67,7 @@ namespace lux::render::detail
         void finishPreparation(const ReplicaSettlement&) noexcept;
         void publish(std::uint32_t kind, std::uint32_t frame) noexcept;
         DeviceSession& device_;
+        ResourceRegistry& resources_;
         std::uint32_t frame_count_;
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;

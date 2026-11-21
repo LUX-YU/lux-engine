@@ -271,11 +271,6 @@ namespace lux::render::detail
 
     RasterMeshInstanceStorage::~RasterMeshInstanceStorage() noexcept
     {
-        StorageSubscription::disconnect(paged_bindings_);
-        for (auto& head : bindings_)
-        {
-            StorageSubscription::disconnect(head);
-        }
         for (const auto& entry : entries_)
         {
             if (!entry.key.isNull()) transforms_.releaseInstance(instanceRecord(entry).transform);
@@ -355,7 +350,7 @@ namespace lux::render::detail
         auto& slice = frames_->slices[frame];
         if (paged_ && slice.addressed_buffers[0].size() != slice.table->leaves.size() + slice.known_pages)
         {
-            for (std::size_t field = 0; field < bindings_.size(); ++field)
+            for (std::size_t field = 0; field < kStride.size(); ++field)
             {
                 auto& buffers = slice.addressed_buffers[field];
                 buffers.clear();
@@ -370,21 +365,18 @@ namespace lux::render::detail
             }
             ++slice.addressed_revision;
         }
-        for (std::size_t field = 0; field < bindings_.size(); ++field)
+        if (paged_)
         {
-            auto& buffer = paged_ ? slice.table->root : slice.flat.field(field);
-            StorageSubscription::publish(
-                bindings_[field],
-                frame,
-                {buffer,
-                 0,
-                 session_.nriCore().GetBufferDesc(*buffer).size,
-                 nullptr,
-                 slice.addressed_buffers[field],
-                 slice.addressed_revision}
-            );
+            const auto root = static_cast<std::uint32_t>(EMeshInstanceBinding::PAGED_ROOT);
+            if (!resources_.publishGraphInput(id_, root, frame, pagedRoot(frame))) std::terminate();
+            return;
         }
-        if (paged_bindings_) StorageSubscription::publish(paged_bindings_, frame, pagedRoot(frame));
+        for (std::uint32_t field = 0; field < kStride.size(); ++field)
+        {
+            auto* buffer = slice.flat.field(field);
+            const ResourceInput input{buffer, 0, session_.nriCore().GetBufferDesc(*buffer).size};
+            if (!resources_.publishGraphInput(id_, field, frame, input)) std::terminate();
+        }
     }
 
     ResourceInput RasterMeshInstanceStorage::pagedRoot(std::uint32_t frame) noexcept
@@ -761,15 +753,17 @@ namespace lux::render::detail
                         {
                             dirty.clear();
                         }
-                        for (auto* head : bindings_)
+                        if (!paged_)
                         {
-                            StorageSubscription::publish(head, frame, {});
+                            for (std::uint32_t field = 0; field < kStride.size(); ++field)
+                                if (!resources_.publishGraphInput(id_, field, frame, {})) std::terminate();
                         }
                         for (auto& buffers : slice.addressed_buffers) buffers.clear();
                         slice.root_dependencies.clear();
                         slice.root_published = false;
                         ++slice.addressed_revision;
-                        StorageSubscription::publish(paged_bindings_, frame, {});
+                        const auto root = static_cast<std::uint32_t>(EMeshInstanceBinding::PAGED_ROOT);
+                        if (paged_ && !resources_.publishGraphInput(id_, root, frame, {})) std::terminate();
                     }
                 }
                 for (std::size_t page = old_pages; page < pages_.size(); ++page)
@@ -1250,7 +1244,6 @@ namespace lux::render::detail
     RenderResult<void> RasterMeshInstanceStorage::resolve(
         const VGraphResourceDesc& plan,
         const MeshInstanceBinding& input,
-        StorageSubscription& subscription,
         std::span<ResourceInput> output
     ) noexcept
     {
@@ -1267,7 +1260,6 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         if (output.size() > frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
-        subscription.attach(bindings_[field]);
         for (std::uint32_t frame = 0; frame < output.size(); ++frame)
         {
             auto& slice = frames_->slices[frame];
@@ -1297,17 +1289,15 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RasterMeshInstanceStorage::resolveGraphImport(
-        std::uint32_t projection, const VGraphResourceDesc& plan, StorageSubscription& subscription,
-        std::span<ResourceInput> output
+        std::uint32_t projection, const VGraphResourceDesc& plan, std::span<ResourceInput> output
     ) noexcept
     {
         auto contract = describeGraphImport(projection);
         if (!contract || contract->description != plan)
             return cxx::unexpected(RenderError{kStorageMismatch});
         if (!paged_)
-            return resolve(plan, {static_cast<EMeshInstanceBinding>(projection)}, subscription, output);
+            return resolve(plan, {static_cast<EMeshInstanceBinding>(projection)}, output);
         if (output.size() > frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
-        subscription.attach(paged_bindings_);
         for (std::uint32_t frame = 0; frame < output.size(); ++frame) output[frame] = pagedRoot(frame);
         return {};
     }
@@ -1328,15 +1318,7 @@ namespace lux::render::detail
             &RasterMeshInstanceStorage::selection_revision_
         >();
         static const StorageBindingOps binding{
-            [](void* value,
-               const VGraphResourceDesc& plan,
-               const void* argument,
-               StorageSubscription& subscription,
-               std::span<ResourceInput> output) noexcept
-            {
-                return static_cast<RasterMeshInstanceStorage*>(value)
-                    ->resolve(plan, *static_cast<const MeshInstanceBinding*>(argument), subscription, output);
-            },
+            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMeshInstanceStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
@@ -1344,8 +1326,8 @@ namespace lux::render::detail
             [](const void* value, std::uint32_t projection) noexcept
             { return static_cast<const RasterMeshInstanceStorage*>(value)->describeGraphImport(projection); },
             [](void* value, std::uint32_t projection, const VGraphResourceDesc& plan,
-               StorageSubscription& node, std::span<ResourceInput> output) noexcept
-            { return static_cast<RasterMeshInstanceStorage*>(value)->resolveGraphImport(projection, plan, node, output); },
+               std::span<ResourceInput> output) noexcept
+            { return static_cast<RasterMeshInstanceStorage*>(value)->resolveGraphImport(projection, plan, output); },
             &snapshot,
             [](void* value, const ReplicaSettlement& settlement) noexcept
             { static_cast<RasterMeshInstanceStorage*>(value)->finishFramePreparation(settlement); }

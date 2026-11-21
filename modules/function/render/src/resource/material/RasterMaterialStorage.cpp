@@ -133,10 +133,6 @@ namespace lux::render::detail
 
     RasterMaterialStorage::~RasterMaterialStorage() noexcept
     {
-        for (auto& entry : entries_)
-        {
-            StorageSubscription::disconnect(entry.bindings);
-        }
         for (auto& [digest, table] : tables_)
         {
             for (auto& page : table->pages)
@@ -831,7 +827,6 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
         auto& program = *programs_.find(extension_detail::ResourceIdentity::local(entry->program));
-        StorageSubscription::disconnect(entry->bindings);
         if (page)
         {
             page->free_slots.push_back(entry->slot);
@@ -844,55 +839,6 @@ namespace lux::render::detail
             auto& table = page->definition;
             releasePage(*page);
             std::erase_if(table.pages, [&](const auto& value) noexcept { return value.get() == page; });
-        }
-        return {};
-    }
-
-    RenderResult<void>
-    RasterMaterialStorage::resolve(
-        const VGraphResourceDesc& plan,
-        const MaterialBinding& argument,
-        StorageSubscription& subscription,
-        std::span<ResourceInput> output
-    ) noexcept
-    {
-        auto* entry = findEntry(argument.material);
-        if (!entry)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (!entry->page) return cxx::unexpected(RenderError{kStorageMismatch});
-        if (output.size() > frame_count_)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        const auto& page = *entry->page;
-        const auto& table = page.definition;
-        if (argument.texture_slot != UINT32_MAX)
-        {
-            const bool invalid_slot = argument.texture_slot >= table.texture_offsets.size();
-            if (!std::holds_alternative<GraphImageDesc>(plan) || invalid_slot)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
-            // This Graph port selects the device bindless table, not one physical Image. Its
-            // Texture indices were resolved by the explicit write; no Client asset mirror is kept.
-            std::ranges::fill(output, ResourceInput{});
-            return {};
-        }
-        if (argument.layout != table.layout)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        const auto* description = std::get_if<GraphBufferDesc>(&plan);
-        if (!description || description->size < table.stride || description->size > page.records.size())
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        subscription.attach(entry->bindings);
-        for (std::uint32_t frame = 0; frame < output.size(); ++frame)
-        {
-            output[frame] = {page.gpu[frame].parameters, 0, page.records.size()};
         }
         return {};
     }
@@ -985,15 +931,7 @@ namespace lux::render::detail
             CommandBinding::declare<MaterialCommands::UnregisterProgram, &handleUnregisterProgram>()
         };
         static const StorageBindingOps binding{
-            [](void* object,
-               const VGraphResourceDesc& plan,
-               const void* argument,
-               StorageSubscription& subscription,
-               std::span<ResourceInput> output) noexcept
-            {
-                return static_cast<RasterMaterialStorage*>(object)
-                    ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);
-            },
+            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMaterialStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept

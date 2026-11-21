@@ -324,12 +324,12 @@ namespace
                 },
                 .resolveGraphImport = [](
                     void* object, std::uint32_t projection, const VGraphResourceDesc& description,
-                    StorageSubscription& subscription, std::span<ResourceInput> output
+                    std::span<ResourceInput> output
                 ) noexcept
                 {
                     auto& capture = *static_cast<MaterialReadback*>(object);
                     return CaptureBuffer::resolve(
-                        &capture.storage, description, &capture.configuration[projection], subscription, output
+                        &capture.storage, description, &capture.configuration[projection], output
                     );
                 }
             };

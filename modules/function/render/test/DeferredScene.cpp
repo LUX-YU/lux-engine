@@ -77,13 +77,12 @@ namespace
                     };
                 },
                 .resolveGraphImport = [](
-                    void* object, std::uint32_t, const VGraphResourceDesc& desc, StorageSubscription& subscription,
-                    std::span<ResourceInput> output
+                    void* object, std::uint32_t, const VGraphResourceDesc& desc, std::span<ResourceInput> output
                 ) noexcept
                 {
                     auto& capture = *static_cast<GBufferCapture*>(object);
                     const CaptureConfig config{.result = &pixels, .bytes = gbuffer_capture_total};
-                    return CaptureBuffer::resolve(&capture.storage, desc, &config, subscription, output);
+                    return CaptureBuffer::resolve(&capture.storage, desc, &config, output);
                 }
             };
             return makeResourceRegistration<GBufferCaptureDescriptor, GBufferCapture, &GBufferCapture::create>(

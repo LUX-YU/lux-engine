@@ -4,6 +4,7 @@
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/resource/transform/TransformStorage.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
+#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <bit>
 #include <utility>
 
@@ -11,7 +12,6 @@ namespace lux::render::detail
 {
     TransformStorage::~TransformStorage() noexcept
     {
-        StorageSubscription::disconnect(subscriptions_);
         for (auto& replica : replicas_)
         {
             destroy(replica.binding);
@@ -160,18 +160,23 @@ namespace lux::render::detail
             ++replica.address_revision;
             changed = true;
         }
-        if (changed) StorageSubscription::publish(subscriptions_, frame, binding(frame));
+        if (changed)
+        {
+            const auto projection = paged_ ? ETransformGraphProjection::PAGE_ADDRESSES
+                                           : ETransformGraphProjection::RECORDS;
+            if (!resources_.publishGraphInput(id_, static_cast<std::uint32_t>(projection), frame, binding(frame)))
+                std::terminate();
+        }
     }
 
     RenderResult<void> TransformStorage::resolve(
-        const VGraphResourceDesc& plan, StorageSubscription& subscription, std::span<ResourceInput> output
+        const VGraphResourceDesc& plan, std::span<ResourceInput> output
     ) noexcept
     {
         const auto* desc = std::get_if<GraphBufferDesc>(&plan);
         if (!desc || desc->size > sizeof(TransformMatrix))
             return cxx::unexpected(RenderError{kStorageMismatch});
         if (output.size() > frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
-        subscription.attach(subscriptions_);
         for (std::uint32_t frame = 0; frame < output.size(); ++frame) output[frame] = binding(frame);
         return {};
     }

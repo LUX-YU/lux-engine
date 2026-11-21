@@ -13,6 +13,7 @@
 
 namespace lux::render
 {
+    class ResourceRegistry;
     struct ResourceCreateContext;
     struct ResourceRegistration;
 }
@@ -69,7 +70,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> ensureReplica(Replica&) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         [[nodiscard]] RenderResult<void>
-        resolve(const VGraphResourceDesc&, StorageSubscription&, std::span<ResourceInput>) noexcept;
+        resolve(const VGraphResourceDesc&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] ResourceInput binding(std::uint32_t) const noexcept;
         void finishPreparation(const ReplicaSettlement&) noexcept;
         void destroy(nri::Buffer*) noexcept;
@@ -85,7 +86,7 @@ namespace lux::render::detail
         TransformSlotRetirement retirement_;
         SubmissionFrontiers completed_;
         std::array<Replica, 3> replicas_;
-        StorageSubscription* subscriptions_ = nullptr;
+        ResourceRegistry& resources_;
         std::uint64_t revision_ = 1;
     };
 } // namespace lux::render::detail

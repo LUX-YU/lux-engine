@@ -28,7 +28,6 @@ namespace lux::render::detail
             MaterialProgramId program;
             Page* page = nullptr;
             std::uint32_t slot = 0;
-            StorageSubscription* bindings = nullptr;
             std::vector<TextureId> textures;
         };
 
@@ -84,8 +83,6 @@ namespace lux::render::detail
         using WriteValue = std::conditional_t<std::same_as<Input, MaterialUpdate>, Ack, MaterialId>;
         template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>>
         write(ReplicaMutation&, Input) noexcept;
-        [[nodiscard]] RenderResult<void>
-        resolve(const VGraphResourceDesc&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         void finishFramePreparation(const ReplicaSettlement&) noexcept;
         void markDirty(Page&, std::uint32_t frame, std::uint32_t record) noexcept;

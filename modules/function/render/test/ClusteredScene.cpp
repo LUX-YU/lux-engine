@@ -91,12 +91,12 @@ struct ClusterReadback final
             },
             .resolveGraphImport = [](
                 void* object, std::uint32_t projection, const VGraphResourceDesc& description,
-                StorageSubscription& subscription, std::span<ResourceInput> output
+                std::span<ResourceInput> output
             ) noexcept
             {
                 auto& readback = *static_cast<ClusterReadback*>(object);
                 return CaptureBuffer::resolve(
-                    &readback.storage, description, &readback.configuration[projection], subscription, output
+                    &readback.storage, description, &readback.configuration[projection], output
                 );
             }
         };

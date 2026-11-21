@@ -57,8 +57,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> release(MeshId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
-        [[nodiscard]] RenderResult<ResourceInput>
-        resolve(const VGraphResourceDesc&, const MeshBinding&, StorageSubscription&) noexcept;
 
     private:
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&) const noexcept;

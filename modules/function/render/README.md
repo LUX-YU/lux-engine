@@ -64,7 +64,13 @@ Use `EffectBuildContext::importResource` and `JobBinding::resources` to bind an 
 by name, `ResourceInstanceId` and a Resource-defined projection index. The index defaults to zero for a
 Resource with one graph binding. `describeGraphImport` qualifies the shape, initialized ranges and boundary
 use. `resolveGraphImport` supplies the FIF slices and maintains disjoint backing across distinct bindings,
-including through subscription updates. Multiple names for the same owner and projection resolve to a single
+including through backing replacement. A Resource publishes each changed physical slice on the device owner through
+`ResourceRegistry::publishGraphInput(storage, projection, frame, input)`. The result counts the graph bindings
+updated. Use `UINT32_MAX` to replace all slices, including clearing a projection before replacing its backing.
+The registry indexes readers by Resource identity and projection. Each successful Job binding records its ticket;
+failed Start, failed Rebind, replacement and Stop remove only that execution’s tickets before releasing its instance.
+The first positional `StorageBindingOps::Resolve` signature is retained for the deferred Editor consumer.
+Multiple names for the same owner and projection resolve to a single
 graph resource. The Job retains each live owner through instance retirement. Variants can be reused with
 different owners that supply the same projection contracts and alias pattern.
 

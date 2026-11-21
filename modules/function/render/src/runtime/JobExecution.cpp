@@ -36,36 +36,6 @@ namespace lux::render::runtime_detail
         }
     }
 
-    RenderResult<void> JobExecution::bindStorage(
-        std::uint32_t resource,
-        const detail::StorageBindingOps& ops,
-        void* native,
-        std::uint32_t frame_count,
-        std::uint32_t projection
-    ) noexcept
-    {
-        auto& use = storage_inputs.emplace_back(&instance, resource);
-        use.subscription.receiver = &use;
-        use.subscription.changed = [](void* value, std::uint32_t slot, const detail::ResourceInput& resource) noexcept
-        {
-            auto& link = *static_cast<JobExecution::StorageInput*>(value);
-            link.instance->setResource(link.resource, slot, resource);
-        };
-        std::array<detail::ResourceInput, 3> slices;
-        const auto& description = executable.resources()[resource].description;
-        auto output = std::span(slices).first(frame_count);
-        auto resolved = ops.resolveGraphImport(native, projection, description, use.subscription, output);
-        if (!resolved)
-        {
-            return cxx::unexpected(resolved.error());
-        }
-        for (std::uint32_t slot = 0; slot < frame_count; ++slot)
-        {
-            instance.setResource(resource, slot, slices[slot]);
-        }
-        return {};
-    }
-
 } // namespace lux::render::runtime_detail
 
 namespace lux::render
@@ -155,12 +125,11 @@ namespace lux::render
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
-            const auto* factory = registry.factory(registry.declarationOf(id));
-            const auto& ops = *factory->storage()->bindings();
-            if (auto bound = candidate.bindStorage(
-                    slot, ops, registry.resourceInstance(id), entry.frameProgress().frameCount(),
-                    input.projection
-                ); !bound) return bound;
+            StorageInput link{id, input.projection, slots[i]};
+            auto bound = registry.bindGraphInput(link, candidate.storage_start, candidate.instance);
+            if (!bound) return cxx::unexpected(bound.error());
+            link.reader = *bound;
+            candidate.storage_inputs.push_back(link);
         }
         const auto samplers = std::span{candidate.graph_plan->samplers};
         if (auto bound = bindGraphSamplers(candidate, samplers); !bound) return bound;

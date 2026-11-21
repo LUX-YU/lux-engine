@@ -68,7 +68,7 @@ namespace lux::render::detail
         [[nodiscard]] ResourceInput pagedRoot(std::uint32_t frame) noexcept;
         [[nodiscard]] RenderResult<StorageGraphImport> describeGraphImport(std::uint32_t projection) const noexcept;
         [[nodiscard]] RenderResult<void> resolveGraphImport(
-            std::uint32_t projection, const VGraphResourceDesc&, StorageSubscription&, std::span<ResourceInput>
+            std::uint32_t projection, const VGraphResourceDesc&, std::span<ResourceInput>
         ) noexcept;
         template <class Input>
         using CreateValue =
@@ -79,7 +79,6 @@ namespace lux::render::detail
         resolve(
             const VGraphResourceDesc&,
             const MeshInstanceBinding&,
-            StorageSubscription&,
             std::span<ResourceInput>
         ) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
@@ -111,7 +110,5 @@ namespace lux::render::detail
         cxx::SlotMap<Entry, MeshInstanceTag> entries_;
         std::vector<std::unique_ptr<Page>> pages_;
         std::unique_ptr<FrameData> frames_;
-        std::array<StorageSubscription*, 2> bindings_{};
-        StorageSubscription* paged_bindings_ = nullptr;
     };
 } // namespace lux::render::detail

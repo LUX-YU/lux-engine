@@ -292,49 +292,6 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<ResourceInput> IndexedTriangleMeshStorage::
-        resolve(const VGraphResourceDesc& plan, const MeshBinding& argument, StorageSubscription&) noexcept
-    {
-        auto* entry = findEntry(argument.mesh);
-        if (!entry)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        const auto* description = std::get_if<GraphBufferDesc>(&plan);
-        const bool is_invalid_kind = argument.buffer > EMeshBuffer::BOUNDS;
-        const bool is_mismatch = !description || is_invalid_kind;
-        if (is_mismatch)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        const bool vertex = argument.buffer == EMeshBuffer::VERTICES;
-        const bool index = argument.buffer == EMeshBuffer::INDICES;
-        const bool bounds = argument.buffer == EMeshBuffer::BOUNDS;
-        const bool is_layout_mismatch = vertex ? argument.stride != entry->description.vertex_stride ||
-                                                     argument.attributes != entry->description.attributes
-                                               : argument.stride != (index    ? entry->description.index_stride
-                                                                     : bounds ? sizeof(MeshGpuBounds)
-                                                                              : sizeof(MeshGpuSection));
-        if (is_layout_mismatch)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        const auto& range = vertex  ? entry->geometry.vertices.slice
-                            : index ? entry->geometry.indices.slice
-                                    : entry->geometry.sections.slice;
-        const auto section_count = entry->description.submeshes.size() + entry->description.lods.size();
-        const auto section_bytes = section_count * sizeof(MeshGpuSection);
-        const auto offset = bounds ? (section_bytes + 15) & ~std::size_t{15} : 0;
-        const auto size = bounds                                     ? sizeof(MeshGpuBounds)
-                          : argument.buffer == EMeshBuffer::SECTIONS ? section_bytes
-                                                                     : range.size;
-        if (description->size > size)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        return ResourceInput{range.buffer, range.offset + offset, size};
-    }
-
     void IndexedTriangleMeshStorage::retire(const Geometry& geometry) noexcept
     {
         // The exclusive release excludes prepared frames. Upload rollback reaches this point after its native receipt.
@@ -356,23 +313,6 @@ namespace lux::render::detail
             CommandBinding::declare<MeshCommands::UploadMesh, &createMesh>(),
             CommandBinding::declare<MeshCommands::ReleaseMesh, &releaseMesh>()
         };
-        static const StorageBindingOps binding{
-            [](void* object,
-               const VGraphResourceDesc& plan,
-               const void* argument,
-               StorageSubscription& subscription,
-               std::span<ResourceInput> output) noexcept -> RenderResult<void>
-            {
-                auto value = static_cast<IndexedTriangleMeshStorage*>(object)
-                                 ->resolve(plan, *static_cast<const MeshBinding*>(argument), subscription);
-                if (!value)
-                {
-                    return cxx::unexpected(value.error());
-                }
-                std::ranges::fill(output, *value);
-                return {};
-            }
-        };
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<IndexedTriangleMeshStorage>>
         {
@@ -384,7 +324,7 @@ namespace lux::render::detail
         };
         return makeResourceRegistration<render::MeshResource, IndexedTriangleMeshStorage, create>(
             nullptr,
-            &binding,
+            nullptr,
             commands
         );
     }

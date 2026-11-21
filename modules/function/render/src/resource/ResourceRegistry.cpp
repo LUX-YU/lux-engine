@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <exception>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -8,6 +9,58 @@
 
 namespace lux::render
 {
+    RenderResult<cxx::SlotKey<detail::GraphReaderTag>> ResourceRegistry::bindGraphInput(
+        const runtime_detail::StorageInput& link,
+        const detail::TargetReservation& start,
+        detail::RenderGraphInstance& instance
+    ) noexcept
+    {
+        auto* entry = entries_.find(link.storage);
+        if (!entry || !entry->execution_uses) return cxx::unexpected(RenderError{kStorageIdentity});
+        const auto& ops = *types_.find(entry->type)->factory.storage()->bindings();
+        std::array<detail::ResourceInput, 3> slices{};
+        auto output = std::span(slices).first(instance.frameCount());
+        const auto& description = instance.plan().resources()[link.resource.index].description;
+        if (auto resolved = ops.resolveGraphImport(entry->instance, link.projection, description, output); !resolved)
+            return cxx::unexpected(resolved.error());
+
+        // An extension may have created other resources during resolution. Reacquire the row by identity.
+        auto& readers = entries_.find(link.storage)->graph_readers[link.projection];
+        const auto reader = readers.emplace(InputReader{start.job, start.start_serial, link.resource, &instance});
+        for (std::uint32_t slot = 0; slot < output.size(); ++slot)
+            instance.setResource(link.resource.index, slot, output[slot]);
+        return reader;
+    }
+
+    void ResourceRegistry::unbindGraphInput(
+        const runtime_detail::StorageInput& link, const detail::TargetReservation& start
+    ) noexcept
+    {
+        auto& projections = entries_.find(link.storage)->graph_readers;
+        const auto found = projections.find(link.projection);
+        if (found == projections.end()) std::terminate();
+        const auto* reader = found->second.find(link.reader);
+        const bool matches_start = reader && reader->job == start.job && reader->start_serial == start.start_serial;
+        if (!matches_start || reader->resource != link.resource) std::terminate();
+        found->second.erase(link.reader);
+        if (found->second.empty()) projections.erase(found);
+    }
+
+    RenderResult<std::size_t> ResourceRegistry::publishGraphInput(
+        ResourceInstanceId storage, std::uint32_t projection, std::uint32_t frame, const detail::ResourceInput& value
+    ) noexcept
+    {
+        auto* entry = entries_.find(storage);
+        if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
+        const auto found = entry->graph_readers.find(projection);
+        if (found == entry->graph_readers.end()) return 0;
+        // Each storage belongs to one device with a single configured FIF count.
+        if (frame != UINT32_MAX && frame >= found->second.begin()->instance->frameCount())
+            return cxx::unexpected(RenderError{kFrameContract});
+        for (const auto& reader : found->second) reader.instance->setResource(reader.resource.index, frame, value);
+        return found->second.size();
+    }
+
     void runtime_detail::finishResourceCommand(ResourceRegistry& registry, ResourceInstanceId id) noexcept
     {
         if (!id.isNull()) registry.finishCommand(id);
@@ -382,7 +435,7 @@ namespace lux::render
 
     void ResourceRegistry::revoke(ResourceInstanceId id) noexcept
     {
-        if (hasBorrows(id) || hasDependents(id))
+        if (hasBorrows(id) || hasDependents(id) || !entries_.find(id)->graph_readers.empty())
         {
             std::terminate();
         }

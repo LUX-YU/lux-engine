@@ -431,35 +431,6 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<ResourceInput> SampledTexture2DStorage::
-        resolve(const VGraphResourceDesc& plan, const TextureBinding& argument, StorageSubscription&) noexcept
-    {
-        const auto* backing = find(argument.texture);
-        if (!argument.texture.isNull() && !backing)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (backing)
-        {
-            const auto* expected = std::get_if<GraphImageDesc>(&plan);
-            if (!expected)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
-            const auto native_format = imageFormat(expected->format).native;
-            const auto& image = session_.nriCore().GetTextureDesc(*backing->image_);
-            const bool is_mismatch = expected->width != image.width || expected->height != image.height ||
-                                     expected->mips != image.mipNum || expected->layers != image.layerNum ||
-                                     native_format != image.format || expected->samples != image.sampleNum;
-            if (is_mismatch)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
-        }
-        // Texture owners retain the image until callers withdraw their bindings.
-        return ResourceInput{.image = backing ? backing->image_ : nullptr};
-    }
-
     ResourceRegistration SampledTexture2DStorage::factory() noexcept
     {
 
@@ -468,26 +439,9 @@ namespace lux::render::detail
             CommandBinding::declare<TextureCommands::CloneRegion, &cloneTexture>(),
             CommandBinding::declare<TextureCommands::Release, &releaseTexture>()
         };
-        static const StorageBindingOps bindings{
-            [](void* storage,
-               const VGraphResourceDesc& plan,
-               const void* argument,
-               StorageSubscription& subscription,
-               std::span<ResourceInput> output) noexcept -> RenderResult<void>
-            {
-                auto value = static_cast<SampledTexture2DStorage*>(storage)
-                                 ->resolve(plan, *static_cast<const TextureBinding*>(argument), subscription);
-                if (!value)
-                {
-                    return cxx::unexpected(value.error());
-                }
-                std::ranges::fill(output, *value);
-                return {};
-            }
-        };
         return makeResourceRegistration<
             render::TextureResource,
             SampledTexture2DStorage,
-            &SampledTexture2DStorage::create>(nullptr, &bindings, commands);
+            &SampledTexture2DStorage::create>(nullptr, nullptr, commands);
     }
 } // namespace lux::render::detail

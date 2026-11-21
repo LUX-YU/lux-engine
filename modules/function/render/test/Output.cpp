@@ -1256,13 +1256,31 @@ struct RetirementFence final
         static inline const nri::Queue* compute_queue = nullptr;
     };
 
+    struct ReadPagedDependencies final
+    {
+        static constexpr std::string_view name = "test.effect.read_paged_dependencies";
+        struct Request final
+        {
+            ResourceInstanceId capture;
+            ResourceInstanceId instances;
+        };
+        using Data = Request;
+        struct Response final
+        {
+            RenderError error;
+            std::array<std::uint32_t, 3> counts{};
+        };
+        static ResourceInstanceId resourceId(const Request& input) noexcept { return input.capture; }
+    };
+
     struct EffectCaptureDescriptor final
     {
         using Config = void;
         using Ops = void;
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.effect.readback"}, 0, 0, {},
-            "View-owned EffectGraph buffer readback.", EResourceDomain::VIEW
+            "View-owned EffectGraph buffer readback.", EResourceDomain::VIEW,
+            resourceCommandDescriptors(static_cast<std::tuple<ReadPagedDependencies>*>(nullptr))
         };
     };
 
@@ -1277,13 +1295,15 @@ struct RetirementFence final
                 .describeGraphImport = describe,
                 .resolveGraphImport = resolve
             };
+            static const std::array commands{CommandBinding::declare<ReadPagedDependencies, &readPagedDependencies>()};
             return makeResourceRegistration<Descriptor, EffectCaptureBuffer, &EffectCaptureBuffer::create>(
-                nullptr, &bindings
+                nullptr, &bindings, commands
             );
         }
 
         EffectCaptureBuffer(ResourceCreateContext& context, CapturedPixels& pixels) noexcept
-            : capture_(context), config_{.result = &pixels, .bytes = effect_capture_bytes}
+            : capture_(context), config_{.result = &pixels, .bytes = effect_capture_bytes},
+              resources_(context.resources)
         {
 #ifdef _WIN32
             const bool descriptor_probe = UniformUploadProbe::watch_texture_pool &&
@@ -1315,23 +1335,6 @@ struct RetirementFence final
             CHECK(created_ < pixels.size());
             auto capture = std::make_unique<EffectCaptureBuffer>(context, pixels[created_++]);
             UniformUploadProbe::attach(context.device);
-            if (!watched_instances.isNull())
-            {
-                const auto* factory = context.resources.factory(kInstanceResourceName);
-                const auto& ops = *factory->storage()->bindings();
-                capture->paged_probe_.changed = [](void*, std::uint32_t frame, const ResourceInput& input) noexcept
-                {
-                    if (frame >= published_paged_reads.size()) return;
-                    published_paged_reads[frame] = static_cast<std::uint32_t>(input.addressed_buffers.size());
-                };
-                constexpr auto role = EMeshInstanceBinding::PAGED_ROOT;
-                std::array<ResourceInput, 3> bindings;
-                CHECK(ops.resolveGraphImport(
-                    context.resources.resourceInstance(watched_instances), static_cast<std::uint32_t>(role),
-                    GraphBufferDesc{meshInstanceProjectionBytes(role)}, capture->paged_probe_,
-                    std::span{bindings}.first(context.frame_count)
-                ));
-            }
             return capture;
         }
 
@@ -1339,8 +1342,6 @@ struct RetirementFence final
         static inline const RetirementFence* test_texture_retirement = nullptr;
 #endif
         static inline std::array<CapturedPixels, 14> pixels;
-        static inline ResourceInstanceId watched_instances;
-        static inline std::array<std::atomic_uint, 3> published_paged_reads;
 
     private:
         static RenderResult<StorageGraphImport> describe(const void*, std::uint32_t projection) noexcept
@@ -1351,12 +1352,37 @@ struct RetirementFence final
 
         static RenderResult<void> resolve(
             void* object, std::uint32_t projection, const VGraphResourceDesc& description,
-            StorageSubscription& subscription, std::span<ResourceInput> output
+            std::span<ResourceInput> output
         ) noexcept
         {
             CHECK(projection == 0);
             auto& owner = *static_cast<EffectCaptureBuffer*>(object);
-            return CaptureBuffer::resolve(&owner.capture_, description, &owner.config_, subscription, output);
+            return CaptureBuffer::resolve(&owner.capture_, description, &owner.config_, output);
+        }
+
+        static void readPagedDependencies(
+            EffectCaptureBuffer& capture,
+            const ReadPagedDependencies::Request& request,
+            ReadPagedDependencies::Response& out
+        ) noexcept
+        {
+            const auto& registry = capture.resources_;
+            const auto* factory = registry.factory(registry.declarationOf(request.instances));
+            if (!factory || factory->descriptor->type != kInstanceResourceName)
+            {
+                out.error = {kStorageIdentity};
+                return;
+            }
+            constexpr auto role = EMeshInstanceBinding::PAGED_ROOT;
+            std::array<ResourceInput, 3> slices;
+            auto resolved = factory->storage()->bindings()->resolveGraphImport(
+                registry.resourceInstance(request.instances), static_cast<std::uint32_t>(role),
+                GraphBufferDesc{meshInstanceProjectionBytes(role)}, slices
+            );
+            if (!resolved) { out.error = resolved.error(); return; }
+            out.error = {};
+            for (std::size_t i = 0; i < slices.size(); ++i)
+                out.counts[i] = static_cast<std::uint32_t>(slices[i].addressed_buffers.size());
         }
 
         static inline std::size_t created_ = 0;
@@ -1366,7 +1392,7 @@ struct RetirementFence final
 #endif
         CaptureBuffer capture_;
         CaptureConfig config_;
-        StorageSubscription paged_probe_;
+        ResourceRegistry& resources_;
     };
 
     constexpr auto node_bytes = effectPortSemantic("bytes");
@@ -4526,7 +4552,6 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     }).target;
     const auto instances = call<GetOrCreateResource>(*client, commands, {device, scene, kInstanceResourceName})
         .resource_id;
-    if (paged) EffectCaptureBuffer::watched_instances = instances;
     const auto readback = call<GetOrCreateResource>(*client, commands, {
         device, ViewRequest{scene, view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
@@ -4681,6 +4706,11 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
     const auto removed = call<RequestRenderJob>(*client, commands, {job});
     CHECK(observed_revision > revision);
+    if (paged)
+    {
+        const auto dependencies = call<ReadPagedDependencies>(*client, commands, {readback, instances});
+        for (const auto count : dependencies.counts) CHECK(count == 3);
+    }
     stopAndRemoveJob(*client, commands, job);
     call<RemoveView>(*client, commands, {scene, view});
     server->stop();
@@ -4699,10 +4729,6 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     verify(first.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(3.f)});
     verify(changed.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(11.f)});
     verify(removed.slot_index, {});
-    if (paged)
-    {
-        for (const auto& count : EffectCaptureBuffer::published_paged_reads) CHECK(count == 3);
-    }
     std::printf("MESH IMPORT PASS backend=%s paged=%u native fields, snapshot revision, and read-only qualification\n",
         d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned>(paged));
     return 0;

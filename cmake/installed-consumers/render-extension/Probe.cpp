@@ -351,8 +351,7 @@ struct ProbeStorage final
                 };
             },
             .resolveGraphImport = [](
-                void* object, std::uint32_t, const VGraphResourceDesc&, detail::StorageSubscription&,
-                std::span<detail::ResourceInput> outputs
+                void* object, std::uint32_t, const VGraphResourceDesc&, std::span<detail::ResourceInput> outputs
             ) noexcept -> RenderResult<void>
             {
                 auto& storage = *static_cast<ProbeStorage*>(object);
@@ -528,8 +527,7 @@ struct ProbeReadback final
                 return detail::StorageGraphImport{GraphBufferDesc{transfer_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
             },
             .resolveGraphImport = [](
-                void* object, std::uint32_t, const VGraphResourceDesc&, detail::StorageSubscription&,
-                std::span<detail::ResourceInput> outputs
+                void* object, std::uint32_t, const VGraphResourceDesc&, std::span<detail::ResourceInput> outputs
             ) noexcept -> RenderResult<void>
             {
                 auto& storage = *static_cast<ProbeReadback*>(object);

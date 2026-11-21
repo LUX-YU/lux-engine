@@ -904,6 +904,118 @@ struct RetirementFence final
     PFN_vkSignalSemaphore signal_vk = nullptr;
 };
 
+    struct UploadAcquireProbe final
+    {
+        enum class EPhase { IDLE, ARMED, COPY_ACCEPTED, ACQUIRE_REJECTED };
+
+        static inline bool enabled = false;
+        static inline std::atomic_bool qualified{};
+        static inline std::atomic<EPhase> phase{EPhase::IDLE};
+        static inline std::atomic_uint destructions{}, retries{};
+        static inline std::atomic<const nri::CommandBuffer*> copy_commands{};
+        static inline std::atomic<nri::Texture*> candidate{};
+
+        static void attach(DeviceSession& session, nri::Fence& gate) noexcept
+        {
+            auto& transfer = session.queue(EQueueRole::TRANSFER);
+            const auto granularity = transfer.properties().image_transfer_granularity;
+            qualified = &transfer != &session.queue() && granularity[0] == 1 && granularity[1] == 1 &&
+                granularity[2] == 1;
+            if (!qualified) return;
+            transfer_queue_ = &transfer.native();
+            graphics_queue_ = &session.queue().native();
+            gate_ = &gate;
+            auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
+            submit_ = core.QueueSubmit;
+            create_ = core.CreatePlacedTexture;
+            copy_ = core.CmdUploadBufferToTexture;
+            destroy_ = core.DestroyTexture;
+            fence_value_ = core.GetFenceValue;
+            core.CreatePlacedTexture = [](
+                nri::Device& device, nri::Memory* memory, std::uint64_t offset,
+                const nri::TextureDesc& description, nri::Texture*& texture
+            ) noexcept
+            {
+                const auto result = create_(device, memory, offset, description, texture);
+                if (phase == EPhase::ACQUIRE_REJECTED && result == nri::Result::SUCCESS) ++retries;
+                return result;
+            };
+            core.CmdUploadBufferToTexture = [](
+                nri::CommandBuffer& command, nri::Texture& target, const nri::TextureRegionDesc& region,
+                const nri::Buffer& source, const nri::TextureDataLayoutDesc& layout
+            ) noexcept
+            {
+                if (phase == EPhase::ARMED)
+                {
+                    CHECK(!candidate.exchange(&target));
+                    copy_commands = &command;
+                }
+                if (phase == EPhase::ACQUIRE_REJECTED)
+                {
+                    // The first Copy used the entire staging page. Any later recording needs its completion.
+                    CHECK(fence_value_(*copy_receipt_.fence) >= copy_receipt_.value);
+                }
+                copy_(command, target, region, source, layout);
+            };
+            core.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& desc) noexcept
+            {
+                if (phase == EPhase::COPY_ACCEPTED && &queue == graphics_queue_)
+                {
+                    const auto waits = std::span{desc.waitFences, desc.waitFenceNum};
+                    const bool waits_for_copy = std::ranges::any_of(waits, [](const nri::FenceSubmitDesc& wait) noexcept
+                    {
+                        return wait.fence == copy_receipt_.fence && wait.value == copy_receipt_.value;
+                    });
+                    if (waits_for_copy)
+                    {
+                        phase = EPhase::ACQUIRE_REJECTED;
+                        return nri::Result::INVALID_ARGUMENT;
+                    }
+                }
+                if (phase == EPhase::ARMED && &queue == transfer_queue_)
+                {
+                    const auto commands = std::span{desc.commandBuffers, desc.commandBufferNum};
+                    const auto* recorded = copy_commands.load();
+                    if (recorded && std::ranges::find(commands, recorded) != commands.end())
+                    {
+                        CHECK(desc.waitFenceNum == 0 && desc.signalFenceNum == 1);
+                        const nri::FenceSubmitDesc gate{gate_, 1, nri::StageBits::ALL};
+                        auto gated = desc;
+                        gated.waitFences = &gate;
+                        gated.waitFenceNum = 1;
+                        const auto accepted = submit_(queue, gated);
+                        CHECK(accepted == nri::Result::SUCCESS);
+                        copy_receipt_ = desc.signalFences[0];
+                        phase = EPhase::COPY_ACCEPTED;
+                        return accepted;
+                    }
+                }
+                return submit_(queue, desc);
+            };
+            core.DestroyTexture = [](nri::Texture* texture) noexcept
+            {
+                if (texture && texture == candidate.load())
+                {
+                    CHECK(phase == EPhase::ACQUIRE_REJECTED);
+                    CHECK(fence_value_(*copy_receipt_.fence) >= copy_receipt_.value);
+                    candidate = nullptr;
+                    ++destructions;
+                }
+                destroy_(texture);
+            };
+        }
+
+    private:
+        static inline nri::Queue* transfer_queue_ = nullptr;
+        static inline nri::Queue* graphics_queue_ = nullptr;
+        static inline nri::Fence* gate_ = nullptr;
+        static inline nri::FenceSubmitDesc copy_receipt_{};
+        static inline decltype(nri::CoreInterface::QueueSubmit) submit_{};
+        static inline decltype(nri::CoreInterface::CreatePlacedTexture) create_{};
+        static inline decltype(nri::CoreInterface::CmdUploadBufferToTexture) copy_{};
+        static inline decltype(nri::CoreInterface::DestroyTexture) destroy_{};
+        static inline decltype(nri::CoreInterface::GetFenceValue) fence_value_{};
+    };
 #endif
 
     struct UniformUploadProbe final
@@ -1174,12 +1286,15 @@ struct RetirementFence final
             : capture_(context), config_{.result = &pixels, .bytes = effect_capture_bytes}
         {
 #ifdef _WIN32
-            if (UniformUploadProbe::watch_texture_pool && context.device.enabledFeatures().variable_descriptor_count)
+            const bool descriptor_probe = UniformUploadProbe::watch_texture_pool &&
+                context.device.enabledFeatures().variable_descriptor_count;
+            if (descriptor_probe || UploadAcquireProbe::enabled)
             {
                 retirement_device_ = &context.device;
                 texture_retirement_ = std::make_unique<RetirementFence>(context.device);
-                UniformUploadProbe::texture_retirement_fence = texture_retirement_->fence;
                 test_texture_retirement = texture_retirement_.get();
+                if (descriptor_probe) UniformUploadProbe::texture_retirement_fence = texture_retirement_->fence;
+                if (UploadAcquireProbe::enabled) UploadAcquireProbe::attach(context.device, *texture_retirement_->fence);
             }
 #endif
         }
@@ -3328,7 +3443,7 @@ static void preparedBuffers(bool d3d12)
         d3d12 ? "D3D12" : "Vulkan");
 }
 
-static int sharedRasterTextures(bool d3d12, bool use_materials = false)
+static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upload_fault = false)
 {
     static std::array<TextureId, 2> textures;
     static std::array<MaterialId, 2> materials;
@@ -3412,6 +3527,15 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     config.frames_in_flight = 2;
     config.validation = nativeValidationEnabled();
     config.uploads.emplace();
+    if (upload_fault)
+    {
+        config.uploads->chunk_bytes = 512;
+        config.uploads->pending_bytes = 512;
+        config.uploads->staging_pages = 1;
+#ifdef _WIN32
+        UploadAcquireProbe::enabled = true;
+#endif
+    }
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
     take(server->registerResource<EffectCaptureBuffer>());
     CapabilityDefinition definition;
@@ -3479,8 +3603,9 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     const auto commands = queryCommands(*client);
     DeviceOptions options;
     options.texture_descriptors = true;
-    UniformUploadProbe::watch_texture_pool = !use_materials && !d3d12;
+    UniformUploadProbe::watch_texture_pool = !use_materials && !d3d12 && !upload_fault;
     options.descriptor_initial_counts[0] = UniformUploadProbe::watch_texture_pool ? 1 : 2;
+    options.multiple_queues = upload_fault;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     const auto created = call<CreateDeviceSession>(*client, commands, options, false);
     if (created.error.type == kDeviceUnsupported)
@@ -3512,7 +3637,46 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
         std::array{std::byte{63}, std::byte{13}, std::byte{9}, std::byte{255}},
         std::array{std::byte{7}, std::byte{161}, std::byte{29}, std::byte{255}}
     };
-    for (std::size_t i = 0; i < colors.size(); ++i)
+#ifdef _WIN32
+    if (upload_fault)
+    {
+        if (!UploadAcquireProbe::qualified)
+        {
+            server->stop();
+            worker.join();
+            std::puts("Separate row-capable Copy queue unavailable");
+            return 77;
+        }
+        constexpr std::array<std::byte, 512> full_window{};
+        auto failure_info = info;
+        failure_info.width = 128;
+        failure_info.mip_ranges[0] = {0, full_window.size(), 128, 1};
+        UploadAcquireProbe::phase = UploadAcquireProbe::EPhase::ARMED;
+        const auto rejected = call<TextureCommands::Upload>(
+            *client, commands, {owner, {failure_info, full_window}}, false
+        );
+        CHECK(rejected.error.type == kDeviceFailure && rejected.texture.isNull());
+        CHECK(UploadAcquireProbe::phase == UploadAcquireProbe::EPhase::ACQUIRE_REJECTED);
+        CHECK(UploadAcquireProbe::candidate.load() && UploadAcquireProbe::destructions == 0);
+        auto retry_client = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(retry_client);
+        auto retry = std::async(std::launch::async, [&]
+        {
+            return call<TextureCommands::Upload>(*retry_client, commands, {owner, {info, colors[0]}}).texture;
+        });
+        const auto deadline = Clock::now() + 10s;
+        while (!UploadAcquireProbe::retries)
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        CHECK(retry.wait_for(0s) == std::future_status::timeout);
+        CHECK(UploadAcquireProbe::destructions == 0 && EffectCaptureBuffer::test_texture_retirement);
+        EffectCaptureBuffer::test_texture_retirement->signal();
+        textures[0] = retry.get();
+    }
+#endif
+    for (std::size_t i = upload_fault ? 1 : 0; i < colors.size(); ++i)
         textures[i] = call<TextureCommands::Upload>(*client, commands, {owner, {info, colors[i]}}).texture;
 
     ResourceInstanceId material_owner;
@@ -3632,7 +3796,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
         const auto busy_material = call<MaterialCommands::ReleaseInstance>(*client, commands, {materials[0]}, false);
         CHECK(busy_material.error.type == kDeviceBusy);
     }
-    const bool exercise_growth = !use_materials && !d3d12 && UniformUploadProbe::can_grow_texture_table;
+    const bool exercise_growth = UniformUploadProbe::watch_texture_pool && UniformUploadProbe::can_grow_texture_table;
     std::vector<std::future<TextureCommands::Upload::Response>> growth;
     if (exercise_growth)
     {
@@ -3741,6 +3905,13 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
         const auto pixel = std::span<const std::byte>{capture.frames[slot]}.subspan(capture.pitch * 32 + 16 * 4, 4);
         CHECK(std::ranges::equal(pixel, color));
     }
+#ifdef _WIN32
+    if (upload_fault)
+    {
+        CHECK(!UploadAcquireProbe::candidate.load() && UploadAcquireProbe::destructions == 1);
+        std::puts("UPLOAD HANDOFF PASS: rejected Acquire, fence retirement, staging reuse and retry pixels");
+    }
+#endif
     if (!use_materials) std::puts("TEXTURE CLONE PASS: pending source protection, stale ID and patched pixel");
     if (exercise_growth)
     {
@@ -5522,6 +5693,10 @@ int main(int argc, char** argv)
 {
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
+#ifdef _WIN32
+    if (argc > 1 && std::string_view{argv[1]} == "--upload-acquire-failure")
+        return sharedRasterTextures(argc > 2 && std::string_view{argv[2]} == "d3d12", false, true);
+#endif
     if (argc > 1 && std::string_view{argv[1]} == "--shared-texture")
         return sharedRasterTextures(argc > 2 && std::string_view{argv[2]} == "d3d12");
     if (argc > 1 && std::string_view{argv[1]} == "--material-stream")

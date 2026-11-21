@@ -122,6 +122,15 @@ add_test(NAME render.effect.material_stream_vulkan COMMAND render_output_test --
 set_tests_properties(render.effect.material_stream_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 
 if(WIN32)
+    foreach(backend IN ITEMS vulkan d3d12)
+        add_test(NAME render.upload.acquire_failure_${backend}
+            COMMAND render_output_test --upload-acquire-failure ${backend}
+        )
+        set_tests_properties(render.upload.acquire_failure_${backend}
+            PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77
+        )
+    endforeach()
+
     add_test(NAME render.effect.output_d3d12 COMMAND render_output_test --effect-graph d3d12)
     set_tests_properties(render.effect.output_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 

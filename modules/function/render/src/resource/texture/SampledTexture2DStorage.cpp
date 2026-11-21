@@ -399,8 +399,8 @@ namespace lux::render::detail
             co_return cxx::unexpected(candidate.error());
         }
         cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
-        auto accepted = co_await uploads_.writeImage(
-            *candidate->image_, input.source, std::move(prepared->second), source_image
+        auto accepted = co_await uploads_.cloneImage(
+            *candidate->image_, *source_image, input.source, std::move(prepared->second)
         );
         if (!accepted)
         {

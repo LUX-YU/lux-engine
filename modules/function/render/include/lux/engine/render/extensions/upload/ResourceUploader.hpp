@@ -120,8 +120,13 @@ namespace lux::render::detail
         [[nodiscard]] Task writeImage(
             nri::Texture& target,
             std::span<const std::byte> source,
-            std::vector<ImageTransferRegion> regions,
-            const nri::Texture* clone = nullptr
+            std::vector<ImageTransferRegion> regions
+        ) noexcept;
+        [[nodiscard]] Task cloneImage(
+            nri::Texture& target,
+            const nri::Texture& original,
+            std::span<const std::byte> source,
+            std::vector<ImageTransferRegion> regions
         ) noexcept;
 
         // Reserve an entire write, then copy into owned staging before returning.
@@ -163,17 +168,8 @@ namespace lux::render::detail
         std::vector<FrameCopy> frame_copies_;
         std::uint64_t frame_copy_receipt_serial_ = 0;
         ResourceUploader(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
-        [[nodiscard]] Task write(
-            std::span<const BufferWrite>,
-            std::span<const BufferZero>,
-            nri::Texture*,
-            std::span<const std::byte>,
-            std::vector<ImageTransferRegion>,
-            const nri::Texture*,
-            std::uint32_t element_bytes = 0,
-            std::uint32_t source_stride = 0,
-            SubmissionFrontiers* progress = nullptr
-        ) noexcept;
+        struct UploadRequest;
+        [[nodiscard]] Task write(UploadRequest) noexcept;
         [[nodiscard]] RenderResult<void> collectUploadTimestamps(std::size_t page, std::uint32_t bits) noexcept;
 
         struct CommandWindow final

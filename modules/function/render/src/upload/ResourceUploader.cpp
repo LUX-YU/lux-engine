@@ -13,6 +13,8 @@
 #include <lux/engine/render/upload/ImageTransfer.hpp>
 #include <lux/engine/render/upload/StagingArena.hpp>
 #include <numeric>
+#include <type_traits>
+#include <variant>
 
 namespace lux::render::detail
 {
@@ -23,15 +25,286 @@ namespace lux::render::detail
         return std::chrono::duration_cast<std::chrono::nanoseconds>(UploadClock::now() - start).count();
     }
 
-    static inline std::size_t bufferBytes(
-        const BufferWrite& input,
-        std::uint32_t element_bytes,
-        std::uint32_t source_stride
-    ) noexcept
+    namespace
     {
-        return source_stride ? ((input.source.size() - element_bytes) / source_stride + 1) * element_bytes
-                             : input.source.size();
-    }
+        struct BufferPacking final
+        {
+            std::uint32_t element = 0, stride = 0;
+
+            [[nodiscard]] std::size_t bytes(std::span<const std::byte> source) const noexcept
+            {
+                return stride ? ((source.size() - element) / stride + 1) * element : source.size();
+            }
+
+            [[nodiscard]] bool contiguous() const noexcept { return !stride || stride == element; }
+        };
+
+        struct BufferUpload final
+        {
+            std::span<const BufferWrite> writes;
+            std::span<const BufferZero> fills;
+            BufferPacking packing;
+            SubmissionFrontiers* progress;
+        };
+
+        struct ImageUpload final
+        {
+            nri::Texture& target;
+            std::span<const std::byte> source;
+            std::vector<ImageTransferRegion> regions;
+        };
+
+        struct CloneUpload final
+        {
+            ImageUpload patch;
+            const nri::Texture& original;
+        };
+
+        struct BufferChunk final
+        {
+            nri::Buffer* target;
+            std::uint64_t offset;
+            std::span<const BufferWrite> inputs;
+            std::size_t input_offset;
+            BufferPacking packing;
+
+            void prepare(std::span<std::byte> output) const noexcept
+            {
+                auto local_offset = input_offset;
+                for (const auto& input : inputs)
+                {
+                    const auto count = std::min(output.size(), packing.bytes(input.source) - local_offset);
+                    if (packing.contiguous())
+                    {
+                        std::memcpy(output.data(), input.source.data() + local_offset, count);
+                    }
+                    else
+                    {
+                        auto local = local_offset % packing.element;
+                        auto source_offset = (local_offset / packing.element) * packing.stride + local;
+                        auto* destination = output.data();
+                        auto remaining = count;
+                        while (remaining)
+                        {
+                            const auto bytes = std::min(remaining, packing.element - local);
+                            std::memcpy(destination, input.source.data() + source_offset, bytes);
+                            destination += bytes;
+                            source_offset += packing.stride - local;
+                            remaining -= bytes;
+                            local = 0;
+                        }
+                    }
+                    output = output.subspan(count);
+                    local_offset = 0;
+                }
+            }
+        };
+
+        struct ImageChunk final
+        {
+            nri::Texture* target;
+            const nri::Texture* clone;
+            nri::TextureRegionDesc region;
+            const std::byte* source;
+            std::uint64_t source_pitch;
+            std::size_t row_bytes;
+            std::uint32_t rows, row_pitch;
+            bool first, final;
+
+            void prepare(std::span<std::byte> output) const noexcept
+            {
+                for (std::uint32_t row = 0; row < rows; ++row)
+                    std::memcpy(output.data() + row * row_pitch, source + row * source_pitch, row_bytes);
+            }
+        };
+
+        using VCopyChunk = std::variant<BufferChunk, ImageChunk>;
+
+        struct StagingRequest final
+        {
+            std::size_t bytes, unit;
+        };
+
+        struct BufferCursor final
+        {
+            std::span<const BufferWrite> writes;
+            BufferPacking packing;
+            std::size_t index = 0, offset = 0, run_remaining = 0;
+
+            [[nodiscard]] bool done() const noexcept { return index == writes.size(); }
+
+            [[nodiscard]] StagingRequest next() noexcept
+            {
+                if (!run_remaining)
+                {
+                    const auto bytes = packing.bytes(writes[index].source);
+                    run_remaining = bytes - offset;
+                    auto end = writes[index].offset + bytes;
+                    for (auto next = index + 1; next < writes.size(); ++next)
+                    {
+                        if (writes[next].target != writes[index].target || writes[next].offset != end) break;
+                        const auto bytes = packing.bytes(writes[next].source);
+                        run_remaining += bytes;
+                        end += bytes;
+                    }
+                }
+                return {run_remaining, 4};
+            }
+
+            [[nodiscard]] VCopyChunk lower(std::size_t bytes, bool) noexcept
+            {
+                BufferChunk chunk{writes[index].target, writes[index].offset + offset, {}, offset, packing};
+                const auto first = index;
+                auto remaining = bytes;
+                while (remaining)
+                {
+                    const auto input_bytes = packing.bytes(writes[index].source);
+                    const auto part = std::min(remaining, input_bytes - offset);
+                    remaining -= part;
+                    offset += part;
+                    if (offset == input_bytes)
+                    {
+                        ++index;
+                        offset = 0;
+                    }
+                }
+                chunk.inputs = writes.subspan(first, index - first + (offset != 0));
+                run_remaining -= bytes;
+                return chunk;
+            }
+        };
+
+        [[nodiscard]] std::size_t blockRowBytes(const ImageTransferRegion& region) noexcept
+        {
+            return std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
+        }
+
+        [[nodiscard]] std::size_t alignedRowBytes(std::size_t bytes, std::uint32_t alignment) noexcept
+        {
+            return (bytes + alignment - 1) / alignment * alignment;
+        }
+
+        struct ImageCursor final
+        {
+            const ImageUpload* upload;
+            const nri::Texture* clone;
+            std::uint32_t alignment;
+            std::size_t index = 0;
+            std::uint32_t row = 0;
+
+            [[nodiscard]] bool done() const noexcept { return index == upload->regions.size(); }
+
+            [[nodiscard]] StagingRequest next() const noexcept
+            {
+                const auto& region = upload->regions[index];
+                const auto block_rows = (region.texture.height - 1) / region.block_extent + 1;
+                const auto pitch = alignedRowBytes(blockRowBytes(region), alignment);
+                return {std::size_t(block_rows - row) * pitch, pitch};
+            }
+
+            [[nodiscard]] VCopyChunk lower(std::size_t bytes, bool first) noexcept
+            {
+                const auto& input = upload->regions[index];
+                const auto range = next();
+                const auto rows = static_cast<std::uint32_t>(bytes / range.unit);
+                const bool complete_region = bytes == range.bytes;
+                auto region = input.texture;
+                region.y += row * input.block_extent;
+                region.height = std::min(
+                    rows * input.block_extent, std::uint32_t(input.texture.height - row * input.block_extent)
+                );
+                ImageChunk chunk{
+                    &upload->target, first ? clone : nullptr, region,
+                    upload->source.data() + input.source_offset + row * input.source_row_pitch, input.source_row_pitch,
+                    blockRowBytes(input), rows, static_cast<std::uint32_t>(range.unit), first,
+                    complete_region && index + 1 == upload->regions.size()
+                };
+                row += rows;
+                if (complete_region)
+                {
+                    ++index;
+                    row = 0;
+                }
+                return chunk;
+            }
+        };
+
+        struct UploadPlan final
+        {
+            std::variant<BufferCursor, ImageCursor> cursor;
+            std::size_t source_bytes, region_count;
+            SubmissionQueue* queue;
+            std::span<const BufferZero> fills;
+            SubmissionFrontiers* progress;
+        };
+
+        [[nodiscard]] RenderResult<UploadPlan>
+        normalizeUpload(const BufferUpload& upload, DeviceSession& device, const TransferOptions& options) noexcept
+        {
+            const auto packing = upload.packing;
+            const bool strided = packing.element || packing.stride;
+            const bool invalid_layout = strided && (!packing.element || packing.element % 4 ||
+                packing.stride < packing.element);
+            if (invalid_layout || (upload.writes.empty() && upload.fills.empty()))
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            std::size_t pending = 0, runs = 0;
+            const nri::Buffer* previous = nullptr;
+            std::uint64_t end = 0;
+            const auto& core = device.nriCore();
+            for (const auto& input : upload.writes)
+            {
+                const auto size = input.source.size();
+                const bool invalid_source = strided ? size < packing.element ||
+                    (size - packing.element) % packing.stride != 0 : !size;
+                if (!input.target || invalid_source) return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto bytes = packing.bytes(input.source);
+                const auto capacity = core.GetBufferDesc(*input.target).size;
+                const bool invalid_range = input.offset > capacity || bytes > capacity - input.offset;
+                if (invalid_range || (bytes | input.offset) % 4)
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                if (bytes > options.pending_bytes - pending) return cxx::unexpected(RenderError{kDeviceCapacity});
+                pending += bytes;
+                runs += input.target != previous || input.offset != end;
+                previous = input.target;
+                end = input.offset + bytes;
+            }
+            for (const auto& fill : upload.fills)
+            {
+                if (!fill.target) return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto capacity = core.GetBufferDesc(*fill.target).size;
+                const bool invalid_range = !fill.size || fill.offset > capacity || fill.size > capacity - fill.offset;
+                if (invalid_range || (fill.offset | fill.size) % 4)
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            return UploadPlan{BufferCursor{upload.writes, packing}, pending, runs, &device.queue(),
+                upload.fills, upload.progress};
+        }
+
+        [[nodiscard]] RenderResult<UploadPlan> normalizeImageUpload(
+            const ImageUpload& upload, const nri::Texture* clone, SubmissionQueue& queue, DeviceSession& device,
+            const TransferOptions& options
+        ) noexcept
+        {
+            const auto& description = device.nriCore().GetTextureDesc(upload.target);
+            if (upload.source.empty() || upload.regions.empty() || description.sampleNum != 1)
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            const auto alignment = device.description().memoryAlignment.uploadBufferTextureRow;
+            for (const auto& region : upload.regions)
+            {
+                auto valid = imageRegionBytes(description, region, upload.source.size(), options.chunk_bytes);
+                if (!valid) return cxx::unexpected(valid.error());
+                if (alignedRowBytes(blockRowBytes(region), alignment) > options.chunk_bytes)
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            return UploadPlan{ImageCursor{&upload, clone, alignment}, upload.source.size(), upload.regions.size(),
+                &queue, {}, nullptr};
+        }
+    } // namespace
+
+    struct ResourceUploader::UploadRequest final
+    {
+        std::variant<BufferUpload, ImageUpload, CloneUpload> value;
+    };
 
     struct ResourceUploader::Measurement final
     {
@@ -45,16 +318,19 @@ namespace lux::render::detail
     struct ResourceUploader::Copy final
     {
         StagingRange staging;
-        nri::Buffer* buffer = nullptr;
-        nri::Texture* image = nullptr;
-        const nri::Texture* clone = nullptr;
-        std::uint64_t offset = 0;
-        ImageTransferRegion region;
-        std::span<const std::byte> source;
-        std::span<const BufferWrite> inputs;
-        std::size_t input_offset = 0, bytes = 0;
-        std::uint32_t row = 0, rows = 0, row_pitch = 0;
-        bool first = false, final = false;
+        VCopyChunk chunk;
+
+        [[nodiscard]] bool needsAcquire() const noexcept
+        {
+            const auto* image = std::get_if<ImageChunk>(&chunk);
+            return image && image->final;
+        }
+
+        [[nodiscard]] std::size_t sourceBytes() const noexcept
+        {
+            if (const auto* image = std::get_if<ImageChunk>(&chunk)) return image->rows * image->row_bytes;
+            return staging.bytes.size();
+        }
     };
 
     struct ResourceUploader::FrameCopy final
@@ -327,62 +603,40 @@ namespace lux::render::detail
     }
 
     static void recordBuffer(
-        const nri::CoreInterface& nri_core,
-        nri::CommandBuffer& command,
-        nri::Buffer& target,
-        const StagingRange& range,
-        std::size_t offset,
-        std::size_t bytes,
-        bool acquiring,
-        bool final
+        const nri::CoreInterface& core, nri::CommandBuffer& command, const StagingRange& staging,
+        const BufferChunk& chunk
     ) noexcept
     {
-        const auto access = bufferAccess(nri_core.GetBufferDesc(target).usage);
-        if (!acquiring)
-        {
-            bufferBarrier(
-                nri_core,
-                command,
-                target,
-                {access, nri::StageBits::ALL},
-                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
-            );
-            recordCopy(nri_core, command, BufferCopyRegion{range.buffer, &target, range.offset, offset, bytes});
-        }
-        if (final)
-        {
-            bufferBarrier(
-                nri_core,
-                command,
-                target,
-                {acquiring ? nri::AccessBits::NONE : nri::AccessBits::COPY_DESTINATION,
-                 acquiring ? nri::StageBits::NONE : nri::StageBits::COPY},
-                {access, nri::StageBits::ALL}
-            );
-        }
+        auto& target = *chunk.target;
+        const nri::AccessStage access{bufferAccess(core.GetBufferDesc(target).usage), nri::StageBits::ALL};
+        const nri::AccessStage copy{nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
+        bufferBarrier(core, command, target, access, copy);
+        recordCopy(core, command, BufferCopyRegion{
+            staging.buffer, &target, staging.offset, chunk.offset, staging.bytes.size()
+        });
+        bufferBarrier(core, command, target, copy, access);
     }
 
+    struct ImageHandoff final
+    {
+        SubmissionQueue& source;
+        SubmissionQueue& graphics;
+        nri::GraphicsAPI backend;
+        std::uint32_t slice_alignment;
+        bool acquiring;
+    };
+
     static void recordImage(
-        const nri::CoreInterface& nri_core,
-        nri::CommandBuffer& command,
-        nri::Texture& target,
-        const StagingRange& range,
-        const ImageTransferRegion& input,
-        const nri::Texture* clone,
-        std::uint32_t row,
-        std::uint32_t rows,
-        std::uint32_t row_pitch,
-        std::uint32_t slice_alignment,
-        bool first,
-        SubmissionQueue& copy,
-        SubmissionQueue& graphics,
-        nri::GraphicsAPI backend,
-        bool acquiring,
-        bool final
+        const nri::CoreInterface& nri_core, nri::CommandBuffer& command, const StagingRange& range,
+        const ImageChunk& chunk, const ImageHandoff& handoff
     ) noexcept
     {
+        auto& target = *chunk.target;
+        auto& copy = handoff.source;
+        auto& graphics = handoff.graphics;
+        const bool acquiring = handoff.acquiring;
         const bool distinct = &copy != &graphics;
-        const bool common_handoff = distinct && backend == nri::GraphicsAPI::D3D12 &&
+        const bool common_handoff = distinct && handoff.backend == nri::GraphicsAPI::D3D12 &&
             copy.properties().type == nri::QueueType::COPY;
         const auto& description = nri_core.GetTextureDesc(target);
         const bool cross_family = description.sharingMode == nri::SharingMode::EXCLUSIVE &&
@@ -399,16 +653,16 @@ namespace lux::render::detail
         };
         if (!acquiring)
         {
-            if (first)
+            if (chunk.first)
             {
                 barrier.before = {nri::AccessBits::NONE, nri::Layout::UNDEFINED, nri::StageBits::NONE};
                 barrier
                     .after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
                 emit(barrier);
-                if (clone)
+                if (chunk.clone)
                 {
                     auto original = barrier;
-                    original.texture = const_cast<nri::Texture*>(clone);
+                    original.texture = const_cast<nri::Texture*>(chunk.clone);
                     original
                         .before = {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::ALL};
                     original.after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
@@ -419,7 +673,7 @@ namespace lux::render::detail
                     region.depth = 1;
                     region.planes = nri::PlaneBits::COLOR;
                     recordCopy(nri_core, command, TextureCopyRegion{
-                        clone, &target, region, region, description.mipNum, description.layerNum
+                        chunk.clone, &target, region, region, description.mipNum, description.layerNum
                     });
                     std::swap(original.before, original.after);
                     emit(original);
@@ -427,16 +681,12 @@ namespace lux::render::detail
                     emit(barrier); // Clone writes precede region patch writes.
                 }
             }
-            auto region = input.texture;
-            region.y += row * input.block_extent;
-            region.height =
-                std::min(rows * input.block_extent, std::uint32_t(input.texture.height - row * input.block_extent));
-            const auto slice_unit = std::lcm(row_pitch, slice_alignment);
-            const auto slice_pitch = ((row_pitch * rows + slice_unit - 1) / slice_unit) * slice_unit;
-            const nri::TextureDataLayoutDesc layout{range.offset, row_pitch, slice_pitch};
-            recordUpload(nri_core, command, target, region, *range.buffer, layout);
+            const auto slice_unit = std::lcm(chunk.row_pitch, handoff.slice_alignment);
+            const auto slice_pitch = ((chunk.row_pitch * chunk.rows + slice_unit - 1) / slice_unit) * slice_unit;
+            const nri::TextureDataLayoutDesc layout{range.offset, chunk.row_pitch, slice_pitch};
+            recordUpload(nri_core, command, target, chunk.region, *range.buffer, layout);
         }
-        if (final)
+        if (chunk.final)
         {
             // D3D12 COPY lists remain in COMMON (NRI GENERAL). The existing fence dependency
             // orders the Graphics acquire, which alone transitions to SHADER_RESOURCE.
@@ -843,6 +1093,10 @@ namespace lux::render::detail
                         nri_core.ResetQueries(*query_pool, slot * 2, 2);
                         nri_core.CmdEndQuery(command, *query_pool, slot * 2);
                     }
+                    const ImageHandoff handoff{
+                        source_queue, device_.queue(), device_.description().graphicsAPI,
+                        device_.description().memoryAlignment.uploadBufferTextureSlice, acquiring
+                    };
                     for (auto* entry : batch_entries_)
                     {
                         for (const auto& fill : entry->request.fills)
@@ -866,43 +1120,15 @@ namespace lux::render::detail
                         }
                         for (auto& copy : entry->request.copies)
                         {
-                            if (acquiring && !copy.final)
+                            if (const auto* image = std::get_if<ImageChunk>(&copy.chunk))
                             {
-                                continue;
-                            }
-                            if (copy.buffer)
-                            {
-                                recordBuffer(
-                                    nri_core,
-                                    command,
-                                    *copy.buffer,
-                                    copy.staging,
-                                    copy.offset,
-                                    copy.bytes,
-                                    acquiring,
-                                    copy.final
-                                );
+                                if (!acquiring || image->final)
+                                    recordImage(nri_core, command, copy.staging, *image, handoff);
                             }
                             else
                             {
-                                recordImage(
-                                    nri_core,
-                                    command,
-                                    *copy.image,
-                                    copy.staging,
-                                    copy.region,
-                                    copy.clone,
-                                    copy.row,
-                                    copy.rows,
-                                    copy.row_pitch,
-                                    device_.description().memoryAlignment.uploadBufferTextureSlice,
-                                    copy.first,
-                                    source_queue,
-                                    device_.queue(),
-                                    device_.description().graphicsAPI,
-                                    acquiring,
-                                    copy.final
-                                );
+                                if (acquiring) std::terminate();
+                                recordBuffer(nri_core, command, copy.staging, std::get<BufferChunk>(copy.chunk));
                             }
                         }
                     }
@@ -1064,7 +1290,7 @@ namespace lux::render::detail
             {
                 const bool needs_acquire =
                     accepted && !acquiring && entry->queue != &device_.queue() &&
-                    std::ranges::any_of(entry->request.copies, [](const auto& copy) { return copy.final; });
+                    std::ranges::any_of(entry->request.copies, [](const auto& copy) { return copy.needsAcquire(); });
                 if (needs_acquire)
                 {
                     entry->phase = UploadWindow::EPhase::ACQUIRE;
@@ -1122,17 +1348,7 @@ namespace lux::render::detail
         SubmissionFrontiers* progress
     ) noexcept
     {
-        return write(writes, fills, nullptr, {}, {}, nullptr, 0, 0, progress);
-    }
-
-    ResourceUploader::Task ResourceUploader::writeImage(
-        nri::Texture& target,
-        std::span<const std::byte> source,
-        std::vector<ImageTransferRegion> regions,
-        const nri::Texture* clone
-    ) noexcept
-    {
-        return write({}, {}, &target, source, std::move(regions), clone);
+        return write({BufferUpload{writes, fills, {}, progress}});
     }
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
@@ -1142,118 +1358,42 @@ namespace lux::render::detail
         SubmissionFrontiers* progress
     ) noexcept
     {
-        return write(writes, {}, nullptr, {}, {}, nullptr, element_bytes, source_stride, progress);
+        return write({BufferUpload{writes, {}, {element_bytes, source_stride}, progress}});
     }
 
-    ResourceUploader::Task ResourceUploader::write(
-        std::span<const BufferWrite> writes,
-        std::span<const BufferZero> fills,
-        nri::Texture* image,
-        std::span<const std::byte> source,
-        std::vector<ImageTransferRegion> regions,
-        const nri::Texture* clone,
-        std::uint32_t element_bytes,
-        std::uint32_t source_stride,
-        SubmissionFrontiers* progress
+    ResourceUploader::Task ResourceUploader::writeImage(
+        nri::Texture& target, std::span<const std::byte> source, std::vector<ImageTransferRegion> regions
     ) noexcept
     {
+        return write({ImageUpload{target, source, std::move(regions)}});
+    }
+
+    ResourceUploader::Task ResourceUploader::cloneImage(
+        nri::Texture& target, const nri::Texture& original, std::span<const std::byte> source,
+        std::vector<ImageTransferRegion> regions
+    ) noexcept
+    {
+        return write({CloneUpload{{target, source, std::move(regions)}, original}});
+    }
+
+    ResourceUploader::Task ResourceUploader::write(UploadRequest request) noexcept
+    {
         const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
-        const bool strided = element_bytes != 0 || source_stride != 0;
-        const bool invalid_layout = strided && (!element_bytes || element_bytes % 4 || source_stride < element_bytes);
-        if (invalid_layout)
+        auto plan = std::visit([&](const auto& input) noexcept
         {
-            co_return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        std::size_t pending_bytes = 0;
-        std::size_t buffer_runs = 0;
-        const nri::Buffer* previous_target = nullptr;
-        std::uint64_t previous_end = 0;
-        if (!image)
-        {
-            for (const auto& input : writes)
-            {
-                if (!input.target)
-                {
-                    co_return cxx::unexpected(RenderError{kDeviceArgument});
-                }
-                const bool invalid_source = strided ? input.source.size() < element_bytes ||
-                                                          (input.source.size() - element_bytes) % source_stride != 0
-                                                    : input.source.empty();
-                if (invalid_source)
-                {
-                    co_return cxx::unexpected(RenderError{kDeviceArgument});
-                }
-                const auto bytes = bufferBytes(input, element_bytes, source_stride);
-                const bool invalid = bytes % 4 || input.offset % 4 ||
-                                     input.offset > device_.nriCore().GetBufferDesc(*input.target).size ||
-                                     bytes > device_.nriCore().GetBufferDesc(*input.target).size - input.offset;
-                if (invalid)
-                {
-                    co_return cxx::unexpected(RenderError{kDeviceArgument});
-                }
-                if (bytes > options_.pending_bytes - pending_bytes)
-                {
-                    co_return cxx::unexpected(RenderError{kDeviceCapacity});
-                }
-                pending_bytes += bytes;
-                buffer_runs += input.target != previous_target || input.offset != previous_end;
-                previous_target = input.target;
-                previous_end = input.offset + bytes;
-            }
-        }
-        else
-        {
-            if (!image || source.empty() || regions.empty())
-            {
-                co_return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            const auto& description = device_.nriCore().GetTextureDesc(*image);
-            const bool invalid = description.sampleNum != 1;
-            if (invalid)
-            {
-                co_return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            for (const auto& region : regions)
-            {
-                if (auto valid = imageRegionBytes(description, region, source.size(), options_.chunk_bytes); !valid)
-                {
-                    co_return cxx::unexpected(valid.error());
-                }
-                const auto bytes =
-                    std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
-                const auto alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
-                if ((bytes + alignment - 1) / alignment * alignment > options_.chunk_bytes)
-                {
-                    co_return cxx::unexpected(RenderError{kDeviceArgument});
-                }
-            }
-            pending_bytes = source.size();
-        }
-        for (const auto& fill : fills)
-        {
-            if (!fill.target)
-            {
-                co_return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            const bool invalid = !fill.size || (fill.offset | fill.size) % 4 ||
-                                 fill.offset > device_.nriCore().GetBufferDesc(*fill.target).size ||
-                                 fill.size > device_.nriCore().GetBufferDesc(*fill.target).size - fill.offset;
-            if (invalid)
-            {
-                co_return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-        }
-        if (!image && writes.empty() && fills.empty())
-        {
-            co_return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        if (!reserveSourceBytes(pending_bytes))
-        {
-            co_return cxx::unexpected(RenderError{kDeviceCapacity});
-        }
-        cxx::scope_exit budget([&]() noexcept { releaseSourceBytes(pending_bytes); });
+            using Input = std::remove_cvref_t<decltype(input)>;
+            if constexpr (std::is_same_v<Input, BufferUpload>) return normalizeUpload(input, device_, options_);
+            if constexpr (std::is_same_v<Input, ImageUpload>)
+                return normalizeImageUpload(input, nullptr, *copy_queue_, device_, options_);
+            if constexpr (std::is_same_v<Input, CloneUpload>)
+                return normalizeImageUpload(input.patch, &input.original, device_.queue(), device_, options_);
+        }, request.value);
+        if (!plan) co_return cxx::unexpected(plan.error());
+        const auto source_bytes = plan->source_bytes;
+        if (!reserveSourceBytes(source_bytes)) co_return cxx::unexpected(RenderError{kDeviceCapacity});
+        cxx::scope_exit budget([&]() noexcept { releaseSourceBytes(source_bytes); });
+
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        auto& copy_queue_ = !image || clone ? device_.queue() : *this->copy_queue_;
         bool accepted_any = false;
         const auto failure = [&](RenderError error) noexcept
         {
@@ -1261,197 +1401,63 @@ namespace lux::render::detail
             return cxx::unexpected(accepted_any && lost ? RenderError{kOutcomeUnknown} : error);
         };
         std::vector<Copy> copies;
-        cxx::scope_exit release_ranges(
-            [&]() noexcept
-            {
-                for (auto& copy : copies)
-                {
-                    staging_arena_->cancel(copy.staging);
-                }
-            }
-        );
-        const auto ranges = image ? regions.size() : buffer_runs;
-        const auto window_limit = std::min(options_.window_regions, std::max(options_.staging_pages, ranges));
-        copies.reserve(window_limit);
-        std::size_t index = 0, offset = 0, run_end = 0, run_remaining = 0;
-        std::uint32_t row = 0;
-        const auto count = image ? regions.size() : writes.size();
-        while (index < count || !accepted_any)
+        cxx::scope_exit release_ranges([&]() noexcept
         {
-            if (stop.stop_requested())
-            {
-                co_return failure(RenderError{kUploadStopped});
-            }
+            for (auto& copy : copies) staging_arena_->cancel(copy.staging);
+        });
+        const auto window_limit = std::min(options_.window_regions, std::max(options_.staging_pages, plan->region_count));
+        copies.reserve(window_limit);
+        const auto* buffer = std::get_if<BufferCursor>(&plan->cursor);
+        const bool contiguous = buffer && buffer->packing.contiguous();
+        const auto done = [&]() noexcept
+        {
+            return std::visit([](const auto& cursor) noexcept { return cursor.done(); }, plan->cursor);
+        };
+        while (!done() || !accepted_any)
+        {
+            if (stop.stop_requested()) co_return failure(RenderError{kUploadStopped});
             copies.clear();
-            while (index < count && copies.size() < window_limit)
+            std::size_t minimum_range = 0;
+            while (!done() && copies.size() < window_limit)
             {
-                const auto* region = image ? &regions[index] : nullptr;
-                const auto row_bytes =
-                    region ? std::size_t((region->texture.width - 1) / region->block_extent + 1) * region->block_bytes
-                           : 0;
-                const auto row_alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
-                const auto row_pitch = region ? (row_bytes + row_alignment - 1) / row_alignment * row_alignment : 0;
-                if (!region && run_remaining == 0)
-                {
-                    run_end = index + 1;
-                    run_remaining = bufferBytes(writes[index], element_bytes, source_stride) - offset;
-                    auto end_offset = writes[index].offset + bufferBytes(writes[index], element_bytes, source_stride);
-                    while (run_end < count && writes[run_end].target == writes[index].target &&
-                           writes[run_end].offset == end_offset)
-                    {
-                        const auto bytes = bufferBytes(writes[run_end], element_bytes, source_stride);
-                        run_remaining += bytes;
-                        end_offset += bytes;
-                        ++run_end;
-                    }
-                }
-                const auto remaining =
-                    region ? std::size_t((region->texture.height - 1) / region->block_extent + 1 - row) * row_pitch
-                           : run_remaining;
+                const auto next = std::visit([](auto& cursor) noexcept { return cursor.next(); }, plan->cursor);
                 auto range = staging_arena_->acquire(
-                    std::min(remaining, options_.chunk_bytes),
-                    region ? row_pitch : 4,
-                    !progress && preparation_reserved_
+                    std::min(next.bytes, options_.chunk_bytes), next.unit, !plan->progress && preparation_reserved_
                 );
                 if (!range)
                 {
+                    minimum_range = next.unit;
                     break;
                 }
-                const auto bytes = range->bytes.size();
-                Copy chunk{std::move(*range)};
-                chunk.bytes = bytes;
-                chunk.buffer = region ? nullptr : writes[index].target;
-                chunk.offset = region ? 0 : writes[index].offset + offset;
-                chunk.image = image;
-                chunk.clone = clone;
-                chunk.first = !accepted_any && copies.empty();
-                if (region)
+                const bool first = !accepted_any && copies.empty();
+                auto chunk = std::visit([&](auto& cursor) noexcept
                 {
-                    chunk.region = *region;
-                    chunk.source = source;
-                    chunk.row = row;
-                    chunk.rows = static_cast<std::uint32_t>(bytes / row_pitch);
-                    chunk.row_pitch = static_cast<std::uint32_t>(row_pitch);
-                    chunk.final = bytes == remaining && index + 1 == count;
-                    row += chunk.rows;
-                    if (bytes == remaining)
-                    {
-                        ++index;
-                        row = 0;
-                    }
-                }
-                else
-                {
-                    const auto first_input = index;
-                    chunk.input_offset = offset;
-                    auto consumed = bytes;
-                    while (consumed)
-                    {
-                        const auto input_bytes = bufferBytes(writes[index], element_bytes, source_stride);
-                        const auto part = std::min(consumed, input_bytes - offset);
-                        consumed -= part;
-                        offset += part;
-                        if (offset == input_bytes)
-                        {
-                            ++index;
-                            offset = 0;
-                        }
-                    }
-                    chunk.inputs = writes.subspan(first_input, index - first_input + (offset != 0));
-                    chunk.final = true;
-                    run_remaining -= bytes;
-                }
-                copies.push_back(std::move(chunk));
+                    return cursor.lower(range->bytes.size(), first);
+                }, plan->cursor);
+                copies.push_back({std::move(*range), std::move(chunk)});
             }
-            if (copies.empty() && index < count)
+            if (copies.empty() && minimum_range)
             {
-                std::size_t minimum_range = 4;
-                if (image)
-                {
-                    const auto& region = regions[index];
-                    const auto bytes =
-                        std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
-                    const auto alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
-                    minimum_range = (bytes + alignment - 1) / alignment * alignment;
-                }
                 const auto available = co_await WindowSender{
-                    *this, copy_queue_, {.progress = progress, .minimum_range = minimum_range}
+                    *this, *plan->queue, {.progress = plan->progress, .minimum_range = minimum_range}
                 };
-                if (!available.result)
-                {
-                    co_return failure(available.result.error());
-                }
+                if (!available.result) co_return failure(available.result.error());
                 continue;
             }
             if (!copies.empty())
             {
                 ++statistics_.prepare_windows;
-                const auto prepare_window =
-                    [&copies, element_bytes, source_stride, measure = options_.measure_cpu]() noexcept
+                const auto prepare_window = [&copies, measure = options_.measure_cpu]() noexcept
                 {
                     const auto started = measure ? UploadClock::now() : UploadClock::time_point{};
                     for (auto& copy : copies)
                     {
-                        auto target = copy.staging.bytes;
-                        if (copy.buffer)
-                        {
-                            auto offset = copy.input_offset;
-                            std::size_t packed = 0;
-                            for (const auto& input : copy.inputs)
-                            {
-                                const auto count = std::min(
-                                    target.size() - packed,
-                                    bufferBytes(input, element_bytes, source_stride) - offset
-                                );
-                                if (!source_stride || source_stride == element_bytes)
-                                {
-                                    std::memcpy(target.data() + packed, input.source.data() + offset, count);
-                                }
-                                else
-                                {
-                                    auto local = offset % element_bytes;
-                                    auto source_offset = (offset / element_bytes) * source_stride + local;
-                                    auto* destination = target.data() + packed;
-                                    auto remaining = count;
-                                    while (remaining)
-                                    {
-                                        const auto bytes = std::min(remaining, element_bytes - local);
-                                        std::memcpy(destination, input.source.data() + source_offset, bytes);
-                                        destination += bytes;
-                                        source_offset += source_stride - local;
-                                        remaining -= bytes;
-                                        local = 0;
-                                    }
-                                }
-                                packed += count;
-                                offset = 0;
-                            }
-                        }
-                        else
-                        {
-                            const auto row_bytes =
-                                std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
-                                copy.region.block_bytes;
-                            const auto* input = copy.source.data() + copy.region.source_offset +
-                                                copy.row * copy.region.source_row_pitch;
-                            for (std::uint32_t r = 0; r < copy.rows; ++r)
-                            {
-                                std::memcpy(
-                                    target.data() + r * copy.row_pitch,
-                                    input + r * copy.region.source_row_pitch,
-                                    row_bytes
-                                );
-                            }
-                        }
+                        std::visit([&](const auto& chunk) noexcept { chunk.prepare(copy.staging.bytes); }, copy.chunk);
                     }
                     return RenderResult<std::uint64_t>{measure ? elapsed(started) : 0};
                 };
                 std::size_t window_bytes = 0;
-                for (const auto& copy : copies)
-                {
-                    window_bytes += copy.bytes;
-                }
-                const bool contiguous = !image && (!source_stride || source_stride == element_bytes);
+                for (const auto& copy : copies) window_bytes += copy.staging.bytes.size();
                 const bool small_copy = contiguous && window_bytes <= options_.inline_copy_bytes;
                 RenderResult<std::uint64_t> prepared;
                 if (small_copy)
@@ -1470,31 +1476,18 @@ namespace lux::render::detail
                         stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<std::uint64_t>{})
                     );
                 }
-                if (!prepared)
-                {
-                    co_return failure(prepared.error());
-                }
+                if (!prepared) co_return failure(prepared.error());
                 statistics_.prepare_ns += *prepared;
-                for (auto& copy : copies)
+                for (const auto& copy : copies)
                 {
-                    statistics_.copied_bytes +=
-                        copy.buffer
-                            ? copy.bytes
-                            : copy.rows * std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
-                                  copy.region.block_bytes;
+                    statistics_.copied_bytes += copy.sourceBytes();
                     if (auto flushed = staging_arena_->flush(copy.staging); !flushed)
-                    {
                         co_return failure(flushed.error());
-                    }
                 }
             }
-            if (stop.stop_requested())
-            {
-                co_return failure(RenderError{kUploadStopped});
-            }
-            const auto submitted = co_await WindowSender{
-                *this, copy_queue_, {copies, accepted_any ? std::span<const BufferZero>{} : fills, progress}
-            };
+            if (stop.stop_requested()) co_return failure(RenderError{kUploadStopped});
+            const auto fills = accepted_any ? std::span<const BufferZero>{} : plan->fills;
+            const auto submitted = co_await WindowSender{*this, *plan->queue, {copies, fills, plan->progress}};
             if (!submitted.result)
             {
                 // A rejected Acquire still leaves the accepted Copy in its physical queue's frontier.

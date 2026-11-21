@@ -1180,8 +1180,10 @@ Each accepted frame-copy receipt names the physical queue, serial and staged ran
 that point before staging and participants settle. Resource revisions become reusable only after successful
 settlement. A failed frame copy restores staged dirtiness while the Resource retains its authoritative values.
 
-Uploader retains source-byte credits, staging reservations and transfer command windows. Independent Mesh and Texture
-uploads progress during recording and when no Job is ready. Each accepted prefix keeps its queue frontier.
+Uploader retains source-byte credits, staging reservations and transfer command windows. Buffer writes, image uploads
+and clone patches each qualify their source layout before building copy chunks for the common submission path.
+Extensions use writeImage for uploads and cloneImage for patches. Mesh and Texture uploads progress during recording
+and when no Job is ready. Each accepted prefix keeps its queue frontier.
 CPU sources end at their operation terminal, and staging pages wait for their GPU completion callbacks.
 
 ## Shader and frame preparation

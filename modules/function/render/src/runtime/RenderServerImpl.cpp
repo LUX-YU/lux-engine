@@ -628,7 +628,17 @@ namespace lux::render
         const bool use_parallel_recording = !preparing_execution_ && !program_waiting_for_recording_;
         const auto cpu = use_parallel_recording ? cpu_scheduler_ : recording_scheduler_;
         round.operation->setRecordingPolicy(cpu, use_parallel_recording);
-        const auto accepted = co_await round.operation->run(round.instances, round.storages, round.job_order);
+        const auto uniform_state = [this](EffectId id, graph::NodeId node, cxx::basic_type_info type) noexcept
+            -> const void*
+        {
+            const auto* effect = runtime_->effects_.find(id);
+            if (!effect) return nullptr;
+            const auto found = std::ranges::find(effect->node_states, node, &RenderEffect::NodeState::node);
+            return found != effect->node_states.end() && found->type == type ? found->value.get() : nullptr;
+        };
+        const auto accepted = co_await round.operation->run(
+            round.instances, round.storages, round.job_order, detail::FrameOperation::UniformStateLookup{uniform_state}
+        );
         submissions_.fetch_add(submissions.submittedBatches(slot) - submitted_before, std::memory_order_relaxed);
         for (std::size_t i = 0; i < round.outputs.size(); ++i)
         {

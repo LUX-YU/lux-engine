@@ -423,7 +423,11 @@ namespace lux::render
         );
         if (!preparation) co_return cxx::unexpected(preparation.error());
         std::vector<detail::LinkedUniformBlock> uniforms;
-        std::vector<detail::DeviceEntry::UniformPool> pending_pools;
+        std::vector<detail::UniformPoolId> created_pools;
+        cxx::scope_exit rollback_pools([&]() noexcept
+        {
+            for (const auto pool : created_pools) entry.eraseUniformPool(pool);
+        });
         for (const auto& block : built->uniforms)
         {
             if (!plan->executable.resources()[block.resource.index].memory_used) continue;
@@ -431,27 +435,16 @@ namespace lux::render
             const auto state = std::ranges::find(effect.node_states, block.node, &RenderEffect::NodeState::node);
             if (state == effect.node_states.end() || state->type != block.source.state_type)
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            auto* versions = entry.uniformPool(effect_id, block.node, block.name);
-            if (!versions)
-            {
-                const auto pending = std::ranges::find_if(pending_pools, [&](const auto& pool) noexcept
-                {
-                    return pool.node == block.node && pool.name == block.name;
-                });
-                if (pending != pending_pools.end()) versions = pending->versions.get();
-            }
-            if (versions && !versions->matches(block.source))
+            auto pool = entry.findUniformPool(effect_id, block.node, block.name);
+            if (!pool.isNull() && !entry.uniformPool(pool).versions.matches(block.source))
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            if (!versions)
+            if (pool.isNull())
             {
-                auto candidate = std::make_unique<detail::UniformBlockVersions>(
-                    entry.session(), state->value.get(), block.source, entry.frameProgress().frameCount()
-                );
-                versions = candidate.get();
-                pending_pools.push_back({effect_id, block.node, block.name, std::move(candidate)});
+                pool = entry.createUniformPool(effect_id, block.node, block.name, block.source);
+                created_pools.push_back(pool);
             }
 
-            auto& linked = uniforms.emplace_back(versions, block.resource, std::vector<std::uint32_t>{});
+            auto& linked = uniforms.emplace_back(pool, block.resource, std::vector<std::uint32_t>{});
             for (const auto& access : plan->executable.importedAccesses())
             {
                 if (access.resource != block.resource) continue;
@@ -462,10 +455,10 @@ namespace lux::render
             const auto duplicates = std::ranges::unique(linked.batches);
             linked.batches.erase(duplicates.begin(), duplicates.end());
         }
-        entry.adoptUniformPools(std::move(pending_pools));
+        rollback_pools.release();
         const auto samplers = built->source.samplers();
         co_return std::make_unique<const JobGraphPlan>(JobGraphPlan{
-            std::move(plan->executable), std::move(plan->programs), {samplers.begin(), samplers.end()},
+            std::move(plan->executable), std::move(*plan).takePrograms(), {samplers.begin(), samplers.end()},
             std::move(built->target_imports), std::move(built->storage_imports), std::move(*preparation),
             std::move(uniforms)
         });

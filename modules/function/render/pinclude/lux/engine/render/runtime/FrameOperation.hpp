@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/cxx/core/function_ref.hpp>
+#include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
@@ -8,6 +10,8 @@
 
 namespace lux::render::detail
 {
+    class DeviceEntry;
+
     // One accepted device round. All CPU and native submissions return before the round releases its slot.
     class LUX_RENDER_PUBLIC FrameOperation final
     {
@@ -27,13 +31,13 @@ namespace lux::render::detail
             std::vector<std::vector<PreparedStorage>> replicas;
             SubmissionFrontiers blocked_completion;
             SubmissionFrontiers uniform_completed;
-            std::vector<SelectedUniformBlock> uniforms;
+            std::vector<SelectedUniformVersion> uniforms;
             std::vector<DescriptorTable::NativeBindingSelection> native_bindings;
         };
 
         FrameOperation(
             DeviceSession&, ResourceUploader*, FrameProgress&, Workspace&, execution::CpuScheduler,
-            bool parallel_recording = true
+            bool parallel_recording = true, DeviceEntry* owner = nullptr
         ) noexcept;
         ~FrameOperation() noexcept;
         FrameOperation(const FrameOperation&) = delete;
@@ -48,9 +52,11 @@ namespace lux::render::detail
         {
             return submitting() && submission_->refersTo(instance);
         }
+        using UniformStateLookup = cxx::function_ref<const void*(EffectId, graph::NodeId, cxx::basic_type_info) noexcept>;
+
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> run(
             std::span<RenderGraphInstance* const>, std::span<const StorageFrameBinding>,
-            std::span<const SubmissionOrder> order = {}
+            std::span<const SubmissionOrder> order = {}, std::optional<UniformStateLookup> uniform_state = {}
         ) noexcept;
         void setRecordingPolicy(execution::CpuScheduler cpu, bool parallel) noexcept
         {
@@ -68,7 +74,8 @@ namespace lux::render::detail
     private:
         void finish() noexcept;
         void settlePreparation(RenderResult<void>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareUniforms(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] RenderResult<bool>
+        prepareUniforms(std::span<RenderGraphInstance* const>, std::optional<UniformStateLookup>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameBinding>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
@@ -80,6 +87,7 @@ namespace lux::render::detail
         Workspace& workspace_;
         execution::CpuScheduler cpu_;
         bool parallel_recording_;
+        DeviceEntry* owner_;
         FrameProgress::Round round_;
         std::optional<SubmissionOperation> submission_;
         std::optional<RenderError> cancellation_;

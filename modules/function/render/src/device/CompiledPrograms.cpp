@@ -2,6 +2,8 @@
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
+#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
@@ -67,12 +69,11 @@ namespace lux::render::detail
     {
         std::optional<RasterProgramKey> raster;
         nri::Pipeline* pipeline;
-        std::uint64_t layout_id;
+        LayoutId layout_id;
         std::uint64_t shader_id;
         std::uint32_t users;
         std::uint64_t last_acquired;
-        std::size_t digest;
-        std::uint64_t publication;
+        ProgramId id;
         SubmissionFrontiers last_uses;
     };
 
@@ -164,7 +165,7 @@ namespace lux::render::detail
         nri::PipelineLayout* native;
         std::uint32_t references;
         std::uint32_t max_colors;
-        std::uint64_t id;
+        LayoutId id;
         std::size_t digest;
     };
 
@@ -205,7 +206,7 @@ namespace lux::render::detail
         if (!created) return cxx::unexpected(created.error());
         bindings.layout = *created;
         if (layout_serial_ == UINT64_MAX) std::terminate();
-        const auto id = ++layout_serial_;
+        const auto id = static_cast<LayoutId>(++layout_serial_);
         auto record = std::make_unique<Layout>(Layout{std::move(key), *created, 1, max_colors, id, digest});
         auto* value = record.get();
         layouts_.emplace(id, std::move(record));
@@ -227,6 +228,13 @@ namespace lux::render::detail
             return;
         }
         std::terminate();
+    }
+
+    void CompiledPrograms::dropLayout(LayoutId id) noexcept
+    {
+        const auto layout = layouts_.find(id);
+        if (layout == layouts_.end()) std::terminate();
+        dropLayout(*layout->second);
     }
 
     void CompiledPrograms::releaseLayout(Layout* layout) noexcept
@@ -286,7 +294,7 @@ namespace lux::render::detail
             const bool same_identity = program.shader_id == lookup.shader_->id &&
                 program.layout_id == lookup.layout_->id;
             const bool same_kind = program.raster.has_value() == (raster != nullptr);
-            if (program.publication <= after || !same_identity || !same_kind) continue;
+            if (program.id.publication <= after || !same_identity || !same_kind) continue;
             if (raster && !program.raster->matches(*raster)) continue;
             if (!program.users && unused_.erase(program.last_acquired) != 1) std::terminate();
             if (program.users == UINT32_MAX || acquisition_serial_ == UINT64_MAX) std::terminate();
@@ -331,7 +339,7 @@ namespace lux::render::detail
         ++shader.references;
         auto value = std::make_unique<Program>(Program{
             raster ? std::optional{std::move(*raster)} : std::nullopt, pipeline, layout.id, shader.id, 1,
-            ++acquisition_serial_, lookup.digest_, ++publication_serial_, session_.makeFrontiers()
+            ++acquisition_serial_, {lookup.digest_, ++publication_serial_}, session_.makeFrontiers()
         });
         auto* program = value.get();
         program_index_[lookup.digest_].push_back(std::move(value));
@@ -354,13 +362,55 @@ namespace lux::render::detail
         return program.pipeline;
     }
 
-    void CompiledPrograms::release(std::span<Program* const> programs) noexcept
+    CompiledPrograms::ProgramId CompiledPrograms::identity(const Program& program) noexcept
     {
+        return program.id;
+    }
+
+    CompiledPrograms::LayoutId CompiledPrograms::identity(const Layout& layout) noexcept
+    {
+        return layout.id;
+    }
+
+    CompiledPrograms::Program& CompiledPrograms::resolve(ProgramId id) noexcept
+    {
+        const auto bucket = program_index_.find(id.digest);
+        if (bucket != program_index_.end())
+        {
+            for (const auto& program : bucket->second)
+            {
+                if (program->id.publication == id.publication) return *program;
+            }
+        }
+        std::terminate();
+    }
+
+    void CompiledPrograms::releaseBindings(const NativeProgramBindings& bindings) noexcept
+    {
+        std::vector<ProgramId> programs;
+        std::vector<LayoutId> layouts;
+        for (const auto& slot : bindings.slots_)
+        {
+            if (slot.program) programs.push_back(slot.program);
+            if (slot.layout != LayoutId::INVALID) layouts.push_back(slot.layout);
+        }
+        for (const auto& stream : bindings.streams_)
+        {
+            if (!stream) continue;
+            for (const auto& program : stream->programs) programs.push_back(program.cache_id);
+        }
+        if (!layouts.empty())
+        {
+            session_.deferRelease([this, layouts = std::move(layouts)]() noexcept
+            {
+                for (const auto layout : layouts) dropLayout(layout);
+            });
+        }
         const auto get = [&](std::size_t i) noexcept { return programs[i]; };
         release(programs.size(), get);
     }
 
-    void CompiledPrograms::release(std::size_t count, cxx::function_ref<Program*(std::size_t) noexcept> get) noexcept
+    void CompiledPrograms::release(std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get) noexcept
     {
         if (!count) return;
         auto accepted = session_.makeFrontiers();
@@ -368,10 +418,10 @@ namespace lux::render::detail
             accepted.accept(session_.submissionPoint(q, session_.physicalQueue(q).submitted()));
         for (std::size_t i = 0; i < count; ++i)
         {
-            auto* program = get(i);
-            if (!program->users) std::terminate();
-            program->last_uses.merge(accepted);
-            if (--program->users == 0) unused_.emplace(program->last_acquired, program);
+            auto& program = resolve(get(i));
+            if (!program.users) std::terminate();
+            program.last_uses.merge(accepted);
+            if (--program.users == 0) unused_.emplace(program.last_acquired, &program);
         }
         trim();
     }
@@ -383,7 +433,7 @@ namespace lux::render::detail
             const auto oldest = unused_.begin();
             auto* program = oldest->second;
             unused_.erase(oldest);
-            const auto index = program_index_.find(program->digest);
+            const auto index = program_index_.find(program->id.digest);
             const auto pipeline = program->pipeline;
             const auto layout_id = program->layout_id;
             auto& shader = *shaders_.find(program->shader_id)->second;
@@ -394,7 +444,7 @@ namespace lux::render::detail
             session_.deferRelease(std::move(frontiers), [this, pipeline, layout_id]() noexcept
             {
                 session_.nriCore().DestroyPipeline(pipeline);
-                dropLayout(*layouts_.find(layout_id)->second);
+                dropLayout(layout_id);
             });
         }
     }

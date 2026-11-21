@@ -22,33 +22,40 @@ namespace lux::render::detail
         return binding_plan_->pass(binding_slot).uses;
     }
 
-    NativeGraphPrograms::NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept
-        : session_(&session), slots_(slots), streams_(slots)
+    NativeProgramBindings::NativeProgramBindings(nri::Device& device, std::size_t slots) noexcept
+        : device_(&device), slots_(slots), streams_(slots)
     {
     }
 
-    NativeGraphPrograms::NativeGraphPrograms(NativeGraphPrograms&& other) noexcept
-        : session_(std::exchange(other.session_, nullptr)), slots_(std::move(other.slots_)),
-          streams_(std::move(other.streams_)),
-          program_uses_(std::move(other.program_uses_)), layout_uses_(std::move(other.layout_uses_))
+    NativeProgramBindings::NativeProgramBindings(NativeProgramBindings&&) noexcept = default;
+
+    NativeProgramBindings::~NativeProgramBindings() noexcept = default;
+
+    PreparedRenderGraph::PreparedRenderGraph(
+        DeviceSession& owner, RenderGraphExecutable plan, NativeProgramBindings bindings,
+        GraphAssemblyPlan linked, GraphCompileDiagnostics debug
+    ) noexcept
+        : executable(std::move(plan)), programs(std::move(bindings)), assembly(std::move(linked)),
+          diagnostics(std::move(debug)), owner_(&owner)
     {
     }
 
-    NativeGraphPrograms::~NativeGraphPrograms() noexcept
+    PreparedRenderGraph::PreparedRenderGraph(PreparedRenderGraph&& other) noexcept
+        : executable(std::move(other.executable)), programs(std::move(other.programs)),
+          assembly(std::move(other.assembly)), diagnostics(std::move(other.diagnostics)),
+          owner_(std::exchange(other.owner_, nullptr))
     {
-        if (!session_) return;
-        auto& programs = session_->programs();
-        if (!layout_uses_.empty())
-        {
-            session_->deferRelease([layouts = std::move(layout_uses_), &programs]() noexcept
-            {
-                for (auto* layout : layouts)
-                {
-                    programs.releaseLayout(layout);
-                }
-            });
-        }
-        programs.release(program_uses_);
+    }
+
+    PreparedRenderGraph::~PreparedRenderGraph() noexcept
+    {
+        if (owner_) owner_->programs().releaseBindings(programs);
+    }
+
+    NativeProgramBindings PreparedRenderGraph::takePrograms() && noexcept
+    {
+        owner_ = nullptr;
+        return std::move(programs);
     }
 
     bool RenderGraphExecutable::compatible(const TargetDesc& target) const noexcept

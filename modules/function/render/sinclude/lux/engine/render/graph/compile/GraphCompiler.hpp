@@ -39,7 +39,7 @@ namespace lux::render::detail
                       const nri::DeviceDesc&) noexcept;
         [[nodiscard]] static exec::task<RenderResult<void>>
         prepareOperations(
-            const RenderGraphExecutable&, ShaderBindingPlan&, DeviceSession&, NativeGraphPrograms&, const RenderGraph&,
+            const RenderGraphExecutable&, ShaderBindingPlan&, DeviceSession&, NativeProgramBindings&, const RenderGraph&,
             std::span<const GraphPassId>, execution::CpuScheduler
         ) noexcept;
         [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/cxx/core/function_ref.hpp>
+
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
@@ -124,7 +126,10 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         prepare(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
-        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const std::optional<RenderError>& cancel) noexcept;
+        using BatchAccepted = cxx::function_ref<void(const RenderGraphInstance&, std::uint32_t, SubmissionPoint) noexcept>;
+
+        [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
+        submit(const std::optional<RenderError>& cancel, std::optional<BatchAccepted> accepted = {}) noexcept;
         void acceptPreparation(std::uint64_t serial) noexcept;
         void waitForUniformUpload(std::uint64_t serial) noexcept
         {
@@ -142,7 +147,7 @@ namespace lux::render::detail
         void accept(const SubmissionQueue&) noexcept;
         void enqueueReadyBatch(Slot&, std::uint32_t) noexcept;
         void selectReadyBatches(Slot&, std::uint32_t) noexcept;
-        void acceptBatch(Slot&, std::uint32_t, std::uint64_t) noexcept;
+        void acceptBatch(Slot&, std::uint32_t, std::uint64_t, std::optional<BatchAccepted>) noexcept;
         [[nodiscard]] bool hasPresentationBoundary(const BatchExecution&) const noexcept;
         [[nodiscard]] RenderResult<void>
         rebuildDependencies(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;

@@ -12,7 +12,7 @@ namespace lux::render::detail
         DeviceSession& session,
         std::uint32_t frame_count,
         const RenderGraphExecutable& plan,
-        const NativeGraphPrograms& programs,
+        const NativeProgramBindings& programs,
         TargetOutput output
     ) noexcept
         : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), programs_(&programs), output_(output)
@@ -109,7 +109,7 @@ namespace lux::render::detail
         const bool needs_target = plan.output() != kGraphInvalidIndex ||
             std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept { return resource.target_sized; });
         const bool missing_target = needs_target && output_.frames.empty();
-        const bool invalid_programs = programs_->session() != &session || programs_->size() != plan.passes().size();
+        const bool invalid_programs = programs_->device() != &session.device() || programs_->size() != plan.passes().size();
         const bool missing_programs = invalid_programs || std::ranges::any_of(plan.passes(), [&](const auto& pass)
         {
             const auto& bindings = plan.binding_plan_->pass(pass.binding_slot);

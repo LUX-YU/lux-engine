@@ -492,7 +492,7 @@ namespace lux::render::detail
         auto& selected = dynamic_raster_programs_[pass];
         if (!selected) return;
         if (replacing && !selected->programs.empty()) releaseRasterBindings(pass, selected->revision);
-        const auto get = [&](std::size_t i) noexcept { return selected->programs[i].cache_entry; };
+        const auto get = [&](std::size_t i) noexcept { return selected->programs[i].cache_id; };
         session_->programs().release(selected->programs.size(), get);
         selected.reset();
     }
@@ -553,7 +553,7 @@ namespace lux::render::detail
             for (const auto& candidate : candidates)
             {
                 if (!candidate) continue;
-                const auto get = [&](std::size_t i) noexcept { return candidate->programs[i].cache_entry; };
+                const auto get = [&](std::size_t i) noexcept { return candidate->programs[i].cache_id; };
                 session_->programs().release(candidate->programs.size(), get);
             }
         });

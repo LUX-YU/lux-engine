@@ -9,7 +9,7 @@ namespace lux::render::detail
 {
     struct GraphAssemblyPlan;
     class RenderGraphExecutable;
-    class NativeGraphPrograms;
+    class NativeProgramBindings;
 }
 
 namespace lux::render::runtime_detail
@@ -59,6 +59,6 @@ namespace lux::render::runtime_detail
 
     [[nodiscard]] RenderResult<detail::PreparationPlan> linkPreparation(
         const PreparationDefinition&, const RenderGraph&, const detail::GraphAssemblyPlan&,
-        const detail::RenderGraphExecutable&, const detail::NativeGraphPrograms&, const RenderEffect&
+        const detail::RenderGraphExecutable&, const detail::NativeProgramBindings&, const RenderEffect&
     ) noexcept;
 } // namespace lux::render::runtime_detail

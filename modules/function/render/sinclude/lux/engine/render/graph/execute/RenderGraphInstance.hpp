@@ -34,7 +34,7 @@ namespace lux::render::detail
             DeviceSession&,
             std::uint32_t frame_count,
             const RenderGraphExecutable&,
-            const NativeGraphPrograms&,
+            const NativeProgramBindings&,
             TargetOutput = {}
         ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
@@ -342,12 +342,11 @@ namespace lux::render::detail
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;
         std::uint64_t preparation_revision_ = 0;
         std::span<const LinkedUniformBlock> uniform_blocks_;
-        std::vector<SubmissionFrontiers*> uniform_accepted_;
         PreparedCpuValue<ViewGpuParameters> view_parameters_{};
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
         const RenderGraphExecutable* plan_;
-        const NativeGraphPrograms* programs_;
+        const NativeProgramBindings* programs_;
         RasterViewport viewport_;
         TargetOutput output_;
 

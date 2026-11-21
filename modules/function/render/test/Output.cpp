@@ -843,6 +843,70 @@ namespace
 
     constexpr std::uint64_t effect_capture_bytes = 64 * 256;
 
+#ifdef _WIN32
+// A real timeline wait for native retirement tests. The submitted work cannot retire until the host signals it.
+struct RetirementFence final
+{
+    explicit RetirementFence(DeviceSession& session) noexcept : core(session.nriCore())
+    {
+        auto& device = session.device();
+        auto* native = core.GetDeviceNativeObject(&device);
+        if (session.description().graphicsAPI == nri::GraphicsAPI::D3D12)
+        {
+            auto& dx_device = *static_cast<ID3D12Device*>(native);
+            CHECK(SUCCEEDED(dx_device.CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&dx_fence))));
+            nri::WrapperD3D12Interface wrapper{};
+            CHECK(nri::nriGetInterface(device, NRI_INTERFACE(nri::WrapperD3D12Interface), &wrapper) ==
+                nri::Result::SUCCESS);
+            CHECK(wrapper.CreateFenceD3D12(device, {dx_fence}, fence) == nri::Result::SUCCESS);
+            return;
+        }
+        vk_device = static_cast<VkDevice>(native);
+        nri::WrapperVKInterface wrapper{};
+        CHECK(nri::nriGetInterface(device, NRI_INTERFACE(nri::WrapperVKInterface), &wrapper) == nri::Result::SUCCESS);
+        const auto proc = reinterpret_cast<PFN_vkGetDeviceProcAddr>(wrapper.GetDeviceProcAddrVK(device));
+        const auto create = reinterpret_cast<PFN_vkCreateSemaphore>(proc(vk_device, "vkCreateSemaphore"));
+        destroy_vk = reinterpret_cast<PFN_vkDestroySemaphore>(proc(vk_device, "vkDestroySemaphore"));
+        signal_vk = reinterpret_cast<PFN_vkSignalSemaphore>(proc(vk_device, "vkSignalSemaphore"));
+        CHECK(create && destroy_vk && signal_vk);
+        const VkSemaphoreTypeCreateInfo timeline{
+            VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO, nullptr, VK_SEMAPHORE_TYPE_TIMELINE, 0
+        };
+        const VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &timeline, 0};
+        CHECK(create(vk_device, &info, nullptr, &vk_fence) == VK_SUCCESS);
+        const nri::FenceVKDesc native_fence{reinterpret_cast<std::uintptr_t>(vk_fence)};
+        CHECK(wrapper.CreateFenceVK(device, native_fence, fence) == nri::Result::SUCCESS);
+    }
+
+    ~RetirementFence() noexcept
+    {
+        core.DestroyFence(fence);
+        if (dx_fence) dx_fence->Release();
+        else destroy_vk(vk_device, vk_fence, nullptr);
+    }
+
+    void signal() const noexcept
+    {
+        if (dx_fence)
+        {
+            CHECK(SUCCEEDED(dx_fence->Signal(1)));
+            return;
+        }
+        const VkSemaphoreSignalInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, nullptr, vk_fence, 1};
+        CHECK(signal_vk(vk_device, &info) == VK_SUCCESS);
+    }
+
+    const nri::CoreInterface& core;
+    nri::Fence* fence = nullptr;
+    ID3D12Fence* dx_fence = nullptr;
+    VkDevice vk_device = nullptr;
+    VkSemaphore vk_fence = VK_NULL_HANDLE;
+    PFN_vkDestroySemaphore destroy_vk = nullptr;
+    PFN_vkSignalSemaphore signal_vk = nullptr;
+};
+
+#endif
+
     struct UniformUploadProbe final
     {
         enum class EFault : std::uint8_t { NONE, REJECT_UPLOAD, HOLD_UPLOAD, REJECT_SUFFIX, UNKNOWN_UPLOAD };
@@ -859,6 +923,8 @@ namespace
             original_idle = core.QueueWaitIdle;
             original_pipeline = core.CreateGraphicsPipeline;
             original_create_pool = core.CreateDescriptorPool;
+            original_allocate_sets = core.AllocateDescriptorSets;
+            original_set_descriptor_set = core.CmdSetDescriptorSet;
             original_destroy_pool = core.DestroyDescriptorPool;
             original_indexed = core.CmdDrawIndexed;
             original_indexed_indirect = core.CmdDrawIndexedIndirect;
@@ -891,8 +957,8 @@ namespace
             core.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& desc) noexcept
             {
                 auto expected = EPipelineGate::ARMED;
-                if (submission_gate.compare_exchange_strong(expected, EPipelineGate::HELD))
-                    submission_gate.wait(EPipelineGate::HELD);
+                const bool held = submission_gate.compare_exchange_strong(expected, EPipelineGate::HELD);
+                if (held) submission_gate.wait(EPipelineGate::HELD);
                 auto rejection = reject_submission_countdown.load();
                 while (rejection != 0)
                 {
@@ -919,7 +985,20 @@ namespace
                     suffix_rejected.store(true);
                     return nri::Result::INVALID_ARGUMENT;
                 }
-                const auto result = original_submit(queue, desc);
+                auto submitted = desc;
+#ifdef _WIN32
+                std::vector<nri::FenceSubmitDesc> waits;
+                if (held && texture_retirement_fence)
+                {
+                    const auto* recorded = old_pool_command.load();
+                    CHECK(recorded && std::ranges::find(commands, recorded) != commands.end());
+                    if (desc.waitFenceNum) waits.assign(desc.waitFences, desc.waitFences + desc.waitFenceNum);
+                    waits.push_back({texture_retirement_fence, 1, nri::StageBits::ALL});
+                    submitted.waitFences = waits.data();
+                    submitted.waitFenceNum = static_cast<std::uint32_t>(waits.size());
+                }
+#endif
+                const auto result = original_submit(queue, submitted);
                 if (result != nri::Result::SUCCESS) return result;
                 if (&queue == compute_queue)
                 {
@@ -956,15 +1035,47 @@ namespace
             ) noexcept
             {
                 const auto result = original_create_pool(device, desc, pool);
-                if (watch_texture_pool && result == nri::Result::SUCCESS && desc.textureMaxNum == 4)
-                    texture_pool_grown = true;
+                if (!watch_texture_pool || result != nri::Result::SUCCESS) return result;
+                if ((desc.flags & nri::DescriptorPoolBits::ALLOW_UPDATE_AFTER_SET) == 0) return result;
+                for (std::size_t i = 0; i < texture_pools.size(); ++i)
+                {
+                    if (desc.textureMaxNum != 2u << i) continue;
+                    auto& generation = texture_pools[i];
+                    CHECK(!generation.pool && generation.creates == 0);
+                    generation.pool = pool;
+                    ++generation.creates;
+                }
                 return result;
             };
             core.DestroyDescriptorPool = [](nri::DescriptorPool* pool) noexcept
             {
-                if (watch_texture_pool && submission_gate == EPipelineGate::HELD)
-                    pool_destroyed_before_submit = true;
+                for (auto& generation : texture_pools)
+                {
+                    if (!generation.pool || generation.pool != pool) continue;
+                    generation.pool = nullptr;
+                    original_destroy_pool(pool);
+                    ++generation.destroys;
+                    return;
+                }
                 original_destroy_pool(pool);
+            };
+            core.AllocateDescriptorSets = [](
+                nri::DescriptorPool& pool, const nri::PipelineLayout& layout, std::uint32_t index,
+                nri::DescriptorSet** sets, std::uint32_t count, std::uint32_t variables
+            ) noexcept
+            {
+                const auto result = original_allocate_sets(pool, layout, index, sets, count, variables);
+                if (result == nri::Result::SUCCESS && &pool == texture_pools.front().pool)
+                {
+                    CHECK(count == 1);
+                    old_texture_set = sets[0];
+                }
+                return result;
+            };
+            core.CmdSetDescriptorSet = [](nri::CommandBuffer& command, const nri::SetDescriptorSetDesc& desc) noexcept
+            {
+                if (desc.descriptorSet && desc.descriptorSet == old_texture_set.load()) old_pool_command = &command;
+                original_set_descriptor_set(command, desc);
             };
             core.CmdDrawIndexed = [](nri::CommandBuffer& command, const nri::DrawIndexedDesc& draw) noexcept
             {
@@ -996,7 +1107,17 @@ namespace
         static inline std::atomic_bool can_grow_texture_table{}, watch_texture_pool{};
         static inline std::atomic_bool can_batch_indexed{};
         static inline std::atomic_uint indexed_calls{}, indexed_indirect_calls{}, indexed_indirect_draws{};
-        static inline std::atomic_bool texture_pool_grown{}, pool_destroyed_before_submit{};
+        struct TexturePool final
+        {
+            nri::DescriptorPool* pool;
+            std::atomic_uint creates, destroys;
+        };
+
+        static inline std::array<TexturePool, 4> texture_pools{};
+        static inline std::atomic<const nri::CommandBuffer*> old_pool_command{};
+#ifdef _WIN32
+        static inline nri::Fence* texture_retirement_fence = nullptr;
+#endif
         static bool hasSeparateComputeQueue() noexcept { return compute_queue != nullptr; }
 
     private:
@@ -1013,6 +1134,9 @@ namespace
         static inline decltype(nri::CoreInterface::CreateGraphicsPipeline) original_pipeline{};
         static inline decltype(nri::CoreInterface::CreateDescriptorPool) original_create_pool{};
         static inline decltype(nri::CoreInterface::DestroyDescriptorPool) original_destroy_pool{};
+        static inline decltype(nri::CoreInterface::AllocateDescriptorSets) original_allocate_sets{};
+        static inline decltype(nri::CoreInterface::CmdSetDescriptorSet) original_set_descriptor_set{};
+        static inline std::atomic<const nri::DescriptorSet*> old_texture_set{};
         static inline decltype(nri::CoreInterface::CmdDrawIndexed) original_indexed{};
         static inline decltype(nri::CoreInterface::CmdDrawIndexedIndirect) original_indexed_indirect{};
         static inline std::atomic<const nri::CommandBuffer*> upload_command{};
@@ -1049,6 +1173,25 @@ namespace
         EffectCaptureBuffer(ResourceCreateContext& context, CapturedPixels& pixels) noexcept
             : capture_(context), config_{.result = &pixels, .bytes = effect_capture_bytes}
         {
+#ifdef _WIN32
+            if (UniformUploadProbe::watch_texture_pool && context.device.enabledFeatures().variable_descriptor_count)
+            {
+                retirement_device_ = &context.device;
+                texture_retirement_ = std::make_unique<RetirementFence>(context.device);
+                UniformUploadProbe::texture_retirement_fence = texture_retirement_->fence;
+                test_texture_retirement = texture_retirement_.get();
+            }
+#endif
+        }
+
+        ~EffectCaptureBuffer() noexcept
+        {
+#ifdef _WIN32
+            if (texture_retirement_)
+            {
+                retirement_device_->deferRelease([retirement = std::move(texture_retirement_)]() noexcept {});
+            }
+#endif
         }
 
         static RenderResult<std::unique_ptr<EffectCaptureBuffer>>
@@ -1077,6 +1220,9 @@ namespace
             return capture;
         }
 
+#ifdef _WIN32
+        static inline const RetirementFence* test_texture_retirement = nullptr;
+#endif
         static inline std::array<CapturedPixels, 14> pixels;
         static inline ResourceInstanceId watched_instances;
         static inline std::array<std::atomic_uint, 3> published_paged_reads;
@@ -1099,6 +1245,10 @@ namespace
         }
 
         static inline std::size_t created_ = 0;
+#ifdef _WIN32
+        DeviceSession* retirement_device_ = nullptr;
+        std::unique_ptr<RetirementFence> texture_retirement_;
+#endif
         CaptureBuffer capture_;
         CaptureConfig config_;
         StorageSubscription paged_probe_;
@@ -3329,7 +3479,8 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     const auto commands = queryCommands(*client);
     DeviceOptions options;
     options.texture_descriptors = true;
-    options.descriptor_initial_counts[0] = 2;
+    UniformUploadProbe::watch_texture_pool = !use_materials && !d3d12;
+    options.descriptor_initial_counts[0] = UniformUploadProbe::watch_texture_pool ? 1 : 2;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     const auto created = call<CreateDeviceSession>(*client, commands, options, false);
     if (created.error.type == kDeviceUnsupported)
@@ -3479,22 +3630,28 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
         CHECK(busy_material.error.type == kDeviceBusy);
     }
     const bool exercise_growth = !use_materials && !d3d12 && UniformUploadProbe::can_grow_texture_table;
-    std::future<TextureCommands::Upload::Response> growth;
+    std::vector<std::future<TextureCommands::Upload::Response>> growth;
     if (exercise_growth)
     {
-        auto growth_client = ipc::IpcCore::instance().createRequester(config.channel_name);
-        CHECK(growth_client);
-        UniformUploadProbe::watch_texture_pool = true;
-        growth = std::async(std::launch::async, [&, requester = std::move(*growth_client)]() mutable
+        for (std::size_t i = 0; i < 7; ++i)
         {
-            return call<TextureCommands::Upload>(requester, commands, {owner, {info, colors.front()}});
-        });
+            auto growth_client = ipc::IpcCore::instance().createRequester(config.channel_name);
+            CHECK(growth_client);
+            growth.push_back(std::async(std::launch::async, [&, requester = std::move(*growth_client)]() mutable
+            {
+                return call<TextureCommands::Upload>(requester, commands, {owner, {info, colors.front()}});
+            }));
+        }
         const auto growth_deadline = Clock::now() + 10s;
-        while (!UniformUploadProbe::texture_pool_grown)
+        auto& pools = UniformUploadProbe::texture_pools;
+        while (pools.back().creates == 0)
         {
             CHECK(Clock::now() < growth_deadline);
             std::this_thread::yield();
         }
+        CHECK(UniformUploadProbe::old_pool_command.load());
+        CHECK(pools.front().creates == 1 && pools.front().destroys == 0);
+        CHECK(held.wait_for(0s) == std::future_status::timeout);
         CHECK(call<TextureCommands::Release>(*client, commands, {textures[0]}, false).error.type == kDeviceBusy);
     }
     UniformUploadProbe::submission_gate = Gate::OPEN;
@@ -3503,10 +3660,16 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     const auto first = held.get();
     if (exercise_growth)
     {
-        const auto third = growth.get();
-        call<TextureCommands::Release>(*client, commands, {third.texture});
-        CHECK(!UniformUploadProbe::pool_destroyed_before_submit);
-        UniformUploadProbe::watch_texture_pool = false;
+#ifdef _WIN32
+        CHECK(UniformUploadProbe::texture_pools.front().destroys == 0);
+        CHECK(EffectCaptureBuffer::test_texture_retirement);
+        EffectCaptureBuffer::test_texture_retirement->signal();
+#endif
+        for (auto& request : growth)
+        {
+            const auto uploaded = request.get();
+            call<TextureCommands::Release>(*client, commands, {uploaded.texture});
+        }
     }
     call<TextureCommands::Release>(*client, commands, {textures[0]});
     selected_texture = 1;
@@ -3546,6 +3709,12 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     {
         const auto pixel = std::span<const std::byte>{capture.frames[slot]}.subspan(capture.pitch * 32 + 16 * 4, 4);
         CHECK(std::ranges::equal(pixel, color));
+    }
+    if (exercise_growth)
+    {
+        for (const auto& generation : UniformUploadProbe::texture_pools)
+            CHECK(generation.creates == 1 && generation.destroys == 1);
+        std::puts("VULKAN POOLS PASS: 2 -> 4 -> 8 -> 16 before receipt; original binding and all destructions verified");
     }
     std::printf("%s PASS backend=%s native pixels, deduplicated reads, release protection, growth=%s\n",
         use_materials ? "SHARED MATERIAL" : "SHARED TEXTURE", d3d12 ? "D3D12" : "Vulkan",
@@ -4969,67 +5138,6 @@ static void windowOutput(bool d3d12)
     std::printf("WSI PASS backend=%s real presents=%llu resize/writer replacement/remove/shutdown\n",
         d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned long long>(server->stats().presentations));
 }
-
-// A real timeline wait on the retiring GPU. The submitted work cannot retire until the host signals it.
-struct RetirementFence final
-{
-    explicit RetirementFence(DeviceSession& session) noexcept : core(session.nriCore())
-    {
-        auto& device = session.device();
-        auto* native = core.GetDeviceNativeObject(&device);
-        if (session.description().graphicsAPI == nri::GraphicsAPI::D3D12)
-        {
-            auto& dx_device = *static_cast<ID3D12Device*>(native);
-            CHECK(SUCCEEDED(dx_device.CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&dx_fence))));
-            nri::WrapperD3D12Interface wrapper{};
-            CHECK(nri::nriGetInterface(device, NRI_INTERFACE(nri::WrapperD3D12Interface), &wrapper) ==
-                nri::Result::SUCCESS);
-            CHECK(wrapper.CreateFenceD3D12(device, {dx_fence}, fence) == nri::Result::SUCCESS);
-            return;
-        }
-        vk_device = static_cast<VkDevice>(native);
-        nri::WrapperVKInterface wrapper{};
-        CHECK(nri::nriGetInterface(device, NRI_INTERFACE(nri::WrapperVKInterface), &wrapper) == nri::Result::SUCCESS);
-        const auto proc = reinterpret_cast<PFN_vkGetDeviceProcAddr>(wrapper.GetDeviceProcAddrVK(device));
-        const auto create = reinterpret_cast<PFN_vkCreateSemaphore>(proc(vk_device, "vkCreateSemaphore"));
-        destroy_vk = reinterpret_cast<PFN_vkDestroySemaphore>(proc(vk_device, "vkDestroySemaphore"));
-        signal_vk = reinterpret_cast<PFN_vkSignalSemaphore>(proc(vk_device, "vkSignalSemaphore"));
-        CHECK(create && destroy_vk && signal_vk);
-        const VkSemaphoreTypeCreateInfo timeline{
-            VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO, nullptr, VK_SEMAPHORE_TYPE_TIMELINE, 0
-        };
-        const VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &timeline, 0};
-        CHECK(create(vk_device, &info, nullptr, &vk_fence) == VK_SUCCESS);
-        const nri::FenceVKDesc native_fence{reinterpret_cast<std::uintptr_t>(vk_fence)};
-        CHECK(wrapper.CreateFenceVK(device, native_fence, fence) == nri::Result::SUCCESS);
-    }
-
-    ~RetirementFence() noexcept
-    {
-        core.DestroyFence(fence);
-        if (dx_fence) dx_fence->Release();
-        else destroy_vk(vk_device, vk_fence, nullptr);
-    }
-
-    void signal() const noexcept
-    {
-        if (dx_fence)
-        {
-            CHECK(SUCCEEDED(dx_fence->Signal(1)));
-            return;
-        }
-        const VkSemaphoreSignalInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, nullptr, vk_fence, 1};
-        CHECK(signal_vk(vk_device, &info) == VK_SUCCESS);
-    }
-
-    const nri::CoreInterface& core;
-    nri::Fence* fence = nullptr;
-    ID3D12Fence* dx_fence = nullptr;
-    VkDevice vk_device = nullptr;
-    VkSemaphore vk_fence = VK_NULL_HANDLE;
-    PFN_vkDestroySemaphore destroy_vk = nullptr;
-    PFN_vkSignalSemaphore signal_vk = nullptr;
-};
 
 struct SignalRetirementFence final
 {

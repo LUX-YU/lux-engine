@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <exception>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/device/NativeExecution.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
@@ -99,27 +100,50 @@ namespace lux::render::detail
         {
             const bool finished = variant->plan || variant->failure.type;
             if (!finished || !variant->waiters.empty()) std::terminate();
+            if (variant->plan) session().programs().releaseBindings(variant->plan->programs);
             variants_.erase(id);
         }
     }
 
-    UniformBlockVersions* DeviceEntry::uniformPool(EffectId effect, graph::NodeId node, std::string_view name) noexcept
+    DeviceEntry::UniformPoolRecord::UniformPoolRecord(
+        EffectId owner, graph::NodeId source_node, std::string_view block_name, DeviceSession& device,
+        extension_detail::EffectUniformSource source, std::uint32_t frame_count
+    ) noexcept : effect(owner), node(source_node), name(block_name), versions(device, source, frame_count)
+    {
+    }
+
+    UniformPoolId DeviceEntry::findUniformPool(EffectId effect, graph::NodeId node, std::string_view name) const noexcept
     {
         const auto found = std::ranges::find_if(uniform_pools_, [&](const auto& pool) noexcept
         {
             return pool.effect == effect && pool.node == node && pool.name == name;
         });
-        return found != uniform_pools_.end() ? found->versions.get() : nullptr;
+        return found != uniform_pools_.end() ? found->id : UniformPoolId{};
     }
 
-    void DeviceEntry::adoptUniformPools(std::vector<UniformPool> pools) noexcept
+    DeviceEntry::UniformPoolRecord& DeviceEntry::uniformPool(UniformPoolId id) noexcept
     {
-        for (auto& pool : pools) uniform_pools_.push_back(std::move(pool));
+        auto* pool = uniform_pools_.find(id);
+        if (!pool) std::terminate();
+        return *pool;
+    }
+
+    UniformPoolId DeviceEntry::createUniformPool(
+        EffectId effect, graph::NodeId node, std::string_view name, extension_detail::EffectUniformSource source
+    ) noexcept
+    {
+        const auto id = uniform_pools_.emplace(effect, node, name, session(), source, frame_progress_.frameCount());
+        uniformPool(id).id = id;
+        return id;
     }
 
     void DeviceEntry::removeUniformPools(EffectId effect) noexcept
     {
-        std::erase_if(uniform_pools_, [effect](const auto& pool) noexcept { return pool.effect == effect; });
+        for (auto pool = uniform_pools_.begin(); pool != uniform_pools_.end();)
+        {
+            if (pool->effect == effect) uniform_pools_.erase(pool->id);
+            else ++pool;
+        }
     }
 
     void DeviceEntry::clearUniformPools() noexcept

@@ -22,7 +22,7 @@ namespace lux::render::runtime_detail
     struct JobGraphPlan final
     {
         detail::RenderGraphExecutable executable;
-        detail::NativeGraphPrograms programs;
+        detail::NativeProgramBindings programs;
         std::vector<SamplerDescription> samplers;
         std::vector<GraphResourceId> target_imports;
         std::vector<GraphResourceId> storage_imports;

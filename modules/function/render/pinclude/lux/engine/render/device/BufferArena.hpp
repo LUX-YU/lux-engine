@@ -1,49 +1,43 @@
 #pragma once
 
+#include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <vk_mem_alloc.h>
 
 namespace lux::render::detail
 {
-    // Stable segments own buffer allocations and virtual allocation metadata. Range values borrow
-    // their segment; the Arena returns them through the Session's single cleanup scope.
+    struct ArenaAllocationId final
+    {
+        std::uint64_t arena = 0;
+        cxx::SlotKey<struct ArenaAllocationTag> slot;
+    };
+
+    struct BufferSlice final
+    {
+        nri::Buffer* buffer = nullptr;
+        std::uint64_t offset = 0, size = 0;
+    };
+
+    struct ArenaAllocation final
+    {
+        ArenaAllocationId id;
+        BufferSlice slice;
+    };
+
     class BufferArena final
     {
-        struct Segment;
-
     public:
-        class Range final
-        {
-        public:
-            Range() noexcept = default;
-            Range(Range&&) noexcept;
-            Range& operator=(Range&&) noexcept;
-            Range(const Range&) = delete;
-            Range& operator=(const Range&) = delete;
-
-            nri::Buffer* buffer = nullptr;
-            std::uint64_t offset = 0, size = 0;
-
-        private:
-            friend class BufferArena;
-            Segment* segment_ = nullptr;
-            VmaVirtualAllocation allocation_ = VK_NULL_HANDLE;
-        };
-
         BufferArena(
             DeviceSession& session,
             nri::BufferUsageBits usage,
             std::uint64_t segment_bytes = 4 * 1024 * 1024
-        ) noexcept
-            : session_(session), usage_(usage), segment_bytes_(segment_bytes)
-        {
-        }
+        ) noexcept;
 
         ~BufferArena() noexcept;
         BufferArena(const BufferArena&) = delete;
         BufferArena& operator=(const BufferArena&) = delete;
-        [[nodiscard]] RenderResult<Range> allocate(std::uint64_t bytes, std::uint64_t alignment) noexcept;
-        void release(Range&) noexcept;
+        [[nodiscard]] RenderResult<ArenaAllocation> allocate(std::uint64_t bytes, std::uint64_t alignment) noexcept;
+        [[nodiscard]] bool retireAllocation(ArenaAllocationId, SubmissionFrontiers) noexcept;
 
         [[nodiscard]] std::uint64_t capacity() const noexcept
         {
@@ -52,7 +46,7 @@ namespace lux::render::detail
 
         [[nodiscard]] std::size_t segmentCount() const noexcept
         {
-            return segments_.size();
+            return storage_->segments.size();
         }
 
     private:
@@ -62,12 +56,31 @@ namespace lux::render::detail
             VmaVirtualBlock block = VK_NULL_HANDLE;
         };
 
+        struct Allocation final
+        {
+            Segment* segment;
+            VmaVirtualAllocation allocation;
+            bool retiring = false;
+        };
+
+        struct Storage final
+        {
+            const nri::CoreInterface& core;
+            std::vector<std::unique_ptr<Segment>> segments;
+            cxx::StableSlotMap<Allocation, ArenaAllocationTag> allocations;
+            std::size_t pending = 0;
+            bool closed = false;
+
+            ~Storage() noexcept;
+        };
+
         static void destroySegment(const nri::CoreInterface&, Segment&) noexcept;
-        [[nodiscard]] static Range allocate(Segment&, std::uint64_t bytes, std::uint64_t alignment) noexcept;
+        [[nodiscard]] ArenaAllocation allocate(Segment&, std::uint64_t bytes, std::uint64_t alignment) noexcept;
         DeviceSession& session_;
         nri::BufferUsageBits usage_;
         std::uint64_t capacity_ = 0;
         std::uint64_t segment_bytes_;
-        std::vector<std::unique_ptr<Segment>> segments_;
+        std::uint64_t identity_;
+        std::unique_ptr<Storage> storage_;
     };
 } // namespace lux::render::detail

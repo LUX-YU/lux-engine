@@ -151,13 +151,19 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(vertices.error());
         }
-        cxx::scope_exit rollback_vertices([&]() noexcept { vertices_.release(*vertices); });
+        cxx::scope_exit rollback_vertices([&]() noexcept
+        {
+            if (!vertices_.retireAllocation(vertices->id, session_.makeFrontiers())) std::terminate();
+        });
         auto indices = indices_.allocate((index_bytes + 3) & ~std::size_t{3}, 4);
         if (!indices)
         {
             co_return cxx::unexpected(indices.error());
         }
-        cxx::scope_exit rollback_indices([&]() noexcept { indices_.release(*indices); });
+        cxx::scope_exit rollback_indices([&]() noexcept
+        {
+            if (!indices_.retireAllocation(indices->id, session_.makeFrontiers())) std::terminate();
+        });
         std::vector<MeshGpuSection> records;
         records.reserve(input.description.submeshes.size() + input.description.lods.size());
         for (const auto& section : input.description.submeshes)
@@ -174,26 +180,28 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(sections.error());
         }
-        Geometry geometry{std::move(*vertices), std::move(*indices), std::move(*sections)};
+        Geometry geometry{*vertices, *indices, *sections};
+        rollback_indices.release();
+        rollback_vertices.release();
         cxx::scope_exit rollback([&]() noexcept { retire(geometry); });
         std::vector<BufferWrite> writes;
         writes.reserve(4 + mesh.lods.size());
-        writes.push_back({geometry.vertices.buffer, geometry.vertices.offset, std::as_bytes(std::span(input.vertices))}
+        writes.push_back({geometry.vertices.slice.buffer, geometry.vertices.slice.offset, std::as_bytes(std::span(input.vertices))}
         );
-        writes.push_back({geometry.indices.buffer, geometry.indices.offset, std::as_bytes(std::span(mesh.indices))});
+        writes.push_back({geometry.indices.slice.buffer, geometry.indices.slice.offset, std::as_bytes(std::span(mesh.indices))});
         for (std::size_t i = 0; i < mesh.lods.size(); ++i)
         {
             const auto offset = std::uint64_t(input.description.lods[i].first_index) * sizeof(std::uint32_t);
             writes.push_back(
-                {geometry.indices.buffer,
-                 geometry.indices.offset + offset,
+                {geometry.indices.slice.buffer,
+                 geometry.indices.slice.offset + offset,
                  std::as_bytes(std::span(mesh.lods[i].indices))}
             );
         }
-        writes.push_back({geometry.sections.buffer, geometry.sections.offset, std::as_bytes(std::span(records))});
+        writes.push_back({geometry.sections.slice.buffer, geometry.sections.slice.offset, std::as_bytes(std::span(records))});
         writes.push_back(
-            {geometry.sections.buffer,
-             geometry.sections.offset + bounds_offset,
+            {geometry.sections.slice.buffer,
+             geometry.sections.slice.offset + bounds_offset,
              std::as_bytes(std::span(&input.description.bounds, 1))}
         );
         if (auto uploaded = co_await uploads_.writeBuffers(writes); !uploaded)
@@ -208,6 +216,7 @@ namespace lux::render::detail
         auto& entry = *entries_.find(key);
         entry.geometry = std::move(geometry);
         entry.description = std::move(input.description);
+        rollback.release();
         co_return extension_detail::ResourceIdentity::make<MeshId>(id_, key);
     }
 
@@ -237,8 +246,8 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto& vertices = entry->geometry.vertices;
-        const auto& indices = entry->geometry.indices;
+        const auto& vertices = entry->geometry.vertices.slice;
+        const auto& indices = entry->geometry.indices.slice;
         return BufferViews{
             {vertices.buffer, vertices.offset, vertices.size},
             {indices.buffer, indices.offset, indices.size},
@@ -255,8 +264,8 @@ namespace lux::render::detail
         if (!entry || submesh >= entry->description.submeshes.size())
             return cxx::unexpected(RenderError{kStorageIdentity});
         const auto& section = entry->description.submeshes[submesh];
-        const auto index_base = entry->geometry.indices.offset / entry->description.index_stride;
-        const auto vertex_base = entry->geometry.vertices.offset / entry->description.vertex_stride;
+        const auto index_base = entry->geometry.indices.slice.offset / entry->description.index_stride;
+        const auto vertex_base = entry->geometry.vertices.slice.offset / entry->description.vertex_stride;
         const bool invalid_index = index_base > UINT32_MAX || section.first_index > UINT32_MAX - index_base;
         if (invalid_index || vertex_base > UINT32_MAX)
             return cxx::unexpected(RenderError{kStorageCapacity});
@@ -310,9 +319,9 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto& range = vertex  ? entry->geometry.vertices
-                            : index ? entry->geometry.indices
-                                    : entry->geometry.sections;
+        const auto& range = vertex  ? entry->geometry.vertices.slice
+                            : index ? entry->geometry.indices.slice
+                                    : entry->geometry.sections.slice;
         const auto section_count = entry->description.submeshes.size() + entry->description.lods.size();
         const auto section_bytes = section_count * sizeof(MeshGpuSection);
         const auto offset = bounds ? (section_bytes + 15) & ~std::size_t{15} : 0;
@@ -326,11 +335,18 @@ namespace lux::render::detail
         return ResourceInput{range.buffer, range.offset + offset, size};
     }
 
-    void IndexedTriangleMeshStorage::retire(Geometry& geometry) noexcept
+    void IndexedTriangleMeshStorage::retire(const Geometry& geometry) noexcept
     {
-        vertices_.release(geometry.vertices);
-        indices_.release(geometry.indices);
-        sections_.release(geometry.sections);
+        // The exclusive release excludes prepared frames. Upload rollback reaches this point after its native receipt.
+        auto uses = session_.makeFrontiers();
+        for (std::size_t queue = 0; queue < session_.queueCount(); ++queue)
+        {
+            uses.accept(session_.submissionPoint(queue, session_.physicalQueue(queue).submitted()));
+        }
+        const bool vertices_retired = vertices_.retireAllocation(geometry.vertices.id, uses);
+        const bool indices_retired = indices_.retireAllocation(geometry.indices.id, uses);
+        const bool sections_retired = sections_.retireAllocation(geometry.sections.id, std::move(uses));
+        if (!(vertices_retired && indices_retired && sections_retired)) std::terminate();
     }
 
     ResourceRegistration IndexedTriangleMeshStorage::factory() noexcept

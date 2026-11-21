@@ -80,7 +80,9 @@ namespace lux::render
         }
         if (round.outputs.empty() || !progress.canBegin(entry.session())) return false;
 
-        round.operation.emplace(entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu_scheduler_);
+        round.operation.emplace(
+            entry.session(), entry.uploader(), progress, entry.frameWorkspace(), cpu_scheduler_, true, &entry
+        );
         auto opened = round.operation->tryBegin();
         if (!opened || !*opened)
         {

@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -17,6 +16,7 @@ namespace lux::rdesc { struct ShaderProgramArtifact; }
 namespace lux::render::detail
 {
     class DeviceSession;
+    class NativeProgramBindings;
     struct PassBindings;
     struct RasterProgramKey;
 
@@ -28,6 +28,17 @@ namespace lux::render::detail
         struct Program;
         struct Layout;
         struct Shader;
+
+        struct ProgramId final
+        {
+            std::size_t digest = 0;
+            std::uint64_t publication = 0;
+
+            [[nodiscard]] explicit operator bool() const noexcept { return publication != 0; }
+            [[nodiscard]] bool operator==(const ProgramId&) const noexcept = default;
+        };
+
+        enum class LayoutId : std::uint64_t { INVALID };
 
         // One immutable key/qualified Layout pairing during lookup and native compilation.
         // The caller keeps the Layout borrowed through publication.
@@ -62,10 +73,13 @@ namespace lux::render::detail
         [[nodiscard]] Program* publishCompute(const Lookup&, nri::Pipeline*) noexcept;
 
         [[nodiscard]] static nri::Pipeline* native(const Program&) noexcept;
+        [[nodiscard]] static ProgramId identity(const Program&) noexcept;
+        [[nodiscard]] static LayoutId identity(const Layout&) noexcept;
+
+        void releaseBindings(const NativeProgramBindings&) noexcept;
 
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
-        void release(std::span<Program* const>) noexcept;
-        void release(std::size_t count, cxx::function_ref<Program*(std::size_t) noexcept> get) noexcept;
+        void release(std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get) noexcept;
 
         // Before cleanup_scope_ closes; no logical users or CPU compilation borrows may remain.
         void clear() noexcept;
@@ -73,13 +87,15 @@ namespace lux::render::detail
     private:
         [[nodiscard]] Program* find(const RasterProgramKey*, const Lookup&, std::uint64_t after) noexcept;
         [[nodiscard]] Program* publish(RasterProgramKey*, const Lookup&, nri::Pipeline*) noexcept;
+        [[nodiscard]] Program& resolve(ProgramId) noexcept;
         void dropLayout(Layout&) noexcept;
+        void dropLayout(LayoutId) noexcept;
         void trim() noexcept;
 
         DeviceSession& session_;
         std::unordered_map<std::size_t, std::vector<std::unique_ptr<Program>>> program_index_;
         std::map<std::uint64_t, Program*> unused_;
-        std::unordered_map<std::uint64_t, std::unique_ptr<Layout>> layouts_;
+        std::unordered_map<LayoutId, std::unique_ptr<Layout>> layouts_;
         std::unordered_multimap<std::size_t, Layout*> layout_index_;
         std::unordered_map<std::uint64_t, std::unique_ptr<Shader>> shaders_;
         std::unordered_multimap<std::size_t, Shader*> shader_index_;

@@ -846,7 +846,8 @@ namespace lux::render::detail
             }
         }
         co_return CompiledRasterStream::Program{
-            CompiledPrograms::native(**lease), *lease, std::move(*layout), graphics.vertex_bindings,
+            CompiledPrograms::native(**lease), CompiledPrograms::identity(**lease), std::move(*layout),
+            graphics.vertex_bindings,
             std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
         };
     }
@@ -856,7 +857,7 @@ namespace lux::render::detail
         const RenderGraphExecutable& plan,
         ShaderBindingPlan& layouts,
         DeviceSession& session,
-        NativeGraphPrograms& native,
+        NativeProgramBindings& native,
         const RenderGraph& graph,
         std::span<const GraphPassId> order,
         execution::CpuScheduler cpu
@@ -917,7 +918,7 @@ namespace lux::render::detail
                     co_await prepareGraphProgram(std::move(key), *shader, bindings, session, cpu, is_raster);
                 if (!prepared) co_return cxx::unexpected(prepared.error());
                 auto* program = *prepared;
-                native.program_uses_.push_back(program);
+                native.slots_[pass.binding_slot].program = CompiledPrograms::identity(*program);
                 native.slots_[pass.binding_slot].pipeline = CompiledPrograms::native(*program);
             }
             else if (!bindings.private_bindings.empty())
@@ -927,13 +928,14 @@ namespace lux::render::detail
                 {
                     co_return cxx::unexpected(layout.error());
                 }
-                native.layout_uses_.push_back(*layout);
+                native.slots_[pass.binding_slot].layout = CompiledPrograms::identity(**layout);
             }
             const auto* raster = std::get_if<RasterWork>(&source.command);
             const auto* description = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
             if (description && description->usesStreamProducer())
             {
-                auto stream = std::make_unique<CompiledRasterStream>();
+                auto& stream = native.streams_[pass.binding_slot];
+                stream = std::make_unique<CompiledRasterStream>();
                 for (const auto& resource : description->resources)
                 {
                     if (const auto* range = std::get_if<GraphBufferRange>(&resource.range))
@@ -976,10 +978,8 @@ namespace lux::render::detail
                     stage.parameters = authored.parameters;
                     auto program = co_await prepareRasterStreamProgram(session, cpu, stage, target, *artifact, authored.graphics);
                     if (!program) co_return cxx::unexpected(program.error());
-                    native.program_uses_.push_back(program->cache_entry);
                     stream->programs.push_back(std::move(*program));
                 }
-                native.streams_[pass.binding_slot] = std::move(stream);
             }
             native.slots_[pass.binding_slot].descriptors = bindings.recordBindings();
             bindings.layout = nullptr;
@@ -1094,7 +1094,8 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(candidate.error());
         }
-        NativeGraphPrograms native(session, candidate->passes().size());
+        NativeProgramBindings native(session.device(), candidate->passes().size());
+        cxx::scope_exit release_bindings([&]() noexcept { session.programs().releaseBindings(native); });
         auto prepared = co_await prepareOperations(
             *candidate, bindings, session, native, graph, analysis.execution_order, cpu
         );
@@ -1134,8 +1135,9 @@ namespace lux::render::detail
         {
             assembly.source_pass_slots[analysis.execution_order[slot].index] = {slot};
         }
+        release_bindings.release();
         co_return PreparedRenderGraph{
-            std::move(*candidate), std::move(native), std::move(assembly), std::move(diagnostics)
+            session, std::move(*candidate), std::move(native), std::move(assembly), std::move(diagnostics)
         };
     }
 } // namespace lux::render::detail

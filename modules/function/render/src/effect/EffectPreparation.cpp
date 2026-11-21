@@ -16,7 +16,7 @@ namespace lux::render::runtime_detail
                 std::span<const std::uint32_t> data_slots, std::span<const std::uint32_t> buffer_slots,
                 std::span<const std::uint32_t> snapshot_slots, const RenderGraph& source,
                 const detail::GraphAssemblyPlan& assembly, const detail::RenderGraphExecutable& executable,
-                const detail::NativeGraphPrograms& programs, std::vector<detail::LinkedInlineBlock>& constants,
+                const detail::NativeProgramBindings& programs, std::vector<detail::LinkedInlineBlock>& constants,
                 std::vector<std::uint32_t>& buffers,
                 std::vector<std::uint32_t>& streams, std::vector<std::uint8_t>& claimed_streams,
                 const RenderEffect::NodeState* state, std::uint32_t producer_slot
@@ -188,7 +188,7 @@ namespace lux::render::runtime_detail
             const RenderGraph& source_;
             const detail::GraphAssemblyPlan& assembly_;
             const detail::RenderGraphExecutable& executable_;
-            const detail::NativeGraphPrograms& programs_;
+            const detail::NativeProgramBindings& programs_;
             std::vector<detail::LinkedInlineBlock>& constants_;
             std::vector<std::uint32_t>& buffers_;
             std::vector<std::uint32_t>& streams_;
@@ -359,7 +359,7 @@ namespace lux::render::runtime_detail
         const RenderGraph& source,
         const detail::GraphAssemblyPlan& assembly,
         const detail::RenderGraphExecutable& executable,
-        const detail::NativeGraphPrograms& native,
+        const detail::NativeProgramBindings& native,
         const RenderEffect& effect
     ) noexcept
     {

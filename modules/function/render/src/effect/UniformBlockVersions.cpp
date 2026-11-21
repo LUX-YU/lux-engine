@@ -3,19 +3,19 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <utility>
 
 namespace lux::render::detail
 {
     void RenderGraphInstance::linkUniformBlocks(std::span<const LinkedUniformBlock> blocks) noexcept
     {
         uniform_blocks_ = blocks;
-        uniform_accepted_.resize(blocks.size(), nullptr);
     }
 
     UniformBlockVersions::UniformBlockVersions(
-        DeviceSession& device, const void* state, extension_detail::EffectUniformSource source,
+        DeviceSession& device, extension_detail::EffectUniformSource source,
         std::uint32_t frame_count
-    ) noexcept : device_(device), state_(state), source_(source)
+    ) noexcept : device_(device), source_(source)
     {
         versions_.reserve(frame_count + 1);
         for (std::uint32_t i = 0; i <= frame_count; ++i)
@@ -44,11 +44,11 @@ namespace lux::render::detail
             source_.block.bytes == source.block.bytes && source_.block.alignment == source.block.alignment;
     }
 
-    RenderResult<UniformBlockVersions::Version*> UniformBlockVersions::pin(
-        const SubmissionFrontiers& completed
+    RenderResult<UniformVersionId> UniformBlockVersions::pin(
+        const void* state, const SubmissionFrontiers& completed
     ) noexcept
     {
-        const auto snapshot = source_.select(state_);
+        const auto snapshot = source_.select(state);
         if (snapshot.bytes.size() != source_.block.bytes || !snapshot.revision) std::terminate();
         auto match = std::ranges::find(versions_, snapshot.revision, &Version::revision);
         if (match != versions_.end())
@@ -56,7 +56,7 @@ namespace lux::render::detail
             if (match->phase == EPhase::QUARANTINED) return cxx::unexpected(RenderError{kOutcomeUnknown});
             if (match->prepared_pins == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
             ++match->prepared_pins;
-            return &*match;
+            return UniformVersionId{static_cast<std::uint32_t>(match - versions_.begin()), snapshot.revision};
         }
 
         // Prefer unused native backings. With every slot in use, wait for actual completed frontiers.
@@ -87,11 +87,25 @@ namespace lux::render::detail
         reusable->revision = snapshot.revision;
         reusable->prepared_pins = 1;
         reusable->phase = EPhase::DIRTY;
-        return &*reusable;
+        return UniformVersionId{static_cast<std::uint32_t>(reusable - versions_.begin()), snapshot.revision};
     }
 
-    RenderResult<void> UniformBlockVersions::stage(Version& version, ResourceUploader& uploader) noexcept
+    const UniformBlockVersions::Version& UniformBlockVersions::resolve(UniformVersionId id) const noexcept
     {
+        const bool valid_slot = id && id.slot < versions_.size();
+        const bool live = valid_slot && versions_[id.slot].revision == id.revision && versions_[id.slot].prepared_pins;
+        if (!live) std::terminate();
+        return versions_[id.slot];
+    }
+
+    UniformBlockVersions::Version& UniformBlockVersions::resolve(UniformVersionId id) noexcept
+    {
+        return const_cast<Version&>(std::as_const(*this).resolve(id));
+    }
+
+    RenderResult<void> UniformBlockVersions::stage(UniformVersionId id, ResourceUploader& uploader) noexcept
+    {
+        auto& version = resolve(id);
         if (version.phase == EPhase::READY || version.phase == EPhase::UPLOADING) return {};
         if (version.phase != EPhase::DIRTY || !version.prepared_pins) std::terminate();
         auto staged = uploader.stageBuffer({version.buffer, 0, version.bytes});
@@ -101,8 +115,9 @@ namespace lux::render::detail
         return {};
     }
 
-    void UniformBlockVersions::settleUpload(Version& version, SubmissionPoint point, RenderError error) noexcept
+    void UniformBlockVersions::settleUpload(UniformVersionId id, SubmissionPoint point, RenderError error) noexcept
     {
+        auto& version = resolve(id);
         if (version.phase != EPhase::UPLOADING) return;
         if (error.type)
         {
@@ -115,15 +130,32 @@ namespace lux::render::detail
         version.phase = EPhase::READY;
     }
 
-    void UniformBlockVersions::unpin(Version& version, bool quarantine) noexcept
+    void UniformBlockVersions::accept(UniformVersionId id, SubmissionPoint point) noexcept
     {
+        resolve(id).accepted.accept(point);
+    }
+
+    void UniformBlockVersions::unpin(UniformVersionId id, bool quarantine) noexcept
+    {
+        auto& version = resolve(id);
         if (!version.prepared_pins || version.phase == EPhase::UPLOADING) std::terminate();
         if (quarantine) version.phase = EPhase::QUARANTINED;
         --version.prepared_pins;
     }
 
-    ResourceInput UniformBlockVersions::binding(const Version& version) const noexcept
+    bool UniformBlockVersions::ready(UniformVersionId id) const noexcept
     {
+        return resolve(id).phase == EPhase::READY;
+    }
+
+    std::uint64_t UniformBlockVersions::uploadSerial(UniformVersionId id) const noexcept
+    {
+        return resolve(id).upload_serial;
+    }
+
+    ResourceInput UniformBlockVersions::binding(UniformVersionId id) const noexcept
+    {
+        const auto& version = resolve(id);
         if (version.phase != EPhase::READY || !version.prepared_pins) std::terminate();
         return {version.buffer, 0, source_.block.bytes};
     }

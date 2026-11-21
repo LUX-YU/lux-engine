@@ -24,7 +24,7 @@ namespace lux::render::detail
         struct Program final
         {
             nri::Pipeline* pipeline;
-            CompiledPrograms::Program* cache_entry;
+            CompiledPrograms::ProgramId cache_id;
             PassBindings bindings;
             std::vector<VertexBinding> vertices;
             std::vector<VertexAttribute> mesh_attributes;

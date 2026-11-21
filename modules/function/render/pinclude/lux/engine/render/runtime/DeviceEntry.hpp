@@ -67,16 +67,26 @@ namespace lux::render::detail
         [[nodiscard]] const runtime_detail::JobGraphPlan& variantPlan(DeviceVariantId) const noexcept;
         void releaseVariant(DeviceVariantId) noexcept;
 
-        struct UniformPool final
+        struct UniformPoolRecord final
         {
+            UniformPoolId id;
             EffectId effect;
             graph::NodeId node;
             std::string name;
-            std::unique_ptr<UniformBlockVersions> versions;
+            UniformBlockVersions versions;
+
+            UniformPoolRecord(
+                EffectId, graph::NodeId, std::string_view, DeviceSession&,
+                extension_detail::EffectUniformSource, std::uint32_t frame_count
+            ) noexcept;
         };
 
-        [[nodiscard]] UniformBlockVersions* uniformPool(EffectId, graph::NodeId, std::string_view) noexcept;
-        void adoptUniformPools(std::vector<UniformPool>) noexcept;
+        [[nodiscard]] UniformPoolId findUniformPool(EffectId, graph::NodeId, std::string_view) const noexcept;
+        [[nodiscard]] UniformPoolRecord& uniformPool(UniformPoolId) noexcept;
+        [[nodiscard]] UniformPoolId createUniformPool(
+            EffectId, graph::NodeId, std::string_view, extension_detail::EffectUniformSource
+        ) noexcept;
+        void eraseUniformPool(UniformPoolId id) noexcept { uniform_pools_.erase(id); }
         void removeUniformPools(EffectId) noexcept;
         void clearUniformPools() noexcept;
         [[nodiscard]] ResourceSet* scopedResources(SceneId, ViewId, bool create) noexcept;
@@ -98,7 +108,7 @@ namespace lux::render::detail
         FrameOperation::Workspace frame_workspace_;
         ResourceSet resources_;
         cxx::StableSlotMap<EffectDeviceVariant, DeviceVariantTag> variants_;
-        std::vector<UniformPool> uniform_pools_;
+        cxx::StableSlotMap<UniformPoolRecord, UniformPoolTag> uniform_pools_;
         using ScopeKey = std::pair<std::uint32_t, std::uint32_t>;
         struct SceneResources final
         {

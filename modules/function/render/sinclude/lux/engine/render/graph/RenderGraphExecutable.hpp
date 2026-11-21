@@ -22,7 +22,7 @@ namespace lux::render::detail
     struct DescriptorAccess;
     class DeviceSession;
     class RenderGraphExecutable;
-    class NativeGraphPrograms;
+    class NativeProgramBindings;
     struct CompiledRasterStream;
     struct PreparedRenderGraph;
     [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
@@ -458,29 +458,31 @@ namespace lux::render::detail
         std::array<std::uint32_t, 2> fixed_output_extent_{};
     };
 
-    struct NativeGraphProgram final
+    struct NativeProgramSlot final
     {
         nri::Pipeline* pipeline = nullptr;
         PassDescriptorBindings descriptors;
+        CompiledPrograms::ProgramId program;
+        CompiledPrograms::LayoutId layout = CompiledPrograms::LayoutId::INVALID;
     };
 
-    // Native program leases belong to one device execution, alongside its immutable executable.
-    class LUX_RENDER_PUBLIC NativeGraphPrograms final
+    // Immutable native operands. The compilation result or device variant owns their use relations.
+    class LUX_RENDER_PUBLIC NativeProgramBindings final
     {
     public:
-        NativeGraphPrograms(NativeGraphPrograms&&) noexcept;
-        NativeGraphPrograms(const NativeGraphPrograms&) = delete;
-        NativeGraphPrograms& operator=(NativeGraphPrograms&&) = delete;
-        NativeGraphPrograms& operator=(const NativeGraphPrograms&) = delete;
-        ~NativeGraphPrograms() noexcept;
+        NativeProgramBindings(NativeProgramBindings&&) noexcept;
+        NativeProgramBindings(const NativeProgramBindings&) = delete;
+        NativeProgramBindings& operator=(NativeProgramBindings&&) = delete;
+        NativeProgramBindings& operator=(const NativeProgramBindings&) = delete;
+        ~NativeProgramBindings() noexcept;
 
-        [[nodiscard]] const NativeGraphProgram& operator[](std::size_t slot) const noexcept
+        [[nodiscard]] const NativeProgramSlot& operator[](std::size_t slot) const noexcept
         {
             return slots_[slot];
         }
 
         [[nodiscard]] std::size_t size() const noexcept { return slots_.size(); }
-        [[nodiscard]] const DeviceSession* session() const noexcept { return session_; }
+        [[nodiscard]] const nri::Device* device() const noexcept { return device_; }
         [[nodiscard]] const CompiledRasterStream* rasterStream(std::uint32_t pass) const noexcept
         {
             return streams_[pass].get();
@@ -488,13 +490,12 @@ namespace lux::render::detail
 
     private:
         friend class GraphCompiler;
-        NativeGraphPrograms(DeviceSession& session, std::size_t slots) noexcept;
+        friend class CompiledPrograms;
+        NativeProgramBindings(nri::Device& device, std::size_t slots) noexcept;
 
-        DeviceSession* session_;
-        std::vector<NativeGraphProgram> slots_;
+        const nri::Device* device_;
+        std::vector<NativeProgramSlot> slots_;
         std::vector<std::unique_ptr<CompiledRasterStream>> streams_;
-        std::vector<CompiledPrograms::Program*> program_uses_;
-        std::vector<CompiledPrograms::Layout*> layout_uses_;
     };
 
     struct GraphDescriptorDiagnostics final
@@ -513,11 +514,22 @@ namespace lux::render::detail
         std::vector<std::vector<GraphDescriptorDiagnostics>> descriptor_fields;
     };
 
-    struct PreparedRenderGraph final
+    struct LUX_RENDER_PUBLIC PreparedRenderGraph final
     {
+        PreparedRenderGraph(PreparedRenderGraph&&) noexcept;
+        ~PreparedRenderGraph() noexcept;
+        [[nodiscard]] NativeProgramBindings takePrograms() && noexcept;
+
         RenderGraphExecutable executable;
-        NativeGraphPrograms programs;
+        NativeProgramBindings programs;
         GraphAssemblyPlan assembly;
         GraphCompileDiagnostics diagnostics;
+
+    private:
+        friend class GraphCompiler;
+        PreparedRenderGraph(
+            DeviceSession&, RenderGraphExecutable, NativeProgramBindings, GraphAssemblyPlan, GraphCompileDiagnostics
+        ) noexcept;
+        DeviceSession* owner_;
     };
 } // namespace lux::render::detail

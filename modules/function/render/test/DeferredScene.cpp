@@ -689,6 +689,24 @@ static void descriptorTables()
         CHECK(original == bounded.descriptors(nri::DescriptorType::TEXTURE));
         bounded.release(nri::DescriptorType::TEXTURE, slot);
     }
+    {
+        DescriptorTable bounded(*session);
+        const auto initial_budget = enabled.buffer_descriptors ? 3u : 2u;
+        CHECK(bounded.initialize(options, initial_budget + 5));
+        const auto first_slot = take(bounded.allocate(nri::DescriptorType::TEXTURE));
+        CHECK(submitFixtureCommands(*session, session->queue(), [](nri::CommandBuffer&, std::uint32_t) noexcept
+            -> RenderResult<void> { return {}; }));
+        const auto destroys_before_refund = destroyed_pools;
+        const auto second_slot = take(bounded.allocate(nri::DescriptorType::TEXTURE));
+        CHECK(!bounded.allocate(nri::DescriptorType::TEXTURE));
+        CHECK(destroyed_pools == destroys_before_refund);
+        CHECK(session->drain());
+        CHECK(destroyed_pools == destroys_before_refund + 1);
+        const auto third_slot = take(bounded.allocate(nri::DescriptorType::TEXTURE));
+        for (auto slot : {first_slot, second_slot, third_slot})
+            bounded.release(nri::DescriptorType::TEXTURE, slot);
+        CHECK(session->drain());
+    }
     // Exercise the fixed-allocation branch on the same capable device. No production option/hook is added.
     // All submitted work is drained, and the session's ordinary tables are untouched during this override.
     auto& test_features = const_cast<EnabledDeviceFeatures&>(session->enabledFeatures());

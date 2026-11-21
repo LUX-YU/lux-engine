@@ -3,6 +3,7 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 
 namespace lux::render::detail
@@ -20,10 +21,11 @@ namespace lux::render::detail
         FrameProgress& progress,
         Workspace& workspace,
         execution::CpuScheduler cpu,
-        bool parallel_recording
+        bool parallel_recording,
+        DeviceEntry* owner
     ) noexcept
         : device_(device), uploads_(uploads), progress_(progress), workspace_(workspace), cpu_(cpu),
-          parallel_recording_(parallel_recording)
+          parallel_recording_(parallel_recording), owner_(owner)
     {
     }
 
@@ -71,7 +73,7 @@ namespace lux::render::detail
         const bool unknown = cancellation_ && cancellation_->type == kOutcomeUnknown;
         for (const auto& selected : workspace_.uniforms)
         {
-            selected.owner->unpin(*selected.version, unknown);
+            owner_->uniformPool(selected.pool).versions.unpin(selected.version, unknown);
         }
         workspace_.uniforms.clear();
         for (const auto& selection : workspace_.native_bindings)
@@ -94,7 +96,7 @@ namespace lux::render::detail
             }
             for (const auto& selected : workspace_.uniforms)
             {
-                selected.owner->settleUpload(*selected.version, {}, result.error());
+                owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, {}, result.error());
             }
         }
         if (uploads_) uploads_->finishFrameCopySubmission(result);
@@ -133,7 +135,7 @@ namespace lux::render::detail
             const auto upload = device_.submissionPoint(device_.queueIndex(device_.queue()), *serial);
             for (const auto& selected : workspace_.uniforms)
             {
-                selected.owner->settleUpload(*selected.version, upload, {});
+                owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, upload, {});
             }
             settlePreparation({});
         }
@@ -142,7 +144,7 @@ namespace lux::render::detail
 
     exec::task<RenderResult<std::uint32_t>> FrameOperation::run(
         std::span<RenderGraphInstance* const> instances, std::span<const StorageFrameBinding> storages,
-        std::span<const SubmissionOrder> order
+        std::span<const SubmissionOrder> order, std::optional<UniformStateLookup> uniform_state
     ) noexcept
     {
         if (!active() || worker_pending_)
@@ -161,9 +163,25 @@ namespace lux::render::detail
         if (const auto error = device_.terminalError(); error.type) cancellation_ = error;
         if (cancellation_) co_return cxx::unexpected(*cancellation_);
 
+        const auto accept_uniforms = [&](const RenderGraphInstance& instance, std::uint32_t batch,
+                                         SubmissionPoint point) noexcept
+        {
+            for (const auto& block : instance.uniform_blocks_)
+            {
+                if (!std::ranges::binary_search(block.batches, batch)) continue;
+                const auto selected = std::ranges::find(workspace_.uniforms, block.pool, &SelectedUniformVersion::pool);
+                if (selected == workspace_.uniforms.end()) std::terminate();
+                owner_->uniformPool(block.pool).versions.accept(selected->version, point);
+            }
+        };
+        const auto batch_receipt = [&]() noexcept -> std::optional<SubmissionOperation::BatchAccepted>
+        {
+            if (workspace_.uniforms.empty()) return std::nullopt;
+            return SubmissionOperation::BatchAccepted{accept_uniforms};
+        };
         if (submission_->prepared())
         {
-            auto accepted = co_await submission_->submit(cancellation_);
+            auto accepted = co_await submission_->submit(cancellation_, batch_receipt());
             if (!accepted) cancellation_ = accepted.error();
             else if (submission_->complete()) finish();
             co_return accepted;
@@ -180,7 +198,7 @@ namespace lux::render::detail
         }
         if (!uniforms_ready_)
         {
-            auto uniform = prepareUniforms(instances);
+            auto uniform = prepareUniforms(instances, uniform_state);
             if (!uniform) co_return cxx::unexpected(track(uniform).error());
             uniforms_ready_ = *uniform;
             if (!uniforms_ready_)
@@ -271,34 +289,41 @@ namespace lux::render::detail
         auto recorded = co_await submission_->record(cpu_, parallel_recording_);
         recording_pending_ = false;
         if (!recorded) co_return cxx::unexpected(track(recorded).error());
-        auto accepted = co_await submission_->submit(cancellation_);
+        auto accepted = co_await submission_->submit(cancellation_, batch_receipt());
         if (!accepted) cancellation_ = accepted.error();
         else if (submission_->complete()) finish();
         co_return accepted;
     }
 
-    RenderResult<bool> FrameOperation::prepareUniforms(std::span<RenderGraphInstance* const> instances) noexcept
+    RenderResult<bool> FrameOperation::prepareUniforms(
+        std::span<RenderGraphInstance* const> instances, std::optional<UniformStateLookup> lookup
+    ) noexcept
     {
         if (std::ranges::none_of(instances, [](const auto* instance) noexcept
         {
             return !instance->uniform_blocks_.empty();
         })) return true;
-        if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
+        if (!uploads_ || !owner_ || !lookup) return cxx::unexpected(RenderError{kDeviceUnsupported});
         if (!workspace_.uniform_completed.size()) workspace_.uniform_completed = device_.makeFrontiers();
         device_.readCompleted(workspace_.uniform_completed);
         bool ready = true;
         for (auto* instance : instances)
         {
-            for (std::size_t i = 0; i < instance->uniform_blocks_.size(); ++i)
+            for (const auto& block : instance->uniform_blocks_)
             {
-                const auto& block = instance->uniform_blocks_[i];
-                const auto found = std::ranges::find(
-                    workspace_.uniforms, block.versions, &SelectedUniformBlock::owner
-                );
-                auto* version = found == workspace_.uniforms.end() ? nullptr : found->version;
-                if (!version)
+                auto& pool = owner_->uniformPool(block.pool);
+                auto& versions = pool.versions;
+                const auto found = std::ranges::find(workspace_.uniforms, block.pool, &SelectedUniformVersion::pool);
+                UniformVersionId version;
+                if (found != workspace_.uniforms.end())
                 {
-                    auto selected = block.versions->pin(workspace_.uniform_completed);
+                    version = found->version;
+                }
+                else
+                {
+                    const auto* state = (*lookup)(pool.effect, pool.node, versions.stateType());
+                    if (!state) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    auto selected = versions.pin(state, workspace_.uniform_completed);
                     if (!selected)
                     {
                         if (selected.error().type != kDeviceBusy) return cxx::unexpected(selected.error());
@@ -306,11 +331,11 @@ namespace lux::render::detail
                         continue;
                     }
                     version = *selected;
-                    workspace_.uniforms.push_back({block.versions, version});
+                    workspace_.uniforms.push_back({block.pool, version});
                 }
-                if (version->phase != UniformBlockVersions::EPhase::READY)
+                if (!versions.ready(version))
                 {
-                    auto staged = block.versions->stage(*version, *uploads_);
+                    auto staged = versions.stage(version, *uploads_);
                     if (!staged)
                     {
                         const bool can_retry = staged.error().type == kDeviceCapacity &&
@@ -320,10 +345,9 @@ namespace lux::render::detail
                     ready = false;
                     continue;
                 }
-                instance->setResource(block.resource.index, slot(), block.versions->binding(*version));
-                instance->uniform_accepted_[i] = &version->accepted;
-                if (version->upload_serial > device_.queue().completed())
-                    submission_->waitForUniformUpload(version->upload_serial);
+                instance->setResource(block.resource.index, slot(), versions.binding(version));
+                const auto upload_serial = versions.uploadSerial(version);
+                if (upload_serial > device_.queue().completed()) submission_->waitForUniformUpload(upload_serial);
             }
         }
         return ready;

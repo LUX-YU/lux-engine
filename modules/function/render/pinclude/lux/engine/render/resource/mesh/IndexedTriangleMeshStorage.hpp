@@ -17,7 +17,7 @@ namespace lux::render::detail
     {
         struct Geometry final
         {
-            BufferArena::Range vertices, indices, sections;
+            ArenaAllocation vertices, indices, sections;
         };
 
         struct Entry final
@@ -64,7 +64,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&) const noexcept;
         [[nodiscard]] const Entry* findEntry(MeshId) const noexcept;
         [[nodiscard]] Entry* findEntry(MeshId) noexcept;
-        void retire(Geometry&) noexcept;
+        void retire(const Geometry&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
 

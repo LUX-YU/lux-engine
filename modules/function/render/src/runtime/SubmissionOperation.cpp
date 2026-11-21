@@ -34,9 +34,11 @@ namespace lux::render::detail
         return slots_[slot].submitted_batches;
     }
 
-    SubmissionOperation::SubmissionOperation(DeviceSession& device, FrameProgress::Round& round,
-        Workspace& workspace) noexcept
-        : device_(device), round_(round), workspace_(workspace), slot_(workspace.slots_[round.context().slot_index])
+    SubmissionOperation::SubmissionOperation(
+        DeviceSession& device, FrameProgress& progress, FrameProgress::SlotSelection selection, Workspace& workspace
+    ) noexcept
+        : device_(device), progress_(progress), selection_(selection), workspace_(workspace),
+          slot_(workspace.slots_[selection.frame.slot_index])
     {
         slot_.graph_started = false;
         slot_.submitted_batches = 0;
@@ -46,17 +48,17 @@ namespace lux::render::detail
         slot_.recorded_passes = slot_.recorded_instances = 0;
     }
 
-    void SubmissionOperation::accept(const SubmissionQueue& queue) noexcept
+    void SubmissionOperation::accept(const SubmissionQueue& queue, std::uint64_t serial) noexcept
     {
         ++slot_.submitted_batches;
-        round_.accept(device_.submissionPoint(device_.queueIndex(queue), queue.submitted()));
+        progress_.adopt(selection_, device_.submissionPoint(device_.queueIndex(queue), serial));
     }
 
     void SubmissionOperation::acceptPreparation(std::uint64_t serial) noexcept
     {
         slot_.preparation_serial = serial;
         slot_.graphics_serial = serial;
-        accept(device_.queue());
+        accept(device_.queue(), serial);
     }
 
     bool SubmissionOperation::refersTo(const RenderGraphInstance& instance) const noexcept
@@ -666,7 +668,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(accepted.error());
             }
             const auto serial = *accepted;
-            accept(queue);
+            accept(queue, serial);
             if (&queue == &device_.queue())
             {
                 frame.graphics_serial = serial;

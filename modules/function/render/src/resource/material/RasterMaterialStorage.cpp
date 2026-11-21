@@ -171,7 +171,6 @@ namespace lux::render::detail
             if (!uploads_ || !replica_progress_) return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::array<bool, 3> purposes{};
-        std::array<bool, 3> samples_textures{};
         std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3> bindings;
         bool has_record_consumer = false;
         for (const auto& use : program.programs)
@@ -200,7 +199,6 @@ namespace lux::render::detail
             {
                 for (const auto& binding : set.bindings)
                 {
-                    samples_textures[purpose] |= binding.type == rdesc::EDescriptorType::SAMPLED_IMAGE;
                     if (binding.name != rdesc::kMaterialTableName)
                     {
                         continue;
@@ -232,7 +230,7 @@ namespace lux::render::detail
         const auto key = programs_.emplace();
         const auto id = extension_detail::ResourceIdentity::make<MaterialProgramId>(id_, key);
         auto* slot = programs_.find(key);
-        slot->record = {id, std::move(program), samples_textures};
+        slot->record = {id, std::move(program)};
         slot->table = table;
         if (table) ++table->programs;
         return id;
@@ -634,16 +632,15 @@ namespace lux::render::detail
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         {
-            FrameProgress::ReplicaWrite replica;
-            if (auto acquired = co_await replica_progress_->acquireReplica(session_, replica); !acquired)
-            {
-                co_return cxx::unexpected(acquired.error());
-            }
-            const auto frame_slot = replica.slot();
+            auto replica = co_await replica_progress_->acquireReplica(session_);
+            if (!replica) co_return cxx::unexpected(replica.error());
+            cxx::scope_exit end_replica([&]() noexcept { replica_progress_->endReplica(*replica); });
+            const auto frame_slot = replica->frame.slot_index;
             auto& slice = page.gpu[frame_slot];
             cxx::scope_exit restore([&]() noexcept { markDirty(page, frame_slot, slot); });
             const BufferWrite write{slice.parameters, std::uint64_t(slot) * table.stride, values};
-            if (auto uploaded = co_await uploads_->writeBuffers({&write, 1}, {}, &replica.accepted()); !uploaded)
+            auto& accepted_uses = replica_progress_->replicaFrontiers(*replica);
+            if (auto uploaded = co_await uploads_->writeBuffers({&write, 1}, {}, &accepted_uses); !uploaded)
             {
                 co_return cxx::unexpected(uploaded.error());
             }
@@ -810,43 +807,6 @@ namespace lux::render::detail
     RasterMaterialStorage::ProgramSlot* RasterMaterialStorage::findProgram(MaterialProgramId id) noexcept
     {
         return const_cast<ProgramSlot*>(std::as_const(*this).findProgram(id));
-    }
-
-    RenderResult<void>
-    RasterMaterialStorage::collectReads(
-        MaterialId source,
-        rdesc::EMaterialPurpose purpose,
-        std::uint32_t frame,
-        std::vector<ResourceInput>& buffers,
-        std::vector<const nri::Texture*>& images
-    ) const noexcept
-    {
-        const auto* entry = findEntry(source);
-        if (!entry)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (frame >= frame_count_)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        const auto purpose_index = static_cast<std::size_t>(purpose);
-        const auto* page = entry->page;
-        if (page && purpose_index < page->definition.bindings.size() && page->definition.bindings[purpose_index])
-        {
-            buffers.push_back({page->gpu[frame].parameters, 0, page->records.size()});
-            const auto* program = programs_.find(extension_detail::ResourceIdentity::local(entry->program));
-            if (program->record.samples_textures[purpose_index])
-            {
-                for (const auto id : entry->textures)
-                {
-                    auto texture = resolveTexture(id);
-                    if (!texture) return cxx::unexpected(texture.error());
-                    if (texture->image) images.push_back(texture->image);
-                }
-            }
-        }
-        return {};
     }
 
     RenderResult<void> RasterMaterialStorage::release(MaterialId id) noexcept

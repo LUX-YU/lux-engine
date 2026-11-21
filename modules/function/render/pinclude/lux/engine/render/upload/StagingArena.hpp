@@ -37,7 +37,7 @@ namespace lux::render::detail
         [[nodiscard]] bool canAcquireWhole(std::size_t bytes, std::size_t unit, std::size_t regions) const noexcept;
 
         [[nodiscard]] RenderResult<void> flush(const StagingRange&) noexcept;
-        void markSubmitted(StagingRange&, SubmissionQueue&) noexcept;
+        void markSubmitted(StagingRange&, SubmissionQueue&, std::uint64_t serial) noexcept;
         void cancel(StagingRange&) noexcept;
 
     private:
@@ -65,7 +65,7 @@ namespace lux::render::detail
         static void completed(void*, RenderResult<void>) noexcept;
         void release(std::size_t) noexcept;
         void reclaim(Page&) noexcept;
-        void commit(std::size_t, SubmissionQueue&) noexcept;
+        void commit(std::size_t, SubmissionQueue&, std::uint64_t serial) noexcept;
 
         DeviceSession& session_;
         std::uint64_t page_bytes_;

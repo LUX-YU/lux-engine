@@ -8,6 +8,5 @@ namespace lux::render::detail
     {
         MaterialProgramId id;
         rdesc::MaterialProgramSet data;
-        std::array<bool, 3> samples_textures;
     };
 } // namespace lux::render::detail

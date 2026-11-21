@@ -988,7 +988,7 @@ struct RetirementFence final
                 auto submitted = desc;
 #ifdef _WIN32
                 std::vector<nri::FenceSubmitDesc> waits;
-                if (held && texture_retirement_fence)
+                if (held && gate_texture_gpu.exchange(false))
                 {
                     const auto* recorded = old_pool_command.load();
                     CHECK(recorded && std::ranges::find(commands, recorded) != commands.end());
@@ -1117,6 +1117,7 @@ struct RetirementFence final
         static inline std::atomic<const nri::CommandBuffer*> old_pool_command{};
 #ifdef _WIN32
         static inline nri::Fence* texture_retirement_fence = nullptr;
+        static inline std::atomic_bool gate_texture_gpu{};
 #endif
         static bool hasSeparateComputeQueue() noexcept { return compute_queue != nullptr; }
 
@@ -3596,6 +3597,9 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     const auto before = server->developmentStats();
     using Gate = UniformUploadProbe::EPipelineGate;
     if (use_materials) UniformUploadProbe::pipeline_gate = Gate::ARMED;
+#ifdef _WIN32
+    UniformUploadProbe::gate_texture_gpu = UniformUploadProbe::texture_retirement_fence != nullptr;
+#endif
     UniformUploadProbe::submission_gate = Gate::ARMED;
     auto held_client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(held_client);
@@ -3672,6 +3676,33 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
         }
     }
     call<TextureCommands::Release>(*client, commands, {textures[0]});
+    auto second_color = colors[1];
+    if (!use_materials)
+    {
+        const auto source = textures[1];
+        second_color = {std::byte{31}, std::byte{109}, std::byte{221}, std::byte{255}};
+        const TexturePatchData patch{source, {0, 0, 0, 1, 1, 4}, second_color};
+        auto clone_client = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(clone_client);
+        UniformUploadProbe::submission_gate = Gate::ARMED;
+        auto cloning = std::async(std::launch::async, [&]
+        {
+            return call<TextureCommands::CloneRegion>(*clone_client, commands, {patch});
+        });
+        const auto clone_deadline = Clock::now() + 10s;
+        while (UniformUploadProbe::submission_gate != Gate::HELD)
+        {
+            CHECK(Clock::now() < clone_deadline);
+            std::this_thread::yield();
+        }
+        CHECK(call<TextureCommands::Release>(*client, commands, {source}, false).error.type == kDeviceBusy);
+        UniformUploadProbe::submission_gate = Gate::OPEN;
+        UniformUploadProbe::submission_gate.notify_all();
+        textures[1] = cloning.get().texture;
+        CHECK(textures[1] != source);
+        call<TextureCommands::Release>(*client, commands, {source});
+        CHECK(call<TextureCommands::Release>(*client, commands, {source}, false).error.type == kStorageIdentity);
+    }
     selected_texture = 1;
     const auto second = call<RequestRenderJob>(*client, commands, {job});
     const auto after = server->stats();
@@ -3705,11 +3736,13 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false)
     CHECK(server->stats().validation_errors == 0);
     const auto& capture = EffectCaptureBuffer::pixels.front();
     CHECK(capture.ready.load() == 1 && capture.frames.size() == 2);
-    for (const auto [slot, color] : {std::pair{first.slot_index, colors[0]}, std::pair{second.slot_index, colors[1]}})
+    const std::array expected{std::pair{first.slot_index, colors[0]}, std::pair{second.slot_index, second_color}};
+    for (const auto& [slot, color] : expected)
     {
         const auto pixel = std::span<const std::byte>{capture.frames[slot]}.subspan(capture.pitch * 32 + 16 * 4, 4);
         CHECK(std::ranges::equal(pixel, color));
     }
+    if (!use_materials) std::puts("TEXTURE CLONE PASS: pending source protection, stale ID and patched pixel");
     if (exercise_growth)
     {
         for (const auto& generation : UniformUploadProbe::texture_pools)

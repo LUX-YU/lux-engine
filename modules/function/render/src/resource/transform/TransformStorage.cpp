@@ -51,34 +51,6 @@ namespace lux::render::detail
         }
     } // namespace
 
-    TransformReference::~TransformReference() noexcept
-    {
-        reset();
-    }
-
-    void TransformReference::bind(TransformStorage& storage, TransformId id) noexcept
-    {
-        auto* record = storage.find(id);
-        if (!record || record->references == UINT32_MAX) std::terminate();
-        if (storage_ == &storage && id_ == id) return;
-        ++record->references;
-        reset();
-        storage_ = &storage;
-        id_ = id;
-        gpu_slot_ = record->gpu_slot;
-    }
-
-    void TransformReference::reset() noexcept
-    {
-        if (!storage_) return;
-        auto* record = storage_->find(id_);
-        if (!record || !record->references) std::terminate();
-        --record->references;
-        storage_ = nullptr;
-        id_ = {};
-        gpu_slot_ = UINT32_MAX;
-    }
-
     TransformStorage::TransformStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         : id_(id), session_(context.device), progress_(*context.replica_progress), frame_count_(context.frame_count),
           paged_(session_.usesDeviceAddresses()), completed_(session_.makeFrontiers())
@@ -97,9 +69,24 @@ namespace lux::render::detail
         return Identity::parent(id) == id_ ? records_.find(Identity::local(id)) : nullptr;
     }
 
-    bool TransformStorage::contains(TransformId id) const noexcept
+    std::optional<std::uint32_t> TransformStorage::gpuSlot(TransformId id) const noexcept
     {
-        return find(id) != nullptr;
+        if (const auto* record = find(id)) return record->gpu_slot;
+        return std::nullopt;
+    }
+
+    void TransformStorage::retainInstance(TransformId id) noexcept
+    {
+        auto* record = find(id);
+        if (!record || record->references == UINT32_MAX) std::terminate();
+        ++record->references;
+    }
+
+    void TransformStorage::releaseInstance(TransformId id) noexcept
+    {
+        auto* record = find(id);
+        if (!record || !record->references) std::terminate();
+        --record->references;
     }
 
     bool TransformStorage::canCreate(std::size_t count) const noexcept
@@ -146,7 +133,7 @@ namespace lux::render::detail
         if (revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
         for (const auto& update : updates)
         {
-            if (!contains(update.transform)) return cxx::unexpected(RenderError{kStorageIdentity});
+            if (!find(update.transform)) return cxx::unexpected(RenderError{kStorageIdentity});
             if (!isFiniteTransform(update.matrix)) return cxx::unexpected(RenderError{kStorageContract});
         }
         for (const auto& update : updates)

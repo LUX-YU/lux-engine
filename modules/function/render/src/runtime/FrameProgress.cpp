@@ -1,4 +1,4 @@
-#include <limits>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
 
@@ -19,15 +19,9 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<bool> FrameProgress::tryBegin(const DeviceSession& device, Round& round) noexcept
-    {
-        device.readCompleted(completed_);
-        return tryBegin(completed_, round);
-    }
-
     FrameProgress::~FrameProgress() noexcept
     {
-        if (active_ || writing_)
+        if (access_ != ECpuAccess::IDLE)
         {
             std::terminate();
         }
@@ -38,42 +32,53 @@ namespace lux::render::detail
         return static_cast<std::uint32_t>(next_frame_index_ % slots_.size());
     }
 
-    void FrameProgress::advance() noexcept
+    FrameProgress::SlotSelection FrameProgress::beginCpuAccess(ECpuAccess access) noexcept
     {
-        if (next_frame_index_ == std::numeric_limits<std::uint64_t>::max())
-        {
-            std::terminate();
-        }
-        ++next_frame_index_;
+        if (access_ != ECpuAccess::IDLE || epoch_ == UINT64_MAX) std::terminate();
+        access_slot_ = nextSlot();
+        access_ = access;
+        return {{next_frame_index_, access_slot_}, ++epoch_};
     }
 
-    RenderResult<bool> FrameProgress::tryBegin(const SubmissionFrontiers& completed, Round& round) noexcept
+    void FrameProgress::requireAccess(SlotSelection selection, ECpuAccess access) const noexcept
     {
-        const bool is_invalid_round = round.active() || !slots_.front().compatible(completed);
-        if (is_invalid_round)
-        {
-            return cxx::unexpected(RenderError{kFrameContract});
-        }
-        if (next_frame_index_ == std::numeric_limits<std::uint64_t>::max())
-        {
-            return cxx::unexpected(RenderError{kFrameContract});
-        }
-        const auto slot = nextSlot();
-        if (!canBegin(completed))
-        {
-            return false;
-        }
-        slots_[slot].clear();
-        round.owner_ = this;
-        round.frame_ = {next_frame_index_, slot};
-        advance();
-        active_ = &round;
-        return true;
+        const bool wrong_operation = selection.epoch != epoch_ || selection.frame.slot_index != access_slot_;
+        if (access_ != access || wrong_operation) std::terminate();
+    }
+
+    void FrameProgress::endCpuAccess(SlotSelection selection, ECpuAccess access) noexcept
+    {
+        requireAccess(selection, access);
+        access_ = ECpuAccess::IDLE;
+    }
+
+    RenderResult<std::optional<FrameProgress::SlotSelection>>
+    FrameProgress::tryBegin(const DeviceSession& device) noexcept
+    {
+        const bool exhausted = epoch_ == UINT64_MAX || next_frame_index_ == UINT64_MAX;
+        if (exhausted) return cxx::unexpected(RenderError{kFrameContract});
+        device.readCompleted(completed_);
+        if (!canBegin(completed_)) return std::nullopt;
+        const auto selection = beginCpuAccess(ECpuAccess::FRAME);
+        slots_[selection.frame.slot_index].clear();
+        ++next_frame_index_;
+        return selection;
+    }
+
+    void FrameProgress::adopt(SlotSelection selection, SubmissionPoint accepted) noexcept
+    {
+        requireAccess(selection, ECpuAccess::FRAME);
+        slots_[selection.frame.slot_index].accept(accepted);
+    }
+
+    void FrameProgress::endFrame(SlotSelection selection) noexcept
+    {
+        endCpuAccess(selection, ECpuAccess::FRAME);
     }
 
     bool FrameProgress::canBegin(const SubmissionFrontiers& completed) const noexcept
     {
-        return !active_ && !writing_ && slots_[nextSlot()].reachedBy(completed);
+        return access_ == ECpuAccess::IDLE && slots_[nextSlot()].reachedBy(completed);
     }
 
     bool FrameProgress::canBegin(const DeviceSession& device) noexcept
@@ -82,23 +87,27 @@ namespace lux::render::detail
         return canBegin(completed_);
     }
 
-    exec::task<RenderResult<void>> FrameProgress::acquireReplica(DeviceSession& device, ReplicaWrite& write) noexcept
+    exec::task<RenderResult<FrameProgress::SlotSelection>> FrameProgress::acquireReplica(DeviceSession& device) noexcept
     {
-        if (active_ || writing_ || write.owner_)
-            co_return cxx::unexpected(RenderError{kDeviceBusy});
-        write.slot_ = nextSlot();
-        write.accepted_ = device.makeFrontiers();
-        write.owner_ = this;
-        writing_ = &write;
-        co_return co_await device.waitFrontiers(slots_[write.slot_]);
+        if (access_ != ECpuAccess::IDLE) co_return cxx::unexpected(RenderError{kDeviceBusy});
+        if (epoch_ == UINT64_MAX) co_return cxx::unexpected(RenderError{kFrameContract});
+        const auto selection = beginCpuAccess(ECpuAccess::REPLICA);
+        cxx::scope_exit cancel([&]() noexcept { endReplica(selection); });
+        auto ready = co_await device.waitFrontiers(slots_[selection.frame.slot_index]);
+        if (!ready) co_return cxx::unexpected(ready.error());
+        cancel.release();
+        co_return selection;
     }
 
-    FrameProgress::ReplicaWrite::~ReplicaWrite() noexcept
+    SubmissionFrontiers& FrameProgress::replicaFrontiers(SlotSelection selection) noexcept
     {
-        if (!owner_) return;
-        if (owner_->writing_ != this) std::terminate();
-        owner_->slots_[slot_].merge(accepted_);
-        owner_->writing_ = nullptr;
+        requireAccess(selection, ECpuAccess::REPLICA);
+        return slots_[selection.frame.slot_index];
+    }
+
+    void FrameProgress::endReplica(SlotSelection selection) noexcept
+    {
+        endCpuAccess(selection, ECpuAccess::REPLICA);
     }
 
     RenderResult<bool> FrameProgress::waitForProgress(DeviceSession& device, std::uint64_t timeout_ns) noexcept
@@ -129,47 +138,4 @@ namespace lux::render::detail
         return false;
     }
 
-    FrameProgress::Round::~Round() noexcept
-    {
-        finish();
-    }
-
-    FrameContext FrameProgress::Round::context() const noexcept
-    {
-        if (!owner_)
-        {
-            std::terminate();
-        }
-        return frame_;
-    }
-
-    const SubmissionFrontiers& FrameProgress::Round::accepted() const noexcept
-    {
-        if (!owner_) std::terminate();
-        return owner_->frontiers(frame_.slot_index);
-    }
-
-    void FrameProgress::Round::accept(SubmissionPoint accepted) noexcept
-    {
-        const bool is_invalid_round = !owner_ || owner_->active_ != this;
-        if (is_invalid_round)
-        {
-            std::terminate();
-        }
-        owner_->slots_[frame_.slot_index].accept(accepted);
-    }
-
-    void FrameProgress::Round::finish() noexcept
-    {
-        if (!owner_)
-        {
-            return;
-        }
-        if (owner_->active_ != this)
-        {
-            std::terminate();
-        }
-        owner_->active_ = nullptr;
-        owner_ = nullptr;
-    }
 } // namespace lux::render::detail

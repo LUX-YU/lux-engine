@@ -89,10 +89,9 @@ namespace lux::render::detail
 
     struct RasterMeshInstanceStorage::Page final
     {
-        std::array<TransformReference, kMeshInstancePageSlots> transforms;
         std::array<MeshInstanceGpuProperty, kMeshInstancePageSlots> properties{};
         // Sole CPU authority for resource identities; GPU property addresses are projected per FIF.
-        std::array<Selection, kMeshInstancePageSlots> selections{};
+        std::array<InstanceRecord, kMeshInstancePageSlots> records{};
         std::array<std::uint32_t, kMeshInstancePageSlots> alive{};
         std::array<GpuPage, 3> gpu;
     };
@@ -273,10 +272,9 @@ namespace lux::render::detail
         {
             StorageSubscription::disconnect(head);
         }
-        for (auto* observer : observers_)
+        for (const auto& entry : entries_)
         {
-            observer->source_ = nullptr;
-            observer->changed(observer->receiver, {}, nullptr);
+            if (!entry.key.isNull()) transforms_.releaseInstance(instanceRecord(entry).transform);
         }
         for (auto& page : pages_)
         {
@@ -524,49 +522,17 @@ namespace lux::render::detail
         return {};
     }
 
-    RasterMeshInstanceStorage::Observer::~Observer() noexcept
+    void RasterMeshInstanceStorage::invalidateSelection() noexcept
     {
-        reset();
-    }
-
-    void RasterMeshInstanceStorage::Observer::reset() noexcept
-    {
-        if (source_)
-        {
-            auto& records = source_->observers_;
-            records[position_] = records.back();
-            records[position_]->position_ = position_;
-            records.pop_back();
-            source_ = nullptr;
-        }
-    }
-
-    void RasterMeshInstanceStorage::observe(Observer& observer) noexcept
-    {
-        observer.reset();
-        observer.source_ = this;
-        observer.position_ = observers_.size();
-        observers_.push_back(&observer);
-    }
-
-    void RasterMeshInstanceStorage::notify(const Entry& entry, bool removed) noexcept
-    {
+        if (selection_revision_ == UINT64_MAX) std::terminate();
         ++selection_revision_;
-        const auto description = selection(entry);
-        for (auto* observer : observers_)
-        {
-            observer->changed(
-                observer->receiver,
-                extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, entry.key),
-                removed ? nullptr : &description
-            );
-        }
     }
 
-    RasterMeshInstanceStorage::Selection RasterMeshInstanceStorage::selection(const Entry& entry) const noexcept
+    const RasterMeshInstanceStorage::InstanceRecord&
+    RasterMeshInstanceStorage::instanceRecord(const Entry& entry) const noexcept
     {
         const auto index = entry.key.index;
-        return pages_[index / kMeshInstancePageSlots]->selections[index % kMeshInstancePageSlots];
+        return pages_[index / kMeshInstancePageSlots]->records[index % kMeshInstancePageSlots];
     }
 
     RenderResult<std::uint64_t>
@@ -580,7 +546,7 @@ namespace lux::render::detail
         for (const auto& entry : entries_)
         {
             if (entry.key.isNull()) continue;
-            const auto item = selection(entry);
+            const auto item = instanceRecord(entry);
             const auto id = extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, entry.key);
             const auto owner = extension_detail::ResourceIdentity::parent(item.material);
             const auto storage = resources_.borrow<RasterMaterialStorage>(owner);
@@ -632,7 +598,10 @@ namespace lux::render::detail
         }
         const auto* description = (*mesh)->find(input.mesh);
         const auto material_slot = (*material)->gpuReference(input.material, frame);
-        if (!description || !material_slot || input.submesh >= description->submeshes.size())
+        const auto transform_slot = transforms_.gpuSlot(input.transform_id);
+        const bool invalid_mesh = !description || input.submesh >= description->submeshes.size();
+        const bool invalid_reference = invalid_mesh || !material_slot || !transform_slot;
+        if (invalid_reference)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -641,7 +610,8 @@ namespace lux::render::detail
             material_slot->buffer_index,
             material_slot->record_index,
             input.submesh,
-            (input.render_enabled ? kRenderEnabledBit : 0u) | (input.cast_shadow ? 2u : 0u)
+            (input.render_enabled ? kRenderEnabledBit : 0u) | (input.cast_shadow ? 2u : 0u),
+            *transform_slot
         };
     }
 
@@ -704,7 +674,7 @@ namespace lux::render::detail
         }
         for (const auto& description : selected)
         {
-            if (!transforms_.contains(description.transform_id))
+            if (!transforms_.gpuSlot(description.transform_id))
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
 
@@ -730,8 +700,7 @@ namespace lux::render::detail
                 for (std::size_t i = 0; i < reserved; ++i)
                 {
                     const auto key = extension_detail::ResourceIdentity::local(ids[i]);
-                    auto& page = *pages_[key.index / kMeshInstancePageSlots];
-                    page.transforms[key.index % kMeshInstancePageSlots].reset();
+                    transforms_.releaseInstance(selected[i].transform_id);
                     entries_.erase(key);
                 }
                 for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
@@ -819,8 +788,7 @@ namespace lux::render::detail
             {
                 pages_.push_back(std::make_unique<Page>());
             }
-            auto& page = *pages_[key.index / kMeshInstancePageSlots];
-            page.transforms[key.index % kMeshInstancePageSlots].bind(transforms_, selected[i].transform_id);
+            transforms_.retainInstance(selected[i].transform_id);
         }
         // Allocate logical-bit storage before any fallible native preparation so rollback can
         // acknowledge a partially prepared tail without inspecting a stale GPU object.
@@ -831,12 +799,10 @@ namespace lux::render::detail
                 dirty.grow(capacity());
             }
         }
-        FrameProgress::ReplicaWrite replica;
-        if (auto acquired = co_await replica_progress_.acquireReplica(session_, replica); !acquired)
-        {
-            co_return cxx::unexpected(acquired.error());
-        }
-        const auto frame = replica.slot();
+        auto replica = co_await replica_progress_.acquireReplica(session_);
+        if (!replica) co_return cxx::unexpected(replica.error());
+        cxx::scope_exit end_replica([&]() noexcept { replica_progress_.endReplica(*replica); });
+        const auto frame = replica->frame.slot_index;
         for (const auto& description : selected)
         {
             auto property = resolveReferences(description, frame);
@@ -855,12 +821,6 @@ namespace lux::render::detail
             capacity(),
             [&](std::size_t i) noexcept { return extension_detail::ResourceIdentity::local(ids[i]).index; }
         );
-        for (std::size_t i = 0; i < ids.size(); ++i)
-        {
-            const auto record = extension_detail::ResourceIdentity::local(ids[i]).index;
-            const auto& page = *pages_[record / kMeshInstancePageSlots];
-            properties[i].transform_record = page.transforms[record % kMeshInstancePageSlots].gpuSlot();
-        }
         writes.reserve(selected.size() * kStride.size());
         const std::uint32_t alive = 1;
         for (std::size_t field = 0; field < kStride.size(); ++field)
@@ -879,7 +839,8 @@ namespace lux::render::detail
                 }
             );
         }
-        if (auto accepted = co_await uploads_.writeBuffers(writes, {}, &replica.accepted()); !accepted)
+        auto& accepted_uses = replica_progress_.replicaFrontiers(*replica);
+        if (auto accepted = co_await uploads_.writeBuffers(writes, {}, &accepted_uses); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -891,7 +852,9 @@ namespace lux::render::detail
             const auto local = record % kMeshInstancePageSlots;
             const auto& description = selected[i];
             page.properties[local] = properties[i];
-            page.selections[local] = {description.mesh, description.material, description.submesh};
+            page.records[local] = {
+                description.mesh, description.material, description.transform_id, description.submesh
+            };
             page.alive[local] = 1;
             entries_.find(extension_detail::ResourceIdentity::local(ids[i]))->key =
                 extension_detail::ResourceIdentity::local(ids[i]);
@@ -908,10 +871,7 @@ namespace lux::render::detail
             }
         }
         live_records_ += static_cast<std::uint32_t>(descriptions.size());
-        for (const auto id : ids)
-        {
-            notify(*entries_.find(extension_detail::ResourceIdentity::local(id)), false);
-        }
+        invalidateSelection();
         data.clearOrder();
         updating_ = false;
         rollback.release();
@@ -942,8 +902,6 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            if (!transforms_.contains(value.description.transform_id))
-                return cxx::unexpected(RenderError{kStorageIdentity});
             auto property = resolveReferences(value.description, 0);
             if (!property)
             {
@@ -955,36 +913,34 @@ namespace lux::render::detail
         for (std::size_t i = 0; i < instances.size(); ++i)
         {
             const auto& value = instances[i];
+            const auto& description = value.description;
             auto& entry = *entries_.find(extension_detail::ResourceIdentity::local(value.instance));
-            const auto previous = selection(entry);
-            const bool group_changed = previous.mesh != value.description.mesh ||
-                previous.material != value.description.material || previous.submesh != value.description.submesh;
+            const auto previous = instanceRecord(entry);
+            const bool group_changed = previous.mesh != description.mesh ||
+                previous.material != description.material || previous.submesh != description.submesh;
             const auto record = extension_detail::ResourceIdentity::local(value.instance).index;
             auto& page = *pages_[record / kMeshInstancePageSlots];
             const auto slot = record % kMeshInstancePageSlots;
-            page.transforms[slot].bind(transforms_, value.description.transform_id);
-            auto& new_property = data.properties[i];
-            new_property.transform_record = page.transforms[slot].gpuSlot();
+            const auto transform = description.transform_id;
+            if (previous.transform != transform)
+            {
+                transforms_.retainInstance(transform);
+                transforms_.releaseInstance(previous.transform);
+            }
+            const auto& new_property = data.properties[i];
             const auto& old_property = page.properties[slot];
             const bool enabled_changed = ((old_property.render_flags ^ new_property.render_flags) & kRenderEnabledBit) != 0;
             const bool property_changed = group_changed || old_property.render_flags != new_property.render_flags ||
                 old_property.transform_record != new_property.transform_record;
             const auto fields = static_cast<std::uint8_t>(property_changed ? 1 : 0);
-            page.selections[slot] = {value.description.mesh, value.description.material, value.description.submesh};
+            page.records[slot] = {description.mesh, description.material, transform, description.submesh};
             page.properties[slot] = new_property;
             for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
             {
                 mark(frame, record, fields);
             }
             instances_changed |= fields != 0;
-            if (group_changed)
-            {
-                notify(entry, false);
-            }
-            else
-            {
-                selection_revision_ += enabled_changed;
-            }
+            if (group_changed || enabled_changed) invalidateSelection();
         }
         preparation_revision_ += instances_changed;
         return {};
@@ -1006,12 +962,10 @@ namespace lux::render::detail
         updating_ = true;
         ++preparation_revision_;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
-        FrameProgress::ReplicaWrite replica;
-        if (auto acquired = co_await replica_progress_.acquireReplica(session_, replica); !acquired)
-        {
-            co_return cxx::unexpected(acquired.error());
-        }
-        const auto frame = replica.slot();
+        auto replica = co_await replica_progress_.acquireReplica(session_);
+        if (!replica) co_return cxx::unexpected(replica.error());
+        cxx::scope_exit end_replica([&]() noexcept { replica_progress_.endReplica(*replica); });
+        const auto frame = replica->frame.slot_index;
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -1023,16 +977,18 @@ namespace lux::render::detail
             fieldOffset(record, sizeof(dead)),
             std::as_bytes(std::span(&dead, 1))
         };
-        if (auto accepted = co_await uploads_.writeBuffers(std::span(&write, 1), {}, &replica.accepted()); !accepted)
+        auto& accepted_uses = replica_progress_.replicaFrontiers(*replica);
+        if (auto accepted = co_await uploads_.writeBuffers(std::span(&write, 1), {}, &accepted_uses); !accepted)
         {
             mark(frame, record, 2);
             co_return cxx::unexpected(accepted.error());
         }
-        notify(*entry, true);
+        invalidateSelection();
         auto& page = *pages_[record / kMeshInstancePageSlots];
         const auto local = record % kMeshInstancePageSlots;
         page.alive[local] = 0;
-        page.transforms[local].reset();
+        transforms_.releaseInstance(page.records[local].transform);
+        page.records[local] = {};
         for (std::uint32_t other = 0; other < frame_count_; ++other)
         {
             if (other != frame)
@@ -1215,7 +1171,7 @@ namespace lux::render::detail
                         {
                             if (page.alive[local + i] == 0)
                                 continue;
-                            const auto material = page.selections[local + i].material;
+                            const auto material = page.records[local + i].material;
                             auto storage = resources_.borrow<RasterMaterialStorage>(
                                 extension_detail::ResourceIdentity::parent(material)
                             );

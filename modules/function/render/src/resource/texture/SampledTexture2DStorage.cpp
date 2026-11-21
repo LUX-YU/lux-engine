@@ -272,6 +272,7 @@ namespace lux::render::detail
 
     SampledTexture2DStorage::~SampledTexture2DStorage() noexcept
     {
+        if (!patch_readers_.empty()) std::terminate();
         for (auto& image : textures_)
         {
             retire(image);
@@ -328,10 +329,6 @@ namespace lux::render::detail
 
     void SampledTexture2DStorage::retire(SampledImage& value) noexcept
     {
-        if (value.source_uses_ != 0)
-        {
-            std::terminate();
-        }
         if (!value.image_)
         {
             return;
@@ -368,32 +365,43 @@ namespace lux::render::detail
 
     SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TexturePatchData input) noexcept
     {
-        auto* original = findEntry(input.texture);
-        if (!original)
+        const auto source = input.texture;
         {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
+            if (!find(source)) co_return cxx::unexpected(RenderError{kStorageIdentity});
+            const auto reader = patch_readers_.try_emplace(source, 0).first;
+            if (reader->second == UINT32_MAX) co_return cxx::unexpected(RenderError{kDeviceCapacity});
+            ++reader->second;
         }
-        if (original->source_uses_ == UINT32_MAX)
+        cxx::scope_exit finish_patch([this, source]() noexcept
         {
-            co_return cxx::unexpected(RenderError{kDeviceCapacity});
-        }
-        ++original->source_uses_;
-        cxx::scope_exit source_borrow([original]() noexcept { --original->source_uses_; });
-        // The stable source entry remains borrowed until native acceptance/retirement is adopted.
-        auto prepared = preparePatched(*original, input.region, input.source);
+            const auto active = patch_readers_.find(source);
+            if (active == patch_readers_.end() || !active->second) std::terminate();
+            if (--active->second == 0) patch_readers_.erase(active);
+        });
+
+        const nri::Texture* source_image = nullptr;
+        std::uint32_t color_space = 0;
+        const auto prepare = [&]() noexcept
+        {
+            const auto& original = *find(source);
+            source_image = original.image_;
+            color_space = original.reference_.color_space;
+            return preparePatched(original, input.region, input.source);
+        };
+        auto prepared = prepare();
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
         }
-        auto candidate = sampledImage(std::exchange(prepared->first, nullptr), original->reference_.color_space);
+        auto candidate = sampledImage(std::exchange(prepared->first, nullptr), color_space);
         if (!candidate)
         {
             co_return cxx::unexpected(candidate.error());
         }
         cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
-        auto accepted =
-            co_await uploads_
-                .writeImage(*candidate->image_, input.source, std::move(prepared->second), original->image_);
+        auto accepted = co_await uploads_.writeImage(
+            *candidate->image_, input.source, std::move(prepared->second), source_image
+        );
         if (!accepted)
         {
             co_return cxx::unexpected(accepted.error());
@@ -414,7 +422,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (value->source_uses_ != 0)
+        if (patch_readers_.contains(id))
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }

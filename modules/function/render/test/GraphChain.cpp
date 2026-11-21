@@ -606,6 +606,9 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     auto uploads = take(ResourceUploader::create(
         *session, TransferOptions{4096, 2}, lux::execution::ExecutionRuntime::instance().cpuScheduler()
     ));
+    const auto before = session->queue().submitted();
+    CHECK(!take(runTask(uploads->submitPreparationCopies())));
+    CHECK(session->queue().submitted() == before);
     std::array<std::uint32_t, 4> source{11, 12, 13, 14};
     const auto bytes = std::as_bytes(std::span(source));
     nri::Buffer* target = nullptr;
@@ -615,8 +618,9 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     CHECK(take(uploads->stageBuffer({target, 0, bytes})) == bytes.size());
     source.fill(99);
     CHECK(uploads->flushFrameCopies());
-    CHECK(take(runTask(uploads->submitPreparationCopies())) != 0);
-    uploads->finishFrameCopySubmission({});
+    const auto receipt = take(runTask(uploads->submitPreparationCopies()));
+    CHECK(receipt && receipt->ranges == 1 && receipt->point.serial == session->queue().submitted());
+    uploads->acceptFrameCopies(*receipt);
     CHECK(session->drain());
     const auto result = readHistoryResult<4>(
         *session, *target, {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
@@ -625,6 +629,53 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     CHECK(result == expected);
     core.DestroyBuffer(target);
     std::puts("FRAME UPLOAD SNAPSHOT PASS: caller mutation after staging leaves submitted bytes unchanged");
+
+    struct Replica final
+    {
+        std::uint64_t revision = 1;
+        std::uint32_t preparations = 0, accepted = 0, rejected = 0;
+        bool fail = false;
+    };
+    const StorageBindingOps ops{
+        .prepareFrame = [](void* value, std::uint32_t, ResourceUploader&, Preparation& preparation) noexcept
+            -> RenderResult<bool>
+        {
+            auto& replica = *static_cast<Replica*>(value);
+            ++replica.preparations;
+            if (replica.fail) return lux::cxx::unexpected(RenderError{kStorageContract});
+            preparation.onSubmitted(value, [](void* receiver, std::uint32_t, RenderResult<void> result) noexcept
+            {
+                auto& finished = *static_cast<Replica*>(receiver);
+                if (result) ++finished.accepted;
+                else ++finished.rejected;
+            });
+            return true;
+        }
+    };
+    Replica first;
+    Replica tail{.fail = true};
+    const std::array bindings{
+        StorageFrameBinding{&first, &ops, {0, 1}, &first.revision},
+        StorageFrameBinding{&tail, &ops, {1, 1}, &tail.revision}
+    };
+    FrameProgress progress(1, &*session, session->queueCount());
+    FrameOperation::Workspace workspace(1, session->queueCount(), bindings.size());
+    FrameOperation frame(
+        *session, uploads.get(), progress, workspace, lux::execution::ExecutionRuntime::instance().cpuScheduler()
+    );
+    const auto prior_submit = session->queue().submitted();
+    CHECK(take(frame.tryBegin()));
+    const auto failed = runTask(frame.run({}, bindings));
+    CHECK(!failed && failed.error().type == kStorageContract);
+    CHECK(first.preparations == 1 && first.rejected == 1 && first.accepted == 0);
+    tail.fail = false;
+    CHECK(take(frame.tryBegin()));
+    CHECK(take(runTask(frame.run({}, bindings))) == 0);
+    CHECK(first.preparations == 2 && first.accepted == 1 && tail.accepted == 1);
+    CHECK(take(frame.tryBegin()));
+    CHECK(take(runTask(frame.run({}, bindings))) == 0);
+    CHECK(first.preparations == 2 && tail.preparations == 2 && session->queue().submitted() == prior_submit);
+    std::puts("ZERO COPY PREPARATION PASS: failed suffix rolls back the earlier publication and retry settles once");
 }
 
 static void detachedDirtyRanges()

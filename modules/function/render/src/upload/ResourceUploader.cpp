@@ -64,62 +64,96 @@ namespace lux::render::detail
         std::uint64_t offset;
     };
 
-    struct ResourceUploader::BatchEntry final
+    struct ResourceUploader::UploadWindow
     {
-        ResourceUploader* uploads;
+        enum class EPhase : std::uint8_t { WAIT_RANGE, COPY, ACQUIRE, COMPLETE };
+
+        struct Request final
+        {
+            std::span<Copy> copies{};
+            std::span<const BufferZero> fills{};
+            SubmissionFrontiers* progress = nullptr;
+            std::size_t minimum_range = 0;
+        };
+
+        struct Receipt final
+        {
+            SubmissionPoint copy, acquire;
+            RenderResult<void> result;
+        };
+
+        UploadWindow(ResourceUploader& owner, SubmissionQueue& source, Request input) noexcept
+            : uploads(owner), queue(&source), request(input),
+              phase(input.minimum_range ? EPhase::WAIT_RANGE : EPhase::COPY)
+        {
+        }
+
+        void deliver(RenderResult<void> result) noexcept
+        {
+            if (next || phase == EPhase::COMPLETE) std::terminate();
+            phase = EPhase::COMPLETE;
+            receipt.result = std::move(result);
+            complete(*this);
+        }
+
+        ResourceUploader& uploads;
         SubmissionQueue* queue;
-        std::span<Copy> copies;
-        std::span<const BufferZero> fills;
-        BatchEntry* next = nullptr;
-        void* receiver = nullptr;
-        void (*complete)(void*, RenderResult<void>) noexcept = nullptr;
-        bool replica = false;
-        bool (*stopping)(void*) noexcept = nullptr;
-        bool acquiring = false;
-        bool waiting_range = false;
-        std::size_t minimum_range = 4;
-        SubmissionFrontiers* progress = nullptr;
-        std::uint64_t copy_serial = 0;
+        Request request;
+        EPhase phase;
+        Receipt receipt{};
+        UploadWindow* next = nullptr;
+        bool (*stopping)(UploadWindow&) noexcept = nullptr;
+        void (*complete)(UploadWindow&) noexcept = nullptr;
     };
 
-    class ResourceUploader::BatchSender final
+    class ResourceUploader::WindowSender final
     {
     public:
         using sender_concept = stdexec::sender_t;
-        using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(RenderResult<void>)>;
+        using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(UploadWindow::Receipt)>;
 
-        explicit BatchSender(BatchEntry& entry) noexcept : entry_(entry) {}
+        WindowSender(ResourceUploader& uploads, SubmissionQueue& queue, UploadWindow::Request request) noexcept
+            : uploads_(&uploads), queue_(&queue), request_(request)
+        {
+        }
 
-        template <class Receiver> struct Operation final
+        template <class Receiver> struct Operation final : UploadWindow
         {
             using operation_state_concept = stdexec::operation_state_t;
-            BatchEntry& entry;
-            Receiver receiver;
+
+            Operation(ResourceUploader& uploads, SubmissionQueue& queue, Request request, Receiver receiver) noexcept
+                : UploadWindow(uploads, queue, request), receiver_(std::move(receiver))
+            {
+            }
 
             void start() & noexcept
             {
-                entry.receiver = this;
-                entry.stopping = [](void* value) noexcept
+                stopping = [](UploadWindow& value) noexcept
                 {
-                    auto& self = *static_cast<Operation*>(value);
-                    return stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested();
+                    auto& self = static_cast<Operation&>(value);
+                    return stdexec::get_stop_token(stdexec::get_env(self.receiver_)).stop_requested();
                 };
-                entry.complete = [](void* value, RenderResult<void> result) noexcept
+                complete = [](UploadWindow& value) noexcept
                 {
-                    auto& self = *static_cast<Operation*>(value);
-                    stdexec::set_value(std::move(self.receiver), std::move(result));
+                    auto& self = static_cast<Operation&>(value);
+                    auto delivered = std::move(self.receipt);
+                    stdexec::set_value(std::move(self.receiver_), std::move(delivered));
                 };
-                entry.uploads->enqueue(entry);
+                uploads.enqueue(*this);
             }
+
+            Receiver receiver_;
         };
 
         template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
         {
-            return Operation<Receiver>{entry_, std::move(receiver)};
+            return Operation<Receiver>{*uploads_, *queue_, request_, std::move(receiver)};
         }
 
     private:
-        BatchEntry& entry_;
+        ResourceUploader* uploads_;
+        SubmissionQueue* queue_;
+        UploadWindow::Request request_;
     };
 
     ResourceUploader::ResourceUploader(
@@ -133,7 +167,7 @@ namespace lux::render::detail
 
     ResourceUploader::~ResourceUploader() noexcept
     {
-        if (hasPendingTransfers())
+        if (hasPendingTransfers() || frame_copy_receipt_serial_)
         {
             std::terminate();
         }
@@ -495,7 +529,12 @@ namespace lux::render::detail
 
     bool ResourceUploader::hasFrameCopies() const noexcept
     {
-        return !frame_copies_.empty();
+        return stagedFrameCopyCount() != 0;
+    }
+
+    std::size_t ResourceUploader::stagedFrameCopyCount() const noexcept
+    {
+        return frame_copies_.size();
     }
 
     void ResourceUploader::recordFrameCopies(nri::CommandBuffer& command) noexcept
@@ -560,29 +599,36 @@ namespace lux::render::detail
         }
     }
 
-    void ResourceUploader::finishFrameCopySubmission(RenderResult<void> result) noexcept
+    void ResourceUploader::acceptFrameCopies(FrameCopyReceipt receipt) noexcept
     {
+        const auto queue_index = device_.queueIndex(device_.queue());
+        const bool wrong_submit = receipt.point.domain != &device_ || receipt.point.queue != queue_index ||
+            receipt.point.serial != frame_copy_receipt_serial_;
+        const bool wrong_ranges = !receipt.ranges || receipt.ranges != frame_copies_.size();
+        if (wrong_submit || wrong_ranges) std::terminate();
         for (auto& copy : frame_copies_)
         {
-            if (result)
-            {
-                staging_arena_->markSubmitted(copy.staging, device_.queue());
-                ++statistics_.copy_regions;
-            }
-            else
-            {
-                staging_arena_->cancel(copy.staging);
-            }
+            staging_arena_->markSubmitted(copy.staging, device_.queue(), receipt.point.serial);
+            ++statistics_.copy_regions;
         }
+        frame_copies_.clear();
+        frame_copy_receipt_serial_ = 0;
+    }
+
+    void ResourceUploader::cancelFrameCopies() noexcept
+    {
+        if (frame_copy_receipt_serial_) std::terminate();
+        // UNKNOWN returns only after the native queue has retired the uncertain submission.
+        for (auto& copy : frame_copies_) staging_arena_->cancel(copy.staging);
         frame_copies_.clear();
     }
 
-    void ResourceUploader::enqueue(BatchEntry& entry) noexcept
+    void ResourceUploader::enqueue(UploadWindow& entry) noexcept
     {
         // Current-frame writers precede background range waiters in the same finite list.
         // Pending preparation can reserve one existing page. Both uses share the Arena
         // and waiter list, and transfers can use every page after preparation settles.
-        if (entry.waiting_range && entry.replica)
+        if (entry.phase == UploadWindow::EPhase::WAIT_RANGE && entry.request.progress)
         {
             entry.next = range_waiters_;
             range_waiters_ = &entry;
@@ -592,8 +638,9 @@ namespace lux::render::detail
             }
             return;
         }
-        auto*& head = entry.waiting_range ? range_waiters_ : ready_head_;
-        auto*& tail = entry.waiting_range ? range_waiters_tail_ : ready_tail_;
+        const bool waiting_range = entry.phase == UploadWindow::EPhase::WAIT_RANGE;
+        auto*& head = waiting_range ? range_waiters_ : ready_head_;
+        auto*& tail = waiting_range ? range_waiters_tail_ : ready_tail_;
         entry.next = nullptr;
         if (tail)
         {
@@ -643,15 +690,19 @@ namespace lux::render::detail
         next_commands_[index] = (slot + 1) % options_.staging_pages;
     }
 
-    exec::task<RenderResult<std::uint64_t>> ResourceUploader::submitPreparationCopies() noexcept
+    exec::task<RenderResult<std::optional<ResourceUploader::FrameCopyReceipt>>>
+    ResourceUploader::submitPreparationCopies() noexcept
     {
+        if (frame_copy_receipt_serial_) std::terminate();
+        const auto ranges = stagedFrameCopyCount();
+        if (!ranges) co_return std::nullopt;
         auto& graphics = device_.queue();
         std::uint32_t slot = 0;
         auto recorded = beginCommands(graphics, slot);
         if (!recorded)
         {
             const auto error = recorded.error();
-            if (error.type == kDeviceBusy || error.type == kDeviceCapacity) co_return 0;
+            if (error.type == kDeviceBusy || error.type == kDeviceCapacity) co_return std::nullopt;
             co_return cxx::unexpected(error);
         }
         auto* command = *recorded;
@@ -659,12 +710,11 @@ namespace lux::render::detail
         const auto ended = device_.nriCore().EndCommandBuffer(*command);
         if (ended != nri::Result::SUCCESS) co_return cxx::unexpected(nativeError(ended));
         auto accepted = co_await graphics.submit({&command, 1});
-        if (accepted)
-        {
-            acceptCommands(graphics, slot, *accepted);
-            ++statistics_.copy_submissions;
-        }
-        co_return accepted;
+        if (!accepted) co_return cxx::unexpected(accepted.error());
+        acceptCommands(graphics, slot, *accepted);
+        ++statistics_.copy_submissions;
+        frame_copy_receipt_serial_ = *accepted;
+        co_return FrameCopyReceipt{device_.submissionPoint(device_.queueIndex(graphics), *accepted), ranges};
     }
 
     bool ResourceUploader::canBeginCommands(const SubmissionQueue& queue) const noexcept
@@ -685,16 +735,18 @@ namespace lux::render::detail
         {
             return false;
         }
-        if (ready_head_ && canBeginCommands(ready_head_->acquiring ? device_.queue() : *ready_head_->queue))
+        if (ready_head_)
         {
-            return true;
+            const bool acquiring = ready_head_->phase == UploadWindow::EPhase::ACQUIRE;
+            const auto& queue = acquiring ? device_.queue() : *ready_head_->queue;
+            if (canBeginCommands(queue)) return true;
         }
         if (!range_waiters_) return false;
-        const bool is_stopped = range_waiters_->stopping(range_waiters_->receiver);
+        const bool is_stopped = range_waiters_->stopping(*range_waiters_);
         const bool has_terminal = device_.terminalError().type != 0;
         if (is_stopped || has_terminal) return true;
-        const bool reserve_frame = !range_waiters_->replica && preparation_reserved_;
-        return staging_arena_->canAcquire(range_waiters_->minimum_range, reserve_frame);
+        const bool reserve_frame = !range_waiters_->request.progress && preparation_reserved_;
+        return staging_arena_->canAcquire(range_waiters_->request.minimum_range, reserve_frame);
     }
 
     ResourceUploader::Task ResourceUploader::submitReadyTransfers() noexcept
@@ -707,19 +759,19 @@ namespace lux::render::detail
         cxx::scope_exit release([this]() noexcept { progressing_ = false; });
         // Complete only this bounded prefix. Receiver reentry may append work for the next flush.
         auto* boundary = ready_tail_;
-        BatchEntry* blocked_head = nullptr;
-        BatchEntry* blocked_tail = nullptr;
+        UploadWindow* blocked_head = nullptr;
+        UploadWindow* blocked_tail = nullptr;
         while (ready_head_ && boundary)
         {
             auto& first = *ready_head_;
-            const bool acquiring = first.acquiring;
+            const bool acquiring = first.phase == UploadWindow::EPhase::ACQUIRE;
             auto& source_queue = *first.queue;
             auto& queue = acquiring ? device_.queue() : source_queue;
             batch_entries_.clear();
             while (ready_head_ && batch_entries_.size() < options_.batch_entries)
             {
                 auto* entry = ready_head_;
-                const bool same_submission = entry->queue == &source_queue && entry->acquiring == acquiring;
+                const bool same_submission = entry->queue == &source_queue && entry->phase == first.phase;
                 if (!same_submission)
                 {
                     break;
@@ -738,13 +790,14 @@ namespace lux::render::detail
                 ready_tail_ = nullptr;
             }
             RenderResult<void> accepted;
+            std::uint64_t accepted_serial = 0;
             nri::FenceSubmitDesc wait{};
             if (acquiring)
             {
                 std::uint64_t producer = 0;
                 for (const auto* entry : batch_entries_)
                 {
-                    producer = std::max(producer, entry->copy_serial);
+                    producer = std::max(producer, entry->receipt.copy.serial);
                 }
                 auto dependency = source_queue.dependency(producer, nri::StageBits::ALL);
                 if (dependency)
@@ -792,7 +845,7 @@ namespace lux::render::detail
                     }
                     for (auto* entry : batch_entries_)
                     {
-                        for (const auto& fill : entry->fills)
+                        for (const auto& fill : entry->request.fills)
                         {
                             const auto access = bufferAccess(nri_core.GetBufferDesc(*fill.target).usage);
                             bufferBarrier(
@@ -811,7 +864,7 @@ namespace lux::render::detail
                                 {access, nri::StageBits::ALL}
                             );
                         }
-                        for (auto& copy : entry->copies)
+                        for (auto& copy : entry->request.copies)
                         {
                             if (acquiring && !copy.final)
                             {
@@ -909,7 +962,8 @@ namespace lux::render::detail
                         );
                         if (submitted)
                         {
-                            acceptCommands(queue, command_slot, *submitted);
+                            accepted_serial = *submitted;
+                            acceptCommands(queue, command_slot, accepted_serial);
                         }
                         else
                         {
@@ -922,7 +976,6 @@ namespace lux::render::detail
             {
                 statistics_.record_submit_ns += elapsed(started);
             }
-            const auto accepted_serial = accepted ? queue.submitted() : 0;
             if (!accepted && (accepted.error().type == kDeviceCapacity || accepted.error().type == kDeviceBusy))
             {
                 // Put blocked entries ahead of work appended by later completions. They keep their
@@ -944,18 +997,16 @@ namespace lux::render::detail
             if (accepted)
             {
                 acquiring ? ++statistics_.acquire_submissions : ++statistics_.copy_submissions;
+                const auto point = device_.submissionPoint(device_.queueIndex(queue), accepted_serial);
                 for (auto* entry : batch_entries_)
                 {
-                    if (entry->progress)
-                    {
-                        const auto index = device_.queueIndex(queue);
-                        entry->progress->accept(device_.submissionPoint(index, queue.submitted()));
-                    }
+                    (acquiring ? entry->receipt.acquire : entry->receipt.copy) = point;
+                    if (entry->request.progress) entry->request.progress->accept(point);
                 }
                 const auto observe_measurement = [&](Measurement& measurement) noexcept
                 {
                     queue.arm(
-                        queue.submitted(),
+                        accepted_serial,
                         measurement.completion,
                         [](void* value, RenderResult<void> completed) noexcept
                         {
@@ -990,7 +1041,7 @@ namespace lux::render::detail
                     }
                     else
                     {
-                        measurement.pending_copy_serial = queue.submitted();
+                        measurement.pending_copy_serial = accepted_serial;
                     }
                 }
                 else if (timestamp_requested)
@@ -1001,9 +1052,9 @@ namespace lux::render::detail
                 {
                     for (auto* entry : batch_entries_)
                     {
-                        for (auto& copy : entry->copies)
+                        for (auto& copy : entry->request.copies)
                         {
-                            staging_arena_->markSubmitted(copy.staging, queue);
+                            staging_arena_->markSubmitted(copy.staging, queue, accepted_serial);
                             ++statistics_.copy_regions;
                         }
                     }
@@ -1013,19 +1064,16 @@ namespace lux::render::detail
             {
                 const bool needs_acquire =
                     accepted && !acquiring && entry->queue != &device_.queue() &&
-                    std::ranges::any_of(entry->copies, [](const auto& copy) { return copy.final; });
+                    std::ranges::any_of(entry->request.copies, [](const auto& copy) { return copy.final; });
                 if (needs_acquire)
                 {
-                    entry->copy_serial = accepted_serial;
-                    entry->acquiring = true;
+                    entry->phase = UploadWindow::EPhase::ACQUIRE;
                     enqueue(*entry);
                 }
                 else
                 {
-                    const auto complete = entry->complete;
-                    auto* receiver = entry->receiver;
-                    complete(receiver, accepted);
-                    // Neither the operation nor its borrowed entry is read after completion.
+                    entry->deliver(accepted);
+                    // Delivery can destroy this operation or enqueue a new window.
                 }
             }
         }
@@ -1042,9 +1090,10 @@ namespace lux::render::detail
         while (range_waiters_ && range_boundary)
         {
             auto* entry = range_waiters_;
-            const bool stopping = entry->stopping(entry->receiver);
+            const bool stopping = entry->stopping(*entry);
+            const bool reserve_frame = !entry->request.progress && preparation_reserved_;
             if (!stopping && !device_.terminalError().type &&
-                !staging_arena_->canAcquire(entry->minimum_range, !entry->replica && preparation_reserved_))
+                !staging_arena_->canAcquire(entry->request.minimum_range, reserve_frame))
             {
                 break;
             }
@@ -1058,10 +1107,7 @@ namespace lux::render::detail
                 range_boundary = nullptr;
             }
             entry->next = nullptr;
-            const auto complete = entry->complete;
-            auto* receiver = entry->receiver;
-            complete(
-                receiver,
+            entry->deliver(
                 device_.terminalError().type ? RenderResult<void>{cxx::unexpected(device_.terminalError())}
                 : stopping                   ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
                                              : RenderResult<void>{}
@@ -1319,21 +1365,21 @@ namespace lux::render::detail
             }
             if (copies.empty() && index < count)
             {
-                BatchEntry wait{this, &copy_queue_, {}};
-                wait.waiting_range = true;
-                wait.replica = progress != nullptr;
+                std::size_t minimum_range = 4;
                 if (image)
                 {
                     const auto& region = regions[index];
                     const auto bytes =
                         std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
                     const auto alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
-                    wait.minimum_range = (bytes + alignment - 1) / alignment * alignment;
+                    minimum_range = (bytes + alignment - 1) / alignment * alignment;
                 }
-                auto available = co_await BatchSender{wait};
-                if (!available)
+                const auto available = co_await WindowSender{
+                    *this, copy_queue_, {.progress = progress, .minimum_range = minimum_range}
+                };
+                if (!available.result)
                 {
-                    co_return failure(available.error());
+                    co_return failure(available.result.error());
                 }
                 continue;
             }
@@ -1446,20 +1492,14 @@ namespace lux::render::detail
             {
                 co_return failure(RenderError{kUploadStopped});
             }
-            BatchEntry entry{this, &copy_queue_, copies};
-            entry.replica = progress != nullptr;
-            entry.progress = progress;
-            if (!accepted_any)
+            const auto submitted = co_await WindowSender{
+                *this, copy_queue_, {copies, accepted_any ? std::span<const BufferZero>{} : fills, progress}
+            };
+            if (!submitted.result)
             {
-                entry.fills = fills;
-            }
-            auto submitted = co_await BatchSender{entry};
-            if (!submitted)
-            {
-                // An Acquire failure can follow accepted Copy. Targets stay in the professional
-                // candidate and the existing Session cleanup covers every accepted queue.
-                accepted_any |= entry.acquiring;
-                co_return failure(submitted.error());
+                // A rejected Acquire still leaves the accepted Copy in its physical queue's frontier.
+                accepted_any |= submitted.copy.serial != 0;
+                co_return failure(submitted.result.error());
             }
             accepted_any = true;
         }

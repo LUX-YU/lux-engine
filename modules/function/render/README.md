@@ -713,37 +713,10 @@ Uploader, History, program retirement and frame batch waits use this same value 
 observed only by SubmissionQueue; a frontier proves neither CPU borrow completion nor WSI completion.
 
 The private `FrameProgress` leaf acquires only `frame_index % frames_in_flight`. A busy next slot applies backpressure
-without consuming an index or selecting another slot. Its embedded Round borrow spans Prepare through Server adoption
-of native results, independent of Record worker count. Accepted submission prefixes remain in the slot after failure.
-DeviceEntry owns FrameProgress and recyclable workspace. The connected FrameOperation holds the Round and joins parallel
-Record work before SubmissionOperation uses the native queue.
-
-## Complete Resource preparation contracts
-
-`ResourceBinding.hpp` exposes the complete-snapshot preparation contract separately from the current graph-binding
-callbacks. Each qualified binding carries a ResourceInstanceId, its professional freezer and the physical capacities
-reserved by that Resource's owner. `Preparation` first deduplicates by ResourceInstanceId, checks all requirements and
-the round's total staging-byte/range budget, then freezes the whole set. Conflicting bindings for one ID are rejected;
-different declarations using the same implementation remain separate. A freezer cannot consume more than its checked
-quota. The binding and frozen-view spans have matching indices for the later native assembly.
-
-`ReplicatedData<T>` owns one fixed-capacity CPU table and per-slot dirty sets and immutable CPU snapshots. Storage still
-owns native buffers/descriptors. Construction reserves metadata, CopyRanges and snapshot bytes; update, prepare and
-settlement do not allocate. A freeze copies every selected record before exposing bytes and merges adjacent CopyRanges.
-New writes modify the CPU authority and next dirty set while the pending snapshot stays unchanged. Preparation capacity
-is conservatively bounded by the full table byte extent and one range per dirty record; growth belongs to the owner at
-a safe point before freezing, not to a partial per-frame upload loop.
-
-`ResourcePreparation` is the real snapshot borrow. Before native submission it may cancel and restore staged dirtiness,
-without losing updates that arrived meanwhile. After `beginSubmit`, the operation must deliver the actual result:
-accepted commits this snapshot only, known rejection restores pending dirtiness, and unknown acceptance quarantines the
-prepared group and its data. Quarantine cannot be reset into a retry and propagates `kOutcomeUnknown` to the future device
-execution owner. An in-flight snapshot cannot move, cancel, or disappear with its Storage. Acceptance ends the CPU source
-borrow; Uploader/FrameProgress must independently retain native staging and destinations through actual GPU uses.
-
-These contracts are compiled leaves for the later Uploader/FrameOperation and professional Storage migration. Existing
-Instance/Light/Material dirty-window callbacks remain the sole active path until that migration replaces them; the new
-leaves are not attached as a second dirty/accepted authority. Large Mesh/Texture upload tasks keep their multi-window path.
+without consuming an index or selecting another slot. FrameProgress owns the CPU access mode and epoch. A frame or a
+structural Resource writer holds the selected slot and epoch as values. Structural writes adopt their copy and acquire
+frontiers into the selected slot without advancing the graphics frame index. A frame adopts each accepted submission
+before releasing CPU access, and accepted prefixes remain in the slot after failure.
 
 ## Output identity and swapchain flights
 
@@ -1202,7 +1175,8 @@ The active round borrows the device’s reusable Preparation workspace. Resource
 alongside the Uploader, and register replica settlement with `Preparation::onSubmitted`. Uploader first commits/cancels its
 staging ranges; the frame owner then delivers the native result through `finishCallbacks`. Callbacks appended
 during delivery wait for a subsequent settlement. Reentrant settlement and destruction with pending callbacks
-are ownership errors. The existing frozen ResourcePreparation API still settles its snapshots explicitly.
+are ownership errors. Each accepted frame-copy receipt names the physical queue, serial and staged range count.
+FrameProgress adopts that point before staging is settled and Resource or producer callbacks run.
 
 Uploader retains source-byte credits, staging reservations and transfer command windows. Independent Mesh and Texture
 uploads progress during recording and when no Job is ready. Each accepted prefix keeps its queue frontier.

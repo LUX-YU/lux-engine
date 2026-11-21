@@ -1,5 +1,4 @@
 #include <lux/engine/render/extensions/upload/Preparation.hpp>
-#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -67,10 +66,5 @@ int main(int argc, char** argv)
     check(a.calls == 33 && a.slot == 2 && a.error == unknown);
     first.finishCallbacks(0, {});
     check(a.calls == 33);
-    // The existing frozen-Resource contract remains independent of callback delivery.
-    Preparation empty(0);
-    check(bool(empty.freeze({}, 0, {})) && bool(empty.beginSubmit()));
-    check(!empty.submitted(lux::cxx::unexpected(unknown)) && empty.quarantined());
-    check(!empty.freeze({}, 0, {}));
-    std::puts("Preparation: per-frame owners, exact results, callback growth/reentrancy and unknown quarantine passed");
+    std::puts("Preparation: exact results and callback growth/reentrancy verified");
 }

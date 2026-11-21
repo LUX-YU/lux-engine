@@ -433,12 +433,10 @@ namespace lux::render::detail
             }
             arrays_[k].records.reserve(std::max(size, arrays_[k].records.size()));
         }
-        FrameProgress::ReplicaWrite replica;
-        if (auto acquired = co_await replica_progress_.acquireReplica(device_, replica); !acquired)
-        {
-            co_return cxx::unexpected(acquired.error());
-        }
-        const auto frame = replica.slot();
+        auto replica = co_await replica_progress_.acquireReplica(device_);
+        if (!replica) co_return cxx::unexpected(replica.error());
+        cxx::scope_exit end_replica([&]() noexcept { replica_progress_.endReplica(*replica); });
+        const auto frame = replica->frame.slot_index;
         std::array<nri::Buffer*, 4> candidates{};
         std::array<std::size_t, 4> capacities{};
         cxx::scope_exit rollback(
@@ -500,7 +498,7 @@ namespace lux::render::detail
                 {candidates[3] ? candidates[3] : arrays_[3].frames[frame].buffer, 0, std::as_bytes(std::span(header))}
             );
         }
-        auto accepted = co_await uploads_.writeBuffers(writes, {}, &replica.accepted());
+        auto accepted = co_await uploads_.writeBuffers(writes, {}, &replica_progress_.replicaFrontiers(*replica));
         if (accepted && stop.stop_requested()) accepted = cxx::unexpected(RenderError{kUploadStopped});
         if (!accepted)
         {

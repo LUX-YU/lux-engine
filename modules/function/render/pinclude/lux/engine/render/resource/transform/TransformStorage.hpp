@@ -7,6 +7,7 @@
 #include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
 #include <lux/engine/render/resources/transform/Resource.hpp>
 #include <array>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -20,27 +21,6 @@ namespace lux::render::detail
 {
     class DeviceSession;
     class FrameProgress;
-    class TransformStorage;
-
-    class TransformReference final
-    {
-    public:
-        TransformReference() noexcept = default;
-        ~TransformReference() noexcept;
-        TransformReference(const TransformReference&) = delete;
-        TransformReference& operator=(const TransformReference&) = delete;
-
-        void bind(TransformStorage&, TransformId) noexcept;
-        void reset() noexcept;
-        [[nodiscard]] TransformId id() const noexcept { return id_; }
-        [[nodiscard]] std::uint32_t gpuSlot() const noexcept { return gpu_slot_; }
-
-    private:
-        TransformStorage* storage_ = nullptr;
-        TransformId id_;
-        std::uint32_t gpu_slot_ = UINT32_MAX;
-    };
-
     class TransformStorage final
     {
     public:
@@ -52,11 +32,12 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<std::vector<TransformId>> create(std::span<const TransformMatrix>) noexcept;
         [[nodiscard]] RenderResult<void> update(std::span<const TransformRecordUpdate>) noexcept;
         [[nodiscard]] RenderResult<void> release(TransformId) noexcept;
-        [[nodiscard]] bool contains(TransformId) const noexcept;
+        [[nodiscard]] std::optional<std::uint32_t> gpuSlot(TransformId) const noexcept;
+        void retainInstance(TransformId) noexcept;
+        void releaseInstance(TransformId) noexcept;
     private:
         [[nodiscard]] bool canCreate(std::size_t count) const noexcept;
         [[nodiscard]] TransformId insert(const TransformMatrix&) noexcept;
-        friend class TransformReference;
         static constexpr std::uint32_t kPageSlots = 16'384;
 
         struct Record final

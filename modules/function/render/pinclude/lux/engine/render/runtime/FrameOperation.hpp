@@ -29,6 +29,7 @@ namespace lux::render::detail
             SubmissionOperation::Workspace submissions;
             Preparation preparation;
             std::vector<std::vector<PreparedStorage>> replicas;
+            std::vector<std::pair<std::size_t, PreparedStorage>> staged_replicas;
             SubmissionFrontiers blocked_completion;
             SubmissionFrontiers uniform_completed;
             std::vector<SelectedUniformVersion> uniforms;
@@ -44,9 +45,13 @@ namespace lux::render::detail
         FrameOperation& operator=(const FrameOperation&) = delete;
 
         [[nodiscard]] RenderResult<bool> tryBegin() noexcept;
-        [[nodiscard]] bool active() const noexcept { return round_.active(); }
+        [[nodiscard]] bool active() const noexcept { return selection_.has_value(); }
         [[nodiscard]] bool canRun() const noexcept;
-        [[nodiscard]] FrameContext context() const noexcept { return round_.context(); }
+        [[nodiscard]] FrameContext context() const noexcept
+        {
+            if (!selection_) std::terminate();
+            return selection_->frame;
+        }
         [[nodiscard]] bool submitting() const noexcept { return active() && submission_->prepared(); }
         [[nodiscard]] bool submitting(const RenderGraphInstance& instance) const noexcept
         {
@@ -66,20 +71,33 @@ namespace lux::render::detail
 
         [[nodiscard]] bool parallelRecordingPending() const noexcept
         {
-            return parallel_recording_ && recording_pending_;
+            return parallel_recording_ && worker_pending_ && phase_ == EPhase::RECORDING;
         }
 
         void cancel(RenderError) noexcept;
 
     private:
+        enum class EPhase : std::uint8_t
+        {
+            UNIFORMS,
+            RESOURCES,
+            PRODUCER_SELECTIONS,
+            PRODUCER_UPLOADS,
+            FREEZE,
+            RECORDING,
+            SUBMITTING
+        };
+
+        enum class EPreparationStatus : std::uint8_t { READY, AWAITING_PROGRESS };
+
         void finish() noexcept;
         void settlePreparation(RenderResult<void>) noexcept;
-        [[nodiscard]] RenderResult<bool>
+        [[nodiscard]] RenderResult<EPreparationStatus>
         prepareUniforms(std::span<RenderGraphInstance* const>, std::optional<UniformStateLookup>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameBinding>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] RenderResult<EPreparationStatus> prepareStorages(std::span<const StorageFrameBinding>) noexcept;
+        [[nodiscard]] RenderResult<EPreparationStatus> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
-        [[nodiscard]] std::uint32_t slot() const noexcept { return round_.context().slot_index; }
+        [[nodiscard]] std::uint32_t slot() const noexcept { return context().slot_index; }
 
         DeviceSession& device_;
         ResourceUploader* uploads_;
@@ -88,17 +106,13 @@ namespace lux::render::detail
         execution::CpuScheduler cpu_;
         bool parallel_recording_;
         DeviceEntry* owner_;
-        FrameProgress::Round round_;
+        std::optional<FrameProgress::SlotSelection> selection_;
+        EPhase phase_ = EPhase::UNIFORMS;
         std::optional<SubmissionOperation> submission_;
         std::optional<RenderError> cancellation_;
         std::size_t prepared_instances_ = 0;
         bool worker_pending_ = false;
-        bool recording_pending_ = false;
         bool copies_flushed_ = false;
-        bool uniforms_ready_ = false;
-        bool resources_ready_ = false;
-        bool producer_selections_ready_ = false;
-        bool producer_uploads_ready_ = false;
         bool waiting_for_gpu_ = false;
     };
 } // namespace lux::render::detail

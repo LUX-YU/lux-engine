@@ -4,6 +4,7 @@
 #include <lux/engine/render/resources/texture/Resource.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <map>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/resources/texture/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
@@ -49,7 +50,6 @@ namespace lux::render::detail
             nri::Descriptor* view_ = nullptr;
             DescriptorTable::Slot descriptor_{};
             TextureGpuRef reference_{};
-            std::uint32_t source_uses_ = 0;
         };
 
         [[nodiscard]] static RenderResult<std::unique_ptr<SampledTexture2DStorage>>
@@ -86,5 +86,6 @@ namespace lux::render::detail
         ResourceInstanceId id_;
         DescriptorTable* descriptors_ = nullptr;
         cxx::StableSlotMap<SampledImage, TextureTag> textures_;
+        std::map<TextureId, std::uint32_t> patch_readers_;
     };
 } // namespace lux::render::detail

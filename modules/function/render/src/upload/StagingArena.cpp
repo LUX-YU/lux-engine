@@ -128,15 +128,16 @@ namespace lux::render::detail
         reclaim(page);
     }
 
-    void StagingArena::commit(std::size_t index, SubmissionQueue& queue) noexcept
+    void StagingArena::commit(std::size_t index, SubmissionQueue& queue, std::uint64_t serial) noexcept
     {
+        if (!serial || serial > queue.submitted()) std::terminate();
         auto& page = pages_[index];
-        auto* found = &page.completions[session_.queueIndex(queue)];
-        found->queue = &queue;
-        found->accepted = queue.submitted();
-        if (!found->node.armed())
+        auto& completion = page.completions[session_.queueIndex(queue)];
+        completion.queue = &queue;
+        completion.accepted = std::max(completion.accepted, serial);
+        if (!completion.node.armed())
         {
-            queue.arm(found->accepted, found->node, completed, &*found);
+            queue.arm(completion.accepted, completion.node, completed, &completion);
         }
         release(index);
     }
@@ -217,8 +218,8 @@ namespace lux::render::detail
         }
     }
 
-    void StagingArena::markSubmitted(StagingRange& range, SubmissionQueue& queue) noexcept
+    void StagingArena::markSubmitted(StagingRange& range, SubmissionQueue& queue, std::uint64_t serial) noexcept
     {
-        commit(std::exchange(range.page, SIZE_MAX), queue);
+        commit(std::exchange(range.page, SIZE_MAX), queue, serial);
     }
 } // namespace lux::render::detail

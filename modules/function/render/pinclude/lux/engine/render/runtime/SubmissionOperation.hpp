@@ -122,7 +122,7 @@ namespace lux::render::detail
             std::uint32_t queue_cursor_ = 0;
         };
 
-        SubmissionOperation(DeviceSession&, FrameProgress::Round&, Workspace&) noexcept;
+        SubmissionOperation(DeviceSession&, FrameProgress&, FrameProgress::SlotSelection, Workspace&) noexcept;
         [[nodiscard]] RenderResult<void>
         prepare(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
@@ -144,7 +144,7 @@ namespace lux::render::detail
     private:
         [[nodiscard]] static bool laterBatch(const Slot&, std::uint32_t, std::uint32_t) noexcept;
         [[nodiscard]] std::uint32_t readyQueue() const noexcept;
-        void accept(const SubmissionQueue&) noexcept;
+        void accept(const SubmissionQueue&, std::uint64_t serial) noexcept;
         void enqueueReadyBatch(Slot&, std::uint32_t) noexcept;
         void selectReadyBatches(Slot&, std::uint32_t) noexcept;
         void acceptBatch(Slot&, std::uint32_t, std::uint64_t, std::optional<BatchAccepted>) noexcept;
@@ -152,10 +152,11 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         rebuildDependencies(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
         [[nodiscard]] RenderResult<void> appendImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;
-        [[nodiscard]] std::uint32_t slotIndex() const noexcept { return round_.context().slot_index; }
+        [[nodiscard]] std::uint32_t slotIndex() const noexcept { return selection_.frame.slot_index; }
 
         DeviceSession& device_;
-        FrameProgress::Round& round_;
+        FrameProgress& progress_;
+        FrameProgress::SlotSelection selection_;
         Workspace& workspace_;
         Slot& slot_;
     };

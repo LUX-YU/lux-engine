@@ -8,6 +8,7 @@
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <optional>
 #include <span>
 
 namespace lux::render::detail
@@ -85,9 +86,16 @@ namespace lux::render::detail
         [[nodiscard]] bool canSubmitPreparationCopies() const noexcept;
         [[nodiscard]] Task submitReadyTransfers() noexcept;
         [[nodiscard]] RenderResult<void> flushFrameCopies() noexcept;
-        [[nodiscard]] exec::task<RenderResult<std::uint64_t>> submitPreparationCopies() noexcept;
-        // Settles staging after the frame submission attempt; this does not observe GPU completion.
-        void finishFrameCopySubmission(RenderResult<void>) noexcept;
+        struct FrameCopyReceipt final
+        {
+            SubmissionPoint point;
+            std::size_t ranges;
+        };
+
+        // Empty means the queue or command window could not admit work yet.
+        [[nodiscard]] exec::task<RenderResult<std::optional<FrameCopyReceipt>>> submitPreparationCopies() noexcept;
+        void acceptFrameCopies(FrameCopyReceipt) noexcept;
+        void cancelFrameCopies() noexcept;
         [[nodiscard]] bool hasFrameCopies() const noexcept;
 
         // Lazy device-thread task. Source ranges and their descriptors stay valid through terminal completion.
@@ -139,15 +147,17 @@ namespace lux::render::detail
         }
 
     private:
+        [[nodiscard]] std::size_t stagedFrameCopyCount() const noexcept;
         [[nodiscard]] bool canBeginCommands(const SubmissionQueue&) const noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
         struct Copy;
-        struct BatchEntry;
-        class BatchSender;
+        struct UploadWindow;
+        class WindowSender;
         struct Measurement;
-        void enqueue(BatchEntry&) noexcept;
+        void enqueue(UploadWindow&) noexcept;
         struct FrameCopy;
         std::vector<FrameCopy> frame_copies_;
+        std::uint64_t frame_copy_receipt_serial_ = 0;
         ResourceUploader(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
             std::span<const BufferWrite>,
@@ -181,11 +191,11 @@ namespace lux::render::detail
         TransferOptions options_;
         execution::CpuScheduler cpu_scheduler_;
         TransferStats statistics_;
-        BatchEntry* ready_head_ = nullptr;
-        BatchEntry* ready_tail_ = nullptr;
-        BatchEntry* range_waiters_ = nullptr;
-        BatchEntry* range_waiters_tail_ = nullptr;
-        std::vector<BatchEntry*> batch_entries_;
+        UploadWindow* ready_head_ = nullptr;
+        UploadWindow* ready_tail_ = nullptr;
+        UploadWindow* range_waiters_ = nullptr;
+        UploadWindow* range_waiters_tail_ = nullptr;
+        std::vector<UploadWindow*> batch_entries_;
         std::unique_ptr<Measurement[]> measurements_;
         std::size_t graphics_measurement_base_ = 0;
         std::uint64_t query_result_stride_ = 16;

@@ -76,16 +76,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<const rdesc::MaterialProgramSet*>
         beginProgramPreparation(MaterialProgramId) noexcept;
         void finishProgramPreparation(MaterialProgramId) noexcept;
-        // Append the instance's physical parameter page and sampled images for this FIF.
-        [[nodiscard]] RenderResult<void>
-        collectReads(
-            MaterialId material,
-            rdesc::EMaterialPurpose purpose,
-            std::uint32_t frame,
-            std::vector<ResourceInput>& buffers,
-            std::vector<const nri::Texture*>& images
-        ) const noexcept;
-
         [[nodiscard]] RenderResult<void> release(MaterialId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 

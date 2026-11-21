@@ -6,6 +6,7 @@
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 
 #include <exec/task.hpp>
+#include <type_traits>
 
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/resources/instance/Binding.hpp>
@@ -29,35 +30,20 @@ namespace lux::render::detail
             cxx::SlotKey<MeshInstanceTag> key;
         };
 
-    public:
-        using Descriptor = InstanceResource;
-        [[nodiscard]] static ResourceRegistration factory() noexcept;
-
-        struct Selection final
+        struct InstanceRecord final
         {
             MeshId mesh;
             MaterialId material;
+            TransformId transform;
             std::uint32_t submesh = 0;
         };
 
-        // A borrowed change node owned by the interested Feature's actual Context data. Storage
-        // reports identity changes; only the Feature decides selection and indirect membership.
-        class Observer final
-        {
-        public:
-            Observer() noexcept = default;
-            ~Observer() noexcept;
-            Observer(const Observer&) = delete;
-            Observer& operator=(const Observer&) = delete;
-            void* receiver = nullptr;
-            void (*changed)(void*, MeshInstanceId, const Selection*) noexcept = nullptr;
-            void reset() noexcept;
+        static_assert(std::is_standard_layout_v<InstanceRecord>);
+        static_assert(std::is_trivially_destructible_v<InstanceRecord>);
 
-        private:
-            friend class RasterMeshInstanceStorage;
-            RasterMeshInstanceStorage* source_ = nullptr;
-            std::size_t position_ = 0;
-        };
+    public:
+        using Descriptor = InstanceResource;
+        [[nodiscard]] static ResourceRegistration factory() noexcept;
 
         RasterMeshInstanceStorage(ResourceCreateContext&, ResourceInstanceId, TransformStorage&) noexcept;
         ~RasterMeshInstanceStorage() noexcept;
@@ -69,19 +55,6 @@ namespace lux::render::detail
             RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceData>) noexcept;
         [[nodiscard]] RenderResult<void> update(std::span<const MeshInstanceUpdate>) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
-        void observe(Observer&) noexcept;
-
-        template <class Visitor> void forEach(Visitor&& visitor) const noexcept
-        {
-            for (const auto& entry : entries_)
-            {
-                if (!entry.key.isNull())
-                {
-                    visitor(extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, entry.key), selection(entry));
-                }
-            }
-        }
-
         [[nodiscard]] std::uint32_t recordCount() const noexcept
         {
             return live_records_;
@@ -112,8 +85,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&, Preparation&) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty>
         resolveReferences(const MeshInstanceData&, std::uint32_t frame) const noexcept;
-        [[nodiscard]] Selection selection(const Entry&) const noexcept;
-        void notify(const Entry&, bool removed) noexcept;
+        [[nodiscard]] const InstanceRecord& instanceRecord(const Entry&) const noexcept;
+        void invalidateSelection() noexcept;
         void publishBuffers(std::uint32_t slot) noexcept;
         void adoptFrameBuffers(std::uint32_t slot) noexcept;
         void finishFramePreparation(std::uint32_t slot, RenderResult<void>) noexcept;
@@ -140,6 +113,5 @@ namespace lux::render::detail
         std::unique_ptr<FrameData> frames_;
         std::array<StorageSubscription*, 2> bindings_{};
         StorageSubscription* paged_bindings_ = nullptr;
-        std::vector<Observer*> observers_;
     };
 } // namespace lux::render::detail

@@ -1,4 +1,5 @@
 #include "NativeDevice.hpp"
+#include "BufferReadback.hpp"
 #ifdef LUX_RENDER_GRAPH_ALLOCATION_PROBE
 #include "GraphMeasurements.hpp"
 #endif
@@ -573,43 +574,6 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     CHECK(session->drain());
 }
 
-template <std::size_t Count = 9>
-static std::array<std::uint32_t, Count> readHistoryResult(
-    DeviceSession& session, nri::Buffer& input,
-    nri::AccessStage before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
-)
-{
-    constexpr auto size = sizeof(std::array<std::uint32_t, Count>);
-    nri::Buffer* read = nullptr;
-    const auto& core = session.nriCore();
-    CHECK(
-        core.CreatePlacedBuffer(session.device(), NriHostReadbackHeap, {size, 0, nri::BufferUsageBits::NONE}, read) ==
-        nri::Result::SUCCESS
-    );
-    CHECK(submitFixtureCommands(session, session.queue(),
-        [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
-        {
-            const nri::BufferBarrierDesc transition{
-                &input,
-                before,
-                {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}
-            };
-            core.CmdBarrier(command, {nullptr, 0, &transition, 1});
-            core.CmdCopyBuffer(command, *read, 0, input, 0, size);
-            return {};
-        }
-    ));
-    CHECK(session.drain());
-    const void* bytes = core.MapBuffer(*read, 0, size);
-    CHECK(bytes);
-    CHECK(session.invalidateMappedRange(*read, 0, size) == nri::Result::SUCCESS);
-    std::array<std::uint32_t, Count> result{};
-    std::memcpy(result.data(), bytes, size);
-    core.UnmapBuffer(*read);
-    core.DestroyBuffer(read);
-    return result;
-}
-
 static void compressedCopies(Validation& validation, EGraphicsBackend backend)
 {
     DeviceOptions options;
@@ -650,7 +614,7 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
         const std::array instances{&instance};
         CHECK(take(runTask(frames.render(instances, {}))) == 1);
         CHECK(session->drain());
-        const auto words = readHistoryResult<2>(*session, *instance.nativeBuffer(pixels.index, 0));
+        const auto words = readBufferWords<2>(*session, *instance.nativeBuffer(pixels.index, 0));
         CHECK((words == std::array{pattern, pattern}));
     }
     std::puts("BC1 COPY PASS: misaligned block rejected; automatic pitch selected the last block of the second row");
@@ -680,7 +644,7 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     CHECK(receipt && receipt->ranges == 1 && receipt->point.serial == session->queue().submitted());
     uploads->acceptFrameCopies(*receipt);
     CHECK(session->drain());
-    const auto result = readHistoryResult<4>(
+    const auto result = readBufferWords<4>(
         *session, *target, {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
     );
     const std::array<std::uint32_t, 4> expected{11, 12, 13, 14};
@@ -859,7 +823,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     CHECK(session->drain());
     const std::array expected{matrix_value, array_value, 27u, 0u};
-    CHECK(readHistoryResult<4>(*session, *instance->nativeBuffer(readback.index, 0)) == expected);
+    CHECK(readBufferWords<4>(*session, *instance->nativeBuffer(readback.index, 0)) == expected);
     std::puts("CONSTANT LAYOUT PASS: typed UBO binding, incomplete ABI and offset rejection, native values");
 }
 
@@ -1169,10 +1133,10 @@ static void typedRecording(Validation& validation, bool d3d12)
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
-        const auto values = readHistoryResult<8>(*session, *instance->nativeBuffer(output.index, 0));
+        const auto values = readBufferWords<8>(*session, *instance->nativeBuffer(output.index, 0));
         const std::array<std::uint32_t, 8> expected{7, 0, 11, 11, 0, 7, 19, 7};
         CHECK(values == expected);
-        const auto zeros = readHistoryResult<4>(*session, *instance->nativeBuffer(zero_output.index, 0));
+        const auto zeros = readBufferWords<4>(*session, *instance->nativeBuffer(zero_output.index, 0));
         const std::array<std::uint32_t, 4> expected_zeros{0, 9, 0, 9};
         CHECK(zeros == expected_zeros);
         instance.reset();
@@ -1259,7 +1223,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
     CHECK(session->drain());
-    const auto values = readHistoryResult<4>(*session, *instance->nativeBuffer(readback.index, 0));
+    const auto values = readBufferWords<4>(*session, *instance->nativeBuffer(readback.index, 0));
     CHECK(std::ranges::all_of(values, [](auto value) { return value == 13; }));
     instance.reset();
     CHECK(session->drain());
@@ -1770,7 +1734,7 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     core.GetTextureDesc = RecordTextureQueries::original;
     CHECK(RecordTextureQueries::count == 0);
     submit();
-    CHECK(readHistoryResult<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 1);
+    CHECK(readBufferWords<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 1);
     CHECK(take(instance.prepareFrame(0)));
     const auto rotation = instance.lastFrozenPatches(0);
     CHECK((rotation == Counts{2, 2}));
@@ -1782,7 +1746,7 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     instance.setResource(output.index, 0, original);
     CHECK((take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{1, 1}));
     submit();
-    CHECK(readHistoryResult<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 2);
+    CHECK(readBufferWords<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 2);
     if (static_count == 4)
     {
         RenderGraphInstance isolated(session, 2, plan.executable, plan.programs);
@@ -1920,8 +1884,8 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     finishSubmissions(*session, frames);
     CHECK(session->drain());
-    const auto computed = readHistoryResult<4>(*session, *instance.nativeBuffer(fixture.compute_result.index, 0));
-    const auto graphics = readHistoryResult<4>(*session, *instance.nativeBuffer(fixture.graphics_result.index, 0));
+    const auto computed = readBufferWords<4>(*session, *instance.nativeBuffer(fixture.compute_result.index, 0));
+    const auto graphics = readBufferWords<4>(*session, *instance.nativeBuffer(fixture.graphics_result.index, 0));
     CHECK(computed[0] == 4 && graphics[0] == 7 && graphics[2] == 11);
 
     const auto original = instance.resourceInput(fixture.graphics_result, 0);
@@ -1946,7 +1910,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     finishSubmissions(*session, frames);
     CHECK(session->drain());
-    const auto rebound = readHistoryResult<4>(*session, *other.buffer);
+    const auto rebound = readBufferWords<4>(*session, *other.buffer);
     CHECK(rebound[0] == 7 && rebound[1] == 7 && rebound[2] == 11 && rebound[3] == 11);
     std::printf(
         "LOCAL REBIND PASS: %zu batches, two changed views, %u native End, new buffer [7,7,11,11]\n",
@@ -2127,7 +2091,7 @@ static void historySequence(
         CHECK(submitted == 1);
         const auto slot = instance->progress().last_submitted_slot;
         CHECK(session->drain());
-        const auto values = readHistoryResult<13>(*session, *instance->nativeBuffer(output.index, slot));
+        const auto values = readBufferWords<13>(*session, *instance->nativeBuffer(output.index, slot));
         for (unsigned i = 0; i < 4; ++i)
         {
             CHECK(values[i] == (enabled_value ? published.back() : 0));
@@ -2151,7 +2115,7 @@ static void historySequence(
     }
     CHECK(session->drain());
     const auto values =
-        readHistoryResult(*session, *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot));
+        readBufferWords(*session, *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot));
     CHECK(values[0] == published.back());
     instance.reset();
     CHECK(session->drain());
@@ -2254,7 +2218,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) > 0 && !frames->submitting());
         CHECK(session->drain());
-        const auto values = readHistoryResult<128>(
+        const auto values = readBufferWords<128>(
             *session,
             *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot)
         );
@@ -2317,7 +2281,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
         CHECK(instance->setConditions({&enabled, 1}));
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
-        const auto values = readHistoryResult<4>(
+        const auto values = readBufferWords<4>(
             *session,
             *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot)
         );
@@ -2401,9 +2365,9 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     }
     CHECK(session->drain());
     const auto a =
-        readHistoryResult<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
+        readBufferWords<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
     const auto b =
-        readHistoryResult<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
+        readBufferWords<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
     const auto second_value = write_back && !separate_ranges ? 2u : 1u;
     CHECK(a[0] == 1 && b[0] == second_value);
     first.reset();
@@ -2493,9 +2457,9 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         }
         CHECK(session->drain());
         const auto a =
-            readHistoryResult<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
+            readBufferWords<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
         const auto b =
-            readHistoryResult<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
+            readBufferWords<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
         CHECK(a[0] == (separate ? 4 : 4 + frame * 3));
         CHECK(b[0] == 4 + frame * 3);
         if (const auto* path = std::getenv("LUX_SYNC_PLAN_DUMP"))
@@ -2867,8 +2831,8 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     }
     CHECK(session->drain());
     const auto slot = instance->progress().last_submitted_slot;
-    const auto left = readHistoryResult<4>(*session, *instance->nativeBuffer(output_a.index, slot));
-    const auto right = readHistoryResult<4>(*session, *instance->nativeBuffer(output_b.index, slot));
+    const auto left = readBufferWords<4>(*session, *instance->nativeBuffer(output_a.index, slot));
+    const auto right = readBufferWords<4>(*session, *instance->nativeBuffer(output_b.index, slot));
     CHECK(std::ranges::all_of(left, [](auto value) { return value == 4; }));
     CHECK(std::ranges::all_of(right, [](auto value) { return value == 8; }));
     take(runTask(frames->render(instances, {})));

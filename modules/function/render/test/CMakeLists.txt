@@ -180,7 +180,7 @@ set_tests_properties(render.native.device_lost_completion PROPERTIES TIMEOUT 30 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
     GraphHistory.comp GraphDepthField.comp GraphShadowSampler.frag ClusterCompare.comp GraphConstantLayout.comp
-    ShadowReadback.comp GraphTableSize.frag
+    ShadowReadback.comp GraphTableSize.frag GraphAliasLoad.comp
 )
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")

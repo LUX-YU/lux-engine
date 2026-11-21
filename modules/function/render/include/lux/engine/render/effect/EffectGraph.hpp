@@ -77,8 +77,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> setOutput(std::string name, graph::PinId source, bool target = false) noexcept;
         [[nodiscard]] RenderResult<void> removeOutput(std::string_view name) noexcept;
         [[nodiscard]] RenderResult<void> setArguments(graph::NodeId node, std::string arguments) noexcept;
-        [[nodiscard]] RenderResult<void>
-        selectImplementation(graph::NodeId node, ImplementationSelection implementation) noexcept;
+        [[nodiscard]] RenderResult<void> selectImplementation(graph::NodeId node, ImplementationSelection implementation) noexcept;
         [[nodiscard]] RenderResult<void> place(graph::NodeId node, graph::GraphNodeLayout layout) noexcept;
         [[nodiscard]] graph::PinId pinId(graph::NodeId node, graph::PinSemanticId semantic) const noexcept;
         [[nodiscard]] RenderResult<void> commit() noexcept;

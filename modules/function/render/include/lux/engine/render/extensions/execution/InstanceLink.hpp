@@ -8,17 +8,25 @@ namespace lux::render
     {
     public:
         virtual ~InstanceLinkContext() noexcept = default;
-        [[nodiscard]] virtual RenderResult<DrawStreamSlot> resolveDrawStream(GraphPassId) noexcept = 0;
+
+        [[nodiscard]] virtual RenderResult<DrawStreamSlot>
+        resolveDrawStream(GraphPassId) noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<RasterProgramSlot>
+
         resolveRasterProgram(GraphPassId, std::uint32_t source_program) const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<RasterBufferSlot> resolveRasterBuffer(GraphPassId, GraphResourceId)
-            const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<RasterImageSlot> resolveRasterImage(GraphPassId, GraphResourceId)
-            const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<RasterSamplerSlot> resolveRasterSampler(GraphPassId, std::uint32_t)
-            const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<std::uint32_t> resolveRasterArgument(GraphPassId, std::string_view)
-            const noexcept = 0;
+
+        [[nodiscard]] virtual RenderResult<RasterBufferSlot>
+        resolveRasterBuffer(GraphPassId, GraphResourceId) const noexcept = 0;
+
+        [[nodiscard]] virtual RenderResult<RasterImageSlot>
+        resolveRasterImage(GraphPassId, GraphResourceId) const noexcept = 0;
+
+        [[nodiscard]] virtual RenderResult<RasterSamplerSlot>
+        resolveRasterSampler(GraphPassId, std::uint32_t) const noexcept = 0;
+
+        [[nodiscard]] virtual RenderResult<std::uint32_t>
+        resolveRasterArgument(GraphPassId, std::string_view) const noexcept = 0;
 
         [[nodiscard]] RenderResult<PreparedBufferWriter> resolvePreparedBuffer(GraphResourceId resource) noexcept
         {
@@ -71,13 +79,16 @@ namespace lux::render
     private:
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimNodeState(cxx::basic_type_info, std::size_t) noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveCpuSlot(GraphCpuDataId, cxx::basic_type_info, std::size_t) const noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveStorageSlot(GraphStorageSnapshotId, cxx::basic_type_info) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimInlineBlock(GraphPassId, cxx::basic_type_info, std::size_t) noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<std::uint32_t> claimPreparedBuffer(GraphResourceId, bool upload) noexcept = 0;
     };
 } // namespace lux::render

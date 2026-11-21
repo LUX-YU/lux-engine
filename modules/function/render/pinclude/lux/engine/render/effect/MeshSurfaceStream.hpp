@@ -118,13 +118,14 @@ namespace lux::render::detail
             std::size_t program_count = 0;
         };
 
-        const Inputs& inputs_;
-        std::optional<ProgramSelectionState> selected_programs_, pending_programs_;
-        std::vector<RasterStreamDraw> draws_;
-        std::vector<RasterStreamBinding> bindings_;
-        std::vector<RasterStreamVertex> vertices_;
-        std::vector<SelectedGroup> groups_;
-        std::vector<RasterStreamSection> sections_;
-        std::vector<VisibilityViewConstants> shadow_constants_;
+        const Inputs&                           inputs_;
+        std::optional<ProgramSelectionState>    selected_programs_;
+        std::optional<ProgramSelectionState>    pending_programs_;
+        std::vector<RasterStreamDraw>           draws_;
+        std::vector<RasterStreamBinding>        bindings_;
+        std::vector<RasterStreamVertex>         vertices_;
+        std::vector<SelectedGroup>              groups_;
+        std::vector<RasterStreamSection>        sections_;
+        std::vector<VisibilityViewConstants>    shadow_constants_;
     };
 }

@@ -1,38 +1,14 @@
 #pragma once
 
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
-#include <string>
-#include <vector>
+#include <lux/cxx/compile_time/type_info.hpp>
+#include <concepts>
+#include <memory>
+#include <type_traits>
+#include <utility>
 
 namespace lux::render
 {
-    // Cold placement lists. No scope identity, parent tree or runtime authority is allocated here.
-    template <class T> struct ResourceBindingGroups final
-    {
-        std::vector<T> device;
-        std::vector<T> scene;
-        std::vector<T> view;
-
-        [[nodiscard]] std::size_t size() const noexcept
-        {
-            return device.size() + scene.size() + view.size();
-        }
-
-        [[nodiscard]] bool empty() const noexcept
-        {
-            return size() == 0;
-        }
-    };
-
-    struct GraphStorageBinding final
-    {
-        GraphResourceId resource;
-        ResourceRequirement storage;
-    };
-
-    using GraphStorageBindings = ResourceBindingGroups<GraphStorageBinding>;
-
     // Effect-owned concrete arguments, resolved only at Attach; never part of immutable Native code.
     class StorageArgument final
     {

@@ -23,7 +23,6 @@ namespace lux::render::detail
 {
     struct DeviceBackend;
     class CompiledPrograms;
-    struct StorageBindingOps;
 
     // Backend capabilities used by the compiler, queried once from the successfully created device.
     struct EnabledDeviceFeatures final

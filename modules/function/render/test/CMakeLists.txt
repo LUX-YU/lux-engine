@@ -131,6 +131,12 @@ if(WIN32)
         )
     endforeach()
 
+    add_test(NAME render.transform.retire_vulkan COMMAND render_output_test --transform-retirement vulkan)
+    add_test(NAME render.transform.retire_d3d12 COMMAND render_output_test --transform-retirement d3d12)
+    set_tests_properties(render.transform.retire_vulkan render.transform.retire_d3d12 PROPERTIES
+        TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77
+    )
+
     add_test(NAME render.effect.output_d3d12 COMMAND render_output_test --effect-graph d3d12)
     set_tests_properties(render.effect.output_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 

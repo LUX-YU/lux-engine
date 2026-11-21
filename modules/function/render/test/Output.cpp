@@ -30,6 +30,7 @@
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/render/resources/mesh/Resource.hpp>
 #include <lux/engine/render/resources/texture/Resource.hpp>
+#include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
 #include <lux/engine/render/resources/transform/Resource.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
@@ -904,6 +905,68 @@ struct RetirementFence final
     PFN_vkDestroySemaphore destroy_vk = nullptr;
     PFN_vkSignalSemaphore signal_vk = nullptr;
 };
+
+static int transformRetirementBacklog(EGraphicsBackend backend)
+{
+    Validation validation;
+    DeviceOptions options;
+    options.backend = backend;
+    options.multiple_queues = true;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto& graphics = session->queue();
+    auto& compute = session->queue(EQueueRole::COMPUTE);
+    if (&graphics == &compute) return 77;
+
+    RetirementFence graphics_gate(*session), compute_gate(*session);
+    const auto accept = [&](SubmissionQueue& queue, RetirementFence& gate)
+    {
+        const nri::FenceSubmitDesc wait{gate.fence, 1, nri::StageBits::ALL};
+        const auto serial = take(runTask(queue.submit({}, std::span{&wait, 1})));
+        return session->submissionPoint(session->queueIndex(queue), serial);
+    };
+    std::array submitted{session->makeFrontiers(), session->makeFrontiers(), session->makeFrontiers()};
+    auto completed = session->makeFrontiers();
+    TransformSlotRetirement retirement;
+    constexpr unsigned width = 16'384;
+    std::vector<std::uint32_t> free;
+    free.reserve(width * submitted.size());
+    for (unsigned round = 0; round < submitted.size(); ++round)
+    {
+        submitted[round].accept(accept(graphics, graphics_gate));
+        for (unsigned slot = 0; slot < width; ++slot)
+        {
+            // The second round acquires a compute receipt after some releases have already arrived.
+            if (round && slot == (round == 1 ? width / 2 : 0)) submitted[round].accept(accept(compute, compute_gate));
+            const bool active = round == 1 && slot < width / 2;
+            retirement.release(round * width + slot);
+            session->readCompleted(completed);
+            retirement.collect(active, submitted, completed, free);
+            CHECK(free.empty());
+        }
+    }
+    CHECK(graphics.poll() && compute.poll());
+    session->readCompleted(completed);
+    retirement.collect(false, submitted, completed, free);
+    CHECK(free.empty());
+
+    graphics_gate.signal();
+    CHECK(take(graphics.wait(graphics.submitted(), 5'000'000'000)));
+    CHECK(compute.poll());
+    session->readCompleted(completed);
+    retirement.collect(false, submitted, completed, free);
+    CHECK(free.size() == width && !retirement.empty());
+
+    compute_gate.signal();
+    CHECK(take(compute.wait(compute.submitted(), 5'000'000'000)));
+    session->readCompleted(completed);
+    retirement.collect(false, submitted, completed, free);
+    CHECK(retirement.empty() && free.size() == width * submitted.size());
+    for (std::uint32_t i = 0; i < free.size(); ++i) CHECK(free[i] == i);
+    CHECK(session->drain() && validation.errors == 0);
+    std::printf("TRANSFORM RETIREMENT PASS: 49152 releases, both held=0, graphics complete=16384, "
+                "both complete=49152, late compute receipt protected\n");
+    return 0;
+}
 
     struct UploadAcquireProbe final
     {
@@ -5825,6 +5888,9 @@ int main(int argc, char** argv)
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
 #ifdef _WIN32
+    if (argc > 1 && std::string_view{argv[1]} == "--transform-retirement")
+        return transformRetirementBacklog(argc > 2 && std::string_view{argv[2]} == "d3d12"
+            ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN);
     if (argc > 1 && std::string_view{argv[1]} == "--upload-acquire-failure")
         return sharedRasterTextures(argc > 2 && std::string_view{argv[2]} == "d3d12", false, true);
 #endif

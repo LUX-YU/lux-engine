@@ -106,6 +106,35 @@ static void validateTransformSlotRetirement()
     completed.accept({&domain, 0, 5});
     retirement.collect(false, submitted, completed, free);
     check((free == std::vector<std::uint32_t>{9, 11}) && retirement.empty());
+
+    // Exercise FIFO wrap, pressure beyond normal FIF depth, shrinking with a live tail, and a foreign device.
+    free.clear();
+    int peer = 0;
+    SubmissionFrontiers foreign(&peer, 2);
+    foreign.accept({&peer, 0, 1000});
+    foreign.accept({&peer, 1, 1000});
+    for (std::uint32_t i = 0; i < 16; ++i)
+    {
+        submitted[i % submitted.size()].accept({&domain, 0, 100 + i});
+        retirement.release(i);
+        retirement.collect(false, submitted, completed, free);
+    }
+    retirement.collect(false, submitted, foreign, free);
+    check(free.empty());
+    completed.accept({&domain, 0, 113});
+    retirement.collect(false, submitted, completed, free);
+    check(free.size() == 14);
+    for (std::uint32_t i = 16; i < 32; ++i)
+    {
+        submitted[i % submitted.size()].accept({&domain, 0, 100 + i});
+        retirement.release(i);
+        completed.accept({&domain, 0, 98 + i});
+        retirement.collect(false, submitted, completed, free);
+    }
+    completed.accept({&domain, 0, 131});
+    retirement.collect(false, submitted, completed, free);
+    check(retirement.empty() && free.size() == 32);
+    for (std::uint32_t i = 0; i < free.size(); ++i) check(free[i] == i);
 }
 
 int main()

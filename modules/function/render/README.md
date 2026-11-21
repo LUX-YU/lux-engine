@@ -1165,6 +1165,8 @@ TransformResource owns flat buffers or device-address pages per FIF replica. Mes
 Transform GPU slot, and culling, raster and shadow shaders load the matrix from that binding. Staging detaches its
 selected dirty ranges, so later writes remain pending. Logical release invalidates the identity immediately.
 The GPU slot becomes available after the active round settles and the accepted physical queue frontiers complete.
+Releases with the same frontier share a retirement batch. The Transform owner reuses batch rows in FIFO order,
+drops idle slot arrays above 4 KiB, and shrinks excess rows after a backlog subsides.
 
 Update a material's reflected float4 color parameter through `MaterialCommands::UpdateColor` or
 `FrameData::appendData<MaterialResource, MaterialColorUpdate>()`. Select the parameter index from the cooked program's

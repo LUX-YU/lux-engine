@@ -209,7 +209,7 @@ program identity, constant size, geometry, buffer bounds, image subresources and
 materializing native draw packets.
 
 Set `RasterPassTemplate::runtime_stream_programs` for a stream whose programs are selected by its producer.
-Advance `InstanceData::rasterProgramRevision()` when the selection changes. In `selectRasterPrograms()`,
+Advance the revision returned by the kernel’s optional `rasterProgramRevision()` when the selection changes. In `selectRasterPrograms()`,
 transfer the shader artifacts and provide the complete ordered set with `setPrograms()`. Each program
 names a `ShaderCandidateSlot` in that artifact list. Several programs can use one candidate.
 Use `reusePrograms()` for a stream whose complete program keys and binding order still match. Producers
@@ -324,12 +324,14 @@ state by reference and acknowledges CPU updates. Graph preparation and GPU param
 Stateful Handlers retain constructor-injected dependencies. All forms use the existing request operation,
 Resource borrow and ResponseOutbox; an async request's source bytes remain borrowed until its real response.
 
-`JobExecution` owns CPU input bindings and Resource subscriptions. The graph instance owns the derived
-`InstanceData` objects created from immutable graph recipes and the actual per-FIF GPU bindings. Cold assembly
+`JobExecution` owns CPU input bindings and Resource subscriptions. The device variant owns each producer's immutable linked inputs.
+Register a kernel with `ProducerFactory::make<Kernel>()`. Its static `resolve` links configuration once,
+and `prepare(const LinkedData&, FramePreparation&, Workspace&)` receives the current Job's workspace.
+The instance owns each workspace and the per-FIF GPU bindings. A kernel may supply a fallible
+`createWorkspace` when construction depends on linked inputs or the target. Cold assembly
 resolves Resource borrows once; instance preparation uses those borrows and contributes copies to `Preparation`.
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
-Resources and instance data and submits preparation copies before graph work. Destruction releases derived objects
-in reverse order. Physical cleanup uses the Session scope.
+Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces before releasing the device variant. Physical cleanup uses the Session scope.
 
 Each FIF command batch owns its allocators, command buffers and recording versions. A batch recording lease rejects
 concurrent recording of the same batch; independent batches have separate allocators and per-pass scratch. The caller

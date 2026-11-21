@@ -34,7 +34,7 @@ namespace lux::render
     {
         enum class EMeshEffect { VISIBILITY, GBUFFER, FORWARD, DEPTH_ONLY, SHADOW };
 
-        class PrepareMeshVisibility final : public InstanceData
+        class PrepareMeshVisibility final
         {
         public:
             struct ShadowConfiguration final
@@ -62,7 +62,7 @@ namespace lux::render
                 detail::ShadowProjectionSettings settings;
             };
 
-            struct ResolvedInputs final
+            struct LinkedData final
             {
                 StorageSnapshotSlot<MeshInstanceSnapshot> instances;
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
@@ -73,7 +73,7 @@ namespace lux::render
                 std::optional<ShadowInputs> shadow;
             };
 
-            [[nodiscard]] static RenderResult<ResolvedInputs>
+            [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
                 const auto instances = context.resolveStorageSnapshot<MeshInstanceSnapshot>(config.instances);
@@ -118,90 +118,106 @@ namespace lux::render
                     if (!resolved) return cxx::unexpected(resolved.error());
                     surface = *resolved;
                 }
-                return ResolvedInputs{
+                return LinkedData{
                     *instances, view, {*groups, *candidates, *chunks, *dispatch},
                     *visible, *commands, config.dispatch_limit, surface, shadow
                 };
             }
 
-            [[nodiscard]] static InstanceDataResult
-            instantiate(const ResolvedInputs& inputs, InstanceInstantiationContext&) noexcept
+            struct Workspace final
             {
-                return std::make_unique<PrepareMeshVisibility>(inputs);
+                detail::MeshGrouping grouping;
+                std::optional<detail::MeshSurfaceStream> surface;
+                std::optional<detail::ShadowProjectionData> shadow;
+                std::vector<std::uint32_t> previous_slots, current_slots;
+                std::optional<std::uint64_t> selection;
+            };
+
+            static RenderResult<std::unique_ptr<Workspace>>
+            createWorkspace(const LinkedData& inputs, InstanceInstantiationContext&) noexcept
+            {
+                auto workspace = std::make_unique<Workspace>();
+                if (inputs.surface) workspace->surface.emplace(*inputs.surface);
+                if (inputs.shadow) workspace->shadow.emplace(inputs.shadow->settings);
+                return workspace;
             }
 
-            explicit PrepareMeshVisibility(ResolvedInputs inputs) noexcept : inputs_(inputs)
+            static void settleRasterPrograms(const LinkedData&, bool adopted, Workspace& workspace) noexcept
             {
-                if (inputs.surface) surface_.emplace(*inputs.surface);
-                if (inputs.shadow) shadow_.emplace(inputs.shadow->settings);
+                if (workspace.surface) workspace.surface->settlePrograms(adopted);
             }
 
-            void settleRasterPrograms(bool adopted) noexcept override
+            static RenderResult<void>
+            selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace& workspace) noexcept
             {
-                if (surface_) surface_->settlePrograms(adopted);
-            }
-
-            RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept override
-            {
-                if (!surface_) return cxx::unexpected(RenderError{kFrameContract});
-                const auto instances = selection.readStorage(inputs_.instances);
+                if (!workspace.surface) return cxx::unexpected(RenderError{kFrameContract});
+                const auto instances = selection.readStorage(linked.instances);
                 if (!instances) return cxx::unexpected(instances.error());
-                return surface_->selectPrograms(selection, instances->value.get());
+                return workspace.surface->selectPrograms(selection, instances->value.get());
             }
 
-            RenderResult<void> prepare(FramePreparation& frame) noexcept override
+            static RenderResult<void>
+            prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
             {
                 const auto view = frame.viewParameters();
                 if (!view) return cxx::unexpected(view.error());
-                if (shadow_)
+                if (workspace.shadow)
                 {
-                    const auto lights = frame.readStorage(inputs_.shadow->lights);
+                    const auto lights = frame.readStorage(linked.shadow->lights);
                     if (!lights) return cxx::unexpected(lights.error());
                     const auto& value = view->value;
                     const detail::ShadowCamera camera{
                         value.inverse_view_projection, value.position_near, value.direction_far
                     };
-                    const auto projected = shadow_->select(camera, lights->value.get());
+                    const auto projected = workspace.shadow->select(camera, lights->value.get());
                     if (!projected) return cxx::unexpected(projected.error());
-                    grouping_.setViewCount(static_cast<std::uint32_t>(shadow_->views().size()));
+                    workspace.grouping.setViewCount(static_cast<std::uint32_t>(workspace.shadow->views().size()));
                     const std::array payloads{
-                        std::as_bytes(shadow_->views()), std::as_bytes(shadow_->slices()), shadow_->mappings()
+                        std::as_bytes(workspace.shadow->views()),
+                        std::as_bytes(workspace.shadow->slices()),
+                        workspace.shadow->mappings()
                     };
                     for (std::size_t i = 0; i < payloads.size(); ++i)
                     {
-                        const auto written = frame.writeBuffer(inputs_.shadow->uploads[i], payloads[i], shadow_->revision());
+                        const auto written = frame.writeBuffer(
+                            linked.shadow->uploads[i], payloads[i], workspace.shadow->revision()
+                        );
                         if (!written) return written;
                     }
                 }
                 else
                 {
-                    auto constants = frame.write(*inputs_.view, {view->value.view, view->value.projection});
+                    auto constants = frame.write(*linked.view, {view->value.view, view->value.projection});
                     if (!constants) return constants;
                 }
-                const auto selected = frame.readStorage(inputs_.instances);
+                const auto selected = frame.readStorage(linked.instances);
                 if (!selected) return cxx::unexpected(selected.error());
                 const auto& snapshot = selected->value.get();
-                if (selection_ != selected->revision)
+                if (workspace.selection != selected->revision)
                 {
-                    updateGroups(snapshot);
-                    selection_ = selected->revision;
+                    updateGroups(snapshot, workspace);
+                    workspace.selection = selected->revision;
                 }
-                if (auto packed = grouping_.pack(&snapshot, lookupGeometry, inputs_.dispatch_limit); !packed)
-                    return packed;
-                const auto payloads = grouping_.uploads();
+                auto packed = workspace.grouping.pack(&snapshot, lookupGeometry, linked.dispatch_limit);
+                if (!packed) return packed;
+                const auto payloads = workspace.grouping.uploads();
                 for (std::size_t i = 0; i < payloads.size(); ++i)
                 {
-                    if (auto written = frame.writeBuffer(inputs_.uploads[i], payloads[i], grouping_.revision()); !written)
-                        return written;
+                    auto written = frame.writeBuffer(linked.uploads[i], payloads[i], workspace.grouping.revision());
+                    if (!written) return written;
                 }
-                if (auto sized = frame.sizeBuffer(inputs_.visible, grouping_.visibleBytes()); !sized) return sized;
+                auto sized = frame.sizeBuffer(linked.visible, workspace.grouping.visibleBytes());
+                if (!sized) return sized;
                 auto commands = frame.sizeBuffer(
-                    inputs_.commands, grouping_.indirectStreamCount() * sizeof(nri::DrawIndexedDesc)
+                    linked.commands, workspace.grouping.indirectStreamCount() * sizeof(nri::DrawIndexedDesc)
                 );
                 if (!commands) return commands;
-                if (shadow_ && surface_)
-                    return surface_->prepareShadow(frame, grouping_.source(), shadow_->views(), shadow_->rasterStates());
-                return surface_ ? surface_->prepare(frame, grouping_.source(), view->value) : RenderResult<void>{};
+                if (workspace.shadow && workspace.surface)
+                    return workspace.surface->prepareShadow(
+                        frame, workspace.grouping.source(), workspace.shadow->views(), workspace.shadow->rasterStates()
+                    );
+                if (workspace.surface) return workspace.surface->prepare(frame, workspace.grouping.source(), view->value);
+                return {};
             }
 
         private:
@@ -219,10 +235,10 @@ namespace lux::render
                 return section->arena;
             }
 
-            void updateGroups(const MeshInstanceSnapshot& snapshot) noexcept
+            static void updateGroups(const MeshInstanceSnapshot& snapshot, Workspace& workspace) noexcept
             {
-                current_slots_.clear();
-                current_slots_.reserve(snapshot.instances.size());
+                workspace.current_slots.clear();
+                workspace.current_slots.reserve(snapshot.instances.size());
                 for (const auto& instance : snapshot.instances)
                 {
                     if (!instance.render_enabled) continue;
@@ -230,25 +246,18 @@ namespace lux::render
                     const detail::MeshGrouping::Selection selected{
                         instance.mesh, instance.material, instance.program, instance.submesh
                     };
-                    grouping_.update(slot, &selected);
-                    current_slots_.push_back(slot);
+                    workspace.grouping.update(slot, &selected);
+                    workspace.current_slots.push_back(slot);
                 }
-                std::ranges::sort(current_slots_);
-                auto active = current_slots_.begin();
-                for (auto slot : previous_slots_)
+                std::ranges::sort(workspace.current_slots);
+                auto active = workspace.current_slots.begin();
+                for (auto slot : workspace.previous_slots)
                 {
-                    while (active != current_slots_.end() && *active < slot) ++active;
-                    if (active == current_slots_.end() || *active != slot) grouping_.update(slot, nullptr);
+                    while (active != workspace.current_slots.end() && *active < slot) ++active;
+                    if (active == workspace.current_slots.end() || *active != slot) workspace.grouping.update(slot, nullptr);
                 }
-                previous_slots_.swap(current_slots_);
+                workspace.previous_slots.swap(workspace.current_slots);
             }
-
-            ResolvedInputs inputs_;
-            detail::MeshGrouping grouping_;
-            std::optional<detail::MeshSurfaceStream> surface_;
-            std::optional<detail::ShadowProjectionData> shadow_;
-            std::vector<std::uint32_t> previous_slots_, current_slots_;
-            std::uint64_t selection_ = 0;
         };
 
         struct MeshVisibilityConfiguration final
@@ -530,7 +539,7 @@ namespace lux::render
             auto value = ConfigValue::make(config);
             if (!value) return cxx::unexpected(value.error());
             if (auto prepared = context.addPreparation({
-                InstanceDataFactory::make<PrepareMeshVisibility>(), std::move(*value), {}, {}, std::move(inline_blocks),
+                ProducerFactory::make<PrepareMeshVisibility>(), std::move(*value), {}, {}, std::move(inline_blocks),
                 std::move(producer_passes), std::move(prepared_buffers), std::move(storage_inputs),
                 std::move(program_inputs)
             }); !prepared)

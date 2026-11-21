@@ -81,8 +81,8 @@ foreach(header IN ITEMS
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
     extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/Diagnostics
-    extensions/execution/GraphPreparation extensions/execution/InstanceData
-    extensions/execution/InstanceDataFactory extensions/execution/InstanceDataPrototype extensions/execution/RasterStream
+    extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
+    extensions/execution/ProducerFactory extensions/execution/LinkedProducer extensions/execution/RasterStream
     extensions/execution/PreparedCpuValue
     extensions/resource/ReplicaMutation extensions/resource/ResourceCreateContext
 )

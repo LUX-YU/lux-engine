@@ -182,7 +182,7 @@ namespace lux::render::detail
     {
         const VisibilityViewConstants constants{view.view, view.projection};
         const RasterState state{{view.viewport[0], view.viewport[1], view.viewport[2], view.viewport[3]}};
-        return prepareSections(frame, source, std::span{&constants, 1}, std::span{&state, 1}, false);
+        return prepareSections(frame, source, {std::span{&constants, 1}, std::span{&state, 1}, false});
     }
 
     RenderResult<void> MeshSurfaceStream::prepareShadow(
@@ -193,20 +193,17 @@ namespace lux::render::detail
         shadow_constants_.clear();
         shadow_constants_.reserve(views.size());
         for (const auto& view : views) shadow_constants_.push_back({kIdentityTransform, view.world_to_clip});
-        return prepareSections(frame, source, shadow_constants_, states, true);
+        return prepareSections(frame, source, {shadow_constants_, states, true});
     }
 
-    RenderResult<void> MeshSurfaceStream::prepareSections(
-        FramePreparation& frame, const MeshDrawGroupSource& source, std::span<const VisibilityViewConstants> constants,
-        std::span<const RasterState> states, bool depth_bias
+    RenderResult<void>
+    MeshSurfaceStream::prepareSections(
+        FramePreparation& frame, const MeshDrawGroupSource& source, SectionInputs input
     ) noexcept
     {
-        draws_.clear();
-        bindings_.clear();
         vertices_.clear();
         groups_.clear();
-        sections_.clear();
-        const bool invalid_views = constants.size() != source.view_count || states.size() != source.view_count;
+        const bool invalid_views = input.constants.size() != source.view_count || input.states.size() != source.view_count;
         if (invalid_views) return cxx::unexpected(RenderError{kFrameContract});
         if (!selected_programs_) return cxx::unexpected(RenderError{kFrameContract});
         for (const auto& [index, material] : selected_programs_->materials)
@@ -228,10 +225,58 @@ namespace lux::render::detail
             if (!mesh) return cxx::unexpected(mesh.error());
             vertices_.push_back({0, mesh->vertices});
             groups_.push_back({
-                *mesh, selected->second.first, group.gpu_index, group.record.visible_offset, group.record.visible_stride
+                {group.mesh, group.program, group.generation, selected->second.first, group.gpu_index,
+                    group.record.visible_offset, group.record.visible_stride},
+                *mesh
             });
         }
-        for (std::uint32_t view = 0; view < source.view_count; ++view)
+        // The runtime stream has one revision for its entire ordered program table.
+        std::uint64_t programs = 0;
+        if (!groups_.empty())
+        {
+            auto selected = frame.rasterProgram(inputs_.stream, groups_.front().layout.first_program);
+            if (!selected) return cxx::unexpected(selected.error());
+            programs = selected->revision;
+        }
+        const LayoutVersion version{source.revision, programs, source.view_count};
+        const bool reuse = layout_version_ == version &&
+            std::ranges::equal(groups_, layout_groups_, {}, &SelectedGroup::layout);
+        if (!reuse)
+        {
+            layout_version_.reset();
+            auto built = buildLayout(frame, source.view_count);
+            if (!built) return built;
+            layout_groups_.clear();
+            layout_groups_.reserve(groups_.size());
+            for (const auto& group : groups_) layout_groups_.push_back(group.layout);
+            layout_version_ = version;
+        }
+
+        // Geometry selections belong to this preparation, even when the sorted draw layout is reusable.
+        for (auto& draw : draws_)
+        {
+            auto& index = *std::get<RasterStreamIndirect>(draw.draw).index;
+            const auto& geometry = groups_[draw.vertices.first].geometry;
+            index = {geometry.indices, geometry.index_type, ERasterIndexOrigin::MESH_ARENA};
+        }
+        for (auto& section : sections_)
+        {
+            const auto& state = input.states[section.layer];
+            section.viewport = state.viewport;
+            if (input.depth_bias) section.depth_bias = RasterDepthBias{state.depth_bias_constant, state.depth_bias_slope};
+            else section.depth_bias.reset();
+        }
+        return frame.setRasterStream(
+            inputs_.stream, {draws_, bindings_, vertices_, std::as_bytes(input.constants), sections_}
+        );
+    }
+
+    RenderResult<void> MeshSurfaceStream::buildLayout(FramePreparation& frame, std::uint32_t view_count) noexcept
+    {
+        draws_.clear();
+        bindings_.clear();
+        sections_.clear();
+        for (std::uint32_t view = 0; view < view_count; ++view)
         {
             const auto first = static_cast<std::uint32_t>(draws_.size());
             const auto constant_offset = view * static_cast<std::uint32_t>(sizeof(VisibilityViewConstants));
@@ -239,7 +284,7 @@ namespace lux::render::detail
             {
                 if (bindings_.size() > kGraphInvalidIndex - kMeshWindingCount * inputs_.arguments.size())
                     return cxx::unexpected(RenderError{kDeviceCapacity});
-                const auto& group = groups_[vertex];
+                const auto& group = groups_[vertex].layout;
                 for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                 {
                     auto program = frame.rasterProgram(inputs_.stream, group.first_program + winding);
@@ -258,15 +303,13 @@ namespace lux::render::detail
                         inputs_.buffers[kMeshRasterMemberInput], inputs_.shared_members ? 0 : member_offset,
                         inputs_.shared_members ? RasterBufferSlice::whole : stride
                     }});
-                    const auto command = std::uint64_t(group.gpu_index) * source.view_count * kMeshWindingCount + stream;
+                    const auto command = std::uint64_t(group.gpu_index) * view_count * kMeshWindingCount + stream;
                     constexpr auto indirect_bytes = sizeof(nri::DrawIndexedDesc);
                     draws_.push_back({
                         *program, {binding, 4}, {vertex, 1}, {constant_offset, sizeof(VisibilityViewConstants)},
                         RasterStreamIndirect{
                             {inputs_.buffers[kMeshRasterIndirectInput], command * indirect_bytes, indirect_bytes}, {},
-                            RasterStreamIndexBinding{
-                                group.geometry.indices, group.geometry.index_type, ERasterIndexOrigin::MESH_ARENA
-                            }
+                            RasterStreamIndexBinding{}
                         }
                     });
                 }
@@ -276,12 +319,8 @@ namespace lux::render::detail
             {
                 return std::pair{draw.program.index, std::get<RasterStreamIndirect>(draw.draw).arguments.offset};
             });
-            const auto& state = states[view];
-            auto& section = sections_.emplace_back(
-                RasterStreamRange{first, static_cast<std::uint32_t>(draws.size())}, view, state.viewport
-            );
-            if (depth_bias) section.depth_bias = RasterDepthBias{state.depth_bias_constant, state.depth_bias_slope};
+            sections_.push_back({{first, static_cast<std::uint32_t>(draws.size())}, view});
         }
-        return frame.setRasterStream(inputs_.stream, {draws_, bindings_, vertices_, std::as_bytes(constants), sections_});
+        return {};
     }
 }

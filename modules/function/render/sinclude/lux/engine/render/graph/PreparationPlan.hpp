@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/InstanceDataPrototype.hpp>
+#include <lux/engine/render/extensions/execution/LinkedProducer.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <vector>
 
@@ -14,7 +14,7 @@ namespace lux::render::detail
 
     struct LinkedPreparationProducer final
     {
-        InstanceDataPrototype prototype;
+        LinkedProducer prototype;
         std::vector<std::uint32_t> inputs;
         std::vector<std::uint32_t> outputs;
         std::vector<LinkedInlineBlock> inline_blocks;

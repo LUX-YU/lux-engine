@@ -56,6 +56,7 @@ namespace lux::render::detail
 
         [[nodiscard]] static RenderResult<Inputs> resolve(const Configuration&, InstanceLinkContext&) noexcept;
         explicit MeshSurfaceStream(const Inputs& inputs) noexcept : inputs_(inputs) {}
+        MeshSurfaceStream(const Inputs&&) = delete;
         [[nodiscard]] RenderResult<void> selectPrograms(RasterProgramSelection&, const MeshInstanceSnapshot&) noexcept;
         void settlePrograms(bool adopted) noexcept;
         [[nodiscard]] RenderResult<void> prepare(
@@ -73,16 +74,41 @@ namespace lux::render::detail
             bool reads_material;
         };
 
-        struct SelectedGroup final
+        struct GroupLayout final
         {
-            RasterMeshGeometry geometry;
+            MeshId mesh;
+            MaterialProgramId program;
+            std::uint64_t generation;
             std::uint32_t first_program, gpu_index, visible_offset, visible_stride;
+            bool operator==(const GroupLayout&) const noexcept = default;
         };
 
-        [[nodiscard]] RenderResult<void> prepareSections(
-            FramePreparation&, const MeshDrawGroupSource&, std::span<const VisibilityViewConstants>,
-            std::span<const RasterState>, bool depth_bias
-        ) noexcept;
+        struct SelectedGroup final
+        {
+            GroupLayout layout;
+            RasterMeshGeometry geometry;
+        };
+
+        struct SectionInputs final
+        {
+            std::span<const VisibilityViewConstants> constants;
+            std::span<const RasterState> states;
+            bool depth_bias;
+        };
+
+        struct LayoutVersion final
+        {
+            std::uint64_t groups, programs;
+            std::uint32_t views;
+            bool operator==(const LayoutVersion&) const noexcept = default;
+        };
+
+        [[nodiscard]] RenderResult<void>
+        prepareSections(FramePreparation&, const MeshDrawGroupSource&, SectionInputs) noexcept;
+        [[nodiscard]] RenderResult<void> buildLayout(FramePreparation&, std::uint32_t view_count) noexcept;
+
+        std::optional<LayoutVersion> layout_version_;
+        std::vector<GroupLayout> layout_groups_;
 
         using GroupKey = std::pair<MeshId, MaterialProgramId>;
         struct ProgramSelectionState final
@@ -92,7 +118,7 @@ namespace lux::render::detail
             std::size_t program_count = 0;
         };
 
-        Inputs inputs_;
+        const Inputs& inputs_;
         std::optional<ProgramSelectionState> selected_programs_, pending_programs_;
         std::vector<RasterStreamDraw> draws_;
         std::vector<RasterStreamBinding> bindings_;

@@ -100,7 +100,7 @@ namespace lux::render
             }
         };
 
-        class LightingPreparation final : public InstanceData
+        class LightingPreparation final
         {
         public:
             struct ClusterConfiguration final
@@ -127,16 +127,16 @@ namespace lux::render
                 InlineConstantWriter<detail::LightingConstants> writer;
             };
 
-            struct ResolvedInputs final
+            struct LinkedData final
             {
                 std::optional<LightingWriter> lighting;
                 std::optional<ClusterWriter> cluster;
             };
 
-            [[nodiscard]] static RenderResult<ResolvedInputs>
+            [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
-                ResolvedInputs inputs;
+                LinkedData inputs;
                 if (config.lighting)
                 {
                     auto state = context.resolveNodeState<LightingState>();
@@ -154,37 +154,28 @@ namespace lux::render
                 return inputs;
             }
 
-            [[nodiscard]] static InstanceDataResult
-            instantiate(const ResolvedInputs& inputs, InstanceInstantiationContext&) noexcept
-            {
-                return std::make_unique<LightingPreparation>(inputs);
-            }
+            struct Workspace final {};
 
-            explicit LightingPreparation(ResolvedInputs inputs) noexcept : inputs_(inputs) {}
-
-            RenderResult<void> prepare(FramePreparation& frame) noexcept override
+            static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
             {
                 const auto snapshot = frame.viewParameters();
                 if (!snapshot) return cxx::unexpected(snapshot.error());
                 const auto& view = snapshot->value;
-                if (inputs_.cluster)
+                if (linked.cluster)
                 {
-                    auto constants = inputs_.cluster->constants;
+                    auto constants = linked.cluster->constants;
                     constants.inverse_view_projection = view.inverse_view_projection;
                     constants.position_near = view.position_near;
                     constants.direction_far = view.direction_far;
-                    if (auto written = frame.write(inputs_.cluster->writer, constants); !written) return written;
+                    if (auto written = frame.write(linked.cluster->writer, constants); !written) return written;
                 }
-                if (!inputs_.lighting) return {};
-                const auto state = frame.readNodeState(inputs_.lighting->state);
+                if (!linked.lighting) return {};
+                const auto state = frame.readNodeState(linked.lighting->state);
                 if (!state) return cxx::unexpected(state.error());
-                return frame.write(inputs_.lighting->writer, {
+                return frame.write(linked.lighting->writer, {
                     view.inverse_view_projection, view.position_near, view.viewport, view.background, state->environment
                 });
             }
-
-        private:
-            ResolvedInputs inputs_;
         };
 
         using BundleVersions = std::array<ResourceVersion, 4>;
@@ -344,7 +335,7 @@ namespace lux::render
             auto config = ConfigValue::make(std::move(preparation));
             if (!config) return cxx::unexpected(config.error());
             return context.addPreparation({
-                InstanceDataFactory::make<LightingPreparation>(), std::move(*config), {}, {}, std::move(writers)
+                ProducerFactory::make<LightingPreparation>(), std::move(*config), {}, {}, std::move(writers)
             });
         }
     }

@@ -42,7 +42,7 @@ namespace lux::render::detail
         for (auto index : program_producers_)
         {
             const auto& producer = producers_[index];
-            revisions.push_back(producer.value->rasterProgramRevision());
+            revisions.push_back(producer.workspace.rasterProgramRevision());
             for (auto slot : producer.program_snapshots) revisions.push_back(programStorageRevision(slot));
         }
     }

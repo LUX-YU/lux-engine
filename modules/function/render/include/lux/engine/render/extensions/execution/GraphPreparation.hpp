@@ -1,13 +1,13 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/InstanceDataFactory.hpp>
+#include <lux/engine/render/extensions/execution/ProducerFactory.hpp>
 #include <vector>
 
 namespace lux::render
 {
     struct GraphPreparation final
     {
-        InstanceDataFactory factory;
+        ProducerFactory factory;
         ConfigValue configuration;
         std::vector<GraphCpuDataId> inputs;
         std::vector<GraphCpuDataId> outputs;

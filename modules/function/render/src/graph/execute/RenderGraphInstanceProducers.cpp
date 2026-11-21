@@ -441,7 +441,6 @@ namespace lux::render::detail
         {
             auto data = linked.prototype.instantiate(context);
             if (!data) return cxx::unexpected(data.error());
-            if (!*data) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             auto& producer = producers.emplace_back(
                 std::move(*data), std::vector<PreparedInlineBlock>{},
                 std::vector<OwnedRasterStream>(linked.raster_streams.size()),
@@ -507,7 +506,7 @@ namespace lux::render::detail
     ) const noexcept
     {
         if (revisions.size() != producer.program_snapshots.size() + 1) return false;
-        if (producer.value->rasterProgramRevision() != revisions.front()) return false;
+        if (producer.workspace.rasterProgramRevision() != revisions.front()) return false;
         for (std::size_t i = 0; i < producer.program_snapshots.size(); ++i)
         {
             const auto current = programStorageRevision(producer.program_snapshots[i]);
@@ -541,8 +540,8 @@ namespace lux::render::detail
         ProgramSelection selection{*this, producer};
         bool adopted = false;
         cxx::scope_exit finish_materials([&]() noexcept { selection.finishMaterialInputs(); });
-        cxx::scope_exit settle([&]() noexcept { producer.value->settleRasterPrograms(adopted); });
-        if (auto gathered = producer.value->selectRasterPrograms(selection); !gathered)
+        cxx::scope_exit settle([&]() noexcept { producer.workspace.settleRasterPrograms(adopted); });
+        if (auto gathered = producer.workspace.selectRasterPrograms(selection); !gathered)
             co_return cxx::unexpected(gathered.error());
         std::vector<std::unique_ptr<DynamicRasterPrograms>> candidates;
         candidates.reserve(selection.entries.size());
@@ -643,7 +642,7 @@ namespace lux::render::detail
                 stream.selection = preparation_revision_;
             }
             ProducerFrame frame{*this, linked, producer, static_cast<std::uint32_t>(i), slot};
-            if (auto prepared = producer.value->prepare(frame); !prepared) return prepared;
+            if (auto prepared = producer.workspace.prepare(frame); !prepared) return prepared;
 
             for (auto output : linked.outputs)
             {

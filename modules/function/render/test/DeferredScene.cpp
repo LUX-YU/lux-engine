@@ -1121,6 +1121,40 @@ int main(int argc, char** argv)
         const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
         call<StartRenderJob>(*client, commands, {session, job, target, binding});
+        if (profile_frames)
+        {
+            std::vector<MeshInstanceData> additional;
+            additional.reserve(draw_groups);
+            for (std::uint32_t i = 0; i < draw_groups; ++i)
+            {
+                const auto mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh_data}).mesh;
+                auto value = values[i % values.size()];
+                value.mesh = mesh;
+                additional.push_back(value);
+            }
+            std::vector<MeshInstanceId> members;
+            if (!additional.empty())
+                members = call<InstanceCommands::CreateInstances>(*client, commands, {instances, additional}).instances;
+            std::vector<MeshInstanceUpdate> updates;
+            updates.reserve(members.size());
+            for (std::size_t i = 0; i < members.size(); ++i) updates.push_back({members[i], additional[i]});
+            for (std::uint32_t i = 0; i < profile_warmup; ++i) call<RequestRenderJob>(*client, commands, {job});
+            for (std::uint32_t i = 0; i < profile_frames; ++i)
+            {
+                if (churn_groups && !updates.empty())
+                {
+                    for (auto& update : updates) update.description.render_enabled = !update.description.render_enabled;
+                    call<InstanceCommands::Update>(*client, commands, {instances, updates});
+                }
+                call<RequestRenderJob>(*client, commands, {job});
+            }
+            for (auto member : members) call<InstanceCommands::ReleaseInstance>(*client, commands, {member});
+            for (const auto& value : additional) call<MeshCommands::ReleaseMesh>(*client, commands, {value.mesh});
+            std::printf(
+                "GRAPH SURFACE PROFILE extra_groups=%u warmup=%u frames=%u churn=%u shadow=%u\n",
+                draw_groups, profile_warmup, profile_frames, churn_groups, graph_shadow
+            );
+        }
         const auto first = call<RequestRenderJob>(*client, commands, {job});
         if (graph_shadow)
         {

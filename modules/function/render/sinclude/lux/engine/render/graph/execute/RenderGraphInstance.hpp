@@ -311,7 +311,7 @@ namespace lux::render::detail
 
         struct Producer final
         {
-            std::unique_ptr<::lux::render::InstanceData> value;
+            ProducerWorkspace workspace;
             std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
             std::vector<std::byte> node_state;

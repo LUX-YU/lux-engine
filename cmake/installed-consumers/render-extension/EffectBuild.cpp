@@ -306,34 +306,48 @@ private:
     bool ready_ = true;
 };
 
-struct ClearPreparation final : InstanceData
+struct ClearPreparation final
 {
     using Configuration = GraphStorageSnapshotId;
-    using ResolvedInputs = StorageSnapshotSlot<bool>;
+    using LinkedData = StorageSnapshotSlot<bool>;
 
-    explicit ClearPreparation(ResolvedInputs ready) noexcept : ready_(ready) {}
-
-    static RenderResult<ResolvedInputs> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
+    static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
     {
         return link.resolveStorageSnapshot<bool>(source);
     }
 
-    static InstanceDataResult instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
-    {
-        return std::make_unique<ClearPreparation>(input);
-    }
+    struct Workspace final {};
 
-    RenderResult<void> prepare(FramePreparation& frame) noexcept override
+    static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
     {
-        const auto selected = frame.readStorage(ready_);
+        const auto selected = frame.readStorage(linked);
         if (!selected) return cxx::unexpected(selected.error());
         if (!selected->value.get()) return cxx::unexpected(RenderError{kDeviceBusy});
         return {};
     }
-
-private:
-    ResolvedInputs ready_;
 };
+
+static_assert(PreparationKernel<ClearPreparation>);
+
+template <class W>
+struct WorkspaceProbe
+{
+    using Configuration = ClearPreparation::Configuration;
+    using LinkedData = ClearPreparation::LinkedData;
+    using Workspace = W;
+    static RenderResult<LinkedData> resolve(const Configuration&, InstanceLinkContext&) noexcept;
+    static RenderResult<void> prepare(const LinkedData&, FramePreparation&, Workspace&) noexcept;
+};
+
+static_assert(!PreparationKernel<WorkspaceProbe<int&>>);
+static_assert(!PreparationKernel<WorkspaceProbe<const int>>);
+
+struct InvalidSelection : WorkspaceProbe<int>
+{
+    static void selectRasterPrograms(const LinkedData&, RasterProgramSelection&, Workspace&) noexcept;
+};
+
+static_assert(!PreparationKernel<InvalidSelection>);
 
 static constexpr std::string_view clear_node = "test.effect.clear";
 static constexpr std::string_view clear_resource = "scene_state";
@@ -373,7 +387,7 @@ static void registerClearNode(RenderServer& server)
             "clear", TransferWork{{ClearImage{{{output, 0}}, *color}}}
         ));
         GraphPreparation preparation{
-            InstanceDataFactory::make<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
+            ProducerFactory::make<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
             {cleared.pass}, {}, {state}
         };
         if (auto added = context.addPreparation(std::move(preparation)); !added) return added;

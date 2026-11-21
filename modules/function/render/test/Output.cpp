@@ -1436,52 +1436,60 @@ struct RetirementFence final
     enum class ETestProducerResult : std::uint8_t { SUCCESS, FAIL_AFTER_WRITE, OMIT_OUTPUT };
     std::atomic<ETestProducerResult> producer_result{ETestProducerResult::SUCCESS};
     std::atomic_uint source_links{}, sink_links{}, source_instances{}, sink_preparations{};
+    std::atomic_uint source_workspaces_destroyed{};
+    std::atomic<const void*> source_linked_inputs{};
+    std::atomic_bool reject_sink_workspace{};
     std::weak_ptr<const int> producer_source_lifetime;
     std::atomic_bool reject_sink_after_link{};
 
-    class TestValueProducer final : public lux::render::InstanceData
+    class TestValueProducer final
     {
     public:
         using Configuration = ProducerSourceConfig;
-        using ResolvedInputs = PreparedDataSlot<std::uint32_t>;
+        using LinkedData = PreparedDataSlot<std::uint32_t>;
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
         {
             ++source_links;
             return link.resolveCpuData<std::uint32_t>(config.output);
         }
 
-        static InstanceDataResult instantiate(const ResolvedInputs& output, InstanceInstantiationContext&) noexcept
+        struct Workspace final
         {
+            std::uint64_t view_revision = 0;
+
+            ~Workspace() noexcept { ++source_workspaces_destroyed; }
+        };
+
+        static RenderResult<std::unique_ptr<Workspace>>
+        createWorkspace(const LinkedData& linked, InstanceInstantiationContext&) noexcept
+        {
+            const auto* previous = source_linked_inputs.exchange(&linked);
+            CHECK(!previous || previous == &linked);
             CHECK(producer_source_lifetime.expired());
             ++source_instances;
-            return std::make_unique<TestValueProducer>(output);
+            return std::make_unique<Workspace>();
         }
 
-        explicit TestValueProducer(ResolvedInputs output) noexcept : output_(output) {}
-
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void>
+        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
         {
             const auto selected = producer_result.exchange(ETestProducerResult::SUCCESS);
             if (selected == ETestProducerResult::OMIT_OUTPUT) return {};
             if (selected == ETestProducerResult::FAIL_AFTER_WRITE)
             {
-                if (auto staged = frame.publish(output_, 0xbad0bad0u); !staged) return staged;
+                if (auto staged = frame.publish(linked, 0xbad0bad0u); !staged) return staged;
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             }
             const auto view = frame.viewParameters();
             if (!view) return lux::cxx::unexpected(view.error());
-            CHECK(view->revision > view_revision_);
-            view_revision_ = view->revision;
-            return frame.publish(output_, std::bit_cast<std::uint32_t>(view->value.background[0]));
+            CHECK(view->revision > workspace.view_revision);
+            workspace.view_revision = view->revision;
+            return frame.publish(linked, std::bit_cast<std::uint32_t>(view->value.background[0]));
         }
-
-    private:
-        ResolvedInputs output_;
-        std::uint64_t view_revision_ = 0;
     };
 
-    class TestInlineProducer final : public lux::render::InstanceData
+    class TestInlineProducer final
     {
     public:
         struct Configuration final
@@ -1490,13 +1498,13 @@ struct RetirementFence final
             GraphPassId pass;
         };
 
-        struct ResolvedInputs final
+        struct LinkedData final
         {
             PreparedDataSlot<std::uint32_t> input;
             InlineConstantWriter<ProducerConstants> constants;
         };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
         {
             ++sink_links;
             auto input = link.resolveCpuData<std::uint32_t>(config.input);
@@ -1504,30 +1512,31 @@ struct RetirementFence final
             auto constants = link.resolveInlineConstants<ProducerConstants>(config.pass);
             if (!constants) return lux::cxx::unexpected(constants.error());
             if (reject_sink_after_link.exchange(false)) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return ResolvedInputs{*input, *constants};
+            return LinkedData{*input, *constants};
         }
 
-        static InstanceDataResult
-        instantiate(const ResolvedInputs& inputs, InstanceInstantiationContext&) noexcept
+        struct Workspace final
         {
-            return std::make_unique<TestInlineProducer>(inputs);
+            std::uint64_t revision = 0;
+        };
+
+        static RenderResult<std::unique_ptr<Workspace>>
+        createWorkspace(const LinkedData&, InstanceInstantiationContext&) noexcept
+        {
+            if (reject_sink_workspace.exchange(false)) return lux::cxx::unexpected(RenderError{kDeviceCapacity});
+            return std::make_unique<Workspace>();
         }
 
-        explicit TestInlineProducer(ResolvedInputs inputs) noexcept : inputs_(inputs) {}
-
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void>
+        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
         {
-            auto value = frame.read(inputs_.input);
+            auto value = frame.read(linked.input);
             if (!value) return lux::cxx::unexpected(value.error());
-            CHECK(value->revision > revision_);
-            revision_ = value->revision;
+            CHECK(value->revision > workspace.revision);
+            workspace.revision = value->revision;
             ++sink_preparations;
-            return frame.write(inputs_.constants, ProducerConstants{value->value});
+            return frame.write(linked.constants, ProducerConstants{value->value});
         }
-
-    private:
-        ResolvedInputs inputs_;
-        std::uint64_t revision_ = 0;
     };
 
     struct UniformNodeState final
@@ -1635,7 +1644,7 @@ struct RetirementFence final
         ));
 
         CHECK(context.addPreparation({
-            InstanceDataFactory::make<TestInlineProducer>(),
+            ProducerFactory::make<TestInlineProducer>(),
             take(ConfigValue::make(TestInlineProducer::Configuration{slot, produced.pass})),
             {slot}, {}, {produced.pass}
         }));
@@ -1644,7 +1653,7 @@ struct RetirementFence final
             auto lifetime = std::make_shared<const int>(0);
             if (args.empty()) producer_source_lifetime = lifetime;
             CHECK(context.addPreparation({
-                InstanceDataFactory::make<TestValueProducer>(),
+                ProducerFactory::make<TestValueProducer>(),
                 take(ConfigValue::make(ProducerSourceConfig{slot, std::move(lifetime)})), {}, {slot}, {}, {companion.pass}
             }));
         }
@@ -1655,7 +1664,7 @@ struct RetirementFence final
             const auto second_dead = take(context.declareCpuData<std::uint32_t>());
             dead_inputs.push_back(second_dead);
             CHECK(context.addPreparation({
-                InstanceDataFactory::make<TestValueProducer>(), take(ConfigValue::make(ProducerSourceConfig{})),
+                ProducerFactory::make<TestValueProducer>(), take(ConfigValue::make(ProducerSourceConfig{})),
                 {dead}, {second_dead}, {}
             }));
         }
@@ -1663,7 +1672,7 @@ struct RetirementFence final
         const auto dormant_passes = args == "joint-closure" ?
             std::vector{seeded.pass, dormant.pass} : std::vector{dormant.pass};
         CHECK(context.addPreparation({
-            InstanceDataFactory::make<TestValueProducer>(), take(ConfigValue::make(ProducerSourceConfig{})),
+            ProducerFactory::make<TestValueProducer>(), take(ConfigValue::make(ProducerSourceConfig{})),
             std::move(dead_inputs), {args == "duplicate" ? slot : dead}, {}, dormant_passes
         }));
         return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
@@ -1690,7 +1699,7 @@ struct RetirementFence final
     constexpr GraphBufferRange stream_count_word{8, 4};
     constexpr std::uint32_t stream_indexed_stride = 24;
 
-    class TestRasterProducer final : public lux::render::InstanceData
+    class TestRasterProducer final
     {
     public:
         struct Configuration final
@@ -1701,7 +1710,7 @@ struct RetirementFence final
             std::uint32_t sampler, comparison_sampler;
         };
 
-        struct ResolvedInputs final
+        struct LinkedData final
         {
             DrawStreamSlot stream;
             rdesc::EShaderTarget target;
@@ -1711,7 +1720,7 @@ struct RetirementFence final
             std::uint32_t tint_argument, tiles_argument, sampler_argument;
         };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
             auto stream = link.resolveDrawStream(input.pass);
             auto index = link.resolveRasterBuffer(input.pass, input.indices);
@@ -1729,33 +1738,31 @@ struct RetirementFence final
             const bool missing_argument = !tint_argument || !tiles_argument || !sampler_argument;
             if (!stream || missing_buffer || missing_texture_binding || missing_argument)
                 return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return ResolvedInputs{
+            return LinkedData{
                 *stream, input.target, *index, *uniform, *arguments, *count, *image, *sampler, *comparison,
                 *tint_argument, *tiles_argument, *sampler_argument
             };
         }
 
-        static InstanceDataResult
-        instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
+        struct Workspace final
         {
-            return std::make_unique<TestRasterProducer>(input);
-        }
+            std::optional<RasterProgramSlot> first_slot;
+        };
 
-        explicit TestRasterProducer(ResolvedInputs selection) noexcept : selection_(selection) {}
+        static std::uint64_t rasterProgramRevision(const LinkedData&, const Workspace&) noexcept { return stream_program_revision.load(); }
 
-        std::uint64_t rasterProgramRevision() const noexcept override { return stream_program_revision.load(); }
-
-        RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept override
+        static RenderResult<void>
+        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace&) noexcept
         {
             const auto mode = stream_programs.load();
             ParameterBinding parameters;
             parameters.setInlineConstant(ProducerConstants{0});
-            auto uniform = streamShader(selection_.target, kEffectStreamUniform);
+            auto uniform = streamShader(linked.target, kEffectStreamUniform);
             if (mode == ETestStreamPrograms::INVALID)
-                uniform.target = selection_.target == rdesc::EShaderTarget::SPIRV ?
+                uniform.target = linked.target == rdesc::EShaderTarget::SPIRV ?
                     rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
             std::vector<rdesc::ShaderProgramArtifact> shaders;
-            shaders.push_back(streamShader(selection_.target, kEffectStreamInline));
+            shaders.push_back(streamShader(linked.target, kEffectStreamInline));
             shaders.push_back(std::move(uniform));
             std::array programs{
                 RuntimeRasterProgram{{0}, {}, std::move(parameters)},
@@ -1767,19 +1774,20 @@ struct RetirementFence final
                 for (auto& program : programs) program.graphics.front_counter_clockwise = false;
                 std::swap(programs[0], programs[1]);
             }
-            return selection.setPrograms(selection_.stream, std::move(shaders), programs);
+            return selection.setPrograms(linked.stream, std::move(shaders), programs);
         }
 
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void>
+        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
         {
             const auto mode = stream_mode.exchange(ETestStreamMode::VALID);
-            if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(selection_.stream, {});
+            if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(linked.stream, {});
             const bool reversed = stream_programs.load() == ETestStreamPrograms::REVERSED;
-            auto first_program = frame.rasterProgram(selection_.stream, reversed ? 1 : 0);
-            auto second_program = frame.rasterProgram(selection_.stream, reversed ? 0 : 1);
+            auto first_program = frame.rasterProgram(linked.stream, reversed ? 1 : 0);
+            auto second_program = frame.rasterProgram(linked.stream, reversed ? 0 : 1);
             if (!first_program || !second_program) return lux::cxx::unexpected(RenderError{kFrameContract});
-            if (!first_slot_) first_slot_ = *first_program;
-            if (mode == ETestStreamMode::OLD_PROGRAM_SLOT) first_program = *first_slot_;
+            if (!workspace.first_slot) workspace.first_slot = *first_program;
+            if (mode == ETestStreamMode::OLD_PROGRAM_SLOT) first_program = *workspace.first_slot;
             const std::array values{ProducerConstants{241}, ProducerConstants{83}};
             constexpr GraphImageRange first_tile{1, 0, 1, 0, 1};
             constexpr GraphImageRange second_tile{1, 1, 1, 1, 1};
@@ -1788,16 +1796,16 @@ struct RetirementFence final
             const auto first_range = mode == ETestStreamMode::BAD_IMAGE ? outside_envelope :
                 swap_tiles ? second_tile : first_tile;
             const auto second_range = swap_tiles ? first_tile : second_tile;
-            const auto sampler = mode == ETestStreamMode::BAD_SAMPLER ? selection_.comparison_sampler :
-                selection_.sampler;
+            const auto sampler = mode == ETestStreamMode::BAD_SAMPLER ? linked.comparison_sampler :
+                linked.sampler;
             // Physical descriptor order is compiler-owned. Publish in a different order.
             const std::array bindings{
-                RasterStreamBinding{selection_.tiles_argument, RasterImageSlice{selection_.image, second_range},
+                RasterStreamBinding{linked.tiles_argument, RasterImageSlice{linked.image, second_range},
                     mode == ETestStreamMode::DUPLICATE_ELEMENT ? 0u : 1u},
-                RasterStreamBinding{selection_.sampler_argument, sampler},
-                RasterStreamBinding{selection_.tint_argument,
-                    RasterBufferSlice{selection_.uniform, 0, mode == ETestStreamMode::BAD_BINDING ? 257u : 256u}},
-                RasterStreamBinding{selection_.tiles_argument, RasterImageSlice{selection_.image, first_range}, 0}
+                RasterStreamBinding{linked.sampler_argument, sampler},
+                RasterStreamBinding{linked.tint_argument,
+                    RasterBufferSlice{linked.uniform, 0, mode == ETestStreamMode::BAD_BINDING ? 257u : 256u}},
+                RasterStreamBinding{linked.tiles_argument, RasterImageSlice{linked.image, first_range}, 0}
             };
             const auto offset = mode == ETestStreamMode::BAD_INDEX ? 1u : 0u;
             std::array draws{
@@ -1811,7 +1819,7 @@ struct RetirementFence final
                 },
                 RasterStreamDraw{
                     *second_program, {0, static_cast<std::uint32_t>(bindings.size())}, {}, {},
-                    RasterStreamIndexed{{selection_.indices, offset, 24 - offset}, EIndexType::UINT16, 6}
+                    RasterStreamIndexed{{linked.indices, offset, 24 - offset}, EIndexType::UINT16, 6}
                 }
             };
             const bool use_indirect = swap_tiles || mode == ETestStreamMode::NO_COUNT;
@@ -1825,22 +1833,22 @@ struct RetirementFence final
                 {
                     const auto skip = mode == ETestStreamMode::BAD_COUNT ? 1u : 0u;
                     count = RasterBufferSlice{
-                        selection_.count, stream_count_word.offset + skip, stream_count_word.size - skip
+                        linked.count, stream_count_word.offset + skip, stream_count_word.size - skip
                     };
                 }
                 draws[0].draw = RasterStreamIndirect{
-                    {selection_.arguments, stream_linear_arguments.offset, stream_linear_arguments.size},
+                    {linked.arguments, stream_linear_arguments.offset, stream_linear_arguments.size},
                     count,
                     {},
                     2
                 };
-                auto arguments = selection_.arguments;
-                if (mode == ETestStreamMode::WRONG_INDIRECT_USE) arguments = selection_.uniform;
+                auto arguments = linked.arguments;
+                if (mode == ETestStreamMode::WRONG_INDIRECT_USE) arguments = linked.uniform;
                 const auto shortfall = mode == ETestStreamMode::SHORT_INDIRECT_ARGS ? 4u : 0u;
                 draws[2].draw = RasterStreamIndirect{
                     {arguments, stream_indexed_arguments.offset, stream_indexed_arguments.size - shortfall},
                     count,
-                    RasterStreamIndexBinding{{selection_.indices, 0, 24}, EIndexType::UINT16},
+                    RasterStreamIndexBinding{{linked.indices, 0, 24}, EIndexType::UINT16},
                     2,
                     mode == ETestStreamMode::BAD_INDIRECT_STRIDE ? 18u : stream_indexed_stride
                 };
@@ -1855,14 +1863,10 @@ struct RetirementFence final
                 }
             };
             const auto section_count = mode == ETestStreamMode::MISSING_LAYER ? 1u : 2u;
-            return frame.setRasterStream(selection_.stream, {
+            return frame.setRasterStream(linked.stream, {
                 draws, bindings, {}, std::as_bytes(std::span{values}), std::span{sections}.first(section_count)
             });
         }
-
-    private:
-        ResolvedInputs selection_;
-        std::optional<RasterProgramSlot> first_slot_;
     };
 
     rdesc::ShaderProgramArtifact
@@ -1988,7 +1992,7 @@ struct RetirementFence final
             }}}
         ));
         CHECK(context.addPreparation({
-            InstanceDataFactory::make<TestRasterProducer>(),
+            ProducerFactory::make<TestRasterProducer>(),
             take(ConfigValue::make(TestRasterProducer::Configuration{
                 drawn.pass, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler, comparison_sampler
             })),
@@ -2002,7 +2006,7 @@ struct RetirementFence final
     enum class ELayerBias { VALID, MISSING, NONFINITE, UNDECLARED };
     std::atomic runtime_layer_bias{ELayerBias::VALID};
 
-    class RuntimeLayerProducer final : public lux::render::InstanceData
+    class RuntimeLayerProducer final
     {
     public:
         struct Configuration final
@@ -2012,33 +2016,28 @@ struct RetirementFence final
             bool preserve;
         };
 
-        struct ResolvedInputs final
+        struct LinkedData final
         {
             DrawStreamSlot stream;
             RasterProgramSlot program;
             bool preserve;
         };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
             auto stream = link.resolveDrawStream(input.pass);
             if (!stream) return lux::cxx::unexpected(stream.error());
             auto program = link.resolveRasterProgram(input.pass, input.program);
             if (!program) return lux::cxx::unexpected(program.error());
-            return ResolvedInputs{*stream, *program, input.preserve};
+            return LinkedData{*stream, *program, input.preserve};
         }
 
-        static InstanceDataResult instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
-        {
-            return std::make_unique<RuntimeLayerProducer>(input);
-        }
+        struct Workspace final {};
 
-        explicit RuntimeLayerProducer(ResolvedInputs input) noexcept : input_(input) {}
-
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
         {
             const auto requested = runtime_layer_count.load();
-            const auto count = input_.preserve && runtime_layer_conflict.load() ? requested % 3 + 1 : requested;
+            const auto count = linked.preserve && runtime_layer_conflict.load() ? requested % 3 + 1 : requested;
             constexpr std::array values{ProducerConstants{40}, ProducerConstants{80}, ProducerConstants{120}};
             constexpr std::array biases{RasterDepthBias{1048576}, RasterDepthBias{}, RasterDepthBias{-1048576}};
             std::array<RasterStreamSection, values.size()> sections{};
@@ -2046,9 +2045,9 @@ struct RetirementFence final
             auto layer_sections = std::span{sections}.first(count);
             for (std::uint32_t i = 0; i < layer_sections.size(); ++i)
             {
-                layer_sections[i] = {input_.preserve ? RasterStreamRange{} : RasterStreamRange{i, 1}, i};
+                layer_sections[i] = {linked.preserve ? RasterStreamRange{} : RasterStreamRange{i, 1}, i};
                 const auto selected = runtime_layer_bias.load();
-                if (input_.preserve)
+                if (linked.preserve)
                 {
                     if (selected == ELayerBias::UNDECLARED) layer_sections[i].depth_bias = RasterDepthBias{};
                 }
@@ -2059,18 +2058,15 @@ struct RetirementFence final
                         layer_sections[i].depth_bias->slope = std::numeric_limits<float>::infinity();
                 }
                 draws[i] = {
-                    input_.program, {}, {}, {i * std::uint32_t{sizeof(ProducerConstants)}, sizeof(ProducerConstants)},
+                    linked.program, {}, {}, {i * std::uint32_t{sizeof(ProducerConstants)}, sizeof(ProducerConstants)},
                     DrawVertices{6}
                 };
             }
-            return frame.setRasterStream(input_.stream, {
-                std::span{draws}.first(input_.preserve ? 0 : count),
+            return frame.setRasterStream(linked.stream, {
+                std::span{draws}.first(linked.preserve ? 0 : count),
                 {}, {}, std::as_bytes(std::span{values}), layer_sections
             });
         }
-
-    private:
-        ResolvedInputs input_;
     };
 
     RenderResult<void> buildRuntimeLayersOutput(EffectBuildContext& context, std::string_view) noexcept
@@ -2106,7 +2102,7 @@ struct RetirementFence final
             const auto pass = take(builder.addRasterPass(preserve ? "load dynamic layers" : "draw dynamic layers",
                 std::move(work)));
             CHECK(context.addPreparation({
-                InstanceDataFactory::make<RuntimeLayerProducer>(),
+                ProducerFactory::make<RuntimeLayerProducer>(),
                 take(ConfigValue::make(RuntimeLayerProducer::Configuration{pass.pass, graphics, preserve})),
                 {}, {}, {}, {pass.pass}
             }));
@@ -2710,9 +2706,15 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(source_links.load() == source_before + 1 && sink_links.load() == sink_before + 1);
     CHECK(!source_instances.load() && producer_source_lifetime.expired());
     call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, first_binding});
+    reject_sink_workspace = true;
+    const auto rejected_workspace = call<StartRenderJob>(
+        *client, commands, {device, prepared_peer, producer_peer_target, peer_binding}, false
+    );
+    CHECK(rejected_workspace.error.type == kDeviceCapacity && !reject_sink_workspace.load());
+    CHECK(source_instances.load() == 2 && source_workspaces_destroyed.load() == 1);
     call<StartRenderJob>(*client, commands, {device, prepared_peer, producer_peer_target, peer_binding});
     CHECK(source_links.load() == source_before + 2 && sink_links.load() == sink_before + 2);
-    CHECK(source_instances.load() == 2);
+    CHECK(source_instances.load() == 3 && source_workspaces_destroyed.load() == 1);
     const auto view_schema = call<QueryRenderJobInputLayout>(*client, commands, prepared_job).layout;
     auto packet = take(FrameData::create<std::tuple<ViewParameterResource>>(view_schema));
     auto changed_view = first_view_parameters;
@@ -2739,6 +2741,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(sink_preparations.load() == 3);
     stopAndRemoveJob(*client, commands, prepared_job);
     stopAndRemoveJob(*client, commands, prepared_peer);
+    CHECK(source_workspaces_destroyed.load() == source_instances.load());
     call<RemoveView>(*client, commands, {scene, producer_view});
     call<RemoveView>(*client, commands, {scene, producer_peer_view});
     const auto prepare_deadline = Clock::now() + 10s;
@@ -3215,7 +3218,7 @@ static void preparedBuffers(bool d3d12)
     enum class EPhase { SMALL, GROWN, REPLACEMENT, FAIL_AFTER_WRITE, OMIT, OVERSIZED };
     static std::atomic phase{EPhase::SMALL};
     static std::atomic_uint graph_builds{};
-    class Producer final : public lux::render::InstanceData
+    class Producer final
     {
     public:
         struct Configuration final
@@ -3224,33 +3227,28 @@ static void preparedBuffers(bool d3d12)
             GraphStorageSnapshotId lights;
         };
 
-        struct ResolvedInputs final
+        struct LinkedData final
         {
             PreparedBufferWriter writer;
             StorageSnapshotSlot<ShadowLightSnapshot> lights;
         };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
         {
             auto writer = link.resolvePreparedBuffer(source.destination);
             if (!writer) return lux::cxx::unexpected(writer.error());
             auto lights = link.resolveStorageSnapshot<ShadowLightSnapshot>(source.lights);
             if (!lights) return lux::cxx::unexpected(lights.error());
-            return ResolvedInputs{*writer, *lights};
+            return LinkedData{*writer, *lights};
         }
 
-        static InstanceDataResult instantiate(const ResolvedInputs& inputs, InstanceInstantiationContext&) noexcept
-        {
-            return std::make_unique<Producer>(inputs);
-        }
+        struct Workspace final {};
 
-        explicit Producer(ResolvedInputs inputs) noexcept : inputs_(inputs) {}
-
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
         {
             const auto selected = phase.load();
             if (selected == EPhase::OMIT) return {};
-            const auto lights = frame.readStorage(inputs_.lights);
+            const auto lights = frame.readStorage(linked.lights);
             if (!lights) return lux::cxx::unexpected(lights.error());
             const auto& snapshot = lights->value.get();
             const bool invalid_counts = snapshot.counts != std::array{1u, 0u, 0u} || snapshot.casters.size() != 1;
@@ -3265,18 +3263,15 @@ static void preparedBuffers(bool d3d12)
             grown.back() = marker;
             std::array<std::uint32_t, 257> oversized{};
             if (selected == EPhase::OVERSIZED)
-                return frame.writeBuffer(inputs_.writer, std::as_bytes(std::span{oversized}));
+                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{oversized}));
             if (selected == EPhase::SMALL)
-                return frame.writeBuffer(inputs_.writer, std::as_bytes(std::span{initial}), lights->revision);
+                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), lights->revision);
             const auto revision = lights->revision * 2 + (selected == EPhase::REPLACEMENT);
-            auto written = frame.writeBuffer(inputs_.writer, std::as_bytes(std::span{grown}), revision);
+            auto written = frame.writeBuffer(linked.writer, std::as_bytes(std::span{grown}), revision);
             if (selected == EPhase::FAIL_AFTER_WRITE && written)
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             return written;
         }
-
-    private:
-        ResolvedInputs inputs_;
     };
 
     RenderServerConfig config;
@@ -3317,7 +3312,7 @@ static void preparedBuffers(bool d3d12)
         const auto add_producer = [&]() noexcept -> RenderResult<void>
         {
             return context.addPreparation({
-                InstanceDataFactory::make<Producer>(), take(ConfigValue::make(Producer::Configuration{
+                ProducerFactory::make<Producer>(), take(ConfigValue::make(Producer::Configuration{
                     selected->resource, *lights
                 })),
                 {}, {}, {}, {}, {selected->resource}, {*lights}
@@ -3485,33 +3480,29 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     static std::array<MaterialId, 2> materials;
     static MaterialProgramId selected_material_program;
     static std::atomic_uint selected_texture{};
-    class Producer final : public lux::render::InstanceData
+    class Producer final
     {
     public:
         struct Configuration final { GraphPassId pass; rdesc::EShaderTarget target; bool materials; };
-        struct ResolvedInputs final { DrawStreamSlot stream; rdesc::EShaderTarget target; bool materials; };
+        struct LinkedData final { DrawStreamSlot stream; rdesc::EShaderTarget target; bool materials; };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& input, InstanceLinkContext& context) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& context) noexcept
         {
             auto stream = context.resolveDrawStream(input.pass);
             if (!stream) return lux::cxx::unexpected(stream.error());
-            return ResolvedInputs{*stream, input.target, input.materials};
+            return LinkedData{*stream, input.target, input.materials};
         }
 
-        static InstanceDataResult instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
-        {
-            return std::make_unique<Producer>(input);
-        }
+        struct Workspace final {};
 
-        explicit Producer(ResolvedInputs input) noexcept : input_(input) {}
-
-        RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept override
+        static RenderResult<void>
+        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace&) noexcept
         {
             RuntimeRasterProgram program{{0}};
             std::vector<rdesc::ShaderProgramArtifact> shaders;
-            if (input_.materials)
+            if (linked.materials)
             {
-                auto lease = selection.materialProgram(input_.stream, selected_material_program);
+                auto lease = selection.materialProgram(linked.stream, selected_material_program);
                 if (!lease) return lux::cxx::unexpected(lease.error());
                 const auto* shader = (*lease)->find(rdesc::EMaterialPurpose::FORWARD);
                 CHECK(shader);
@@ -3520,42 +3511,39 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             }
             else
             {
-                shaders.push_back(streamShader(input_.target, kEffectStreamSharedTexture));
+                shaders.push_back(streamShader(linked.target, kEffectStreamSharedTexture));
                 program.parameters.setInlineConstant(TestSharedTextureIndices{});
             }
-            return selection.setPrograms(input_.stream, std::move(shaders), std::span{&program, 1});
+            return selection.setPrograms(linked.stream, std::move(shaders), std::span{&program, 1});
         }
 
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
         {
             const auto index = selected_texture.load();
-            auto program = frame.rasterProgram(input_.stream, 0);
+            auto program = frame.rasterProgram(linked.stream, 0);
             if (!program) return lux::cxx::unexpected(program.error());
-            if (input_.materials)
+            if (linked.materials)
             {
-                auto value = frame.selectMaterial(input_.stream, *program, materials[index]);
+                auto value = frame.selectMaterial(linked.stream, *program, materials[index]);
                 if (!value) return lux::cxx::unexpected(value.error());
-                auto repeated = frame.selectMaterial(input_.stream, *program, materials[index]);
+                auto repeated = frame.selectMaterial(linked.stream, *program, materials[index]);
                 if (!repeated) return lux::cxx::unexpected(repeated.error());
                 const RasterStreamDraw draw{*program, {}, {}, {0, sizeof(*value)}, DrawVertices{12}};
-                return frame.setRasterStream(input_.stream, {
+                return frame.setRasterStream(linked.stream, {
                     std::span{&draw, 1}, {}, {}, std::as_bytes(std::span{&*value, 1})
                 });
             }
             const auto id = textures[index];
-            auto texture = frame.sampleTexture(input_.stream, id);
+            auto texture = frame.sampleTexture(linked.stream, id);
             if (!texture) return lux::cxx::unexpected(texture.error());
-            auto repeated = frame.sampleTexture(input_.stream, id);
+            auto repeated = frame.sampleTexture(linked.stream, id);
             if (!repeated) return lux::cxx::unexpected(repeated.error());
             const TestSharedTextureIndices indices{texture->image_index, texture->sampler_index};
             const RasterStreamDraw draw{*program, {}, {}, {0, sizeof(indices)}, DrawVertices{12}};
-            return frame.setRasterStream(input_.stream, {
+            return frame.setRasterStream(linked.stream, {
                 std::span{&draw, 1}, {}, {}, std::as_bytes(std::span{&indices, 1})
             });
         }
-
-    private:
-        ResolvedInputs input_;
     };
 
     RenderServerConfig config;
@@ -3624,7 +3612,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(builder.addRasterPass("sample a shared texture", std::move(raster)));
         auto producer = take(ConfigValue::make(Producer::Configuration{drawn.pass, context.shaderTarget(), material}));
-        CHECK(context.addPreparation({InstanceDataFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}}));
+        CHECK(context.addPreparation({ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}}));
         const auto captured = take(builder.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
@@ -3972,7 +3960,7 @@ static void meshRasterStream(bool d3d12)
     static std::atomic_uint32_t program_selections;
     static std::array<MeshId, 2> meshes;
     static std::uint32_t vertex_stride;
-    class Producer final : public lux::render::InstanceData
+    class Producer final
     {
     public:
         struct Configuration final
@@ -3983,7 +3971,7 @@ static void meshRasterStream(bool d3d12)
             GraphStorageSnapshotId instances;
         };
 
-        struct ResolvedInputs final
+        struct LinkedData final
         {
             DrawStreamSlot stream;
             RasterBufferSlot arguments;
@@ -3993,9 +3981,9 @@ static void meshRasterStream(bool d3d12)
             StorageSnapshotSlot<MeshInstanceSnapshot> instances;
         };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
-            return ResolvedInputs{
+            return LinkedData{
                 take(link.resolveDrawStream(input.pass)),
                 take(link.resolveRasterBuffer(input.pass, input.arguments)),
                 take(link.resolveRasterBuffer(input.pass, input.arena_arguments)),
@@ -4005,25 +3993,25 @@ static void meshRasterStream(bool d3d12)
             };
         }
 
-        static InstanceDataResult instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
+        struct Workspace final
         {
-            return std::make_unique<Producer>(input);
-        }
+            std::optional<RasterMeshGeometry> original;
+            std::uint64_t program_selection_revision = 0;
+        };
 
-        explicit Producer(ResolvedInputs input) noexcept : input_(input) {}
-
-        RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept override
+        static RenderResult<void>
+        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace& workspace) noexcept
         {
-            const auto snapshot = selection.readStorage(input_.instances);
+            const auto snapshot = selection.readStorage(linked.instances);
             if (!snapshot) return lux::cxx::unexpected(snapshot.error());
             const auto& instances = snapshot->value.get().instances;
             CHECK(instances.size() == 1);
             const auto& selected = instances.front();
-            auto layout = selection.meshLayout(input_.stream, selected.mesh);
+            auto layout = selection.meshLayout(linked.stream, selected.mesh);
             if (!layout) return lux::cxx::unexpected(layout.error());
-            const auto material = selection.materialProgramId(input_.stream, selected.material);
+            const auto material = selection.materialProgramId(linked.stream, selected.material);
             if (!material) return lux::cxx::unexpected(material.error());
-            const auto material_program = selection.materialProgram(input_.stream, *material);
+            const auto material_program = selection.materialProgram(linked.stream, *material);
             if (!material_program) return lux::cxx::unexpected(material_program.error());
             const auto* fragment = (*material_program)->find(rdesc::EMaterialPurpose::FORWARD);
             CHECK(fragment);
@@ -4040,21 +4028,22 @@ static void meshRasterStream(bool d3d12)
                 RuntimeRasterProgram{{0}, graphics, parameters}
             };
             programs.back().graphics.vertex_attributes.front().offset += sizeof(float);
-            program_selection_revision_ = snapshot->revision;
+            workspace.program_selection_revision = snapshot->revision;
             ++program_selections;
-            return selection.setPrograms(input_.stream, std::move(shaders), programs);
+            return selection.setPrograms(linked.stream, std::move(shaders), programs);
         }
 
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void>
+        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
         {
-            auto snapshot = frame.readStorage(input_.instances);
+            auto snapshot = frame.readStorage(linked.instances);
             if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            CHECK(snapshot->revision == program_selection_revision_);
+            CHECK(snapshot->revision == workspace.program_selection_revision);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
-            auto sized = frame.sizeBuffer(input_.argument_sizer, bytes);
+            auto sized = frame.sizeBuffer(linked.argument_sizer, bytes);
             if (!sized) return sized;
-            auto program = frame.rasterProgram(input_.stream, mode == EDraw::VERTEX_LAYOUT ? 1 : 0);
+            auto program = frame.rasterProgram(linked.stream, mode == EDraw::VERTEX_LAYOUT ? 1 : 0);
             if (!program) return lux::cxx::unexpected(program.error());
             std::array<nri::DrawIndexedDesc, 2> commands{};
             if (mode == EDraw::ARENA)
@@ -4064,31 +4053,31 @@ static void meshRasterStream(bool d3d12)
                 std::array<RasterStreamDraw, 2> draws;
                 for (std::uint32_t i = 0; i < draws.size(); ++i)
                 {
-                    auto mesh = frame.selectMesh(input_.stream, meshes[i]);
+                    auto mesh = frame.selectMesh(linked.stream, meshes[i]);
                     if (!mesh) return lux::cxx::unexpected(mesh.error());
                     commands[i] = {6, 1, mesh->arena_first_index, mesh->arena_vertex_offset, 0};
                     vertices[i] = {0, mesh->vertices};
                     draws[i] = {
                         *program, {}, {i, 1}, {0, sizeof(constants)}, RasterStreamIndirect{
-                            {input_.arena_arguments, i * sizeof(nri::DrawIndexedDesc), sizeof(nri::DrawIndexedDesc)},
+                            {linked.arena_arguments, i * sizeof(nri::DrawIndexedDesc), sizeof(nri::DrawIndexedDesc)},
                             {},
                             RasterStreamIndexBinding{mesh->indices, mesh->index_type, ERasterIndexOrigin::MESH_ARENA}
                         }
                     };
                 }
-                auto written = frame.writeBuffer(input_.arena_writer, std::as_bytes(std::span{commands}), 2);
+                auto written = frame.writeBuffer(linked.arena_writer, std::as_bytes(std::span{commands}), 2);
                 if (!written) return written;
-                return frame.setRasterStream(input_.stream, {
+                return frame.setRasterStream(linked.stream, {
                     draws, {}, vertices, std::as_bytes(std::span{&constants, 1})
                 });
             }
-            auto written = frame.writeBuffer(input_.arena_writer, std::as_bytes(std::span{commands}), 1);
+            auto written = frame.writeBuffer(linked.arena_writer, std::as_bytes(std::span{commands}), 1);
             if (!written) return written;
             const auto mesh = mode == EDraw::RELEASED ? meshes[0] : snapshot->value.get().instances.front().mesh;
-            auto geometry = frame.selectMesh(input_.stream, mesh);
+            auto geometry = frame.selectMesh(linked.stream, mesh);
             if (!geometry) return lux::cxx::unexpected(geometry.error());
-            if (!original_) original_ = *geometry;
-            if (mode == EDraw::STALE) geometry = *original_;
+            if (!workspace.original) workspace.original = *geometry;
+            if (mode == EDraw::STALE) geometry = *workspace.original;
             if (mode == EDraw::INDEX_WIDTH) geometry->index_type = EIndexType::UINT16;
 
             const RasterStreamVertex vertex{0, geometry->vertices};
@@ -4100,20 +4089,15 @@ static void meshRasterStream(bool d3d12)
             if (mode == EDraw::INDIRECT || mode == EDraw::SHORT_BUFFER)
             {
                 draw.draw = RasterStreamIndirect{
-                    {input_.arguments, tail_indirect_offset, sizeof(nri::DrawIndexedDesc)}, {},
+                    {linked.arguments, tail_indirect_offset, sizeof(nri::DrawIndexedDesc)}, {},
                     RasterStreamIndexBinding{geometry->indices, geometry->index_type}
                 };
             }
             const std::array draws{draw, draw};
-            return frame.setRasterStream(input_.stream, {
+            return frame.setRasterStream(linked.stream, {
                 draws, {}, std::span{&vertex, 1}, std::as_bytes(std::span{&constants, 1})
             });
         }
-
-    private:
-        ResolvedInputs input_;
-        std::optional<RasterMeshGeometry> original_;
-        std::uint64_t program_selection_revision_ = 0;
     };
 
     RenderServerConfig config;
@@ -4185,7 +4169,7 @@ static void meshRasterStream(bool d3d12)
             drawn.pass, arguments.resource, arena.resource, instances
         }));
         CHECK(context.addPreparation({
-            InstanceDataFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass},
+            ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass},
             {arguments.resource, arena.resource}, {instances}, {instances}
         }));
         const auto captured = take(builder.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
@@ -4384,45 +4368,37 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     constexpr auto result_bytes = sizeof(std::uint32_t) * 4;
     static std::atomic_uint64_t observed_revision{};
     static MeshId expected_mesh;
-    class Producer final : public lux::render::InstanceData
+    class Producer final
     {
     public:
         struct Configuration final { GraphStorageSnapshotId instances; GraphResourceId output; };
-        struct ResolvedInputs final
+        struct LinkedData final
         {
             StorageSnapshotSlot<MeshInstanceSnapshot> instances;
             PreparedBufferWriter output;
         };
 
-        static RenderResult<ResolvedInputs> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
         {
-            return ResolvedInputs{
+            return LinkedData{
                 take(link.resolveStorageSnapshot<MeshInstanceSnapshot>(source.instances)),
                 take(link.resolvePreparedBuffer(source.output))
             };
         }
 
-        static InstanceDataResult instantiate(const ResolvedInputs& input, InstanceInstantiationContext&) noexcept
-        {
-            return std::make_unique<Producer>(input);
-        }
+        struct Workspace final {};
 
-        explicit Producer(ResolvedInputs input) noexcept : input_(input) {}
-
-        RenderResult<void> prepare(FramePreparation& frame) noexcept override
+        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
         {
-            auto selected = frame.readStorage(input_.instances);
+            auto selected = frame.readStorage(linked.instances);
             if (!selected) return lux::cxx::unexpected(selected.error());
             const auto& snapshot = selected->value.get();
             CHECK(snapshot.revision == selected->revision && snapshot.instances.size() <= 1);
             if (!snapshot.instances.empty()) CHECK(snapshot.instances.front().mesh == expected_mesh);
             observed_revision = selected->revision;
             const auto count = static_cast<std::uint32_t>(snapshot.instances.size());
-            return frame.writeBuffer(input_.output, std::as_bytes(std::span{&count, 1}), selected->revision);
+            return frame.writeBuffer(linked.output, std::as_bytes(std::span{&count, 1}), selected->revision);
         }
-
-    private:
-        ResolvedInputs input_;
     };
 
     RenderServerConfig config;
@@ -4524,7 +4500,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         const auto measured = take(builder.addComputePass("load storage-owned mesh fields", std::move(work)));
         auto producer = take(ConfigValue::make(Producer::Configuration{storage, snapshot.resource}));
         CHECK(context.addPreparation({
-            InstanceDataFactory::make<Producer>(), std::move(producer), {}, {}, {}, {},
+            ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {},
             {snapshot.resource}, {storage}
         }));
         const auto initialized = take(builder.addTransferPass("initialize readback", TransferWork{{

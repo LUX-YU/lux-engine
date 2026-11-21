@@ -2389,6 +2389,47 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     RenderResult<void> server_result;
     std::thread render([&] { server_result = server->run(); });
     const auto commands = queryCommands(*client);
+    const auto requestRound = [&](std::span<const RenderJobId> jobs)
+    {
+        response_gate.store(EResponseGate::ARMED);
+        const auto paired_before = call<QueryRenderStats>(*client, commands, {}).submissions;
+        const auto pair_deadline = Clock::now() + 10s;
+        while (response_gate.load() != EResponseGate::BLOCKED) CHECK(Clock::now() < pair_deadline);
+        const auto request_command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
+        CHECK(request_command != commands.commands.end());
+        for (auto job : jobs)
+        {
+            ipc::IpcMessage message;
+            message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job});
+            CHECK(client->trySend(commandTag(request_command->id), nextSceneRequest(), message));
+        }
+        response_gate.store(EResponseGate::OPEN);
+        response_gate.notify_all();
+        std::vector<JobSubmitted> paired(jobs.size());
+        for (std::size_t received = 0; received < paired.size();)
+        {
+            ipc::IpcMessage message;
+            std::uint64_t correlation = 0;
+            CHECK(Clock::now() < pair_deadline);
+            if (client->tryReceive(correlation, message) != ipc::EIpcReceive::RECEIVED)
+            {
+                std::this_thread::yield();
+                continue;
+            }
+            const auto reply = message.get<JobSubmitted>();
+            CHECK(!reply.error.type);
+            const auto job = std::ranges::find(jobs, reply.job);
+            CHECK(job != jobs.end());
+            paired[job - jobs.begin()] = reply;
+            ++received;
+        }
+        for (std::size_t i = 0; i < jobs.size(); ++i)
+        {
+            CHECK(paired[i].job == jobs[i] && paired[i].frame_index == paired.front().frame_index);
+            CHECK(paired[i].slot_index == paired.front().slot_index);
+        }
+        return std::pair{paired_before, std::move(paired)};
+    };
     const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
     const auto tone_effect = call<CreateEffect>(*client, commands, std::move(tone_request)).effect;
     call<SetToneMappingExposure>(*client, commands, {tone_effect, tone_left_node, -2.F});
@@ -2531,8 +2572,59 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const TargetDesc resized_desc{128, 64, hdr, 1, ETargetKind::OFFSCREEN, true};
     const auto resized = call<ResizeTarget>(*client, commands, {target, resized_desc});
     call<SetTargetActive>(*client, commands, {target, true, resized.epoch});
-    renderFrame(*client, commands, first);
-    renderFrame(*client, commands, imported_job);
+    CHECK(call<RequestRenderJob>(*client, commands, {imported_job}, false).error.type == kRuntimeState);
+    CapturedPixels fanout_pixels;
+    CreateEffectRequest fanout_request;
+    fanout_request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit fanout_edit{*fanout_request.graph};
+    addOutputTone(fanout_edit, true, EColorEncoding::LINEAR, "0");
+    CHECK(fanout_edit.commit());
+    const auto fanout_effect = call<CreateEffect>(*client, commands, std::move(fanout_request)).effect;
+    const auto fanout_view = call<CreateView>(*client, commands, {scene}).view;
+    const auto fanout_target = call<CreateTarget>(*client, commands, {
+        device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
+    }).target;
+    const auto fanout_job = call<CreateRenderJob>(*client, commands, {
+        scene, fanout_view, fanout_effect, EJobCadence::REQUESTED
+    }).job;
+    const auto capture = GraphCaptureBuffer::bind(
+        *client, commands, device, {scene, fanout_view}, {&fanout_pixels, rdesc::ETextureFormat::RGBA8_UNORM}
+    );
+    JobBinding fanout_binding;
+    fanout_binding.target_images.push_back({target, std::string{hdr_binding}});
+    fanout_binding.resources.push_back({std::string{ColorCapture::name}, capture});
+    call<StartRenderJob>(*client, commands, {device, fanout_job, fanout_target, std::move(fanout_binding)});
+    // A resized Target has no publication. Both readers must select this writer's new FIF slot.
+    const auto fanout = requestRound(std::array{imported_job, fanout_job, first}).second;
+    const auto before_published = server->developmentStats();
+    const auto later = call<RequestRenderJob>(*client, commands, {fanout_job});
+    CHECK(later.slot_index != fanout[1].slot_index);
+    if (const auto after = server->developmentStats())
+    {
+        CHECK(before_published && after->input_rebuilds == before_published->input_rebuilds);
+        CHECK(after->job_selection_growths == before_published->job_selection_growths);
+        CHECK(after->job_topology_growths == before_published->job_topology_growths);
+    }
+    stopAndRemoveJob(*client, commands, fanout_job);
+    call<RemoveView>(*client, commands, {scene, fanout_view});
+    const auto fanout_deadline = Clock::now() + 10s;
+    while (!fanout_pixels.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < fanout_deadline);
+    CHECK(fanout[1].slot_index < fanout_pixels.frames.size() && later.slot_index < fanout_pixels.frames.size());
+    const auto& current_pixels = fanout_pixels.frames[fanout[1].slot_index];
+    const auto& published_pixels = fanout_pixels.frames[later.slot_index];
+    constexpr std::size_t row_bytes = 64 * 4;
+    for (std::uint32_t row = 0; row < 64; ++row)
+    {
+        const auto offset = std::size_t(row) * fanout_pixels.pitch;
+        CHECK(offset + row_bytes <= current_pixels.size() && offset + row_bytes <= published_pixels.size());
+        CHECK(std::ranges::equal(
+            std::span{current_pixels}.subspan(offset, row_bytes), std::span{published_pixels}.subspan(offset, row_bytes)
+        ));
+    }
+    CHECK(current_pixels[0] != std::byte{} && current_pixels[1] != std::byte{} && current_pixels[3] == std::byte{255});
+    call<RemoveTarget>(*client, commands, fanout_target);
+    call<RemoveEffect>(*client, commands, {fanout_effect});
+    std::puts("ROUND OUTPUT PASS: resized writer plus two readers, same-round and later published pixels match");
     CreateEffectRequest dim_request;
     dim_request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit dim_edit{*dim_request.graph};
@@ -3093,39 +3185,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(UniformUploadProbe::copies == before_copies + 2);
     // Select both graph variants in one Server round after the next setter.
     call<SetTestUniformBlock>(*client, commands, {uniform_effect, uniform_node, 0x73737373});
-    response_gate.store(EResponseGate::ARMED);
-    const auto paired_before = count_submits();
-    const auto pair_deadline = Clock::now() + 10s;
-    while (response_gate.load() != EResponseGate::BLOCKED) CHECK(Clock::now() < pair_deadline);
-    const auto request_command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
-    CHECK(request_command != commands.commands.end());
-    for (auto job : {uniform_job_a, uniform_job_b})
-    {
-        ipc::IpcMessage message;
-        message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job});
-        CHECK(client->trySend(commandTag(request_command->id), nextSceneRequest(), message));
-    }
-    response_gate.store(EResponseGate::OPEN);
-    response_gate.notify_all();
-    std::array<JobSubmitted, 2> paired;
-    for (std::size_t received = 0; received < paired.size();)
-    {
-        ipc::IpcMessage message;
-        std::uint64_t correlation = 0;
-        CHECK(Clock::now() < pair_deadline);
-        if (client->tryReceive(correlation, message) != ipc::EIpcReceive::RECEIVED)
-        {
-            std::this_thread::yield();
-            continue;
-        }
-        const auto reply = message.get<JobSubmitted>();
-        CHECK(!reply.error.type);
-        CHECK(reply.job == uniform_job_a || reply.job == uniform_job_b);
-        paired[reply.job == uniform_job_a ? 0 : 1] = reply;
-        ++received;
-    }
-    CHECK(paired[0].job == uniform_job_a && paired[1].job == uniform_job_b);
-    CHECK(paired[0].frame_index == paired[1].frame_index && paired[0].slot_index == paired[1].slot_index);
+    const auto [paired_before, paired] = requestRound(std::array{uniform_job_a, uniform_job_b});
     if (!async_uniform) CHECK(count_submits() - paired_before == initial_submissions);
     CHECK(UniformUploadProbe::copies == before_copies + 3);
 

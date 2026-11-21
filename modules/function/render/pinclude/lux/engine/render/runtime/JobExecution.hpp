@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
@@ -85,13 +84,11 @@ namespace lux::render::runtime_detail
         {
             return resource_ids;
         }
-        // Pointees belong to the retained domain; call metadata lives in stable Resource type slots.
-        // No pointer into a relocatable instance record or Client payload is retained here.
+        // Each registered Resource type owns exactly one FrameDataCall.
         struct Input final
         {
             ResourceInstanceId identity;
-            void* object;
-            const FrameDataCall* call;
+            ResourceTypeId call_slot;
             struct ColumnRange final
             {
                 std::uint32_t first, count;

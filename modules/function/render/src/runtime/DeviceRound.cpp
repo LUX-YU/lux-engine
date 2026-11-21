@@ -32,7 +32,7 @@ namespace lux::render
         for (const auto& input : execution.inputs)
         {
             if (!has_updates(input)) continue;
-            if (runtime_->resources_.resourceInstance(input.identity) != input.object)
+            if (runtime_->resources_.declarationOf(input.identity) != input.call_slot)
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
@@ -44,7 +44,9 @@ namespace lux::render
         for (const auto& input : execution.inputs)
         {
             if (!has_updates(input)) continue;
-            if (auto applied = input.call->invoke(input.object, packet, execution.columnsFor(input)); !applied) return applied;
+            const auto& call = runtime_->resources_.factory(input.call_slot)->frame_call;
+            auto* object = runtime_->resources_.resourceInstance(input.identity);
+            if (auto applied = call.invoke(object, packet, execution.columnsFor(input)); !applied) return applied;
         }
         return {};
     }
@@ -75,7 +77,12 @@ namespace lux::render
         if (structure_changed) rebuildFrameInputs(entry);
         if (const auto selection = selectFrameInputs(entry, progress.nextSlot()); selection.type)
         {
-            for (const auto& job : inputs.jobs) runtime_->jobs_.find(job.id)->control.rejectUnadmitted(selection);
+            for (const auto& job : inputs.jobs)
+            {
+                auto* live = runtime_->jobs_.find(job.id);
+                if (live && live->control.executionGeneration() == job.execution_generation)
+                    live->control.rejectUnadmitted(selection);
+            }
             return false;
         }
         if (round.outputs.empty() || !progress.canBegin(entry.session())) return false;
@@ -101,9 +108,12 @@ namespace lux::render
         for (auto& output : round.outputs)
         {
             output.submitted = false;
-            auto& control = runtime_->jobs_.find(output.job)->control;
+            auto& job = *runtime_->jobs_.find(output.job);
+            auto& control = job.control;
             if (!control.tryAdmit(context.frame_index, context.slot_index)) std::terminate();
-            output.execution_generation = control.executionGeneration();
+            if (output.execution_generation != control.executionGeneration()) std::terminate();
+            job.execution->selectViewParameters();
+            round.instances.push_back(&job.execution->instance);
             ++round.run_count;
         }
         if (auto applied = selectGraphInputs(entry, round.slot()); !applied) round.error = applied.error();
@@ -143,6 +153,8 @@ namespace lux::render
             );
             retireStoppedExecution(job);
         }
+        round.instances.clear();
+        round.clearReadSelections();
         for (auto& output : std::span{round.outputs}.first(completed))
         {
             if (auto completion = std::exchange(output.completion, std::nullopt))

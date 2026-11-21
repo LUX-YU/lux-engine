@@ -198,7 +198,6 @@ namespace lux::render
         [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
         [[nodiscard]] std::uint32_t publishedOutputSlot(TargetId) const noexcept;
         [[nodiscard]] bool publishedOutputReadable(TargetId, std::uint32_t slot) const noexcept;
-        [[nodiscard]] std::uint32_t outputSlot(const detail::DeviceEntry&, TargetId, std::uint32_t frame_slot) const noexcept;
         exec::task<RenderResult<void>> submitCurrentFrame(detail::DeviceEntry&) noexcept;
         void cancelActiveFrame(detail::DeviceEntry&, RenderError) noexcept;
         [[nodiscard]] bool serviceOperations(bool admitting) noexcept;

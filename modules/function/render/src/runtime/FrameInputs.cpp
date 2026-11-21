@@ -28,12 +28,15 @@ namespace lux::render
         auto& round = device.round;
         auto& inputs = round.inputs;
         inputs.revision = job_structure_revision_;
+        round.clearReadSelections();
         inputs.jobs.clear();
+        inputs.sources.clear();
+        inputs.read_slots.clear();
         inputs.relations.clear();
         inputs.storages.clear();
         inputs.jobs.reserve(running_jobs_.size());
         cxx::SlotKeySparseSet<RenderJobId, std::uint32_t> running;
-        cxx::SlotKeySparseSet<TargetId, std::uint32_t> writers;
+        cxx::SlotKeySparseSet<TargetId, std::uint32_t> writers, source_slots;
         std::vector<std::vector<ResourceInstanceId>> storage_ids;
         storage_ids.reserve(running_jobs_.size());
         for (auto id : running_jobs_)
@@ -43,11 +46,31 @@ namespace lux::render
             auto& execution = *job.execution;
             if (execution.device != device.id) continue;
             auto& ids = storage_ids.emplace_back();
-            std::vector<TargetId> reads;
-            reads.reserve(execution.target_images.size());
+            auto& entry = inputs.jobs.emplace_back(
+                id, job.control.executionGeneration(), execution.target,
+                FrameInputs::ReadRange{inputs.read_slots.size(), 0}
+            );
+            const auto retained = execution.retainedResources();
+            entry.retained.assign(retained.begin(), retained.end());
+            entry.imports.reserve(execution.target_images.size());
             for (const auto& image : execution.target_images)
-                if (std::ranges::find(reads, image.target) == reads.end()) reads.push_back(image.target);
-            inputs.jobs.push_back({id, &execution, std::move(reads)});
+            {
+                auto index = denseIndex(source_slots, image.target);
+                if (index == no_job)
+                {
+                    index = static_cast<std::uint32_t>(inputs.sources.size());
+                    inputs.sources.push_back({image.target});
+                    source_slots.insert(image.target, index);
+                }
+                const FrameInputs::TargetReadSlot source{index};
+                const auto reads = inputs.readsFor(entry);
+                if (std::ranges::find(reads, source) == reads.end())
+                {
+                    inputs.read_slots.push_back(source);
+                    ++entry.reads.count;
+                }
+                entry.imports.push_back({image.resource, source});
+            }
             running.insert(id, index);
             writers.insert(execution.target, index);
             for (const auto storage : execution.gpu_resources)
@@ -63,6 +86,7 @@ namespace lux::render
         std::ranges::sort(inputs.storages, {}, storageOrder);
         const auto duplicates = std::ranges::unique(inputs.storages);
         inputs.storages.erase(duplicates.begin(), duplicates.end());
+        for (auto& source : inputs.sources) source.writer = denseIndex(writers, source.target);
         const auto count = inputs.jobs.size();
         for (std::uint32_t consumer = 0; consumer < count; ++consumer)
         {
@@ -73,11 +97,10 @@ namespace lux::render
                 const auto producer = denseIndex(running, predecessor);
                 if (producer != no_job) inputs.jobs[producer].successors.push_back({consumer, {}});
             }
-            for (auto source : entry.reads)
+            for (const auto slot : inputs.readsFor(entry))
             {
-                const auto producer = denseIndex(writers, source);
-                entry.producers.push_back(producer);
-                if (producer != no_job) inputs.jobs[producer].successors.push_back({consumer, source});
+                const auto& source = inputs.sources[slot.index];
+                if (source.writer != no_job) inputs.jobs[source.writer].successors.push_back({consumer, source.target});
             }
             for (auto storage : storage_ids[consumer])
             {
@@ -134,6 +157,8 @@ namespace lux::render
         inputs.blocked.reserve(2 * count);
         inputs.ordered.reserve(count);
         inputs.used_storages.resize(inputs.storages.size());
+        round.reads.resize(inputs.sources.size());
+        round.selected_sources.reserve(inputs.sources.size());
         round.outputs.reserve(count);
         round.instances.reserve(count);
         round.storages.reserve(inputs.storages.size());
@@ -159,7 +184,9 @@ namespace lux::render
         const auto selection_capacity = [&]() noexcept
         {
             return std::array{inputs.selection.capacity(), inputs.blocked.capacity(), inputs.used_storages.capacity(),
-                round.outputs.capacity(), round.instances.capacity(), round.storages.capacity()};
+                round.outputs.capacity(), round.instances.capacity(), round.storages.capacity(),
+                round.selected_sources.capacity()
+            };
         };
         const auto topology_capacity = [&]() noexcept
         {
@@ -191,6 +218,7 @@ namespace lux::render
             job_selection_calls_.fetch_add(1, std::memory_order_release);
         });
 #endif
+        round.clearReadSelections();
         round.outputs.clear();
         round.instances.clear();
         round.job_order.clear();
@@ -210,16 +238,22 @@ namespace lux::render
         for (std::uint32_t i = 0; i < count; ++i)
         {
             const auto& entry = inputs.jobs[i];
-            auto& job = *runtime_->jobs_.find(entry.id);
+            auto* live = runtime_->jobs_.find(entry.id);
+            if (!live || !live->execution || live->control.executionGeneration() != entry.execution_generation)
+            {
+                inputs.revision = 0;
+                continue;
+            }
+            auto& job = *live;
             if (!job.readyToRun() || !jobTargetReady(job)) continue;
             auto& state = inputs.selection[i];
             state.availability = EAvailability::READY;
-            if (!entry.execution->programsReady() || !resourcesAvailable(entry.execution->retainedResources()))
+            if (!job.execution->programsReady() || !resourcesAvailable(entry.retained))
             {
                 block(i);
                 continue;
             }
-            const auto& target = *runtime_->targets_.find(entry.execution->target);
+            const auto& target = *runtime_->targets_.find(entry.target);
             if (const auto* surface = std::get_if<detail::SwapchainTarget>(&target))
             {
                 const auto prefetched = surface->prefetched();
@@ -237,20 +271,21 @@ namespace lux::render
         {
             if (!inputs.selection[i].active()) continue;
             const auto& entry = inputs.jobs[i];
-            for (std::size_t read = 0; read < entry.reads.size(); ++read)
+            for (const auto read_slot : inputs.readsFor(entry))
             {
-                const auto source = entry.reads[read];
+                const auto& read = inputs.sources[read_slot.index];
+                const auto source = read.target;
                 const auto* target = runtime_->targets_.find(source);
                 if (!target)
                 {
                     block(i, {kRuntimeIdentity});
                     inputs.selection[i].error = {kRuntimeIdentity};
                 }
-                else if (targetState(*target).device != entry.execution->device) block(i, {kJobState});
+                else if (targetState(*target).device != device.id) block(i, {kJobState});
                 else if (targetState(*target).resizing) block(i);
                 else
                 {
-                    const auto producer = entry.producers[read];
+                    const auto producer = read.writer;
                     if (producer != no_job && inputs.selection[producer].active()) continue;
                     const auto published = publishedOutputSlot(source);
                     if (published == UINT32_MAX)
@@ -342,8 +377,16 @@ namespace lux::render
         for (auto index : inputs.ordered)
         {
             const auto& job = inputs.jobs[index];
-            round.outputs.push_back({job.id, job.execution, job.execution->target, job.reads});
-            round.instances.push_back(&job.execution->instance);
+            round.outputs.push_back({job.id, job.target, job.execution_generation, index});
+            for (const auto read_slot : inputs.readsFor(job))
+            {
+                auto& selected = round.reads[read_slot.index];
+                if (!selected.publication.target.isNull()) continue;
+                const auto& source = inputs.sources[read_slot.index];
+                const auto producer = source.writer == no_job ? no_job : inputs.selection[source.writer].selected;
+                selected = {{source.target, kGraphInvalidIndex, 0, 0}, producer};
+                round.selected_sources.push_back(read_slot);
+            }
             for (auto storage : job.storages) inputs.used_storages[storage] = 1;
         }
         for (std::size_t i = 0; i < inputs.storages.size(); ++i)

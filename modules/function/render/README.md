@@ -752,8 +752,10 @@ The Server stores Offscreen and Swapchain Targets as values. Each Target reserve
 attachment compilation and releases that reservation on the same operation's return. An existing writer's detach
 only releases its own identity. Target operations check the writer and in-flight reads before changing the binding.
 
-Offscreen owns the image, its views and the physical last-use frontiers. Same-frame consumers use graph submission
-dependencies. Consumers of a paused producer resolve the last JobOutput by Target generation, epoch, image index
+Offscreen owns the image, its views and the physical last-use frontiers. The device’s structural input table
+assigns one slot to each sampled Target and maps each consumer’s image imports to those slots. Admission resolves
+each selected Target once. Acquire checks the selected publication’s epoch and readability, and accepted consumers
+extend the frontier of that exact image slot. Same-frame consumers use graph submission dependencies. Consumers of a paused producer resolve the last JobOutput by Target generation, epoch, image index
 and content revision. They wait for its writer, and their accepted reads join its reuse frontier. Accepting a write
 invalidates that image's old revision. Publication requires all producing submissions to be accepted. Preparation-only
 submissions and disabled passes leave the previous publication intact. Target image dependencies derive from the

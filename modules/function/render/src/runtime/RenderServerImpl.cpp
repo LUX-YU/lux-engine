@@ -456,34 +456,41 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::selectGraphInputs(detail::DeviceEntry& device, std::uint32_t slot) noexcept
     {
-        for (const auto& output : device.round.outputs)
+        auto& round = device.round;
+        for (const auto read_slot : round.selected_sources)
         {
-            auto& execution = *output.execution;
-            auto& instance = execution.instance;
-            for (const auto& imported : execution.target_images)
+            auto& read = round.reads[read_slot.index];
+            auto& publication = read.publication;
+            const auto* source = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(publication.target));
+            const bool available = source && source->description().sampled && !source->state.resizing;
+            if (!available) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (source->state.device != device.id) return cxx::unexpected(RenderError{kJobState});
+            if (read.producer != FrameInputs::no_job)
             {
-                const auto* source = runtime_->targets_.find(imported.target);
-                const bool unavailable = !source || !targetDescription(*source).sampled || targetState(*source).resizing;
-                if (unavailable) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                if (targetState(*source).device != device.id) return cxx::unexpected(RenderError{kJobState});
-                const auto selected = outputSlot(device, imported.target, slot);
-                if (selected == kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeState});
-                instance.bindImage(imported.resource, slot, *targetOutput(*source).frames[selected].image);
+                const auto& writer = round.outputs[read.producer];
+                if (writer.target != publication.target) return cxx::unexpected(RenderError{kJobState});
+                publication.image_index = slot;
+                publication.target_epoch = source->state.epoch;
             }
-            execution.selectViewParameters();
+            else
+            {
+                const auto* published = device.outputs.tryGet(publication.target);
+                const bool current = published && published->target == publication.target &&
+                    published->target_epoch == source->state.epoch &&
+                    source->matches(published->image_index, published->content_revision);
+                if (!current) return cxx::unexpected(RenderError{kRuntimeState});
+                publication = *published;
+            }
+            read.image = source->output().frames[publication.image_index].image;
+            if (!read.image) return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        for (std::size_t i = 0; i < round.outputs.size(); ++i)
+        {
+            const auto& output = round.outputs[i];
+            for (const auto& import : round.inputs.jobs[output.input_job].imports)
+                round.instances[i]->bindImage(import.resource, slot, *round.reads[import.source.index].image);
         }
         return {};
-    }
-
-    std::uint32_t RenderServer::Impl::outputSlot(
-        const detail::DeviceEntry& device, TargetId target, std::uint32_t frame_slot
-    ) const noexcept
-    {
-        const auto& outputs = device.round.outputs;
-        const bool produces_this_round = device.round.run_count &&
-            std::ranges::find(outputs, target, &DeviceRound::Output::target) != outputs.end();
-        if (produces_this_round) return frame_slot;
-        return publishedOutputSlot(target);
     }
 
     std::uint32_t RenderServer::Impl::publishedOutputSlot(TargetId target) const noexcept
@@ -514,7 +521,7 @@ namespace lux::render
         if (!device.round.run_count) return false;
         return std::ranges::any_of(device.round.outputs, [&](const auto& output)
         {
-            const auto resources = output.execution->retainedResources();
+            const auto& resources = device.round.inputs.jobs[output.input_job].retained;
             return std::ranges::find(resources, id) != resources.end();
         });
     }
@@ -525,9 +532,11 @@ namespace lux::render
         if (!target) return false;
         const auto& round = runtime_->device(targetState(*target).device)->round;
         if (!round.run_count) return false;
-        return std::ranges::any_of(round.outputs, [&](const auto& output)
+        const bool writes = std::ranges::any_of(round.outputs, [&](const auto& output) { return output.target == id; });
+        if (writes) return true;
+        return std::ranges::any_of(round.selected_sources, [&](const auto slot) noexcept
         {
-            return output.target == id || std::ranges::find(output.reads, id) != output.reads.end();
+            return round.reads[slot.index].publication.target == id;
         });
     }
 
@@ -541,18 +550,21 @@ namespace lux::render
 
     RenderResult<bool> RenderServer::Impl::acquireFrameOutputs(detail::DeviceEntry& device, std::uint32_t slot) noexcept
     {
-        const auto& outputs = device.round.outputs;
-        for (const auto& output : outputs)
+        const auto& round = device.round;
+        for (const auto read_slot : round.selected_sources)
         {
-            for (const auto source : output.reads)
-            {
-                const auto* sampled = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(source));
-                if (!sampled) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                if (std::ranges::find(outputs, source, &DeviceRound::Output::target) != outputs.end()) continue;
-                const auto selected = outputSlot(device, source, slot);
-                if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
-                if (!sampled->readable(selected)) return false;
-            }
+            const auto& read = round.reads[read_slot.index];
+            const auto& selected = read.publication;
+            const auto* source = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(selected.target));
+            if (!source || source->state.epoch != selected.target_epoch)
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (read.producer != FrameInputs::no_job) continue;
+            if (!source->matches(selected.image_index, selected.content_revision))
+                return cxx::unexpected(RenderError{kRuntimeState});
+            if (!source->readable(selected.image_index)) return false;
+        }
+        for (const auto& output : round.outputs)
+        {
             auto& target = *runtime_->targets_.find(output.target);
             if (auto* surface = std::get_if<detail::SwapchainTarget>(&target))
             {
@@ -562,17 +574,6 @@ namespace lux::render
             else if (!std::get<detail::OffscreenTarget>(target).writable(slot))
             {
                 return false;
-            }
-        }
-        for (const auto& output : outputs)
-        {
-            auto& execution = *output.execution;
-            for (const auto& input : execution.target_images)
-            {
-                const auto selected = outputSlot(device, input.target, slot);
-                if (selected == UINT32_MAX) return cxx::unexpected(RenderError{kRuntimeState});
-                const auto image = targetOutput(*runtime_->targets_.find(input.target)).frames[selected].image;
-                execution.instance.bindImage(input.resource, slot, *image);
             }
         }
         return true;
@@ -640,6 +641,7 @@ namespace lux::render
             round.instances, round.storages, round.job_order, detail::FrameOperation::UniformStateLookup{uniform_state}
         );
         submissions_.fetch_add(submissions.submittedBatches(slot) - submitted_before, std::memory_order_relaxed);
+        RenderError settlement_error{};
         for (std::size_t i = 0; i < round.outputs.size(); ++i)
         {
             auto& output = round.outputs[i];
@@ -647,15 +649,16 @@ namespace lux::render
             if (output.submitted) continue;
             const auto receipt = submissions.acceptedFrameUse(slot, *round.instances[i], round.target_uses);
             output.submitted = receipt.completed;
-            for (auto source : output.reads)
+            for (const auto source_slot : round.inputs.readsFor(round.inputs.jobs[output.input_job]))
             {
-                auto* sampled = runtime_->targets_.find(source);
-                const auto selected = outputSlot(device, source, slot);
-                if (sampled && selected != UINT32_MAX)
+                const auto& selected = round.reads[source_slot.index].publication;
+                auto* source = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(selected.target));
+                if (!source || source->state.epoch != selected.target_epoch)
                 {
-                    if (auto* image = std::get_if<detail::OffscreenTarget>(sampled))
-                        image->acceptRead(selected, round.target_uses);
+                    settlement_error = {kRuntimeIdentity};
+                    continue;
                 }
+                source->acceptRead(selected.image_index, round.target_uses);
             }
             if (!offscreen) continue;
             if (receipt.wrote_output) offscreen->acceptWrite(slot, round.target_uses);
@@ -673,6 +676,7 @@ namespace lux::render
             }
         }
         if (!accepted) co_return cxx::unexpected(accepted.error());
+        if (settlement_error.type) co_return cxx::unexpected(settlement_error);
         co_return RenderResult<void>{};
     }
 

@@ -3,17 +3,11 @@
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/runtime/JobControl.hpp>
+#include <lux/engine/render/runtime/JobOutput.hpp>
 #include <chrono>
-
-namespace lux::render
-{
-    class FrameData;
-}
 
 namespace lux::render::runtime_detail
 {
-    struct JobExecution;
-
     struct FrameInputs final
     {
         static constexpr std::uint32_t no_job = UINT32_MAX;
@@ -24,12 +18,35 @@ namespace lux::render::runtime_detail
             TargetId sampled_target; // Null for an explicit Job relation.
         };
 
+        struct TargetRead final
+        {
+            TargetId target;
+            std::uint32_t writer = no_job;
+        };
+
+        struct TargetReadSlot final
+        {
+            std::uint32_t index;
+            bool operator==(const TargetReadSlot&) const noexcept = default;
+        };
+
+        struct ImageImport final
+        {
+            GraphResourceId resource;
+            TargetReadSlot source;
+        };
+
+        struct ReadRange final { std::size_t first, count; };
+
         struct Job final
         {
             RenderJobId id;
-            JobExecution* execution;
-            std::vector<TargetId> reads;
-            std::vector<std::uint32_t> producers, storages;
+            std::uint64_t execution_generation;
+            TargetId target;
+            ReadRange reads;
+            std::vector<ImageImport> imports;
+            std::vector<ResourceInstanceId> retained;
+            std::vector<std::uint32_t> storages;
             std::vector<Edge> successors;
         };
 
@@ -53,6 +70,16 @@ namespace lux::render::runtime_detail
 
         std::uint64_t revision = 0;
         std::vector<Job> jobs;
+        std::vector<TargetRead> sources;
+        std::vector<TargetReadSlot> read_slots;
+
+        [[nodiscard]] std::span<const TargetReadSlot> readsFor(const Job& job) const & noexcept
+        {
+            return std::span(read_slots).subspan(job.reads.first, job.reads.count);
+        }
+
+        std::span<const TargetReadSlot> readsFor(const Job&) const && = delete;
+
         std::vector<Relation> relations;
         std::vector<ResourceInstanceId> storages;
         // Reserved from the structural bounds and reused for the next device round.
@@ -73,17 +100,32 @@ namespace lux::render::runtime_detail
         RenderError error;
         FrameInputs inputs;
 
+        // One qualified native image per sampled Target for this round, shared by all selected consumers.
+        struct SelectedRead final
+        {
+            detail::JobOutput publication;
+            std::uint32_t producer;
+            nri::Texture* image = nullptr;
+        };
+
         struct Output final
         {
             RenderJobId job;
-            JobExecution* execution;
             TargetId target;
-            std::span<const TargetId> reads;
-            std::uint64_t execution_generation = 0;
+            std::uint64_t execution_generation;
+            std::uint32_t input_job;
             bool submitted = false;
             std::optional<detail::JobControl::Completion> completion;
         };
 
+        void clearReadSelections() noexcept
+        {
+            for (auto slot : selected_sources) reads[slot.index] = {};
+            selected_sources.clear();
+        }
+
+        std::vector<SelectedRead> reads;
+        std::vector<FrameInputs::TargetReadSlot> selected_sources;
         std::vector<Output> outputs;
         std::vector<detail::RenderGraphInstance*> instances;
         std::size_t run_count = 0;

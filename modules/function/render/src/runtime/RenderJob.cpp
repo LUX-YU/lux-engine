@@ -635,17 +635,19 @@ namespace lux::render
         struct FrameResource final
         {
             ResourceInstanceId id;
+            ResourceTypeId type;
             const ResourceRegistration* factory;
         };
         std::vector<FrameResource> frame_resources;
         for (const auto id : candidate.retainedResources())
         {
-            const auto* factory = registry.factory(registry.declarationOf(id));
+            const auto type = registry.declarationOf(id);
+            const auto* factory = registry.factory(type);
             if (factory->frame_call.channels.empty()) continue;
             ResourceResponse local;
             queryResource({candidate.device, scope, factory->descriptor->type}, local);
             // Named graph imports may read a foreign scope. FrameData addresses the Job's own scope.
-            if (local.resource_id == id) frame_resources.push_back({id, factory});
+            if (local.resource_id == id) frame_resources.push_back({id, type, factory});
         }
         std::ranges::sort(frame_resources, {}, [](const FrameResource& resource) noexcept
         {
@@ -673,8 +675,7 @@ namespace lux::render
             }
             candidate.inputs.emplace_back(
                 resource.id,
-                registry.resourceInstance(resource.id),
-                &call,
+                resource.type,
                 JobExecution::Input::ColumnRange{
                     static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(call.channels.size())
                 }
@@ -683,7 +684,7 @@ namespace lux::render
         auto* previous = job.execution.get();
         const auto same_input = [](const auto& a, const auto& b) noexcept
         {
-            return a.identity == b.identity && a.columns == b.columns;
+            return a.identity == b.identity && a.call_slot == b.call_slot && a.columns == b.columns;
         };
         const bool can_reuse_layout = previous && previous->target == candidate.target &&
             std::ranges::equal(previous->input_layout.channels(), channels) &&

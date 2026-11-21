@@ -41,11 +41,11 @@ namespace lux::render::detail
         };
 
     public:
-        [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
+        [[nodiscard]] exec::task<RenderResult<Ack>> upload(ReplicaMutation&, MaterialUpdate) noexcept;
         [[nodiscard]] RenderResult<void> updateColors(std::span<const MaterialColorUpdate>) noexcept;
         [[nodiscard]] RenderResult<MaterialProgramId> registerProgram(rdesc::MaterialProgramSet) noexcept;
         [[nodiscard]] exec::task<RenderResult<MaterialId>>
-        createInstance(MaterialCommands::CreateInstance::Request) noexcept;
+        createInstance(ReplicaMutation&, MaterialCommands::CreateInstance::Request) noexcept;
         [[nodiscard]] RenderResult<void> unregisterProgram(MaterialProgramId) noexcept;
 
         using Descriptor = MaterialResource;
@@ -82,7 +82,8 @@ namespace lux::render::detail
     private:
         template <class Input>
         using WriteValue = std::conditional_t<std::same_as<Input, MaterialUpdate>, Ack, MaterialId>;
-        template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>> write(Input) noexcept;
+        template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>>
+        write(ReplicaMutation&, Input) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(const VGraphResourceDesc&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
@@ -111,8 +112,7 @@ namespace lux::render::detail
         [[nodiscard]] const Entry* findEntry(MaterialId) const noexcept;
         [[nodiscard]] Entry* findEntry(MaterialId) noexcept;
         DeviceSession& session_;
-        ResourceUploader* uploads_;
-        FrameProgress* replica_progress_;
+        bool has_uploads_;
         std::uint32_t frame_count_;
         ResourceRegistry& resources_;
 

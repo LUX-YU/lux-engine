@@ -606,8 +606,9 @@ execution counters.
 DeviceSession contains the device, immutable capability facts, unique physical Queue collection, shared
 DescriptorTable and `cleanup_scope_`. The selected backend's extension table is private to its implementation.
 ResourceUploader owns staging, upload batches and copy-acceptance callbacks. FrameProgress selects the next strict
-FIF slot and owns its accepted frontiers. Structural Resource commands borrow a reusable physical replica and
-return their accepted transfer frontiers to that slot. ResourceCreateContext supplies these device services to factories.
+FIF slot and owns its accepted frontiers. The command dispatcher supplies a structural writer for one admitted
+Resource command. It records accepted transfers against the selected slot. Factories receive the device,
+uploader availability, replica count and resource registry through ResourceCreateContext.
 Device, Scene and View own their ResourceSets. ResourceRegistry keeps the sole declaration directory and a
 non-owning generational index. Effect owns its logical graph. JobExecution borrows the device plan and Target
 output and owns its graph instance. The Client settles uploads and stops consuming Jobs before deleting their resources.
@@ -1205,6 +1206,16 @@ stable slices during synchronous recording; it has no GraphInstance access and p
 queries. Changing author parameter bytes after preparation affects the next preparation, not this recording.
 Physical binding or recording invalidation requires preparation again. The caller retains exclusive access to
 the FIF data through recording and waits for accepted GPU uses before reusing its command allocators.
+
+### Structural Resource commands
+
+An asynchronous Resource command declares `requires_idle_resource = true` and registers a handler taking
+`Storage&, ReplicaMutation&, Request&&`. After validating its input, the handler awaits `mutation.select()` on the
+device owner. The result gives the selected frame slot and epoch. Repeated selection in the same command reuses
+that slot. Await `mutation.writeBuffers(writes)` to attach each accepted copy to the slot's physical queue frontier.
+Adopt the candidate only on success and use the device retirement path for an already referenced failed candidate.
+The dispatch operation ends CPU access on terminal completion. The mutation reference and its writes belong to
+that call. Regular preparation still uses its frame-scoped stage and settle callbacks.
 
 ### C++ parameter limit
 

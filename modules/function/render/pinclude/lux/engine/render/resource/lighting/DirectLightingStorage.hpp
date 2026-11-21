@@ -20,9 +20,9 @@ namespace lux::render::detail
 
         DirectLightingStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~DirectLightingStorage() noexcept;
-        [[nodiscard]] exec::task<RenderResult<std::vector<LightId>>> create(LightData) noexcept;
+        [[nodiscard]] exec::task<RenderResult<std::vector<LightId>>> create(ReplicaMutation&, LightData) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> update(std::span<const DirectLightUpdate>) noexcept;
-        [[nodiscard]] exec::task<RenderResult<void>> remove(LightId) noexcept;
+        [[nodiscard]] exec::task<RenderResult<void>> remove(ReplicaMutation&, LightId) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(
             const VGraphResourceDesc&,
@@ -65,12 +65,10 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] exec::task<RenderResult<void>>
-        write(std::span<const Write>, const std::array<std::uint32_t, 3>& counts) noexcept;
+        write(ReplicaMutation&, std::span<const Write>, const std::array<std::uint32_t, 3>& counts) noexcept;
         void finishPreparation(const ReplicaSettlement&) noexcept;
         void publish(std::uint32_t kind, std::uint32_t frame) noexcept;
         DeviceSession& device_;
-        ResourceUploader& uploads_;
-        FrameProgress& replica_progress_;
         std::uint32_t frame_count_;
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;

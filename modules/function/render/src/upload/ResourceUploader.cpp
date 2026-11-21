@@ -1344,21 +1344,25 @@ namespace lux::render::detail
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
         std::span<const BufferWrite> writes,
-        std::span<const BufferZero> fills,
-        SubmissionFrontiers* progress
+        std::span<const BufferZero> fills
     ) noexcept
     {
-        return write({BufferUpload{writes, fills, {}, progress}});
+        return write({BufferUpload{writes, fills, {}, nullptr}});
+    }
+
+    ResourceUploader::Task
+    ResourceUploader::writeReplicaBuffers(std::span<const BufferWrite> writes, SubmissionFrontiers& progress) noexcept
+    {
+        return write({BufferUpload{writes, {}, {}, &progress}});
     }
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
         std::span<const BufferWrite> writes,
         std::uint32_t element_bytes,
-        std::uint32_t source_stride,
-        SubmissionFrontiers* progress
+        std::uint32_t source_stride
     ) noexcept
     {
-        return write({BufferUpload{writes, {}, {element_bytes, source_stride}, progress}});
+        return write({BufferUpload{writes, {}, {element_bytes, source_stride}, nullptr}});
     }
 
     ResourceUploader::Task ResourceUploader::writeImage(

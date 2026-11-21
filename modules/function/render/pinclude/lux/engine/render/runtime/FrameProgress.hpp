@@ -4,6 +4,7 @@
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/visibility.h>
 #include <exec/task.hpp>
+#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 #include <optional>
 #include <span>
 
@@ -37,9 +38,6 @@ namespace lux::render::detail
         void endFrame(SlotSelection) noexcept;
         [[nodiscard]] bool canBegin(const SubmissionFrontiers& completed) const noexcept;
         [[nodiscard]] bool canBegin(const DeviceSession&) noexcept;
-        [[nodiscard]] exec::task<RenderResult<SlotSelection>> acquireReplica(DeviceSession&) noexcept;
-        [[nodiscard]] SubmissionFrontiers& replicaFrontiers(SlotSelection) noexcept;
-        void endReplica(SlotSelection) noexcept;
         [[nodiscard]] RenderResult<bool> waitForProgress(DeviceSession&, std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] std::uint32_t nextSlot() const noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
@@ -57,11 +55,16 @@ namespace lux::render::detail
         }
 
     private:
+        friend class ::lux::render::ReplicaMutation;
+        [[nodiscard]] exec::task<RenderResult<ReplicaFrame>> acquireReplica(DeviceSession&) noexcept;
+        [[nodiscard]] SubmissionFrontiers& replicaFrontiers(ReplicaFrame) noexcept;
+        void endReplica(ReplicaFrame) noexcept;
+
         enum class ECpuAccess : std::uint8_t { IDLE, FRAME, REPLICA };
 
         [[nodiscard]] SlotSelection beginCpuAccess(ECpuAccess) noexcept;
-        void requireAccess(SlotSelection, ECpuAccess) const noexcept;
-        void endCpuAccess(SlotSelection, ECpuAccess) noexcept;
+        void requireAccess(ReplicaFrame, ECpuAccess) const noexcept;
+        void endCpuAccess(ReplicaFrame, ECpuAccess) noexcept;
 
         std::vector<SubmissionFrontiers> slots_;
         SubmissionFrontiers completed_;

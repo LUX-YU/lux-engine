@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/FrameProgress.hpp>
+#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
@@ -20,9 +20,13 @@ namespace lux::render::detail
     namespace
     {
         exec::task<MaterialCommands::Update::Response>
-        updateMaterial(RasterMaterialStorage& resource, MaterialCommands::Update::Request&& input) noexcept
+        updateMaterial(
+            RasterMaterialStorage& resource,
+            ReplicaMutation& mutation,
+            MaterialCommands::Update::Request&& input
+        ) noexcept
         {
-            auto updated = co_await resource.upload(std::move(input.data));
+            auto updated = co_await resource.upload(mutation, std::move(input.data));
             co_return MaterialCommands::Update::Response{updated ? RenderError{} : updated.error()};
         }
 
@@ -49,9 +53,13 @@ namespace lux::render::detail
         }
 
         exec::task<MaterialCommands::CreateInstance::Response>
-        handleCreateInstance(RasterMaterialStorage& resource, MaterialCommands::CreateInstance::Request&& input) noexcept
+        handleCreateInstance(
+            RasterMaterialStorage& resource,
+            ReplicaMutation& mutation,
+            MaterialCommands::CreateInstance::Request&& input
+        ) noexcept
         {
-            const auto created = co_await resource.createInstance(std::move(input));
+            const auto created = co_await resource.createInstance(mutation, std::move(input));
             co_return created ? MaterialCommands::CreateInstance::Response{{}, *created}
                               : MaterialCommands::CreateInstance::Response{created.error()};
         }
@@ -118,8 +126,7 @@ namespace lux::render::detail
     };
 
     RasterMaterialStorage::RasterMaterialStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
-        : session_(dependencies.device), uploads_(dependencies.uploads),
-          replica_progress_(dependencies.replica_progress), frame_count_(dependencies.frame_count),
+        : session_(dependencies.device), has_uploads_(dependencies.uploads != nullptr), frame_count_(dependencies.frame_count),
           resources_(dependencies.resources), id_(id)
     {
     }
@@ -167,7 +174,7 @@ namespace lux::render::detail
             constexpr auto required = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
             const bool has_record_support = (session_.resourceCapabilities() & required) != 0;
             if (!has_record_support) return cxx::unexpected(RenderError{kDeviceUnsupported});
-            if (!uploads_ || !replica_progress_) return cxx::unexpected(RenderError{kDeviceArgument});
+            if (!has_uploads_) return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::array<bool, 3> purposes{};
         std::array<std::optional<rdesc::EDescriptorBindingInfo>, 3> bindings;
@@ -498,7 +505,7 @@ namespace lux::render::detail
 
     template <class Input>
     exec::task<RenderResult<RasterMaterialStorage::WriteValue<Input>>>
-    RasterMaterialStorage::write(Input input) noexcept
+    RasterMaterialStorage::write(ReplicaMutation& mutation, Input input) noexcept
     {
         constexpr bool creating = std::same_as<Input, MaterialCommands::CreateInstance::Request>;
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
@@ -631,15 +638,13 @@ namespace lux::render::detail
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         {
-            auto replica = co_await replica_progress_->acquireReplica(session_);
+            auto replica = co_await mutation.select();
             if (!replica) co_return cxx::unexpected(replica.error());
-            cxx::scope_exit end_replica([&]() noexcept { replica_progress_->endReplica(*replica); });
-            const auto frame_slot = replica->frame.slot_index;
+            const auto frame_slot = replica->slot;
             auto& slice = page.gpu[frame_slot];
             cxx::scope_exit restore([&]() noexcept { markDirty(page, frame_slot, slot); });
             const BufferWrite write{slice.parameters, std::uint64_t(slot) * table.stride, values};
-            auto& accepted_uses = replica_progress_->replicaFrontiers(*replica);
-            if (auto uploaded = co_await uploads_->writeBuffers({&write, 1}, {}, &accepted_uses); !uploaded)
+            if (auto uploaded = co_await mutation.writeBuffers({&write, 1}); !uploaded)
             {
                 co_return cxx::unexpected(uploaded.error());
             }
@@ -681,14 +686,18 @@ namespace lux::render::detail
     }
 
     exec::task<RenderResult<MaterialId>>
-    RasterMaterialStorage::createInstance(MaterialCommands::CreateInstance::Request input) noexcept
+    RasterMaterialStorage::createInstance(
+        ReplicaMutation& mutation,
+        MaterialCommands::CreateInstance::Request input
+    ) noexcept
     {
-        return write(std::move(input));
+        return write(mutation, std::move(input));
     }
 
-    exec::task<RenderResult<Ack>> RasterMaterialStorage::upload(MaterialUpdate input) noexcept
+    exec::task<RenderResult<Ack>>
+    RasterMaterialStorage::upload(ReplicaMutation& mutation, MaterialUpdate input) noexcept
     {
-        return write(std::move(input));
+        return write(mutation, std::move(input));
     }
 
     RenderResult<void> RasterMaterialStorage::updateColors(std::span<const MaterialColorUpdate> updates) noexcept
@@ -993,7 +1002,7 @@ namespace lux::render::detail
             [](void* value, const ReplicaSettlement& settlement) noexcept
             { static_cast<RasterMaterialStorage*>(value)->finishFramePreparation(settlement); }
         };
-        static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
+        static constexpr auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMaterialStorage>>
         {
             if (dependencies.frame_count == 0 || dependencies.frame_count > 3)

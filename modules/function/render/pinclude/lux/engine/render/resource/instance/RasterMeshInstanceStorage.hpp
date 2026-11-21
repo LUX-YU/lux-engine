@@ -50,11 +50,12 @@ namespace lux::render::detail
         RasterMeshInstanceStorage(const RasterMeshInstanceStorage&) = delete;
         RasterMeshInstanceStorage& operator=(const RasterMeshInstanceStorage&) = delete;
 
-        [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceData) noexcept;
+        [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(ReplicaMutation&, MeshInstanceData) noexcept;
         [[nodiscard]] exec::task<
-            RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceData>) noexcept;
+            RenderResult<std::vector<MeshInstanceId>>>
+            create(ReplicaMutation&, std::span<const MeshInstanceData>) noexcept;
         [[nodiscard]] RenderResult<void> update(std::span<const MeshInstanceUpdate>) noexcept;
-        [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
+        [[nodiscard]] exec::task<RenderResult<Ack>> release(ReplicaMutation&, MeshInstanceId) noexcept;
         [[nodiscard]] std::uint32_t recordCount() const noexcept
         {
             return live_records_;
@@ -72,7 +73,8 @@ namespace lux::render::detail
         template <class Input>
         using CreateValue =
             std::conditional_t<std::same_as<Input, MeshInstanceData>, MeshInstanceId, std::vector<MeshInstanceId>>;
-        template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>> createBatch(Input) noexcept;
+        template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>>
+        createBatch(ReplicaMutation&, Input) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(
             const VGraphResourceDesc&,
@@ -96,8 +98,6 @@ namespace lux::render::detail
         [[nodiscard]] nri::Buffer* fieldBuffer(std::uint32_t frame, std::uint32_t page, std::size_t field) noexcept;
         [[nodiscard]] std::uint64_t fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
         DeviceSession& session_;
-        ResourceUploader& uploads_;
-        FrameProgress& replica_progress_;
         std::uint32_t frame_count_;
         ResourceRegistry& resources_;
         TransformStorage& transforms_;

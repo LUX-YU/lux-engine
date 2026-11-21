@@ -154,7 +154,7 @@ namespace lux::render::detail
 
     ResourceCreateContext DeviceEntry::resourceCreateContext() noexcept
     {
-        return {session(), uploader(), frame_progress_.frameCount(), resources_.registry(), &frame_progress_};
+        return ResourceCreateContext(*this);
     }
 
     ResourceSet* DeviceEntry::scopedResources(SceneId scene, ViewId view, bool create) noexcept
@@ -214,3 +214,12 @@ namespace lux::render::detail
             round.operation || !nativeIdle();
     }
 } // namespace lux::render::detail
+
+namespace lux::render
+{
+    ResourceCreateContext::ResourceCreateContext(detail::DeviceEntry& entry) noexcept
+        : device(entry.session()), uploads(entry.uploader()), frame_count(entry.frameProgress().frameCount()),
+          resources(entry.resources().registry()), retirement_progress_(entry.frameProgress())
+    {
+    }
+}

@@ -62,8 +62,17 @@ if(MSVC)
 endif()
 
 add_test(NAME installed.render.compute_output_vulkan COMMAND compute_output)
+
+add_test(NAME installed.render.replica_unknown_vulkan COMMAND compute_output vulkan unknown)
+
+set_tests_properties(installed.render.compute_output_vulkan installed.render.replica_unknown_vulkan PROPERTIES TIMEOUT 45)
+
 if(WIN32)
     add_test(NAME installed.render.compute_output_d3d12 COMMAND compute_output d3d12)
+
+    add_test(NAME installed.render.replica_unknown_d3d12 COMMAND compute_output d3d12 unknown)
+
+    set_tests_properties(installed.render.compute_output_d3d12 installed.render.replica_unknown_d3d12 PROPERTIES TIMEOUT 45)
 endif()
 
 foreach(header IN ITEMS
@@ -75,6 +84,7 @@ foreach(header IN ITEMS
     extensions/execution/GraphPreparation extensions/execution/InstanceData
     extensions/execution/InstanceDataFactory extensions/execution/InstanceDataPrototype extensions/execution/RasterStream
     extensions/execution/PreparedCpuValue
+    extensions/resource/ReplicaMutation extensions/resource/ResourceCreateContext
 )
     get_filename_component(name "${header}" NAME)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${name}Header.cpp")

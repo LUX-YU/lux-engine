@@ -11,6 +11,7 @@
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/extensions/resource/ResourceIdentity.hpp>
 #include <stdexec/execution.hpp>
+#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 
 namespace lux::render::runtime_detail
 {
@@ -177,9 +178,16 @@ namespace lux::render
                         // Keep the request in operation state: a lazy Handler may borrow its fields
                         // after dispatchRequest has released the IPC message.
                         auto sender = stdexec::just(std::move(input)) | stdexec::let_value(
-                            [object, storage = context.resource](typename C::Request& request) noexcept
+                            [object, storage = context.resource, device = context.device, render_scheduler]
+                            (typename C::Request& request) noexcept
                             {
-                                if constexpr (std::is_void_v<H>)
+                                if constexpr (requires { Invocation::writes_replica; })
+                                {
+                                    return invokeReplica<C, Method>(
+                                        *device, *static_cast<Storage*>(storage), request, render_scheduler
+                                    );
+                                }
+                                else if constexpr (std::is_void_v<H>)
                                 {
                                     return Invocation::invoke(storage, std::move(request));
                                 }
@@ -230,6 +238,21 @@ namespace lux::render
         }
 
     private:
+        template <class C, auto Method, class S>
+        static exec::task<typename C::Response>
+        invokeReplica(
+            detail::DeviceEntry& device,
+            S& storage,
+            typename C::Request& request,
+            cxx::execution::ManualContext::Scheduler delivery
+        ) noexcept
+        {
+            ReplicaMutation mutation(device);
+            auto completed = Method(storage, mutation, std::move(request)) | stdexec::upon_error(ResponseError<C>{}) |
+                stdexec::upon_stopped([]() noexcept { return ResponseError<C>{}(RenderError{kCommandCancelled}); });
+            co_return co_await (std::move(completed) | stdexec::continues_on(delivery));
+        }
+
         friend class ResourceRegistry;
         friend class runtime_detail::CommandRegistry;
 

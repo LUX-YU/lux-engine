@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/visibility.h>
+#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/core/Error.hpp>
@@ -164,12 +165,6 @@ namespace lux::render::detail
             }
             return ops;
         }
-    };
-
-    struct ReplicaFrame final
-    {
-        std::uint32_t slot;
-        std::uint64_t epoch;
     };
 
     struct ReplicaCopyRange final

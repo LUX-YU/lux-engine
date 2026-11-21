@@ -5,6 +5,11 @@
 #include <lux/engine/render/extensions/detail/ResponseRoute.hpp>
 #include <lux/engine/render/visibility.h>
 
+namespace lux::render::detail
+{
+    class DeviceEntry;
+}
+
 namespace lux::render
 {
     class ResourceRegistry;
@@ -26,6 +31,7 @@ namespace lux::render::runtime_detail
         ResourceRegistry& resources;
         ResourceInstanceId resource_id;
         void* resource = nullptr;
+        detail::DeviceEntry* device = nullptr;
     };
 
     LUX_RENDER_PUBLIC void finishResourceCommand(ResourceRegistry&, ResourceInstanceId) noexcept;

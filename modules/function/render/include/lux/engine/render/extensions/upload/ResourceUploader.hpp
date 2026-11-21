@@ -11,6 +11,11 @@
 #include <optional>
 #include <span>
 
+namespace lux::render
+{
+    class ReplicaMutation;
+}
+
 namespace lux::render::detail
 {
     class DeviceSession;
@@ -103,19 +108,15 @@ namespace lux::render::detail
         // Lazy device-thread task. Source ranges and their descriptors stay valid through terminal completion.
         // Success means Copy/Acquire acceptance; it does not wait for GPU completion. Partial failures still
         // require the caller to retain or defer-release targets already referenced by accepted work.
-        [[nodiscard]] Task writeBuffers(
-            std::span<const BufferWrite> writes,
-            std::span<const BufferZero> fills = {},
-            SubmissionFrontiers* progress = nullptr
-        ) noexcept;
+        [[nodiscard]] Task
+        writeBuffers(std::span<const BufferWrite> writes, std::span<const BufferZero> fills = {}) noexcept;
         // Each source spans the first element through the last element's end, including stride gaps.
         // Pack only element_bytes per element; destination ranges and byte admission use packed sizes.
         // The layout applies to this batch, keeping BufferWrite a compact borrowed range.
         [[nodiscard]] Task writeBuffers(
             std::span<const BufferWrite> writes,
             std::uint32_t element_bytes,
-            std::uint32_t source_stride,
-            SubmissionFrontiers* progress = nullptr
+            std::uint32_t source_stride
         ) noexcept;
         [[nodiscard]] Task writeImage(
             nri::Texture& target,
@@ -154,6 +155,9 @@ namespace lux::render::detail
         }
 
     private:
+        friend class ::lux::render::ReplicaMutation;
+        [[nodiscard]] Task writeReplicaBuffers(std::span<const BufferWrite>, SubmissionFrontiers&) noexcept;
+
         friend class FrameOperation;
         friend class RenderGraphInstance;
         [[nodiscard]] std::size_t stagedFrameCopyCount() const noexcept;

@@ -859,13 +859,12 @@ namespace lux::render
     RenderResult<HandlerCall> RenderServer::Impl::resolveCommandCall(
         CommandId command,
         const CommandRecord& entry,
-        const ipc::IpcMessage& request,
-        ResourceInstanceId& resource
+        CommandDispatchContext& context
     ) noexcept
     {
         if (entry.storage)
         {
-            const auto id = entry.storage(request);
+            const auto id = entry.storage(context.request);
             const auto* session = runtime_->resources_.deviceOf(id);
             if (!session) return cxx::unexpected(RenderError{kStorageIdentity});
             const auto found = std::ranges::find_if(runtime_->devices_, [session](const auto& owner) noexcept
@@ -893,7 +892,9 @@ namespace lux::render
                 resources.finishCommand(id);
                 return cxx::unexpected(RenderError{kCommandContract});
             }
-            resource = id;
+            context.resource_id = id;
+            context.resource = resources.resourceInstance(id);
+            context.device = found->get();
             return selected->call;
         }
         if (!entry.effect)
@@ -906,12 +907,12 @@ namespace lux::render
             }
             return binding->call;
         }
-        const auto* effect = runtime_->effects_.find(entry.effect(request));
+        const auto* effect = runtime_->effects_.find(entry.effect(context.request));
         if (!effect)
         {
             return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
-        const auto node = entry.effect_node(request);
+        const auto node = entry.effect_node(context.request);
         if (!node.valid()) return cxx::unexpected(RenderError{kCommandContract});
         const auto* call = effect->findCommand(command, node);
         if (!call) return cxx::unexpected(RenderError{kCommandContract});
@@ -933,24 +934,17 @@ namespace lux::render
         }
         else
         {
-            ResourceInstanceId resource;
-            auto call = resolveCommandCall(id, *entry, received.message(), resource);
+            CommandDispatchContext context{
+                received.message(), route, response_outbox_, command_scope_,
+                server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery), runtime_->resources_, {}
+            };
+            auto call = resolveCommandCall(id, *entry, context);
             if (!call)
             {
                 entry->make_error(response_outbox_.prepare(route), call.error());
             }
             else
             {
-                CommandDispatchContext context{
-                    received.message(),
-                    route,
-                    response_outbox_,
-                    command_scope_,
-                    server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery),
-                    runtime_->resources_,
-                    resource,
-                    resource.isNull() ? nullptr : runtime_->resources_.resourceInstance(resource)
-                };
                 // Async Handler construction consumes this exact call now; completion never
                 // re-reads the capability directory or a selected Handler.
                 call->invoke(call->object, context);

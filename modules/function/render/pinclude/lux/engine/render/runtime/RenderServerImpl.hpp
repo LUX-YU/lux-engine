@@ -257,7 +257,7 @@ namespace lux::render
 
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
         [[nodiscard]] RenderResult<HandlerCall>
-        resolveCommandCall(CommandId, const CommandRecord&, const ipc::IpcMessage&, ResourceInstanceId& resource) noexcept;
+        resolveCommandCall(CommandId, const CommandRecord&, runtime_detail::CommandDispatchContext&) noexcept;
         void failDevice(detail::DeviceEntry&, RenderError) noexcept;
         void failExecution(RenderError error) noexcept;
 

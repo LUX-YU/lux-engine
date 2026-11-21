@@ -5,6 +5,7 @@
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <cstring>
+#include <future>
 
 namespace
 {
@@ -15,7 +16,8 @@ namespace
     constexpr std::uint32_t height = 32;
     constexpr std::uint32_t row_pitch = width * 4;
     constexpr std::uint32_t readback_bytes = row_pitch * height;
-    constexpr std::uint32_t capture_bytes = readback_bytes + sizeof(std::uint32_t);
+    constexpr std::uint32_t replica_bytes = 2 * sizeof(std::uint32_t);
+    constexpr std::uint32_t capture_bytes = readback_bytes + replica_bytes;
     constexpr auto color = effectPortSemantic("color");
     constexpr auto pixels = effectPortSemantic("pixels");
     constexpr std::string_view compute_node = "test.sdk.compute_color";
@@ -106,11 +108,27 @@ namespace
         [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
     };
 
+    struct InitializeReplica final
+    {
+        static constexpr bool requires_idle_resource = true;
+        static constexpr std::string_view name = "test.sdk.initialize_replica";
+        enum class EProbe : std::uint8_t { WRITE, CANCEL, UNKNOWN };
+        struct Request final
+        {
+            ResourceInstanceId resource;
+            std::uint32_t marker;
+            EProbe probe = EProbe::WRITE;
+        };
+        using Data = Request;
+        using Response = AckResponse;
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+    };
+
     struct MutableReplicaDescriptor final
     {
         using Config = void;
         using Ops = void;
-        using Commands = std::tuple<SetReplicaValue>;
+        using Commands = std::tuple<SetReplicaValue, InitializeReplica>;
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.mutable_replica"}, 0, 0, {}, "Mutable replica.", EResourceDomain::VIEW,
             resourceCommandDescriptors(static_cast<Commands*>(nullptr))
@@ -127,6 +145,10 @@ namespace
         std::uint32_t value = 0, selected = 0;
         std::optional<std::uint32_t> resident;
         bool fail_after_staging = false;
+
+        static inline std::atomic_bool held{}, resume{};
+        static inline std::atomic_uint injected{}, retired_candidates{};
+        static inline decltype(nri::CoreInterface::QueueSubmit) submit{};
 
         explicit MutableReplica(DeviceSession& device) noexcept : device(device) {}
 
@@ -145,12 +167,59 @@ namespace
         {
             if (!context.uploads || context.frame_count != 1)
                 return lux::cxx::unexpected(RenderError{kDeviceUnsupported});
-            auto replica = std::make_unique<MutableReplica>(context.device);
-            const auto& core = context.device.nriCore();
-            const nri::BufferDesc desc{sizeof(std::uint32_t), 4, nri::BufferUsageBits::NONE};
-            const auto created = core.CreatePlacedBuffer(context.device.device(), NriDeviceHeap, desc, replica->buffer);
-            if (created != nri::Result::SUCCESS) return lux::cxx::unexpected(RenderError{kDeviceFailure});
-            return replica;
+            return std::make_unique<MutableReplica>(context.device);
+        }
+
+        static exec::task<AckResponse>
+        initialize(MutableReplica& storage, ReplicaMutation& mutation, InitializeReplica::Request&& request) noexcept
+        {
+            if (storage.buffer) co_return AckResponse{RenderError{kStorageContract}};
+            const auto premature = co_await mutation.writeBuffers({});
+            CHECK(!premature && premature.error().type == kFrameContract);
+            const auto selected = co_await mutation.select();
+            if (!selected) co_return AckResponse{selected.error()};
+            CHECK(selected->slot == 0 && selected->epoch);
+            const auto repeated = co_await mutation.select();
+            CHECK(repeated && repeated->slot == selected->slot && repeated->epoch == selected->epoch);
+            if (request.probe == InitializeReplica::EProbe::CANCEL)
+            {
+                co_await stdexec::starts_on(storage.device.nativeScheduler(), stdexec::just() | stdexec::then([]() noexcept
+                {
+                    held.store(true);
+                    resume.wait(false);
+                }));
+                co_await stdexec::just_stopped();
+            }
+            const auto& core = storage.device.nriCore();
+            const nri::BufferDesc desc{replica_bytes, 4, nri::BufferUsageBits::NONE};
+            nri::Buffer* candidate = nullptr;
+            const auto created = core.CreatePlacedBuffer(storage.device.device(), NriDeviceHeap, desc, candidate);
+            if (created != nri::Result::SUCCESS) co_return AckResponse{RenderError{kDeviceFailure}};
+            const std::array words{0u, request.marker};
+            const BufferWrite write{candidate, 0, std::as_bytes(std::span(words))};
+            auto& hooks = const_cast<nri::CoreInterface&>(core);
+            if (request.probe == InitializeReplica::EProbe::UNKNOWN)
+            {
+                submit = hooks.QueueSubmit;
+                hooks.QueueSubmit = [](nri::Queue&, const nri::QueueSubmitDesc&) noexcept
+                {
+                    ++injected;
+                    return nri::Result::FAILURE;
+                };
+            }
+            const auto result = co_await mutation.writeBuffers({&write, 1});
+            if (request.probe == InitializeReplica::EProbe::UNKNOWN) hooks.QueueSubmit = submit;
+            if (!result)
+            {
+                storage.device.deferRelease([destroy = core.DestroyBuffer, candidate]() noexcept
+                {
+                    destroy(candidate);
+                    ++retired_candidates;
+                });
+                co_return AckResponse{result.error()};
+            }
+            storage.buffer = candidate;
+            co_return AckResponse{};
         }
 
         static void set(MutableReplica& resource, const SetReplicaValue::Request& request, AckResponse& reply) noexcept
@@ -208,7 +277,7 @@ namespace
                 {
                     if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
                     return StorageGraphImport{
-                        GraphBufferDesc{sizeof(std::uint32_t)}, {GraphBufferRange{0, sizeof(std::uint32_t)}},
+                        GraphBufferDesc{replica_bytes}, {GraphBufferRange{0, replica_bytes}},
                         EGraphUse::TRANSFER_SOURCE
                     };
                 },
@@ -218,16 +287,31 @@ namespace
                 ) noexcept -> RenderResult<void>
                 {
                     const auto* resource = static_cast<MutableReplica*>(owner);
-                    for (auto& value : output) value = {resource->buffer, 0, sizeof(std::uint32_t)};
+                    for (auto& value : output) value = {resource->buffer, 0, replica_bytes};
                     return {};
                 },
                 .settleFrame = [](void* owner, const ReplicaSettlement& receipt) noexcept
                 { static_cast<MutableReplica*>(owner)->settle(receipt); }
             };
-            static const std::array commands{CommandBinding::declare<SetReplicaValue, &set>()};
+            static const std::array commands{
+                CommandBinding::declare<SetReplicaValue, &set>(),
+                CommandBinding::declare<InitializeReplica, &initialize>()
+            };
             return makeResourceRegistration<Descriptor, MutableReplica, &create>(nullptr, &bindings, commands);
         }
     };
+
+    struct NonExclusiveReplicaCommand final
+    {
+        static constexpr std::string_view name = "test.sdk.nonexclusive_replica";
+        using Request = InitializeReplica::Request;
+        using Data = Request;
+        using Response = AckResponse;
+        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+    };
+
+    static_assert(CommandMethodFor<InitializeReplica, &MutableReplica::initialize>);
+    static_assert(!CommandMethodFor<NonExclusiveReplicaCommand, &MutableReplica::initialize>);
 
     CapabilityDefinition computeDefinition() noexcept
     {
@@ -281,12 +365,12 @@ namespace
         const auto mutable_input = take(context.importResource(
             "mutable", {ResourceName{MutableReplicaDescriptor::descriptor.type.name()}},
             {
-                "", GraphBufferDesc{sizeof(std::uint32_t)}, EGraphOrigin::IMPORTED,
-                {GraphBufferRange{0, sizeof(std::uint32_t)}}, EGraphUse::TRANSFER_SOURCE
+                "", GraphBufferDesc{replica_bytes}, EGraphOrigin::IMPORTED,
+                {GraphBufferRange{0, replica_bytes}}, EGraphUse::TRANSFER_SOURCE
             }
         ));
         const auto complete = take(context.builder().addTransferPass("copy mutable replica", TransferWork{{
-            CopyBuffer{{mutable_input}, {copied.written.front(), GraphBufferRange{readback_bytes, sizeof(std::uint32_t)}}}
+            CopyBuffer{{mutable_input}, {copied.written.front(), GraphBufferRange{readback_bytes, replica_bytes}}}
         }}));
         return context.publish(pixels, {{pixels, complete.written.front()}});
     }
@@ -329,7 +413,8 @@ int main(int argc, char** argv)
     take(server->registerResource<MutableReplica>());
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
-    std::thread worker([&] { CHECK(server->run()); });
+    RenderResult<void> ran;
+    std::thread worker([&] { ran = server->run(); });
     const auto commands = queryCommands(*client);
     const auto session = call<CreateDeviceSession>(*client, commands, options).device;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
@@ -354,6 +439,39 @@ int main(int argc, char** argv)
     CHECK(edit.commit());
     const auto created = call<CreateEffect>(*client, commands, std::move(effect)).effect;
     JobBinding binding;
+    constexpr std::uint32_t marker = 0x4d340123;
+    if (argc > 2 && std::string_view{argv[2]} == "unknown")
+    {
+        const auto failed = call<InitializeReplica>(
+            *client, commands, {mutable_resource, marker, InitializeReplica::EProbe::UNKNOWN}, false
+        );
+        CHECK(failed.error.type == kOutcomeUnknown && MutableReplica::injected == 1);
+        worker.join();
+        CHECK(!ran && ran.error().type == kOutcomeUnknown && server->stats().validation_errors == 0);
+        server.reset();
+        CHECK(MutableReplica::retired_candidates == 1);
+        std::puts("REPLICA COMMAND PASS: UNKNOWN stopped device admission and retired the candidate");
+        return 0;
+    }
+    auto other = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(other);
+    auto cancelled = std::async(std::launch::async, [&]
+    {
+        return call<InitializeReplica>(
+            *other, commands, {mutable_resource, marker, InitializeReplica::EProbe::CANCEL}, false
+        );
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!MutableReplica::held.load())
+    {
+        CHECK(std::chrono::steady_clock::now() < deadline);
+        std::this_thread::yield();
+    }
+    const auto busy = call<InitializeReplica>(*client, commands, {mutable_resource, marker}, false);
+    MutableReplica::resume.store(true);
+    MutableReplica::resume.notify_all();
+    CHECK(busy.error.type == kDeviceBusy && cancelled.get().error.type == kCommandCancelled);
+    call<InitializeReplica>(*client, commands, {mutable_resource, marker});
     binding.resources = {{"capture", readback}, {"mutable", mutable_resource}};
     const auto job = startRenderJob(*client, commands, session, scene, view, target, created, std::move(binding));
     constexpr std::uint32_t expected_replica = 0x12345678;
@@ -373,12 +491,15 @@ int main(int argc, char** argv)
     CHECK(ComputeCapture::rejected == 1 && ComputeCapture::accepted == 1);
     server->stop();
     worker.join();
-    CHECK(server->stats().validation_errors == 0);
+    CHECK(ran && server->stats().validation_errors == 0);
     const auto& readback_pixels = ComputeCapture::result;
     CHECK(readback_pixels.ready == 1 && readback_pixels.frames.size() == 1);
     constexpr std::size_t pixel_size = 4;
     const auto data = std::span(readback_pixels.frames.front());
     CHECK(data.size() >= capture_bytes);
+    std::uint32_t observed_marker = 0;
+    std::memcpy(&observed_marker, data.data() + readback_bytes + sizeof(std::uint32_t), sizeof(observed_marker));
+    CHECK(observed_marker == marker);
     std::uint32_t replica = 0;
     std::memcpy(&replica, data.data() + readback_bytes, sizeof(replica));
     CHECK(replica == expected_replica);

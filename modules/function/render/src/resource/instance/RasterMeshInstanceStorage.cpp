@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/FrameProgress.hpp>
+#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
@@ -24,9 +24,13 @@ namespace lux::render::detail
         constexpr std::uint32_t kRenderEnabledBit = 1;
 
         exec::task<InstanceCommands::CreateInstance::Response>
-        createInstance(RasterMeshInstanceStorage& resource, InstanceCommands::CreateInstance::Request&& input) noexcept
+        createInstance(
+            RasterMeshInstanceStorage& resource,
+            ReplicaMutation& mutation,
+            InstanceCommands::CreateInstance::Request&& input
+        ) noexcept
         {
-            auto result = co_await resource.create(std::move(input.data));
+            auto result = co_await resource.create(mutation, std::move(input.data));
             co_return result ? InstanceCommands::CreateInstance::Response{{}, *result}
                              : InstanceCommands::CreateInstance::Response{result.error()};
         }
@@ -34,10 +38,11 @@ namespace lux::render::detail
         exec::task<InstanceCommands::CreateInstances::Response>
         createInstances(
             RasterMeshInstanceStorage& resource,
+            ReplicaMutation& mutation,
             InstanceCommands::CreateInstances::Request&& input
         ) noexcept
         {
-            auto result = co_await resource.create(input.data);
+            auto result = co_await resource.create(mutation, input.data);
             co_return result ? InstanceCommands::CreateInstances::Response{{}, std::move(*result)}
                              : InstanceCommands::CreateInstances::Response{result.error()};
         }
@@ -45,10 +50,11 @@ namespace lux::render::detail
         exec::task<InstanceCommands::ReleaseInstance::Response>
         releaseInstance(
             RasterMeshInstanceStorage& resource,
+            ReplicaMutation& mutation,
             InstanceCommands::ReleaseInstance::Request&& input
         ) noexcept
         {
-            auto result = co_await resource.release(input.data);
+            auto result = co_await resource.release(mutation, input.data);
             co_return InstanceCommands::ReleaseInstance::Response{result ? RenderError{} : result.error()};
         }
 
@@ -225,8 +231,7 @@ namespace lux::render::detail
     RasterMeshInstanceStorage::RasterMeshInstanceStorage(
         ResourceCreateContext& dependencies, ResourceInstanceId id, TransformStorage& transforms
     ) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads),
-          replica_progress_(*dependencies.replica_progress), frame_count_(dependencies.frame_count),
+        : session_(dependencies.device), frame_count_(dependencies.frame_count),
           resources_(dependencies.resources), transforms_(transforms), id_(id),
           paged_(dependencies.device.usesDeviceAddresses()),
           frames_(std::make_unique<FrameData>())
@@ -614,20 +619,21 @@ namespace lux::render::detail
         };
     }
 
-    exec::task<RenderResult<MeshInstanceId>> RasterMeshInstanceStorage::create(MeshInstanceData input) noexcept
+    exec::task<RenderResult<MeshInstanceId>>
+    RasterMeshInstanceStorage::create(ReplicaMutation& mutation, MeshInstanceData input) noexcept
     {
-        return createBatch(std::move(input));
+        return createBatch(mutation, std::move(input));
     }
 
     exec::task<RenderResult<std::vector<MeshInstanceId>>>
-    RasterMeshInstanceStorage::create(std::span<const MeshInstanceData> input) noexcept
+    RasterMeshInstanceStorage::create(ReplicaMutation& mutation, std::span<const MeshInstanceData> input) noexcept
     {
-        return createBatch(std::move(input));
+        return createBatch(mutation, std::move(input));
     }
 
     template <class Input>
     exec::task<RenderResult<RasterMeshInstanceStorage::CreateValue<Input>>>
-    RasterMeshInstanceStorage::createBatch(Input input) noexcept
+    RasterMeshInstanceStorage::createBatch(ReplicaMutation& mutation, Input input) noexcept
     {
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kUploadStopped});
@@ -798,10 +804,9 @@ namespace lux::render::detail
                 dirty.grow(capacity());
             }
         }
-        auto replica = co_await replica_progress_.acquireReplica(session_);
+        auto replica = co_await mutation.select();
         if (!replica) co_return cxx::unexpected(replica.error());
-        cxx::scope_exit end_replica([&]() noexcept { replica_progress_.endReplica(*replica); });
-        const auto frame = replica->frame.slot_index;
+        const auto frame = replica->slot;
         for (const auto& description : selected)
         {
             auto property = resolveReferences(description, frame);
@@ -838,8 +843,7 @@ namespace lux::render::detail
                 }
             );
         }
-        auto& accepted_uses = replica_progress_.replicaFrontiers(*replica);
-        if (auto accepted = co_await uploads_.writeBuffers(writes, {}, &accepted_uses); !accepted)
+        if (auto accepted = co_await mutation.writeBuffers(writes); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -945,7 +949,8 @@ namespace lux::render::detail
         return {};
     }
 
-    exec::task<RenderResult<Ack>> RasterMeshInstanceStorage::release(MeshInstanceId input) noexcept
+    exec::task<RenderResult<Ack>>
+    RasterMeshInstanceStorage::release(ReplicaMutation& mutation, MeshInstanceId input) noexcept
     {
         if (updating_)
         {
@@ -961,10 +966,9 @@ namespace lux::render::detail
         updating_ = true;
         ++preparation_revision_;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
-        auto replica = co_await replica_progress_.acquireReplica(session_);
+        auto replica = co_await mutation.select();
         if (!replica) co_return cxx::unexpected(replica.error());
-        cxx::scope_exit end_replica([&]() noexcept { replica_progress_.endReplica(*replica); });
-        const auto frame = replica->frame.slot_index;
+        const auto frame = replica->slot;
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -976,8 +980,7 @@ namespace lux::render::detail
             fieldOffset(record, sizeof(dead)),
             std::as_bytes(std::span(&dead, 1))
         };
-        auto& accepted_uses = replica_progress_.replicaFrontiers(*replica);
-        if (auto accepted = co_await uploads_.writeBuffers(std::span(&write, 1), {}, &accepted_uses); !accepted)
+        if (auto accepted = co_await mutation.writeBuffers(std::span(&write, 1)); !accepted)
         {
             mark(frame, record, 2);
             co_return cxx::unexpected(accepted.error());
@@ -1347,10 +1350,10 @@ namespace lux::render::detail
             [](void* value, const ReplicaSettlement& settlement) noexcept
             { static_cast<RasterMeshInstanceStorage*>(value)->finishFramePreparation(settlement); }
         };
-        static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
+        static constexpr auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMeshInstanceStorage>>
         {
-            if (!dependencies.uploads || !dependencies.replica_progress || dependencies.frame_count == 0 || dependencies.frame_count > 3)
+            if (!dependencies.uploads || dependencies.frame_count == 0 || dependencies.frame_count > 3)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

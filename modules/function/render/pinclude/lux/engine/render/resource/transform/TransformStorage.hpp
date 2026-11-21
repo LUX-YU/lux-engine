@@ -76,7 +76,7 @@ namespace lux::render::detail
 
         ResourceInstanceId id_;
         DeviceSession& session_;
-        FrameProgress& progress_;
+        const FrameProgress& progress_;
         const std::uint32_t frame_count_;
         const bool paged_;
         cxx::SlotMap<Record, TransformTag> records_;

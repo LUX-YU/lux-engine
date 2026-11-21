@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/FrameProgress.hpp>
+#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
@@ -16,18 +16,26 @@ namespace lux::render::detail
     namespace
     {
         exec::task<LightingCommands::CreateLights::Response>
-        createLights(DirectLightingStorage& resource, LightingCommands::CreateLights::Request&& input) noexcept
+        createLights(
+            DirectLightingStorage& resource,
+            ReplicaMutation& mutation,
+            LightingCommands::CreateLights::Request&& input
+        ) noexcept
         {
             const auto sequence = input.data.sequence;
-            auto result = co_await resource.create(std::move(input.data));
+            auto result = co_await resource.create(mutation, std::move(input.data));
             co_return result ? LightingCommands::CreateLights::Response{{}, sequence, std::move(*result)}
                              : LightingCommands::CreateLights::Response{result.error(), sequence};
         }
 
         exec::task<LightingCommands::ReleaseLight::Response>
-        removeLight(DirectLightingStorage& resource, LightingCommands::ReleaseLight::Request&& input) noexcept
+        removeLight(
+            DirectLightingStorage& resource,
+            ReplicaMutation& mutation,
+            LightingCommands::ReleaseLight::Request&& input
+        ) noexcept
         {
-            auto result = co_await resource.remove(input.light);
+            auto result = co_await resource.remove(mutation, input.light);
             co_return LightingCommands::ReleaseLight::Response{
                 result ? RenderError{} : result.error(), input.sequence
             };
@@ -150,8 +158,7 @@ namespace lux::render::detail
     } // namespace
 
     DirectLightingStorage::DirectLightingStorage(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
-        : device_(dependencies.device), uploads_(*dependencies.uploads),
-          replica_progress_(*dependencies.replica_progress), frame_count_(dependencies.frame_count), id_(id)
+        : device_(dependencies.device), frame_count_(dependencies.frame_count), id_(id)
     {
         for (std::size_t kind = 0; kind < arrays_.size(); ++kind)
         {
@@ -178,7 +185,8 @@ namespace lux::render::detail
         }
     }
 
-    exec::task<RenderResult<std::vector<LightId>>> DirectLightingStorage::create(LightData input) noexcept
+    exec::task<RenderResult<std::vector<LightId>>>
+    DirectLightingStorage::create(ReplicaMutation& mutation, LightData input) noexcept
     {
         if (updating_)
         {
@@ -223,7 +231,7 @@ namespace lux::render::detail
         {
             arrays_[k].identities.reserve(counts[k]);
         }
-        if (auto accepted = co_await write(writes, counts); !accepted)
+        if (auto accepted = co_await write(mutation, writes, counts); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -316,7 +324,7 @@ namespace lux::render::detail
         return static_cast<std::uint32_t>(input.size());
     }
 
-    exec::task<RenderResult<void>> DirectLightingStorage::remove(LightId light) noexcept
+    exec::task<RenderResult<void>> DirectLightingStorage::remove(ReplicaMutation& mutation, LightId light) noexcept
     {
         auto* entry = extension_detail::ResourceIdentity::parent(light) == id_
                           ? entries_.find(extension_detail::ResourceIdentity::local(light))
@@ -349,7 +357,7 @@ namespace lux::render::detail
             replacement[0] = {entry->kind, entry->position, std::span(replacement_bytes).first(stride)};
             writes = replacement;
         }
-        if (auto accepted = co_await write(writes, counts); !accepted)
+        if (auto accepted = co_await write(mutation, writes, counts); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -407,7 +415,12 @@ namespace lux::render::detail
     }
 
     exec::task<RenderResult<void>>
-    DirectLightingStorage::write(std::span<const Write> changes, const std::array<std::uint32_t, 3>& counts) noexcept
+    DirectLightingStorage::write(
+        ReplicaMutation& mutation,
+        std::span<const Write> changes,
+        const std::array<std::uint32_t,
+        3>& counts
+    ) noexcept
     {
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kUploadStopped});
@@ -432,10 +445,9 @@ namespace lux::render::detail
             }
             arrays_[k].records.reserve(std::max(size, arrays_[k].records.size()));
         }
-        auto replica = co_await replica_progress_.acquireReplica(device_);
+        auto replica = co_await mutation.select();
         if (!replica) co_return cxx::unexpected(replica.error());
-        cxx::scope_exit end_replica([&]() noexcept { replica_progress_.endReplica(*replica); });
-        const auto frame = replica->frame.slot_index;
+        const auto frame = replica->slot;
         std::array<nri::Buffer*, 4> candidates{};
         std::array<std::size_t, 4> capacities{};
         cxx::scope_exit rollback(
@@ -497,7 +509,7 @@ namespace lux::render::detail
                 {candidates[3] ? candidates[3] : arrays_[3].frames[frame].buffer, 0, std::as_bytes(std::span(header))}
             );
         }
-        auto accepted = co_await uploads_.writeBuffers(writes, {}, &replica_progress_.replicaFrontiers(*replica));
+        auto accepted = co_await mutation.writeBuffers(writes);
         if (accepted && stop.stop_requested()) accepted = cxx::unexpected(RenderError{kUploadStopped});
         if (!accepted)
         {
@@ -748,10 +760,10 @@ namespace lux::render::detail
             { static_cast<DirectLightingStorage*>(value)->finishPreparation(settlement); }
         };
         using Created = RenderResult<std::unique_ptr<DirectLightingStorage>>;
-        static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept -> Created
+        static constexpr auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept -> Created
         {
             const bool invalid_count = dependencies.frame_count == 0 || dependencies.frame_count > 3;
-            if (invalid_count || !dependencies.uploads || !dependencies.replica_progress)
+            if (invalid_count || !dependencies.uploads)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

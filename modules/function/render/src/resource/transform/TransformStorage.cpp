@@ -45,14 +45,14 @@ namespace lux::render::detail
         createTransformStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         {
             const bool invalid_replicas = context.frame_count == 0 || context.frame_count > 3;
-            if (!context.uploads || !context.replica_progress || invalid_replicas)
+            if (!context.uploads || invalid_replicas)
                 return cxx::unexpected(RenderError{kDeviceArgument});
             return std::make_unique<TransformStorage>(context, id);
         }
     } // namespace
 
     TransformStorage::TransformStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
-        : id_(id), session_(context.device), progress_(*context.replica_progress), frame_count_(context.frame_count),
+        : id_(id), session_(context.device), progress_(context.retirement_progress_), frame_count_(context.frame_count),
           paged_(session_.usesDeviceAddresses()), completed_(session_.makeFrontiers())
     {
     }

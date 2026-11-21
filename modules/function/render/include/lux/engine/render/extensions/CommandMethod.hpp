@@ -5,6 +5,8 @@
 
 namespace lux::render
 {
+    class ReplicaMutation;
+
     namespace extension_detail
     {
         template <class C, auto Method, class Signature = decltype(Method)> struct CommandInvocation;
@@ -135,6 +137,17 @@ namespace lux::render
             {
                 return Method(*static_cast<S*>(storage), std::move(request));
             }
+        };
+
+        template <class C, auto Method, class S, class R, class Request>
+            requires std::same_as<Request, typename C::Request> && C::requires_idle_resource
+        struct CommandInvocation<C, Method, R (*)(S&, ReplicaMutation&, Request&&) noexcept> final
+        {
+            using Handler = void;
+            using Storage = S;
+            using Result = R;
+            static constexpr bool synchronous = false;
+            static constexpr bool writes_replica = true;
         };
     } // namespace extension_detail
 

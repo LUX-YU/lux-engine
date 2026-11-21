@@ -241,7 +241,7 @@ namespace lux::render::detail
         {
             for (std::uint32_t p = 0; p < frame.passes.size(); ++p)
             {
-                const auto* raster = frame.passes[p].compiled_pass->rasterScope();
+                const auto* raster = plan_->recordingProgram().rasterScope(*frame.passes[p].compiled_pass);
                 if (raster && !raster->viewport) invalidateRecording(slot, p);
             }
             frame.viewport = viewport_;

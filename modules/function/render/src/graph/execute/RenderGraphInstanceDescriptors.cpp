@@ -457,7 +457,7 @@ namespace lux::render::detail
                 }
                 pass.buffers.push_back(native);
             }
-            if (const auto* raster = compiled_pass.rasterScope())
+            if (const auto* raster = plan_->recordingProgram().rasterScope(compiled_pass))
             {
                 const auto& group = plan.recording_.groups[compiled_pass.rendering_group];
                 pass.colors.resize(group.colors.size());
@@ -509,7 +509,7 @@ namespace lux::render::detail
         // fields, without allocating descriptors or searching author names during recording.
         for (auto& pass : frame.passes)
         {
-            if (const auto* raster = pass.compiled_pass->rasterScope())
+            if (const auto* raster = plan_->recordingProgram().rasterScope(*pass.compiled_pass))
             {
                 for (std::size_t i = 0; i < raster->colors.size(); ++i)
                 {

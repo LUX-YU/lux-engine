@@ -8,25 +8,53 @@
 
 namespace lux::render
 {
+    struct GraphTransferCommand final
+    {
+        TransferWork work;
+        // Normalized R32_UINT shaderless writes, in private descriptor order.
+        std::vector<ResourceAccess> typed_buffer_writes;
+    };
+
+    using VGraphCommand = std::variant<RasterWork, ComputeWork, GraphTransferCommand>;
+
+    struct GraphPassBindings final
+    {
+        const PassInterface* shader = nullptr;
+        const ParameterBinding* parameters = nullptr;
+        std::span<const ResourceAccess> typed_buffer_writes;
+    };
+
     struct GraphPass final
     {
         std::string key;
-        EGraphPassKind kind = EGraphPassKind::COMPUTE;
         std::vector<ResourceAccess> uses;
         VGraphCommand command;
         bool side_effect = false;
         std::optional<PassCondition> condition;
-        PassInterface interface;
-        std::optional<RasterScope> rendering;
-        std::optional<GraphicsState> graphics;
-        bool allow_async_compute = false;
         GraphPassId sequence_first, sequence_last;
         std::uint64_t estimated_gpu_ns = 0;
 
-        [[nodiscard]] const RasterScope* rasterScope() const noexcept
+        [[nodiscard]] EGraphPassKind kind() const noexcept
         {
-            return rendering ? &*rendering : nullptr;
+            if (std::holds_alternative<RasterWork>(command)) return EGraphPassKind::GRAPHICS;
+            if (std::holds_alternative<ComputeWork>(command)) return EGraphPassKind::COMPUTE;
+            return EGraphPassKind::TRANSFER;
         }
+
+        [[nodiscard]] GraphPassBindings bindings() const & noexcept
+        {
+            if (const auto* raster = std::get_if<RasterWork>(&command))
+            {
+                if (const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster->program))
+                    return {&fixed->interface, &fixed->interface.parameters, {}};
+                return {nullptr, &std::get<RasterPassTemplate>(raster->program).parameters, {}};
+            }
+            if (const auto* compute = std::get_if<ComputeWork>(&command))
+                return {&compute->interface, &compute->interface.parameters, {}};
+            return {nullptr, nullptr, std::get<GraphTransferCommand>(command).typed_buffer_writes};
+        }
+
+        GraphPassBindings bindings() const && = delete;
     };
 
     class RenderGraphBuilder;

@@ -1047,6 +1047,11 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         const auto graph = take(std::move(builder).finish());
         const auto analysis = take(analyzeRenderGraph(graph));
         auto plan = compile(*session, graph, analysis, nullptr);
+        const auto& recording = plan.executable.recordingProgram();
+        CHECK(recording.raster_scopes.size() == 2 && recording.passes.size() == 3);
+        CHECK(recording.rasterScope(recording.passes[0]) == &recording.raster_scopes[0]);
+        CHECK(recording.rasterScope(recording.passes[1]) == &recording.raster_scopes[1]);
+        CHECK(!recording.rasterScope(recording.passes[2]) && recording.transferCommands(recording.passes[2]));
         CHECK(plan.executable.passes()[0].rendering_group == 0);
         CHECK(plan.executable.passes()[1].rendering_group == plan.executable.passes()[0].rendering_group);
         CHECK(plan.programs[0].pipeline != plan.programs[1].pipeline);
@@ -1464,7 +1469,9 @@ static void cpuBuilderTransactions()
     const auto strided = take(builder.addRasterPass("strided commands", std::move(padded)));
     const auto graph = take(std::move(builder).finish());
     const auto& first = graph.passes()[1];
-    CHECK(first.interface.resources[0].field != first.interface.resources[1].field);
+    const auto fields = first.bindings();
+    CHECK(fields.shader == &std::get<ComputeWork>(first.command).interface);
+    CHECK(fields.shader->resources[0].field != fields.shader->resources[1].field);
     CHECK(first.sequence_first.index == 1 && first.sequence_last.index == 2);
     const auto& uses = graph.passes()[streamed.pass.index].uses;
     CHECK(uses.size() == 4 && uses[0].fallback == seed.written.front() && uses[1].fallback == sequence.written.front());
@@ -1711,7 +1718,7 @@ static void cpuRasterPackets()
     CHECK(executable.passes().size() == 1);
     const auto& pass = executable.passes().front();
     const auto& recording = executable.recordingProgram();
-    CHECK(pass.commands.kernel == ERecordKernel::RASTER && recording.raster.size() == 1);
+    CHECK(std::holds_alternative<RasterCommandSlot>(pass.commands) && recording.raster.size() == 1);
     CHECK(recording.groups.size() == 1);
     const auto& scope = recording.groups.front();
     CHECK(scope.colors.size() == 2 && scope.depth);

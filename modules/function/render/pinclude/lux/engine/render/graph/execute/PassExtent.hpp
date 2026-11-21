@@ -32,7 +32,7 @@ namespace lux::render::detail
             }
         }
 
-        if (const auto* raster = pass.rasterScope())
+        if (const auto* raster = plan.recordingProgram().rasterScope(pass))
         {
             const auto& reference = raster->colors.empty() ? *raster->depth : raster->colors.front();
             const auto& reference_range = std::get<GraphImageRange>(reference.access.range);

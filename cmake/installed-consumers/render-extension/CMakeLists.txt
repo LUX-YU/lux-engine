@@ -80,7 +80,7 @@ foreach(header IN ITEMS
     effect/CapabilityDefinition effect/EffectBundles effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
     extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
-    extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/Diagnostics
+    extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
     extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
     extensions/execution/ProducerFactory extensions/execution/LinkedProducer extensions/execution/RasterStream
     extensions/execution/PreparedCpuValue

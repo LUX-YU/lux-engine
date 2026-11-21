@@ -3,6 +3,7 @@
 #include <cmath>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 #include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 
@@ -228,12 +229,39 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(valid.error());
             }
-            std::visit([&](const auto& draw) noexcept { recorded.draw = draw; }, fixed->draw);
+            recorded.draw = std::visit([](const auto& draw) noexcept -> VRasterDraw
+            {
+                using Draw = std::remove_cvref_t<decltype(draw)>;
+                if constexpr (std::same_as<Draw, DrawVertices>)
+                    return nri::DrawDesc{draw.count, draw.instances, draw.first, draw.first_instance};
+                else
+                {
+                    const auto type = draw.type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
+                    const auto buffer = draw.index_resource.resource.index;
+                    if constexpr (std::same_as<Draw, DrawIndexed>)
+                    {
+                        return IndexedDrawPacket{
+                            {{buffer, draw.offset}, type},
+                            {draw.count, draw.instances, draw.first, draw.vertex_offset, draw.first_instance}
+                        };
+                    }
+                    else
+                    {
+                        const auto count = draw.count_resource ? draw.count_resource->resource.index : kGraphInvalidIndex;
+                        return IndirectDrawPacket{
+                            {{buffer, draw.index_offset}, type}, {draw.commands_resource.resource.index, draw.commands_offset},
+                            {count, draw.count_offset}, draw.count, draw.stride
+                        };
+                    }
+                }
+            }, fixed->draw);
             for (const auto& source : fixed->vertex_buffers)
             {
                 const auto binding =
                     std::ranges::find(fixed->graphics.vertex_bindings, source.binding, &VertexBinding::binding);
-                recorded.vertices.push_back({source.resource.resource, source.binding, source.offset, binding->stride});
+                recorded.vertices.push_back({
+                    source.resource.resource.index, source.binding, source.offset, binding->stride
+                });
             }
         }
         else
@@ -273,7 +301,7 @@ namespace lux::render::detail
         const auto& buffer = std::get<GraphBufferDesc>(context.resources[slot].description);
         const bool fits = indirect.offset <= buffer.size && buffer.size - indirect.offset >= sizeof(nri::DispatchDesc);
         if (indirect.offset % 4 || !fits) return cxx::unexpected(RenderError{kDeviceArgument});
-        return ComputeCommands{IndirectDispatchOperand{slot, indirect.offset}};
+        return ComputeCommands{BufferLocation{slot, indirect.offset}};
     }
 
     RenderResult<TransferCommands>

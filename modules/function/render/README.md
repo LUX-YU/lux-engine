@@ -450,6 +450,10 @@ reads fail with structured errors.
 Untouched subranges inherit the explicit predecessor; analysis follows those ranges only when a consumer observes
 them. Logical lifetime disjointness does not authorize physical memory aliasing.
 
+A normalized `GraphPass` owns its typed command. Inspection uses `kind()` and the borrowed `bindings()` view.
+Fixed raster and compute commands own their shader interface. A dynamic raster command owns its parameter
+block, and a transfer command owns the typed writes derived from its fills.
+
 `addRasterPass`, `addComputePass` and `addTransferPass` derive accesses from the work's actual inputs,
 attachments and operations. They return the new written versions; authors do not repeat the same accesses
 in a separate Program callback. Raster attachment load/store operations are explicit. A partial texture copy
@@ -500,7 +504,11 @@ producer instances, writable frame bindings, transient resources and History.
 Standalone project GPU consumers can bind physical inputs directly.
 
 The `RenderGraphExecutable` contains a recording program with typed Raster, Compute and Transfer packet tables,
-range transitions and rendering groups. Legacy's consecutive-pass
+range transitions and rendering groups. Each live pass stores one typed command slot. The Raster slot also
+selects the per-pass scope, including its viewport and depth bias. Merged groups carry the first load and
+last store across their member passes. Compute and Transfer allocate no raster scope.
+The compiler checks dense packet order, scope counts and group membership before publishing the plan.
+Legacy's consecutive-pass
 grouping and execution-order last-use rules are reused with stricter attachment identity, range and dependency
 checks. Only compatible LOAD successors share a rendering scope; sampling an earlier attachment requires the
 corresponding barrier outside rendering. The NRI backend has no discard load operation, so author DISCARD is

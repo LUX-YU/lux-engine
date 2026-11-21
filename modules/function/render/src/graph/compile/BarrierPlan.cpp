@@ -142,10 +142,10 @@ namespace lux::render::detail
                     current.stages = stages;
                 }
             }
-            if (const auto* transfer = std::get_if<TransferWork>(&pass.command))
+            if (const auto* transfer = std::get_if<GraphTransferCommand>(&pass.command))
             {
                 const auto native = TransferPass::access(
-                    *transfer, pass.interface.typed_buffer_writes, use, description, backend
+                    transfer->work, transfer->typed_buffer_writes, use, description, backend
                 );
                 if (native)
                 {

@@ -616,7 +616,8 @@ namespace lux::render::runtime_detail
                 const auto resource = use.version.resource;
                 if (const auto* uniform = linked_uniforms[resource.index])
                 {
-                    const auto typed = std::ranges::find_if(graph_pass.interface.resources, [&](const auto& parameter)
+                    const auto* shader = graph_pass.bindings().shader;
+                    const bool typed = shader && std::ranges::any_of(shader->resources, [&](const auto& parameter)
                     {
                         return parameter.access.version.resource == resource &&
                             parameter.uniform_constant.type == uniform->source.block.type &&
@@ -626,7 +627,7 @@ namespace lux::render::runtime_detail
                     const auto* range = std::get_if<GraphBufferRange>(&use.range);
                     const bool valid_range = range && range->offset == 0 && range->size == uniform->source.block.bytes;
                     const bool valid_use = use.access == EGraphAccess::READ && use.usage == EGraphUse::STORAGE_READ &&
-                        !use.fallback && typed != graph_pass.interface.resources.end();
+                        !use.fallback && typed;
                     if (!valid_range || !valid_use)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index, resource.index}});
                 }

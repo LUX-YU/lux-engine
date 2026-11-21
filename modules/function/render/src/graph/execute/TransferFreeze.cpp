@@ -18,7 +18,7 @@ namespace lux::render::detail
             const nri::DeviceDesc& device, PassNativeInput& native
         ) noexcept
         {
-            if (const auto* indirect = std::get_if<IndirectDispatchOperand>(&packet.dispatch))
+            if (const auto* indirect = std::get_if<BufferLocation>(&packet.dispatch))
             {
                 const auto& buffer = resources[indirect->buffer];
                 if (!containsBytes(buffer, indirect->offset, sizeof(nri::DispatchDesc)))

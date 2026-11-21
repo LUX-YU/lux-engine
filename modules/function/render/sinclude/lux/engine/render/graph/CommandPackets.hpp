@@ -1,7 +1,7 @@
 #pragma once
 
 #include <NRI.h>
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/GraphResource.hpp>
 
 namespace lux::render::detail
 {
@@ -11,13 +11,13 @@ namespace lux::render::detail
         std::array<std::uint32_t, 2> group_size;
     };
 
-    struct IndirectDispatchOperand final
+    struct BufferLocation final
     {
         std::uint32_t buffer;
         std::uint64_t offset;
     };
 
-    using VCompiledDispatch = std::variant<nri::DispatchDesc, ImageDispatchExtent, IndirectDispatchOperand>;
+    using VCompiledDispatch = std::variant<nri::DispatchDesc, ImageDispatchExtent, BufferLocation>;
 
     struct ComputeCommands final
     {

@@ -89,7 +89,8 @@ namespace lux::render::detail
         };
         const auto eligible = [&](const GraphPass& pass) noexcept
         {
-            if (!pass.allow_async_compute || pass.kind != EGraphPassKind::COMPUTE)
+            const auto* compute = std::get_if<ComputeWork>(&pass.command);
+            if (!compute || !compute->allow_async_compute)
             {
                 return false;
             }

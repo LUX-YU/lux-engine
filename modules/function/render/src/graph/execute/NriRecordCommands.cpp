@@ -175,7 +175,7 @@ namespace lux::render::detail
         {
             for (const auto& source : raster->vertices)
             {
-                const auto& binding = bindings[source.resource.index];
+                const auto& binding = bindings[source.buffer];
                 const nri::VertexBufferDesc buffer{
                     binding.buffer,
                     binding.buffer_offset + source.offset,
@@ -193,27 +193,15 @@ namespace lux::render::detail
                 {
                     // Prepared lists were consumed before entering the fixed-program path.
                 }
-                else if constexpr (std::is_same_v<Draw, DrawVertices>)
+                else if constexpr (std::same_as<Draw, nri::DrawDesc>)
                 {
-                    core.CmdDraw(command, {draw.count, draw.instances, draw.first, draw.first_instance});
+                    core.CmdDraw(command, draw);
                 }
                 else
                 {
-                    const auto& index = bindings[draw.index_resource.resource.index];
-                    const auto offset = [&]()
-                    {
-                        if constexpr (std::is_same_v<Draw, DrawIndexed>)
-                        {
-                            return draw.offset;
-                        }
-                        else
-                        {
-                            return draw.index_offset;
-                        }
-                    }();
-                    const auto index_offset = index.buffer_offset + offset;
-                    const auto index_type =
-                        draw.type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
+                    const auto& index = bindings[draw.index.location.buffer];
+                    const auto index_offset = index.buffer_offset + draw.index.location.offset;
+                    const auto index_type = draw.index.type;
                     const bool index_changed = binding_state.index != index.buffer ||
                                                binding_state.index_offset != index_offset ||
                                                binding_state.index_type != index_type;
@@ -224,28 +212,25 @@ namespace lux::render::detail
                         binding_state.index_offset = index_offset;
                         binding_state.index_type = index_type;
                     }
-                    if constexpr (std::is_same_v<Draw, DrawIndexed>)
+                    if constexpr (std::same_as<Draw, IndexedDrawPacket>)
                     {
-                        core.CmdDrawIndexed(
-                            command,
-                            {draw.count, draw.instances, draw.first, draw.vertex_offset, draw.first_instance}
-                        );
+                        core.CmdDrawIndexed(command, draw.draw);
                     }
                     else
                     {
-                        const auto& indirect = bindings[draw.commands_resource.resource.index];
+                        const auto& indirect = bindings[draw.arguments.buffer];
                         nri::Buffer* count = nullptr;
                         std::uint64_t count_offset = 0;
-                        if (draw.count_resource)
+                        if (draw.count_buffer.buffer != kGraphInvalidIndex)
                         {
-                            const auto& count_binding = bindings[draw.count_resource->resource.index];
+                            const auto& count_binding = bindings[draw.count_buffer.buffer];
                             count = count_binding.buffer;
-                            count_offset = count_binding.buffer_offset + draw.count_offset;
+                            count_offset = count_binding.buffer_offset + draw.count_buffer.offset;
                         }
                         core.CmdDrawIndexedIndirect(
                             command,
                             *indirect.buffer,
-                            indirect.buffer_offset + draw.commands_offset,
+                            indirect.buffer_offset + draw.arguments.offset,
                             draw.count,
                             draw.stride,
                             count,

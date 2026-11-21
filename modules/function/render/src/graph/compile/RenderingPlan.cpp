@@ -64,7 +64,7 @@ namespace lux::render::detail
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             auto& pass = recording.passes[p];
-            auto* raster = pass.rasterScope();
+            auto* raster = recording.rasterScope(pass);
             if (!raster)
             {
                 continue;
@@ -98,7 +98,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
 
-            const auto* previous = p ? recording.passes[p - 1].rasterScope() : nullptr;
+            const auto* previous = p ? recording.rasterScope(recording.passes[p - 1]) : nullptr;
             bool same_attachments = previous && pass.condition_region == recording.passes[p - 1].condition_region &&
                                     previous->colors.size() == raster->colors.size() &&
                                     bool(previous->depth) == bool(raster->depth);
@@ -203,7 +203,7 @@ namespace lux::render::detail
                 extent(access.version.resource);
             };
             const auto& pass = recording.passes[p];
-            if (const auto* raster = pass.rasterScope())
+            if (const auto* raster = recording.rasterScope(pass))
             {
                 const auto& group = recording.groups[pass.rendering_group];
                 for (std::uint32_t i = 0; i < group.colors.size(); ++i)

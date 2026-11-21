@@ -198,7 +198,7 @@ namespace lux::render::detail
                     return created;
                 }
             }
-            if (const auto* raster = pass.rasterScope())
+            if (const auto* raster = plan_->recordingProgram().rasterScope(pass))
             {
                 const auto addAttachment = [&](const RasterAttachment& attachment, std::uint32_t i, bool depth
                                            ) -> RenderResult<void>

@@ -118,7 +118,7 @@ namespace lux::render::detail
             {
                 return matchesLayers(attachment.access) && (!attachment.resolve || matchesLayers(*attachment.resolve));
             };
-            const auto& scope = *frame.passes[p].compiled_pass->rasterScope();
+            const auto& scope = *plan_->recordingProgram().rasterScope(*frame.passes[p].compiled_pass);
             if (scope.section_depth_bias && stream.sections.empty())
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p}});
             const bool compatible = std::ranges::all_of(scope.colors, validAttachment) &&
@@ -174,7 +174,7 @@ namespace lux::render::detail
         if (!candidate.has_explicit_sections) return {};
 
         const auto& pass = frame.passes[p];
-        const auto& scope = *pass.compiled_pass->rasterScope();
+        const auto& scope = *plan_->recordingProgram().rasterScope(*pass.compiled_pass);
         const auto& first = scope.colors.empty() ? *scope.depth : scope.colors.front();
         const auto& first_range = std::get<GraphImageRange>(first.access.range);
         const auto& core = session_->nriCore();

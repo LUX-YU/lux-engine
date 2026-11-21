@@ -157,17 +157,22 @@ namespace lux::render::detail
         }
         constexpr auto no_slot = kGraphInvalidIndex;
         const std::array packet_counts{program.raster.size(), program.compute.size(), program.transfer.size()};
+        if (program.raster_scopes.size() != program.raster.size()) return false;
+        std::array<std::size_t, 3> next_packet{};
         for (std::size_t slot = 0; slot < pass_count; ++slot)
         {
             const auto& pass = program.passes[slot];
-            const auto kernel = static_cast<std::size_t>(pass.commands.kernel);
-            const bool valid_packet = kernel < packet_counts.size() && pass.commands.packet < packet_counts[kernel];
+            const bool valid_packet = std::visit([&](auto packet) noexcept
+            {
+                const auto kind = static_cast<std::size_t>(packet.kind);
+                return packet.index == next_packet[kind]++ && packet.index < packet_counts[kind];
+            }, pass.commands);
             const bool valid_unit = pass.unit < program.units.size() && covers(program.units[pass.unit], slot);
             const bool valid_submit = pass.submission < batches.size() && covers(batches[pass.submission], slot) &&
                 batches[pass.submission].queue == pass.queue;
-            const bool valid_group = pass.rendering_group == no_slot ||
+            const bool valid_group = std::holds_alternative<RasterCommandSlot>(pass.commands) ?
                 (pass.rendering_group < program.groups.size() &&
-                 covers(program.groups[pass.rendering_group], slot));
+                 covers(program.groups[pass.rendering_group], slot)) : pass.rendering_group == no_slot;
             const bool valid_condition = pass.condition_region == no_slot ||
                 (pass.condition_region < program.conditions.size() &&
                  covers(program.conditions[pass.condition_region], slot));
@@ -178,7 +183,7 @@ namespace lux::render::detail
                 return false;
             }
         }
-        return true;
+        return next_packet == packet_counts;
     }
 
     RenderResult<RenderGraphExecutable>
@@ -353,7 +358,6 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             CompiledPass pass;
-            pass.kind = source.kind;
             pass.binding_slot = static_cast<std::uint32_t>(plan.recording_.passes.size());
             pass.parameter_offset = parameter_bytes;
             pass.parameter_size = bindings.passes[pass.binding_slot].initial_parameters.size();
@@ -362,26 +366,6 @@ namespace lux::render::detail
                 plan.resources_[source.condition->input].history == kGraphInvalidIndex)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            }
-            if (const auto* scope = source.rasterScope())
-            {
-                if (auto valid = validateRasterScope(*scope, graph, limits); !valid)
-                {
-                    return cxx::unexpected(valid.error());
-                }
-                const auto& raster = std::get<RasterWork>(source.command);
-                const auto* fixed = std::get_if<RasterWork::FixedProgram>(&raster.program);
-                const auto* stream = std::get_if<RasterPassTemplate>(&raster.program);
-                const bool section_depth_bias = stream && stream->section_depth_bias;
-                if (section_depth_bias && !limits.features.dynamicDepthBias)
-                    return cxx::unexpected(RenderError{kDeviceUnsupported, {id.index}});
-                const bool owns_draw_sections = !fixed;
-                pass.rendering = CompiledRasterScope{*scope, owns_draw_sections};
-                pass.rendering->section_depth_bias = section_depth_bias;
-            }
-            if (source.graphics && pass.rendering)
-            {
-                pass.rendering->depth_bias = {source.graphics->depth_bias_constant, source.graphics->depth_bias_slope};
             }
             plan.recording_.passes.push_back(std::move(pass));
         }
@@ -856,12 +840,12 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kCommandCancelled});
             }
             const auto& source = graph.passes()[order[pass.binding_slot].index];
-            const auto& input = source.interface;
+            const auto* shader_input = source.bindings().shader;
             auto& bindings = layouts.passes[pass.binding_slot];
             const rdesc::ShaderProgramArtifact* shader = nullptr;
             std::vector<nri::Format> colors;
             std::optional<PassRenderingInfo> rendering;
-            if (const auto* scope = pass.rasterScope())
+            if (const auto* scope = plan.recording_.rasterScope(pass))
             {
                 rendering.emplace();
                 rendering->dynamic_depth_bias = scope->section_depth_bias;
@@ -880,19 +864,19 @@ namespace lux::render::detail
                     rendering->samples = static_cast<std::uint8_t>(image.samples);
                 }
             }
-            if (input.program != kGraphInvalidIndex)
+            if (shader_input)
             {
-                const auto& declaration = graph.programs()[input.program];
+                const auto& declaration = graph.programs()[shader_input->program];
                 shader = declaration.find(session.enabledFeatures().shader_target, plan.device_addresses_);
                 if (!shader)
                 {
                     co_return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 RasterProgramKey key;
-                const bool is_raster = source.kind == EGraphPassKind::GRAPHICS;
+                const bool is_raster = rendering.has_value();
                 if (is_raster)
                 {
-                    key.state = source.graphics.value_or(GraphicsState{});
+                    key.state = std::get<RasterWork>(source.command).fixed().graphics;
                     if (rendering->dynamic_depth_bias) key.state.depth_bias_constant = 1;
                     key.colors = colors;
                     key.depth = rendering->depth;
@@ -988,11 +972,11 @@ namespace lux::render::detail
         for (auto& pass : plan.recording_.passes)
         {
             const auto& source = graph.passes()[order[pass.binding_slot].index];
-            const auto program = source.interface.program;
+            const auto* shader_input = source.bindings().shader;
             const rdesc::ShaderInfo* shader_info = nullptr;
-            if (program != kGraphInvalidIndex)
+            if (shader_input)
             {
-                const auto* shader = graph.programs()[program].find(target, plan.device_addresses_);
+                const auto* shader = graph.programs()[shader_input->program].find(target, plan.device_addresses_);
                 if (!shader)
                 {
                     return cxx::unexpected(RenderError{kDeviceUnsupported});
@@ -1003,37 +987,45 @@ namespace lux::render::detail
                 limits, shader_info, graph.resources(),
                 &raster_lists, materialized
             };
-            const auto append = [&]<class T>(RenderResult<T> result, ERecordKernel kernel, std::vector<T>& table)
-                noexcept -> RenderResult<RecordBlock>
-            {
-                if (!result) return cxx::unexpected(result.error());
-                const auto packet = static_cast<std::uint32_t>(table.size());
-                table.push_back(std::move(*result));
-                return RecordBlock{kernel, packet};
-            };
+            auto& recording = plan.recording_;
             auto commands = std::visit(
-                [&](const auto& command) noexcept -> RenderResult<RecordBlock>
+                [&](const auto& command) noexcept -> RenderResult<VCommandSlot>
                 {
                     using Command = std::remove_cvref_t<decltype(command)>;
-                    if constexpr (std::is_same_v<Command, RasterWork>)
+                    if constexpr (std::same_as<Command, RasterWork>)
                     {
-                        return append(
-                            RasterPass::compile(command, context), ERecordKernel::RASTER, plan.recording_.raster
-                        );
+                        if (auto valid = validateRasterScope(command, graph, limits); !valid)
+                            return cxx::unexpected(valid.error());
+                        const auto* fixed = std::get_if<RasterWork::FixedProgram>(&command.program);
+                        const auto* stream = std::get_if<RasterPassTemplate>(&command.program);
+                        const bool section_bias = stream && stream->section_depth_bias;
+                        if (section_bias && !limits.features.dynamicDepthBias)
+                            return cxx::unexpected(RenderError{kDeviceUnsupported, {order[pass.binding_slot].index}});
+                        auto packet = RasterPass::compile(command, context);
+                        if (!packet) return cxx::unexpected(packet.error());
+                        const RasterCommandSlot slot{static_cast<std::uint32_t>(recording.raster.size())};
+                        auto& scope = recording.raster_scopes.emplace_back(command, !fixed);
+                        scope.section_depth_bias = section_bias;
+                        if (fixed)
+                            scope.depth_bias = {fixed->graphics.depth_bias_constant, fixed->graphics.depth_bias_slope};
+                        recording.raster.push_back(std::move(*packet));
+                        return VCommandSlot{slot};
                     }
-                    else if constexpr (std::is_same_v<Command, ComputeWork>)
+                    else if constexpr (std::same_as<Command, ComputeWork>)
                     {
-                        return append(
-                            ComputePass::compile(command, context), ERecordKernel::COMPUTE, plan.recording_.compute
-                        );
+                        auto packet = ComputePass::compile(command, context);
+                        if (!packet) return cxx::unexpected(packet.error());
+                        const ComputeCommandSlot slot{static_cast<std::uint32_t>(recording.compute.size())};
+                        recording.compute.push_back(std::move(*packet));
+                        return VCommandSlot{slot};
                     }
                     else
                     {
-                        return append(
-                            TransferPass::compile(command, source.interface.typed_buffer_writes, context),
-                            ERecordKernel::TRANSFER,
-                            plan.recording_.transfer
-                        );
+                        auto packet = TransferPass::compile(command.work, command.typed_buffer_writes, context);
+                        if (!packet) return cxx::unexpected(packet.error());
+                        const TransferCommandSlot slot{static_cast<std::uint32_t>(recording.transfer.size())};
+                        recording.transfer.push_back(std::move(*packet));
+                        return VCommandSlot{slot};
                     }
                 },
                 source.command

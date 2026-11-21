@@ -134,7 +134,7 @@ namespace lux::render::detail
         {
             const auto& compiled = *pass.compiled_pass;
             const auto* raster = plan_->rasterCommands(compiled);
-            const auto* scope = compiled.rasterScope();
+            const auto* scope = plan_->recordingProgram().rasterScope(compiled);
             const auto* dynamic = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
             if (!dynamic)
             {
@@ -232,12 +232,12 @@ namespace lux::render::detail
                 if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))
                     native.draws = &frame.raster_draws[dynamic->data_index];
             }
-            if (const auto* scope = pass.compiled_pass->rasterScope())
+            if (const auto* scope = plan_->recordingProgram().rasterScope(*pass.compiled_pass))
             {
                 const auto& group = plan_->recording_.groups[pass.compiled_pass->rendering_group];
                 native.begin_rendering = group.first_pass == i;
                 native.end_rendering = group.first_pass + group.pass_count == i + 1;
-                const auto* previous = i ? frame.passes[i - 1].compiled_pass->rasterScope() : nullptr;
+                const auto* previous = i ? plan_->recordingProgram().rasterScope(*frame.passes[i - 1].compiled_pass) : nullptr;
                 const bool previous_changed = previous && (previous->viewport != scope->viewport || previous->exclusive);
                 native.reset_viewport = native.begin_rendering || previous_changed;
                 const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();

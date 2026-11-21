@@ -109,11 +109,11 @@ namespace lux::render::detail
                 binding_state.descriptors = {};
             }
             const auto& program = pass.program_bindings;
-            const auto* scope = compiled.rasterScope();
+            const auto* scope = plan.recordingProgram().rasterScope(compiled);
             const bool owns_draw_sections = scope && scope->exclusive;
             if (program.layout && !pass.native.draws && !owns_draw_sections)
             {
-                const auto point = compiled.kind == EGraphPassKind::GRAPHICS
+                const auto point = scope != nullptr
                     ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
                 if (binding_state.layout != program.layout || binding_state.point != point)
                 {
@@ -175,7 +175,7 @@ namespace lux::render::detail
                     return RenderResult<void>{};
                 }
             });
-            if (owns_draw_sections || compiled.kind == EGraphPassKind::TRANSFER) binding_state.invalidate();
+            if (owns_draw_sections || std::holds_alternative<TransferCommandSlot>(compiled.commands)) binding_state.invalidate();
             if (managed_rendering && (native.end_rendering || !recorded)) core.CmdEndRendering(command);
             if (!recorded) return recorded;
         }

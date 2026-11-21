@@ -229,11 +229,11 @@ namespace lux::render::runtime_detail
                 if (std::ranges::find(producer_.inline_blocks, id) == producer_.inline_blocks.end())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {id.index}});
                 const auto slot = workspace_.compiled.assembly.source_pass_slots[id.index].index;
-                const auto& contract = workspace_.build.source.passes()[id.index].interface.parameters.inline_constant;
+                const auto* parameters = workspace_.build.source.passes()[id.index].bindings().parameters;
                 const bool valid_slot = slot < workspace_.compiled.executable.passes().size();
                 const bool compatible = valid_slot &&
                     workspace_.compiled.executable.passes()[slot].parameter_size == bytes &&
-                    contract.type == type;
+                    parameters && parameters->inline_constant.type == type;
                 if (!compatible) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index}});
                 const auto previous = std::ranges::find(constants_, slot, &detail::LinkedInlineBlock::pass);
                 if (previous != constants_.end())
@@ -342,7 +342,8 @@ namespace lux::render::runtime_detail
             {
                 if (pass.index >= pass_writers.size())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
-                if (!source.passes()[pass.index].interface.parameters.inline_constant.layout)
+                const auto* parameters = source.passes()[pass.index].bindings().parameters;
+                if (!parameters || !parameters->inline_constant.layout)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
                 auto& writer = pass_writers[pass.index];
                 if (writer != kGraphInvalidIndex)

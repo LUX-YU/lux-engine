@@ -77,6 +77,7 @@ namespace lux::render
         validateAccess(const RenderGraph& graph, const GraphPass& pass, GraphPassId id, const ResourceAccess& use) noexcept
         {
             const auto resource_id = use.version.resource;
+            const auto kind = pass.kind();
             // Typed ingestion already resolved the resource and normalized its range.
             const auto& resource = graph.resources()[resource_id.index];
             const bool is_write = detail::writes(use.access);
@@ -90,7 +91,7 @@ namespace lux::render
                 image && (rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::COLOR_ATTACHMENT) ||
                           rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT));
             const bool is_invalid_load = use.access == EGraphAccess::ATTACHMENT_LOAD &&
-                                         (pass.kind != EGraphPassKind::GRAPHICS || !is_attachment_format);
+                                         (kind != EGraphPassKind::GRAPHICS || !is_attachment_format);
             if (is_invalid_access || is_invalid_predecessor || is_invalid_load)
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));
@@ -98,37 +99,37 @@ namespace lux::render
             // BOUNDARY: validate the orthogonal execution role here, once at authoring.
             const bool is_invalid_color =
                 use.usage == EGraphUse::COLOR_ATTACHMENT &&
-                (!image || pass.kind != EGraphPassKind::GRAPHICS ||
+                (!image || kind != EGraphPassKind::GRAPHICS ||
                  !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::COLOR_ATTACHMENT) ||
                  (use.access != EGraphAccess::WRITE && use.access != EGraphAccess::ATTACHMENT_LOAD));
             const bool is_invalid_source = use.usage == EGraphUse::TRANSFER_SOURCE &&
-                                           (pass.kind != EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
+                                           (kind != EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
             const bool is_invalid_destination =
                 use.usage == EGraphUse::TRANSFER_DESTINATION &&
-                (pass.kind != EGraphPassKind::TRANSFER ||
+                (kind != EGraphPassKind::TRANSFER ||
                  (use.access != EGraphAccess::WRITE && use.access != EGraphAccess::READ_WRITE));
             const bool is_invalid_sample =
                 use.usage == EGraphUse::SAMPLED &&
-                (!image || pass.kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ ||
+                (!image || kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ ||
                  !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::SAMPLED));
             const bool is_storage = use.usage == EGraphUse::STORAGE_READ || use.usage == EGraphUse::STORAGE_WRITE ||
                                     use.usage == EGraphUse::STORAGE_READ_WRITE;
             const bool invalid_storage =
-                is_storage && (pass.kind == EGraphPassKind::TRANSFER ||
+                is_storage && (kind == EGraphPassKind::TRANSFER ||
                                (use.usage == EGraphUse::STORAGE_WRITE && use.access != EGraphAccess::WRITE) ||
                                (use.usage == EGraphUse::STORAGE_READ_WRITE && use.access != EGraphAccess::READ_WRITE));
             const bool geometry =
                 use.usage == EGraphUse::VERTEX || use.usage == EGraphUse::INDEX || use.usage == EGraphUse::INDIRECT;
             const bool invalid_geometry =
-                geometry && (image || pass.kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ ||
-                             (pass.kind == EGraphPassKind::COMPUTE && use.usage != EGraphUse::INDIRECT));
+                geometry && (image || kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ ||
+                             (kind == EGraphPassKind::COMPUTE && use.usage != EGraphUse::INDIRECT));
             const bool invalid_depth =
                 use.usage == EGraphUse::DEPTH_ATTACHMENT &&
-                (!image || pass.kind != EGraphPassKind::GRAPHICS ||
+                (!image || kind != EGraphPassKind::GRAPHICS ||
                  !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT) ||
                  (use.access != EGraphAccess::WRITE && use.access != EGraphAccess::ATTACHMENT_LOAD));
             const bool invalid_uniform = use.usage == EGraphUse::UNIFORM_READ &&
-                (image || pass.kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
+                (image || kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
             const bool is_invalid_usage =
                 use.usage > EGraphUse::UNIFORM_READ || invalid_storage || invalid_geometry || invalid_depth ||
                 invalid_uniform ||
@@ -161,7 +162,7 @@ namespace lux::render
         RenderResult<void> validatePass(const RenderGraph& graph, const GraphPass& pass, GraphPassId id) noexcept
         {
             const bool is_invalid_pass =
-                id.index >= kGraphInvalidIndex || pass.key.empty() || pass.kind > EGraphPassKind::TRANSFER;
+                id.index >= kGraphInvalidIndex || pass.key.empty();
             if (is_invalid_pass)
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
@@ -234,10 +235,16 @@ namespace lux::render
             pass.side_effect = options.side_effect;
             pass.condition = options.condition;
             pass.estimated_gpu_ns = options.estimated_gpu_ns;
-            if (auto result = normalize(work); !result) return cxx::unexpected(result.error());
+            auto& command = [&]() -> auto&
+            {
+                if constexpr (std::same_as<Work, TransferWork>)
+                    return pass.command.emplace<GraphTransferCommand>(std::move(work));
+                else
+                    return pass.command.emplace<Work>(std::move(work));
+            }();
+            if (auto result = normalize(command); !result) return cxx::unexpected(result.error());
             auto valid = validatePass(builder_.candidate_, pass, id_);
             if (!valid) return cxx::unexpected(valid.error());
-            pass.command = std::move(work);
             return std::move(draft_);
         }
 
@@ -291,7 +298,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> bindInterface(PassInterface& input) noexcept
         {
             const auto programs = builder_.candidate_.programs();
-            if (input.program >= programs.size() || !input.typed_buffer_writes.empty())
+            if (input.program >= programs.size())
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor));
             const auto& sets = programs[input.program].targets.front().interface.sets;
             const auto& fields = builder_.program_fields_[input.program];
@@ -468,39 +475,29 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> normalize(RasterWork& work) noexcept
         {
             if (!work.hasAttachments()) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
-            auto& pass = draft_.pass;
-            pass.kind = EGraphPassKind::GRAPHICS;
             auto* fixed = std::get_if<RasterWork::FixedProgram>(&work.program);
             if (fixed)
             {
                 if (auto result = bindInterface(fixed->interface); !result) return result;
-                pass.interface = fixed->interface;
-                pass.graphics = fixed->graphics;
             }
             else
             {
                 auto& dynamic = std::get<RasterPassTemplate>(work.program);
                 if (auto result = bindDynamicRaster(dynamic, work.depth.has_value()); !result) return result;
-                pass.interface.parameters = dynamic.parameters;
             }
             if (auto result = attachments(work); !result) return result;
-            pass.rendering = static_cast<const RasterScope&>(work);
             if (fixed) return bindGeometry(*fixed);
             return {};
         }
 
         [[nodiscard]] RenderResult<void> normalize(ComputeWork& work) noexcept
         {
-            auto& pass = draft_.pass;
-            pass.kind = EGraphPassKind::COMPUTE;
             if (auto result = bindInterface(work.interface); !result) return result;
             if (const auto* indirect = std::get_if<IndirectDispatchArguments>(&work.dispatch))
             {
                 auto result = read(indirect->buffer, EGraphUse::INDIRECT, GraphBufferRange{indirect->offset, 12});
                 if (!result) return result;
             }
-            pass.interface = work.interface;
-            pass.allow_async_compute = work.allow_async_compute;
             return {};
         }
 
@@ -559,9 +556,9 @@ namespace lux::render
             return {};
         }
 
-        [[nodiscard]] RenderResult<void> normalize(TransferWork& work) noexcept
+        [[nodiscard]] RenderResult<void> normalize(GraphTransferCommand& transfer_command) noexcept
         {
-            draft_.pass.kind = EGraphPassKind::TRANSFER;
+            auto& work = transfer_command.work;
             std::vector<GraphResourceId> storage_fills;
             for (auto& operation : work.operations)
             {
@@ -577,7 +574,7 @@ namespace lux::render
                 if (!fill) continue;
                 const auto resource = fill->destination.version.resource;
                 if (std::ranges::find(storage_fills, resource) != storage_fills.end())
-                    draft_.pass.interface.typed_buffer_writes.push_back(fill->destination);
+                    transfer_command.typed_buffer_writes.push_back(fill->destination);
             }
             return {};
         }

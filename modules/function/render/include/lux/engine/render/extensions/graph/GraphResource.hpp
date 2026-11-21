@@ -73,6 +73,11 @@ namespace lux::render
         bool operator==(const GraphImageRange&) const noexcept = default;
     };
 
+    struct ImageCopyRegion final
+    {
+        std::uint32_t x = 0, y = 0, width = 0, height = 0;
+    };
+
     // monostate explicitly means the complete declared resource.
     using VGraphRange = std::variant<std::monostate, GraphBufferRange, GraphImageRange>;
 

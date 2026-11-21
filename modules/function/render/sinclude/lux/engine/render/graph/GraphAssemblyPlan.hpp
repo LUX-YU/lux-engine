@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <vector>
 
 namespace lux::render::detail

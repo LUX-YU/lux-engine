@@ -2,6 +2,13 @@
 
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
+namespace lux::render
+{
+    struct RasterWork;
+    struct ComputeWork;
+    struct TransferWork;
+}
+
 namespace lux::render::detail
 {
     // Attachment formats and samples used during native pipeline preparation.

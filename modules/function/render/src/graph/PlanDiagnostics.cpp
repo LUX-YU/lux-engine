@@ -163,10 +163,11 @@ namespace lux::render::detail
                 output += ',';
             }
             const auto& pass = program.passes[p];
+            const auto kind = std::visit([](auto slot) { return slot.kind; }, pass.commands);
             output +=
                 "{\"source\":" + std::to_string(graph.diagnostics.source_passes[p].index) +
                 ",\"unit\":" + std::to_string(pass.unit) +
-                ",\"kind\":" + std::to_string(static_cast<unsigned>(pass.kind)) +
+                ",\"kind\":" + std::to_string(static_cast<unsigned>(kind)) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
                 ",\"condition_region\":" + std::to_string(pass.condition_region) +
                 ",\"queue_role\":" + std::to_string(static_cast<unsigned>(pass.queue)) +

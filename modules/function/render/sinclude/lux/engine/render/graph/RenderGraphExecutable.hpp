@@ -11,7 +11,7 @@
 #include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/PassValues.hpp>
 #include <lux/engine/render/graph/GraphAssemblyPlan.hpp>
 #include <lux/engine/render/graph/CommandPackets.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
@@ -105,8 +105,7 @@ namespace lux::render::detail
 
     struct VertexSource final
     {
-        GraphResourceId resource;
-        std::uint32_t binding;
+        std::uint32_t buffer, binding;
         std::uint64_t offset;
         std::uint32_t stride;
         bool operator==(const VertexSource&) const noexcept = default;
@@ -119,8 +118,26 @@ namespace lux::render::detail
         bool producer_stream = false;
     };
 
-    using VRasterDraw =
-        std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, RasterListCommands>;
+    struct IndexSource final
+    {
+        BufferLocation location;
+        nri::IndexType type;
+    };
+
+    struct IndexedDrawPacket final
+    {
+        IndexSource index;
+        nri::DrawIndexedDesc draw;
+    };
+
+    struct IndirectDrawPacket final
+    {
+        IndexSource index;
+        BufferLocation arguments, count_buffer;
+        std::uint32_t count, stride;
+    };
+
+    using VRasterDraw = std::variant<nri::DrawDesc, IndexedDrawPacket, IndirectDrawPacket, RasterListCommands>;
 
     struct RasterCommands final
     {
@@ -132,18 +149,17 @@ namespace lux::render::detail
         VRasterDraw draw;
     };
 
-    enum class ERecordKernel : std::uint8_t
+    template <EGraphPassKind Kind>
+    struct CommandSlot final
     {
-        RASTER,
-        COMPUTE,
-        TRANSFER
+        static constexpr EGraphPassKind kind = Kind;
+        std::uint32_t index = kGraphInvalidIndex;
     };
 
-    struct RecordBlock final
-    {
-        ERecordKernel kernel;
-        std::uint32_t packet;
-    };
+    using RasterCommandSlot = CommandSlot<EGraphPassKind::GRAPHICS>;
+    using ComputeCommandSlot = CommandSlot<EGraphPassKind::COMPUTE>;
+    using TransferCommandSlot = CommandSlot<EGraphPassKind::TRANSFER>;
+    using VCommandSlot = std::variant<RasterCommandSlot, ComputeCommandSlot, TransferCommandSlot>;
 
     struct CompiledRasterScope final : RasterScope
     {
@@ -154,19 +170,7 @@ namespace lux::render::detail
 
     struct CompiledPass final
     {
-        [[nodiscard]] const CompiledRasterScope* rasterScope() const noexcept
-        {
-            return rendering ? &*rendering : nullptr;
-        }
-
-        [[nodiscard]] CompiledRasterScope* rasterScope() noexcept
-        {
-            return rendering ? &*rendering : nullptr;
-        }
-
-        RecordBlock commands{};
-        std::optional<CompiledRasterScope> rendering;
-        EGraphPassKind kind = EGraphPassKind::TRANSFER;
+        VCommandSlot commands;
         bool writes_output = false;
         BarrierBatch before;
         std::uint32_t binding_slot = kGraphInvalidIndex;
@@ -207,23 +211,34 @@ namespace lux::render::detail
 
     struct RecordingProgram final
     {
+        [[nodiscard]] const CompiledRasterScope* rasterScope(const CompiledPass& pass) const noexcept
+        {
+            const auto* slot = std::get_if<RasterCommandSlot>(&pass.commands);
+            return slot ? &raster_scopes[slot->index] : nullptr;
+        }
+
         [[nodiscard]] const RasterCommands* rasterCommands(const CompiledPass& pass) const noexcept
         {
-            return pass.commands.kernel == ERecordKernel::RASTER ? &raster[pass.commands.packet] : nullptr;
+            const auto* slot = std::get_if<RasterCommandSlot>(&pass.commands);
+            return slot ? &raster[slot->index] : nullptr;
         }
 
         [[nodiscard]] const ComputeCommands* computeCommands(const CompiledPass& pass) const noexcept
         {
-            return pass.commands.kernel == ERecordKernel::COMPUTE ? &compute[pass.commands.packet] : nullptr;
+            const auto* slot = std::get_if<ComputeCommandSlot>(&pass.commands);
+            return slot ? &compute[slot->index] : nullptr;
         }
 
         [[nodiscard]] const TransferCommands* transferCommands(const CompiledPass& pass) const noexcept
         {
-            return pass.commands.kernel == ERecordKernel::TRANSFER ? &transfer[pass.commands.packet] : nullptr;
+            const auto* slot = std::get_if<TransferCommandSlot>(&pass.commands);
+            return slot ? &transfer[slot->index] : nullptr;
         }
 
         std::vector<CompiledPass> passes;
         std::vector<RecordingUnit> units;
+        // Both raster tables are indexed by the same RasterCommandSlot.
+        std::vector<CompiledRasterScope> raster_scopes;
         std::vector<RasterCommands> raster;
         std::vector<ComputeCommands> compute;
         std::vector<TransferCommands> transfer;
@@ -234,15 +249,14 @@ namespace lux::render::detail
 
     template <class Recorder>
     [[nodiscard]] RenderResult<void>
-    recordBlock(const RecordingProgram& program, RecordBlock block, Recorder recorder) noexcept
+    recordBlock(const RecordingProgram& program, VCommandSlot block, Recorder recorder) noexcept
     {
-        switch (block.kernel)
+        return std::visit([&](auto slot) noexcept -> RenderResult<void>
         {
-        case ERecordKernel::RASTER: return recorder(program.raster[block.packet]);
-        case ERecordKernel::COMPUTE: return recorder(program.compute[block.packet]);
-        case ERecordKernel::TRANSFER: return recorder(program.transfer[block.packet]);
-        }
-        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if constexpr (slot.kind == EGraphPassKind::GRAPHICS) return recorder(program.raster[slot.index]);
+            else if constexpr (slot.kind == EGraphPassKind::COMPUTE) return recorder(program.compute[slot.index]);
+            else return recorder(program.transfer[slot.index]);
+        }, block);
     }
 
     struct HistoryPlan final

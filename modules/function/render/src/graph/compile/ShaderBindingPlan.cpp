@@ -649,9 +649,9 @@ namespace lux::render::detail
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
-            const auto* input = &pass.interface;
+            const auto input = pass.bindings();
             auto& output = plan.passes[id.index];
-            for (const auto& write : input->typed_buffer_writes)
+            for (const auto& write : input.typed_buffer_writes)
             {
                 const auto binding = static_cast<std::uint32_t>(output.bindings.size());
                 output.bindings.push_back({
@@ -666,20 +666,19 @@ namespace lux::render::detail
                     EDescriptorKind::TYPED_STORAGE_BUFFER, write.range, binding});
             }
             output.private_bindings = output.bindings;
-            const auto& parameters = input->parameters;
-            if (input->program == kGraphInvalidIndex)
+            if (!input.shader)
             {
-                if (parameters.inline_constant.layout)
+                if (input.parameters && input.parameters->inline_constant.layout)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 // Dynamic programs receive layouts when prepared; the pass retains only instance input data.
-                plan.passes[id.index].initial_parameters = parameters.values;
+                if (input.parameters) output.initial_parameters = input.parameters->values;
                 continue;
             }
             const auto target = limits.graphicsAPI == nri::GraphicsAPI::D3D12
                 ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
-            const auto* shader = graph.programs()[input->program].find(target, device_addresses);
+            const auto* shader = graph.programs()[input.shader->program].find(target, device_addresses);
             if (!shader) return cxx::unexpected(RenderError{kDeviceUnsupported});
-            auto program = planProgramLayout(limits, shader->interface, *input, graph.resources());
+            auto program = planProgramLayout(limits, shader->interface, *input.shader, graph.resources());
             if (!program)
             {
                 return cxx::unexpected(program.error());

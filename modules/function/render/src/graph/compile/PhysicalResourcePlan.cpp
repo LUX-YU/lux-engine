@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
@@ -41,17 +42,15 @@ namespace lux::render::detail
 
     } // namespace
 
-    PhysicalResourcePlan planPhysicalResources(
-        const RenderGraph& graph,
-        std::span<const GraphPassId> source_order,
-        std::span<const CompiledResource> resources,
-        const RecordingProgram& recording,
-        std::span<const SubmissionBatch> submissions,
-        std::array<const QueueProperties*, 3> queues,
-        ETransientAllocation allocation,
-        std::vector<EResourceReuse>& reasons
-    ) noexcept
+    PhysicalResourcePlan GraphCompiler::Workspace::planPhysicalResources(const RenderGraphExecutable& plan) noexcept
     {
+        const auto& graph = source.graph;
+        const auto source_order = std::span(source.analysis.execution_order);
+        const auto& resources = plan.resources_;
+        const auto& recording = plan.recording_;
+        const auto& submissions = plan.submissions_;
+        const auto& queues = device.queues;
+        auto& reasons = diagnostics.resource_reuse;
         PhysicalResourcePlan result;
         result.allocation = allocation;
         result.resource_slots.resize(resources.size());

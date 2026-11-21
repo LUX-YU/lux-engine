@@ -4,16 +4,6 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] PhysicalResourcePlan planPhysicalResources(
-        const RenderGraph& graph,
-        std::span<const GraphPassId> source_order,
-        std::span<const CompiledResource> resources,
-        const RecordingProgram& recording,
-        std::span<const SubmissionBatch> submissions,
-        std::array<const QueueProperties*, 3> queues,
-        ETransientAllocation allocation,
-        std::vector<EResourceReuse>& reasons
-    ) noexcept;
 
     enum class EMemoryPlacement : std::uint8_t
     {

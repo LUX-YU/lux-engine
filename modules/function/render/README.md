@@ -461,7 +461,16 @@ It estimates GPU completion across queues, includes native submit costs, and req
 preserve the baseline's reuse of identical physical objects. Runtime memory alias placement still uses NRI requirements.
 Imported images, surface output uses, sequences, and conditional intervals constrain queue assignment.
 
-`GraphCompiler::compile(session, cpu, graph, analysis, ...)` prepares device-qualified programs, descriptor bindings,
+Each Effect lowering invocation owns its builder, canonical import slots and bundle storage. Each node receives
+its own pin range; the upstream input lists are valid through its build call. Producer linking assigns dense slots
+once in live order and tracks stream claims for the entire link. Each producer publishes its linked payload and
+operand lists after its factory and declaration checks succeed.
+
+Each compile invocation owns the intermediate shader bindings, usage stages, pass-to-batch mapping and diagnostics.
+The compile worker captures the device limits before planning. Recording-only compilation supplies declared device
+facts to the same planner.
+
+`GraphCompiler::compile(session, cpu, {graph, analysis}, options)` prepares device-qualified programs, descriptor bindings,
 submissions and physical resource layout before publishing the `RenderGraphExecutable`. Shader reflection supplies
 layouts and descriptor writes on SPIR-V and DXIL. Fixed descriptor operands and initial parameter bytes are stored
 in contiguous tables indexed by pass ranges. Descriptor pool counts and instance parameter copies are computed

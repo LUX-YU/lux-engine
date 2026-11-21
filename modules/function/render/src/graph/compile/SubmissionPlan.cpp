@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/Range.hpp>
@@ -67,14 +68,14 @@ namespace lux::render::detail
         }
     } // namespace
 
-    bool assignAsyncCompute(
-        const RenderGraph& graph,
-        std::span<const GraphPassId> order,
-        std::array<const QueueProperties*, 3> queues,
-        std::uint32_t surface_output,
-        RecordingProgram& recording
-    ) noexcept
+    bool
+    GraphCompiler::Workspace::assignAsyncCompute(
+        RecordingProgram& recording, std::uint32_t surface_output
+    ) const noexcept
     {
+        const auto& graph = source.graph;
+        const auto order = std::span(source.analysis.execution_order);
+        const auto& queues = device.queues;
         if (queues[0] == queues[1])
         {
             return false;
@@ -182,20 +183,17 @@ namespace lux::render::detail
         return true;
     }
 
-    void planSubmissions(
-        const RenderGraph& graph,
-        const RenderGraphAnalysis& analysis,
-        std::span<const CompiledResource> resources,
-        RecordingProgram& recording,
-        const std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>& use_stages,
-        std::array<const QueueProperties*, 3> queues,
-        std::vector<SubmissionBatch>& batches,
-        std::vector<ImportedAccess>& imports,
-        std::uint32_t output,
-        bool presents
-    ) noexcept
+    void GraphCompiler::Workspace::planSubmissions(RenderGraphExecutable& plan) noexcept
     {
-        std::vector<std::uint32_t> pass_batches(graph.passes().size(), kGraphInvalidIndex);
+        const auto& [graph, analysis] = source;
+        const auto& resources = plan.resources_;
+        auto& recording = plan.recording_;
+        const auto& queues = device.queues;
+        auto& batches = plan.submissions_;
+        auto& imports = plan.imported_accesses_;
+        const auto output = plan.output_;
+        const bool presents = plan.output_description_.kind == ETargetKind::SURFACE;
+        pass_batches.assign(graph.passes().size(), kGraphInvalidIndex);
         // History initialization uses Graphics. Frame replica copies have their own upload frontier.
         const bool initializes_history = std::ranges::any_of(
             resources, [](const auto& resource) { return resource.history != kGraphInvalidIndex; }
@@ -272,11 +270,9 @@ namespace lux::render::detail
         for (const auto& hazard : analysis.hazards)
         {
             const auto& uses = use_stages[hazard.after.index];
-            const auto resource = std::ranges::lower_bound(
-                uses, hazard.resource.index, {}, [](const auto& use) { return use.first; }
-            );
-            const bool known = resource != uses.end() && resource->first == hazard.resource.index;
-            const auto stages = known ? resource->second : nri::StageBits::ALL;
+            const auto resource = std::ranges::lower_bound(uses, hazard.resource.index, {}, &ResourceUseStages::resource_index);
+            const bool known = resource != uses.end() && resource->resource_index == hazard.resource.index;
+            const auto stages = known ? resource->stages : nri::StageBits::ALL;
             auto [found, inserted] = dependency_stages.emplace(key(hazard.before.index, hazard.after.index), stages);
             if (!inserted)
             {

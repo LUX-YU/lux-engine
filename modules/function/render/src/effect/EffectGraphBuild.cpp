@@ -95,57 +95,44 @@ namespace lux::render::runtime_detail
             std::vector<std::uint8_t> used_storages;
         };
 
-        class NodeBuild final : public EffectBuildContext
+        struct NodePinView final
         {
-        public:
-            NodeBuild(
-                const ValidatedEffectGraph& source,
-                const ValidatedEffectNode& node,
-                const ConfigValue* configuration,
-                const EffectOutputDesc& target,
-                const EffectBuildDevice& device,
-                RenderGraphBuilder& builder,
-                std::span<EffectResourceBundle> bundles,
-                const EffectImportContracts& imports,
-                ImportSlots& slots,
-                PreparationDefinition& preparation,
-                std::vector<UniformBlockDeclaration>& uniforms
-            ) noexcept : node_(node), configuration_(configuration), target_(target), device_(device), builder_(builder),
-                         bundles_(bundles), imports_(imports), slots_(slots), preparation_(preparation),
-                         uniforms_(uniforms), pins_(node.pins.view(source.pins)), inputs_(pins_.size())
+            std::span<const effect_detail::ValidatedEffectPin> declarations;
+            std::span<EffectResourceBundle> outputs;
+            std::span<const std::vector<EffectResourceBundle>> inputs;
+        };
+
+        struct EffectLoweringWorkspace final
+        {
+            EffectBuildContract contract;
+            RenderGraphBuilder builder;
+            std::vector<EffectResourceBundle> bundles;
+            std::vector<std::vector<EffectResourceBundle>> node_inputs;
+            ImportSlots slots;
+            PreparationDefinition preparation;
+            std::vector<UniformBlockDeclaration> uniforms;
+
+            EffectLoweringWorkspace(EffectBuildContract contract, std::size_t pin_count) noexcept
+                : contract(contract), bundles(pin_count)
             {
-                for (std::size_t index = 0; index < pins_.size(); ++index)
-                {
-                    auto& input = inputs_[index];
-                    const auto upstream = pins_[index].sources.view(source.input_sources);
-                    input.reserve(upstream.size());
-                    for (auto pin : upstream) input.push_back(bundles_[pin]);
-                }
+                slots.targets.resize(contract.imports.targets.size());
+                slots.storages.resize(contract.imports.storages.size());
+                slots.snapshots.resize(contract.imports.storages.size());
+                slots.used_targets.resize(contract.imports.targets.size());
+                slots.used_storages.resize(contract.imports.storages.size());
             }
 
-            graph::NodeId nodeId() const noexcept override { return node_.source; }
-            const ConfigValue* nodeConfiguration() const noexcept override { return configuration_; }
-            const EffectOutputDesc& target() const noexcept override { return target_; }
-            const EffectBuildDevice& device() const noexcept override { return device_; }
-            RenderGraphBuilder& builder() noexcept override { return builder_; }
-
-            RenderResult<ResourceVersion> importTargetImage(
-                std::string_view binding, rdesc::ETextureFormat format, std::uint32_t samples
-            ) noexcept override
+            RenderResult<ResourceVersion> targetImage(std::size_t index) noexcept
             {
-                const auto& targets = imports_.targets;
-                const auto found = std::ranges::lower_bound(targets, binding, {}, &EffectTargetImport::binding);
-                if (found == targets.end() || found->binding != binding)
-                    return cxx::unexpected(RenderError{kRuntimeIdentity, {node_.source.value}});
-                if (found->format != format || found->samples != samples)
-                    return cxx::unexpected(RenderError{kDeviceArgument, {node_.source.value}});
-                auto& slot = slots_.targets[found->canonical];
+                const auto& targets = contract.imports.targets;
+                const auto& target = targets[index];
+                auto& slot = slots.targets[target.canonical];
                 if (slot.index == kGraphInvalidIndex)
                 {
-                    GraphImageDesc image{0, 0, 1, 1, format, samples};
+                    GraphImageDesc image{0, 0, 1, 1, target.format, target.samples};
                     image.extent.source = EImageExtentSource::IMPORTED;
-                    auto declared = builder_.declareResource({
-                        "target-import/" + targets[found->canonical].binding,
+                    auto declared = builder.declareResource({
+                        "target-import/" + targets[target.canonical].binding,
                         image,
                         EGraphOrigin::IMPORTED,
                         {GraphImageRange{}},
@@ -154,8 +141,83 @@ namespace lux::render::runtime_detail
                     if (!declared) return cxx::unexpected(declared.error());
                     slot = *declared;
                 }
-                slots_.used_targets[found - targets.begin()] = 1;
+                slots.used_targets[index] = 1;
                 return ResourceVersion{slot, 0};
+            }
+
+            RenderResult<ResourceVersion> importStorageResource(std::size_t index, GraphResource declaration) noexcept
+            {
+                const auto& storages = contract.imports.storages;
+                const auto canonical = storages[index].canonical;
+                auto& slot = slots.storages[canonical];
+                if (slot.index == kGraphInvalidIndex)
+                {
+                    declaration.key = "storage-import/" + storages[canonical].binding;
+                    auto declared = builder.declareResource(std::move(declaration));
+                    if (!declared) return cxx::unexpected(declared.error());
+                    slot = *declared;
+                }
+                slots.used_storages[index] = 1;
+                return ResourceVersion{slot, 0};
+            }
+
+            GraphStorageSnapshotId storageSnapshot(std::size_t index, cxx::basic_type_info type) noexcept
+            {
+                const auto canonical = contract.imports.storages[index].canonical;
+                auto& slot = slots.snapshots[canonical];
+                if (slot.index == kGraphInvalidIndex)
+                {
+                    slot.index = static_cast<std::uint32_t>(preparation.snapshots.size());
+                    preparation.snapshots.push_back({type, canonical});
+                }
+                slots.used_storages[index] = 1;
+                return slot;
+            }
+
+            RenderResult<EffectGraphBuild> finish(const ValidatedEffectGraph&) && noexcept;
+
+            NodePinView bindPins(const ValidatedEffectGraph& source, const ValidatedEffectNode& node) noexcept
+            {
+                const auto declarations = node.pins.view(source.pins);
+                node_inputs.resize(declarations.size());
+                for (std::size_t index = 0; index < declarations.size(); ++index)
+                {
+                    auto& input = node_inputs[index];
+                    const auto upstream = declarations[index].sources.view(source.input_sources);
+                    input.resize(upstream.size());
+                    for (std::size_t pin = 0; pin < upstream.size(); ++pin) input[pin] = bundles[upstream[pin]];
+                }
+                return {declarations, std::span(bundles).subspan(node.pins.first, node.pins.count), node_inputs};
+            }
+        };
+
+        class NodeBuild final : public EffectBuildContext
+        {
+        public:
+            NodeBuild(
+                EffectLoweringWorkspace& workspace, const ValidatedEffectNode& node, const ConfigValue* configuration,
+                NodePinView pins
+            ) noexcept : workspace_(workspace), node_(node), configuration_(configuration), pins_(pins)
+            {
+            }
+
+            graph::NodeId nodeId() const noexcept override { return node_.source; }
+            const ConfigValue* nodeConfiguration() const noexcept override { return configuration_; }
+            const EffectOutputDesc& target() const noexcept override { return workspace_.contract.target; }
+            const EffectBuildDevice& device() const noexcept override { return workspace_.contract.device; }
+            RenderGraphBuilder& builder() noexcept override { return workspace_.builder; }
+
+            RenderResult<ResourceVersion> importTargetImage(
+                std::string_view binding, rdesc::ETextureFormat format, std::uint32_t samples
+            ) noexcept override
+            {
+                const auto& targets = workspace_.contract.imports.targets;
+                const auto found = std::ranges::lower_bound(targets, binding, {}, &EffectTargetImport::binding);
+                if (found == targets.end() || found->binding != binding)
+                    return cxx::unexpected(RenderError{kRuntimeIdentity, {node_.source.value}});
+                if (found->format != format || found->samples != samples)
+                    return cxx::unexpected(RenderError{kDeviceArgument, {node_.source.value}});
+                return workspace_.targetImage(found - targets.begin());
             }
 
             RenderResult<ResourceVersion>
@@ -164,7 +226,7 @@ namespace lux::render::runtime_detail
                 std::uint32_t projection
             ) noexcept override
             {
-                const auto& storages = imports_.storages;
+                const auto& storages = workspace_.contract.imports.storages;
                 const auto found = std::ranges::lower_bound(storages, binding, {}, &EffectStorageImport::binding);
                 if (found == storages.end() || found->binding != binding)
                     return cxx::unexpected(RenderError{kStorageIdentity, {node_.source.value}});
@@ -177,16 +239,7 @@ namespace lux::render::runtime_detail
                 if (wrong_owner || wrong_shape || wrong_boundary)
                     return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
 
-                auto& slot = slots_.storages[found->canonical];
-                if (slot.index == kGraphInvalidIndex)
-                {
-                    declaration.key = "storage-import/" + storages[found->canonical].binding;
-                    auto declared = builder_.declareResource(std::move(declaration));
-                    if (!declared) return cxx::unexpected(declared.error());
-                    slot = *declared;
-                }
-                slots_.used_storages[found - storages.begin()] = 1;
-                return ResourceVersion{slot, 0};
+                return workspace_.importStorageResource(found - storages.begin(), std::move(declaration));
             }
 
             RenderResult<GraphStorageSnapshotId>
@@ -194,7 +247,7 @@ namespace lux::render::runtime_detail
                 std::string_view binding, const ResourceRequirement& required, cxx::basic_type_info type
             ) noexcept override
             {
-                const auto& storages = imports_.storages;
+                const auto& storages = workspace_.contract.imports.storages;
                 const auto found = std::ranges::lower_bound(storages, binding, {}, &EffectStorageImport::binding);
                 if (found == storages.end() || found->binding != binding)
                     return cxx::unexpected(RenderError{kStorageIdentity, {node_.source.value}});
@@ -204,20 +257,13 @@ namespace lux::render::runtime_detail
                 if (found->type != required.type || wrong_type)
                     return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
 
-                auto& slot = slots_.snapshots[found->canonical];
-                if (slot.index == kGraphInvalidIndex)
-                {
-                    slot.index = static_cast<std::uint32_t>(preparation_.snapshots.size());
-                    preparation_.snapshots.push_back({type, found->canonical});
-                }
-                slots_.used_storages[found - storages.begin()] = 1;
-                return slot;
+                return workspace_.storageSnapshot(found - storages.begin(), type);
             }
 
             RenderResult<GraphRasterTextureSetId> importRasterTextures(std::string_view binding) noexcept override
             {
                 auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::TEXTURES,
-                    preparation_.texture_sets);
+                    workspace_.preparation.texture_sets);
                 if (!slot) return cxx::unexpected(slot.error());
                 return GraphRasterTextureSetId{*slot};
             }
@@ -225,7 +271,7 @@ namespace lux::render::runtime_detail
             RenderResult<GraphRasterMeshSetId> importRasterMeshes(std::string_view binding) noexcept override
             {
                 auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::MESHES,
-                    preparation_.mesh_sets);
+                    workspace_.preparation.mesh_sets);
                 if (!slot) return cxx::unexpected(slot.error());
                 return GraphRasterMeshSetId{*slot};
             }
@@ -233,7 +279,7 @@ namespace lux::render::runtime_detail
             RenderResult<std::optional<GraphRasterTextureSetId>>
             importOptionalRasterTextures(std::string_view binding) noexcept override
             {
-                const auto& storages = imports_.storages;
+                const auto& storages = workspace_.contract.imports.storages;
                 if (!std::ranges::binary_search(storages, binding, {}, &EffectStorageImport::binding))
                     return std::nullopt;
                 auto slot = importRasterTextures(binding);
@@ -244,7 +290,7 @@ namespace lux::render::runtime_detail
             RenderResult<GraphRasterMaterialSetId> importRasterMaterials(std::string_view binding) noexcept override
             {
                 auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::MATERIALS,
-                    preparation_.material_sets);
+                    workspace_.preparation.material_sets);
                 if (!slot) return cxx::unexpected(slot.error());
                 return GraphRasterMaterialSetId{*slot};
             }
@@ -253,7 +299,7 @@ namespace lux::render::runtime_detail
                 std::string_view binding, EffectStorageImport::ERasterOwner kind, std::vector<std::uint32_t>& sets
             ) noexcept
             {
-                const auto& storages = imports_.storages;
+                const auto& storages = workspace_.contract.imports.storages;
                 const auto found = std::ranges::lower_bound(storages, binding, {}, &EffectStorageImport::binding);
                 if (found == storages.end() || found->binding != binding)
                     return cxx::unexpected(RenderError{kStorageIdentity, {node_.source.value}});
@@ -261,7 +307,7 @@ namespace lux::render::runtime_detail
                 if (!owner || *owner != kind)
                     return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
 
-                slots_.used_storages[found - storages.begin()] = 1;
+                workspace_.slots.used_storages[found - storages.begin()] = 1;
                 const auto previous = std::ranges::find(sets, found->canonical);
                 const auto index = static_cast<std::uint32_t>(previous - sets.begin());
                 if (previous == sets.end()) sets.push_back(found->canonical);
@@ -295,49 +341,50 @@ namespace lux::render::runtime_detail
                 const bool upload = initial != EGraphUse::UNSPECIFIED;
                 std::vector<VGraphRange> initialized;
                 if (upload) initialized.push_back(GraphBufferRange{0, minimum});
-                auto resource = builder_.declareResource({
+                auto resource = workspace_.builder.declareResource({
                     "prepared/" + std::to_string(node_.source.value) + "/" + std::string{name},
                     GraphBufferDesc{minimum}, upload ? EGraphOrigin::IMPORTED : EGraphOrigin::FRAME_BUFFER,
                     std::move(initialized), initial
                 });
                 if (!resource) return cxx::unexpected(resource.error());
-                preparation_.buffers.push_back({*resource, node_.source, minimum, maximum, upload});
+                workspace_.preparation.buffers.push_back({*resource, node_.source, minimum, maximum, upload});
                 return ResourceVersion{*resource, 0};
             }
 
             RenderResult<void> addPreparation(GraphPreparation recipe) noexcept override
             {
-                if (preparation_.producers.size() >= kGraphInvalidIndex)
+                if (workspace_.preparation.producers.size() >= kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
-                preparation_.producers.push_back({std::move(recipe), node_.source});
+                workspace_.preparation.producers.push_back({std::move(recipe), node_.source});
                 return {};
             }
 
             std::span<const EffectResourceBundle> inputs(graph::PinSemanticId semantic) const noexcept override
             {
                 const auto index = portIndex(semantic);
-                if (index == pins_.size()) return {};
-                return inputs_[index];
+                if (index == pins_.declarations.size()) return {};
+                return pins_.inputs[index];
             }
 
             bool outputDemanded(graph::PinSemanticId semantic) const noexcept override
             {
                 const auto index = portIndex(semantic);
-                return index < pins_.size() && pins_[index].demanded;
+                return index < pins_.declarations.size() && pins_.declarations[index].demanded;
             }
 
             RenderResult<void> publish(graph::PinSemanticId semantic, EffectResourceBundle bundle) noexcept override
             {
                 const auto index = portIndex(semantic);
-                const bool is_demanded = index < pins_.size() && pins_[index].demanded;
+                const bool is_demanded = index < pins_.declarations.size() && pins_.declarations[index].demanded;
                 if (!is_demanded || bundle.empty()) return cxx::unexpected(RenderError{kCapabilityDeclaration});
-                auto& published = bundles_[node_.pins.first + index];
+                auto& published = pins_.outputs[index];
                 if (!published.empty()) return cxx::unexpected(RenderError{kCapabilityConflict});
                 std::ranges::sort(bundle, {}, &EffectResourceValue::member);
+                const auto resource_count = workspace_.builder.resourceCount();
                 for (std::size_t i = 0; i < bundle.size(); ++i)
                 {
                     const bool duplicate = i != 0 && bundle[i - 1].member == bundle[i].member;
-                    const bool unknown_resource = bundle[i].version.resource.index >= builder_.resourceCount();
+                    const bool unknown_resource = bundle[i].version.resource.index >= resource_count;
                     if (!bundle[i].member.valid() || duplicate || unknown_resource)
                         return cxx::unexpected(RenderError{kCapabilityDeclaration});
                 }
@@ -347,9 +394,9 @@ namespace lux::render::runtime_detail
 
             [[nodiscard]] bool complete() const noexcept
             {
-                for (std::size_t index = 0; index < pins_.size(); ++index)
+                for (std::size_t index = 0; index < pins_.declarations.size(); ++index)
                 {
-                    if (pins_[index].demanded && bundles_[node_.pins.first + index].empty()) return false;
+                    if (pins_.declarations[index].demanded && pins_.outputs[index].empty()) return false;
                 }
                 return true;
             }
@@ -358,28 +405,28 @@ namespace lux::render::runtime_detail
             RenderResult<ResourceVersion>
             declareUniformBlock(std::string_view name, extension_detail::EffectUniformSource source) noexcept override
             {
-                const auto existing = std::ranges::find_if(uniforms_, [&](const auto& old) noexcept
+                const auto existing = std::ranges::find_if(workspace_.uniforms, [&](const auto& old) noexcept
                 {
                     return old.node == node_.source && old.name == name;
                 });
-                if (name.empty() || existing != uniforms_.end())
+                if (name.empty() || existing != workspace_.uniforms.end())
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {node_.source.value}});
                 const auto bytes = source.block.bytes;
-                auto resource = builder_.declareResource({
+                auto resource = workspace_.builder.declareResource({
                     "uniform/" + std::to_string(node_.source.value) + "/" + std::string(name),
                     GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, bytes}}, EGraphUse::UNIFORM_READ
                 });
                 if (!resource) return cxx::unexpected(resource.error());
-                uniforms_.push_back({node_.source, std::string(name), *resource, source});
+                workspace_.uniforms.push_back({node_.source, std::string(name), *resource, source});
                 return ResourceVersion{*resource, 0};
             }
 
             RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info type, std::size_t bytes) noexcept override
             {
-                if (preparation_.cpu_data.size() >= kGraphInvalidIndex)
+                if (workspace_.preparation.cpu_data.size() >= kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
-                const GraphCpuDataId id{static_cast<std::uint32_t>(preparation_.cpu_data.size())};
-                preparation_.cpu_data.push_back({type, bytes});
+                const GraphCpuDataId id{static_cast<std::uint32_t>(workspace_.preparation.cpu_data.size())};
+                workspace_.preparation.cpu_data.push_back({type, bytes});
                 return id;
             }
 
@@ -389,18 +436,10 @@ namespace lux::render::runtime_detail
                 return std::ranges::find(ports, semantic, &EffectPortDefinition::semantic) - ports.begin();
             }
 
+            EffectLoweringWorkspace& workspace_;
             const ValidatedEffectNode& node_;
             const ConfigValue* configuration_;
-            const EffectOutputDesc& target_;
-            const EffectBuildDevice& device_;
-            RenderGraphBuilder& builder_;
-            std::span<EffectResourceBundle> bundles_;
-            const EffectImportContracts& imports_;
-            ImportSlots& slots_;
-            PreparationDefinition& preparation_;
-            std::vector<UniformBlockDeclaration>& uniforms_;
-            std::span<const effect_detail::ValidatedEffectPin> pins_;
-            std::vector<std::vector<EffectResourceBundle>> inputs_;
+            NodePinView pins_;
         };
     }
 
@@ -458,46 +497,41 @@ namespace lux::render::runtime_detail
 
     RenderResult<EffectGraphBuild>
     lowerEffectGraph(
-        const EffectGraph& graph,
-        std::span<const EffectNodeConfiguration> configurations,
+        EffectRecipeView recipe,
         const EffectCatalog& catalog,
-        const EffectOutputDesc& target,
-        const EffectBuildDevice& device,
-        const EffectImportContracts& imports,
+        EffectBuildContract contract,
         const RenderErrorSink& sink
     ) noexcept
     {
-        auto validated = validateForBuild(graph, catalog, sink);
+        auto validated = validateForBuild(recipe.graph, catalog, sink);
         if (!validated) return cxx::unexpected(validated.error());
-        RenderGraphBuilder builder;
-        std::vector<EffectResourceBundle> bundles(validated->pins.size());
-        ImportSlots slots;
-        PreparationDefinition preparation;
-        std::vector<UniformBlockDeclaration> uniforms;
-        slots.targets.resize(imports.targets.size());
-        slots.storages.resize(imports.storages.size());
-        slots.snapshots.resize(imports.storages.size());
-        slots.used_targets.resize(imports.targets.size());
-        slots.used_storages.resize(imports.storages.size());
+        EffectLoweringWorkspace workspace(contract, validated->pins.size());
+        const auto configurations = recipe.configurations;
         for (auto index : validated->topological_order)
         {
             const auto& node = validated->nodes[index];
             if (!node.live) continue;
-            const auto config = std::ranges::lower_bound(configurations, node.source, {}, &EffectNodeConfiguration::node);
-            const auto* value = config != configurations.end() && config->node == node.source ? &config->value : nullptr;
-            NodeBuild context{
-                *validated, node, value, target, device, builder, bundles, imports, slots, preparation, uniforms
-            };
+            const auto config = std::ranges::lower_bound(
+                configurations, node.source, {}, &EffectNodeConfiguration::node
+            );
+            const bool configured = config != configurations.end() && config->node == node.source;
+            const auto* value = configured ? &config->value : nullptr;
+            NodeBuild context(workspace, node, value, workspace.bindPins(*validated, node));
             if (auto built = node.implementation->build(context, node.arguments); !built)
             {
                 return cxx::unexpected(reportEffectFailure(
                     sink, built.error(), {EEffectIssue::BUILD_FAILURE, node.source, {}, {}}, "Effect node build failed"
                 ));
             }
-            if (!context.complete() || builder.outputCount() != 0)
+            if (!context.complete() || workspace.builder.outputCount() != 0)
                 return cxx::unexpected(RenderError{kCapabilityDeclaration, {node.source.value}});
         }
-        for (const auto& output : validated->outputs)
+        return std::move(workspace).finish(*validated);
+    }
+
+    RenderResult<EffectGraphBuild> EffectLoweringWorkspace::finish(const ValidatedEffectGraph& validated) && noexcept
+    {
+        for (const auto& output : validated.outputs)
         {
             const auto& bundle = bundles[output.pin];
             if (output.target && bundle.size() != 1) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -518,7 +552,7 @@ namespace lux::render::runtime_detail
                     const bool imported_storage = std::ranges::find(slots.storages, member.version.resource) != slots.storages.end();
                     if (imported_target || imported_storage)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                    exported.target = GraphOutputRequirements{target.format, target.samples};
+                    exported.target = GraphOutputRequirements{contract.target.format, contract.target.samples};
                 }
                 if (auto added = builder.exportOutput(std::move(exported)); !added)
                     return cxx::unexpected(added.error());
@@ -545,7 +579,8 @@ namespace lux::render::runtime_detail
             const auto slot = slots.storages[i];
             if (slot.index == kGraphInvalidIndex) continue;
             linked_storages[slot.index] = true;
-            storage_read_uses[slot.index] = std::get<detail::StorageGraphImport>(imports.storages[i].contract).read_use;
+            const auto& import = std::get<detail::StorageGraphImport>(contract.imports.storages[i].contract);
+            storage_read_uses[slot.index] = import.read_use;
         }
         for (std::size_t index = 0; index < source->resources().size(); ++index)
         {
@@ -601,7 +636,8 @@ namespace lux::render::runtime_detail
             }
         }
         return EffectGraphBuild{
-            std::move(*source), std::move(*analysis), target, std::move(slots.targets), std::move(slots.storages),
+            std::move(*source), std::move(*analysis), contract.target,
+            std::move(slots.targets), std::move(slots.storages),
             std::move(preparation), std::move(uniforms)
         };
     }

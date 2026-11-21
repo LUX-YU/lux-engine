@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/BuiltinPass.hpp>
@@ -209,20 +210,18 @@ namespace lux::render::detail
         }
     } // namespace
 
-    std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>>
-    collectUseStages(
-        const RenderGraph& graph,
-        std::span<const GraphPassId> order,
-        const ShaderBindingPlan& layouts,
-        nri::GraphicsAPI backend
-    ) noexcept
+    void GraphCompiler::Workspace::collectUseStages() noexcept
     {
-        std::vector<std::vector<std::pair<std::uint32_t, nri::StageBits>>> result(graph.passes().size());
+        const auto& graph = source.graph;
+        const auto order = std::span(source.analysis.execution_order);
+        const auto backend = device.limits.graphicsAPI;
+        use_stages.resize(graph.passes().size());
         for (std::size_t slot = 0; slot < order.size(); ++slot)
         {
             const auto id = order[slot].index;
             const auto& pass = graph.passes()[id];
-            auto& uses = result[id];
+            auto& uses = use_stages[id];
+            uses.clear();
             uses.reserve(pass.uses.size());
             for (const auto& use : pass.uses)
             {
@@ -233,19 +232,19 @@ namespace lux::render::detail
                     if (resource != kGraphInvalidIndex)
                     {
                         const auto access = accessForUse(
-                            use, layouts.passes[slot], pass, graph.resources()[resource].description, resource, backend
+                            use, bindings.passes[slot], pass, graph.resources()[resource].description, resource, backend
                         );
                         uses.emplace_back(resource, access.stages);
                     }
                 }
             }
-            std::ranges::sort(uses, {}, [](const auto& use) { return use.first; });
+            std::ranges::sort(uses, {}, &ResourceUseStages::resource_index);
             std::size_t count = 0;
             for (const auto& use : uses)
             {
-                if (count && uses[count - 1].first == use.first)
+                if (count && uses[count - 1].resource_index == use.resource_index)
                 {
-                    uses[count - 1].second = combineStages(uses[count - 1].second, use.second);
+                    uses[count - 1].stages = combineStages(uses[count - 1].stages, use.stages);
                 }
                 else
                 {
@@ -254,7 +253,6 @@ namespace lux::render::detail
             }
             uses.resize(count);
         }
-        return result;
     }
 
     void compactImageTransitions(std::span<CompiledResource> resources, RecordingProgram& recording) noexcept
@@ -331,17 +329,17 @@ namespace lux::render::detail
             resources[recording.after.buffers[i].resource].final_barrier_uses.push_back(i);
     }
 
-    RenderResult<void> planBarriers(
-        const RenderGraph& graph,
-        const RenderGraphAnalysis& analysis,
-        const ShaderBindingPlan& layouts,
-        std::span<CompiledResource> resources,
-        RecordingProgram& recording,
-        const EffectOutputDesc& target,
-        nri::GraphicsAPI backend,
-        const PhysicalResourcePlan* physical
-    ) noexcept
+    RenderResult<void>
+    GraphCompiler::Workspace::planBarriers(
+        RenderGraphExecutable& plan, const PhysicalResourcePlan* physical
+    ) const noexcept
     {
+        const auto& [graph, analysis] = source;
+        const auto& layouts = bindings;
+        auto& resources = plan.resources_;
+        auto& recording = plan.recording_;
+        const auto& target = plan.output_description_;
+        const auto backend = device.limits.graphicsAPI;
         // Legacy computeBarriers/buildPrebuiltBarriers: derive states once, record indexed templates.
         // Image cells extend that algorithm to actual aspects/mips/layers; NRI Buffer barriers are whole-resource.
         std::vector<std::vector<Access>> states(resources.size());

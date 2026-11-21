@@ -193,7 +193,8 @@ static void graphOutput(Validation& validation)
     auto analysis = take(analyzeRenderGraph(definition));
     const EffectOutputDesc output_description{target.format, target.samples, target.kind, target.sampled};
     auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
-        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), definition, analysis, &output_description
+        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
+        {definition, analysis}, {.target = output_description}
     ));
     CHECK(ready_result);
     auto graph = take(std::move(std::get<0>(*ready_result)));
@@ -271,7 +272,7 @@ static void importedIdentityReuse(Validation& validation)
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
-        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr
+        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}
     ));
     CHECK(ready_result);
     auto plan = take(std::move(std::get<0>(*ready_result)));
@@ -432,7 +433,7 @@ static void importedExtentContracts(Validation& validation)
         auto graph = take(std::move(builder).finish());
         auto analysis = take(analyzeRenderGraph(graph));
         auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
-            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}
         ));
         CHECK(ready_result);
         auto plan = take(std::move(std::get<0>(*ready_result)));
@@ -1436,6 +1437,7 @@ struct RetirementFence final
     std::atomic<ETestProducerResult> producer_result{ETestProducerResult::SUCCESS};
     std::atomic_uint source_links{}, sink_links{}, source_instances{}, sink_preparations{};
     std::weak_ptr<const int> producer_source_lifetime;
+    std::atomic_bool reject_sink_after_link{};
 
     class TestValueProducer final : public lux::render::InstanceData
     {
@@ -1501,6 +1503,7 @@ struct RetirementFence final
             if (!input) return lux::cxx::unexpected(input.error());
             auto constants = link.resolveInlineConstants<ProducerConstants>(config.pass);
             if (!constants) return lux::cxx::unexpected(constants.error());
+            if (reject_sink_after_link.exchange(false)) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return ResolvedInputs{*input, *constants};
         }
 
@@ -2699,9 +2702,16 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     peer_view_parameters.background[0] = std::bit_cast<float>(0x5b5b5b5bu);
     call<ViewParameterCommands::Update>(*client, commands, {first_view_data, std::span{&first_view_parameters, 1}});
     call<ViewParameterCommands::Update>(*client, commands, {peer_view_data, std::span{&peer_view_parameters, 1}});
+    reject_sink_after_link = true;
+    const auto failed_link = call<StartRenderJob>(
+        *client, commands, {device, prepared_job, producer_target, first_binding}, false
+    );
+    CHECK(failed_link.error.type == kGraphInvalidDescriptor && !reject_sink_after_link.load());
+    CHECK(source_links.load() == source_before + 1 && sink_links.load() == sink_before + 1);
+    CHECK(!source_instances.load() && producer_source_lifetime.expired());
     call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, first_binding});
     call<StartRenderJob>(*client, commands, {device, prepared_peer, producer_peer_target, peer_binding});
-    CHECK(source_links.load() == source_before + 1 && sink_links.load() == sink_before + 1);
+    CHECK(source_links.load() == source_before + 2 && sink_links.load() == sink_before + 2);
     CHECK(source_instances.load() == 2);
     const auto view_schema = call<QueryRenderJobInputLayout>(*client, commands, prepared_job).layout;
     auto packet = take(FrameData::create<std::tuple<ViewParameterResource>>(view_schema));

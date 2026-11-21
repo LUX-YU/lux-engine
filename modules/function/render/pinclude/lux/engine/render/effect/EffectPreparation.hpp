@@ -7,14 +7,13 @@
 
 namespace lux::render::detail
 {
-    struct GraphAssemblyPlan;
-    class RenderGraphExecutable;
-    class NativeProgramBindings;
+    struct PreparedRenderGraph;
 }
 
 namespace lux::render::runtime_detail
 {
     struct RenderEffect;
+    struct EffectGraphBuild;
 
     struct CpuDataDefinition final
     {
@@ -44,21 +43,20 @@ namespace lux::render::runtime_detail
             graph::NodeId node;
         };
 
-        std::vector<CpuDataDefinition> cpu_data;
-        std::vector<Buffer> buffers;
-        std::vector<Snapshot> snapshots;
-        std::vector<std::uint32_t> texture_sets; // Logical texture-set ID to canonical Job binding.
-        std::vector<std::uint32_t> mesh_sets;
-        std::vector<std::uint32_t> material_sets;
-        std::vector<Producer> producers;
-        std::vector<std::uint32_t> live_order;
+        std::vector<CpuDataDefinition>  cpu_data;
+        std::vector<Buffer>             buffers;
+        std::vector<Snapshot>           snapshots;
+        std::vector<std::uint32_t>      texture_sets; // Logical texture-set ID to canonical Job binding.
+        std::vector<std::uint32_t>      mesh_sets;
+        std::vector<std::uint32_t>      material_sets;
+        std::vector<Producer>           producers;
+        std::vector<std::uint32_t>      live_order;
     };
 
     [[nodiscard]] RenderResult<RenderGraphAnalysis>
     analyzePreparedGraph(const RenderGraph&, PreparationDefinition&) noexcept;
 
     [[nodiscard]] RenderResult<detail::PreparationPlan> linkPreparation(
-        const PreparationDefinition&, const RenderGraph&, const detail::GraphAssemblyPlan&,
-        const detail::RenderGraphExecutable&, const detail::NativeProgramBindings&, const RenderEffect&
+        const EffectGraphBuild&, const detail::PreparedRenderGraph&, const RenderEffect&
     ) noexcept;
 } // namespace lux::render::runtime_detail

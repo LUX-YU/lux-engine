@@ -3,11 +3,10 @@
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
+#include <optional>
 
 namespace lux::render::detail
 {
-    struct ShaderBindingPlan;
-
     struct GraphQueuePolicy final
     {
         GraphQueueCosts costs;
@@ -15,42 +14,43 @@ namespace lux::render::detail
         bool exercise_async = false;
     };
 
+    struct AnalyzedGraph final
+    {
+        const RenderGraph& graph;
+        const RenderGraphAnalysis& analysis;
+    };
+
+    struct GraphDeviceFacts final
+    {
+        nri::DeviceDesc limits;
+        std::array<const QueueProperties*, 3> queues;
+        bool device_addresses = false;
+    };
+
+    struct GraphCompileOptions final
+    {
+        std::optional<EffectOutputDesc> target;
+        ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY;
+        bool exercise_async = false;
+    };
+
     class LUX_RENDER_PUBLIC GraphCompiler final
     {
     public:
-        // Sole device compilation entry. Returns a fully prepared immutable native candidate.
-        [[nodiscard]] static exec::task<RenderResult<PreparedRenderGraph>> compile(
-            DeviceSession&, execution::CpuScheduler, const RenderGraph&, const RenderGraphAnalysis&,
-            const EffectOutputDesc* target = nullptr,
-            ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
-            bool exercise_async = false
-        ) noexcept;
+        // The graph and analysis live through task completion. Options are owned by the compile task.
+        [[nodiscard]] static exec::task<RenderResult<PreparedRenderGraph>>
+        compile(DeviceSession&, execution::CpuScheduler, AnalyzedGraph, GraphCompileOptions = {}) noexcept;
 
-        // Use native-independent compilation to exercise recording tables with declared capabilities.
         [[nodiscard]] static RenderResult<RenderGraphExecutable> compileForRecordingTest(
-            const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
-            const RenderGraphAnalysis&, ETransientAllocation = ETransientAllocation::INDEPENDENT,
+            GraphDeviceFacts, AnalyzedGraph, ETransientAllocation = ETransientAllocation::INDEPENDENT,
             GraphQueuePolicy = {}
         ) noexcept;
 
     private:
+        struct Workspace;
         [[nodiscard]] static RenderResult<void>
-        lowerCommands(RenderGraphExecutable&, const RenderGraph&, std::span<const GraphPassId>,
-                      const nri::DeviceDesc&) noexcept;
-        [[nodiscard]] static exec::task<RenderResult<void>>
-        prepareOperations(
-            const RenderGraphExecutable&, ShaderBindingPlan&, DeviceSession&, NativeProgramBindings&, const RenderGraph&,
-            std::span<const GraphPassId>, execution::CpuScheduler
-        ) noexcept;
-        [[nodiscard]] static RenderResult<RenderGraphExecutable> planStructure(
-            nri::Device*, const nri::DeviceDesc&, std::array<const QueueProperties*, 3>, const RenderGraph&,
-            const RenderGraphAnalysis&, const EffectOutputDesc*, ETransientAllocation,
-            bool, ShaderBindingPlan&
-        ) noexcept;
-        [[nodiscard]] static RenderResult<void> finishPlan(
-            RenderGraphExecutable&, const RenderGraph&, const RenderGraphAnalysis&, std::array<const QueueProperties*, 3>,
-            const nri::DeviceDesc&, ETransientAllocation, GraphCompileDiagnostics&, GraphQueuePolicy,
-            ShaderBindingPlan&
+        lowerCommands(
+            RenderGraphExecutable&, const RenderGraph&, std::span<const GraphPassId>, const nri::DeviceDesc&
         ) noexcept;
     };
 } // namespace lux::render::detail

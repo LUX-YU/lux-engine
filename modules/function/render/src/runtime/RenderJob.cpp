@@ -379,14 +379,14 @@ namespace lux::render
             {dispatch[0], dispatch[1], dispatch[2]}, limits.memory.storageBufferMaxRange,
             limits.dimensions.textureLayerMaxNum
         };
+        const EffectRecipeView recipe{*effect.source, effect.node_configurations};
         const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
         auto built = co_await (
             stdexec::schedule(cpu_scheduler_) |
             stdexec::then([&]() noexcept
             {
                 return lowerEffectGraph(
-                    *effect.source, effect.node_configurations, effect_catalog_, target, device, imports,
-                    config_.diagnostics
+                    recipe, effect_catalog_, {target, device, imports}, config_.diagnostics
                 );
             }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<EffectGraphBuild>
@@ -401,8 +401,7 @@ namespace lux::render
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
 
         auto plan = co_await detail::GraphCompiler::compile(
-            entry.session(), cpu_scheduler_, built->source, built->analysis, &built->output,
-            detail::ETransientAllocation::ALIAS_MEMORY
+            entry.session(), cpu_scheduler_, {built->source, built->analysis}, {.target = built->output}
         );
         if (!plan) co_return cxx::unexpected(plan.error());
         if (stop_requested_.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
@@ -420,9 +419,7 @@ namespace lux::render
         {
             if (slot.index != kGraphInvalidIndex && !plan->executable.resources()[slot.index].memory_used) slot = {};
         }
-        auto preparation = linkPreparation(
-            built->preparation, built->source, plan->assembly, plan->executable, plan->programs, effect
-        );
+        auto preparation = linkPreparation(*built, *plan, effect);
         if (!preparation) co_return cxx::unexpected(preparation.error());
         std::vector<detail::LinkedUniformBlock> uniforms;
         std::vector<detail::UniformPoolId> created_pools;

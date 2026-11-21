@@ -491,6 +491,7 @@ namespace lux::render::detail
     private:
         friend class GraphCompiler;
         friend class CompiledPrograms;
+        friend struct PreparedRenderGraph;
         NativeProgramBindings(nri::Device& device, std::size_t slots) noexcept;
 
         const nri::Device* device_;
@@ -527,9 +528,7 @@ namespace lux::render::detail
 
     private:
         friend class GraphCompiler;
-        PreparedRenderGraph(
-            DeviceSession&, RenderGraphExecutable, NativeProgramBindings, GraphAssemblyPlan, GraphCompileDiagnostics
-        ) noexcept;
+        PreparedRenderGraph(DeviceSession&, RenderGraphExecutable) noexcept;
         DeviceSession* owner_;
     };
 } // namespace lux::render::detail

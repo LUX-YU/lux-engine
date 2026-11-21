@@ -120,8 +120,8 @@ static PreparedRenderGraph compile(
     std::optional<EffectOutputDesc> output;
     if (target) output.emplace(target->format, target->samples, target->kind, target->sampled);
     auto ready = stdexec::sync_wait(GraphCompiler::compile(
-        session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis,
-        output ? &*output : nullptr, allocation, exercise_async
+        session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis},
+        {output, allocation, exercise_async}
     ));
     CHECK(ready);
     return take(std::move(std::get<0>(*ready)));
@@ -756,8 +756,8 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
         const auto candidate = build(offset, contract).first;
         const auto analysis = take(analyzeRenderGraph(candidate));
         auto rejected = runTask(GraphCompiler::compile(
-            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), candidate, analysis, nullptr,
-            ETransientAllocation::ALIAS_MEMORY, true
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
+            {candidate, analysis}, {.exercise_async = true}
         ));
         CHECK(!rejected && rejected.error().type == error);
     };
@@ -784,8 +784,8 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
         const auto get_device_desc = core.GetDeviceDesc;
         core.GetDeviceDesc = [](const nri::Device&) -> const nri::DeviceDesc& { return limited; };
         auto rejected = runTask(GraphCompiler::compile(
-            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis, nullptr,
-            ETransientAllocation::ALIAS_MEMORY, true
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
+            {graph, analysis}, {.exercise_async = true}
         ));
         core.GetDeviceDesc = get_device_desc;
         CHECK(!rejected && rejected.error().type == kDeviceBudgetExceeded);
@@ -1056,7 +1056,7 @@ static void typedRecording(Validation& validation, bool d3d12)
         const auto graph = take(std::move(builder).finish());
         const auto analysis = take(analyzeRenderGraph(graph));
         auto rejected = stdexec::sync_wait(GraphCompiler::compile(
-            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), graph, analysis
+            *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}
         ));
         CHECK(rejected && !std::get<0>(*rejected) && std::get<0>(*rejected).error().type == kDeviceArgument);
     }
@@ -1329,7 +1329,7 @@ compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool ali
     const QueueProperties copy{nri::QueueType::COPY, 2};
     const std::array queues{&graphics, alias_queues ? &graphics : &compute, &copy};
     return take(GraphCompiler::compileForRecordingTest(
-        capabilities, queues, graph, take(analyzeRenderGraph(graph)), ETransientAllocation::INDEPENDENT, policy
+        {capabilities, queues}, {graph, take(analyzeRenderGraph(graph))}, ETransientAllocation::INDEPENDENT, policy
     ));
 }
 

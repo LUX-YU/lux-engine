@@ -13,6 +13,7 @@
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <span>
 #include <string>
+
 namespace lux::render::runtime_detail
 {
     class CommandRegistry;
@@ -88,8 +89,20 @@ namespace lux::render::runtime_detail
         std::size_t max_config_bytes, const RenderErrorSink&
     ) noexcept;
 
-    [[nodiscard]] RenderResult<EffectGraphBuild> lowerEffectGraph(
-        const EffectGraph&, std::span<const EffectNodeConfiguration>, const EffectCatalog&, const EffectOutputDesc&,
-        const EffectBuildDevice&, const EffectImportContracts&, const RenderErrorSink&
-    ) noexcept;
+    // The immutable author inputs borrowed for one lowering call on the compile worker.
+    struct EffectRecipeView final
+    {
+        const EffectGraph& graph;
+        std::span<const EffectNodeConfiguration> configurations;
+    };
+
+    struct EffectBuildContract final
+    {
+        const EffectOutputDesc& target;
+        const EffectBuildDevice& device;
+        const EffectImportContracts& imports;
+    };
+
+    [[nodiscard]] RenderResult<EffectGraphBuild>
+    lowerEffectGraph(EffectRecipeView, const EffectCatalog&, EffectBuildContract, const RenderErrorSink&) noexcept;
 }

@@ -31,12 +31,8 @@ namespace lux::render::detail
 
     NativeProgramBindings::~NativeProgramBindings() noexcept = default;
 
-    PreparedRenderGraph::PreparedRenderGraph(
-        DeviceSession& owner, RenderGraphExecutable plan, NativeProgramBindings bindings,
-        GraphAssemblyPlan linked, GraphCompileDiagnostics debug
-    ) noexcept
-        : executable(std::move(plan)), programs(std::move(bindings)), assembly(std::move(linked)),
-          diagnostics(std::move(debug)), owner_(&owner)
+    PreparedRenderGraph::PreparedRenderGraph(DeviceSession& owner, RenderGraphExecutable plan) noexcept
+        : executable(std::move(plan)), programs(owner.device(), executable.passes().size()), owner_(&owner)
     {
     }
 

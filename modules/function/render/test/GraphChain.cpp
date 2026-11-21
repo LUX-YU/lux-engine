@@ -1388,6 +1388,94 @@ compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool ali
     ));
 }
 
+static void cpuBuilderTransactions()
+{
+    RenderGraphBuilder builder;
+    CHECK(builder.addProgram(GraphProgram{kGraphFill}));
+    CHECK(std::move(builder).finish());
+    const auto shader = take(builder.addProgram(GraphProgram{kGraphHistory}));
+    const auto input = take(builder.declareResource({"input", GraphBufferDesc{64}}));
+    const auto result = take(builder.declareResource({"result", GraphBufferDesc{64}}));
+    const auto image = take(builder.declareResource({"color", GraphImageDesc{8, 8}}));
+    const auto seed = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{input, 0}}, 1}}}));
+    const auto initial = take(builder.nextWriteVersion(result));
+
+    const auto checkUnchanged = [&]
+    {
+        CHECK(builder.passCount() == 1 && builder.dependencyCount() == 0);
+        CHECK(take(builder.nextWriteVersion(result)) == initial);
+        CHECK(take(builder.nextWriteVersion(image)).number == 1);
+    };
+    const auto wrong_kind = builder.addTransferPass("buffer clear", TransferWork{{
+        FillBuffer{{{result, 0}}, 3}, ClearImage{{{result, 0}}}
+    }});
+    CHECK(!wrong_kind && wrong_kind.error().type == kGraphInvalidDescriptor);
+    checkUnchanged();
+    const auto conflict = builder.addTransferPass("overlap", TransferWork{{
+        FillBuffer{{{result, 0}, GraphBufferRange{0, 8}}, 3}, FillBuffer{{{result, 0}, GraphBufferRange{4, 4}}, 2}
+    }});
+    CHECK(!conflict && conflict.error().type == kGraphConflictingOutput);
+    checkUnchanged();
+
+    RasterWork raster;
+    raster.fixed().interface.program = shader;
+    raster.colors.push_back({{{image, 0}}});
+    raster.fixed().draw = DrawIndexedIndirect{
+        seed.written.front(), 0, EIndexType::UINT32, seed.written.front(), 0, 2, 16
+    };
+    const auto bad_draw = builder.addRasterPass("short stride", std::move(raster));
+    CHECK(!bad_draw && bad_draw.error().type == kGraphInvalidRange);
+    checkUnchanged();
+
+    ComputeWork compute;
+    compute.interface.program = shader;
+    compute.interface.resources = {
+        {"previous_sample", {seed.written.front()}}, {"current_sample", {{result, 0}, {}, EGraphAccess::WRITE}}
+    };
+    auto invalid = compute;
+    invalid.interface.resources.push_back(invalid.interface.resources.back());
+    const auto bad_field = builder.addComputeSequence("duplicate field", {compute, invalid});
+    CHECK(!bad_field && bad_field.error().type == kGraphInvalidDescriptor);
+    checkUnchanged();
+
+    const auto sequence = take(builder.addComputeSequence("retry", {compute, compute}));
+    CHECK(sequence.pass.index == 1 && sequence.written.size() == 1 && sequence.written.front().number == 2);
+    CHECK(builder.dependencyCount() == 1 && builder.passCount() == 3);
+    const auto history = take(builder.declareHistory("history", {GraphBufferDesc{64}}));
+    ResourceAccess previous{{history.previous, 0}, {}, EGraphAccess::READ, 0, seed.written.front(), EGraphUse::STORAGE_READ};
+    RasterPassTemplate stream;
+    stream.purpose = "read alternatives";
+    stream.resources = {previous, previous};
+    previous.fallback = sequence.written.front();
+    stream.resources.push_back(previous);
+    previous.range = GraphBufferRange{0, 64};
+    stream.resources.push_back(previous);
+    RasterWork alternatives;
+    alternatives.program = std::move(stream);
+    alternatives.colors.push_back({{{image, 0}}});
+    const auto streamed = take(builder.addRasterPass("read alternatives", std::move(alternatives)));
+
+    RasterWork padded;
+    padded.fixed().interface.program = shader;
+    padded.colors.push_back({{streamed.written.front()}});
+    padded.fixed().draw = DrawIndexedIndirect{
+        seed.written.front(), 0, EIndexType::UINT32, seed.written.front(), 0, 2, 24
+    };
+    const auto strided = take(builder.addRasterPass("strided commands", std::move(padded)));
+    const auto graph = take(std::move(builder).finish());
+    const auto& first = graph.passes()[1];
+    CHECK(first.interface.resources[0].field != first.interface.resources[1].field);
+    CHECK(first.sequence_first.index == 1 && first.sequence_last.index == 2);
+    const auto& uses = graph.passes()[streamed.pass.index].uses;
+    CHECK(uses.size() == 4 && uses[0].fallback == seed.written.front() && uses[1].fallback == sequence.written.front());
+    CHECK(uses[1].whole_resource && !uses[2].whole_resource);
+    const auto& geometry = graph.passes()[strided.pass.index].uses;
+    CHECK(geometry.size() == 4 && geometry[2].usage == EGraphUse::INDIRECT && geometry[3].usage == EGraphUse::INDIRECT);
+    CHECK((std::get<GraphBufferRange>(geometry[2].range) == GraphBufferRange{0, 20}));
+    CHECK((std::get<GraphBufferRange>(geometry[3].range) == GraphBufferRange{24, 20}));
+    std::puts("BUILDER TRANSACTION PASS: range/field/stride errors, sequence retry and reflection after Builder reuse");
+}
+
 static void cpuRecordingTables()
 {
     GraphResourceId intermediate, readback;
@@ -2442,6 +2530,7 @@ int main(int argc, char** argv)
     }
     if (argc > 1 && std::string_view(argv[1]) == "cpu-recording")
     {
+        cpuBuilderTransactions();
         cpuRecordingTables();
         cpuConditionalRanges();
         cpuImportedBoundaries();

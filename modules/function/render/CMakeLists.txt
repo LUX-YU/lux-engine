@@ -61,6 +61,7 @@ set(render_sources
     src/resource/mesh/IndexedTriangleMesh.cpp
     src/resource/material/RasterMaterial.cpp
     src/graph/RenderGraphBuilder.cpp
+    src/graph/PassNormalizer.cpp
     src/graph/RenderGraphAnalysis.cpp
     src/graph/Diagnostics.cpp
     src/features/mesh/RasterMesh.cpp

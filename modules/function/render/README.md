@@ -438,7 +438,10 @@ candidate image extents before adoption and the next Freeze resolves the new phy
 compilation and supply draws and resource bindings through `FramePreparation`. The graph declares attachments
 and fixed graph resources.
 
-`RenderGraphBuilder` owns candidate arrays. `finish()` produces one self-contained immutable Definition;
+`RenderGraphBuilder` indexes each program’s reflected fields when the program is added. Raster, Compute and Transfer
+each normalize their own work into a private draft. The Builder publishes passes and write versions after range,
+binding and overlap validation. A Compute sequence publishes its passes and dependencies together.
+`finish()` produces one self-contained immutable Definition;
 `analyzeRenderGraph()` produces independent analysis data. Graph resource/pass IDs are indices within that Definition, not
 global generational identities. Version zero describes explicit initial contents; positive versions name writes.
 Reads, read/write predecessors, conditional fallbacks and overlapping ranges are explicit. Exports, published History,

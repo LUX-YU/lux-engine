@@ -73,9 +73,16 @@ namespace lux::render
         [[nodiscard]] RenderResult<RenderGraph> finish() && noexcept;
 
     private:
-        [[nodiscard]] RenderResult<PassResult>
-        addWork(std::string key, VGraphCommand command, EGraphPassKind kind, GraphPassOptions options) noexcept;
-        [[nodiscard]] RenderResult<GraphPassId> addPass(GraphPass pass) noexcept;
+        class PassNormalizer;
+        struct ProgramField final
+        {
+            std::uint32_t set, binding, ordinal;
+        };
+
+        template <class Work>
+        [[nodiscard]] RenderResult<PassResult> appendPass(std::string key, Work work, GraphPassOptions options) noexcept;
+
+        std::vector<std::vector<ProgramField>> program_fields_;
         RenderGraph candidate_;
         std::vector<std::uint32_t> versions_;
     };

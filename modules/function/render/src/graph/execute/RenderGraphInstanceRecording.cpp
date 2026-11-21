@@ -35,7 +35,7 @@ namespace lux::render::detail
         const FrameRecordInput input{
             *plan_, frame.record_resources, frame.record_passes, frame.history_initializations,
             frame.enabled_regions, frame.history_valid, frame.final_images, frame.final_buffers,
-            frame.descriptor_pool, frame.shared_descriptors, frame.viewport
+            frame.descriptor_pool, frame.shared_descriptors.sets, frame.viewport
         };
         auto& device = *session_;
         const auto& description = plan_->submissions()[batch];
@@ -226,7 +226,7 @@ namespace lux::render::detail
                 auto ready = pass.freezeCommands(*plan_, frame.record_resources, session_->description(), native);
                 if (!ready) return ready;
             }
-            native.shared_descriptors = frame.shared_descriptors;
+            native.shared_descriptors = frame.shared_descriptors.sets;
             if (const auto* raster = plan_->rasterCommands(*pass.compiled_pass))
             {
                 if (const auto* dynamic = std::get_if<RasterListCommands>(&raster->draw))

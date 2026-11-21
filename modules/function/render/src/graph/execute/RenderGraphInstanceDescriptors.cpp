@@ -286,8 +286,6 @@ namespace lux::render::detail
         frame.descriptor_reserved = required;
         if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
             frame.shared_descriptors = *shared;
-        frame.shared_content_revision = session_->descriptors().contentRevision();
-        frame.shared_descriptor_counts = session_->descriptors().snapshotCounts();
         rollback.release();
         if (old_pool)
         {
@@ -560,9 +558,8 @@ namespace lux::render::detail
             {
                 auto shared = session_->descriptors().createSnapshot(*frame.descriptor_pool);
                 if (!shared) return cxx::unexpected(shared.error());
-                frame.shared_descriptors = *shared;
-                frame.shared_content_revision = session_->descriptors().contentRevision();
-                frame.shared_descriptor_counts = session_->descriptors().snapshotCounts();
+                if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
+                    frame.shared_descriptors = *shared;
             }
             for (auto& pass : frame.passes)
             {

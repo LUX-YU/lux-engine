@@ -639,7 +639,7 @@ static void descriptorTables()
         slots.push_back(slot);
     }
     CHECK(table.descriptors(nri::DescriptorType::TEXTURE) != first);
-    CHECK(table.nativeBindingGeneration() > first_generation && table.contentRevision() == first_content + slots.size());
+    CHECK(table.nativeBindingGeneration() > first_generation && table.contentRevision() == first_content + 2 * slots.size());
     CHECK(destroyed_pools == destroyed_before_growth); // Accepted frontiers have not been dispatched.
     CHECK(session->drain());
     CHECK(destroyed_pools >= destroyed_before_growth + 5);
@@ -651,7 +651,7 @@ static void descriptorTables()
     slots[3] = take(table.allocate(nri::DescriptorType::TEXTURE));
     CHECK(slots[3].index == removed.index && slots[3].gen != removed.gen);
     table.write(nri::DescriptorType::TEXTURE, slots[3], view);
-    CHECK(table.contentRevision() == previous_content + 2);
+    CHECK(table.contentRevision() == previous_content + 3);
     CHECK(table.nativeBindingGeneration() == stable_generation);
     while (slots.size() != 31)
     {
@@ -728,8 +728,166 @@ static void descriptorTables()
     std::printf("Descriptor tables: growth/reuse/pool-set failure/budget/layout limits PASS\n");
 }
 
+// Observe the real D3D12 writes to one FIF heap while forwarding them to NRI.
+struct SnapshotWrites final
+{
+    struct Write final
+    {
+        std::uint32_t slot;
+        const nri::Descriptor* view;
+        bool operator==(const Write&) const noexcept = default;
+    };
+
+    inline static decltype(nri::CoreInterface::UpdateDescriptorRanges) original = nullptr;
+    inline static nri::DescriptorSet* watched = nullptr;
+    inline static std::vector<Write> writes;
+    inline static std::size_t ranges = 0;
+
+    static void capture(const nri::UpdateDescriptorRangeDesc* updates, std::uint32_t count) noexcept
+    {
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            const auto& update = updates[i];
+            if (!watched) watched = update.descriptorSet;
+            if (update.descriptorSet != watched) continue;
+            ++ranges;
+            for (std::uint32_t j = 0; j < update.descriptorNum; ++j)
+                writes.push_back({update.baseDescriptor + j, update.descriptors[j]});
+        }
+        original(updates, count);
+    }
+
+    static void watch(const DescriptorTable::Snapshot& snapshot) noexcept
+    {
+        writes.clear();
+        ranges = 0;
+        watched = snapshot.sets[0];
+    }
+};
+
+static void descriptorSnapshots()
+{
+    Validation validation;
+    DeviceOptions options;
+    options.backend = EGraphicsBackend::D3D12;
+    options.texture_descriptors = true;
+    options.descriptor_initial_counts = {8, 8, 8};
+    options.descriptor_layout_limits = {32, 16, 16};
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+    auto& table = session->descriptors();
+    constexpr auto type = nri::DescriptorType::TEXTURE;
+    TargetDesc target;
+    target.width = target.height = 4;
+    target.sampled = true;
+    target.format = rdesc::ETextureFormat::RGBA8_UNORM;
+    auto image = take(OffscreenTarget::create(*session, target, 1));
+    const nri::TextureViewDesc source{image.frame(0).image, nri::TextureView::TEXTURE, nri::Format::RGBA8_UNORM};
+    nri::Descriptor* first = nullptr;
+    nri::Descriptor* second = nullptr;
+    CHECK(core.CreateTextureView(source, first) == nri::Result::SUCCESS);
+    CHECK(core.CreateTextureView(source, second) == nri::Result::SUCCESS);
+    const auto original_slot = take(table.allocate(type));
+    table.write(type, original_slot, first);
+    const auto makePool = [&]() noexcept
+    {
+        nri::DescriptorPoolDesc desc{};
+        CHECK(table.addSnapshotDescriptors(desc));
+        nri::DescriptorPool* pool = nullptr;
+        CHECK(core.CreateDescriptorPool(session->device(), desc, pool) == nri::Result::SUCCESS);
+        return pool;
+    };
+    auto* pool_a = makePool();
+    auto* pool_b = makePool();
+    auto a = take(table.createSnapshot(*pool_a));
+    auto b = take(table.createSnapshot(*pool_b));
+    SnapshotWrites::original = core.UpdateDescriptorRanges;
+    core.UpdateDescriptorRanges = SnapshotWrites::capture;
+    const auto sync = [&](DescriptorTable::Snapshot& snapshot)
+    {
+        SnapshotWrites::watch(snapshot);
+        CHECK(table.updateSnapshot(snapshot));
+        CHECK(snapshot.revision == table.contentRevision());
+    };
+    const auto next = take(table.allocate(type));
+    table.write(type, next, first);
+    using Write = SnapshotWrites::Write;
+    sync(a);
+    CHECK((SnapshotWrites::writes == std::vector<Write>{{next.index, first}}));
+    sync(a);
+    CHECK(SnapshotWrites::writes.empty());
+    table.release(type, next);
+    sync(a);
+    CHECK(SnapshotWrites::writes.empty());
+    const auto reused = take(table.allocate(type));
+    CHECK(reused.index == next.index && reused.gen != next.gen);
+    table.write(type, reused, second);
+    const auto adjacent = take(table.allocate(type));
+    CHECK(adjacent.index == reused.index + 1);
+    table.write(type, adjacent, first);
+    const std::vector<Write> expected{{reused.index, second}, {adjacent.index, first}};
+    sync(b);
+    CHECK(SnapshotWrites::ranges == 1 && SnapshotWrites::writes == expected);
+    sync(a);
+    CHECK(SnapshotWrites::ranges == 1 && SnapshotWrites::writes == expected);
+
+    // Park b beyond the journal, then compare its writes to a freshly populated heap.
+    for (unsigned i = 0; i < 300; ++i)
+    {
+        const auto empty = take(table.allocate(type));
+        table.release(type, empty);
+        sync(a);
+        CHECK(SnapshotWrites::writes.empty());
+    }
+    sync(b);
+    const auto full = SnapshotWrites::writes;
+    CHECK(std::ranges::find(full, Write{original_slot.index, first}) != full.end());
+    CHECK(std::ranges::find(full, Write{reused.index, second}) != full.end());
+    CHECK(std::ranges::find(full, Write{adjacent.index, first}) != full.end());
+    auto* reference_pool = makePool();
+    SnapshotWrites::watch({});
+    const auto reference = take(table.createSnapshot(*reference_pool));
+    CHECK(reference.sets[0] == SnapshotWrites::watched);
+    CHECK(SnapshotWrites::writes == full);
+    core.DestroyDescriptorPool(reference_pool);
+    sync(b);
+    CHECK(SnapshotWrites::writes.empty());
+
+    std::vector<DescriptorTable::Slot> more;
+    if (session->enabledFeatures().variable_descriptor_count)
+    {
+        while (table.snapshotCounts() == a.capacities) more.push_back(take(table.allocate(type)));
+        CHECK(!table.updateSnapshot(a));
+        auto* grown = makePool();
+        auto replacement = take(table.createSnapshot(*grown));
+        sync(replacement);
+        CHECK(SnapshotWrites::writes.empty());
+        core.DestroyDescriptorPool(grown);
+    }
+    for (auto slot : more) table.release(type, slot);
+    core.UpdateDescriptorRanges = SnapshotWrites::original;
+    table.release(type, adjacent);
+    table.release(type, reused);
+    table.release(type, original_slot);
+    core.DestroyDescriptorPool(pool_a);
+    core.DestroyDescriptorPool(pool_b);
+    core.DestroyDescriptor(second);
+    core.DestroyDescriptor(first);
+    CHECK(validation.errors == 0);
+    std::printf(
+        "D3D12 SNAPSHOTS PASS: one write, adjacent pair in one range, two FIF cursors, "
+        "reused slot, full copy after 600 changes (%zu live views), variable table growth=%u\n",
+        full.size(), !more.empty()
+    );
+}
+
 int main(int argc, char** argv)
 {
+    if (argc > 1 && std::strcmp(argv[1], "--descriptor-snapshots") == 0)
+    {
+        descriptorSnapshots();
+        return 0;
+    }
     if (argc > 1 && std::strcmp(argv[1], "--descriptor-tables") == 0)
     {
         descriptorTables();

@@ -324,6 +324,9 @@ add_test(NAME render.sample.clustered_same_family COMMAND render_clustered_scene
 add_test(NAME render.sample.clustered_paged COMMAND render_clustered_scene 3 --paged)
 
 if(WIN32)
+    add_test(NAME render.native.descriptor_snapshots_d3d12 COMMAND render_deferred_scene --descriptor-snapshots)
+    set_tests_properties(render.native.descriptor_snapshots_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+
     add_test(NAME render.sample.clustered_d3d12 COMMAND render_clustered_scene 3 --d3d12)
     set_tests_properties(render.sample.clustered_d3d12 PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()

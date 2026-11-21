@@ -249,30 +249,27 @@ namespace lux::render::detail
         const auto& shared = session_->descriptors();
         const auto shared_generation = shared.nativeBindingGeneration();
         const bool is_d3d12 = session_->description().graphicsAPI == nri::GraphicsAPI::D3D12;
-        const bool shared_changed = frame.shared_binding_generation != shared_generation;
-        const bool resize_pool = shared_changed && frame.shared_descriptor_counts != shared.snapshotCounts();
+        const bool shared_changed = frame.shared_descriptors.generation != shared_generation;
+        const bool resize_pool = shared_changed && frame.shared_descriptors.capacities != shared.snapshotCounts();
         if (resize_pool || !frame.stream_inputs.empty())
         {
             if (auto capacity = prepareRasterDescriptorCapacity(slot, resize_pool); !capacity)
                 return cxx::unexpected(capacity.error());
         }
-        if (shared_changed)
+        if (is_d3d12 && frame.descriptor_pool)
         {
-            if (!is_d3d12)
-            {
-                constexpr std::array kinds{
-                    nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
-                };
-                for (std::size_t kind = 0; kind < kinds.size(); ++kind)
-                    frame.shared_descriptors[kind] = shared.descriptors(kinds[kind]);
-                invalidateRecordings(slot);
-            }
-            frame.shared_binding_generation = shared_generation;
+            if (auto synced = shared.updateSnapshot(frame.shared_descriptors); !synced)
+                return cxx::unexpected(synced.error());
         }
-        if (is_d3d12 && frame.shared_content_revision != shared.contentRevision())
+        else if (!is_d3d12 && shared_changed)
         {
-            shared.updateSnapshot(frame.shared_descriptors);
-            frame.shared_content_revision = shared.contentRevision();
+            constexpr std::array kinds{
+                nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
+            };
+            for (std::size_t kind = 0; kind < kinds.size(); ++kind)
+                frame.shared_descriptors.sets[kind] = shared.descriptors(kinds[kind]);
+            frame.shared_descriptors.generation = shared_generation;
+            invalidateRecordings(slot);
         }
         if (auto sections = prepareRasterSections(slot); !sections)
             return cxx::unexpected(sections.error());

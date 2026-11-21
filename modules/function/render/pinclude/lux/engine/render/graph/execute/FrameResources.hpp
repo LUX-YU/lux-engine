@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/execute/HistoryState.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
@@ -110,10 +111,7 @@ namespace lux::render::detail
         };
 
         std::vector<CommandBatch> command_batches;
-        std::uint64_t shared_binding_generation = 0;
-        std::uint64_t shared_content_revision = 0;
-        std::array<nri::DescriptorSet*, 3> shared_descriptors{};
-        std::array<std::uint32_t, 3> shared_descriptor_counts{};
+        DescriptorTable::Snapshot shared_descriptors;
 
         std::vector<RasterDrawList> raster_draws;
         std::vector<std::byte> parameters;

@@ -57,11 +57,18 @@ namespace lux::render::detail
         [[nodiscard]] std::uint32_t capacity(nri::DescriptorType) const noexcept;
 
         // D3D12 binds one resource/sampler heap pair. Copy shared tables into the writable frame's pool.
-        using Snapshot = std::array<nri::DescriptorSet*, 3>;
+        struct Snapshot final
+        {
+            const DescriptorTable* owner = nullptr;
+            std::array<nri::DescriptorSet*, 3> sets{};
+            std::array<std::uint32_t, 3> capacities{};
+            std::uint64_t generation = 0;
+            std::uint64_t revision = 0;
+        };
         [[nodiscard]] std::array<std::uint32_t, 3> snapshotCounts() const noexcept;
         [[nodiscard]] RenderResult<void> addSnapshotDescriptors(nri::DescriptorPoolDesc&) const noexcept;
         [[nodiscard]] RenderResult<Snapshot> createSnapshot(nri::DescriptorPool&) const noexcept;
-        void updateSnapshot(const Snapshot&) const noexcept;
+        [[nodiscard]] RenderResult<void> updateSnapshot(Snapshot&) const noexcept;
 
     private:
         friend class FrameOperation;
@@ -94,6 +101,17 @@ namespace lux::render::detail
             nri::DescriptorSet* descriptors = nullptr;
         };
 
+        struct ChangedSlot final
+        {
+            Slot slot;
+            std::uint32_t kind;
+        };
+
+        static constexpr std::size_t change_capacity = 256;
+        void markChanged(nri::DescriptorType type, Slot slot) noexcept;
+        void copyLiveDescriptors(const Snapshot&) const noexcept;
+        void copyChangedDescriptors(const Snapshot&) const noexcept;
+
         struct Sampler final
         {
             nri::SamplerDesc description;
@@ -110,6 +128,7 @@ namespace lux::render::detail
         DeviceSession& session_;
         std::array<Table, 3> tables_;
         std::vector<Sampler> samplers_;
+        std::vector<ChangedSlot> changes_;
         cxx::StableSlotMap<NativePool, NativePoolTag> pools_;
         std::uint64_t allocated_descriptors_ = 0;
         std::uint64_t native_binding_generation_ = 1;

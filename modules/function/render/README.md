@@ -1042,7 +1042,9 @@ Vulkan relocates descriptor decorations, while D3D12 preserves the compiled regi
 space/index through the NRI descriptor-range mapping. Root constants use `b0, space255`.
 On D3D12, shared descriptor tables are CPU copy sources. The writable FIF snapshots live
 entries into its own GPU descriptor pool alongside private sets, so one heap pair supplies
-all bindings. Content updates write into the existing writable FIF pool. Table growth rebuilds that frame's pool
+all bindings. Each FIF keeps its own content cursor. Allocation, publication and release append slot identities
+to a bounded 256-change journal. On the next writable use, adjacent live slots are copied together from the
+current owner table. A cursor gap requires a full live copy. Table growth rebuilds that frame's pool
 and invalidates affected recordings. Vulkan frames retain the shared native pool generations selected by their
 frozen replicas until submission receipts have been adopted. A replaced pool returns its budget after destruction.
 DXIL never passes through SPIR-V relocation. Runtime validation uses pinned SPIRV-Tools

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <bit>
+#include <tuple>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -64,6 +65,7 @@ namespace lux::render::detail
     RenderResult<void> DescriptorTable::initialize(const DeviceOptions& options, std::uint32_t pool_capacity) noexcept
     {
         pool_capacity_ = pool_capacity;
+        if (session_.description().graphicsAPI == nri::GraphicsAPI::D3D12) changes_.resize(change_capacity);
         const auto& limits = session_.description();
         const auto& enabled = session_.enabledFeatures();
         const auto maxima = std::array{
@@ -360,7 +362,16 @@ namespace lux::render::detail
             table.slots.erase(slot);
             return cxx::unexpected(ready.error());
         }
+        markChanged(type, slot);
         return slot;
+    }
+
+    void DescriptorTable::markChanged(nri::DescriptorType type, Slot slot) noexcept
+    {
+        if (content_revision_ == UINT64_MAX) std::terminate();
+        ++content_revision_;
+        if (!changes_.empty())
+            changes_[content_revision_ % change_capacity] = {slot, static_cast<std::uint32_t>(tableIndex(type))};
     }
 
     void DescriptorTable::write(nri::DescriptorType type, Slot slot, nri::Descriptor* descriptor) noexcept
@@ -381,15 +392,13 @@ namespace lux::render::detail
         const nri::UpdateDescriptorRangeDesc update{table.descriptors, 0, slot.index, &descriptor, 1};
         session_.nriCore().UpdateDescriptorRanges(&update, 1);
         entry->descriptor = descriptor;
-        if (content_revision_ == UINT64_MAX) std::terminate();
-        ++content_revision_;
+        markChanged(type, slot);
     }
 
     void DescriptorTable::release(nri::DescriptorType type, Slot slot) noexcept
     {
         if (!tables_[tableIndex(type)].slots.erase(slot)) std::terminate();
-        if (content_revision_ == UINT64_MAX) std::terminate();
-        ++content_revision_;
+        markChanged(type, slot);
     }
 
     nri::DescriptorSet* DescriptorTable::descriptors(nri::DescriptorType type) const noexcept
@@ -442,7 +451,9 @@ namespace lux::render::detail
     RenderResult<DescriptorTable::Snapshot> DescriptorTable::createSnapshot(nri::DescriptorPool& pool) const noexcept
     {
         Snapshot result{};
-        const auto counts = snapshotCounts();
+        result.owner = this;
+        result.capacities = snapshotCounts();
+        const auto& counts = result.capacities;
         for (std::size_t kind = 0; kind < counts.size(); ++kind)
         {
             if (!counts[kind])
@@ -451,18 +462,83 @@ namespace lux::render::detail
             }
             const auto status =
                 session_.nriCore()
-                    .AllocateDescriptorSets(pool, *tables_[kind].allocation_layout, 0, &result[kind], 1, counts[kind]);
+                    .AllocateDescriptorSets(pool, *tables_[kind].allocation_layout, 0, &result.sets[kind], 1, counts[kind]);
             if (status != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(status));
             }
         }
-        updateSnapshot(result);
+        copyLiveDescriptors(result);
+        result.generation = native_binding_generation_;
+        result.revision = content_revision_;
         return result;
     }
 
-    void DescriptorTable::updateSnapshot(const Snapshot& sets) const noexcept
+    RenderResult<void> DescriptorTable::updateSnapshot(Snapshot& snapshot) const noexcept
     {
+        if (snapshot.owner != this) return cxx::unexpected(RenderError{kDeviceArgument});
+        const bool same_generation = snapshot.generation == native_binding_generation_;
+        if (same_generation && snapshot.revision == content_revision_) return {};
+        if (!same_generation && snapshot.capacities != snapshotCounts())
+            return cxx::unexpected(RenderError{kDeviceCapacity});
+        const bool covered = snapshot.revision <= content_revision_ &&
+            content_revision_ - snapshot.revision <= changes_.size();
+        if (same_generation && covered) copyChangedDescriptors(snapshot);
+        else copyLiveDescriptors(snapshot);
+        snapshot.generation = native_binding_generation_;
+        snapshot.revision = content_revision_;
+        return {};
+    }
+
+    void DescriptorTable::copyChangedDescriptors(const Snapshot& snapshot) const noexcept
+    {
+        // Keep the current live incarnation of each slot. The journal owns no native descriptor pointers.
+        std::array<std::uint16_t, change_capacity> pending;
+        static_assert(change_capacity <= UINT16_MAX);
+        const auto count = static_cast<std::size_t>(content_revision_ - snapshot.revision);
+        for (std::size_t i = 0; i < count; ++i)
+            pending[i] = static_cast<std::uint16_t>((snapshot.revision + i + 1) % change_capacity);
+        auto dirty = std::span(pending).first(count);
+        const auto identity = [&](std::uint16_t index) noexcept
+        {
+            const auto& change = changes_[index];
+            return std::tuple{change.kind, change.slot.index, change.slot.gen};
+        };
+        std::ranges::sort(dirty, {}, identity);
+        const auto duplicates = std::ranges::unique(dirty, {}, identity);
+        dirty = dirty.first(static_cast<std::size_t>(duplicates.begin() - dirty.begin()));
+
+        std::array<nri::Descriptor*, change_capacity> descriptors;
+        nri::UpdateDescriptorRangeDesc range{};
+        range.descriptors = descriptors.data();
+        const auto flush = [&]() noexcept
+        {
+            if (range.descriptorNum) session_.nriCore().UpdateDescriptorRanges(&range, 1);
+            range.descriptorNum = 0;
+        };
+        for (const auto index : dirty)
+        {
+            const auto& change = changes_[index];
+            const auto* current = tables_[change.kind].slots.tryGet(change.slot);
+            // Released and not-yet-published slots are unreachable in a partially bound range.
+            if (!current || !current->descriptor) continue;
+            auto* set = snapshot.sets[change.kind];
+            const bool contiguous = range.descriptorSet == set &&
+                change.slot.index == range.baseDescriptor + range.descriptorNum;
+            if (!contiguous)
+            {
+                flush();
+                range.descriptorSet = set;
+                range.baseDescriptor = change.slot.index;
+            }
+            descriptors[range.descriptorNum++] = current->descriptor;
+        }
+        flush();
+    }
+
+    void DescriptorTable::copyLiveDescriptors(const Snapshot& snapshot) const noexcept
+    {
+        const auto& sets = snapshot.sets;
         for (std::size_t kind = 0; kind < sets.size(); ++kind)
         {
             if (!sets[kind])

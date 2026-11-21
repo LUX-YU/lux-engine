@@ -1,6 +1,6 @@
 #pragma once
 
-#include <algorithm>
+#include <lux/engine/render/graph/execute/CommandExtent.hpp>
 
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -11,34 +11,28 @@ namespace lux::render::detail
     // One cold extent calculation for Attach and Resize. Lookup returns the actual resource slice;
     // Resize overlays only its changed resources, leaving unrelated Storage state untouched.
     template <class Lookup>
-    [[nodiscard]] RenderResult<void> preparePassExtent(
+    [[nodiscard]] RenderResult<void>
+    validatePassExtent(
         const DeviceSession& session,
         const RenderGraphExecutable& plan,
-        const CompiledPass& compiled_pass,
-        Lookup binding,
-        std::array<std::uint32_t, 3>& dispatch_groups,
-        std::vector<nri::TextureDataLayoutDesc>& copy_layouts
+        const CompiledPass& pass,
+        Lookup binding
     ) noexcept
     {
         const auto& core = session.nriCore();
-        if (const auto* compute = plan.computeCommands(compiled_pass))
+        if (const auto* compute = plan.computeCommands(pass))
         {
-            if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
+            if (const auto* dispatch = std::get_if<ImageDispatchExtent>(&compute->dispatch))
             {
-                const auto& image = core.GetTextureDesc(*binding(dispatch->resource.index).image);
-                const auto width = std::max(1u, std::uint32_t(image.width) >> dispatch->mip);
-                const auto height = std::max(1u, std::uint32_t(image.height) >> dispatch->mip);
-                dispatch_groups =
-                    {(width - 1) / dispatch->group_size[0] + 1, (height - 1) / dispatch->group_size[1] + 1, 1};
-                const auto& limit = session.description().shaderStage.compute.dispatchMaxDim;
-                if (dispatch_groups[0] > limit[0] || dispatch_groups[1] > limit[1])
-                {
-                    return cxx::unexpected(RenderError{kDeviceArgument});
-                }
+                const auto* image = binding(dispatch->image).image;
+                if (!image) return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto& desc = core.GetTextureDesc(*image);
+                auto groups = dispatchGroups(*dispatch, {desc.width, desc.height}, session.description());
+                if (!groups) return cxx::unexpected(groups.error());
             }
         }
 
-        if (const auto* raster = compiled_pass.rasterScope())
+        if (const auto* raster = pass.rasterScope())
         {
             const auto& reference = raster->colors.empty() ? *raster->depth : raster->colors.front();
             const auto& reference_range = std::get<GraphImageRange>(reference.access.range);
@@ -63,108 +57,36 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kInvalidTargetExtent});
             }
         }
-        if (const auto* transfer = plan.transferCommands(compiled_pass))
+        if (const auto* transfer = plan.transferCommands(pass))
         {
-            copy_layouts.resize(transfer->operations.size());
-            const auto regionValid = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle)
+            const auto resolve = [&](const ImageOperand& operand) noexcept -> RenderResult<nri::TextureRegionDesc>
             {
-                if (!rectangle)
-                {
-                    return true;
-                }
-                const auto& range = std::get<GraphImageRange>(access.range);
-                const auto& image = core.GetTextureDesc(*binding(access.version.resource.index).image);
-                const auto format = imageFormat(
-                    std::get<GraphImageDesc>(plan.resources()[access.version.resource.index].description).format
-                );
-                const auto width = std::max(1u, std::uint32_t(image.width) >> range.first_mip);
-                const auto height = std::max(1u, std::uint32_t(image.height) >> range.first_mip);
-                const bool invalid = !rectangle->width || !rectangle->height || range.mip_count != 1 ||
-                                     std::uint64_t(rectangle->x) + rectangle->width > width ||
-                                     std::uint64_t(rectangle->y) + rectangle->height > height ||
-                                     rectangle->x % format.block || rectangle->y % format.block ||
-                                     (rectangle->width % format.block && rectangle->x + rectangle->width != width) ||
-                                     (rectangle->height % format.block && rectangle->y + rectangle->height != height);
-                return !invalid;
+                const auto* image = binding(operand.slot).image;
+                if (!image) return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto& desc = core.GetTextureDesc(*image);
+                return copyRegion(operand, {desc.width, desc.height});
             };
-
-            for (std::size_t i = 0; i < transfer->operations.size(); ++i)
+            for (const auto& packet : transfer->operations)
             {
-                const auto& operation = transfer->operations[i];
-                if (const auto* copy = std::get_if<CopyImage>(&operation))
+                if (const auto* copy = std::get_if<ImageCopyPacket>(&packet))
                 {
-                    if (!regionValid(copy->source, copy->source_region) ||
-                        !regionValid(copy->destination, copy->destination_region))
-                    {
-                        return cxx::unexpected(RenderError{kDeviceArgument});
-                    }
-                    const auto& source_range = std::get<GraphImageRange>(copy->source.range);
-                    const auto& destination_range = std::get<GraphImageRange>(copy->destination.range);
-                    const bool different_ranges = source_range.mip_count != destination_range.mip_count ||
-                        source_range.layer_count != destination_range.layer_count;
-                    if (different_ranges) return cxx::unexpected(RenderError{kDeviceArgument});
-                    const auto& source = core.GetTextureDesc(*binding(copy->source.version.resource.index).image);
-                    const auto& destination =
-                        core.GetTextureDesc(*binding(copy->destination.version.resource.index).image);
-                    for (std::uint32_t mip = 0; mip < source_range.mip_count; ++mip)
-                    {
-                        const auto source_width = copy->source_region ? copy->source_region->width :
-                            std::max(1u, std::uint32_t(source.width) >> (source_range.first_mip + mip));
-                        const auto source_height = copy->source_region ? copy->source_region->height :
-                            std::max(1u, std::uint32_t(source.height) >> (source_range.first_mip + mip));
-                        const auto destination_width = copy->destination_region ? copy->destination_region->width :
-                            std::max(1u, std::uint32_t(destination.width) >> (destination_range.first_mip + mip));
-                        const auto destination_height = copy->destination_region ? copy->destination_region->height :
-                            std::max(1u, std::uint32_t(destination.height) >> (destination_range.first_mip + mip));
-                        const bool different_extent = source_width != destination_width ||
-                            source_height != destination_height;
-                        if (different_extent) return cxx::unexpected(RenderError{kInvalidTargetExtent});
-                    }
+                    auto from = resolve(copy->source);
+                    if (!from) return cxx::unexpected(from.error());
+                    auto to = resolve(copy->destination);
+                    if (!to) return cxx::unexpected(to.error());
+                    if (from->width != to->width || from->height != to->height)
+                        return cxx::unexpected(RenderError{kInvalidTargetExtent});
                 }
-                else if (const auto* copy = std::get_if<CopyImageBuffer>(&operation))
+                else if (const auto* mixed = std::get_if<ImageBufferPacket>(&packet))
                 {
-                    const bool source_image = std::holds_alternative<GraphImageRange>(copy->source.range);
-                    const auto& image_access = source_image ? copy->source : copy->destination;
-                    const auto& buffer_access = source_image ? copy->destination : copy->source;
-                    const auto& image_range = std::get<GraphImageRange>(image_access.range);
-                    const auto& buffer_range = std::get<GraphBufferRange>(buffer_access.range);
-                    const auto& buffer = binding(buffer_access.version.resource.index);
-                    const auto& image = core.GetTextureDesc(*binding(image_access.version.resource.index).image);
-                    const auto format = imageFormat(
-                        std::get<GraphImageDesc>(plan.resources()[image_access.version.resource.index].description)
-                            .format
-                    );
-                    if (!regionValid(image_access, copy->image_region))
-                    {
-                        return cxx::unexpected(RenderError{kDeviceArgument});
-                    }
-                    const auto width = copy->image_region
-                                           ? copy->image_region->width
-                                           : std::max(1u, std::uint32_t(image.width) >> image_range.first_mip);
-                    const auto height = copy->image_region
-                                            ? copy->image_region->height
-                                            : std::max(1u, std::uint32_t(image.height) >> image_range.first_mip);
-                    const auto row_bytes = ((width + format.block - 1) / format.block) * format.bytes;
-                    const auto rows = (height + format.block - 1) / format.block;
+                    auto region = resolve(mixed->image);
+                    if (!region) return cxx::unexpected(region.error());
                     const auto& alignment = session.description().memoryAlignment;
-                    const auto row = copy->row_pitch
-                                         ? copy->row_pitch
-                                         : (row_bytes + alignment.uploadBufferTextureRow - 1) /
-                                               alignment.uploadBufferTextureRow * alignment.uploadBufferTextureRow;
-                    const auto slice =
-                        copy->slice_pitch ? copy->slice_pitch
-                                          : (std::uint64_t(row) * rows + alignment.uploadBufferTextureSlice - 1) /
-                                                alignment.uploadBufferTextureSlice * alignment.uploadBufferTextureSlice;
-                    const bool invalid =
-                        image_range.mip_count != 1 || image_range.layer_count != 1 || row < row_bytes ||
-                        row % alignment.uploadBufferTextureRow || slice < std::uint64_t(row) * rows ||
-                        slice > UINT32_MAX || slice % alignment.uploadBufferTextureSlice || slice > buffer_range.size ||
-                        (buffer.buffer_offset + buffer_range.offset) % alignment.uploadBufferTextureSlice;
-                    if (invalid)
-                    {
-                        return cxx::unexpected(RenderError{kDeviceArgument});
-                    }
-                    copy_layouts[i] = {buffer_range.offset, row, static_cast<std::uint32_t>(slice)};
+                    auto layout = copyLayout(
+                        *mixed, *region, binding(mixed->buffer.slot).buffer_offset,
+                        {alignment.uploadBufferTextureRow, alignment.uploadBufferTextureSlice}
+                    );
+                    if (!layout) return cxx::unexpected(layout.error());
                 }
             }
         }

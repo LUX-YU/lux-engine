@@ -258,7 +258,7 @@ namespace lux::render::detail
         RenderResult<void>
         materializeRasterSections(std::uint32_t slot, std::uint32_t pass, const OwnedRasterStream&) noexcept;
         void prepareStreamedDraws(std::uint32_t slot) noexcept;
-        void freezeRecordInput(std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<void> freezeRecordInput(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&) noexcept;
@@ -281,11 +281,18 @@ namespace lux::render::detail
             std::vector<nri::Descriptor*> history_views;
             std::vector<nri::AttachmentDesc> colors;
             nri::AttachmentDesc depth{};
-            std::vector<nri::TextureDataLayoutDesc> copy_layouts;
+            std::vector<VFrozenTransfer> frozen_transfers;
             std::vector<nri::Descriptor*> clear_views;
-            std::array<std::uint32_t, 3> dispatch_groups{};
             std::span<std::byte> parameters;
             std::uint64_t parameter_source_revision = 0;
+
+            [[nodiscard]] RenderResult<void>
+            freezeCommands(
+                const RenderGraphExecutable&,
+                std::span<const PassResourceInput>,
+                const nri::DeviceDesc&,
+                PassNativeInput&
+            ) noexcept;
         };
 
         DeviceSession* session_;

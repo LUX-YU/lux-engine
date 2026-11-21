@@ -313,10 +313,9 @@ namespace lux::render::detail
             barrier.buffer = frame.bindings[transition.resource].buffer;
             frame.final_buffers.push_back(barrier);
         }
-        auto attachmentView = [&](const ResourceAccess& access, bool depth, nri::Descriptor*& result
-                              ) -> RenderResult<void>
+        auto attachmentView = [&](std::uint32_t index, GraphImageRange range, bool depth, nri::Descriptor*& result)
+            -> RenderResult<void>
         {
-            const auto index = access.version.resource.index;
             if (index == plan.output())
             {
                 result = output_.frames[slot].view;
@@ -326,7 +325,6 @@ namespace lux::render::detail
             {
                 return {}; // The selected physical History bank supplies its already-created view.
             }
-            const auto& range = std::get<GraphImageRange>(access.range);
             auto* image = frame.bindings[index].image;
             if (!image)
             {
@@ -352,14 +350,20 @@ namespace lux::render::detail
         auto attachment = [&](const RasterAttachment& input, bool depth, nri::AttachmentDesc& result
                           ) -> RenderResult<void>
         {
-            auto view = attachmentView(input.access, depth, result.descriptor);
+            auto view = attachmentView(
+                input.access.version.resource.index, std::get<GraphImageRange>(input.access.range),
+                depth, result.descriptor
+            );
             if (!view)
             {
                 return view;
             }
             if (input.resolve)
             {
-                auto resolved = attachmentView(*input.resolve, depth, result.resolveDst);
+                auto resolved = attachmentView(
+                    input.resolve->version.resource.index, std::get<GraphImageRange>(input.resolve->range),
+                    depth, result.resolveDst
+                );
                 if (!resolved)
                 {
                     return resolved;
@@ -382,13 +386,9 @@ namespace lux::render::detail
         for (const auto& compiled_pass : plan.passes())
         {
             Pass pass{&compiled_pass};
-            auto extent = preparePassExtent(
-                session,
-                plan,
-                compiled_pass,
-                [&](std::uint32_t resource) -> const Binding& { return frame.bindings[resource]; },
-                pass.dispatch_groups,
-                pass.copy_layouts
+            auto extent = validatePassExtent(
+                session, plan, compiled_pass,
+                [&](std::uint32_t resource) -> const Binding& { return frame.bindings[resource]; }
             );
             if (!extent)
             {
@@ -438,20 +438,19 @@ namespace lux::render::detail
             }
             if (const auto* transfer = plan_->transferCommands(compiled_pass))
             {
-                pass.copy_layouts.resize(transfer->operations.size());
-                pass.clear_views.resize(transfer->operations.size());
-                for (std::size_t i = 0; i < transfer->operations.size(); ++i)
+                pass.frozen_transfers.reserve(transfer->operations.size());
+                pass.clear_views.resize(transfer->clear_view_count);
+                for (const auto& operation : transfer->operations)
                 {
-                    const auto& operation = transfer->operations[i];
-                    if (const auto* clear = std::get_if<ClearImage>(&operation))
+                    if (const auto* clear = std::get_if<ClearPacket>(&operation))
                     {
                         const auto& image = std::get<GraphImageDesc>(
-                            plan.resources()[clear->destination.version.resource.index].description
+                            plan.resources()[clear->destination.slot].description
                         );
                         auto ready = attachmentView(
-                            clear->destination,
+                            clear->destination.slot, clear->destination.range,
                             rdesc::textureAspectMask(image.format) != 1,
-                            pass.clear_views[i]
+                            pass.clear_views[clear->view]
                         );
                         if (!ready)
                         {
@@ -485,12 +484,12 @@ namespace lux::render::detail
             }
             else if (const auto* transfer = plan_->transferCommands(*pass.compiled_pass))
             {
-                for (std::size_t i = 0; i < transfer->operations.size(); ++i)
+                for (const auto& operation : transfer->operations)
                 {
-                    const auto* clear = std::get_if<ClearImage>(&transfer->operations[i]);
-                    if (clear && clear->destination.version.resource.index == plan.output())
+                    const auto* clear = std::get_if<ClearPacket>(&operation);
+                    if (clear && clear->destination.slot == plan.output())
                     {
-                        frame.output_views.push_back(&pass.clear_views[i]);
+                        frame.output_views.push_back(&pass.clear_views[clear->view]);
                     }
                 }
             }

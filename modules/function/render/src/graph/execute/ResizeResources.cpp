@@ -495,16 +495,8 @@ namespace lux::render::detail
             {
                 continue;
             }
-            auto& extent = candidate.extents.emplace_back();
-            extent.pass = p;
-            auto prepared = preparePassExtent(
-                session,
-                *plan_,
-                plan_->passes()[p],
-                binding,
-                extent.dispatch_groups,
-                extent.copy_layouts
-            );
+            candidate.extent_passes.push_back(p);
+            auto prepared = validatePassExtent(session, *plan_, plan_->passes()[p], binding);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -618,16 +610,9 @@ namespace lux::render::detail
                 if (view.ownership.candidate == SIZE_MAX || (is_attachment && view.ownership.live == SIZE_MAX))
                     return cxx::unexpected(RenderError{kFrameContract, {f, view.use.pass, view.use.index}});
             }
-            for (auto& extent : candidate.extents)
+            for (const auto pass : candidate.extent_passes)
             {
-                auto ready = preparePassExtent(
-                    *session_,
-                    *plan_,
-                    plan_->passes()[extent.pass],
-                    binding,
-                    extent.dispatch_groups,
-                    extent.copy_layouts
-                );
+                auto ready = validatePassExtent(*session_, *plan_, plan_->passes()[pass], binding);
                 if (!ready)
                 {
                     return ready;
@@ -735,12 +720,6 @@ namespace lux::render::detail
                         update{pass.private_descriptors, use.binding, use.element, &destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);
                 }
-            }
-            for (auto& extent : candidate.extents)
-            {
-                auto& pass = frame.passes[extent.pass];
-                pass.dispatch_groups = extent.dispatch_groups;
-                pass.copy_layouts = std::move(extent.copy_layouts);
             }
             invalidateRecordings(static_cast<std::uint32_t>(&frame - frames_.data()));
             frame.invalidateImportedBindings();

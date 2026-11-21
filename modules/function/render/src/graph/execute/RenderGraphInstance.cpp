@@ -280,7 +280,7 @@ namespace lux::render::detail
             !histories_.empty() || !frame.raster_draws.empty();
         if (!frame.record_inputs_valid || has_dynamic_record_input)
         {
-            freezeRecordInput(slot);
+            if (auto frozen = freezeRecordInput(slot); !frozen) return cxx::unexpected(frozen.error());
             frame.record_inputs_valid = true;
         }
         frame.record_ready = true;

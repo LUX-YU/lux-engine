@@ -225,32 +225,33 @@ namespace lux::render::detail
             }
             else if (const auto* compute = recording.computeCommands(pass))
             {
-                if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
+                if (const auto* dispatch = std::get_if<ImageDispatchExtent>(&compute->dispatch))
                 {
-                    extent(dispatch->resource);
+                    extent({dispatch->image});
                 }
             }
             else if (const auto* transfer = recording.transferCommands(pass))
             {
-                for (std::uint32_t i = 0; i < transfer->operations.size(); ++i)
+                for (const auto& packet : transfer->operations)
                 {
-                    std::visit(
-                        [&](const auto& operation)
-                        {
-                            using Operation = std::remove_cvref_t<decltype(operation)>;
-                            if constexpr (std::same_as<Operation, ClearImage>)
-                            {
-                                view(operation.destination, i, EImageViewTarget::CLEAR);
-                            }
-                            else if constexpr (std::same_as<Operation, CopyImage> ||
-                                               std::same_as<Operation, CopyImageBuffer>)
-                            {
-                                extent(operation.source.version.resource);
-                                extent(operation.destination.version.resource);
-                            }
-                        },
-                        transfer->operations[i]
-                    );
+                    if (const auto* clear = std::get_if<ClearPacket>(&packet))
+                    {
+                        const auto slot = clear->destination.slot;
+                        resources[slot].image_views.push_back({
+                            p, clear->view, EImageViewTarget::CLEAR, clear->destination.range
+                        });
+                        extent({slot});
+                    }
+                    else if (const auto* copy = std::get_if<ImageCopyPacket>(&packet))
+                    {
+                        extent({copy->source.slot});
+                        extent({copy->destination.slot});
+                    }
+                    else if (const auto* copy = std::get_if<ImageBufferPacket>(&packet))
+                    {
+                        extent({copy->image.slot});
+                        extent({copy->buffer.slot});
+                    }
                 }
             }
         }

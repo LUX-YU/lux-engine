@@ -247,16 +247,16 @@ namespace lux::render::detail
             }
             if (const auto* transfer = plan_->transferCommands(pass))
             {
-                for (std::uint32_t i = 0; i < transfer->operations.size(); ++i)
+                for (const auto& packet : transfer->operations)
                 {
-                    if (const auto* clear = std::get_if<ClearImage>(&transfer->operations[i]))
+                    if (const auto* clear = std::get_if<ClearPacket>(&packet))
                     {
                         const auto& access = clear->destination;
                         if (auto created = addView(
-                                access.version.resource,
+                                GraphResourceId{access.slot},
                                 access.range,
                                 p,
-                                i,
+                                clear->view,
                                 Target::CLEAR,
                                 EDescriptorKind::SAMPLED_IMAGE
                             );

@@ -259,193 +259,65 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void>
-    ComputeCommands::record(
-        const PassRecordInput& input,
-        nri::CommandBuffer& command,
-        const nri::CoreInterface& core
-    ) const noexcept
+    void
+    recordCompute(const PassNativeInput& pass, nri::CommandBuffer& command, const nri::CoreInterface& core) noexcept
     {
-        if (!input.native || !input.native->bindings) return cxx::unexpected(RenderError{kDeviceArgument});
-        const auto& pass = *input.native;
-        auto& binding_state = *pass.bindings;
-        const auto& bindings = input.resources;
-
-        binding_state.vertices = {};
-        binding_state.index = nullptr;
-        std::visit(
-            [&](const auto& dispatch)
-            {
-                using Dispatch = std::decay_t<decltype(dispatch)>;
-                if constexpr (std::is_same_v<Dispatch, DispatchArguments>)
-                {
-                    core.CmdDispatch(command, {dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]});
-                }
-                else if constexpr (std::is_same_v<Dispatch, ImageDispatchArguments>)
-                {
-                    const auto& groups = pass.dispatch_groups;
-                    core.CmdDispatch(command, {groups[0], groups[1], groups[2]});
-                }
-                else
-                {
-                    const auto& buffer = bindings[dispatch.buffer.resource.index];
-                    core.CmdDispatchIndirect(command, *buffer.buffer, buffer.buffer_offset + dispatch.offset);
-                }
-            },
-            dispatch
-        );
-        return {};
+        pass.bindings->vertices = {};
+        pass.bindings->index = nullptr;
+        if (pass.indirect_buffer) core.CmdDispatchIndirect(command, *pass.indirect_buffer, pass.indirect_offset);
+        else core.CmdDispatch(command, pass.dispatch);
     }
 
-    RenderResult<void>
-    TransferCommands::record(
-        const PassRecordInput& input,
-        nri::CommandBuffer& command,
-        const nri::CoreInterface& core
-    ) const noexcept
+    void
+    recordTransfers(const PassNativeInput& pass, nri::CommandBuffer& command, const nri::CoreInterface& core) noexcept
     {
-        if (!input.native || !input.native->bindings) return cxx::unexpected(RenderError{kDeviceArgument});
-        const auto& pass = *input.native;
-        auto& binding_state = *pass.bindings;
-        const auto& bindings = input.resources;
-        const auto readBinding = [&](const ResourceAccess& access) -> const PassResourceInput&
+        // Clear helpers can change backend-private compute state.
+        *pass.bindings = {};
+        for (const auto& packet : pass.transfers)
         {
-            const auto& resource = bindings[access.version.resource.index];
-            if (access.access == EGraphAccess::READ && access.fallback && !resource.history_valid)
-                return bindings[access.fallback->resource.index];
-            return resource;
-        };
-        const auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
-        {
-            const auto& range = std::get<GraphImageRange>(access.range);
-            const auto& image = readBinding(access);
-            const auto planes = range.aspects == 1 ? nri::PlaneBits::COLOR
-                : range.aspects == 2 ? nri::PlaneBits::DEPTH : nri::PlaneBits::STENCIL;
-            return nri::TextureRegionDesc{
-                static_cast<nri::Dim_t>(rectangle ? rectangle->x : 0),
-                static_cast<nri::Dim_t>(rectangle ? rectangle->y : 0), 0,
-                static_cast<nri::Dim_t>(rectangle ? rectangle->width : std::max(1u, image.width >> range.first_mip)),
-                static_cast<nri::Dim_t>(rectangle ? rectangle->height : std::max(1u, image.height >> range.first_mip)),
-                1, static_cast<nri::Dim_t>(range.first_mip), static_cast<nri::Dim_t>(range.first_layer), planes
-            };
-        };
-
-        // Clear helpers may use backend-private compute state. Do not carry a cached
-        // application binding across those operations.
-        binding_state = {};
-        for (std::size_t i = 0; i < operations.size(); ++i)
-        {
-            std::visit(
-                [&](const auto& operation)
+            std::visit([&](const auto& operation) noexcept
+            {
+                using Operation = std::remove_cvref_t<decltype(operation)>;
+                if constexpr (std::same_as<Operation, FrozenImageClear>)
                 {
-                    using Operation = std::decay_t<decltype(operation)>;
-                    const auto& destination = bindings[operation.destination.version.resource.index];
-                    if constexpr (std::is_same_v<Operation, ClearImage>)
-                    {
-                        nri::AttachmentDesc attachment{};
-                        attachment.descriptor = pass.clear_views[i];
-                        attachment.loadOp = nri::LoadOp::CLEAR;
-                        attachment.storeOp = nri::StoreOp::STORE;
-                        nri::RenderingDesc rendering{};
-                        const bool depth = std::get<GraphImageRange>(operation.destination.range).aspects != 1;
-                        if (depth)
-                        {
-                            attachment.clearValue.depthStencil.depth = operation.depth;
-                            rendering.depth = attachment;
-                        }
-                        else
-                        {
-                            attachment.clearValue.color.f =
-                                {operation.color[0], operation.color[1], operation.color[2], operation.color[3]
-                                };
-                            rendering.colors = &attachment;
-                            rendering.colorNum = 1;
-                        }
-                        core.CmdBeginRendering(command, rendering);
-                        core.CmdEndRendering(command);
-                    }
-                    else if constexpr (std::is_same_v<Operation, FillBuffer>)
-                    {
-                        const auto& range = std::get<GraphBufferRange>(operation.destination.range);
-                        const auto& fill = buffer_fills[i];
-                        const bool storage = fill.descriptor != kGraphInvalidIndex;
-                        if (fill.sync_before)
-                        {
-                            const nri::AccessStage state = storage
-                                ? nri::AccessStage{nri::AccessBits::CLEAR_STORAGE, nri::StageBits::CLEAR_STORAGE}
-                                : nri::AccessStage{nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-                            const nri::BufferBarrierDesc barrier{destination.buffer, state, state};
-                            nri::BarrierDesc barriers{};
-                            barriers.buffers = &barrier;
-                            barriers.bufferNum = 1;
-                            core.CmdBarrier(command, barriers);
-                        }
-                        if (!storage)
-                        {
-                            core.CmdZeroBuffer(
-                                command,
-                                *destination.buffer,
-                                destination.buffer_offset + range.offset,
-                                range.size
-                            );
-                        }
-                        else
-                        {
-                            nri::ClearStorageDesc clear{};
-                            clear.descriptor = pass.private_views[fill.descriptor]
-                                                   ? pass.private_views[fill.descriptor]
-                                                   : pass.history_views[fill.descriptor];
-                            clear.value
-                                .ui = {operation.value, operation.value, operation.value, operation.value};
-                            clear.rangeIndex = fill.descriptor;
-                            core.CmdClearStorage(command, clear);
-                        }
-                    }
+                    nri::RenderingDesc rendering{};
+                    if (operation.depth) rendering.depth = operation.attachment;
                     else
                     {
-                        const auto& source = readBinding(operation.source);
-                        if constexpr (std::is_same_v<Operation, CopyBuffer>)
-                        {
-                            const auto& from = std::get<GraphBufferRange>(operation.source.range);
-                            const auto& to = std::get<GraphBufferRange>(operation.destination.range);
-                            recordCopy(core, command, BufferCopyRegion{
-                                source.buffer, destination.buffer, source.buffer_offset + from.offset,
-                                destination.buffer_offset + to.offset, from.size
-                            });
-                        }
-                        else if constexpr (std::is_same_v<Operation, CopyImage>)
-                        {
-                            const auto& range = std::get<GraphImageRange>(operation.source.range);
-                            recordCopy(core, command, TextureCopyRegion{
-                                source.image, destination.image,
-                                region(operation.source, operation.source_region),
-                                region(operation.destination, operation.destination_region),
-                                range.mip_count, range.layer_count
-                            });
-                        }
-                        else
-                        {
-                            if (std::holds_alternative<GraphImageRange>(operation.source.range))
-                            {
-                                const auto from = region(operation.source, operation.image_region);
-                                auto layout = pass.copy_layouts[i];
-                                layout.offset += destination.buffer_offset;
-                                recordReadback(core, command, {*destination.buffer, layout, *source.image, from});
-                            }
-                            else
-                            {
-                                const auto to = region(operation.destination, operation.image_region);
-                                auto layout = pass.copy_layouts[i];
-                                layout.offset += source.buffer_offset;
-                                recordUpload(core, command, {*destination.image, to, *source.buffer, layout});
-                            }
-                        }
+                        rendering.colors = &operation.attachment;
+                        rendering.colorNum = 1;
                     }
-                },
-                operations[i]
-            );
+                    core.CmdBeginRendering(command, rendering);
+                    core.CmdEndRendering(command);
+                }
+                else if constexpr (std::same_as<Operation, FrozenBufferFill>)
+                {
+                    if (operation.sync_before)
+                    {
+                        const nri::AccessStage state = operation.storage_view
+                            ? nri::AccessStage{nri::AccessBits::CLEAR_STORAGE, nri::StageBits::CLEAR_STORAGE}
+                            : nri::AccessStage{nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
+                        const nri::BufferBarrierDesc barrier{operation.buffer, state, state};
+                        nri::BarrierDesc barriers{};
+                        barriers.buffers = &barrier;
+                        barriers.bufferNum = 1;
+                        core.CmdBarrier(command, barriers);
+                    }
+                    if (!operation.storage_view)
+                        core.CmdZeroBuffer(command, *operation.buffer, operation.offset, operation.size);
+                    else
+                    {
+                        nri::ClearStorageDesc clear{};
+                        clear.descriptor = operation.storage_view;
+                        clear.value.ui = {operation.value, operation.value, operation.value, operation.value};
+                        clear.rangeIndex = operation.descriptor;
+                        core.CmdClearStorage(command, clear);
+                    }
+                }
+                else if constexpr (std::same_as<Operation, UploadRegion>) recordUpload(core, command, operation);
+                else if constexpr (std::same_as<Operation, ReadbackRegion>) recordReadback(core, command, operation);
+                else recordCopy(core, command, operation);
+            }, packet);
         }
-        return {};
     }
-
 } // namespace lux::render::detail

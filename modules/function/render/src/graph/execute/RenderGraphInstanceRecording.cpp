@@ -186,7 +186,7 @@ namespace lux::render::detail
         }
     }
 
-    void RenderGraphInstance::freezeRecordInput(std::uint32_t slot) noexcept
+    RenderResult<void> RenderGraphInstance::freezeRecordInput(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
         const auto& core = session_->nriCore();
@@ -216,14 +216,16 @@ namespace lux::render::detail
             record.program_bindings = program.descriptors;
             record.pipeline = program.pipeline;
             auto& native = record.native;
-            native.private_views = pass.private_views;
-            native.history_views = pass.history_views;
-            native.clear_views = pass.clear_views;
             native.colors = pass.colors;
             native.depth = pass.depth;
             native.private_descriptors = pass.private_descriptors;
-            native.copy_layouts = pass.copy_layouts;
-            native.dispatch_groups = pass.dispatch_groups;
+            const auto condition = pass.compiled_pass->condition_region;
+            const bool enabled = condition == kGraphInvalidIndex || frame.enabled_regions[condition];
+            if (enabled)
+            {
+                auto ready = pass.freezeCommands(*plan_, frame.record_resources, session_->description(), native);
+                if (!ready) return ready;
+            }
             native.shared_descriptors = frame.shared_descriptors;
             if (const auto* raster = plan_->rasterCommands(*pass.compiled_pass))
             {
@@ -325,6 +327,7 @@ namespace lux::render::detail
                 }
             }
         }
+        return {};
     }
 
     std::uint32_t RenderGraphInstance::recordedPassCount(std::uint32_t slot) const noexcept

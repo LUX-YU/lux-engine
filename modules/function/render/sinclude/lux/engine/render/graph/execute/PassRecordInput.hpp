@@ -1,6 +1,7 @@
 #pragma once
 
-#include <NRI.h>
+#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+#include <variant>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,26 @@ namespace lux::render::detail
 {
     struct BindingState;
     struct RasterDrawList;
+
+    struct FrozenBufferFill final
+    {
+        nri::Buffer* buffer;
+        std::uint64_t offset, size;
+        nri::Descriptor* storage_view;
+        std::uint32_t descriptor, value;
+        bool sync_before;
+    };
+
+    struct FrozenImageClear final
+    {
+        nri::AttachmentDesc attachment;
+        bool depth;
+    };
+
+    using VFrozenTransfer = std::variant<
+        BufferCopyRegion, TextureCopyRegion, UploadRegion, ReadbackRegion, FrozenBufferFill, FrozenImageClear
+    >;
+
 }
 
 namespace lux::render
@@ -36,12 +57,13 @@ namespace lux::render
     // The cache is exclusive to this command buffer; all other borrows are read-only FIF slices.
     struct PassNativeInput final
     {
-        std::span<nri::Descriptor* const> private_views, history_views, clear_views;
         std::span<const nri::AttachmentDesc> colors;
         nri::AttachmentDesc depth{};
         nri::DescriptorSet* private_descriptors = nullptr;
-        std::span<const nri::TextureDataLayoutDesc> copy_layouts;
-        std::array<std::uint32_t, 3> dispatch_groups{};
+        std::span<const detail::VFrozenTransfer> transfers;
+        nri::DispatchDesc dispatch{};
+        nri::Buffer* indirect_buffer = nullptr;
+        std::uint64_t indirect_offset = 0;
         std::array<nri::DescriptorSet*, 3> shared_descriptors{};
         nri::Viewport viewport{};
         nri::Rect scissor{};
@@ -58,3 +80,9 @@ namespace lux::render
         const PassNativeInput* native = nullptr;
     };
 } // namespace lux::render
+
+namespace lux::render::detail
+{
+    void recordCompute(const PassNativeInput&, nri::CommandBuffer&, const nri::CoreInterface&) noexcept;
+    void recordTransfers(const PassNativeInput&, nri::CommandBuffer&, const nri::CoreInterface&) noexcept;
+}

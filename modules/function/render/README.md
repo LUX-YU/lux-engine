@@ -429,7 +429,10 @@ The Builder owns graph-local resource versions and strongly typed Raster, Comput
 Extensions declare their attachment scopes, resource ranges and usage through those commands. The compiler validates
 each command and lowers it into a recording block referencing a typed packet table.
 
-Recording traverses typed packets and frozen bindings. Dynamic producers link `RasterStream` slots during
+Compute and Transfer compilation resolves resource versions into typed image or buffer operands. Freeze selects the
+current History bank or fallback, checks the bound slice, and resolves indirect offsets, dispatch dimensions,
+compressed block regions and copy pitches. Recording consumes those per-FIF native operands. Resize validates
+candidate image extents before adoption and the next Freeze resolves the new physical bindings. Dynamic producers link `RasterStream` slots during
 compilation and supply draws and resource bindings through `FramePreparation`. The graph declares attachments
 and fixed graph resources.
 

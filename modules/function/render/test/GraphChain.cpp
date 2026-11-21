@@ -456,6 +456,15 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     const auto bytes = std::as_bytes(std::span{&count_input, 1});
     const std::array instances{instance.get()};
     CHECK(!instance->recordBatch(0, 0)); // An initialized owner is not a prepared recording input.
+    const auto pixel_binding = instance->resourceInput(pixels, 0);
+    auto truncated_pixels = pixel_binding;
+    CHECK(truncated_pixels.size == 8192);
+    --truncated_pixels.size;
+    instance->setResource(pixels.index, 0, truncated_pixels);
+    const auto rejected_extent = instance->prepareFrame(0);
+    CHECK(!rejected_extent && rejected_extent.error().type == kDeviceArgument);
+    CHECK(!instance->recordBatch(0, 0) && session->queue().submitted() == 0);
+    instance->setResource(pixels.index, 0, pixel_binding);
     CHECK(instance->writeInlineConstant(0, count_pass, bytes, 1));
     CHECK(take(instance->prepareFrame(0)));
     count_input.requested = 0;
@@ -596,6 +605,52 @@ static std::array<std::uint32_t, Count> readHistoryResult(
     core.UnmapBuffer(*read);
     core.DestroyBuffer(read);
     return result;
+}
+
+static void compressedCopies(Validation& validation, EGraphicsBackend backend)
+{
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    FrameHarness frames(*session, 1);
+    constexpr std::uint32_t pattern = 0x12345678;
+    for (bool aligned : {false, true})
+    {
+        RenderGraphBuilder builder;
+        const auto packed = take(builder.declareResource({"packed BC1 blocks", GraphBufferDesc{512}}));
+        const auto pixels = take(builder.declareResource({"BC1 readback", GraphBufferDesc{512}}));
+        const auto image = take(builder.declareResource({
+            "compressed", GraphImageDesc{8, 8, 1, 1, rdesc::ETextureFormat::BC1_RGBA_SRGB}
+        }));
+        const auto init = take(builder.addTransferPass("seed rows", TransferWork{{FillBuffer{{{packed, 0}}, 0}}}));
+        const auto seed = take(builder.addTransferPass("last BC1 block", TransferWork{{
+            FillBuffer{{init.written.front(), GraphBufferRange{264, 8}}, pattern}
+        }}));
+        const auto upload = take(builder.addTransferPass("upload BC1", TransferWork{{
+            CopyImageBuffer{{seed.written.front()}, {{image, 0}}, 256, 512}
+        }}));
+        const ImageCopyRegion rect{aligned ? 4u : 2u, 4, 4, 4};
+        const auto copy = take(builder.addTransferPass("read one BC1 block", TransferWork{{
+            CopyImageBuffer{{upload.written.front()}, {{pixels, 0}}, 0, 0, rect}
+        }}));
+        CHECK(builder.exportOutput({copy.written.front(), GraphBufferRange{0, 8}}));
+        const auto graph = take(std::move(builder).finish());
+        auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+        RenderGraphInstance instance(*session, 1, plan.executable, plan.programs);
+        auto initialized = instance.initialize();
+        if (!aligned)
+        {
+            CHECK(!initialized && initialized.error().type == kDeviceArgument);
+            continue;
+        }
+        CHECK(initialized);
+        const std::array instances{&instance};
+        CHECK(take(runTask(frames.render(instances, {}))) == 1);
+        CHECK(session->drain());
+        const auto words = readHistoryResult<2>(*session, *instance.nativeBuffer(pixels.index, 0));
+        CHECK((words == std::array{pattern, pattern}));
+    }
+    std::puts("BC1 COPY PASS: misaligned block rejected; automatic pitch selected the last block of the second row");
 }
 
 static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend)
@@ -1270,15 +1325,15 @@ private:
     {
         for (const auto& operation : packet.operations)
         {
-            if (const auto* fill = std::get_if<FillBuffer>(&operation))
+            if (const auto* fill = std::get_if<FillPacket>(&operation))
             {
-                std::ranges::fill(words(fill->destination.version.resource.index, fill->destination.range), fill->value);
+                std::ranges::fill(words(fill->destination.slot, fill->destination.range), fill->value);
                 continue;
             }
-            if (const auto* copy = std::get_if<CopyBuffer>(&operation))
+            if (const auto* copy = std::get_if<BufferCopyPacket>(&operation))
             {
-                auto source = words(copy->source.version.resource.index, copy->source.range);
-                auto destination = words(copy->destination.version.resource.index, copy->destination.range);
+                auto source = words(copy->source.slot, copy->source.range);
+                auto destination = words(copy->destination.slot, copy->destination.range);
                 CHECK(source.size() == destination.size());
                 CHECK(std::ranges::all_of(source, [](const auto& word) { return word.has_value(); }));
                 std::ranges::copy(source, destination.begin());
@@ -1291,8 +1346,8 @@ private:
 
     RenderResult<void> replay(const ComputeCommands& packet, const CompiledPass& pass) noexcept
     {
-        const auto* dispatch = std::get_if<DispatchArguments>(&packet.dispatch);
-        CHECK(dispatch && dispatch->groups == (std::array{1u, 1u, 1u}));
+        const auto* dispatch = std::get_if<nri::DispatchDesc>(&packet.dispatch);
+        CHECK(dispatch && dispatch->workGroupNumX == 1 && dispatch->workGroupNumY == 1 && dispatch->workGroupNumZ == 1);
         const auto uses = executable_.descriptorUses(pass.binding_slot);
         CHECK(uses.size() == 2);
         // The production layout packs private fields by name, placing current_sample before previous_sample.
@@ -1344,6 +1399,16 @@ static void cpuRecordingTables()
         return compileCpuGraph(fixture.graph);
     }();
     checkComputeSequence(executable, intermediate);
+    const auto& program = executable.recordingProgram();
+    std::size_t packets = 0;
+    for (const auto& transfer : program.transfer) packets += transfer.operations.size();
+    std::printf(
+        "PACKET TABLES compute=%zu compiled_bytes=%zu transfer=%zu compiled_bytes=%zu transfer_frozen_payload_bytes_per_fif=%zu "
+        "author_dispatch_stride=%zu author_transfer_stride=%zu\n",
+        program.compute.size(), program.compute.size() * sizeof(ComputeCommands), packets,
+        packets * sizeof(VTransferPacket), packets * sizeof(VFrozenTransfer),
+        sizeof(VDispatchArguments), sizeof(VTransferOperation)
+    );
     ComputeSequenceRecorder recorder(executable);
     recorder.execute();
     recorder.verify(readback, std::array{13u, 13u, 13u, 13u});
@@ -2430,6 +2495,8 @@ int main(int argc, char** argv)
     if (argc > 1 && std::string_view(argv[1]) == "copies")
     {
         resolveAndCopy(validation, backend);
+        compressedCopies(validation, backend);
+        indirectCounts(validation, backend);
         coalescedImageRanges(validation, backend, 2);
         CHECK(validation.errors == 0);
         std::puts("Graph copy focus: image/buffer/offset roundtrip and layered ranges passed");
@@ -2464,6 +2531,7 @@ int main(int argc, char** argv)
     frameUploadSnapshot(validation, backend);
     indirectCounts(validation, backend);
     resolveAndCopy(validation, backend);
+    compressedCopies(validation, backend);
     sharedImportedBuffer(validation, backend, false);
     sharedImportedBuffer(validation, backend, true);
     sharedImportedBuffer(validation, backend, true, true);

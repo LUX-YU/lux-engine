@@ -13,6 +13,7 @@
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/graph/GraphAssemblyPlan.hpp>
+#include <lux/engine/render/graph/CommandPackets.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <memory>
 
@@ -129,29 +130,6 @@ namespace lux::render::detail
         // Fixed raster program. Dynamic raster lists carry the program on each draw packet.
         std::vector<VertexSource> vertices;
         VRasterDraw draw;
-    };
-
-    struct ComputeCommands final
-    {
-        [[nodiscard]] RenderResult<void>
-        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
-
-        VDispatchArguments dispatch;
-    };
-
-    struct TransferCommands final
-    {
-        struct BufferFill final
-        {
-            std::uint32_t descriptor = kGraphInvalidIndex;
-            bool sync_before = false;
-        };
-
-        std::vector<VTransferOperation> operations;
-        std::vector<BufferFill> buffer_fills;
-
-        [[nodiscard]] RenderResult<void>
-        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
     };
 
     enum class ERecordKernel : std::uint8_t

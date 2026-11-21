@@ -166,7 +166,14 @@ namespace lux::render::detail
             if (owns_draw_sections) binding_state.invalidate();
             const auto recorded = recordBlock(plan.recording_, compiled.commands, [&](const auto& packet) noexcept
             {
-                return packet.record(input, command, core);
+                using Packet = std::remove_cvref_t<decltype(packet)>;
+                if constexpr (std::same_as<Packet, RasterCommands>) return packet.record(input, command, core);
+                else
+                {
+                    if constexpr (std::same_as<Packet, ComputeCommands>) recordCompute(native, command, core);
+                    else recordTransfers(native, command, core);
+                    return RenderResult<void>{};
+                }
             });
             if (owns_draw_sections || compiled.kind == EGraphPassKind::TRANSFER) binding_state.invalidate();
             if (managed_rendering && (native.end_rendering || !recorded)) core.CmdEndRendering(command);

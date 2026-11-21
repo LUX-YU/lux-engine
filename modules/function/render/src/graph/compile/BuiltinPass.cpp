@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/ImageFormat.hpp>
 #include <algorithm>
 #include <cmath>
 #include <lux/engine/render/device/BufferAccess.hpp>
@@ -245,45 +246,34 @@ namespace lux::render::detail
 
     RenderResult<ComputeCommands> ComputePass::compile(const ComputeWork& value, PassCompileContext& context) noexcept
     {
-        const auto* compute = &value;
-        const auto& limits = context.limits;
-        if (const auto* direct = std::get_if<DispatchArguments>(&compute->dispatch))
+        if (const auto* direct = std::get_if<DispatchArguments>(&value.dispatch))
         {
-            for (unsigned axis = 0; axis < 3; ++axis)
+            const auto& limit = context.limits.shaderStage.compute.dispatchMaxDim;
+            for (unsigned axis = 0; axis < direct->groups.size(); ++axis)
             {
-                if (!direct->groups[axis] || direct->groups[axis] > limits.shaderStage.compute.dispatchMaxDim[axis])
-                {
+                if (!direct->groups[axis] || direct->groups[axis] > limit[axis])
                     return cxx::unexpected(RenderError{kDeviceArgument});
-                }
             }
+            return ComputeCommands{nri::DispatchDesc{direct->groups[0], direct->groups[1], direct->groups[2]}};
         }
-        else if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
+        if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&value.dispatch))
         {
-            const auto resource = dispatch->resource.index;
-            const auto* image = resource < context.resources.size()
-                                    ? std::get_if<GraphImageDesc>(&context.resources[resource].description)
-                                    : nullptr;
-            const bool invalid =
-                !image || dispatch->mip >= image->mips || !dispatch->group_size[0] || !dispatch->group_size[1] || resource >= context.materialized_resources.size() ||
-                    !context.materialized_resources[resource];
-            if (invalid)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
+            const auto slot = dispatch->resource.index;
+            const bool materialized = slot < context.materialized_resources.size() &&
+                context.materialized_resources[slot];
+            const auto* image = slot < context.resources.size()
+                ? std::get_if<GraphImageDesc>(&context.resources[slot].description) : nullptr;
+            const bool valid_image = materialized && image && dispatch->mip < image->mips;
+            const bool valid_group = dispatch->group_size[0] && dispatch->group_size[1];
+            if (!valid_image || !valid_group) return cxx::unexpected(RenderError{kDeviceArgument});
+            return ComputeCommands{ImageDispatchExtent{slot, dispatch->mip, dispatch->group_size}};
         }
-        else
-        {
-            const auto& indirect = std::get<IndirectDispatchArguments>(compute->dispatch);
-            const auto& description =
-                std::get<GraphBufferDesc>(context.resources[indirect.buffer.resource.index].description);
-            const bool invalid =
-                indirect.offset % 4 || indirect.offset > description.size || description.size - indirect.offset < 12;
-            if (invalid)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-        }
-        return ComputeCommands{value.dispatch};
+        const auto& indirect = std::get<IndirectDispatchArguments>(value.dispatch);
+        const auto slot = indirect.buffer.resource.index;
+        const auto& buffer = std::get<GraphBufferDesc>(context.resources[slot].description);
+        const bool fits = indirect.offset <= buffer.size && buffer.size - indirect.offset >= sizeof(nri::DispatchDesc);
+        if (indirect.offset % 4 || !fits) return cxx::unexpected(RenderError{kDeviceArgument});
+        return ComputeCommands{IndirectDispatchOperand{slot, indirect.offset}};
     }
 
     RenderResult<TransferCommands>
@@ -295,28 +285,70 @@ namespace lux::render::detail
         {
             return cxx::unexpected(valid.error());
         }
-        TransferCommands commands{value.operations, {}};
+        const auto fallback = [](const ResourceAccess& access) noexcept
+        {
+            const bool reads_fallback = access.access == EGraphAccess::READ && access.fallback;
+            return reads_fallback ? access.fallback->resource.index : kGraphInvalidIndex;
+        };
+        const auto buffer = [&](const ResourceAccess& access) noexcept
+        {
+            return BufferOperand{
+                access.version.resource.index, fallback(access), std::get<GraphBufferRange>(access.range)
+            };
+        };
+        const auto image = [&](const ResourceAccess& access, std::optional<ImageCopyRegion> region = {}) noexcept
+        {
+            const auto slot = access.version.resource.index;
+            const auto format = std::get<GraphImageDesc>(context.resources[slot].description).format;
+            const auto& range = std::get<GraphImageRange>(access.range);
+            return ImageOperand{
+                slot, fallback(access), range, region, imageFormat(format).block,
+                rdesc::textureBlockBytes(format, range.aspects)
+            };
+        };
+        TransferCommands commands;
+        commands.operations.reserve(value.operations.size());
         const bool serialize_buffer_writes = context.limits.graphicsAPI == nri::GraphicsAPI::D3D12;
         std::vector<std::uint32_t> filled_resources;
         std::uint32_t next_descriptor = 0;
-        for (std::size_t i = 0; i < value.operations.size(); ++i)
+        for (const auto& operation : value.operations)
         {
-            const auto* fill = std::get_if<FillBuffer>(&value.operations[i]);
-            if (!fill) continue;
-            if (commands.buffer_fills.empty()) commands.buffer_fills.resize(value.operations.size());
-            auto& native = commands.buffer_fills[i];
-            if (next_descriptor < storage_fills.size() &&
-                isSameWrite(fill->destination, storage_fills[next_descriptor]))
+            if (const auto* copy = std::get_if<CopyBuffer>(&operation))
+                commands.operations.emplace_back(BufferCopyPacket{buffer(copy->source), buffer(copy->destination)});
+            else if (const auto* copy = std::get_if<CopyImage>(&operation))
+                commands.operations.emplace_back(ImageCopyPacket{
+                    image(copy->source, copy->source_region), image(copy->destination, copy->destination_region)
+                });
+            else if (const auto* copy = std::get_if<CopyImageBuffer>(&operation))
             {
-                native.descriptor = next_descriptor++;
+                const bool readback = std::holds_alternative<GraphImageRange>(copy->source.range);
+                commands.operations.emplace_back(ImageBufferPacket{
+                    image(readback ? copy->source : copy->destination, copy->image_region),
+                    buffer(readback ? copy->destination : copy->source),
+                    readback ? EImageBufferCopy::READBACK : EImageBufferCopy::UPLOAD, copy->row_pitch, copy->slice_pitch
+                });
             }
-            if (fill->value && native.descriptor == kGraphInvalidIndex)
-                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            if (serialize_buffer_writes)
+            else if (const auto* clear = std::get_if<ClearImage>(&operation))
+                commands.operations.emplace_back(ClearPacket{
+                    image(clear->destination), clear->color, clear->depth, commands.clear_view_count++
+                });
+            else
             {
-                const auto resource = fill->destination.version.resource.index;
-                native.sync_before = std::ranges::find(filled_resources, resource) != filled_resources.end();
-                if (!native.sync_before) filled_resources.push_back(resource);
+                const auto& fill = std::get<FillBuffer>(operation);
+                FillPacket packet{buffer(fill.destination), fill.value, kGraphInvalidIndex, false};
+                const bool uses_storage = next_descriptor < storage_fills.size() &&
+                    isSameWrite(fill.destination, storage_fills[next_descriptor]);
+                if (uses_storage)
+                    packet.descriptor = next_descriptor++;
+                if (packet.value && packet.descriptor == kGraphInvalidIndex)
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                if (serialize_buffer_writes)
+                {
+                    const auto slot = packet.destination.slot;
+                    packet.sync_before = std::ranges::find(filled_resources, slot) != filled_resources.end();
+                    if (!packet.sync_before) filled_resources.push_back(slot);
+                }
+                commands.operations.emplace_back(packet);
             }
         }
         if (next_descriptor != storage_fills.size())

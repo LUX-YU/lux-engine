@@ -35,18 +35,11 @@ namespace lux::render::detail
             OwnershipSlots ownership;
         };
 
-        struct Extent final
-        {
-            std::uint32_t pass;
-            std::array<std::uint32_t, 3> dispatch_groups{};
-            std::vector<nri::TextureDataLayoutDesc> copy_layouts;
-        };
-
         struct Frame final
         {
             std::vector<Resource> resources;
             std::vector<View> views;
-            std::vector<Extent> extents;
+            std::vector<std::uint32_t> extent_passes;
             std::vector<std::uint8_t> replaced_slots;
             std::vector<OwnershipSlots> image_adoptions;
             std::vector<OwnershipSlots> buffer_adoptions;

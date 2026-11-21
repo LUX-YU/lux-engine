@@ -50,6 +50,7 @@ namespace lux::render::detail
 
         // The physical table generation changes only after a replacement Set is published.
         [[nodiscard]] std::uint64_t nativeBindingGeneration() const noexcept { return native_binding_generation_; }
+        [[nodiscard]] std::uint64_t nativeSetGeneration(nri::DescriptorType) const noexcept;
         [[nodiscard]] std::uint64_t contentRevision() const noexcept { return content_revision_; }
 
         // Recorded commands may retain this Set only while observing the native generation on reuse.
@@ -98,6 +99,7 @@ namespace lux::render::detail
             cxx::SlotKeyAutoSparseSet<Slot, Entry> slots;
             nri::PipelineLayout* allocation_layout = nullptr;
             NativePoolId pool;
+            std::uint64_t generation = 0;
             nri::DescriptorSet* descriptors = nullptr;
         };
 

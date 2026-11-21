@@ -94,6 +94,13 @@ namespace lux::render::detail
             std::uint64_t revision = 1, recorded_revision = 0;
             std::atomic<bool> recording{false};
 
+            void invalidate() noexcept
+            {
+                if (revision != recorded_revision) return;
+                if (revision == UINT64_MAX) std::terminate();
+                ++revision;
+            }
+
             CommandBatch() noexcept = default;
             CommandBatch(const CommandBatch&) = delete;
             CommandBatch& operator=(const CommandBatch&) = delete;
@@ -112,6 +119,7 @@ namespace lux::render::detail
 
         std::vector<CommandBatch> command_batches;
         DescriptorTable::Snapshot shared_descriptors;
+        std::array<std::uint64_t, 3> shared_set_generations{};
 
         std::vector<RasterDrawList> raster_draws;
         std::vector<std::byte> parameters;

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <span>
+#include <vector>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
@@ -58,6 +60,25 @@ namespace lux::render::detail
         bool has_private_set;
     };
 
+    struct RecordingDependencies final
+    {
+        struct RasterList final
+        {
+            std::uint32_t batch, list;
+        };
+
+        [[nodiscard]] std::span<const std::uint32_t> batchesFor(std::uint32_t resource) const noexcept
+        {
+            const auto first = offsets[resource];
+            return std::span(batches).subspan(first, offsets[resource + 1] - first);
+        }
+
+        std::vector<std::size_t> offsets;
+        std::vector<std::uint32_t> batches;
+        std::array<std::vector<std::uint32_t>, 3> shared_batches;
+        std::vector<RasterList> raster_lists;
+    };
+
     struct GraphBindingPlan final
     {
         [[nodiscard]] FixedPassBindingView pass(std::size_t slot) const noexcept
@@ -75,6 +96,7 @@ namespace lux::render::detail
             };
         }
 
+        RecordingDependencies recordings;
         std::vector<FixedPassBindings> passes;
         std::vector<FixedDescriptorBinding> descriptor_fields;
         std::vector<DescriptorAccess> descriptor_uses;

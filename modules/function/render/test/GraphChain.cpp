@@ -25,6 +25,7 @@
 #include "GraphDepthField.hpp"
 #include "GraphFill.hpp"
 #include "GraphHistory.hpp"
+#include "GraphTableSize.hpp"
 #include "GraphMrt.hpp"
 #include "GraphPresent.hpp"
 #include "GraphRed.hpp"
@@ -1626,7 +1627,10 @@ static QueueScheduleFixture queueScheduleFixture(
     };
     const auto compute = take(builder.addComputePass("compute", std::move(work), {.estimated_gpu_ns = branch_ns}));
     const auto graphics = take(builder.addTransferPass(
-        "independent graphics work", TransferWork{{FillBuffer{{{graphics_result, 0}}, 7}}},
+        "independent graphics work", TransferWork{{
+            FillBuffer{{{graphics_result, 0}, GraphBufferRange{0, 8}}, 7},
+            FillBuffer{{{graphics_result, 0}, GraphBufferRange{8, 8}}, 11}
+        }},
         {.estimated_gpu_ns = branch_ns}
     ));
     if (serialize)
@@ -1662,11 +1666,94 @@ static void cpuQueueCandidates()
     CHECK(batches[2].dependencies.size() == 1 && batches[2].dependencies.front().producer == 0);
 }
 
-static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backend)
+static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend backend)
+{
+    TargetDesc target;
+    target.width = 7;
+    target.height = 5;
+    target.sampled = true;
+    target.format = rdesc::ETextureFormat::RGBA8_UNORM;
+    auto physical = take(OffscreenTarget::create(session, target, 1));
+    const auto& image = physical.frame(0);
+    CHECK(submitFixtureCommands(session, session.queue(),
+        [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+        {
+            const nri::TextureBarrierDesc transition{
+                image.image, {nri::AccessBits::NONE, nri::Layout::UNDEFINED, nri::StageBits::NONE},
+                {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER},
+                0, 1, 0, 1, nri::PlaneBits::COLOR
+            };
+            session.nriCore().CmdBarrier(command, {nullptr, 0, nullptr, 0, &transition, 1});
+            return {};
+        }
+    ));
+    CHECK(session.drain());
+    RenderGraphBuilder builder;
+    const auto images = take(builder.declareResource({
+        "images", GraphImageDesc{target.width, target.height}, EGraphOrigin::IMPORTED, {{}}, EGraphUse::SAMPLED
+    }));
+    const auto color = take(builder.declareResource({"dimensions", GraphImageDesc{4, 4}}));
+    const auto output = take(builder.declareResource({"readback", GraphBufferDesc{1024}}));
+    RasterWork work;
+    work.fixed().interface.program = take(builder.addProgram(rasterProgram(kGraphTableSize, backend)));
+    work.fixed().interface.resources = {{"images", {{images, 0}}}};
+    work.fixed().interface.parameters.setInlineConstant(IndirectCountConstants{image.sampled_index});
+    work.colors = {{{{color, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE}};
+    const auto drawn = take(builder.addRasterPass("shared image dimensions", std::move(work)));
+    const auto copied = take(builder.addTransferPass(
+        "read dimensions", TransferWork{{CopyImageBuffer{{drawn.written.front()}, {{output, 0}}, 256, 1024}}}
+    ));
+    exportRows(builder, copied.written.front(), 4, 4, 256);
+    const auto graph = take(std::move(builder).finish());
+    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    RenderGraphInstance instance(session, 1, plan.executable, plan.programs);
+    instance.bindImage(images, 0, *image.image);
+    CHECK(instance.initialize());
+    FrameHarness frames(session, 1);
+    const std::array instances{&instance};
+    const auto check_dimensions = [&]
+    {
+        CHECK(take(runTask(frames.render(instances, {}))) > 0);
+        finishSubmissions(session, frames);
+        CHECK(session.drain());
+        checkPixels(session, *instance.nativeBuffer(output.index, 0), 4, 0, {7, 5, 0, 255}, 256);
+    };
+    check_dimensions();
+    // The imported graph ID declares table access. The actual recorded operand is the shared Set.
+    const auto image_input = instance.resourceInput(images, 0);
+    instance.setResource(images.index, 0, {});
+    instance.setResource(images.index, 0, image_input);
+    CHECK(take(instance.prepareFrame(0)));
+    auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
+    EndFailure::original = core.EndCommandBuffer;
+    EndFailure::calls = 0;
+    core.EndCommandBuffer = &EndFailure::end;
+    CHECK(instance.recordBatch(0, 0) && EndFailure::calls == 0);
+    core.EndCommandBuffer = EndFailure::original;
+    auto& shared = session.descriptors();
+    constexpr auto type = nri::DescriptorType::TEXTURE;
+    const auto old_generation = shared.nativeSetGeneration(type);
+    std::vector<DescriptorTable::Slot> extra;
+    while (old_generation == shared.nativeSetGeneration(type)) extra.push_back(take(shared.allocate(type)));
+    CHECK(take(instance.prepareFrame(0)));
+    EndFailure::calls = 0;
+    core.EndCommandBuffer = &EndFailure::end;
+    CHECK(instance.recordBatch(0, 0) && EndFailure::calls == 1);
+    CHECK(instance.recordBatch(0, 0) && EndFailure::calls == 1);
+    core.EndCommandBuffer = EndFailure::original;
+    check_dimensions();
+    for (auto slot : extra) shared.release(type, slot);
+    std::puts("SHARED CONSUMER PASS: texture table replacement, one native End, GPU dimensions 7x5");
+}
+
+static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backend, bool grow_tables = false)
 {
     DeviceOptions options;
     options.backend = backend;
     options.multiple_queues = true;
+    options.texture_descriptors = grow_tables;
+    options.descriptor_initial_counts = {1, 1, 1};
+    options.descriptor_layout_limits = {32, 16, 16};
     options.graph_queue_costs = {1'000, 1'000, 1'000}; // Deterministic scheduling input for the fixture.
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     FrameHarness frames(*session, 1);
@@ -1680,6 +1767,8 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     {
         CHECK(bounds[1].queue == EQueueRole::COMPUTE);
     }
+    RenderGraphInstance replacement(*session, 1, plan.executable, plan.programs);
+    CHECK(replacement.initialize());
     RenderGraphInstance instance(*session, 1, plan.executable, plan.programs);
     CHECK(instance.initialize());
     const std::array instances{&instance};
@@ -1688,8 +1777,56 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     CHECK(session->drain());
     const auto computed = readHistoryResult<4>(*session, *instance.nativeBuffer(fixture.compute_result.index, 0));
     const auto graphics = readHistoryResult<4>(*session, *instance.nativeBuffer(fixture.graphics_result.index, 0));
-    CHECK(computed[0] == 4 && graphics[0] == 7);
-    std::printf("Calibrated queue schedule: split=%u, both branches read back correctly\n", separate);
+    CHECK(computed[0] == 4 && graphics[0] == 7 && graphics[2] == 11);
+
+    const auto original = instance.resourceInput(fixture.graphics_result, 0);
+    const auto other = replacement.resourceInput(fixture.graphics_result, 0);
+    CHECK(original.buffer != other.buffer);
+    instance.setResource(fixture.graphics_result.index, 0, other);
+    CHECK(take(instance.prepareFrame(0)));
+    auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+    EndFailure::original = core.EndCommandBuffer;
+    EndFailure::calls = 0;
+    core.EndCommandBuffer = &EndFailure::end;
+    const auto changed = plan.assembly.source_pass_slots[fixture.graph.passes().size() - 1].index;
+    const auto expected_batch = plan.executable.passes()[changed].submission;
+    for (std::uint32_t batch = 0; batch < bounds.size(); ++batch)
+    {
+        const auto before = EndFailure::calls;
+        CHECK(instance.recordBatch(0, batch));
+        CHECK(EndFailure::calls - before == (batch == expected_batch ? 1u : 0u));
+        CHECK(instance.recordBatch(0, batch) && EndFailure::calls - before == (batch == expected_batch ? 1u : 0u));
+    }
+    core.EndCommandBuffer = EndFailure::original;
+    CHECK(take(runTask(frames.render(instances, {}))) > 0);
+    finishSubmissions(*session, frames);
+    CHECK(session->drain());
+    const auto rebound = readHistoryResult<4>(*session, *other.buffer);
+    CHECK(rebound[0] == 7 && rebound[1] == 7 && rebound[2] == 11 && rebound[3] == 11);
+    std::printf(
+        "LOCAL REBIND PASS: %zu batches, two changed views, %u native End, new buffer [7,7,11,11]\n",
+        bounds.size(), EndFailure::calls
+    );
+    if (grow_tables && session->enabledFeatures().variable_descriptor_count)
+    {
+        auto& shared = session->descriptors();
+        constexpr auto kind = nri::DescriptorType::TEXTURE;
+        const auto generation = shared.nativeSetGeneration(kind);
+        std::vector<DescriptorTable::Slot> slots;
+        while (shared.nativeSetGeneration(kind) == generation) slots.push_back(take(shared.allocate(kind)));
+        CHECK(take(instance.prepareFrame(0)));
+        EndFailure::calls = 0;
+        core.EndCommandBuffer = &EndFailure::end;
+        for (std::uint32_t batch = 0; batch < bounds.size(); ++batch) CHECK(instance.recordBatch(0, batch));
+        core.EndCommandBuffer = EndFailure::original;
+        // D3D12 replaced the private pool bound by every CB. These shaders never bind Vulkan's texture table.
+        const auto expected = backend == EGraphicsBackend::D3D12 ? bounds.size() : 0;
+        CHECK(EndFailure::calls == expected);
+        std::printf("POOL REPLACEMENT PASS: %u native End across %zu batches\n", EndFailure::calls, bounds.size());
+        for (auto slot : slots) shared.release(kind, slot);
+        sharedTextureRecording(*session, backend);
+    }
+    instance.setResource(fixture.graphics_result.index, 0, original);
 }
 
 static void cpuRasterPackets()
@@ -2588,6 +2725,12 @@ int main(int argc, char** argv)
     }
     const auto backend = argc > 2 && std::string_view(argv[2]) == "d3d12"
         ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
+    if (argc > 1 && std::string_view(argv[1]) == "batch-reuse")
+    {
+        nativeQueueCandidates(validation, backend, true);
+        CHECK(validation.errors == 0);
+        return 0;
+    }
     if (argc > 1 && std::string_view(argv[1]) == "copies")
     {
         resolveAndCopy(validation, backend);

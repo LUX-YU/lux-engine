@@ -658,11 +658,20 @@ namespace lux::render::detail
                 frame.memory_bindings = std::move(candidate.placements);
                 for (std::uint32_t p = 0; p < frame.passes.size(); ++p)
                 {
-                    frame.passes[p].alias_barrier = candidate.alias_barriers[p];
+                    auto& current = frame.passes[p].alias_barrier;
+                    const auto& incoming = candidate.alias_barriers[p];
+                    const bool same_scope = !current || !incoming ||
+                        (current->before.access == incoming->before.access &&
+                         current->before.stages == incoming->before.stages &&
+                         current->after.access == incoming->after.access &&
+                         current->after.stages == incoming->after.stages);
+                    if (current.has_value() != incoming.has_value() || !same_scope) invalidateRecording(f, p);
+                    current = incoming;
                 }
             }
             for (const auto& replacement : candidate.resources)
             {
+                invalidateResourceRecordings(f, replacement.index);
                 auto& binding = frame.bindings[replacement.index];
                 collectRasterViews(
                     frame,
@@ -721,7 +730,8 @@ namespace lux::render::detail
                     core.UpdateDescriptorRanges(&update, 1);
                 }
             }
-            invalidateRecordings(static_cast<std::uint32_t>(&frame - frames_.data()));
+            frame.record_inputs_valid = false;
+            frame.record_ready = false;
             frame.invalidateImportedBindings();
             std::ranges::fill(frame.history_valid, 0);
         }
@@ -777,7 +787,7 @@ namespace lux::render::detail
                     views.push_back(std::exchange(descriptor, nullptr));
                 }
             }
-            invalidateRecordings(static_cast<std::uint32_t>(&frame - frames_.data()));
+            invalidateResourceRecordings(static_cast<std::uint32_t>(&frame - frames_.data()), resource);
             frame.invalidateImportedBindings();
         }
         output_.frames = {};

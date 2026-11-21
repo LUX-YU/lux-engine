@@ -202,6 +202,7 @@ namespace lux::render::detail
         [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<void> growRasterDescriptorPool(std::uint32_t slot) noexcept;
         void invalidateRecording(std::uint32_t frame_slot, std::uint32_t compiled_pass) noexcept;
+        void invalidateResourceRecordings(std::uint32_t frame_slot, std::uint32_t resource) noexcept;
         void invalidateRecordings(std::uint32_t frame_slot) noexcept;
         [[nodiscard]] RenderResult<void> createRecordings(std::uint32_t frame_slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;

@@ -97,6 +97,7 @@ set(render_sources
     src/graph/PlanDiagnostics.cpp
     src/graph/compile/BuiltinPass.cpp
     src/graph/compile/GraphCompiler.cpp
+    src/graph/compile/RecordingDependencies.cpp
     src/graph/compile/RenderingPlan.cpp
     src/graph/compile/ConditionalPlan.cpp
     src/graph/compile/SubmissionPlan.cpp

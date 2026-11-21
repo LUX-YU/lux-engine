@@ -183,6 +183,7 @@ namespace lux::render::detail
             if (binding.image != output.image)
             {
                 retireRasterViews(frame, nullptr, binding.image);
+                invalidateResourceRecordings(slot, plan_->output());
                 binding.image = output.image;
                 // A presentation image has one writer and cannot be sampled by another instance.
                 // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
@@ -266,10 +267,26 @@ namespace lux::render::detail
             constexpr std::array kinds{
                 nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
             };
+            const auto& dependencies = plan_->binding_plan_->recordings;
             for (std::size_t kind = 0; kind < kinds.size(); ++kind)
+            {
+                const auto generation = shared.nativeSetGeneration(kinds[kind]);
+                if (frame.shared_set_generations[kind] == generation) continue;
+                frame.shared_set_generations[kind] = generation;
                 frame.shared_descriptors.sets[kind] = shared.descriptors(kinds[kind]);
+                for (auto batch : dependencies.shared_batches[kind]) frame.command_batches[batch].invalidate();
+                for (const auto list : dependencies.raster_lists)
+                {
+                    const auto uses_set = [kind](const RasterDrawPacket& draw) noexcept
+                    {
+                        return draw.bindings.shared_sets[kind] != kGraphInvalidIndex;
+                    };
+                    if (std::ranges::any_of(frame.raster_draws[list.list].packets, uses_set))
+                        frame.command_batches[list.batch].invalidate();
+                }
+            }
             frame.shared_descriptors.generation = shared_generation;
-            invalidateRecordings(slot);
+            frame.record_inputs_valid = false;
         }
         if (auto sections = prepareRasterSections(slot); !sections)
             return cxx::unexpected(sections.error());

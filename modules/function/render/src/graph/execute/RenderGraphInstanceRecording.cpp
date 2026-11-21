@@ -8,6 +8,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 
 namespace lux::render::detail
@@ -72,14 +73,24 @@ namespace lux::render::detail
         frame.record_ready = false;
         if (frame.command_batches.empty()) return; // Inputs can precede initialize().
         const auto batch = plan_->passes()[compiled_pass].submission;
-        if (compiled_pass < plan_->submissions()[batch].output_begin) ++frame.command_batches[batch].revision;
+        if (compiled_pass < plan_->submissions()[batch].output_begin) frame.command_batches[batch].invalidate();
+    }
+
+    void RenderGraphInstance::invalidateResourceRecordings(std::uint32_t slot, std::uint32_t resource) noexcept
+    {
+        auto& frame = frames_[slot];
+        frame.record_inputs_valid = false;
+        frame.record_ready = false;
+        if (frame.command_batches.empty()) return;
+        for (const auto batch : plan_->binding_plan_->recordings.batchesFor(resource))
+            frame.command_batches[batch].invalidate();
     }
 
     void RenderGraphInstance::invalidateRecordings(std::uint32_t frame_slot) noexcept
     {
         frames_[frame_slot].record_inputs_valid = false;
         frames_[frame_slot].record_ready = false;
-        for (auto& batch : frames_[frame_slot].command_batches) ++batch.revision;
+        for (auto& batch : frames_[frame_slot].command_batches) batch.invalidate();
     }
 
     void RenderGraphInstance::invalidateRasterDraws(const CompiledPass& pass, std::uint32_t frame_slot) noexcept

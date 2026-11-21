@@ -336,6 +336,12 @@ resolves Resource borrows once; instance preparation uses those borrows and cont
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
 Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces before releasing the device variant. Physical cleanup uses the Session scope.
 
+The compiler indexes reusable recording batches by resource. The index includes command operands, fallback
+inputs, attachment views, extents and barriers, including final transitions. Changing a physical binding
+marks each dependent reusable batch dirty once until its next successful recording. The WSI tail is always
+recorded separately. Vulkan table replacement checks the changed descriptor kinds against fixed layouts and
+the selected draw packets. Replacing a frame's private descriptor pool invalidates its recorded pool bindings.
+
 Each FIF command batch owns its allocators, command buffers and recording versions. A batch recording lease rejects
 concurrent recording of the same batch; independent batches have separate allocators and per-pass scratch. The caller
 must join record workers before preparing, resizing or destroying the instance. The round retains the slice until

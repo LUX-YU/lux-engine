@@ -174,7 +174,7 @@ set_tests_properties(render.native.device_lost_completion PROPERTIES TIMEOUT 30 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
     GraphHistory.comp GraphDepthField.comp GraphShadowSampler.frag ClusterCompare.comp GraphConstantLayout.comp
-    ShadowReadback.comp
+    ShadowReadback.comp GraphTableSize.frag
 )
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
@@ -202,6 +202,14 @@ set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
 if(WIN32)
     add_test(NAME render.graph.chain_d3d12 COMMAND render_graph_chain chain d3d12)
     set_tests_properties(render.graph.chain_d3d12 PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+endif()
+
+add_test(NAME render.graph.batch_reuse_vulkan COMMAND render_graph_chain batch-reuse vulkan)
+set_tests_properties(render.graph.batch_reuse_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+
+if(WIN32)
+    add_test(NAME render.graph.batch_reuse_d3d12 COMMAND render_graph_chain batch-reuse d3d12)
+    set_tests_properties(render.graph.batch_reuse_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 endif()
 
 add_test(NAME render.graph.analysis COMMAND render_graph_chain analysis)

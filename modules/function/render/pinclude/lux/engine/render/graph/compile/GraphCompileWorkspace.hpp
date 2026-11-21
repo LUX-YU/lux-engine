@@ -33,6 +33,7 @@ namespace lux::render::detail
         [[nodiscard]] PhysicalResourcePlan planPhysicalResources(const RenderGraphExecutable&) noexcept;
         [[nodiscard]] bool assignAsyncCompute(RecordingProgram&, std::uint32_t surface_output) const noexcept;
         [[nodiscard]] bool validRecordingTables(const RenderGraphExecutable&) const noexcept;
+        [[nodiscard]] RecordingDependencies recordingDependencies(const RenderGraphExecutable&) const noexcept;
         void collectUseStages() noexcept;
         void planSubmissions(RenderGraphExecutable&) noexcept;
     };

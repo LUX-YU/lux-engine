@@ -594,6 +594,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         auto table = std::make_unique<GraphBindingPlan>();
+        table->recordings = recordingDependencies(plan);
         table->passes.reserve(bindings.passes.size());
         diagnostics.descriptor_fields.reserve(bindings.passes.size());
         for (auto& source : bindings.passes)

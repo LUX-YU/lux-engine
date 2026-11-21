@@ -329,7 +329,7 @@ namespace lux::render::detail
         table.allocated_capacity = capacity;
         table.descriptors = descriptors;
         if (native_binding_generation_ == UINT64_MAX) std::terminate();
-        ++native_binding_generation_;
+        table.generation = ++native_binding_generation_;
         allocated_descriptors_ += capacity;
         if (!previous.isNull())
         {
@@ -399,6 +399,11 @@ namespace lux::render::detail
     {
         if (!tables_[tableIndex(type)].slots.erase(slot)) std::terminate();
         markChanged(type, slot);
+    }
+
+    std::uint64_t DescriptorTable::nativeSetGeneration(nri::DescriptorType type) const noexcept
+    {
+        return tables_[tableIndex(type)].generation;
     }
 
     nri::DescriptorSet* DescriptorTable::descriptors(nri::DescriptorType type) const noexcept

@@ -241,7 +241,7 @@ namespace lux::render::detail
             layer_views.push_back(descriptor);
         }
         // The acquired FIF slot has no GPU reader. Adopt all views before releasing the old image.
-        invalidateRecordings(slot);
+        invalidateResourceRecordings(slot, resource.index);
         for (auto& replacement : replacements)
         {
             auto& pass = frame.passes[replacement.use.pass];
@@ -885,7 +885,7 @@ namespace lux::render::detail
             binding.buffer = value.buffer;
             binding.buffer_offset = value.offset;
             binding.buffer_size = value.size;
-            if (changed_physical) invalidateRecordings(current);
+            if (changed_physical) invalidateResourceRecordings(current, resource);
             if (changed_physical && !binding.dirty)
             {
                 binding.dirty = true;

@@ -183,7 +183,7 @@ namespace lux::render::detail
             record.inputs[i] = source;
             const nri::UpdateDescriptorRangeDesc write{record.set, use.binding, use.element, &descriptor, 1};
             core.UpdateDescriptorRanges(&write, 1);
-            invalidateRecordings(slot);
+            invalidateRecording(slot, record.program.pass);
         }
         return record.set;
     }
@@ -724,7 +724,7 @@ namespace lux::render::detail
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, &candidate, 1};
                 core.UpdateDescriptorRanges(&update, 1);
-                invalidateRecordings(slot);
+                invalidateRecording(slot, p);
             }
             source.dirty = false;
         }

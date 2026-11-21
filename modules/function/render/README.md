@@ -168,8 +168,9 @@ Use `declarePreparedBuffer()` for read-only graph buffers filled by CPU producer
 `GraphPreparation::gpu_buffers` and resolve its writer with `resolvePreparedBuffer()`. During preparation,
 call `writeBuffer()` with the complete payload and an optional revision. A nonzero revision identifies the same
 bytes across preparations of that Job. The graph retains the producer if a live pass reads the buffer.
-Each frame replica keeps its own binding and accepted revision. A payload may span multiple upload windows, and
-recording starts once the full selection has been accepted for upload.
+Each FIF replica tracks its native allocation generation, accepted revision and size. A matching nonzero revision and
+size select the resident binding directly. New selections copy the bytes into Job-owned storage before the callback
+returns. An upload can span several windows. Only acceptance of its complete payload marks the revision resident.
 
 Use `declareFrameBuffer()` when graph commands produce the buffer contents and the preparation determines its size.
 List it in `GraphPreparation::gpu_buffers`, resolve a sizer with `resolveFrameBuffer()`, and call `sizeBuffer()`

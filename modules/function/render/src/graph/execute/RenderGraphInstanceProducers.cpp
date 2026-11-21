@@ -154,14 +154,9 @@ namespace lux::render::detail
     class RenderGraphInstance::ProducerFrame final : public FramePreparation
     {
     public:
-        ProducerFrame(
-            RenderGraphInstance& instance,
-            const LinkedPreparationProducer& linked,
-            Producer& producer,
-            std::uint32_t producer_slot,
-            std::uint32_t frame_slot
-        ) noexcept : instance_(instance), linked_(linked), producer_(producer), producer_slot_(producer_slot),
-          frame_slot_(frame_slot)
+        ProducerFrame(RenderGraphInstance& instance, std::uint32_t producer_slot, std::uint32_t frame_slot) noexcept
+            : instance_(instance), linked_(instance.preparation_plan_->producers[producer_slot]),
+              producer_(instance.producers_[producer_slot]), producer_slot_(producer_slot), frame_slot_(frame_slot)
         {
         }
 
@@ -349,16 +344,27 @@ namespace lux::render::detail
             std::uint32_t slot, std::span<const std::byte> bytes, std::uint64_t revision
         ) noexcept override
         {
-            if (std::ranges::find(linked_.buffers, slot) == linked_.buffers.end())
+            if (!ownsBuffer(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
             const auto& contract = instance_.preparation_plan_->buffers[slot];
             auto& selected = instance_.prepared_buffer_inputs_[slot];
             const bool invalid_extent =
                 bytes.size() < contract.minimum_bytes || bytes.size() > contract.maximum_bytes || bytes.size() % 4;
-            if (!contract.upload || selected.payload.written || invalid_extent)
+            const bool already_written = selected.source != PreparedBufferInput::ESource::MISSING;
+            if (!contract.upload || already_written || invalid_extent)
                 return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
-            if (contract.used) selected.payload.bytes.assign(bytes.begin(), bytes.end());
-            selected.payload.written = true;
+            const auto& replica = instance_.frames_[frame_slot_].prepared_buffers[slot];
+            if (!contract.used) selected.source = PreparedBufferInput::ESource::SIZE_ONLY;
+            else if (replica.contains(revision, bytes.size()))
+            {
+                selected.source = PreparedBufferInput::ESource::RESIDENT;
+                selected.resident_generation = replica.generation;
+            }
+            else
+            {
+                selected.bytes.assign(bytes.begin(), bytes.end());
+                selected.source = PreparedBufferInput::ESource::OWNED_BYTES;
+            }
             selected.revision = revision;
             selected.size = bytes.size();
             return {};
@@ -366,16 +372,23 @@ namespace lux::render::detail
 
         RenderResult<void> sizeGpuBuffer(std::uint32_t slot, std::uint64_t size) noexcept override
         {
-            if (std::ranges::find(linked_.buffers, slot) == linked_.buffers.end())
+            if (!ownsBuffer(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
             const auto& contract = instance_.preparation_plan_->buffers[slot];
             auto& selected = instance_.prepared_buffer_inputs_[slot];
             const bool invalid_extent = size < contract.minimum_bytes || size > contract.maximum_bytes || size % 4;
-            if (contract.upload || selected.payload.written || invalid_extent)
+            const bool already_written = selected.source != PreparedBufferInput::ESource::MISSING;
+            if (contract.upload || already_written || invalid_extent)
                 return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
-            selected.payload.written = true;
+            selected.source = PreparedBufferInput::ESource::SIZE_ONLY;
             selected.size = size;
             return {};
+        }
+
+        [[nodiscard]] bool ownsBuffer(std::uint32_t slot) const noexcept
+        {
+            const auto& buffers = instance_.preparation_plan_->buffers;
+            return slot < buffers.size() && buffers[slot].producer == producer_slot_;
         }
 
         static RenderResult<void>
@@ -619,7 +632,7 @@ namespace lux::render::detail
         }
         ++preparation_revision_;
         for (auto& data : cpu_data_) data.written = false;
-        for (auto& buffer : prepared_buffer_inputs_) buffer.payload.written = false;
+        for (auto& buffer : prepared_buffer_inputs_) buffer.source = PreparedBufferInput::ESource::MISSING;
 
         const auto& linked_producers = preparation_plan_->producers;
         // This runs on the Server owner. Callbacks and recording consume the selected bytes.
@@ -641,7 +654,7 @@ namespace lux::render::detail
                 stream.material_images.clear();
                 stream.selection = preparation_revision_;
             }
-            ProducerFrame frame{*this, linked, producer, static_cast<std::uint32_t>(i), slot};
+            ProducerFrame frame{*this, static_cast<std::uint32_t>(i), slot};
             if (auto prepared = producer.workspace.prepare(frame); !prepared) return prepared;
 
             for (auto output : linked.outputs)
@@ -651,7 +664,7 @@ namespace lux::render::detail
             }
             for (auto output : linked.buffers)
             {
-                if (!prepared_buffer_inputs_[output].payload.written)
+                if (prepared_buffer_inputs_[output].source == PreparedBufferInput::ESource::MISSING)
                     return cxx::unexpected(RenderError{
                         kGraphUndefinedRead, {kGraphInvalidIndex, preparation_plan_->buffers[output].resource}
                     });
@@ -703,6 +716,14 @@ namespace lux::render::detail
             auto& replica = replicas[i];
             const auto& input = prepared_buffer_inputs_[i];
             const auto size = input.size;
+            if (input.source == PreparedBufferInput::ESource::RESIDENT)
+            {
+                const bool same_allocation = replica.generation == input.resident_generation;
+                if (!same_allocation || !replica.contains(input.revision, size))
+                    return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
+                setResource(contract.resource, slot, {replica.buffer, 0, size});
+                continue;
+            }
             if (size > replica.capacity)
             {
                 const auto capacity = std::min(std::bit_ceil(size), contract.maximum_bytes);
@@ -715,6 +736,7 @@ namespace lux::render::detail
                 setResource(contract.resource, slot, {candidate, 0, size});
                 releaseAfterGpu(*session_, replica.buffer);
                 replica.buffer = candidate;
+                ++replica.generation;
                 replica.capacity = capacity;
                 replica.accepted_revision = 0;
                 replica.accepted_size = 0;
@@ -724,14 +746,7 @@ namespace lux::render::detail
                 setResource(contract.resource, slot, {replica.buffer, 0, size});
                 continue;
             }
-            const auto bytes = std::span<const std::byte>{input.payload.bytes};
-            const bool unchanged = input.revision != 0 && replica.accepted_revision == input.revision &&
-                replica.accepted_size == size;
-            if (unchanged)
-            {
-                setResource(contract.resource, slot, {replica.buffer, 0, size});
-                replica.staged_bytes = bytes.size();
-            }
+            const auto bytes = std::span<const std::byte>{input.bytes};
             if (replica.staged_bytes == size) continue;
 
             const auto first = uploads->stagedFrameCopyCount();

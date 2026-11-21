@@ -328,8 +328,11 @@ namespace lux::render::detail
 
         struct PreparedBufferInput final
         {
-            PreparedBytes payload;
-            std::uint64_t revision = 0, size = 0;
+            enum class ESource { MISSING, SIZE_ONLY, RESIDENT, OWNED_BYTES };
+
+            ESource source = ESource::MISSING;
+            std::vector<std::byte> bytes;
+            std::uint64_t revision = 0, size = 0, resident_generation = 0;
         };
 
         const PreparationPlan* preparation_plan_ = nullptr;

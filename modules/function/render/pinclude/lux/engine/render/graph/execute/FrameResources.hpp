@@ -128,9 +128,14 @@ namespace lux::render::detail
         struct PreparedBufferReplica final
         {
             nri::Buffer* buffer = nullptr;
-            std::uint64_t capacity = 0;
+            std::uint64_t capacity = 0, generation = 0;
             std::uint64_t accepted_revision = 0, accepted_size = 0;
             std::size_t staged_bytes = 0;
+
+            [[nodiscard]] bool contains(std::uint64_t revision, std::uint64_t size) const noexcept
+            {
+                return buffer && revision != 0 && accepted_revision == revision && accepted_size == size;
+            }
         };
         std::vector<PreparedBufferReplica> prepared_buffers;
         std::vector<nri::Texture*> images;

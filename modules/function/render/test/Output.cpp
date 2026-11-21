@@ -3215,7 +3215,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
 
 static void preparedBuffers(bool d3d12)
 {
-    enum class EPhase { SMALL, GROWN, REPLACEMENT, FAIL_AFTER_WRITE, OMIT, OVERSIZED };
+    enum class EPhase { SMALL, GROWN, REPLACEMENT, FAIL_AFTER_WRITE, OMIT, OVERSIZED, SHRUNK, UNVERSIONED };
     static std::atomic phase{EPhase::SMALL};
     static std::atomic_uint graph_builds{};
     class Producer final
@@ -3267,7 +3267,10 @@ static void preparedBuffers(bool d3d12)
             if (selected == EPhase::SMALL)
                 return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), lights->revision);
             const auto revision = lights->revision * 2 + (selected == EPhase::REPLACEMENT);
-            auto written = frame.writeBuffer(linked.writer, std::as_bytes(std::span{grown}), revision);
+            if (selected == EPhase::SHRUNK)
+                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), revision);
+            const auto selected_revision = selected == EPhase::UNVERSIONED ? 0 : revision;
+            auto written = frame.writeBuffer(linked.writer, std::as_bytes(std::span{grown}), selected_revision);
             if (selected == EPhase::FAIL_AFTER_WRITE && written)
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             return written;
@@ -3450,6 +3453,14 @@ static void preparedBuffers(bool d3d12)
     call<RequestRenderJob>(*client, commands, {recovery_job});
     call<RequestRenderJob>(*client, commands, {recovery_job});
     CHECK(submissions() - before_reject == 5);
+    phase = EPhase::SHRUNK;
+    const auto before_shrink = submissions();
+    for (unsigned i = 0; i < 3; ++i) call<RequestRenderJob>(*client, commands, {recovery_job});
+    CHECK(submissions() - before_shrink == 5);
+    phase = EPhase::UNVERSIONED;
+    const auto before_unversioned = submissions();
+    for (unsigned i = 0; i < 3; ++i) call<RequestRenderJob>(*client, commands, {recovery_job});
+    CHECK(submissions() - before_unversioned == 9);
     stopAndRemoveJob(*client, commands, recovery_job);
     call<RemoveView>(*client, commands, {recovery_scene, recovery_view});
     stopAndRemoveJob(*client, commands, job);

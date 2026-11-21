@@ -2,6 +2,7 @@
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
+#include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
 #include <numeric>
 
 namespace lux::render::detail
@@ -15,8 +16,6 @@ namespace lux::render::detail
             Frontier before{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
             Frontier end{};
             std::uint32_t first_pass = kGraphInvalidIndex;
-            std::array<std::uint32_t, 3> first_queue_pass{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
-            std::array<nri::AccessBits, 3> accesses{};
             bool conditional = false;
         };
 
@@ -58,19 +57,7 @@ namespace lux::render::detail
         std::vector<ResourceInterval> intervals(resources.size());
         std::vector<Frontier> completed(submissions.size());
         std::array<Frontier, 3> queue_frontiers{};
-        std::array<std::size_t, 3> physical_queue{};
-        for (std::size_t q = 0; q < queues.size(); ++q)
-        {
-            physical_queue[q] = q;
-            for (std::size_t previous = 0; previous < q; ++previous)
-            {
-                if (queues[q] == queues[previous])
-                {
-                    physical_queue[q] = physical_queue[previous];
-                    break;
-                }
-            }
-        }
+        const auto physical_queue = physicalQueueIndices(queues);
         // A vector clock contains only existing batch dependencies and physical Queue FIFO.
         // The resource's end joins all uses; before meets the prerequisites of every use.
         for (std::size_t b = 0; b < submissions.size(); ++b)
@@ -91,7 +78,6 @@ namespace lux::render::detail
                 {
                     auto& interval = intervals[id.index];
                     interval.first_pass = std::min(interval.first_pass, p);
-                    interval.first_queue_pass[q] = std::min(interval.first_queue_pass[q], p);
                     interval.conditional |= pass.condition_region != kGraphInvalidIndex;
                     interval.end[q] = frontier[q];
                     for (std::size_t axis = 0; axis < before.size(); ++axis)
@@ -106,14 +92,6 @@ namespace lux::render::detail
                     {
                         record(use.fallback->resource);
                     }
-                }
-                for (const auto& transition : pass.before.images)
-                {
-                    intervals[transition.resource].accesses[q] |= transition.native.after.access;
-                }
-                for (const auto& transition : pass.before.buffers)
-                {
-                    intervals[transition.resource].accesses[q] |= transition.native.after.access;
                 }
             }
             completed[b] = queue_frontiers[q] = frontier;
@@ -204,8 +182,6 @@ namespace lux::render::detail
             {
                 slot.before[q] = std::min(slot.before[q], intervals[i].before[q]);
                 slot.end[q] = std::max(slot.end[q], intervals[i].end[q]);
-                slot.first_pass[q] = std::min(slot.first_pass[q], intervals[i].first_queue_pass[q]);
-                slot.accesses[q] |= intervals[i].accesses[q];
             }
         }
         return result;
@@ -213,8 +189,6 @@ namespace lux::render::detail
 
     std::vector<RootMemoryPlacement> instantiatePlacements(
         const PhysicalResourcePlan& physical,
-        std::span<const CompiledResource> resources,
-        const RecordingProgram& recording,
         std::span<const nri::MemoryDesc> requirements,
         nri::GraphicsAPI backend
     ) noexcept
@@ -235,34 +209,22 @@ namespace lux::render::detail
                 placement.reason = EMemoryPlacement::DEDICATED;
                 continue;
             }
-            const bool boundary = std::ranges::all_of(
-                slot.first_pass,
-                [&](auto p)
-                {
-                    if (p == kGraphInvalidIndex)
-                    {
-                        return true;
-                    }
-                    const auto group = recording.passes[p].rendering_group;
-                    return group == kGraphInvalidIndex || recording.groups[group].first_pass == p;
-                }
-            );
-            if (!boundary)
+            const auto& frontier = physical.alias_frontiers[i];
+            if (!frontier.rendering_boundary)
             {
                 placement.reason = EMemoryPlacement::RENDERING_SCOPE;
                 continue;
             }
             placement.reason = EMemoryPlacement::DISTINCT_REQUIREMENTS;
-            const bool requires_compatible_layout = backend == nri::GraphicsAPI::D3D12 &&
-                std::holds_alternative<GraphImageDesc>(resources[slot.resource.index].description);
+            const bool requires_compatible_layout = backend == nri::GraphicsAPI::D3D12 && frontier.image;
             for (auto& tail : tails)
             {
                 const auto& previous = physical.slots[tail];
                 const bool same_type = requirements[tail].type == requirements[i].type;
                 // Keep linear buffers and non-linear textures in separate allocations. Every member
                 // starts at offset zero: there is no adjacent mixed-granularity placement to pad.
-                const bool same_kind = resources[previous.resource.index].description.index() ==
-                                       resources[slot.resource.index].description.index();
+                const auto& prior = physical.alias_frontiers[tail];
+                const bool same_kind = prior.image == frontier.image;
                 if (!same_type || !same_kind)
                 {
                     continue;
@@ -277,7 +239,10 @@ namespace lux::render::detail
                 {
                     // The placed-memory handoff currently uses a global barrier. On D3D12 the
                     // same access masks can share that boundary without a texture layout transition.
-                    if (requires_compatible_layout && previous.accesses != slot.accesses)
+                    const auto access = [](const AliasQueueFrontier& q) { return q.source.access; };
+                    const bool incompatible = requires_compatible_layout &&
+                        !std::ranges::equal(prior.queues, frontier.queues, {}, access, access);
+                    if (incompatible)
                     {
                         placement.reason = EMemoryPlacement::INCOMPATIBLE_LAYOUT;
                         continue;

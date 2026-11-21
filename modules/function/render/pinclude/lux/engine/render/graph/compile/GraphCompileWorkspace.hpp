@@ -11,6 +11,12 @@ namespace lux::render::detail
         nri::StageBits stages;
     };
 
+    struct AliasResourceUse final
+    {
+        GraphResourceId resource;
+        AliasUsePoint point;
+    };
+
     // One invocation owns these intermediate tables, including across native preparation and queue-policy retries.
     struct GraphCompiler::Workspace final
     {
@@ -22,6 +28,7 @@ namespace lux::render::detail
         GraphCompileDiagnostics diagnostics{};
         std::vector<std::vector<ResourceUseStages>> use_stages{};
         std::vector<std::uint32_t> pass_batches{};
+        std::vector<AliasResourceUse> alias_uses{};
 
         [[nodiscard]] RenderResult<RenderGraphExecutable> planStructure(nri::Device*, const EffectOutputDesc*) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>>
@@ -34,6 +41,7 @@ namespace lux::render::detail
         [[nodiscard]] bool assignAsyncCompute(RecordingProgram&, std::uint32_t surface_output) const noexcept;
         [[nodiscard]] bool validRecordingTables(const RenderGraphExecutable&) const noexcept;
         [[nodiscard]] RecordingDependencies recordingDependencies(const RenderGraphExecutable&) const noexcept;
+        void publishAliasFrontiers(RenderGraphExecutable&) const noexcept;
         void collectUseStages() noexcept;
         void planSubmissions(RenderGraphExecutable&) noexcept;
     };

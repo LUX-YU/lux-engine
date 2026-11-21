@@ -3,18 +3,32 @@
 #include <algorithm>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
+#include <lux/engine/render/graph/compile/BarrierPlan.hpp>
 #include <tuple>
 #include <unordered_map>
 
 namespace lux::render::detail
 {
+    std::array<std::size_t, 3> physicalQueueIndices(const std::array<const QueueProperties*, 3>& queues) noexcept
+    {
+        std::array<std::size_t, 3> physical_queue{};
+        for (std::size_t q = 0; q < queues.size(); ++q)
+        {
+            physical_queue[q] = q;
+            for (std::size_t previous = 0; previous < q; ++previous)
+            {
+                if (queues[q] == queues[previous])
+                {
+                    physical_queue[q] = physical_queue[previous];
+                    break;
+                }
+            }
+        }
+        return physical_queue;
+    }
+
     namespace
     {
-        nri::StageBits combineStages(nri::StageBits a, nri::StageBits b) noexcept
-        {
-            return a == nri::StageBits::ALL || b == nri::StageBits::ALL ? nri::StageBits::ALL : a | b;
-        }
-
         void compactImportedAccesses(std::vector<ImportedAccess>& accesses) noexcept
         {
             std::ranges::sort(

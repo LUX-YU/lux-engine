@@ -588,6 +588,7 @@ namespace lux::render::detail
                 } while (begin != batch.output_begin);
             }
         }
+        if (allocation == ETransientAllocation::ALIAS_MEMORY) publishAliasFrontiers(plan);
         compactImageTransitions(plan.resources_, plan.recording_);
         if (!validRecordingTables(plan))
         {

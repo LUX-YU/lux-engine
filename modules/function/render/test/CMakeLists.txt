@@ -210,6 +210,9 @@ if(WIN32)
     set_tests_properties(render.graph.chain_d3d12 PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
 endif()
 
+add_test(NAME render.graph.alias_frontiers_vulkan COMMAND render_graph_chain alias-frontiers vulkan)
+set_tests_properties(render.graph.alias_frontiers_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+
 add_test(NAME render.graph.local_freeze_vulkan COMMAND render_graph_chain local-freeze vulkan)
 set_tests_properties(render.graph.local_freeze_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
@@ -217,6 +220,9 @@ add_test(NAME render.graph.batch_reuse_vulkan COMMAND render_graph_chain batch-r
 set_tests_properties(render.graph.batch_reuse_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
 if(WIN32)
+    add_test(NAME render.graph.alias_frontiers_d3d12 COMMAND render_graph_chain alias-frontiers d3d12)
+    set_tests_properties(render.graph.alias_frontiers_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+
     add_test(NAME render.graph.local_freeze_d3d12 COMMAND render_graph_chain local-freeze d3d12)
     set_tests_properties(render.graph.local_freeze_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 

@@ -468,7 +468,7 @@ namespace lux::render::detail
             return {};
         }
         const auto placements = instantiatePlacements(
-            physical, plan_->resources(), plan_->recording_, requirements, session.description().graphicsAPI
+            physical, requirements, session.description().graphicsAPI
         );
         std::vector<nri::AllocateMemoryDesc> descriptions(physical.slots.size());
         for (std::uint32_t s = 0; s < placements.size(); ++s)
@@ -539,33 +539,11 @@ namespace lux::render::detail
 
     void RenderGraphInstance::prepareAliasBarriers(FrameResources& frame) noexcept
     {
-        std::vector<std::uint32_t> tails(frame.memories.size(), kGraphInvalidIndex);
-        const auto& slots = plan_->physical_resources_.slots;
-        for (std::uint32_t s = 0; s < frame.memory_bindings.size(); ++s)
-        {
-            auto& previous = tails[frame.memory_bindings[s].group.index];
-            if (previous != kGraphInvalidIndex)
-            {
-                for (std::size_t q = 0; q < slots[s].first_pass.size(); ++q)
-                {
-                    const auto first = slots[s].first_pass[q];
-                    if (first == kGraphInvalidIndex)
-                    {
-                        continue;
-                    }
-                    auto& barrier = frame.passes[first].alias_barrier;
-                    if (!barrier)
-                    {
-                        barrier.emplace();
-                    }
-                    barrier->before.access |= slots[previous].accesses[q];
-                    barrier->after.access |= slots[s].accesses[q];
-                    // ALL is zero in NRI. Cross-Queue visibility comes from the already-proven Fence waits.
-                    barrier->before.stages = barrier->after.stages = nri::StageBits::ALL;
-                }
-            }
-            previous = s;
-        }
+        if (frame.memory_bindings.empty()) return;
+        const auto barriers = instantiateAliasBarriers(
+            plan_->physical_resources_, frame.memory_bindings, frame.passes.size()
+        );
+        for (std::size_t p = 0; p < barriers.size(); ++p) frame.passes[p].alias_barrier = barriers[p];
     }
 
     RenderResult<nri::BufferDesc>
@@ -756,6 +734,20 @@ namespace lux::render::detail
                 const auto& binding = frame.memory_bindings[s];
                 output += "{\"allocation\":" + std::to_string(binding.group.index) + ",\"reason\":\"" +
                           reasons[static_cast<std::size_t>(binding.reason)] + "\"}";
+            }
+            output += "],\"alias_barriers\":[";
+            bool first_barrier = true;
+            for (std::size_t p = 0; p < frame.passes.size(); ++p)
+            {
+                const auto& barrier = frame.passes[p].alias_barrier;
+                if (!barrier) continue;
+                if (!first_barrier) output += ',';
+                first_barrier = false;
+                output += "{\"pass\":" + std::to_string(p) +
+                    ",\"before_access\":" + std::to_string(static_cast<std::uint32_t>(barrier->before.access)) +
+                    ",\"before_stages\":" + std::to_string(static_cast<std::uint32_t>(barrier->before.stages)) +
+                    ",\"after_access\":" + std::to_string(static_cast<std::uint32_t>(barrier->after.access)) +
+                    ",\"after_stages\":" + std::to_string(static_cast<std::uint32_t>(barrier->after.stages)) + "}";
             }
             output += "]}";
         }

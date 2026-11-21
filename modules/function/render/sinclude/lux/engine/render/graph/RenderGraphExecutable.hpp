@@ -329,8 +329,6 @@ namespace lux::render::detail
     {
         GraphResourceId resource;
         std::array<std::uint32_t, 3> before{}, end{};
-        std::array<std::uint32_t, 3> first_pass{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
-        std::array<nri::AccessBits, 3> accesses{};
         bool alias_eligible = false;
     };
 
@@ -342,11 +340,37 @@ namespace lux::render::detail
         bool operator==(const PhysicalResourceSlotIndex&) const noexcept = default;
     };
 
+    // Each point retains the first and last occurrence of one native scope on a declared range.
+    struct AliasUsePoint final
+    {
+        VGraphRange range;
+        nri::AccessStage scope;
+        bool writes;
+        std::uint32_t first_pass, last_pass;
+        bool needs_entry = true;
+    };
+
+    struct AliasQueueFrontier final
+    {
+        std::uint32_t first_point = 0, point_count = 0;
+        std::uint32_t barrier_pass = kGraphInvalidIndex;
+        nri::AccessStage source{}, destination{};
+    };
+
+    struct AliasUseFrontier final
+    {
+        std::array<AliasQueueFrontier, 3> queues{};
+        bool image = false;
+        bool rendering_boundary = true;
+    };
+
     struct PhysicalResourcePlan final
     {
         ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS;
         std::vector<PhysicalResourceSlot> slots;
         std::vector<PhysicalResourceSlotIndex> resource_slots;
+        std::vector<AliasUseFrontier> alias_frontiers;
+        std::vector<AliasUsePoint> alias_points;
     };
 
     // The execution candidate owns this immutable result; its graph instance borrows it until teardown.

@@ -24,6 +24,7 @@
 #include "GraphConstantLayout.hpp"
 #include "GraphCount.hpp"
 #include "GraphDepthField.hpp"
+#include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include "GraphFill.hpp"
 #include "GraphHistory.hpp"
 #include "GraphTableSize.hpp"
@@ -1395,6 +1396,51 @@ compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool ali
     ));
 }
 
+static void cpuAliasBufferRanges()
+{
+    RenderGraphBuilder builder;
+    const auto buffer = take(builder.declareResource({"two intervals", GraphBufferDesc{64}}));
+    const auto result = take(builder.declareResource({"observed", GraphBufferDesc{8}}));
+    constexpr std::array ranges{GraphBufferRange{0, 4}, GraphBufferRange{48, 4}};
+    ResourceVersion version{buffer, 0}, output{result, 0};
+    for (unsigned i = 0; i < ranges.size(); ++i)
+    {
+        const auto filled = take(builder.addTransferPass(
+            "write" + std::to_string(i), TransferWork{{FillBuffer{{version, ranges[i]}, 7 + i}}}
+        ));
+        version = filled.written.front();
+        const auto copy = take(builder.addTransferPass(
+            "observe" + std::to_string(i),
+            TransferWork{{CopyBuffer{{version, ranges[i]}, {output, GraphBufferRange{4 * i, 4}}}}}
+        ));
+        output = copy.written.front();
+        CHECK(builder.exportOutput({output, GraphBufferRange{4 * i, 4}}));
+    }
+    const auto graph = take(std::move(builder).finish());
+    const QueueProperties queue;
+    nri::DeviceDesc caps{};
+    caps.graphicsAPI = nri::GraphicsAPI::VK;
+    const auto plan = take(GraphCompiler::compileForRecordingTest(
+        {caps, {&queue, &queue, &queue}}, {graph, take(analyzeRenderGraph(graph))}, ETransientAllocation::ALIAS_MEMORY
+    ));
+    const auto& physical = plan.physicalResources();
+    const auto& frontiers = physical.alias_frontiers[physical.resource_slots[buffer.index].index].queues;
+    CHECK(frontiers[1].point_count == 0 && frontiers[2].point_count == 0);
+    const auto points = std::span{physical.alias_points}.subspan(frontiers[0].first_point, frontiers[0].point_count);
+    CHECK(points.size() == 4);
+    for (const auto range : ranges)
+    {
+        CHECK(std::ranges::any_of(points, [&](const AliasUsePoint& p)
+        {
+            return p.writes && p.needs_entry && std::get<GraphBufferRange>(p.range) == range;
+        }));
+        CHECK(std::ranges::any_of(points, [&](const AliasUsePoint& p)
+        {
+            return !p.writes && !p.needs_entry && std::get<GraphBufferRange>(p.range) == range;
+        }));
+    }
+}
+
 static void cpuBuilderTransactions()
 {
     RenderGraphBuilder builder;
@@ -2499,6 +2545,149 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     CHECK(session->drain());
 }
 
+struct DedicatedResizeRequirement final
+{
+    inline static decltype(nri::CoreInterface::GetTextureMemoryDesc) original = nullptr;
+    inline static decltype(nri::CoreInterface::GetTextureDesc) describe = nullptr;
+    inline static unsigned selected = 0;
+
+    static void NRI_CALL query(const nri::Texture& image, nri::MemoryLocation location, nri::MemoryDesc& memory)
+    {
+        original(image, location, memory);
+        if (describe(image).width == 64)
+        {
+            ++selected;
+            memory.mustBeDedicated = true;
+        }
+    }
+};
+
+static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend)
+{
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    RenderGraphBuilder builder;
+    constexpr std::array widths{16u, 32u};
+    constexpr std::array ranges{GraphImageRange{1, 0, 1, 0, 1}, GraphImageRange{1, 1, 1, 1, 1}};
+    constexpr std::array colors{
+        std::array{1.f, 0.f, 0.f, 1.f}, std::array{0.f, 1.f, 0.f, 1.f},
+        std::array{0.f, 0.f, 1.f, 1.f}, std::array{1.f, 1.f, 1.f, 1.f}
+    };
+    std::array<GraphResourceId, 2> images;
+    std::array<GraphResourceId, 4> buffers;
+    std::array<GraphPassId, 2> last_reads;
+    for (unsigned i = 0; i < widths.size(); ++i)
+    {
+        GraphImageDesc desc{widths[i], widths[i], 2, 2};
+        if (i) desc.extent.source = EImageExtentSource::TARGET;
+        images[i] = take(builder.declareResource({"layers" + std::to_string(i), desc}));
+        ResourceVersion version{images[i], 0};
+        const auto preceding = last_reads;
+        for (unsigned part = 0; part < ranges.size(); ++part)
+        {
+            const auto index = 2 * i + part;
+            const auto extent = widths[i] >> part;
+            const auto filled = take(builder.addTransferPass(
+                "clear subresource" + std::to_string(index), TransferWork{{ClearImage{{version, ranges[part]}, colors[index]}}}
+            ));
+            version = filled.written.front();
+            if (i)
+            {
+                for (const auto prior : preceding) CHECK(builder.dependsOn(prior, filled.pass));
+            }
+            buffers[index] = take(builder.declareResource({"readback" + std::to_string(index), GraphBufferDesc{extent * 256}}));
+            const auto copy = take(builder.addTransferPass(
+                "observe subresource" + std::to_string(index),
+                TransferWork{{CopyImageBuffer{
+                    {version, ranges[part]}, {{buffers[index], 0}}, 256, extent * 256, ImageCopyRegion{0, 0, extent, extent}
+                }}}
+            ));
+            last_reads[part] = copy.pass;
+            exportRows(builder, copy.written.front(), extent, extent, 256);
+        }
+    }
+
+    const auto graph = take(std::move(builder).finish());
+    const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
+    const auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), &target);
+    const auto& physical = plan.executable.physicalResources();
+    const auto write = nri::StageBits::COLOR_ATTACHMENT;
+    const auto all_uses = write | nri::StageBits::COPY;
+    const auto entry = backend == EGraphicsBackend::D3D12 ? all_uses : write;
+    for (const auto resource : images)
+    {
+        const auto& frontier = physical.alias_frontiers[physical.resource_slots[resource.index].index];
+        const auto& queue = frontier.queues[0];
+        CHECK(queue.point_count == 4 && queue.source.stages == all_uses && queue.destination.stages == entry);
+        const auto points = std::span{physical.alias_points}.subspan(queue.first_point, queue.point_count);
+        for (const auto range : ranges)
+        {
+            CHECK(std::ranges::count_if(points, [&](const auto& point)
+            {
+                return std::get<GraphImageRange>(point.range) == range && point.writes && point.needs_entry;
+            }) == 1);
+            CHECK(std::ranges::count_if(points, [&](const auto& point)
+            {
+                return std::get<GraphImageRange>(point.range) == range && !point.writes && !point.needs_entry;
+            }) == 1);
+        }
+    }
+    auto original = take(OffscreenTarget::create(*session, target, 1));
+    auto large_desc = target;
+    large_desc.width = large_desc.height = 64;
+    auto larger = take(OffscreenTarget::create(*session, large_desc, 1));
+    FrameHarness frames(*session, 1);
+    RenderGraphInstance instance(*session, 1, plan.executable, plan.programs, original.output());
+    CHECK(instance.initialize());
+    const auto check = [&](bool split)
+    {
+        std::string dump;
+        CHECK(instance.dumpResources({&dump, [](void* p, std::string_view part) noexcept
+        {
+            static_cast<std::string*>(p)->append(part);
+            return true;
+        }}));
+        if (split)
+        {
+            CHECK(dump.find("\"explicit_memory_count\":6") != std::string::npos);
+            CHECK(dump.find("\"alias_barriers\":[]") != std::string::npos);
+            CHECK(dump.find("\"reason\":\"dedicated\"") != std::string::npos);
+        }
+        else
+        {
+            CHECK(dump.find("\"explicit_memory_count\":5") != std::string::npos);
+            CHECK(dump.find("\"before_stages\":" + std::to_string(static_cast<unsigned>(all_uses))) != std::string::npos);
+            CHECK(dump.find("\"after_stages\":" + std::to_string(static_cast<unsigned>(entry))) != std::string::npos);
+        }
+        const std::array instances{&instance};
+        CHECK(take(runTask(frames.render(instances, {}))) == 1);
+        CHECK(session->drain());
+        for (unsigned i = 0; i < buffers.size(); ++i)
+        {
+            std::array<unsigned, 4> expected;
+            std::ranges::transform(colors[i], expected.begin(), [](float v) { return unsigned(v * 255); });
+            checkPixels(*session, *instance.nativeBuffer(buffers[i].index, 0), widths[i / 2] >> (i % 2), 0, expected, 256);
+        }
+        std::printf("Alias mip/layer readback passed. %s\n", dump.c_str());
+    };
+    check(false);
+    auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+    DedicatedResizeRequirement::describe = core.GetTextureDesc;
+    DedicatedResizeRequirement::original = std::exchange(core.GetTextureMemoryDesc, &DedicatedResizeRequirement::query);
+    DedicatedResizeRequirement::selected = 0;
+    auto split = instance.prepareResize(larger.output());
+    core.GetTextureMemoryDesc = DedicatedResizeRequirement::original;
+    CHECK(split && DedicatedResizeRequirement::selected == 1);
+    CHECK(instance.prepareResizeAdoption(*split));
+    instance.commitResize(std::move(*split));
+    check(true);
+    auto joined = take(instance.prepareResize(original.output()));
+    CHECK(instance.prepareResizeAdoption(joined));
+    instance.commitResize(std::move(joined));
+    check(false);
+}
+
 static void physicalImageReuse(Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool alias_memory = false)
 {
     DeviceOptions options;
@@ -2642,6 +2831,13 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
         ));
         CHECK(dump.find("\"explicit_memory_count\":" + std::to_string(reuse ? 3 : 4)) != std::string::npos);
         CHECK(dump.find(reuse ? "\"reason\":\"aliased\"" : "\"reason\":\"unordered\"") != std::string::npos);
+        const auto& physical = plan.executable.physicalResources();
+        const auto& source = physical.alias_frontiers[physical.resource_slots[a.index].index].queues;
+        if (reuse && source[1].point_count)
+        {
+            CHECK(dump.find("\"before_stages\":0,") != std::string::npos);
+            CHECK(dump.find("\"after_stages\":0}") != std::string::npos);
+        }
     }
     for (std::uint32_t slot = 0; slot < fif; ++slot)
     {
@@ -2780,6 +2976,7 @@ int main(int argc, char** argv)
         cpuRasterPackets();
         cpuQueueBoundaries();
         cpuQueueCandidates();
+        cpuAliasBufferRanges();
         detachedDirtyRanges();
         std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;
@@ -2824,6 +3021,12 @@ int main(int argc, char** argv)
     }
     const auto backend = argc > 2 && std::string_view(argv[2]) == "d3d12"
         ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
+    if (argc > 1 && std::string_view(argv[1]) == "alias-frontiers")
+    {
+        layeredAliasHandoff(validation, backend);
+        CHECK(validation.errors == 0);
+        return 0;
+    }
     if (argc > 1 && std::string_view(argv[1]) == "local-freeze")
     {
         DeviceOptions options;

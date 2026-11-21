@@ -27,12 +27,6 @@ namespace lux::render::detail
             std::uint32_t resource = kGraphInvalidIndex;
         };
 
-        nri::StageBits combineStages(nri::StageBits a, nri::StageBits b) noexcept
-        {
-            // NRI encodes ALL as zero, so a bitwise OR would narrow an already established ALL scope.
-            return a == nri::StageBits::ALL || b == nri::StageBits::ALL ? nri::StageBits::ALL : a | b;
-        }
-
         Access accessFor(const ResourceAccess& use, const PassBindings& program) noexcept
         {
             Access result;
@@ -79,14 +73,15 @@ namespace lux::render::detail
                                                                 : nri::AccessBits::SHADER_RESOURCE_STORAGE;
                 result.layout = use.usage == EGraphUse::SAMPLED ? nri::Layout::SHADER_RESOURCE
                                                                 : nri::Layout::SHADER_RESOURCE_STORAGE;
-                const bool has_reflected_use = std::ranges::any_of(program.uses, [&](const auto& binding) noexcept
-                { return binding.resource == use.version.resource.index; });
-                if (has_reflected_use) result.access = nri::AccessBits::NONE;
+                bool first_binding = true;
                 for (std::size_t field = 0; field < program.uses.size(); ++field)
                 {
                     if (program.uses[field].resource == use.version.resource.index)
                     {
-                        result.stages |= shaderStages(program.bindings[program.uses[field].field].stages);
+                        const auto stages = shaderStages(program.bindings[program.uses[field].field].stages);
+                        result.stages = first_binding ? stages : combineStages(result.stages, stages);
+                        if (first_binding) result.access = nri::AccessBits::NONE;
+                        first_binding = false;
                         if (program.bindings[program.uses[field].field].kind == EDescriptorKind::UNIFORM_BUFFER)
                         {
                             result.access |= nri::AccessBits::CONSTANT_BUFFER;
@@ -107,16 +102,21 @@ namespace lux::render::detail
             return result;
         }
 
+        struct PassAccessContext final
+        {
+            const PassBindings& program;
+            const GraphPass& pass;
+            nri::GraphicsAPI backend;
+        };
+
         Access
         accessForUse(
             const ResourceAccess& use,
-            const PassBindings& program,
-            const GraphPass& pass,
-            const VGraphResourceDesc& description,
-            std::uint32_t resource,
-            nri::GraphicsAPI backend
+            const PassAccessContext& context,
+            const VGraphResourceDesc& description
         ) noexcept
         {
+            const auto& [program, pass, backend] = context;
             auto current = accessFor(use, program);
             const auto* raster = std::get_if<RasterWork>(&pass.command);
             const auto* stream = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
@@ -127,12 +127,13 @@ namespace lux::render::detail
             if (is_stream_buffer || is_stream_image)
             {
                 auto access = nri::AccessBits::NONE;
-                auto stages = nri::StageBits::ALL; // NRI uses zero for stage-mask accumulation.
+                auto stages = nri::StageBits::ALL;
                 for (const auto& input : stream->inputs)
                 {
                     if (input.usage != use.usage || !input.kind) continue;
                     if (is_stream_image && *input.kind != rdesc::EDescriptorType::SAMPLED_IMAGE) continue;
-                    stages |= shaderStages(input.stages);
+                    const auto selected = shaderStages(input.stages);
+                    stages = access == nri::AccessBits::NONE ? selected : combineStages(stages, selected);
                     access |= *input.kind == rdesc::EDescriptorType::UNIFORM_BUFFER
                         ? nri::AccessBits::CONSTANT_BUFFER : nri::AccessBits::SHADER_RESOURCE;
                 }
@@ -220,6 +221,7 @@ namespace lux::render::detail
         {
             const auto id = order[slot].index;
             const auto& pass = graph.passes()[id];
+            const PassAccessContext context{bindings.passes[slot], pass, backend};
             auto& uses = use_stages[id];
             uses.clear();
             uses.reserve(pass.uses.size());
@@ -231,9 +233,14 @@ namespace lux::render::detail
                 {
                     if (resource != kGraphInvalidIndex)
                     {
-                        const auto access = accessForUse(
-                            use, bindings.passes[slot], pass, graph.resources()[resource].description, resource, backend
-                        );
+                        const auto access = accessForUse(use, context, graph.resources()[resource].description);
+                        if (allocation == ETransientAllocation::ALIAS_MEMORY)
+                        {
+                            const auto p = static_cast<std::uint32_t>(slot);
+                            alias_uses.push_back({
+                                {resource}, {use.range, {access.access, access.stages}, access.write, p, p}
+                            });
+                        }
                         uses.emplace_back(resource, access.stages);
                     }
                 }
@@ -387,11 +394,8 @@ namespace lux::render::detail
             const auto* image = std::get_if<GraphImageDesc>(&resources[index].description);
             // Read-after-read can still need visibility established by an earlier write.
             // Only reuse a state whose access and execution scopes already cover this read.
-            const bool covers_access = (previous.access & current.access) == static_cast<std::uint32_t>(current.access);
-            const bool covers_stages = previous.stages == nri::StageBits::ALL ||
-                (current.stages != nri::StageBits::ALL &&
-                 (previous.stages & current.stages) == static_cast<std::uint32_t>(current.stages));
-            const bool merge_reads = covers_access && covers_stages && previous.known &&
+            const bool covers_read = coversScope({previous.access, previous.stages}, {current.access, current.stages});
+            const bool merge_reads = covers_read && previous.known &&
                                      previous.resource == index && !cross_queue &&
                                      !previous.write && !current.write &&
                                      previous.pass_slot != kGraphInvalidIndex &&
@@ -503,7 +507,7 @@ namespace lux::render::detail
                     {
                         continue;
                     }
-                    auto current = accessForUse(use, layout, declared, resource.description, index, backend);
+                    auto current = accessForUse(use, {layout, declared, backend}, resource.description);
                     current.queue = pass.queue;
                     current.pass_slot = p;
                     includeUsage(resource, current);

@@ -561,7 +561,12 @@ this is not a general mixed Buffer/Texture heap packer. No dependency or CPU wai
 Each FIF slot owns its physical objects and Memory independently. Alias activation establishes a memory barrier
 before the new object's layout/access transitions. Cleanup releases descriptors, then resources, then each Memory
 exactly once through the existing Session cleanup scope. Plan diagnostics report logical-to-physical mappings;
-instance resource diagnostics report actual Memory groups, requested bytes and placement rejection reasons.
+instance resource diagnostics report actual Memory groups, requested bytes, placement rejection reasons and
+instantiated barrier scopes. Creation and Resize select the same handoff template using their actual allocation groups.
+The compiler retains per-physical-queue uses by byte or image range, read/write mode and native scope. A prior
+same-range transition can cover an incoming use when both of its native scopes match. Source scopes retain reads
+and writes. Handoffs with foreign source queues keep all-stage ordering, and D3D12 texture placement preserves
+its matching access-mask contract.
 
 SubmissionOperation advances an ordered, frozen submission window across Queue capacity limits. Each accepted batch records its
 actual queue serial; dependencies wait for that producer, never an unrelated later submission. Compatible ready

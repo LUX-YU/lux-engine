@@ -284,7 +284,7 @@ namespace lux::render::detail
         if (aliases)
         {
             const auto placements = instantiatePlacements(
-                physical, resources, plan_->recording_, requirements, session_->description().graphicsAPI
+                physical, requirements, session_->description().graphicsAPI
             );
             expandMemoryMigration(frame.memory_bindings, placements, candidate.replaced_slots);
             for (std::uint32_t slot = 0; slot < physical.slots.size(); ++slot)
@@ -504,32 +504,7 @@ namespace lux::render::detail
         }
         if (aliases)
         {
-            candidate.alias_barriers.resize(plan_->passes().size());
-            std::vector<std::uint32_t> tails(candidate.adopted_memories.size(), kGraphInvalidIndex);
-            for (std::uint32_t slot = 0; slot < candidate.placements.size(); ++slot)
-            {
-                auto& previous = tails[candidate.placements[slot].group.index];
-                if (previous != kGraphInvalidIndex)
-                {
-                    for (std::size_t q = 0; q < physical.slots[slot].first_pass.size(); ++q)
-                    {
-                        const auto pass = physical.slots[slot].first_pass[q];
-                        if (pass == kGraphInvalidIndex)
-                        {
-                            continue;
-                        }
-                        auto& barrier = candidate.alias_barriers[pass];
-                        if (!barrier)
-                        {
-                            barrier.emplace();
-                        }
-                        barrier->before.access |= physical.slots[previous].accesses[q];
-                        barrier->after.access |= physical.slots[slot].accesses[q];
-                        barrier->before.stages = barrier->after.stages = nri::StageBits::ALL;
-                    }
-                }
-                previous = slot;
-            }
+            candidate.alias_barriers = instantiateAliasBarriers(physical, candidate.placements, plan_->passes().size());
             candidate.physical.memories.reserve(candidate.physical.memories.size() + frame.memories.size());
         }
         return {};

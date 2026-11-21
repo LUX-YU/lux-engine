@@ -227,6 +227,7 @@ namespace lux::render::detail
         output += "],\"physical_resources\":[";
         constexpr std::string_view reuse_reasons[]{
             "unused",
+            "dynamic extent",
             "external or indirect table",
             "history",
             "exported",
@@ -237,6 +238,7 @@ namespace lux::render::detail
             "no dependency proof",
             "object reused"
         };
+        static_assert(std::size(reuse_reasons) == static_cast<unsigned>(EResourceReuse::REUSED) + 1);
         for (std::size_t i = 0; i < plan.physical_resources_.resource_slots.size(); ++i)
         {
             if (i)
@@ -246,6 +248,29 @@ namespace lux::render::detail
             output += "{\"resource\":" + std::to_string(i) +
                       ",\"slot\":" + std::to_string(plan.physical_resources_.resource_slots[i].index) + ",\"reason\":" +
                       quoteDumpText(reuse_reasons[static_cast<unsigned>(graph.diagnostics.resource_reuse[i])]) + "}";
+        }
+        output += "],\"alias_use_frontiers\":[";
+        const auto& physical = plan.physical_resources_;
+        bool first_point = true;
+        for (std::size_t s = 0; s < physical.alias_frontiers.size(); ++s)
+        {
+            const auto& queues = physical.alias_frontiers[s].queues;
+            for (std::size_t q = 0; q < queues.size(); ++q)
+            {
+                const auto& queue = queues[q];
+                for (const auto& point : std::span{physical.alias_points}.subspan(queue.first_point, queue.point_count))
+                {
+                    if (!first_point) output += ',';
+                    first_point = false;
+                    output += "{\"slot\":" + std::to_string(s) + ",\"queue\":" + std::to_string(q) +
+                        ",\"range\":" + dumpRange(point.range) + ",\"first_pass\":" + std::to_string(point.first_pass) +
+                        ",\"last_pass\":" + std::to_string(point.last_pass) +
+                        ",\"access\":" + std::to_string(static_cast<unsigned>(point.scope.access)) +
+                        ",\"stages\":" + std::to_string(static_cast<unsigned>(point.scope.stages)) +
+                        ",\"writes\":" + (point.writes ? "true" : "false") +
+                        ",\"needs_entry\":" + (point.needs_entry ? "true" : "false") + "}";
+                }
+            }
         }
         output += "],\"physical_object_count\":" + std::to_string(plan.physical_resources_.slots.size()) +
                   ",\"submissions\":[";

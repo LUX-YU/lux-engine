@@ -101,6 +101,7 @@ set(render_sources
     src/graph/compile/RenderingPlan.cpp
     src/graph/compile/ConditionalPlan.cpp
     src/graph/compile/SubmissionPlan.cpp
+    src/graph/compile/AliasUseFrontier.cpp
     src/graph/compile/PhysicalResourcePlan.cpp
     src/graph/compile/BarrierPlan.cpp
     src/graph/compile/ShaderBindingPlan.cpp

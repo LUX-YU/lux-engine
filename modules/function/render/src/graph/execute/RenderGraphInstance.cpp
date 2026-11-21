@@ -249,12 +249,15 @@ namespace lux::render::detail
         const auto& shared = session_->descriptors();
         const auto shared_generation = shared.nativeBindingGeneration();
         const bool is_d3d12 = session_->description().graphicsAPI == nri::GraphicsAPI::D3D12;
-        if (frame.shared_binding_generation != shared_generation)
+        const bool shared_changed = frame.shared_binding_generation != shared_generation;
+        const bool resize_pool = shared_changed && frame.shared_descriptor_counts != shared.snapshotCounts();
+        if (resize_pool || !frame.stream_inputs.empty())
         {
-            if (frame.shared_descriptor_counts != shared.snapshotCounts())
-            {
-                if (auto grown = growRasterDescriptorPool(slot); !grown) return cxx::unexpected(grown.error());
-            }
+            if (auto capacity = prepareRasterDescriptorCapacity(slot, resize_pool); !capacity)
+                return cxx::unexpected(capacity.error());
+        }
+        if (shared_changed)
+        {
             if (!is_d3d12)
             {
                 constexpr std::array kinds{

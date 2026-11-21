@@ -749,11 +749,11 @@ namespace lux::render::detail
 
     exec::task<RenderResult<CompiledRasterStream::Program>>
     prepareRasterStreamProgram(
-        DeviceSession& session, execution::CpuScheduler cpu, const RasterPassTemplate& stage,
-        const RasterStreamTarget& target, const rdesc::ShaderProgramArtifact& artifact, const GraphicsState& graphics,
+        DeviceSession& session, execution::CpuScheduler cpu, RasterProgramRecipe recipe,
         std::optional<cxx::function_ref<bool() noexcept>> runtime_current
     ) noexcept
     {
+        const auto& [stage, target, artifact, graphics] = recipe;
         if (artifact.target != session.enabledFeatures().shader_target)
             co_return cxx::unexpected(RenderError{kDeviceUnsupported});
         auto layout = planRasterLayout(session.description(), artifact.interface, stage);
@@ -791,6 +791,19 @@ namespace lux::render::detail
         // Shared descriptors are supplied by the device tables. Each draw provides private bindings only.
         std::erase_if(layout->uses, [&](const auto& use) noexcept { return layout->bindings[use.field].count == 0; });
 
+        std::vector<CompiledRasterStream::ArgumentUses> argument_to_use(stage.inputs.size());
+        for (std::uint32_t i = 0; i < layout->uses.size(); ++i)
+        {
+            const auto& use = layout->uses[i];
+            const auto slot = use.kind == EDescriptorKind::SAMPLER ? use.sampler : use.resource;
+            if (slot >= argument_to_use.size()) co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            auto& range = argument_to_use[slot];
+            if (!range.count) range.first = i;
+            const bool consecutive = i - range.first == range.count && use.element == range.count;
+            if (!consecutive) co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            ++range.count;
+        }
+
         RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
         if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
         auto lease = co_await prepareGraphProgram(std::move(key), artifact, *layout, session, cpu, true, runtime_current);
@@ -820,7 +833,7 @@ namespace lux::render::detail
         }
         co_return CompiledRasterStream::Program{
             CompiledPrograms::native(**lease), CompiledPrograms::identity(**lease), std::move(*layout),
-            graphics.vertex_bindings,
+            std::move(argument_to_use), graphics.vertex_bindings,
             std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
         };
     }
@@ -947,7 +960,9 @@ namespace lux::render::detail
                     );
                     if (!artifact) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
                     stage.parameters = authored.parameters;
-                    auto program = co_await prepareRasterStreamProgram(session, cpu, stage, target, *artifact, authored.graphics);
+                    auto program = co_await prepareRasterStreamProgram(
+                        session, cpu, {stage, target, *artifact, authored.graphics}
+                    );
                     if (!program) co_return cxx::unexpected(program.error());
                     stream->programs.push_back(std::move(*program));
                 }

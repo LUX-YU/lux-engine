@@ -5,7 +5,6 @@
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
-#include <unordered_map>
 #include <atomic>
 #include <exception>
 #include <utility>
@@ -40,22 +39,22 @@ namespace lux::render::detail
         {
             nri::DescriptorSet* set = nullptr;
             RasterBindingKey program;
-            std::uint32_t draw = 0;
             std::vector<nri::Descriptor*> views;
             std::vector<RasterDescriptorInput> inputs;
         };
 
-        struct RasterBindingHash final
+        struct StreamDescriptorRows final
         {
-            std::size_t operator()(RasterBindingKey binding) const noexcept
+            struct Program final
             {
-                const auto position = (std::uint64_t(binding.pass) << 32) | binding.program;
-                const auto generation = std::hash<std::uint64_t>{}(binding.generation);
-                return std::hash<std::uint64_t>{}(position) ^ (generation + 0x9e3779b9u);
-            }
-        };
+                std::vector<std::uint32_t> records;
+                std::uint32_t used = 0;
+            };
 
-        using RasterBindingIndices = std::unordered_map<std::uint32_t, std::uint32_t>;
+            std::vector<Program> programs;
+            std::vector<std::uint32_t> draws;
+            std::size_t input_count = 0;
+        };
 
         struct RasterAttachmentView final
         {
@@ -67,7 +66,7 @@ namespace lux::render::detail
 
         std::vector<RasterAttachmentView> raster_attachment_views;
         std::vector<RasterBinding> raster_bindings;
-        std::unordered_map<RasterBindingKey, RasterBindingIndices, RasterBindingHash> raster_binding_indices;
+        std::vector<StreamDescriptorRows> stream_descriptor_rows;
         nri::DescriptorPoolDesc descriptor_capacity{}, descriptor_reserved{};
 
         std::vector<PassResourceInput> record_resources;

@@ -1146,6 +1146,8 @@ struct RetirementFence final
                 nri::Device& device, const nri::DescriptorPoolDesc& desc, nri::DescriptorPool*& pool
             ) noexcept
             {
+                ++pool_creations;
+                if (reject_raster_pool.exchange(false)) return nri::Result::INVALID_ARGUMENT;
                 const auto result = original_create_pool(device, desc, pool);
                 if (!watch_texture_pool || result != nri::Result::SUCCESS) return result;
                 if ((desc.flags & nri::DescriptorPoolBits::ALLOW_UPDATE_AFTER_SET) == 0) return result;
@@ -1176,6 +1178,9 @@ struct RetirementFence final
                 nri::DescriptorSet** sets, std::uint32_t count, std::uint32_t variables
             ) noexcept
             {
+                set_allocations += count;
+                if (reject_raster_set_countdown.load() && reject_raster_set_countdown.fetch_sub(1) == 1)
+                    return nri::Result::INVALID_ARGUMENT;
                 const auto result = original_allocate_sets(pool, layout, index, sets, count, variables);
                 if (result == nri::Result::SUCCESS && &pool == texture_pools.front().pool)
                 {
@@ -1216,6 +1221,9 @@ struct RetirementFence final
         static inline std::atomic submission_gate{EPipelineGate::OPEN};
         static inline std::atomic_bool upload_held{}, release_upload{};
         static inline std::atomic_bool suffix_rejected{}, unknown_retired{};
+        static inline std::atomic_uint pool_creations{}, set_allocations{};
+        static inline std::atomic_bool reject_raster_pool{};
+        static inline std::atomic_uint reject_raster_set_countdown{};
         static inline std::atomic_bool can_grow_texture_table{}, watch_texture_pool{};
         static inline std::atomic_bool can_batch_indexed{};
         static inline std::atomic_uint indexed_calls{}, indexed_indirect_calls{}, indexed_indirect_draws{};
@@ -1681,7 +1689,7 @@ struct RetirementFence final
     enum class ETestStreamMode : std::uint8_t
     {
         VALID, BAD_INDEX, BAD_CONSTANTS, BAD_BINDING, BAD_IMAGE, BAD_SAMPLER, DUPLICATE_ELEMENT,
-        DUPLICATE_LAYER, MISSING_LAYER, UNCOVERED_DRAW, EMPTY, SWAP_TILES,
+        DUPLICATE_LAYER, MISSING_LAYER, UNCOVERED_DRAW, EMPTY, SWAP_TILES, MANY_DRAWS,
         BAD_INDIRECT_STRIDE, SHORT_INDIRECT_ARGS, BAD_COUNT, WRONG_INDIRECT_USE, NO_COUNT, OLD_PROGRAM_SLOT
     };
     std::atomic<ETestStreamMode> stream_mode{ETestStreamMode::VALID};
@@ -1854,7 +1862,7 @@ struct RetirementFence final
                 };
             }
             const float viewport_width = 64.0f / frame.target().width;
-            const std::array sections{
+            std::array sections{
                 RasterStreamSection{{0, 1}, 1, RasterViewport{viewport_width / 2, 0, viewport_width / 2, 0.5f}},
                 RasterStreamSection{
                     {1, mode == ETestStreamMode::UNCOVERED_DRAW ? 1u : 2u},
@@ -1862,6 +1870,16 @@ struct RetirementFence final
                     RasterViewport{0, 0, viewport_width, 1}
                 }
             };
+            if (mode == ETestStreamMode::MANY_DRAWS)
+            {
+                std::array<RasterStreamDraw, 67> repeated;
+                std::ranges::copy(draws, repeated.begin());
+                std::ranges::fill(std::span{repeated}.subspan(draws.size()), draws.back());
+                sections.back().draws.count = static_cast<std::uint32_t>(repeated.size() - 1);
+                return frame.setRasterStream(linked.stream, {
+                    repeated, bindings, {}, std::as_bytes(std::span{values}), sections
+                });
+            }
             const auto section_count = mode == ETestStreamMode::MISSING_LAYER ? 1u : 2u;
             return frame.setRasterStream(linked.stream, {
                 draws, bindings, {}, std::as_bytes(std::span{values}), std::span{sections}.first(section_count)
@@ -2934,6 +2952,34 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto uncounted_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto uncounted_job = make_storage_job(stream_effect);
     call<StartRenderJob>(*client, commands, {device, uncounted_job, uncounted_target, producer_binding(uncounted_data)});
+    for (unsigned i = 0; i < config.frames_in_flight; ++i) call<RequestRenderJob>(*client, commands, {uncounted_job});
+    UniformUploadProbe::reject_raster_pool = true;
+    stream_mode = ETestStreamMode::MANY_DRAWS;
+    const auto rejected_pool = call<RequestRenderJob>(*client, commands, {uncounted_job}, false);
+    CHECK(rejected_pool.error.type == kDeviceFailure && !UniformUploadProbe::reject_raster_pool.load());
+    UniformUploadProbe::reject_raster_set_countdown = 2;
+    stream_mode = ETestStreamMode::MANY_DRAWS;
+    const auto rejected_set = call<RequestRenderJob>(*client, commands, {uncounted_job}, false);
+    CHECK(rejected_set.error.type == kDeviceFailure && UniformUploadProbe::reject_raster_set_countdown.load() == 0);
+    const auto previous_sets = UniformUploadProbe::set_allocations.load();
+    for (unsigned i = 0; i < config.frames_in_flight; ++i) call<RequestRenderJob>(*client, commands, {uncounted_job});
+    CHECK(UniformUploadProbe::set_allocations.load() == previous_sets);
+    std::uint32_t large_slot = 0;
+    for (unsigned i = 0; i <= config.frames_in_flight; ++i)
+    {
+        const auto pools = UniformUploadProbe::pool_creations.load();
+        const auto sets = UniformUploadProbe::set_allocations.load();
+        stream_mode = ETestStreamMode::MANY_DRAWS;
+        large_slot = call<RequestRenderJob>(*client, commands, {uncounted_job}).slot_index;
+        const auto grown = UniformUploadProbe::pool_creations.load() - pools;
+        const auto allocated = UniformUploadProbe::set_allocations.load() - sets;
+        CHECK(grown == (i < config.frames_in_flight ? 1u : 0u));
+        CHECK(i < config.frames_in_flight ? allocated >= 65 : allocated == 0);
+        std::printf(
+            "RASTER DESCRIPTORS slot=%u draws=67 private_draws=65 pool_creates=%u set_allocations=%u\n",
+            large_slot, grown, allocated
+        );
+    }
     stream_mode = ETestStreamMode::NO_COUNT;
     const auto uncounted = call<RequestRenderJob>(*client, commands, {uncounted_job}).slot_index;
     stopAndRemoveJob(*client, commands, uncounted_job);
@@ -2941,6 +2987,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto& uncounted_capture = EffectCaptureBuffer::pixels[7];
     const auto uncounted_deadline = Clock::now() + 10s;
     while (!uncounted_capture.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < uncounted_deadline);
+    CHECK(large_slot != uncounted);
+    check_capture_pixel(uncounted_capture, large_slot, 0, 48, {65, 197, 161, 255});
     check_capture_pixel(uncounted_capture, uncounted, 0, 16, {65, 197, 161, 255});
     check_capture_pixel(uncounted_capture, uncounted, 0, 48, {65, 197, 161, 255});
     check_capture_pixel(uncounted_capture, uncounted, 1, 36, {83, 0, 0, 255});

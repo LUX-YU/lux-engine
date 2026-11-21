@@ -21,11 +21,18 @@ namespace lux::render::detail
 
     struct CompiledRasterStream final
     {
+        struct ArgumentUses final
+        {
+            std::uint32_t first = 0, count = 0;
+            bool operator==(const ArgumentUses&) const noexcept = default;
+        };
+
         struct Program final
         {
             nri::Pipeline* pipeline;
             CompiledPrograms::ProgramId cache_id;
             PassBindings bindings;
+            std::vector<ArgumentUses> argument_to_use;
             std::vector<VertexBinding> vertices;
             std::vector<VertexAttribute> mesh_attributes;
             std::uint32_t shared_texture_stages;
@@ -71,10 +78,18 @@ namespace lux::render::detail
         std::optional<RuntimeContract> runtime;
     };
 
+    // The compile or program selection operation owns these inputs until preparation returns.
+    struct RasterProgramRecipe final
+    {
+        const RasterPassTemplate& stage;
+        const RasterStreamTarget& target;
+        const rdesc::ShaderProgramArtifact& artifact;
+        const GraphicsState& graphics;
+    };
+
     [[nodiscard]] exec::task<RenderResult<CompiledRasterStream::Program>>
     prepareRasterStreamProgram(
-        DeviceSession&, execution::CpuScheduler, const RasterPassTemplate&, const RasterStreamTarget&,
-        const rdesc::ShaderProgramArtifact&, const GraphicsState&,
+        DeviceSession&, execution::CpuScheduler, RasterProgramRecipe,
         std::optional<cxx::function_ref<bool() noexcept>> runtime_current = {}
     ) noexcept;
 

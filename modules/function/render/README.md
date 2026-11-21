@@ -204,7 +204,9 @@ For a producer-authored Raster stream, declare the program choices and read-only
 `RasterPassTemplate`. The producer's preparation declares ownership of that pass. During cold linking,
 `resolveDrawStream` and `resolveRasterProgram` grant slots scoped to the compiled variant. Buffer, image,
 sampler and descriptor argument lookups also happen during linking. Each live program uses its own reflected
-layout and native program lease. The producer publishes draws and borrowed argument arrays with
+layout and native program lease. Program preparation maps each argument and array element directly to its
+descriptor use. Each writable FIF counts all private draw sets before growing its pool, then resolves each supplied
+binding once and writes sets by program and draw ordinal. The producer publishes draws and borrowed argument arrays with
 `setRasterStream`. Supply one binding for each declared descriptor array element. The writable frame validates
 program identity, constant size, geometry, buffer bounds, image subresources and sampler comparison mode before
 materializing native draw packets.

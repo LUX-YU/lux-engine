@@ -236,9 +236,9 @@ namespace lux::render::detail
             bool operator==(const RasterBindingKey&) const noexcept = default;
         };
 
+        [[nodiscard]] RenderResult<void> prepareRasterDescriptorCapacity(std::uint32_t slot, bool resize_pool) noexcept;
         [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
-            std::uint32_t, const PassBindings&, RasterBindingKey, std::uint32_t draw,
-            std::span<const RasterDescriptorInput>
+            std::uint32_t slot, const PassBindings&, std::uint32_t record, std::span<const RasterDescriptorInput>
         ) noexcept;
         [[nodiscard]] const PassBindings& rasterBindings(RasterBindingKey) const noexcept;
         void releaseRasterBindings(std::uint32_t pass, std::uint64_t generation) noexcept;

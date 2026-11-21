@@ -7,6 +7,11 @@ namespace nri { struct Buffer; struct Texture; }
 
 namespace lux::render::detail
 {
+    [[nodiscard]] inline bool containsStreamRange(std::size_t size, RasterStreamRange range) noexcept
+    {
+        return range.first <= size && range.count <= size - range.first;
+    }
+
     struct OwnedRasterStream final
     {
         struct MeshBuffer final

@@ -13,11 +13,6 @@ namespace lux::render::detail
 {
     namespace
     {
-        bool fits(RasterStreamRange range, std::size_t size) noexcept
-        {
-            return range.first <= size && range.count <= size - range.first;
-        }
-
         bool includes(GraphBufferRange range, const RasterBufferSlice& slice) noexcept
         {
             if (slice.offset < range.offset) return false;
@@ -137,7 +132,7 @@ namespace lux::render::detail
             for (const auto& section : stream.sections)
             {
                 const bool covers_next_draws =
-                    section.draws.first == next_draw && fits(section.draws, stream.draws.size());
+                    section.draws.first == next_draw && containsStreamRange(stream.draws.size(), section.draws);
                 const bool new_layer = section.layer < layer_count && !seen[section.layer];
                 if (!covers_next_draws || !new_layer)
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {p, section.layer}});
@@ -329,9 +324,7 @@ namespace lux::render::detail
             if (!stream) continue;
             auto& input = frame.stream_inputs[p];
             const auto* dynamic = stream->runtime ? dynamic_raster_programs_[p].get() : nullptr;
-            if (stream->runtime && !dynamic) return cxx::unexpected(RenderError{kFrameContract, {p}});
             const auto& selected_programs = dynamic ? dynamic->programs : stream->programs;
-            const auto program_revision = dynamic ? dynamic->revision : 0;
 
             const auto& pass = plan_->passes()[p];
             const auto& command = std::get<RasterListCommands>(plan_->rasterCommands(pass)->draw);
@@ -451,28 +444,31 @@ namespace lux::render::detail
                 return RasterDescriptorInput{source->buffer, source->offset, source->size};
             };
 
-            const auto setInputs = [&](const RasterStreamDraw& draw, const PassBindings& bindings) noexcept
-                -> RenderResult<void>
+            inputs.clear();
+            inputs.reserve(frame.stream_descriptor_rows[p].input_count);
+            const auto selectInputs = [&](const RasterStreamDraw& draw, const CompiledRasterStream::Program& program)
+                noexcept -> RenderResult<void>
             {
                 const auto entries = std::span{input.bindings}.subspan(draw.bindings.first, draw.bindings.count);
-                if (entries.size() != bindings.uses.size())
-                    return cxx::unexpected(RenderError{kFrameContract, {p}});
-                inputs.assign(bindings.uses.size(), {});
+                const auto& layout = program.bindings;
+                const auto first = inputs.size();
+                inputs.resize(first + entries.size());
+                auto selected = std::span{inputs}.subspan(first);
                 for (const auto& entry : entries)
                 {
-                    const auto expected = std::ranges::find_if(bindings.uses, [&](const auto& use) noexcept
-                    {
-                        const auto argument = use.kind == EDescriptorKind::SAMPLER ? use.sampler : use.resource;
-                        return argument == entry.argument && use.element == entry.element;
-                    });
-                    if (expected == bindings.uses.end())
+                    if (entry.argument >= program.argument_to_use.size())
                         return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
-                    auto& input = inputs[expected - bindings.uses.begin()];
-                    if (input.buffer || input.image || input.sampler)
+                    const auto range = program.argument_to_use[entry.argument];
+                    if (entry.element >= range.count)
                         return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
-                    auto source = descriptorInput(entry, *expected, bindings.bindings[expected->field]);
+                    const auto index = range.first + entry.element;
+                    auto& destination = selected[index];
+                    if (destination.buffer || destination.image || destination.sampler)
+                        return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
+                    const auto& use = layout.uses[index];
+                    auto source = descriptorInput(entry, use, layout.bindings[use.field]);
                     if (!source) return cxx::unexpected(source.error());
-                    input = *source;
+                    destination = *source;
                 }
                 return {};
             };
@@ -480,18 +476,10 @@ namespace lux::render::detail
             std::uint32_t texture_stages = 0;
             for (const auto& draw : input.draws)
             {
-                const bool invalid_program = draw.program.stream != p || draw.program.index >= selected_programs.size() ||
-                    draw.program.revision != program_revision;
-                const bool invalid_ranges = !fits(draw.constants, input.constants.size()) ||
-                    !fits(draw.vertices, input.vertices.size()) || !fits(draw.bindings, input.bindings.size());
-                if (invalid_program || invalid_ranges)
-                    return cxx::unexpected(RenderError{kFrameContract, {p}});
                 const auto& program = selected_programs[draw.program.index];
                 if (!input.materials.empty()) used_material_programs[draw.program.index] = 1;
                 texture_stages |= program.shared_texture_stages;
-                if (draw.constants.count != program.bindings.parameter_bytes || draw.constants.first % 4 != 0)
-                    return cxx::unexpected(RenderError{kFrameContract, {p}});
-                if (auto bound = setInputs(draw, program.bindings); !bound) return bound;
+                if (auto bound = selectInputs(draw, program); !bound) return bound;
 
                 RasterDrawPacket packet;
                 packet.pipeline = program.pipeline;
@@ -722,34 +710,21 @@ namespace lux::render::detail
 
             if (auto sections = materializeRasterSections(slot, p, input); !sections) return sections;
 
-            for (std::uint32_t d = 0; d < input.draws.size(); ++d)
-            {
-                const auto& draw = input.draws[d];
-                const auto& bindings = selected_programs[draw.program.index].bindings;
-                if (bindings.private_bindings.empty()) continue;
-                if (auto bound = setInputs(draw, bindings); !bound) return bound;
-                const RasterBindingKey key{p, draw.program.index, program_revision};
-                auto descriptors = prepareRasterDescriptorSet(slot, bindings, key, d, inputs);
-                if (!descriptors) return cxx::unexpected(descriptors.error());
-            }
-            // Pool growth can replace any earlier allocation. Read all final sets after allocation.
+            std::size_t first_input = 0;
             for (std::uint32_t d = 0; d < input.draws.size(); ++d)
             {
                 const auto& bindings = selected_programs[input.draws[d].program.index].bindings;
                 if (bindings.private_bindings.empty()) continue;
-                const RasterBindingKey key{p, input.draws[d].program.index, program_revision};
-                const auto cache = frame.raster_binding_indices.find(key);
-                if (cache == frame.raster_binding_indices.end())
-                    return cxx::unexpected(RenderError{kFrameContract, {p, d}});
-                const auto binding = cache->second.find(d);
-                if (binding == cache->second.end())
-                    return cxx::unexpected(RenderError{kFrameContract, {p, d}});
+                const auto index = frame.stream_descriptor_rows[p].draws[d];
+                const auto selected = std::span{inputs}.subspan(first_input, bindings.uses.size());
+                first_input += selected.size();
+                auto set = prepareRasterDescriptorSet(slot, bindings, index, selected);
+                if (!set) return cxx::unexpected(set.error());
                 auto& packet = candidate.packets[d];
                 packet.first_descriptor = static_cast<std::uint32_t>(candidate.descriptors.size());
                 packet.descriptor_count = 1;
-                candidate.descriptors.push_back(frame.raster_bindings[binding->second].set);
+                candidate.descriptors.push_back(*set);
             }
-
             if (session_->enabledFeatures().multi_draw_indirect)
                 mergeIndexedIndirectDraws(candidate, session_->description().other.drawIndirectMaxNum);
 

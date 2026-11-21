@@ -588,7 +588,7 @@ namespace lux::render::detail
             {
                 stage.parameters = program.parameters;
                 auto prepared = co_await prepareRasterStreamProgram(
-                    *session_, cpu, stage, contract.target, entry.shaders[program.shader.index], program.graphics,
+                    *session_, cpu, {stage, contract.target, entry.shaders[program.shader.index], program.graphics},
                     cxx::function_ref<bool() noexcept>{is_current}
                 );
                 if (prepared) selected->programs.push_back(std::move(*prepared));

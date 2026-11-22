@@ -479,7 +479,7 @@ namespace lux::render::detail
     {
         nri::Pipeline* pipeline = nullptr;
         PassDescriptorBindings descriptors;
-        CompiledPrograms::ProgramId program;
+        NativeProgramId program;
         CompiledPrograms::LayoutId layout = CompiledPrograms::LayoutId::INVALID;
     };
 

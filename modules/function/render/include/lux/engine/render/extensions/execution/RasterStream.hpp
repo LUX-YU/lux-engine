@@ -1,14 +1,14 @@
 #pragma once
 
 #include <optional>
+#include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
 #include <vector>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
 #include <lux/engine/render/extensions/graph/ParameterBinding.hpp>
-#include <lux/engine/render/resources/material/Data.hpp>
-#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/description/ShaderProgramArtifact.hpp>
 
 namespace lux::render
 {
@@ -40,18 +40,23 @@ namespace lux::render
         ShaderCandidateSlot shader;
         GraphicsState graphics;
         ParameterBinding parameters;
+        ResourceProgramSource source;
     };
 
     class RasterProgramSelection
     {
     public:
         virtual ~RasterProgramSelection() noexcept = default;
-        // Borrowed during the selection callback. setPrograms takes ownership of the shader artifacts.
-        [[nodiscard]] virtual RenderResult<const rdesc::MaterialProgramSet*>
-        materialProgram(DrawStreamSlot, MaterialProgramId) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<MaterialProgramId> materialProgramId(DrawStreamSlot, MaterialId)
-            const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<MeshDescription> meshLayout(DrawStreamSlot, MeshId) const noexcept = 0;
+        // Only declared Resource inputs are visible during synchronous program selection.
+        template <class Storage>
+        [[nodiscard]] RenderResult<const Storage*>
+        readResource(DrawStreamSlot stream, ResourceInstanceId id) const noexcept
+        {
+            auto result = readResourceValue(stream, id, cxx::make_basic_type_info<Storage>());
+            if (!result) return cxx::unexpected(result.error());
+            return static_cast<const Storage*>(*result);
+        }
+
         // Select every program for this revision. The renderer owns the selected inputs across scheduler hops.
         [[nodiscard]] virtual RenderResult<void>
         setPrograms(
@@ -72,6 +77,8 @@ namespace lux::render
         }
 
     private:
+        [[nodiscard]] virtual RenderResult<const void*>
+        readResourceValue(DrawStreamSlot, ResourceInstanceId, cxx::basic_type_info) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<extension_detail::SelectedStorageSnapshot>
         readStorageValue(std::uint32_t, cxx::basic_type_info) const noexcept = 0;
     };

@@ -52,35 +52,6 @@ namespace lux::render::detail
             for (auto pass : producer.runtime_streams) entries.emplace_back(pass);
         }
 
-        RenderResult<const rdesc::MaterialProgramSet*>
-        materialProgram(DrawStreamSlot slot, MaterialProgramId id) noexcept override
-        {
-            const auto* owner = findOwner(slot);
-            if (!owner || !owner->materials)
-                return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            return owner->materials->programData(id);
-        }
-
-        RenderResult<MaterialProgramId> materialProgramId(DrawStreamSlot slot, MaterialId id) const noexcept override
-        {
-            const auto* owner = findOwner(slot);
-            if (!owner || !owner->materials)
-                return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            const auto program = owner->materials->programId(id);
-            if (program.isNull()) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
-            return program;
-        }
-
-        RenderResult<MeshDescription> meshLayout(DrawStreamSlot slot, MeshId id) const noexcept override
-        {
-            const auto* owner = findOwner(slot);
-            if (!owner || !owner->meshes)
-                return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            const auto* layout = owner->meshes->find(id);
-            if (!layout) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
-            return *layout;
-        }
-
         RenderResult<void> setPrograms(
             DrawStreamSlot slot, std::vector<rdesc::ShaderProgramArtifact> shaders,
             std::span<const RuntimeRasterProgram> programs
@@ -94,6 +65,15 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceCapacity});
             for (const auto& program : programs)
             {
+                if (program.source)
+                {
+                    const auto id = program.source.resource();
+                    if (!canRead(slot, id)) return cxx::unexpected(RenderError{kStorageMismatch, {slot.index}});
+                    if (instance_.snapshot_registry_->hasExclusiveCommand(id))
+                        return cxx::unexpected(RenderError{kDeviceBusy, {slot.index}});
+                    if (!program.source.available(*instance_.snapshot_registry_, *instance_.session_))
+                        return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
+                }
                 if (program.shader.index >= shaders.size())
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
             }
@@ -117,17 +97,38 @@ namespace lux::render::detail
         std::vector<Entry> entries;
 
     private:
+        bool canRead(DrawStreamSlot slot, ResourceInstanceId id) const noexcept
+        {
+            const bool declared = !id.isNull() && std::ranges::find(entries, slot.index, &Entry::pass) != entries.end();
+            if (!declared) return false;
+            if (slot.index < instance_.raster_owners_.size())
+            {
+                const auto& owners = instance_.raster_owners_[slot.index];
+                const bool stream_input = (owners.textures && owners.textures->id() == id) ||
+                    (owners.meshes && owners.meshes->id() == id) || (owners.materials && owners.materials->id() == id);
+                if (stream_input) return true;
+            }
+            return std::ranges::any_of(snapshots_, [&](auto index) noexcept
+            {
+                return instance_.storage_snapshots_[instance_.snapshot_sources_[index]].source.id == id;
+            });
+        }
+
+        RenderResult<const void*>
+        readResourceValue(DrawStreamSlot slot, ResourceInstanceId id, cxx::basic_type_info type) const noexcept override
+        {
+            if (!canRead(slot, id)) return cxx::unexpected(RenderError{kStorageMismatch, {slot.index}});
+            if (instance_.snapshot_registry_->hasExclusiveCommand(id))
+                return cxx::unexpected(RenderError{kDeviceBusy, {slot.index}});
+            const auto storage = instance_.snapshot_registry_->borrow(id, type);
+            if (!storage) return cxx::unexpected(storage.error());
+            return *storage;
+        }
+
         RenderResult<extension_detail::SelectedStorageSnapshot>
         readStorageValue(std::uint32_t slot, cxx::basic_type_info type) const noexcept override
         {
             return instance_.readStorageSnapshot(snapshots_, slot, type);
-        }
-
-        const RenderGraphInstance::RasterOwners* findOwner(DrawStreamSlot slot) const noexcept
-        {
-            if (slot.index >= instance_.raster_owners_.size()) return nullptr;
-            const auto entry = std::ranges::find(entries, slot.index, &Entry::pass);
-            return entry == entries.end() ? nullptr : &instance_.raster_owners_[slot.index];
         }
 
         const RenderGraphInstance& instance_;
@@ -584,7 +585,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceCapacity});
             stream.candidate->revision = previous ? previous->revision + 1 : 1;
             stream.candidate->programs.reserve(entry.programs->size());
-            stream.links.reserve(entry.programs->size());
+            stream.programs.reserve(entry.programs->size());
             for (const auto& program : *entry.programs)
             {
                 auto link = linkRasterStreamProgram(
@@ -592,7 +593,7 @@ namespace lux::render::detail
                                 entry.shaders[program.shader.index], program.graphics}
                 );
                 if (!link) return cxx::unexpected(link.error());
-                stream.links.push_back(std::move(*link));
+                stream.programs.push_back({std::move(*link), program.source});
             }
         }
         return {};

@@ -3,6 +3,7 @@
 
 #include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/material/ProgramSource.hpp>
 
 #include <exec/task.hpp>
 #include <memory>
@@ -33,7 +34,9 @@ namespace lux::render::detail
 
         struct ProgramSlot final
         {
+            explicit ProgramSlot(DeviceSession& device) noexcept : ready(device) {}
             MaterialProgramRecord record;
+            ResourceProgramUses ready;
             Table* table = nullptr;
             std::size_t instances = 0;
         };
@@ -71,8 +74,9 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<RasterRecord>
         selectRasterRecord(MaterialId, std::uint32_t frame, const rdesc::ShaderBlock& layout) const noexcept;
         [[nodiscard]] MaterialProgramId programId(MaterialId) const noexcept;
-        [[nodiscard]] RenderResult<const rdesc::MaterialProgramSet*>
-        programData(MaterialProgramId) const & noexcept;
+        [[nodiscard]] ResourceProgramUses* readyPrograms(MaterialProgramId) noexcept;
+        [[nodiscard]] RenderResult<SelectedMaterialProgram>
+        programInput(MaterialProgramId) const & noexcept;
         [[nodiscard]] RenderResult<void> release(MaterialId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 

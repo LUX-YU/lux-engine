@@ -164,7 +164,7 @@ Read the value during `selectRasterPrograms()` with `RasterProgramSelection::rea
 The renderer compares the producer and Storage revisions before compiling, after asynchronous preparation
 and before preparing a frame.
 Changes discard stale candidates and trigger another selection. Mesh producers can resolve a snapshot's
-`MaterialId` through the stream's named owner with `materialProgramId()`, then borrow its program artifact.
+`MaterialId` with the material domain's `readMaterialProgram()` during selection.
 
 For Mesh preparation, bind the scene's `InstanceResource` as a `MeshInstanceSnapshot` to read instance,
 mesh, material and submesh identities as well as render permission. The snapshot revision advances when membership,
@@ -271,11 +271,18 @@ Use `reusePrograms()` for a stream whose complete program keys and binding order
 can adopt their associated records in `settleRasterPrograms()` after the complete selection succeeds.
 A failed or obsolete selection leaves the previous set resident, and requests for a failed revision
 complete with the preparation error.
-Use `RasterProgramSelection::meshLayout()` for an owned copy of the selected mesh's vertex layout and
-`materialProgram()` for the selected material's immutable program set. Both lookups use the stream's
-named owners. The material pointer is borrowed for the synchronous selection callback. The device compile operation
-owns the shader bytes, binding ABI, vertex state and attachment contract across worker hops. Removing the last
-material instance permits unregistering its source program while an already selected pipeline is compiling.
+Use `readMeshLayout()` for an owned vertex layout. `readMaterialProgram()` accepts a material instance or code asset.
+The returned definition is borrowed during the selection callback. When a program derives from this asset, assign
+its returned `source` to the corresponding `RuntimeRasterProgram`. Each successful full native key then has an
+independent use owned by the material program until unregister. Restarted Jobs can reuse these variants with a zero
+idle-cache budget. Submitted draws retain their own uses until their accepted queue frontiers retire.
+
+A custom Resource can keep a `ResourceProgramUses` member in each immutable code item and supply a
+`ResourceProgramSource::from<Storage, &Storage::lookup>(item_id)` for it. The noexcept lookup returns the item's
+use set after validating its generational ID. The renderer resolves the registered storage and item again on the owner
+before publishing. An exclusive Resource command defers that publication until its return. A new code identity
+gets a new item generation. A default source gives the selection its ordinary
+Job lifetime. Device compilation owns its shader bytes and binding, vertex and attachment ABI across worker hops.
 Use `FramePreparation::rasterProgram()` to obtain a slot for a selection index during the current call.
 Slots carry the published program-set revision, so a producer must resolve them again after replacement.
 

@@ -76,7 +76,7 @@ namespace lux::render::detail
         std::uint64_t shader_id;
         std::uint32_t users;
         std::uint64_t last_acquired;
-        ProgramId id;
+        NativeProgramId id;
         SubmissionFrontiers last_uses;
     };
 
@@ -437,7 +437,7 @@ namespace lux::render::detail
         return layout.id;
     }
 
-    CompiledPrograms::Program& CompiledPrograms::resolve(ProgramId id) noexcept
+    CompiledPrograms::Program& CompiledPrograms::resolve(NativeProgramId id) noexcept
     {
         const auto bucket = program_index_.find(id.digest);
         if (bucket != program_index_.end())
@@ -450,9 +450,16 @@ namespace lux::render::detail
         std::terminate();
     }
 
+    void CompiledPrograms::retainLive(NativeProgramId id) noexcept
+    {
+        auto& program = resolve(id);
+        if (!program.users || program.users == UINT32_MAX) std::terminate();
+        ++program.users;
+    }
+
     void CompiledPrograms::releaseBindings(const NativeProgramBindings& bindings) noexcept
     {
-        std::vector<ProgramId> programs;
+        std::vector<NativeProgramId> programs;
         std::vector<LayoutId> layouts;
         for (const auto& slot : bindings.slots_)
         {
@@ -480,7 +487,9 @@ namespace lux::render::detail
     }
 
     void CompiledPrograms::release(
-        std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get, const SubmissionFrontiers& accepted
+        std::size_t count,
+        cxx::function_ref<NativeProgramId(std::size_t) noexcept> get,
+        const SubmissionFrontiers& accepted
     ) noexcept
     {
         if (!count) return;

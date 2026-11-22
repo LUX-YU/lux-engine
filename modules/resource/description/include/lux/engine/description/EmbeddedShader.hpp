@@ -26,7 +26,13 @@ namespace lux::rdesc
             {
                 return {};
             }
-            result.stages.push_back({stage, "main", {binary.words.begin(), binary.words.end()}});
+            // The bundle compiler serializes the selected entry's reflection alongside its target code.
+            const auto& entries = result.interface.entry_points;
+            const bool named_entry = entries.size() == 1 &&
+                entries.front().stage == stage && !entries.front().name.empty();
+            result.stages.push_back({
+                stage, named_entry ? entries.front().name : "main", {binary.words.begin(), binary.words.end()}
+            });
             return result;
         }
     };

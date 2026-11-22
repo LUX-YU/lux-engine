@@ -1,4 +1,5 @@
 #include "GraphFill.hpp"
+#include "RasterProgramFixture.hpp"
 #include "SceneCapture.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
@@ -551,6 +552,32 @@ namespace
         return context.publish(color, {{color, copied.written.front()}});
     }
 
+    RenderResult<void> buildResidentRaster(EffectBuildContext& context, std::string_view mode) noexcept
+    {
+        using namespace sdk_programs;
+        const auto type = ResourceName{CodeStorage::descriptor.type.name()};
+        const auto code = take(context.importStorageSnapshot<ItemId>("shader_code", {type}));
+        const auto alias = take(context.importStorageSnapshot<ItemId>("shader_alias", {type}));
+        auto& builder = context.builder();
+        auto image = take(builder.declareResource({"raster output", GraphImageDesc{width, height}}));
+        RasterPassTemplate stage;
+        stage.purpose = "installed programs";
+        stage.runtime_stream_programs = true;
+        RasterWork raster;
+        raster.program = std::move(stage);
+        raster.colors.push_back({{{image, 0}}});
+        auto draw = take(builder.addRasterPass("two programs", std::move(raster)));
+        auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
+            draw.pass, alias, context.shaderTarget(), mode == "stale-code"
+        }));
+        auto added = context.addPreparation({
+            ProducerFactory::make<ProgramDraws>(), std::move(configuration), {}, {}, {},
+            {draw.pass}, {}, {code, alias}, {alias}
+        });
+        if (!added) return added;
+        return context.publish(color, {{color, draw.written.front()}});
+    }
+
     RenderResult<void> buildCaptureRange(EffectBuildContext& context, std::string_view mode) noexcept
     {
         const std::uint64_t offset = mode == "upper" ? 8u : mode == "overlap" ? 4u : 0u;
@@ -622,17 +649,20 @@ namespace
             ));
             return context.publish(pixels, {{pixels, copy.written.front()}});
         }
-        if (!mode.empty()) return buildCaptureRange(context, mode);
+        const bool raster_only = mode == "raster-pixels";
+        if (!mode.empty() && !raster_only) return buildCaptureRange(context, mode);
         const auto input = context.inputs(color);
         CHECK(input.size() == 1 && input.front().size() == 1 && input.front().front().member == color);
+        const GraphBufferRange claim{0, raster_only ? readback_bytes : capture_bytes};
         const auto output = take(context.importFinalBuffer(
             "capture", {ResourceName{ComputeCaptureDescriptor::descriptor.type.name()}},
-            {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
+            {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, claim}
         ));
         const ImageCopyRegion region{0, 0, width, height};
         const auto copied = take(context.builder().addTransferPass("copy to readback", TransferWork{{
             CopyImageBuffer{{input.front().front().version}, {output}, row_pitch, readback_bytes, region}
         }}));
+        if (raster_only) return context.publish(pixels, {{pixels, copied.written.front()}});
         const auto mutable_input = take(context.importResource(
             "a_mutable", {ResourceName{MutableReplicaDescriptor::descriptor.type.name()}},
             {
@@ -749,10 +779,15 @@ namespace
                 if (!arguments.empty()) return lux::cxx::unexpected(RenderError{kInvalidConfig});
                 return context.initializeState<OutputState>();
             }
+            if constexpr (Build == buildResidentRaster)
+            {
+                if (arguments.empty() || arguments == "stale-code") return {};
+                return lux::cxx::unexpected(RenderError{kInvalidConfig});
+            }
             const bool known = arguments.empty() || arguments == "lower" || arguments == "upper" ||
                 arguments == "overlap" || arguments == "spill" || arguments == "unauthorized" ||
                 arguments == "publish-7" || arguments == "publish-11" ||
-                arguments == "consume-version" || arguments == "consume-word";
+                arguments == "consume-version" || arguments == "consume-word" || arguments == "raster-pixels";
             if (!known) return lux::cxx::unexpected(RenderError{kInvalidConfig});
             return {};
         };
@@ -768,6 +803,7 @@ int main(int argc, char** argv)
     CHECK(execution);
     RenderServerConfig config{"lux.render.sdk.compute_output", nativeValidationEnabled()};
     const auto mode = argc > 2 ? std::string_view{argv[2]} : std::string_view{};
+    const bool resident_programs = mode == "resident-programs";
     const bool receipts = mode == "receipts";
     const bool product_fault = mode == "receipt-partial" || mode == "receipt-unknown";
     config.frames_in_flight = receipts ? 2 : 1;
@@ -777,7 +813,17 @@ int main(int argc, char** argv)
     if (product_fault) options.graph_queue_costs = {100, 100, 100};
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, **execution));
-    registerNode<buildCompute>(*server, computeDefinition(), color);
+    if (resident_programs)
+    {
+        options.cached_unused_programs = 0;
+        take(server->registerResource<sdk_programs::CodeStorage>());
+        const std::array commands{
+            CommandBinding::declare<sdk_programs::ReleaseCode, &sdk_programs::CodeStorage::release>()
+        };
+        CHECK(server->registerCommands(commands));
+        registerNode<buildResidentRaster>(*server, computeDefinition(), color);
+    }
+    else registerNode<buildCompute>(*server, computeDefinition(), color);
     registerNode<buildCapture>(*server, captureDefinition(), pixels);
     take(server->registerResource<ComputeCapture>());
     take(server->registerResource<MutableReplica>());
@@ -801,7 +847,11 @@ int main(int argc, char** argv)
         CreateEffectRequest effect;
         effect.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*effect.graph};
-        const auto compute = take(edit.addNode(computeDefinition(), {std::string{compute_node}, 1}));
+        std::string source_mode;
+        if (mode == "stale-code") source_mode = std::exchange(mode, "raster-pixels");
+        const auto compute = take(edit.addNode(
+            computeDefinition(), {std::string{compute_node}, 1}, std::move(source_mode)
+        ));
         const auto capture = take(edit.addNode(captureDefinition(), {std::string{capture_node}, 1}, std::move(mode)));
         const auto color_pin = edit.pinId(compute, color);
         CHECK(edit.connect(color_pin, edit.pinId(capture, color)));
@@ -814,6 +864,87 @@ int main(int argc, char** argv)
     {
         return createPreparedEffect(*client, commands, session, capture_request(std::move(mode)));
     };
+    if (resident_programs)
+    {
+        const auto code = call<GetOrCreateResource>(*client, commands, {
+            session, DeviceScope{}, sdk_programs::CodeStorage::descriptor.type
+        }).resource_id;
+        JobBinding binding;
+        binding.resources = {
+            {"capture", readback}, {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT}
+        };
+        const auto invalid = create_capture("stale-code");
+        const auto stale = startRenderJob(*client, commands, session, scene, view, target, invalid, binding);
+        CHECK(call<RequestRenderJob>(*client, commands, {stale}, false).error.type == kStorageIdentity);
+        stopAndRemoveJob(*client, commands, stale);
+        const auto effect = create_capture("raster-pixels");
+        using Store = sdk_programs::CodeStorage;
+        using Gate = sdk_programs::EDriverGate;
+        const auto job = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
+        auto frames = ipc::IpcCore::instance().createRequester(config.channel_name);
+        auto mutations = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(frames && mutations);
+        const auto wait = [](auto predicate)
+        {
+            const auto deadline = Clock::now() + 10s;
+            while (!predicate())
+            {
+                CHECK(Clock::now() < deadline);
+                std::this_thread::yield();
+            }
+        };
+        Store::gate = Gate::ARMED;
+        auto requested = std::async(std::launch::async, [&]
+        {
+            return call<RequestRenderJob>(*frames, commands, {job});
+        });
+        wait([] { return Store::gate == Gate::HELD; });
+        auto holding = std::async(std::launch::async, [&]
+        {
+            return call<sdk_programs::HoldCode>(*mutations, commands, code);
+        });
+        wait([] { return Store::held.load(); });
+        Store::gate = Gate::OPEN;
+        Store::gate.notify_all();
+        wait([] { return Store::created.load() == 2; });
+        CHECK(requested.wait_for(20ms) == std::future_status::timeout);
+        call<sdk_programs::ReleaseCode>(*client, commands, {});
+        CHECK(!holding.get().error.type && !requested.get().error.type);
+        stopAndRemoveJob(*client, commands, job);
+        const auto restarted = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
+        renderFrame(*client, commands, restarted);
+        CHECK(Store::created.load() == 2);
+        stopAndRemoveJob(*client, commands, restarted);
+        call<RemoveView>(*client, commands, {scene, view});
+        server->stop();
+        worker.join();
+        CHECK(ran && server->stats().validation_errors == 0);
+        server.reset();
+        const auto& result = ComputeCapture::results[0];
+        CHECK(result.ready && result.frames.size() == 1);
+        const auto& bytes = result.frames.front();
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const auto pixel = y * row_pitch + x * 4;
+                const std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
+                const std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
+                const auto& expected = x < width / 2 ? red : green;
+                if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
+                {
+                    std::fprintf(stderr, "Raster pixel (%u,%u) = %u %u %u %u\n", x, y,
+                        std::to_integer<unsigned>(bytes[pixel]), std::to_integer<unsigned>(bytes[pixel + 1]),
+                        std::to_integer<unsigned>(bytes[pixel + 2]), std::to_integer<unsigned>(bytes[pixel + 3]));
+                    CHECK(false);
+                }
+            }
+        }
+        std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, "
+                  "two PSOs across two Jobs, 2048 RGBA pixels");
+        return 0;
+    }
     if (receipts || product_fault)
     {
         const auto product = call<GetOrCreateResource>(

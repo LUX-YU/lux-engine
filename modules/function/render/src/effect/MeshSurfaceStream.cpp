@@ -3,6 +3,8 @@
 #include <lux/engine/render/features/mesh/MeshGrouping.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/mesh/RasterMesh.hpp>
+#include <lux/engine/render/resource/material/ProgramSource.hpp>
+#include <lux/engine/render/resource/mesh/MeshLayout.hpp>
 #include <NRI.h>
 #include <algorithm>
 #include <tuple>
@@ -76,6 +78,7 @@ namespace lux::render::detail
         struct MaterialShaders final
         {
             const rdesc::MaterialProgramSet* program = nullptr;
+            ResourceProgramSource source;
             std::array<ShaderCandidateSlot, kMeshWindingCount> shaders;
             bool reads_material = false;
         };
@@ -111,9 +114,10 @@ namespace lux::render::detail
                 auto& shaders = material->second;
                 if (new_material)
                 {
-                    auto program = selection.materialProgram(inputs_.stream, instance.program);
+                    auto program = readMaterialProgram(selection, inputs_.stream, instance.program);
                     if (!program) return cxx::unexpected(program.error());
-                    shaders.program = *program;
+                    shaders.program = &program->definition;
+                    shaders.source = program->source;
                     if (artifacts.size() > kGraphInvalidIndex - kMeshWindingCount)
                         return cxx::unexpected(RenderError{kDeviceCapacity});
                     for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
@@ -136,7 +140,7 @@ namespace lux::render::detail
                 const auto [mesh, new_mesh] = geometry.try_emplace(instance.mesh);
                 if (new_mesh)
                 {
-                    auto selected = selection.meshLayout(inputs_.stream, instance.mesh);
+                    auto selected = readMeshLayout(selection, inputs_.stream, instance.mesh);
                     if (!selected) return cxx::unexpected(selected.error());
                     mesh->second = std::move(*selected);
                 }
@@ -159,6 +163,7 @@ namespace lux::render::detail
                         if (!state) return cxx::unexpected(state.error());
                         auto& program = candidates.emplace_back(shader, std::move(*state), ParameterBinding{});
                         program.parameters.setInlineConstant(VisibilityViewConstants{});
+                        program.source = shaders.source;
                     }
                 }
                 group->second = {use->second, shaders.reads_material};

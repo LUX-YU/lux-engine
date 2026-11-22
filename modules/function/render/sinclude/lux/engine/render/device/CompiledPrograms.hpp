@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NRI.h>
+#include <lux/engine/render/device/NativeProgramId.hpp>
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/cxx/core/function_ref.hpp>
@@ -14,6 +15,7 @@
 #include <vector>
 
 namespace lux::rdesc { struct ShaderProgramArtifact; }
+namespace lux::render { class ResourceProgramUses; }
 
 namespace lux::render::detail
 {
@@ -31,15 +33,6 @@ namespace lux::render::detail
     {
     public:
         struct Layout;
-
-        struct ProgramId final
-        {
-            std::size_t digest = 0;
-            std::uint64_t publication = 0;
-
-            [[nodiscard]] explicit operator bool() const noexcept { return publication != 0; }
-            [[nodiscard]] bool operator==(const ProgramId&) const noexcept = default;
-        };
 
         enum class LayoutId : std::uint64_t { INVALID };
 
@@ -61,7 +54,7 @@ namespace lux::render::detail
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
         void release(
             std::size_t count,
-            cxx::function_ref<ProgramId(std::size_t) noexcept> get,
+            cxx::function_ref<NativeProgramId(std::size_t) noexcept> get,
             const SubmissionFrontiers& accepted
         ) noexcept;
 
@@ -88,12 +81,14 @@ namespace lux::render::detail
         void releaseShader(Shader&) noexcept;
         [[nodiscard]] Lookup lookup(Shader&, Layout&, const RasterProgramKey*) noexcept;
 
+        friend class lux::render::ResourceProgramUses;
+        void retainLive(NativeProgramId) noexcept;
         friend class NativeProgramBindings;
         void releaseBindings(const NativeProgramBindings&) noexcept;
 
         [[nodiscard]] Program* find(const RasterProgramKey*, const Lookup&, std::uint64_t after) noexcept;
         [[nodiscard]] Program* publish(RasterProgramKey*, const Lookup&, nri::Pipeline*) noexcept;
-        [[nodiscard]] Program& resolve(ProgramId) noexcept;
+        [[nodiscard]] Program& resolve(NativeProgramId) noexcept;
         void dropLayout(Layout&) noexcept;
         void dropLayout(LayoutId) noexcept;
         void trim() noexcept;

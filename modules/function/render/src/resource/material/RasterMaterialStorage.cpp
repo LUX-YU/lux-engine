@@ -1,3 +1,5 @@
+#include <lux/engine/render/resource/material/ProgramSource.hpp>
+#include <lux/engine/render/extensions/execution/RasterStream.hpp>
 #include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
@@ -229,7 +231,7 @@ namespace lux::render::detail
             if (!resolved) return cxx::unexpected(resolved.error());
             table = *resolved;
         }
-        const auto key = programs_.emplace();
+        const auto key = programs_.emplace(session_);
         const auto id = extension_detail::ResourceIdentity::make<MaterialProgramId>(id_, key);
         auto* slot = programs_.find(key);
         slot->record = {id, std::move(program)};
@@ -784,12 +786,21 @@ namespace lux::render::detail
         };
     }
 
-    RenderResult<const rdesc::MaterialProgramSet*>
-    RasterMaterialStorage::programData(MaterialProgramId id) const & noexcept
+    ResourceProgramUses* RasterMaterialStorage::readyPrograms(MaterialProgramId id) noexcept
+    {
+        auto* slot = findProgram(id);
+        return slot ? &slot->ready : nullptr;
+    }
+
+    RenderResult<SelectedMaterialProgram>
+    RasterMaterialStorage::programInput(MaterialProgramId id) const & noexcept
     {
         const auto* program = findProgram(id);
         if (!program) return cxx::unexpected(RenderError{kStorageIdentity});
-        return &program->record.data;
+        return SelectedMaterialProgram{
+            program->record.data,
+            ResourceProgramSource::from<RasterMaterialStorage, &RasterMaterialStorage::readyPrograms>(id)
+        };
     }
 
     const RasterMaterialStorage::ProgramSlot* RasterMaterialStorage::findProgram(MaterialProgramId id) const noexcept
@@ -947,3 +958,26 @@ namespace lux::render::detail
         );
     }
 } // namespace lux::render::detail
+
+namespace lux::render
+{
+    RenderResult<SelectedMaterialProgram>
+    readMaterialProgram(const RasterProgramSelection& selection, DrawStreamSlot slot, MaterialProgramId id) noexcept
+    {
+        using Storage = detail::RasterMaterialStorage;
+        auto storage = selection.readResource<Storage>(slot, extension_detail::ResourceIdentity::parent(id));
+        if (!storage) return cxx::unexpected(storage.error());
+        return (*storage)->programInput(id);
+    }
+
+    RenderResult<SelectedMaterialProgram>
+    readMaterialProgram(const RasterProgramSelection& selection, DrawStreamSlot slot, MaterialId id) noexcept
+    {
+        const auto resource = extension_detail::ResourceIdentity::parent(id);
+        auto storage = selection.readResource<detail::RasterMaterialStorage>(slot, resource);
+        if (!storage) return cxx::unexpected(storage.error());
+        const auto program = (*storage)->programId(id);
+        if (program.isNull()) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
+        return (*storage)->programInput(program);
+    }
+} // namespace lux::render

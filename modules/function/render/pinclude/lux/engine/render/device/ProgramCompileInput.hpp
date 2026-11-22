@@ -18,7 +18,7 @@ namespace lux::render::detail
 
     struct PreparedProgram final
     {
-        CompiledPrograms::ProgramId id;
+        NativeProgramId id;
         nri::Pipeline* pipeline;
         PassBindings bindings;
     };

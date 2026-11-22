@@ -1,3 +1,5 @@
+#include <lux/engine/render/resource/mesh/MeshLayout.hpp>
+#include <lux/engine/render/extensions/execution/RasterStream.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -329,3 +331,17 @@ namespace lux::render::detail
         );
     }
 } // namespace lux::render::detail
+
+namespace lux::render
+{
+    RenderResult<MeshDescription>
+    readMeshLayout(const RasterProgramSelection& selection, DrawStreamSlot slot, MeshId id) noexcept
+    {
+        const auto resource = extension_detail::ResourceIdentity::parent(id);
+        auto storage = selection.readResource<detail::IndexedTriangleMeshStorage>(slot, resource);
+        if (!storage) return cxx::unexpected(storage.error());
+        const auto* layout = (*storage)->find(id);
+        if (!layout) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
+        return *layout;
+    }
+} // namespace lux::render

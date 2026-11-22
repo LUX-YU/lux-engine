@@ -222,7 +222,7 @@ namespace lux::render
     void RenderServer::Impl::startProgramPreparation(detail::DeviceEntry& entry, JobExecution& execution) noexcept
     {
         entry.program_update = std::make_unique<detail::RasterProgramUpdate>(
-            entry.session(), execution.binding_identity
+            entry.session(), runtime_->resources_, execution.binding_identity
         );
         auto& update = *entry.program_update;
         execution.failed_program = {};
@@ -237,7 +237,7 @@ namespace lux::render
         }
         const bool needs_native = std::ranges::any_of(update.streams, [](const auto& stream) noexcept
         {
-            return !stream.links.empty();
+            return !stream.programs.empty();
         });
         if (!needs_native)
         {
@@ -277,11 +277,13 @@ namespace lux::render
         const bool installed = job && job->execution && job->execution->device == entry.id &&
             job->execution->binding_identity == op->binding;
         auto* execution = installed ? job->execution.get() : nullptr;
-        const bool current = installed && job->control.running() &&
-            execution->instance.matchesProgramRevisions(op->revisions);
-        if (!current || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
-        if (!op->returned) return false;
+        const bool running = installed && job->control.running();
+        const bool can_read_inputs = running && resourcesAvailable(execution->retainedResources());
+        const bool stale = can_read_inputs && !execution->instance.matchesProgramRevisions(op->revisions);
+        if (!running || stale || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
+        if (!op->returned || !op->publishReturnedUses()) return false;
         const bool discarded = op->stop.stop_requested();
+        if (!discarded && !can_read_inputs) return false;
         if (execution && executionTargetsResizing(*execution)) return false;
         if (execution)
         {

@@ -1,3 +1,5 @@
+#include <lux/engine/render/resource/material/ProgramSource.hpp>
+#include <lux/engine/render/resource/mesh/MeshLayout.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "NativeDevice.hpp"
 #include "SceneCapture.hpp"
@@ -1065,6 +1067,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             original_submit = core.QueueSubmit;
             original_idle = core.QueueWaitIdle;
             original_pipeline = core.CreateGraphicsPipeline;
+            original_destroy_pipeline = core.DestroyPipeline;
             original_create_pool = core.CreateDescriptorPool;
             original_allocate_sets = core.AllocateDescriptorSets;
             original_set_descriptor_set = core.CmdSetDescriptorSet;
@@ -1169,9 +1172,18 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                                              nri::Pipeline*& pipeline) noexcept
             {
                 auto expected = EPipelineGate::ARMED;
-                if (pipeline_gate.compare_exchange_strong(expected, EPipelineGate::HELD))
-                    pipeline_gate.wait(EPipelineGate::HELD);
-                return original_pipeline(device, desc, pipeline);
+                const bool held = pipeline_gate.compare_exchange_strong(expected, EPipelineGate::HELD);
+                if (held) pipeline_gate.wait(EPipelineGate::HELD);
+                const auto result = original_pipeline(device, desc, pipeline);
+                if (held && result == nri::Result::SUCCESS) held_pipeline.store(pipeline);
+                return result;
+            };
+            core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
+            {
+                auto* expected = pipeline;
+                if (pipeline && held_pipeline.compare_exchange_strong(expected, nullptr))
+                    held_pipeline_destroyed.store(true);
+                original_destroy_pipeline(pipeline);
             };
             core.CreateDescriptorPool = [](
                 nri::Device& device, const nri::DescriptorPoolDesc& desc, nri::DescriptorPool*& pool
@@ -1249,6 +1261,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static inline std::atomic_uint reject_submission_countdown{};
         static inline std::atomic<EFault> fault{EFault::NONE};
         static inline std::atomic pipeline_gate{EPipelineGate::OPEN};
+        static inline std::atomic_bool held_pipeline_destroyed{};
         static inline std::atomic submission_gate{EPipelineGate::OPEN};
         static inline std::atomic_bool upload_held{}, release_upload{};
         static inline std::atomic_bool suffix_rejected{}, unknown_retired{};
@@ -1284,6 +1297,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static inline decltype(nri::CoreInterface::QueueSubmit) original_submit{};
         static inline decltype(nri::CoreInterface::QueueWaitIdle) original_idle{};
         static inline decltype(nri::CoreInterface::CreateGraphicsPipeline) original_pipeline{};
+        static inline decltype(nri::CoreInterface::DestroyPipeline) original_destroy_pipeline{};
+        static inline std::atomic<nri::Pipeline*> held_pipeline{};
         static inline decltype(nri::CoreInterface::CreateDescriptorPool) original_create_pool{};
         static inline decltype(nri::CoreInterface::DestroyDescriptorPool) original_destroy_pool{};
         static inline decltype(nri::CoreInterface::AllocateDescriptorSets) original_allocate_sets{};
@@ -3709,9 +3724,10 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             std::vector<rdesc::ShaderProgramArtifact> shaders;
             if (linked.materials)
             {
-                auto selected = selection.materialProgram(linked.stream, selected_material_program);
+                auto selected = readMaterialProgram(selection, linked.stream, selected_material_program);
                 if (!selected) return lux::cxx::unexpected(selected.error());
-                const auto* shader = (*selected)->find(rdesc::EMaterialPurpose::FORWARD);
+                program.source = selected->source;
+                const auto* shader = selected->definition.find(rdesc::EMaterialPurpose::FORWARD);
                 CHECK(shader);
                 shaders.push_back(prependStreamVertex(shader->shader, kEffectStreamVertex));
                 program.parameters.setInlineConstant(rdesc::MaterialGpuReference{});
@@ -3834,6 +3850,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     const auto commands = queryCommands(*client);
     DeviceOptions options;
     options.texture_descriptors = true;
+    if (use_materials) options.cached_unused_programs = 0;
     UniformUploadProbe::watch_texture_pool = !use_materials && !d3d12 && !upload_fault;
     options.descriptor_initial_counts[0] = UniformUploadProbe::watch_texture_pool ? 1 : 2;
     options.multiple_queues = upload_fault;
@@ -3911,7 +3928,8 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         textures[i] = call<TextureCommands::Upload>(*client, commands, {owner, {info, colors[i]}}).texture;
 
     ResourceInstanceId material_owner;
-    MaterialProgramId material_program;
+    MaterialProgramId material_program, replacement_program;
+    rdesc::MaterialProgramSet replacement_code;
     std::uint32_t material_bytes = 0;
     if (use_materials)
     {
@@ -3942,6 +3960,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         }
         CHECK(!registered.error.type);
         material_program = registered.program;
+        replacement_code = program;
         selected_material_program = call<MaterialCommands::RegisterProgram>(*client, commands, {
             material_owner, std::move(program)
         }).program;
@@ -4013,9 +4032,15 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         const auto removed = call<MaterialCommands::UnregisterProgram>(
             *client, commands, {selected_material_program}, false
         );
+        CHECK(in_use.error.type == kDeviceBusy && !removed.error.type);
+        replacement_program = call<MaterialCommands::RegisterProgram>(*client, commands, {
+            material_owner, std::move(replacement_code)
+        }).program;
+        using Identity = extension_detail::ResourceIdentity;
+        CHECK(Identity::local(replacement_program).index == Identity::local(selected_material_program).index);
+        CHECK(replacement_program != selected_material_program);
         UniformUploadProbe::pipeline_gate = Gate::OPEN;
         UniformUploadProbe::pipeline_gate.notify_all();
-        CHECK(in_use.error.type == kDeviceBusy && !removed.error.type);
     }
     while (UniformUploadProbe::submission_gate != Gate::HELD)
     {
@@ -4121,6 +4146,14 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     call<RemoveView>(*client, commands, {scene, view});
     if (use_materials)
     {
+        const auto retirement_deadline = Clock::now() + 10s;
+        while (!UniformUploadProbe::held_pipeline_destroyed.load())
+        {
+            CHECK(Clock::now() < retirement_deadline);
+            std::this_thread::yield();
+        }
+        std::puts("MATERIAL GENERATION PASS: old PSO retired with replacement asset still registered");
+        call<MaterialCommands::UnregisterProgram>(*client, commands, {replacement_program});
         for (auto material : materials) call<MaterialCommands::ReleaseInstance>(*client, commands, {material});
         call<MaterialCommands::UnregisterProgram>(*client, commands, {material_program});
     }
@@ -4214,13 +4247,11 @@ static void meshRasterStream(bool d3d12)
             const auto& instances = snapshot->value.get().instances;
             CHECK(instances.size() == 1);
             const auto& selected = instances.front();
-            auto layout = selection.meshLayout(linked.stream, selected.mesh);
+            auto layout = readMeshLayout(selection, linked.stream, selected.mesh);
             if (!layout) return lux::cxx::unexpected(layout.error());
-            const auto material = selection.materialProgramId(linked.stream, selected.material);
-            if (!material) return lux::cxx::unexpected(material.error());
-            const auto material_program = selection.materialProgram(linked.stream, *material);
+            const auto material_program = readMaterialProgram(selection, linked.stream, selected.material);
             if (!material_program) return lux::cxx::unexpected(material_program.error());
-            const auto* fragment = (*material_program)->find(rdesc::EMaterialPurpose::FORWARD);
+            const auto* fragment = material_program->definition.find(rdesc::EMaterialPurpose::FORWARD);
             CHECK(fragment);
             const auto& position = layout->attributes.front();
             GraphicsState graphics;
@@ -4231,8 +4262,8 @@ static void meshRasterStream(bool d3d12)
             std::vector<rdesc::ShaderProgramArtifact> shaders;
             shaders.push_back(prependStreamVertex(fragment->shader, kEffectStreamMesh));
             std::array programs{
-                RuntimeRasterProgram{{0}, graphics, parameters},
-                RuntimeRasterProgram{{0}, graphics, parameters}
+                RuntimeRasterProgram{{0}, graphics, parameters, material_program->source},
+                RuntimeRasterProgram{{0}, graphics, parameters, material_program->source}
             };
             programs.back().graphics.vertex_attributes.front().offset += sizeof(float);
             workspace.program_selection_revision = snapshot->revision;

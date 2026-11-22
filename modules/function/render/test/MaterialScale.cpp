@@ -159,6 +159,18 @@ namespace
         static inline std::atomic<std::uint64_t> pipeline_calls = 0, created_pipelines = 0, destroyed_pipelines = 0;
         static inline std::atomic<bool> fail_pipeline = false;
 
+        static void trackCreations(bool enabled)
+        {
+            const std::lock_guard lock(commands_mutex_);
+            track_creations_ = enabled;
+        }
+
+        static std::size_t trackedPipelines()
+        {
+            const std::lock_guard lock(commands_mutex_);
+            return tracked_.size();
+        }
+
         static void waitForDriver() noexcept
         {
             const auto deadline = Clock::now() + 15s;
@@ -191,12 +203,22 @@ namespace
                 }
                 if (fail_pipeline.exchange(false)) return nri::Result::OUT_OF_MEMORY;
                 const auto result = original_.CreateGraphicsPipeline(device, description, pipeline);
-                if (result == nri::Result::SUCCESS) ++created_pipelines;
+                if (result == nri::Result::SUCCESS)
+                {
+                    ++created_pipelines;
+                    const std::lock_guard lock(commands_mutex_);
+                    if (track_creations_) tracked_.insert(pipeline);
+                }
                 return result;
             };
             core_.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
             {
-                if (pipeline) ++destroyed_pipelines;
+                if (pipeline)
+                {
+                    ++destroyed_pipelines;
+                    const std::lock_guard lock(commands_mutex_);
+                    tracked_.erase(pipeline);
+                }
                 original_.DestroyPipeline(pipeline);
             };
             core_.BeginCommandBuffer = [](nri::CommandBuffer& command, const nri::DescriptorPool* pool) noexcept
@@ -259,6 +281,8 @@ namespace
     private:
         static inline nri::CoreInterface original_{};
         static inline std::mutex commands_mutex_;
+        static inline bool track_creations_ = false;
+        static inline std::set<nri::Pipeline*> tracked_;
         static inline std::set<const nri::CommandBuffer*> raster_commands_;
         nri::CoreInterface& core_;
     };
@@ -680,7 +704,10 @@ namespace
     {
         PurposeCapture gbuffer{scene, EMaterialPurpose::GBUFFER};
         PurposeCapture shadow{scene, EMaterialPurpose::SHADOW};
+        PipelineIsolationProbe::trackCreations(true);
         gbuffer.renderReplicas();
+        PipelineIsolationProbe::trackCreations(false);
+        CHECK(PipelineIsolationProbe::trackedPipelines() == 2);
         shadow.renderReplicas();
         const auto source = call<GetOrCreateResource>(
             scene.ipc, scene.commands, {scene.session, DeviceScope{}, kMaterialResourceName}
@@ -714,11 +741,12 @@ namespace
         std::printf("PURPOSE FAILURE PASS: ready Shadow depth=%g, restored GBuffer red=%u, parameter PSOs=0, extra PSOs=0\n",
             depth, std::to_integer<unsigned>(color[0]));
 
+        CHECK(PipelineIsolationProbe::trackedPipelines() == 2);
         PurposeCapture restarted{scene, EMaterialPurpose::GBUFFER};
         const auto before_restart_draw = PipelineIsolationProbe::pipeline_calls.load();
         restarted.renderReplicas();
         const auto restart_calls = PipelineIsolationProbe::pipeline_calls.load() - before_restart_draw;
-        CHECK(restarted.finish() == color);
+        CHECK(restart_calls == 0 && restarted.finish() == color);
         std::printf("MATERIAL READY RESIDENCY idle_cache=0 first_draw_after_restart_psos=%llu\n",
             static_cast<unsigned long long>(restart_calls));
     }
@@ -780,7 +808,9 @@ namespace
         constexpr std::array purposes{EMaterialPurpose::FORWARD, EMaterialPurpose::GBUFFER, EMaterialPurpose::SHADOW};
         auto program = cookProgram(compiler, target, purposes, 1, .125F);
         CHECK(program.programs.size() == purposes.size());
-        const auto registered = registerMaterialProgram(ipc, commands, materials, std::move(program));
+        const auto registered = registerMaterialProgram(ipc, commands, materials, program);
+        const auto equal_code = registerMaterialProgram(ipc, commands, materials, std::move(program));
+        CHECK(equal_code != registered);
         const auto material = createMaterialInstance(ipc, commands, registered, {{1, 0, 0, 0}}, {textures[0]});
         const auto transform_storage = sceneTransformStorage(ipc, commands, session, scene);
         MeshInstanceData input{mesh, material};
@@ -851,10 +881,35 @@ namespace
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {sibling});
         call<TransformCommands::Release>(ipc, commands, input.transform_id);
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {other});
-        call<InstanceCommands::ReleaseInstance>(ipc, commands, {instance});
-        call<TransformCommands::Release>(ipc, commands, original_transform);
+        const auto twin = createMaterialInstance(ipc, commands, equal_code, {{1, 0, 0, 0}}, {textures[0]});
+        MeshInstanceData same_mesh{mesh, twin};
+        same_mesh.transform_id = original_transform;
+        same_mesh.render_enabled = true;
+        const MeshInstanceUpdate use_twin{instance, same_mesh};
+        call<InstanceCommands::Update>(ipc, commands, {instances, {&use_twin, 1}});
+        const auto reuse = [&]
+        {
+            PurposeCapture capture{{ipc, commands, session, scene}, EMaterialPurpose::GBUFFER};
+            const auto before = PipelineIsolationProbe::pipeline_calls.load();
+            capture.renderReplicas();
+            CHECK(PipelineIsolationProbe::pipeline_calls.load() == before);
+            CHECK(capture.finish() == gbuffer.center && PipelineIsolationProbe::trackedPipelines() == 2);
+        };
+        reuse();
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {material});
         call<MaterialCommands::UnregisterProgram>(ipc, commands, {registered});
+        reuse();
+        call<InstanceCommands::ReleaseInstance>(ipc, commands, {instance});
+        call<TransformCommands::Release>(ipc, commands, original_transform);
+        call<MaterialCommands::ReleaseInstance>(ipc, commands, {twin});
+        call<MaterialCommands::UnregisterProgram>(ipc, commands, {equal_code});
+        const auto retired = Clock::now() + 10s;
+        while (PipelineIsolationProbe::trackedPipelines())
+        {
+            CHECK(Clock::now() < retired);
+            std::this_thread::yield();
+        }
+        std::puts("MATERIAL READY RETIREMENT shared_assets=2 survived_first_unregister=2 destroyed_after_last_unregister=2");
         std::printf(
             "MATERIAL_PURPOSES forward_red=%u gbuffer_red=%u shadow_depth=0.5 masked_depth=1 shadow_image_ranges=%llu "
             "group_image_ranges=%llu switched_image_ranges=%llu\n",

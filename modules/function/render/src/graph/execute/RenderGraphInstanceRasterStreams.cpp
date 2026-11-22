@@ -1,3 +1,4 @@
+#include <lux/engine/render/resources/mesh/Data.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>

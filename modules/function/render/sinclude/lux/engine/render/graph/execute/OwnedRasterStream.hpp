@@ -4,6 +4,7 @@
 #include <vector>
 
 namespace nri { struct Buffer; struct Texture; }
+namespace lux::render { struct MeshDescription; }
 
 namespace lux::render::detail
 {

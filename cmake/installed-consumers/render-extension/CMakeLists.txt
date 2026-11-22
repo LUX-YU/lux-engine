@@ -51,7 +51,26 @@ add_custom_command(
     VERBATIM
 )
 
-add_executable(compute_output ComputeOutput.cpp "${compute_header}")
+set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/ResidentRaster.slang")
+foreach(entry IN ITEMS Fullscreen Red Green)
+    set(stage fragment)
+    if(entry STREQUAL "Fullscreen")
+        set(stage vertex)
+    endif()
+
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/Sdk${entry}.hpp")
+    add_custom_command(
+        OUTPUT "${header}"
+        COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${raster_source}" "${entry}" ${stage} bundle "${header}"
+            "--symbol=kSdk${entry}"
+        DEPENDS "${raster_source}" "${LUX_PROBE_SHADER_COMPILER}"
+        VERBATIM
+    )
+
+    list(APPEND raster_headers "${header}")
+endforeach()
+
+add_executable(compute_output ComputeOutput.cpp "${compute_header}" ${raster_headers})
 
 set(image_read_shader "${CMAKE_CURRENT_SOURCE_DIR}/SharedImageRead.slang")
 set(image_read_header "${CMAKE_CURRENT_BINARY_DIR}/SharedImageRead.hpp")
@@ -85,6 +104,13 @@ if(MSVC)
 endif()
 
 add_test(NAME installed.render.compute_output_vulkan COMMAND compute_output)
+add_test(NAME installed.render.program_source_vulkan COMMAND compute_output vulkan resident-programs)
+set_tests_properties(installed.render.program_source_vulkan PROPERTIES TIMEOUT 45)
+
+if(WIN32)
+    add_test(NAME installed.render.program_source_d3d12 COMMAND compute_output d3d12 resident-programs)
+    set_tests_properties(installed.render.program_source_d3d12 PROPERTIES TIMEOUT 45)
+endif()
 
 set(receipt_backends vulkan)
 
@@ -125,7 +151,9 @@ foreach(header IN ITEMS
     extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
     extensions/execution/ProducerFactory extensions/execution/LinkedProducer extensions/execution/RasterStream
     extensions/execution/PreparedCpuValue extensions/execution/ResourceInput
-    extensions/resource/ReplicaMutation extensions/resource/ResourceCreateContext
+    device/NativeProgramId resource/material/ProgramSource resource/mesh/MeshLayout
+    extensions/resource/ResourceProgramUses extensions/resource/ReplicaMutation
+    extensions/resource/ResourceCreateContext
     extensions/resource/ResourceRegistry extensions/resource/StorageBinding extensions/upload/ResourceUploader
 )
     get_filename_component(name "${header}" NAME)

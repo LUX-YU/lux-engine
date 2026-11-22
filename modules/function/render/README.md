@@ -1288,8 +1288,20 @@ From the repository root, run the source signature check with Python and the pin
 ```sh
 python -m pip install tree-sitter==0.26.1 tree-sitter-cpp==0.23.4
 python modules/function/render/test/CheckSignatureArity.py --base <commit-before-change>
+python modules/function/render/test/CheckSignatureArity.py --base <construction-baseline> --revision <candidate>
+python modules/function/render/test/CheckSignatureArity.py --full --revision <candidate> --manifest <file_actions.json> --report <evidence.json>
+python modules/function/render/test/test_check_signature_arity.py
 ```
 
-The check compares tracked changes and new source files with the supplied commit. It scans source-spelled
-parameter lists, including constructors, lambdas and function pointer types. Compile template and macro consumers
-in the modules and installed SDK builds as well. The default base is HEAD for local uncommitted changes.
+Diff mode compares tracked changes and untracked source files to the base (HEAD by default). Use the actual parent
+for an incremental gate and the fixed construction baseline for a cumulative gate. Passing a revision reads the
+candidate's Git blobs. Full mode examines all scoped sources, including existing declarations, definitions,
+constructors, lambdas and function types. Pass the construction manifest to all three runs to include the named
+consumers and planned paths. Additional repository paths can be selected with repeated `--include-path` arguments.
+
+The report counts source occurrences. Separate declarations and definitions each count. In diff mode an identical
+occurrence at the same path offsets one old occurrence; adding a duplicate, renaming a parameter, or moving a
+nonconforming declaration to a new path requires review. Exit 1 reports over-limit signatures. Exit 2 reports
+incomplete coverage, including parser errors or missing tokens, even when some violations could also be counted.
+Review macro-generated and instantiated interfaces against the compiler or independent source evidence. Keep the
+parser versions, actual file list, unresolved locations and findings from the JSON report with the build evidence.

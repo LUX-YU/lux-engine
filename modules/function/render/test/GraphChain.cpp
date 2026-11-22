@@ -1,6 +1,7 @@
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include "NativeDevice.hpp"
 #include "BufferReadback.hpp"
 #include "AliasHandoffProbe.hpp"
@@ -3370,11 +3371,83 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     CHECK(session->drain());
 }
 
+enum class EAllocationFault { SECOND_ALLOCATION, PARTIAL_TEXTURE_BIND };
+
+class PhysicalAllocationFault final
+{
+public:
+    PhysicalAllocationFault(DeviceSession& session, EAllocationFault fault)
+        : core_(const_cast<nri::CoreInterface&>(session.nriCore())), original_(core_), fault_(fault)
+    {
+        current_ = this;
+        core_.AllocateMemory = allocate;
+        core_.FreeMemory = release;
+        core_.BindTextureMemory = bindTextures;
+    }
+
+    ~PhysicalAllocationFault()
+    {
+        core_.BindTextureMemory = original_.BindTextureMemory;
+        core_.FreeMemory = original_.FreeMemory;
+        core_.AllocateMemory = original_.AllocateMemory;
+        current_ = nullptr;
+        CHECK(injected_ && allocated_ > 0 && outstanding_.empty());
+        std::printf("Physical allocation rollback: %s, released %u candidate allocations\n",
+            fault_ == EAllocationFault::SECOND_ALLOCATION ? "second allocation" : "partial texture bind", allocated_
+        );
+    }
+
+private:
+    static nri::Result NRI_CALL allocate(nri::Device& device, const nri::AllocateMemoryDesc& desc, nri::Memory*& memory)
+    {
+        auto& self = *current_;
+        if (self.fault_ == EAllocationFault::SECOND_ALLOCATION && self.allocated_ == 1)
+        {
+            self.injected_ = true;
+            return nri::Result::OUT_OF_MEMORY;
+        }
+        const auto result = self.original_.AllocateMemory(device, desc, memory);
+        if (result == nri::Result::SUCCESS)
+        {
+            ++self.allocated_;
+            self.outstanding_.push_back(memory);
+        }
+        return result;
+    }
+
+    static void NRI_CALL release(nri::Memory* memory)
+    {
+        auto& self = *current_;
+        const auto removed = std::erase(self.outstanding_, memory);
+        CHECK(removed == 1);
+        self.original_.FreeMemory(memory);
+    }
+
+    static nri::Result NRI_CALL bindTextures(const nri::BindTextureMemoryDesc* bindings, std::uint32_t count)
+    {
+        auto& self = *current_;
+        CHECK(count > 1 && self.fault_ == EAllocationFault::PARTIAL_TEXTURE_BIND);
+        CHECK(self.original_.BindTextureMemory(bindings, 1) == nri::Result::SUCCESS);
+        self.injected_ = true;
+        return nri::Result::OUT_OF_MEMORY;
+    }
+
+    inline static PhysicalAllocationFault* current_ = nullptr;
+    nri::CoreInterface& core_;
+    nri::CoreInterface original_;
+    EAllocationFault fault_;
+    std::vector<nri::Memory*> outstanding_;
+    std::uint32_t allocated_ = 0;
+    bool injected_ = false;
+};
+
 struct DedicatedResizeRequirement final
 {
     inline static decltype(nri::CoreInterface::GetTextureMemoryDesc) original = nullptr;
     inline static decltype(nri::CoreInterface::GetTextureDesc) describe = nullptr;
-    inline static unsigned selected = 0;
+    inline static unsigned selected = 0, closure_objects = 0;
+    inline static const nri::Texture* live_fixed = nullptr;
+    inline static bool require_fixed_dedicated = false;
 
     static void NRI_CALL query(const nri::Texture& image, nri::MemoryLocation location, nri::MemoryDesc& memory)
     {
@@ -3382,6 +3455,11 @@ struct DedicatedResizeRequirement final
         if (describe(image).width == 64)
         {
             ++selected;
+            memory.mustBeDedicated = true;
+        }
+        else if (describe(image).width == 16 && (require_fixed_dedicated || &image != live_fixed))
+        {
+            ++closure_objects;
             memory.mustBeDedicated = true;
         }
     }
@@ -3463,6 +3541,16 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
     large_desc.width = large_desc.height = 64;
     auto larger = take(OffscreenTarget::create(*session, large_desc, 1));
     FrameHarness frames(*session, 1);
+    for (const auto fault : {EAllocationFault::SECOND_ALLOCATION, EAllocationFault::PARTIAL_TEXTURE_BIND})
+    {
+        JobGpuResources rejected_gpu(*session, 1);
+        JobExecution rejected{rejected_gpu, plan.graph, JobExecution::Installation{}, original.output()};
+        PhysicalAllocationFault injection(*session, fault);
+        const auto result = rejected.instance.initialize();
+        CHECK(!result && isNativeFailure(result.error(), nri::Result::OUT_OF_MEMORY));
+        const auto& native = rejected_gpu.frames.front();
+        CHECK(native.buffers.empty() && native.images.empty() && native.memories.empty());
+    }
     JobGpuResources instance_gpu(*session, 1);
     JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, original.output()};
     auto& instance = instance_job.instance;
@@ -3500,12 +3588,43 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
     };
     check(false);
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
+    {
+        PhysicalAllocationFault injection(*session, EAllocationFault::PARTIAL_TEXTURE_BIND);
+        const auto rejected = RenderGraphInstance::ResizeResources::prepare(instance_gpu, instance, larger.output());
+        CHECK(!rejected && isNativeFailure(rejected.error(), nri::Result::OUT_OF_MEMORY));
+    }
+    check(false); // Same native outputs still render after the partially bound candidate was destroyed.
+    // The target extent stays fixed while the native group contract first splits and then merges.
+    // Both old/new group members must migrate, including the member whose own requirement is unchanged.
+    DedicatedResizeRequirement::describe = core.GetTextureDesc;
+    DedicatedResizeRequirement::original = core.GetTextureMemoryDesc;
+    {
+        DedicatedResizeRequirement::require_fixed_dedicated = true;
+        core.GetTextureMemoryDesc = &DedicatedResizeRequirement::query;
+        auto regroup = RenderGraphInstance::ResizeResources::prepare(instance_gpu, instance, original.output());
+        core.GetTextureMemoryDesc = DedicatedResizeRequirement::original;
+        DedicatedResizeRequirement::require_fixed_dedicated = false;
+        CHECK(regroup && instance.prepareResizeAdoption(*regroup));
+        instance.commitResize(std::move(*regroup));
+    }
+    check(true);
+    {
+        auto restore = RenderGraphInstance::ResizeResources::prepare(instance_gpu, instance, original.output());
+        CHECK(restore && instance.prepareResizeAdoption(*restore));
+        instance.commitResize(std::move(*restore));
+    }
+    check(false);
+    DedicatedResizeRequirement::live_fixed = instance.resourceInput(images[0], 0).image;
+    DedicatedResizeRequirement::closure_objects = 0;
     DedicatedResizeRequirement::describe = core.GetTextureDesc;
     DedicatedResizeRequirement::original = std::exchange(core.GetTextureMemoryDesc, &DedicatedResizeRequirement::query);
     DedicatedResizeRequirement::selected = 0;
     auto split = RenderGraphInstance::ResizeResources::prepare(instance_gpu, instance, larger.output());
     core.GetTextureMemoryDesc = DedicatedResizeRequirement::original;
-    CHECK(split && DedicatedResizeRequirement::selected == 1);
+    CHECK(split && DedicatedResizeRequirement::selected == 1 && DedicatedResizeRequirement::closure_objects == 1);
+    const auto& placement = split->frames[0].changes.placements;
+    CHECK(placement[physical.resource_slots[images[0].index].index].reason == EMemoryPlacement::DEDICATED);
+    CHECK(placement[physical.resource_slots[images[1].index].index].reason == EMemoryPlacement::DEDICATED);
     CHECK(instance.prepareResizeAdoption(*split));
     instance.commitResize(std::move(*split));
     check(true);

@@ -286,6 +286,8 @@ namespace lux::render::detail
             {
                 first = slot;
             }
+            // Mark a changed group even if its resource extent stayed fixed.
+            if (first != next[slot].root.index) changed[slot] = true;
             parent[root(slot)] = root(first);
             parent[root(slot)] = root(next[slot].root.index);
         }

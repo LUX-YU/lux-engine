@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 
 namespace lux::render::detail
@@ -21,12 +22,6 @@ namespace lux::render::detail
         ResizeResources& operator=(const ResizeResources&) = delete;
         ResizeResources& operator=(ResizeResources&&) = delete;
 
-        struct Resource final
-        {
-            std::uint32_t index;
-            FrameResourceBinding binding;
-        };
-
         struct OwnershipSlots final
         {
             std::size_t live = SIZE_MAX;
@@ -43,15 +38,11 @@ namespace lux::render::detail
 
         struct Frame final
         {
-            std::vector<Resource> resources;
+            PhysicalFrameChanges changes;
             std::vector<View> views;
             std::vector<std::uint32_t> extent_passes;
-            std::vector<std::uint8_t> replaced_slots;
             std::vector<OwnershipSlots> image_adoptions;
             std::vector<OwnershipSlots> buffer_adoptions;
-            std::vector<BoundMemoryPlacement> placements;
-            std::vector<std::uint32_t> allocation_candidates;
-            std::vector<MemoryGroupId> previous_allocations;
             std::vector<JobFrameResources::MemoryAllocation> adopted_memories;
             std::vector<std::optional<nri::GlobalBarrierDesc>> alias_barriers;
             explicit Frame(JobFrameResources& storage) noexcept : physical(storage) {}

@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <algorithm>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -87,14 +88,12 @@ namespace lux::render::detail
             for (auto& slot : history.slots)
             {
                 slot.last_use = session_->makeFrontiers();
-                FrameResourceBinding candidate;
-                if (auto created = createResource(history.plan->description.current.index, candidate); !created)
-                {
-                    return created;
-                }
-                slot.image = candidate.image;
-                slot.buffer = candidate.buffer;
-                slot.buffer_size = candidate.buffer_size;
+                const auto& resource = graph_.resources()[history.plan->description.current.index];
+                auto candidate = createGraphResource(*session_, resource, target(), ETransientAllocation::INDEPENDENT);
+                if (!candidate) return cxx::unexpected(candidate.error());
+                slot.image = candidate->image;
+                slot.buffer = candidate->buffer;
+                slot.buffer_size = candidate->buffer_size;
                 if (slot.buffer) slot.buffer_description = &session_->nriCore().GetBufferDesc(*slot.buffer);
             }
             if (auto views = createHistoryViews(history); !views)

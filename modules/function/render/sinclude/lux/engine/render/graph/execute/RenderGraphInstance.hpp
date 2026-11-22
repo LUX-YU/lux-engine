@@ -199,8 +199,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
 
         [[nodiscard]] RenderResult<void> prepareResizeHistories(ResizeResources&, const TargetDesc&) noexcept;
-        [[nodiscard]] RenderResult<void>
-        prepareResizePhysical(ResizeResources&, std::uint32_t, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> prepareResizeBindings(ResizeResources&, std::uint32_t) noexcept;
 
         [[nodiscard]] RenderResult<void> prepareRasterDescriptorCapacity(std::uint32_t slot, bool resize_pool) noexcept;
@@ -213,23 +211,13 @@ namespace lux::render::detail
         static void
         collectRasterViews(FrameResources&, nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;
         void retireRasterViews(FrameResources&, nri::Buffer*, nri::Texture*) noexcept;
-        [[nodiscard]] RenderResult<nri::BufferDesc> bufferDescription(const CompiledResource&) const noexcept;
-        [[nodiscard]] RenderResult<nri::BufferDesc>
-        bufferDescription(const CompiledResource&, std::uint64_t bytes) const noexcept;
         [[nodiscard]] nri::Result createBufferView(nri::BufferViewDesc, nri::Descriptor*&) const noexcept;
-        [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
-        [[nodiscard]] RenderResult<nri::TextureDesc>
-        textureDescription(const CompiledResource&, const TargetDesc&) const noexcept;
         void initializeRasterStreams(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> materializeRasterStreams(std::uint32_t slot) noexcept;
         RenderResult<void> prepareRasterSections(std::uint32_t slot) noexcept;
         RenderResult<void>
         materializeRasterSections(std::uint32_t slot, std::uint32_t pass, const OwnedRasterStream&) noexcept;
-        [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
-        [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, FrameResourceBinding&) noexcept;
-        [[nodiscard]] RenderResult<void>
-        createResource(std::uint32_t resource, FrameResourceBinding&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
         [[nodiscard]] bool selectHistory() noexcept;

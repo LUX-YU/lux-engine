@@ -73,15 +73,18 @@ namespace lux::render::detail
         for (std::uint32_t f = 0; f < gpu.frames.size(); ++f)
         {
             auto& candidate = result.frames[f];
-            if (auto prepared = execution.prepareResizePhysical(result, f, target); !prepared)
-            {
-                return cxx::unexpected(prepared.error());
-            }
+            const auto& live = execution.frames_[f];
+            auto changes = candidate.physical.preparePhysical(
+                gpu.session, {plan, target, LivePhysicalPlacement{live.bindings, live.memory_bindings}}
+            );
+            if (!changes) return cxx::unexpected(changes.error());
+            candidate.changes = std::move(*changes);
+            candidate.adopted_memories.resize(candidate.changes.memory_sources.size());
             if (plan.output() != kGraphInvalidIndex && !output.frames.empty())
             {
                 FrameResourceBinding binding;
                 binding.image = output.frames[f].image;
-                candidate.resources.push_back({plan.output(), binding});
+                candidate.changes.resources.push_back({plan.output(), binding});
             }
             for (const auto& input : inputs)
             {
@@ -89,7 +92,7 @@ namespace lux::render::detail
                     return cxx::unexpected(valid.error());
                 FrameResourceBinding binding;
                 binding.image = input.frames[f].image;
-                candidate.resources.push_back({input.resource.index, binding});
+                candidate.changes.resources.push_back({input.resource.index, binding});
             }
             for (const auto& [h, history] : result.histories)
             {
@@ -97,8 +100,8 @@ namespace lux::render::detail
                 previous.image = history.slots[history.previous].image;
                 FrameResourceBinding current;
                 current.image = history.slots[history.current].image;
-                candidate.resources.push_back({history.plan->description.previous.index, previous});
-                candidate.resources.push_back({history.plan->description.current.index, current});
+                candidate.changes.resources.push_back({history.plan->description.previous.index, previous});
+                candidate.changes.resources.push_back({history.plan->description.current.index, current});
             }
             if (auto prepared = execution.prepareResizeBindings(result, f); !prepared)
             {
@@ -124,7 +127,7 @@ namespace lux::render::detail
             {
                 continue;
             }
-            auto description = textureDescription(resources[resource], target);
+            auto description = graphTextureDescription(*session_, resources[resource], target);
             if (!description)
             {
                 return cxx::unexpected(description.error());
@@ -159,211 +162,6 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::prepareResizePhysical(
-        ResizeResources& result,
-        std::uint32_t f,
-        const TargetDesc& target
-    ) noexcept
-    {
-        auto& session = *session_;
-        const auto& core = session.nriCore();
-        const auto& resources = graph_.resources();
-        const auto& physical = graph_.physical_resources_;
-        const bool aliases = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
-        const auto& frame = frames_[f];
-        auto& candidate = result.frames[f];
-        std::vector<FrameResourceBinding> replacements(physical.slots.size());
-        candidate.replaced_slots.resize(physical.slots.size());
-        std::vector<nri::MemoryDesc> requirements(aliases ? physical.slots.size() : 0);
-        const auto create = [&](std::uint32_t s) -> RenderResult<void>
-        {
-            const auto index = physical.slots[s].resource.index;
-            const auto& resource = resources[index];
-            auto& binding = replacements[s];
-            if (!aliases)
-            {
-                auto made = createResource(index, binding, target);
-                if (!made)
-                {
-                    return made;
-                }
-            }
-            else
-            {
-                nri::Result status;
-                if (std::holds_alternative<GraphImageDesc>(resource.description))
-                {
-                    auto description = textureDescription(resource, target);
-                    if (!description)
-                    {
-                        return cxx::unexpected(description.error());
-                    }
-                    status = core.CreateTexture(session.device(), *description, binding.image);
-                }
-                else
-                {
-                    binding.buffer_size = std::get<GraphBufferDesc>(resource.description).size;
-                    const auto description = bufferDescription(resource);
-                    if (!description)
-                    {
-                        return cxx::unexpected(description.error());
-                    }
-                    status = core.CreateBuffer(session.device(), *description, binding.buffer);
-                }
-                if (status != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(status));
-                }
-            }
-            if (binding.image)
-            {
-                candidate.physical.images.push_back(binding.image);
-            }
-            else
-            {
-                candidate.physical.buffers.push_back(binding.buffer);
-            }
-            return {};
-        };
-        for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
-        {
-            const auto index = physical.slots[s].resource.index;
-            const auto& resource = resources[index];
-            const auto& binding = frame.bindings[index];
-            if (resource.target_sized)
-            {
-                auto description = textureDescription(resource, target);
-                if (!description)
-                {
-                    return cxx::unexpected(description.error());
-                }
-                const auto& current = core.GetTextureDesc(*binding.image);
-                candidate.replaced_slots[s] =
-                    current.width != description->width || current.height != description->height;
-                if (candidate.replaced_slots[s])
-                {
-                    if (auto made = create(s); !made)
-                    {
-                        return cxx::unexpected(made.error());
-                    }
-                }
-            }
-            if (aliases)
-            {
-                const auto& selected = candidate.replaced_slots[s] ? replacements[s] : binding;
-                if (selected.image)
-                {
-                    core.GetTextureMemoryDesc(*selected.image, nri::MemoryLocation::DEVICE, requirements[s]);
-                }
-                else
-                {
-                    core.GetBufferMemoryDesc(*selected.buffer, nri::MemoryLocation::DEVICE, requirements[s]);
-                }
-            }
-        }
-        if (aliases)
-        {
-            const auto placements = instantiatePlacements(
-                physical, requirements, session_->description().graphicsAPI
-            );
-            expandMemoryMigration(frame.memory_bindings, placements, candidate.replaced_slots);
-            for (std::uint32_t slot = 0; slot < physical.slots.size(); ++slot)
-            {
-                if (candidate.replaced_slots[slot] && !replacements[slot].image && !replacements[slot].buffer)
-                {
-                    if (auto made = create(slot); !made)
-                    {
-                        return cxx::unexpected(made.error());
-                    }
-                }
-            }
-            std::vector<nri::AllocateMemoryDesc> allocations(physical.slots.size());
-            for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
-            {
-                auto& allocation = allocations[placements[s].root.index];
-                allocation.size = std::max(allocation.size, requirements[s].size);
-                allocation.type = requirements[s].type;
-                allocation.vma.enable = !requirements[s].mustBeDedicated;
-                allocation.vma.alignment = std::max(allocation.vma.alignment, requirements[s].alignment);
-                const auto* image =
-                    std::get_if<GraphImageDesc>(&resources[physical.slots[s].resource.index].description);
-                allocation.allowMultisampleTextures |= image && image->samples > 1;
-            }
-            std::vector<MemoryGroupId> root_to_group(placements.size());
-            for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
-            {
-                if (placements[s].root.index != s)
-                {
-                    continue;
-                }
-                root_to_group[s] = {static_cast<std::uint32_t>(candidate.adopted_memories.size())};
-                candidate.adopted_memories.push_back({});
-                candidate.previous_allocations.push_back(frame.memory_bindings[s].group);
-                candidate.allocation_candidates.push_back(kGraphInvalidIndex);
-                if (candidate.replaced_slots[s])
-                {
-                    nri::Memory* memory = nullptr;
-                    const auto status = core.AllocateMemory(session.device(), allocations[s], memory);
-                    if (status != nri::Result::SUCCESS)
-                    {
-                        return cxx::unexpected(nativeError(status));
-                    }
-                    candidate.allocation_candidates.back() =
-                        static_cast<std::uint32_t>(candidate.physical.memories.size());
-                    candidate.physical.memories.push_back({memory, allocations[s].size});
-                }
-            }
-            std::vector<nri::BindTextureMemoryDesc> images;
-            std::vector<nri::BindBufferMemoryDesc> buffers;
-            candidate.placements.resize(placements.size());
-            for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
-            {
-                const auto& placement = placements[s];
-                const auto group = root_to_group[placement.root.index];
-                candidate.placements[s] = {group, placement.reason};
-                if (!candidate.replaced_slots[s])
-                {
-                    continue;
-                }
-                auto* memory = candidate.physical.memories[candidate.allocation_candidates[group.index]].memory;
-                const auto& binding = replacements[s];
-                if (binding.image)
-                {
-                    images.push_back({binding.image, memory, 0});
-                }
-                else
-                {
-                    buffers.push_back({binding.buffer, memory, 0});
-                }
-            }
-            if (!images.empty())
-            {
-                const auto status = core.BindTextureMemory(images.data(), static_cast<std::uint32_t>(images.size()));
-                if (status != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(status));
-                }
-            }
-            if (!buffers.empty())
-            {
-                const auto status = core.BindBufferMemory(buffers.data(), static_cast<std::uint32_t>(buffers.size()));
-                if (status != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(status));
-                }
-            }
-        }
-        for (std::uint32_t r = 0; r < resources.size(); ++r)
-        {
-            const auto slot = physical.resource_slots[r];
-            if (slot.valid() && candidate.replaced_slots[slot.index])
-            {
-                candidate.resources.push_back({r, replacements[slot.index]});
-            }
-        }
-        return {};
-    }
-
     RenderResult<void> RenderGraphInstance::prepareResizeBindings(ResizeResources& result, std::uint32_t f) noexcept
     {
         auto& session = *session_;
@@ -374,15 +172,16 @@ namespace lux::render::detail
         const auto& frame = frames_[f];
         auto& candidate = result.frames[f];
         const auto output = result.output;
-        std::ranges::sort(candidate.resources, {}, &ResizeResources::Resource::index);
+        std::ranges::sort(candidate.changes.resources, {}, &GraphBindingChange::index);
         const auto binding = [&](std::uint32_t index) -> const FrameResourceBinding&
         {
             const auto found =
-                std::ranges::lower_bound(candidate.resources, index, {}, &ResizeResources::Resource::index);
-            return found != candidate.resources.end() && found->index == index ? found->binding : frame.bindings[index];
+                std::ranges::lower_bound(candidate.changes.resources, index, {}, &GraphBindingChange::index);
+            const bool replaced = found != candidate.changes.resources.end() && found->index == index;
+            return replaced ? found->binding : frame.bindings[index];
         };
         std::vector<std::uint8_t> affected_passes(graph_.passes().size());
-        for (const auto& replacement : candidate.resources)
+        for (const auto& replacement : candidate.changes.resources)
         {
             const auto index = replacement.index;
             const auto& resource = resources[index];
@@ -484,7 +283,9 @@ namespace lux::render::detail
         }
         if (aliases)
         {
-            candidate.alias_barriers = instantiateAliasBarriers(physical, candidate.placements, graph_.passes().size());
+            candidate.alias_barriers = instantiateAliasBarriers(
+                physical, candidate.changes.placements, graph_.passes().size()
+            );
             candidate.physical.memories.reserve(candidate.physical.memories.size() + frame.native.memories.size());
         }
         return {};
@@ -526,8 +327,8 @@ namespace lux::render::detail
             const auto binding = [&](std::uint32_t resource) -> const FrameResourceBinding&
             {
                 const auto changed =
-                    std::ranges::lower_bound(candidate.resources, resource, {}, &ResizeResources::Resource::index);
-                return changed != candidate.resources.end() && changed->index == resource ? changed->binding
+                    std::ranges::lower_bound(candidate.changes.resources, resource, {}, &GraphBindingChange::index);
+                return changed != candidate.changes.resources.end() && changed->index == resource ? changed->binding
                                                                                           : frame.bindings[resource];
             };
             const auto find_slot = [](const auto& objects, const auto* object) noexcept
@@ -535,9 +336,9 @@ namespace lux::render::detail
                 const auto found = std::ranges::find(objects, object);
                 return found == objects.end() ? SIZE_MAX : static_cast<std::size_t>(found - objects.begin());
             };
-            for (std::uint32_t s = 0; s < candidate.replaced_slots.size(); ++s)
+            for (std::uint32_t s = 0; s < candidate.changes.replaced_slots.size(); ++s)
             {
-                if (!candidate.replaced_slots[s]) continue;
+                if (!candidate.changes.replaced_slots[s]) continue;
                 const auto index = physical.slots[s].resource.index;
                 const auto& old = frame.bindings[index];
                 const auto& incoming = binding(index);
@@ -593,14 +394,13 @@ namespace lux::render::detail
                 std::swap(frame.native.images[live], candidate.physical.images[incoming]);
             for (const auto [live, incoming] : candidate.buffer_adoptions)
                 std::swap(frame.native.buffers[live], candidate.physical.buffers[incoming]);
-            if (!candidate.placements.empty())
+            if (!candidate.changes.placements.empty())
             {
                 for (std::uint32_t group = 0; group < candidate.adopted_memories.size(); ++group)
                 {
-                    const auto new_memory = candidate.allocation_candidates[group];
-                    auto& incoming = new_memory == kGraphInvalidIndex
-                                         ? frame.native.memories[candidate.previous_allocations[group].index]
-                                         : candidate.physical.memories[new_memory];
+                    const auto source = candidate.changes.memory_sources[group];
+                    auto& incoming = source.owner == EAllocationOwner::LIVE ? frame.native.memories[source.index]
+                                                                           : candidate.physical.memories[source.index];
                     candidate.adopted_memories[group] = std::exchange(incoming, {});
                 }
                 // All new allocations have moved. Only abandoned old groups remain to be released.
@@ -613,7 +413,7 @@ namespace lux::render::detail
                     }
                 }
                 frame.native.memories = std::move(candidate.adopted_memories);
-                frame.memory_bindings = std::move(candidate.placements);
+                frame.memory_bindings = std::move(candidate.changes.placements);
                 for (std::uint32_t p = 0; p < frame.passes.size(); ++p)
                 {
                     auto& current = frame.passes[p].alias_barrier;
@@ -627,7 +427,7 @@ namespace lux::render::detail
                     current = incoming;
                 }
             }
-            for (const auto& replacement : candidate.resources)
+            for (const auto& replacement : candidate.changes.resources)
             {
                 frame.invalidateResource(graph_.recordingDependencies(), replacement.index);
                 auto& binding = frame.bindings[replacement.index];

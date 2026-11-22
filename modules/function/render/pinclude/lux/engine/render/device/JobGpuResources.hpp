@@ -12,6 +12,8 @@ namespace lux::render::detail
 {
     class DeviceSession;
     struct SubmissionBatch;
+    struct PhysicalFrameContract;
+    struct PhysicalFrameChanges;
 
     struct RasterBindingKey final
     {
@@ -93,6 +95,8 @@ namespace lux::render::detail
         std::vector<MemoryAllocation> memories;
         nri::DescriptorPool* descriptor_pool = nullptr;
 
+        [[nodiscard]] RenderResult<PhysicalFrameChanges>
+        preparePhysical(DeviceSession&, const PhysicalFrameContract&) noexcept;
         [[nodiscard]] RenderResult<void> createBatches(DeviceSession&, std::span<const SubmissionBatch>) noexcept;
         void release(const nri::CoreInterface&) noexcept;
     };

@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -814,7 +815,7 @@ namespace lux::render::detail
             if (size > replica.capacity)
             {
                 const auto capacity = std::min(std::bit_ceil(size), contract.maximum_bytes);
-                const auto description = bufferDescription(graph_.resources()[contract.resource], capacity);
+                const auto description = graphBufferDescription(*session_, graph_.resources()[contract.resource], capacity);
                 if (!description) return cxx::unexpected(description.error());
                 nri::Buffer* candidate = nullptr;
                 const auto result =

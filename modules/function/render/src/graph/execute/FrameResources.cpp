@@ -80,7 +80,6 @@ namespace lux::render::detail
 
     void FrameResources::initializeRows(const compiled::RenderGraph& plan) noexcept
     {
-        invalidateImportedBindings();
         parameters = plan.bindingPlan().initial_parameters;
         bindings.resize(plan.resources().size());
         record_resources.resize(plan.resources().size());
@@ -131,11 +130,7 @@ namespace lux::render::detail
         binding.addressed_revision = value.addressed_revision;
         if (frozen_for_submission && binding.queue_uses != value.queue_uses) preserveUses(resource);
         binding.queue_uses = value.queue_uses;
-        if ((changed_physical || changed_addresses) &&
-            graph.resources()[resource].origin == EGraphOrigin::IMPORTED)
-        {
-            invalidateImportedBindings();
-        }
+        if (changed_addresses) record_ready = false;
         if (graph.resources()[resource].memory_used &&
             std::holds_alternative<GraphBufferDesc>(graph.resources()[resource].description))
         {
@@ -287,13 +282,6 @@ namespace lux::render::detail
         draws.packets.resize(written);
     }
 
-    void FrameResources::invalidateImportedBindings() noexcept
-    {
-        record_ready = false;
-        if (imported_revision == UINT64_MAX) std::terminate();
-        ++imported_revision;
-    }
-
     void FrameResources::invalidatePass(const compiled::RenderGraph& graph, std::uint32_t compiled_pass) noexcept
     {
         pending_passes.mark(compiled_pass);
@@ -320,18 +308,6 @@ namespace lux::render::detail
         pending_operand_fields.markAll();
         record_ready = false;
         for (auto& batch : command_batches) batch.invalidate();
-    }
-
-    void FrameResources::prepareDrawReads() noexcept
-    {
-        for (auto& draws : raster_draws)
-        {
-            if (draws.dependency_reads != draws.reads)
-            {
-                draws.dependency_reads = draws.reads;
-                invalidateImportedBindings();
-            }
-        }
     }
 
     void FrameResources::patchDrawSection(std::uint32_t p, const RasterListCommands& dynamic) noexcept
@@ -623,7 +599,6 @@ namespace lux::render::detail
         if (!linked_recording_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& input = linked_recording_->input;
         const auto& graph = input.plan;
-        if (!raster_draws.empty()) prepareDrawReads();
         for (const auto i : pending_resources.slots()) patchRecordResource(i, graph.resources()[i].history);
         for (const auto i : pending_passes.slots()) patchRecordPass(graph.recordingProgram(), i);
         if (pending_operand_fields.slots().empty()) last_operands = {};

@@ -34,7 +34,7 @@ namespace lux::render::runtime_detail
 
         struct ImageImport final
         {
-            GraphResourceId resource;
+            std::uint32_t operand;
             TargetReadSlot source;
         };
 

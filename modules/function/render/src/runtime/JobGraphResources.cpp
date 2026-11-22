@@ -143,7 +143,6 @@ namespace lux::render::runtime_detail
                 }
             }
             frame.invalidateResource(graph_.recordingDependencies(), resource);
-            frame.invalidateImportedBindings();
         }
         gpu_.session.deferRelease(
             gpu_.accepted,

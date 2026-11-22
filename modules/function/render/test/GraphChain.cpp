@@ -3164,7 +3164,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     CHECK(session->drain());
 }
 
-static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backend, bool write_back, bool separate_ranges = false)
+static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backend, bool ordered, bool separate_ranges = false)
 {
     DeviceOptions options;
     options.backend = backend;
@@ -3211,10 +3211,6 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     };
     const auto incremented = take(builder.addComputePass("increment", std::move(work)));
     TransferWork copies{{CopyBuffer{{incremented.written.front()}, {{output, 0}}}}};
-    if (write_back)
-    {
-        copies.operations.push_back(CopyBuffer{{incremented.written.front()}, {{input, 0}}});
-    }
     const auto copied = take(builder.addTransferPass("copy result", std::move(copies)));
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
@@ -3235,20 +3231,24 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     }
     const std::array instances{first_job.get(), second_job.get()};
     const auto before = session->queue(EQueueRole::COMPUTE).submitted();
-    CHECK(take(runTask(frames->render(instances, {}))) > 0);
+    const std::array explicit_order{SubmissionOrder{1, 0}};
+    const auto selected_order = std::span(explicit_order).first(ordered ? 1 : 0);
+    CHECK(take(runTask(frames->render(instances, {}, selected_order))) > 0);
     finishSubmissions(*session, *frames);
+    const auto submitted = session->queue(EQueueRole::COMPUTE).submitted() - before;
     if (&session->queue() != &session->queue(EQueueRole::COMPUTE))
     {
-        const bool has_shared_writes = write_back && !separate_ranges;
-        CHECK(session->queue(EQueueRole::COMPUTE).submitted() - before == (has_shared_writes ? 2 : 1));
+        CHECK(submitted == (ordered ? 2 : 1));
     }
     CHECK(session->drain());
     const auto a =
         readBufferWords<4>(*session, *first_job->resourceInput(output, first_job->progress.last_submitted_slot).buffer);
     const auto b =
         readBufferWords<4>(*session, *second_job->resourceInput(output, second_job->progress.last_submitted_slot).buffer);
-    const auto second_value = write_back && !separate_ranges ? 2u : 1u;
-    CHECK(a[0] == 1 && b[0] == second_value);
+    CHECK(a[0] == 1 && b[0] == 1);
+    std::printf("SHARED READ ORDER backend=%s explicit=%u separate_ranges=%u compute_submits=%llu results=1,1\n",
+        backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan", unsigned(ordered), unsigned(separate_ranges),
+        static_cast<unsigned long long>(submitted));
     first_job.reset();
     first_gpu.reset();
     second_job.reset();
@@ -4143,7 +4143,7 @@ int main(int argc, char** argv)
     compressedCopies(validation, backend);
     sharedImportedBuffer(validation, backend, false);
     sharedImportedBuffer(validation, backend, true);
-    sharedImportedBuffer(validation, backend, true, true);
+    sharedImportedBuffer(validation, backend, false, true);
     CHECK(validation.errors == 0);
     std::printf(
         "Graph %s: Compute -> mip -> MRT/Depth -> sampled postprocess; FIF=1/2/3; GPU IndirectCount=0/1/3; errors=%u "

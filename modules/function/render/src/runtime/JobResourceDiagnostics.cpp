@@ -54,7 +54,6 @@ namespace lux::render::runtime_detail
                     batch.commands, [](auto* command) noexcept { return command != nullptr; }
                 );
             output += "{\"slot\":" + std::to_string(i) +
-                      ",\"imported_revision\":" + std::to_string(frame.imported_revision) +
                       ",\"owned_command_buffers\":" + std::to_string(command_count) +
                       ",\"owned_buffers\":" +
                           std::to_string(frame.native.buffers.size() + prepared_buffers) +

@@ -508,7 +508,6 @@ namespace lux::render::detail
             resident.reads.swap(candidate.reads);
             return;
         }
-        resident.dependency_reads.swap(candidate.dependency_reads);
         std::swap(resident, candidate);
         frame_.invalidatePass(graph_, pass);
     }

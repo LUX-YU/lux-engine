@@ -75,12 +75,15 @@ namespace foundation_test
         }
 
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
-        render(std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages) noexcept
+        render(
+            std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages,
+            std::span<const SubmissionOrder> order = {}
+        ) noexcept
         {
             if (auto error = device_.terminalError(); error.type) co_return lux::cxx::unexpected(error);
             const bool in_flight = operation_ && operation_->active();
             if (!in_flight && (executions.empty() || !open())) co_return 0;
-            co_return co_await operation_->run(executions, storages);
+            co_return co_await operation_->run(executions, storages, order);
         }
 
     private:

@@ -157,7 +157,7 @@ namespace lux::render
             {
                 if (image.target == target)
                 {
-                    inputs.push_back({image.resource, output.frames});
+                    inputs.push_back({execution.graph().targetImports()[image.operand].resource, output.frames});
                 }
             }
             auto changed = detail::ResizeResources::prepare(
@@ -439,8 +439,10 @@ namespace lux::render
         for (std::size_t i = 0; i < round.outputs.size(); ++i)
         {
             const auto& output = round.outputs[i];
+            auto& execution = *round.executions[i];
+            const auto targets = execution.graph().targetImports();
             for (const auto& import : round.inputs.jobs[output.input_job].imports)
-                round.executions[i]->bindImage(import.resource, slot, *round.reads[import.source.index].image);
+                execution.bindImage(targets[import.operand].resource, slot, *round.reads[import.source.index].image);
         }
         return {};
     }

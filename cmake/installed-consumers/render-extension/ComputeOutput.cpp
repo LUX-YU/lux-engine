@@ -206,6 +206,7 @@ namespace
     struct MutableReplica final
     {
         static inline std::atomic_bool omit_upper_range{};
+        static inline std::atomic_bool park_setter{}, setter_entered{};
         using Descriptor = MutableReplicaDescriptor;
         static inline std::atomic_uint accepted_copies{}, accepted_no_copy{}, rejected{};
         DeviceSession& device;
@@ -316,6 +317,11 @@ namespace
 
         static void set(MutableReplica& resource, const SetReplicaValue::Request& request, AckResponse& reply) noexcept
         {
+            if (park_setter.load())
+            {
+                setter_entered.store(true);
+                park_setter.wait(true);
+            }
             resource.value = request.value;
             resource.fail_after_staging = request.fail_after_staging;
             ++resource.revision;
@@ -571,9 +577,9 @@ namespace
     RenderResult<void> buildCapture(EffectBuildContext& context, std::string_view mode) noexcept
     {
         auto& builder = context.builder();
-        if (mode == "publish-7" || mode == "publish-11")
+        if (mode == "publish-7" || mode == "publish-11" || mode == "publish-low")
         {
-            constexpr GraphBufferRange range{8, 8};
+            const GraphBufferRange range{mode == "publish-low" ? 0u : 8u, 8};
             const auto dest = take(context.importFinalBuffer(
                 "product", {ResourceName{ProductDescriptor::descriptor.type.name()}},
                 {
@@ -706,7 +712,7 @@ namespace
             }
             const bool known = arguments.empty() || arguments == "lower" || arguments == "upper" ||
                 arguments == "overlap" || arguments == "spill" || arguments == "unauthorized" ||
-                arguments == "publish-7" || arguments == "publish-11" ||
+                arguments == "publish-7" || arguments == "publish-11" || arguments == "publish-low" ||
                 arguments == "consume-version" || arguments == "consume-word" || arguments == "raster-pixels";
             if (!known) return lux::cxx::unexpected(RenderError{kInvalidConfig});
             return {};
@@ -753,7 +759,7 @@ int main(int argc, char** argv)
     registerNode<buildCapture>(*server, captureDefinition(), pixels);
     take(server->registerResource<ComputeCapture>());
     take(server->registerResource<MutableReplica>());
-    if (receipts || product_fault) take(server->registerResource<ProductBuffer>());
+    if (!resident_programs) take(server->registerResource<ProductBuffer>());
     if (product_fault) registerNode<buildPartialOutput>(*server, faultDefinition(), pixels);
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
@@ -1340,10 +1346,47 @@ int main(int argc, char** argv)
     ).error.type == kStorageMismatch);
     call<RemoveRenderJob>(*client, commands, {unauthorized});
     call<StartRenderJob>(*client, commands, {session, upper, peer_target, range_binding});
-    renderFrame(*client, commands, upper);
-    renderFrame(*client, commands, lower);
+    auto park = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(park);
+    const auto request_pair = [&](RenderJobId a, RenderJobId b)
+    {
+        MutableReplica::setter_entered = false;
+        MutableReplica::park_setter = true;
+        const auto parked = sendSceneRequest<SetReplicaValue>(*park, commands, {mutable_resource, expected_replica});
+        const auto deadline = Clock::now() + 10s;
+        while (!MutableReplica::setter_entered.load())
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        const auto first = sendSceneRequest<RequestRenderJob>(*client, commands, {a});
+        const auto second = sendSceneRequest<RequestRenderJob>(*other, commands, {b});
+        MutableReplica::park_setter = false;
+        MutableReplica::park_setter.notify_all();
+        receiveSceneReply<SetReplicaValue>(*park, parked);
+        return std::pair{receiveSceneReply<RequestRenderJob>(*client, first),
+                         receiveSceneReply<RequestRenderJob>(*other, second)};
+    };
+    const auto [a, b] = request_pair(upper, lower);
+    CHECK(a.frame_index == b.frame_index && a.slot_index == b.slot_index);
     stopAndRemoveJob(*client, commands, upper);
     stopAndRemoveJob(*client, commands, lower);
+    const auto product = call<GetOrCreateResource>(
+        *client, commands, {session, ViewRequest{scene, view}, ProductDescriptor::descriptor.type}
+    ).resource_id;
+    JobBinding product_binding;
+    product_binding.resources = {{"product", product}};
+    const auto changing_low = candidate("publish-low");
+    const auto changing_high = candidate("publish-7");
+    call<StartRenderJob>(*client, commands, {session, changing_low, target, product_binding});
+    call<StartRenderJob>(*client, commands, {session, changing_high, peer_target, product_binding});
+    const auto [c, d] = request_pair(changing_low, changing_high);
+    CHECK(c.frame_index != d.frame_index && c.slot_index == d.slot_index);
+    stopAndRemoveJob(*client, commands, changing_high);
+    stopAndRemoveJob(*client, commands, changing_low);
+    std::printf("DISJOINT BUFFER BOUNDARY: compatible=%llu,%llu transitioning=%llu,%llu slot=%u\n",
+        static_cast<unsigned long long>(a.frame_index), static_cast<unsigned long long>(b.frame_index),
+        static_cast<unsigned long long>(c.frame_index), static_cast<unsigned long long>(d.frame_index), c.slot_index);
     server->stop();
     worker.join();
     CHECK(ran && server->stats().validation_errors == 0);

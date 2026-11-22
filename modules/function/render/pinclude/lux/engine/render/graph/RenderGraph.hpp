@@ -341,17 +341,6 @@ namespace lux::render::detail
         std::vector<std::uint32_t> shared_draw_reads;
     };
 
-    struct ImportedAccess final
-    {
-        GraphResourceId resource;
-        VGraphRange range;
-        bool write = false;
-        std::uint32_t batch = 0;
-        // A later canonical-state restoration belongs to the same physical access interval.
-        std::uint32_t release_batch = 0;
-        bool whole_resource = false;
-    };
-
     enum class ETransientAllocation : std::uint8_t
     {
         INDEPENDENT,
@@ -571,11 +560,6 @@ namespace lux::render::compiled
         }
         std::span<const detail::SubmissionBatch> submissions() const && = delete;
 
-        [[nodiscard]] std::span<const detail::ImportedAccess> importedAccesses() const & noexcept
-        {
-            return imported_accesses_;
-        }
-        std::span<const detail::ImportedAccess> importedAccesses() const && = delete;
 
         [[nodiscard]] std::uint32_t conditionCount() const noexcept { return condition_count_; }
         [[nodiscard]] std::uint32_t bindingPredicateCount() const noexcept { return binding_predicate_count_; }
@@ -644,7 +628,7 @@ namespace lux::render::compiled
         std::uint32_t condition_count_ = 0, binding_predicate_count_ = 0;
         detail::RecordingProgram recording_;
         std::vector<detail::SubmissionBatch> submissions_;
-        std::vector<detail::ImportedAccess> imported_accesses_;
+        detail::QueueBatchSlots first_batches_, last_batches_, last_output_batches_;
         std::vector<std::uint32_t> output_write_regions_;
         detail::PhysicalResourcePlan physical_resources_;
 

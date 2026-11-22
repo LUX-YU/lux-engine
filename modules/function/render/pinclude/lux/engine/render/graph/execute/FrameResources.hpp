@@ -48,7 +48,6 @@ namespace lux::render::detail
         RenderResult<void> createDescriptors(const compiled::RenderGraph&, DeviceSession&, const nri::DescriptorPoolDesc&) noexcept;
         RenderResult<void> rebind(const compiled::RenderGraph&, DeviceSession&) noexcept;
         void prepareAliasBarriers(const PhysicalResourcePlan&) noexcept;
-        void invalidateImportedBindings() noexcept;
         LUX_RENDER_PUBLIC void invalidatePass(const compiled::RenderGraph&, std::uint32_t pass) noexcept;
         void invalidateResource(const RecordingDependencies&, std::uint32_t resource) noexcept;
         void invalidateRecordings() noexcept;
@@ -66,7 +65,6 @@ namespace lux::render::detail
     private:
         // Linked after all fixed FIF arrays have stable addresses. Freeze refreshes the varying borrows.
         std::optional<FrozenRecordingFrame> linked_recording_;
-        void prepareDrawReads() noexcept;
         void patchRecordResource(std::uint32_t index, std::uint32_t history) noexcept;
         void patchDrawSection(std::uint32_t pass, const RasterListCommands&) noexcept;
         void patchRecordPass(const RecordingProgram&, std::uint32_t pass) noexcept;
@@ -174,9 +172,6 @@ namespace lux::render::detail
         bool record_ready = false;
 
         std::vector<FrameResourceBinding> bindings;
-        // Changes when a potentially shared imported identity/range changes. Private presentation rotation
-        // updates bindings and barriers separately; resource contents do not invalidate dependencies.
-        std::uint64_t imported_revision = 0;
         std::vector<FramePass> passes;
         std::vector<OwnedRasterStream> stream_inputs;
         RasterDrawList stream_scratch;

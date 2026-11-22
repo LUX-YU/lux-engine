@@ -219,7 +219,6 @@ namespace lux::render::detail
                 frame_.final_images[index].texture = binding.image;
                 frame_.final_images[index].layerNum = static_cast<nri::Dim_t>(layers);
             }
-            frame_.invalidateImportedBindings();
         }
         rollback.release();
         return {};

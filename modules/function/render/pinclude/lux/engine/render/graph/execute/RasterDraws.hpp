@@ -86,7 +86,6 @@ namespace lux::render::detail
         // Actual external reads, including indirect table resources. Graph-owned visible,
         // indirect and count buffers retain their ordinary ResourceVersion edges instead.
         std::vector<Read> reads;
-        std::vector<Read> dependency_reads;
     };
 
     void mergeIndexedIndirectDraws(RasterDrawList& draws, std::uint32_t limit) noexcept;

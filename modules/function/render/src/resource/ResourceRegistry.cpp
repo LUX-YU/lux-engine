@@ -98,9 +98,8 @@ namespace lux::render
                 const bool replacing = same_job && bound.binding.generation != user.binding.generation;
                 const bool same_use = same_job && bound.resource == user.resource;
                 // Disabled command bodies still record their planned barriers.
-                const bool compatible_barriers = same_projection && bound.canonical_queue != kGraphInvalidIndex &&
-                    bound.canonical_queue == user.canonical_queue;
-                const bool exclusive_paths = compatible_barriers && same_job && bound.writer &&
+                const bool compatible_barriers = bound.boundary.canShare(user.boundary);
+                const bool exclusive_paths = same_projection && compatible_barriers && same_job && bound.writer &&
                     user.writer && (!bound.may_access || !user.may_access);
                 if (replacing || same_use || exclusive_paths) continue;
                 const auto conflict = same_job ? kGraphConflictingOutput : kJobBusy;
@@ -110,8 +109,15 @@ namespace lux::render
                 {
                     if (!a.buffer) continue;
                     for (const auto& b : previous)
-                        if (a.buffer == b.buffer && overlaps(physical(a, user.writer), physical(b, bound.writer)))
+                    {
+                        if (a.buffer != b.buffer) continue;
+                        if (overlaps(physical(a, user.writer), physical(b, bound.writer)))
                             return cxx::unexpected(RenderError{conflict});
+                        // Separate Job writers can take turns at the same native boundary under their product pins.
+                        const bool can_take_turns = !same_job && bound.writer && user.writer &&
+                            bound.boundary.use == user.boundary.use;
+                        if (!compatible_barriers && !can_take_turns) return cxx::unexpected(RenderError{conflict});
+                    }
                 }
             }
         }

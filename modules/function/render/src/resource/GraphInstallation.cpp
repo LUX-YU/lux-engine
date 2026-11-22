@@ -42,7 +42,7 @@ namespace lux::render
             return {};
         }
         const GraphBindingUse user{
-            execution_.binding_identity, link.resource, link.output_range, may_access, link.canonical_queue
+            execution_.binding_identity, link.resource, link.output_range, may_access, link.boundary
         };
         auto backing = resolveBacking(link, user);
         if (!backing) return cxx::unexpected(backing.error());

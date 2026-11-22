@@ -2,16 +2,12 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-#include <chrono>
-#endif
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
-#include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/StageScope.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
@@ -163,8 +159,7 @@ namespace lux::render::detail
         bool changed = frame.jobs.size() != jobs_.size() || !std::ranges::equal(frame.order, order);
         for (std::size_t i = 0; !changed && i < jobs_.size(); ++i)
         {
-            changed = frame.jobs[i].binding != jobs_[i]->binding_identity ||
-                      frame.jobs[i].binding_revision != jobs_[i]->frames_[slotIndex()].imported_revision;
+            changed = frame.jobs[i].binding != jobs_[i]->binding_identity;
         }
         if (changed)
         {
@@ -172,7 +167,6 @@ namespace lux::render::detail
             {
                 // Do not reuse an incomplete dependency cache on a later frame.
                 frame.jobs.clear();
-                frame.imported_uses.clear();
                 return rebuilt;
             }
         }
@@ -232,7 +226,6 @@ namespace lux::render::detail
             auto& execution = frame.jobs[i];
             execution.binding = jobs_[i]->binding_identity;
             if (!execution.result.accepted.size()) execution.result.accepted = device_.makeFrontiers();
-            execution.binding_revision = jobs_[i]->frames_[slotIndex()].imported_revision;
             execution.result.first_batch = static_cast<std::uint32_t>(frame.batches.size());
             const auto batches = jobs_[i]->graph().submissions();
             for (std::uint32_t b = 0; b < batches.size(); ++b)
@@ -252,43 +245,28 @@ namespace lux::render::detail
                 }
             }
         }
-        // A whole-Job order connects the actual tails and heads of the physical queues.
-        constexpr auto roles = static_cast<std::size_t>(EQueueRole::TRANSFER) + 1;
-        std::array<std::uint32_t, roles> tails, heads;
         for (const auto& edge : order)
         {
             if (edge.producer >= jobs_.size() || edge.consumer >= jobs_.size())
                 return cxx::unexpected(RenderError{kJobIdentity});
-            std::ranges::fill(tails, kGraphInvalidIndex);
-            std::ranges::fill(heads, kGraphInvalidIndex);
-            const auto producer_first = frame.jobs[edge.producer].result.first_batch;
-            const auto consumer_first = frame.jobs[edge.consumer].result.first_batch;
-            const auto producer_count = jobs_[edge.producer]->graph().submissions().size();
-            const auto consumer_count = jobs_[edge.consumer]->graph().submissions().size();
-            for (std::uint32_t b = 0; b < producer_count; ++b)
-            {
-                const auto index = producer_first + b;
-                tails[frame.batches[index].queue] = index;
-            }
-            for (std::uint32_t b = 0; b < consumer_count; ++b)
-            {
-                const auto index = consumer_first + b;
-                auto& head = heads[frame.batches[index].queue];
-                head = std::min(head, index);
-            }
-            for (auto tail : tails)
+            const auto& producer = jobs_[edge.producer]->graph();
+            const auto& consumer = jobs_[edge.consumer]->graph();
+            const bool target_edge = edge.target_input != kGraphInvalidIndex;
+            if (target_edge && edge.target_input >= consumer.targetImports().size())
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            const auto& tails = target_edge ? producer.last_output_batches_ : producer.last_batches_;
+            const auto& heads = target_edge ? consumer.targetImports()[edge.target_input].first_reads :
+                consumer.first_batches_;
+            const auto producer_base = frame.jobs[edge.producer].result.first_batch;
+            const auto consumer_base = frame.jobs[edge.consumer].result.first_batch;
+            for (auto tail : tails.batches)
             {
                 if (tail == kGraphInvalidIndex) continue;
-                for (auto head : heads)
-                {
+                for (auto head : heads.batches)
                     if (head != kGraphInvalidIndex)
-                    {
-                        frame.dependencies.push_back({tail, head});
-                    }
-                }
+                        frame.dependencies.push_back({producer_base + tail, consumer_base + head});
             }
         }
-        if (auto imported = appendImportedDependencies(); !imported) return imported;
         std::ranges::sort(
             frame.dependencies,
             [](const auto& a, const auto& b)
@@ -357,141 +335,6 @@ namespace lux::render::detail
         {
             ready.reserve(frame.batches.size());
         }
-        return {};
-    }
-
-    RenderResult<void> SubmissionOperation::appendImportedDependencies() noexcept
-    {
-        auto& frame = slot_;
-        frame.imported_uses.clear();
-        for (std::uint32_t i = 0; i < jobs_.size(); ++i)
-        {
-            const auto& bindings = jobs_[i]->frames_[slotIndex()].bindings;
-            const auto base = frame.jobs[i].result.first_batch;
-            for (const auto& use : jobs_[i]->graph().imported_accesses_)
-            {
-                const bool presentation_output = use.resource.index == jobs_[i]->graph().output() &&
-                                                 jobs_[i]->output_.description.kind == ETargetKind::SURFACE;
-                if (presentation_output)
-                {
-                    continue;
-                }
-                const auto& binding = bindings[use.resource.index];
-                auto range = use.range;
-                if (auto* buffer = std::get_if<GraphBufferRange>(&range))
-                {
-                    if (use.whole_resource && binding.buffer)
-                    {
-                        if (buffer->offset >= binding.buffer_size)
-                            return cxx::unexpected(RenderError{kDeviceArgument});
-                        buffer->size = binding.buffer_size - buffer->offset;
-                    }
-                    buffer->offset += binding.buffer_offset;
-                }
-                if (const auto* physical = binding.image ? static_cast<const void*>(binding.image) : binding.buffer)
-                {
-                    frame.imported_uses.push_back(
-                        {physical, range, i, base + use.batch, base + use.release_batch, use.write,
-                         use.resource.index == jobs_[i]->graph().output(), use.resource}
-                    );
-                }
-                for (auto* buffer : binding.addressed_buffers)
-                {
-                    frame.imported_uses.push_back(
-                        {buffer,
-                         GraphBufferRange{0, device_.nriCore().GetBufferDesc(*buffer).size},
-                         i,
-                         base + use.batch,
-                         base + use.release_batch,
-                         use.write}
-                    );
-                }
-            }
-        }
-        for (std::uint32_t i = 0; i < jobs_.size(); ++i)
-        {
-            const auto& job = *jobs_[i];
-            const auto& physical = job.frames_[slotIndex()];
-            const auto base = frame.jobs[i].result.first_batch;
-            for (std::uint32_t batch = 0; batch < job.graph().submissions_.size(); ++batch)
-            {
-                const auto& submission = job.graph().submissions_[batch];
-                for (auto source : submission.shared_draw_reads)
-                {
-                    const auto& list = physical.raster_draws[source];
-                    for (const auto& read : list.reads)
-                    {
-                        frame.imported_uses.push_back({read.physical, read.range, i, base + batch, base + batch, false});
-                    }
-                }
-            }
-        }
-        std::ranges::sort(
-            frame.imported_uses,
-            [](const auto& a, const auto& b)
-            {
-                if (a.physical != b.physical)
-                {
-                    return std::less<const void*>{}(a.physical, b.physical);
-                }
-                if (a.target_output != b.target_output)
-                {
-                    return a.target_output; // A sampled Target is produced before another instance consumes it.
-                }
-                return std::tie(a.instance, a.batch) < std::tie(b.instance, b.batch);
-            }
-        );
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        const auto overlap_start = std::chrono::steady_clock::now();
-#endif
-        for (std::size_t first = 0; first < frame.imported_uses.size();)
-        {
-            auto end = first + 1;
-            while (end < frame.imported_uses.size() &&
-                   frame.imported_uses[end].physical == frame.imported_uses[first].physical)
-            {
-                ++end;
-            }
-            const auto group = std::span(frame.imported_uses).subspan(first, end - first);
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-            if (group.size() >= frame.imported_group_counts.size())
-            {
-                frame.imported_group_counts.resize(group.size() + 1);
-            }
-            ++frame.imported_group_counts[group.size()];
-#endif
-            if (std::ranges::any_of(group, &ImportedResourceAccess::write))
-            {
-                for (std::size_t a = 0; a < group.size(); ++a)
-                {
-                    for (std::size_t b = 0; b < a; ++b)
-                    {
-                        const bool already_compiled = group[a].instance == group[b].instance &&
-                            group[a].logical.index != kGraphInvalidIndex && group[a].logical == group[b].logical;
-                        const bool needs_order = !already_compiled && group[a].batch != group[b].batch &&
-                            (group[a].write || group[b].write);
-                        if (needs_order)
-                        {
-                            ++frame.imported_comparisons;
-                            if (overlaps(group[a].range, group[b].range))
-                            {
-                                if (group[b].release_batch != group[a].batch)
-                                {
-                                    frame.dependencies.push_back({group[b].release_batch, group[a].batch});
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            first = end;
-        }
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        frame.imported_overlap_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - overlap_start
-        ).count();
-#endif
-        frame.imported_uses.clear();
         return {};
     }
 
@@ -792,18 +635,7 @@ namespace lux::render::detail
                 }
                 output += std::to_string(accepted.serials()[queue]);
             }
-            output += "],\"dependency_rebuilds\":" + std::to_string(frame.dependency_rebuilds) +
-                      ",\"imported_comparisons\":" + std::to_string(frame.imported_comparisons);
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-            output += ",\"imported_overlap_ns\":" + std::to_string(frame.imported_overlap_ns) +
-                      ",\"imported_groups_by_size\":[";
-            for (std::size_t size = 0; size < frame.imported_group_counts.size(); ++size)
-            {
-                if (size) output += ',';
-                output += std::to_string(frame.imported_group_counts[size]);
-            }
-            output += ']';
-#endif
+            output += "],\"dependency_rebuilds\":" + std::to_string(frame.dependency_rebuilds);
             output += ",\"dependency_edges\":" + std::to_string(frame.dependencies.size()) + ",\"batch_serials\":[";
             for (std::size_t instance = 0; instance < frame.jobs.size(); ++instance)
             {

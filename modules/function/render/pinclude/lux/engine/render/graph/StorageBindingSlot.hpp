@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/extensions/detail/BufferBoundary.hpp>
 
 namespace lux::render::detail
 {
@@ -10,7 +10,7 @@ namespace lux::render::detail
         std::optional<GraphBufferRange> output_range;
         std::uint32_t first_use = 0;
         std::uint32_t use_count = 0;
-        std::uint32_t canonical_queue = kGraphInvalidIndex;
+        BufferBoundary boundary;
         std::uint32_t first_export = 0;
         std::uint32_t export_count = 0;
     };

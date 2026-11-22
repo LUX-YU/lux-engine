@@ -559,7 +559,6 @@ namespace lux::render::detail
                 return barriers;
             }
             plan.submissions_.clear();
-            plan.imported_accesses_.clear();
             planSubmissions(plan);
             plan.physical_resources_ = planPhysicalResources(plan);
             return {};
@@ -630,13 +629,6 @@ namespace lux::render::detail
                 const auto source_history = plan.resources_[(*guard)->input].history;
                 if (source_history == kGraphInvalidIndex) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 (*guard)->input = source_history;
-            }
-        }
-        for (const auto& access : plan.imported_accesses_)
-        {
-            if (access.resource.index == plan.output_)
-            {
-                plan.output_first_batch_ = std::min(plan.output_first_batch_, access.batch);
             }
         }
         if (std::ranges::find(resource_reuse, EResourceReuse::REUSED) != resource_reuse.end())

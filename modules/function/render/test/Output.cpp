@@ -298,12 +298,6 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
               std::errc{});
         return value;
     };
-    const auto revision = [&](const JobExecution& job)
-    {
-        dump.clear();
-        CHECK(job.dumpResources(sink));
-        return number("\"imported_revision\":");
-    };
     const auto rebuilds = [&]()
     {
         dump.clear();
@@ -331,7 +325,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
         CHECK(!frames->submitting());
         CHECK(session->drain());
     };
-    // Drive both installations to the same local binding revision at exactly the same CPU address.
+    // Changing the selected draw ranges preserves the logical dependency cache.
     const auto raster_slot = plan.diagnostics.passSlot(pass.pass);
     CHECK(raster_slot < plan.graph.passes().size());
     const auto& raster_pass = plan.graph.passes()[raster_slot];
@@ -342,10 +336,11 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     };
     change_reads(0);
     render();
+    const auto initial_rebuilds = rebuilds();
     change_reads(1);
     render();
+    CHECK(rebuilds() == initial_rebuilds);
     CHECK(frames->completed(0, *instance_job));
-    const auto cached_revision = revision(*instance_job);
     const auto cached_rebuilds = rebuilds();
     auto stale_resize = take(ResizeResources::prepare(*instance_job, {}));
     CHECK(stale_resize.prepareAdoption(*instance_job));
@@ -365,7 +360,6 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     change_reads(1);
     render();
     CHECK(rebuilds() == cached_rebuilds + 1);
-    CHECK(revision(*instance_job) == cached_revision);
     CHECK(frames->completed(0, *instance_job));
     const auto adopted_rebuilds = rebuilds();
     render();
@@ -377,7 +371,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     std::printf("RESIZE GENERATION PASS backend=%s: prepared candidate rejected after CPU and GPU row address reuse\n",
         backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan");
     std::printf("EXECUTION IDENTITY PASS backend=%s: old receipt excluded at same address, "
-                "equal local revisions rebuilt once, stable inputs reused dependencies\n",
+                "draw-range changes reused dependencies, new generation rebuilt once\n",
                 backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan");
 }
 
@@ -771,6 +765,8 @@ static void verifyTargetInput(
         std::puts("DEVICE IMPORT PASS: rejected a sampled Target from the peer physical adapter");
     }
     call<StartRenderJob>(client, commands, std::move(start));
+    const auto reverse = call<SetRenderJobDependencies>(client, commands, {writer, {reader}, {}}, false);
+    CHECK(reverse.error.type == kJobCycle);
     CHECK(call<RequestRenderJob>(client, commands, {reader}, false).error.type == kRuntimeState);
     const auto published = call<RequestRenderJob>(client, commands, {writer});
     const auto submitted = call<RequestRenderJob>(client, commands, {reader});

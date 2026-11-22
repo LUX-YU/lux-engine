@@ -1,10 +1,8 @@
 #include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
-#include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
 #include <lux/engine/render/graph/compile/BarrierPlan.hpp>
-#include <tuple>
 #include <unordered_map>
 
 namespace lux::render::detail
@@ -26,61 +24,6 @@ namespace lux::render::detail
         }
         return physical_queue;
     }
-
-    namespace
-    {
-        void compactImportedAccesses(std::vector<ImportedAccess>& accesses) noexcept
-        {
-            std::ranges::sort(
-                accesses,
-                [](const auto& a, const auto& b)
-                {
-                    if (a.batch != b.batch)
-                    {
-                        return a.batch < b.batch;
-                    }
-                    if (a.resource != b.resource)
-                    {
-                        return a.resource.index < b.resource.index;
-                    }
-                    // One resource has one range kind, already normalized by the Builder.
-                    if (const auto* bytes = std::get_if<GraphBufferRange>(&a.range))
-                    {
-                        const auto& other = std::get<GraphBufferRange>(b.range);
-                        return std::tie(bytes->offset, bytes->size) < std::tie(other.offset, other.size);
-                    }
-                    const auto imageKey = [](const GraphImageRange& range)
-                    {
-                        return std::tie(
-                            range.aspects,
-                            range.first_mip,
-                            range.mip_count,
-                            range.first_layer,
-                            range.layer_count
-                        );
-                    };
-                    return imageKey(std::get<GraphImageRange>(a.range)) < imageKey(std::get<GraphImageRange>(b.range));
-                }
-            );
-            std::size_t count = 0;
-            for (const auto& access : accesses)
-            {
-                const bool is_duplicate = count != 0 && accesses[count - 1].batch == access.batch &&
-                                          accesses[count - 1].resource == access.resource &&
-                                          accesses[count - 1].range == access.range;
-                if (is_duplicate)
-                {
-                    accesses[count - 1].write |= access.write;
-                    accesses[count - 1].whole_resource |= access.whole_resource;
-                }
-                else
-                {
-                    accesses[count++] = access;
-                }
-            }
-            accesses.resize(count);
-        }
-    } // namespace
 
     bool
     GraphCompiler::Workspace::assignAsyncCompute(
@@ -208,7 +151,11 @@ namespace lux::render::detail
         auto& recording = plan.recording_;
         const auto& queues = device.queues;
         auto& batches = plan.submissions_;
-        auto& imports = plan.imported_accesses_;
+        const auto physical = physicalQueueIndices(queues);
+        plan.first_batches_ = {};
+        plan.last_batches_ = {};
+        plan.last_output_batches_ = {};
+        plan.output_first_batch_ = kGraphInvalidIndex;
         auto& output_regions = plan.output_write_regions_;
         output_regions.clear();
         const auto output = plan.output_;
@@ -223,6 +170,18 @@ namespace lux::render::detail
             // Keep the existing completion contract for a graph with no recording units.
             batches.push_back({});
         }
+        const auto retain_use = [&](std::uint32_t batch, GraphResourceId resource)
+        {
+            if (resource.index == output)
+            {
+                const auto queue = physical[static_cast<std::size_t>(batches[batch].queue)];
+                auto& tail = plan.last_output_batches_.batches[queue];
+                if (tail == kGraphInvalidIndex || batch > tail) tail = batch;
+                plan.output_first_batch_ = std::min(plan.output_first_batch_, batch);
+            }
+            if (resources[resource.index].origin == EGraphOrigin::IMPORTED)
+                batches[batch].imported_resources.push_back(resource);
+        };
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             auto& pass = recording.passes[p];
@@ -246,26 +205,20 @@ namespace lux::render::detail
             bool writes_output = false;
             for (const auto& use : graph.passes()[analysis.execution_order[p].index].uses)
             {
-                const auto add = [&](GraphResourceId resource, bool write)
+                const auto add = [&](GraphResourceId resource)
                 {
                     if (resources[resource.index].history != kGraphInvalidIndex)
                     {
                         batches.back().histories.push_back(resource);
                     }
-                    // The final Target is also borrowed physical memory, despite its logical
-                    // graph resource being transient. A different instance may sample that image.
-                    if ((resources[resource.index].origin == EGraphOrigin::IMPORTED || resource.index == output) &&
-                        !resources[resource.index].shared_table)
-                    {
-                        imports.push_back({resource, use.range, write, batch, batch, use.whole_resource});
-                    }
+                    retain_use(batch, resource);
                 };
                 const bool write = use.access != EGraphAccess::READ;
                 writes_output |= write && use.version.resource.index == output;
-                add(use.version.resource, write);
+                add(use.version.resource);
                 if (use.access == EGraphAccess::READ && use.fallback)
                 {
-                    add(use.fallback->resource, false);
+                    add(use.fallback->resource);
                 }
             }
             if (!writes_output) continue;
@@ -281,10 +234,6 @@ namespace lux::render::detail
                 ++submission.output_region_count;
             }
         }
-        // Retain the batch which actually touches the range. Folding the entire instance into one
-        // write would prevent unrelated prefixes and branches in another instance from progressing.
-        compactImportedAccesses(imports);
-
         const bool has_restore = !recording.after.images.empty() || !recording.after.buffers.empty();
         // Native restoration and presentation have a Graphics epilogue when the last work uses another queue.
         if ((has_restore || presents) && batches.back().queue != EQueueRole::GRAPHICS)
@@ -399,71 +348,28 @@ namespace lux::render::detail
         }
         // Object reuse and memory alias proofs include physical-Queue FIFO. Make it an explicit
         // edge before runtime is allowed to select ready batches out of recording-vector order.
-        std::array<std::size_t, 3> physical_slots{};
-        for (std::size_t q = 0; q < queues.size(); ++q)
-        {
-            physical_slots[q] = static_cast<std::size_t>(std::ranges::find(queues, queues[q]) - queues.begin());
-        }
-        std::array<std::uint32_t, 3> previous_queue_batch{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
         for (std::uint32_t b = 0; b < batches.size(); ++b)
         {
-            const auto q = physical_slots[static_cast<std::size_t>(batches[b].queue)];
-            if (previous_queue_batch[q] != kGraphInvalidIndex)
-            {
-                depend(b, previous_queue_batch[q], nri::StageBits::ALL);
-            }
-            previous_queue_batch[q] = b;
+            const auto q = physical[static_cast<std::size_t>(batches[b].queue)];
+            auto& head = plan.first_batches_.batches[q];
+            head = std::min(head, b);
+            auto& tail = plan.last_batches_.batches[q];
+            if (tail != kGraphInvalidIndex) depend(b, tail, nri::StageBits::ALL);
+            tail = b;
         }
 
-        for (auto& access : imports)
-        {
-            const auto& resource = resources[access.resource.index];
-            if (restored[access.resource.index])
-            {
-                access.release_batch = last;
-            }
-            if (std::holds_alternative<GraphImageDesc>(resource.description))
-            {
-                const auto changesLayout = [&](const ImageTransition& transition)
-                {
-                    const auto& barrier = transition.native;
-                    const auto aspects = barrier.planes == nri::PlaneBits::COLOR   ? 1u
-                                         : barrier.planes == nri::PlaneBits::DEPTH ? 2u
-                                                                                   : 4u;
-                    const GraphImageRange
-                        range{aspects, barrier.mipOffset, barrier.mipNum, barrier.layerOffset, barrier.layerNum};
-                    return transition.resource == access.resource.index &&
-                           barrier.before.layout != barrier.after.layout && overlaps(access.range, range);
-                };
-                const auto& batch = batches[access.batch];
-                for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
-                {
-                    access.write |= std::ranges::any_of(recording.passes[p].before.images, changesLayout);
-                }
-                // A layout transition is exclusive even when the shader only reads the image.
-                access.write |= std::ranges::any_of(recording.after.images, changesLayout);
-            }
-        }
-        const auto retain_import = [&](std::uint32_t batch, GraphResourceId resource)
-        {
-            if (resources[resource.index].origin != EGraphOrigin::IMPORTED) return;
-            auto& slots = batches[batch].imported_resources;
-            if (std::ranges::find(slots, resource) == slots.end()) slots.push_back(resource);
-        };
-        for (const auto& access : imports)
-        {
-            retain_import(access.batch, access.resource);
-            retain_import(access.release_batch, access.resource);
-        }
         const auto retain_transitions = [&](std::uint32_t batch, const BarrierBatch& barriers)
         {
-            for (const auto& transition : barriers.images) retain_import(batch, {transition.resource});
-            for (const auto& transition : barriers.buffers) retain_import(batch, {transition.resource});
+            for (const auto& transition : barriers.images) retain_use(batch, {transition.resource});
+            for (const auto& transition : barriers.buffers) retain_use(batch, {transition.resource});
         };
         for (const auto& pass : recording.passes) retain_transitions(pass.submission, pass.before);
         retain_transitions(last, recording.after);
         for (auto& batch : batches)
         {
+            auto& inputs = batch.imported_resources;
+            std::ranges::sort(inputs, {}, &GraphResourceId::index);
+            inputs.erase(std::ranges::unique(inputs).begin(), inputs.end());
             std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);
             std::size_t count = 0;
             for (const auto& dependency : batch.dependencies)
@@ -488,7 +394,7 @@ namespace lux::render::detail
             }
             for (const auto& dependency : batch.dependencies)
             {
-                const auto q = physical_slots[static_cast<std::size_t>(batches[dependency.producer].queue)];
+                const auto q = physical[static_cast<std::size_t>(batches[dependency.producer].queue)];
                 auto& retained = latest[q];
                 if (retained.producer == kGraphInvalidIndex)
                 {

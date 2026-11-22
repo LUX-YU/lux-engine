@@ -728,8 +728,12 @@ its matching access-mask contract.
 
 SubmissionOperation advances an ordered, frozen submission window across Queue capacity limits. Each accepted batch records its
 actual queue serial; dependencies wait for that producer, never an unrelated later submission. Compatible ready
-intervals from multiple instances share a submit. Shared imported reads remain independent; overlapping writes
-preserve instance order. NRI concurrent graph resources use semaphore memory dependencies and consumer-side
+intervals from multiple Jobs share a submit. Ordinary shared inputs keep their preparation-to-read waits.
+For a same-round Target, the compiler supplies the producer's last output batch and the consumer's first
+batch touching that input on each physical queue, including boundary transitions. A previous Target publication
+uses the selected image's availability and reader frontiers. A final Buffer reader pins the exact published
+writer, frame, FIF and range. An explicit execution-order edge connects the producer's queue tails to the
+consumer's queue heads, including selected endpoints separated by a dormant Job. NRI concurrent graph resources use semaphore memory dependencies and consumer-side
 layout transitions. First and final Graphics boundaries cover preparation copies, History initialization and
 canonical resource states.
 
@@ -737,11 +741,9 @@ An active submission borrows the Jobs frozen for that round until recording and 
 Each accepted batch extends the receipt at its round ordinal and physical queue. The compiler lists the condition
 regions that can write the Target in each batch. Acceptance evaluates those regions on the frozen FIF inputs.
 The Server reads the receipt by ordinal and verifies the installed execution identity before publishing an output. Recording inputs, native command spans and fence arguments expire with the operation.
-Each FIF slot reuses its dependency indexes while the ordered execution identities, order edges and local
-imported-binding revisions stay unchanged. Content-only updates do not sort or intersect imported ranges. Binding replacement, range changes,
-Resize or a different instance invalidate that slot's index; rebuilding still has a cold worst-case quadratic
-conflict enumeration inside a shared physical-resource group. This is not a second Graph or a GraphAnalysis run.
-`dumpSubmissions` reports the rebuild and comparison counts separately from accepted submissions.
+Each FIF slot caches its batch dependencies by the selected execution identities and logical edges. A changed
+draw range patches the frozen operands. A new execution generation or a change of selected producer rebuilds
+the topology. `dumpSubmissions` reports dependency rebuilds and native edges separately from accepted submissions.
 
 With `LUX_RENDER_DEVELOPMENT_METRICS=ON`, `RenderServer::developmentStats()` exposes cumulative Job selection,
 input rebuild and CPU round occupancy counters. The round borrows structural Job relations, Target sources and
@@ -749,16 +751,14 @@ Resource identities until its submission terminates. Requests, cadence and compl
 round's selection. Selection and topology growth counters track backing-array allocations in those two workspaces.
 The preparation interval runs from scheduling program work to
 its delivery on the Server. Slot hold time ends when the Server releases the round, before any remaining GPU
-retirement. `dumpSubmissions` also reports imported overlap time and a histogram indexed by the number of
-accesses to a physical resource. The default build disables this sampling.
+retirement. The default build disables this sampling.
 
-Imported accesses retain their consuming batch and required canonical-state release boundary. Ready batches
-are indexed per physical Queue by their actual wait conditions; accepted submission advances only their
-successors. The compiled plan explicitly preserves physical-Queue FIFO used by object reuse and memory alias
-proofs. Queue selection can rotate without redefining the order of two writers of one imported range.
-The existing imported binding API identifies actual Buffer/Texture objects; independently supplied aliased
-objects with different native handles have no declared allocation relationship and are not supported by this
-cross-instance contract. Graph-owned Memory Alias retains its existing allocation and dependency proof.
+Ready batches are indexed by physical queue and wait condition. Accepting a submission advances its successors.
+The compiler preserves physical-queue FIFO for object reuse and graph-owned memory aliasing. The Resource owner
+qualifies final Buffer writer claims during installation and backing replacement. Disjoint writers can share a
+native Buffer when their compiled uses preserve the same boundary on one physical queue. Two Jobs that require
+separate transitions at a common boundary take turns under their product pins. Active writable allocations
+belonging to unrelated Jobs must occupy disjoint memory.
 
 Preparation-copy completion and complete-instance publication are separate. Accepted copies can settle their
 upload Senders before the graph finishes submitting. History publishes only after the instance's required batches

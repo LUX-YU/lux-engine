@@ -511,7 +511,10 @@ namespace lux::render::detail
                 const auto resource = slots[i].slot.resource.index;
                 if (resource == kGraphInvalidIndex) continue;
                 if (std::holds_alternative<GraphBufferDesc>(build.source.resources()[resource].description))
+                {
                     owner[resource] = i;
+                    slots[i].slot.boundary.use = build.source.resources()[resource].initial_use;
+                }
             }
             std::vector<std::vector<FinalBufferUse>> uses(slots.size());
             std::vector<bool> preserves_boundary(slots.size(), true);
@@ -522,11 +525,11 @@ namespace lux::render::detail
                 if (slots[binding].slot.output_range)
                     uses[binding].push_back({pass, std::get<GraphBufferRange>(use.range), write});
                 if (!preserves_boundary[binding]) return;
-                auto& queue = slots[binding].slot.canonical_queue;
+                auto& boundary = slots[binding].slot.boundary;
                 const auto physical = session.queueIndex(session.queue(executable.passes()[pass].queue));
-                const bool same_queue = queue == kGraphInvalidIndex || queue == physical;
-                preserves_boundary[binding] = same_queue && use.usage == build.source.resources()[id.index].initial_use;
-                queue = preserves_boundary[binding] ? static_cast<std::uint32_t>(physical) : kGraphInvalidIndex;
+                const bool same_queue = boundary.queue == kGraphInvalidIndex || boundary.queue == physical;
+                preserves_boundary[binding] = same_queue && use.usage == boundary.use;
+                boundary.queue = preserves_boundary[binding] ? static_cast<std::uint32_t>(physical) : kGraphInvalidIndex;
             };
             const auto& order = build.analysis.execution_order;
             for (std::uint32_t p = 0; p < order.size(); ++p)
@@ -567,6 +570,18 @@ namespace lux::render::detail
             for (std::size_t i = 0; i < slots.size(); ++i)
             {
                 auto& binding = slots[i].slot;
+                if (binding.boundary.queue != kGraphInvalidIndex)
+                {
+                    const auto& resource = executable.resources()[binding.resource.index];
+                    const auto queue_of = [&](EQueueRole role) { return session.queueIndex(session.queue(role)); };
+                    const bool foreign_restore = !resource.final_barrier_uses.empty() &&
+                        queue_of(executable.submissions().back().queue) != binding.boundary.queue;
+                    const bool foreign_barrier = std::ranges::any_of(resource.barrier_uses, [&](const auto& use)
+                    {
+                        return queue_of(executable.passes()[use.first].queue) != binding.boundary.queue;
+                    });
+                    if (foreign_restore || foreign_barrier) binding.boundary.queue = kGraphInvalidIndex;
+                }
                 binding.first_use = static_cast<std::uint32_t>(result.uses.size());
                 binding.use_count = static_cast<std::uint32_t>(uses[i].size());
                 result.uses.insert(result.uses.end(), uses[i].begin(), uses[i].end());
@@ -660,6 +675,18 @@ namespace lux::render::detail
             const auto& resource = plan->graph.resources()[slot.index];
             if (!resource.memory_used) slot = {};
             else if (!resource.sampled_target_input)
+                co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
+            if (slot.index == kGraphInvalidIndex) continue;
+            const auto batches = plan->graph.submissions();
+            for (std::uint32_t b = 0; b < batches.size(); ++b)
+            {
+                const auto& batch = batches[b];
+                if (!std::ranges::binary_search(batch.imported_resources, slot.index, {}, &GraphResourceId::index))
+                    continue;
+                auto& first = input.first_reads.batches[session.queueIndex(session.queue(batch.queue))];
+                first = std::min(first, b);
+            }
+            if (std::ranges::all_of(input.first_reads.batches, [](auto b) { return b == kGraphInvalidIndex; }))
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
         }
         for (auto& declaration : built->storage_imports)

@@ -494,7 +494,6 @@ namespace lux::render::detail
                 }
             }
             frame.record_ready = false;
-            frame.invalidateImportedBindings();
             std::ranges::fill(frame.history_valid, 0);
         }
         for (std::size_t h = 0; h < histories.size(); ++h)

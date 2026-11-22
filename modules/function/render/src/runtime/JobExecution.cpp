@@ -81,7 +81,7 @@ namespace lux::render
             if (!matches) return cxx::unexpected(RenderError{kDeviceArgument, {index}});
             const auto id = declaration.resource;
             if (id.index == kGraphInvalidIndex) continue;
-            candidate.target_images.push_back({input.target, id});
+            candidate.target_images.push_back({input.target, static_cast<std::uint32_t>(index)});
             for (std::uint32_t slot = 0; slot < entry.frameProgress().frameCount(); ++slot)
             {
                 candidate.bindImage(id, slot, *images.frames[slot].image);
@@ -116,7 +116,7 @@ namespace lux::render
             const auto id = input.resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             BoundStorageProjection link{
-                id, input.projection, compiled.resource, compiled.output_range, compiled.canonical_queue
+                id, input.projection, compiled.resource, compiled.output_range, compiled.boundary
             };
             link.uses = std::span(candidate.graph().outputUses()).subspan(compiled.first_use, compiled.use_count);
             const auto exports = std::span{candidate.graph().bufferExports()};

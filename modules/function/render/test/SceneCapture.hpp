@@ -740,8 +740,8 @@ static std::uint64_t nextSceneRequest() noexcept
 }
 
 template <class C>
-static typename C::Response
-call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request request, bool success = true)
+static std::uint64_t
+sendSceneRequest(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request request)
 {
     const auto found = std::ranges::find(catalog.commands, C::name, &CommandInfo::name);
     if (found == catalog.commands.end())
@@ -751,6 +751,13 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
     ipc::IpcMessage message;
     message.emplace<typename C::Request>(std::move(request));
     CHECK(client.trySend(commandTag(found->id), request_id, message));
+    return request_id;
+}
+
+template <class C>
+static typename C::Response receiveSceneReply(ipc::IpcRequester& client, std::uint64_t request_id, bool success = true)
+{
+    ipc::IpcMessage message;
     typename C::Response response{};
     const auto deadline = Clock::now() + 30s;
     auto& notifications = ipc::IpcCore::instance();
@@ -794,6 +801,13 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
         CHECK(false);
     }
     return response;
+}
+
+template <class C>
+static typename C::Response
+call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request request, bool success = true)
+{
+    return receiveSceneReply<C>(client, sendSceneRequest<C>(client, catalog, std::move(request)), success);
 }
 
 inline MaterialProgramId registerMaterialProgram(

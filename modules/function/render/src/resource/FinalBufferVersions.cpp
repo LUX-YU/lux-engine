@@ -144,19 +144,19 @@ namespace lux::render
             if (!selected) return cxx::unexpected(selected.error());
             auto& use = *std::ranges::find(entry.product_buffers, selected->buffer, &ProductBufferUse::buffer);
             if (use.prepared_writers || !device->reached(use.writes)) return false;
-            const bool shared_state = link.canonical_queue != kGraphInvalidIndex &&
-                link.canonical_queue == use.read_queue && link.projection == use.read_projection;
+            const bool shared_state = link.boundary.canShare(use.selected);
             if (!shared_state && (use.prepared_readers || !device->reached(use.reads))) return false;
             if (use.prepared_readers == UINT32_MAX) std::terminate();
             ++use.prepared_readers;
-            use.read_queue = link.canonical_queue;
-            use.read_projection = link.projection;
+            use.selected = link.boundary;
         }
         else if (link.output_range)
         {
             const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
             auto& use = *std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer);
             if (use.prepared_readers || !device->reached(use.reads) || !device->reached(use.writes)) return false;
+            if (use.prepared_writers && !link.boundary.canShare(use.selected)) return false;
+            use.selected = link.boundary;
             if (use.prepared_writers == UINT32_MAX) std::terminate();
             ++use.prepared_writers;
         }

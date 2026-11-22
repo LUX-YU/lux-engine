@@ -22,6 +22,7 @@ namespace lux::render::detail
     {
         std::uint32_t producer;
         std::uint32_t consumer;
+        std::uint32_t target_input = kGraphInvalidIndex; // Whole-Job order when no sampled Target operand is selected.
         bool operator==(const SubmissionOrder&) const noexcept = default;
     };
 
@@ -41,7 +42,6 @@ namespace lux::render::detail
         struct JobReceipt final
         {
             ExecutionBindingId binding{};
-            std::uint64_t binding_revision = 0;
             JobSubmissionResult result;
             std::uint32_t remaining_batches = 0;
         };
@@ -62,17 +62,6 @@ namespace lux::render::detail
             nri::StageBits stages = nri::StageBits::ALL;
         };
 
-        struct ImportedResourceAccess final
-        {
-            const void* physical = nullptr;
-            VGraphRange range;
-            std::uint32_t instance = 0;
-            std::uint32_t batch = 0, release_batch = 0;
-            bool write = false;
-            bool target_output = false;
-            GraphResourceId logical{kGraphInvalidIndex};
-        };
-
         struct Slot final
         {
             Slot() noexcept = default;
@@ -88,7 +77,6 @@ namespace lux::render::detail
             std::vector<BatchExecution> batches;
             std::vector<BatchDependency> dependencies;
             std::vector<std::vector<std::uint32_t>> ready_batches;
-            std::vector<ImportedResourceAccess> imported_uses;
             std::vector<std::uint32_t> recording_batches;
             struct Recording final
             {
@@ -101,9 +89,7 @@ namespace lux::render::detail
             std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;
             std::uint32_t remaining_batches = 0;
             bool graph_started = false;
-            std::uint64_t dependency_rebuilds = 0, imported_comparisons = 0;
-            std::vector<std::uint64_t> imported_group_counts;
-            std::uint64_t imported_overlap_ns = 0;
+            std::uint64_t dependency_rebuilds = 0;
         };
 
     public:
@@ -158,7 +144,6 @@ namespace lux::render::detail
         [[nodiscard]] bool hasPresentationBoundary(const BatchExecution&) const noexcept;
         [[nodiscard]] RenderResult<void>
         rebuildDependencies(std::span<const SubmissionOrder>) noexcept;
-        [[nodiscard]] RenderResult<void> appendImportedDependencies() noexcept;
         [[nodiscard]] std::uint32_t slotIndex() const noexcept { return selection_.frame.slot_index; }
 
         DeviceSession& device_;

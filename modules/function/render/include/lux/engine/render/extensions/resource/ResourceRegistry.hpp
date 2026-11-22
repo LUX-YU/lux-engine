@@ -7,7 +7,7 @@
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/extensions/detail/BufferBoundary.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/core/FinalBufferVersion.hpp>
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
@@ -181,7 +181,7 @@ namespace lux::render
             GraphResourceId resource;
             std::optional<GraphBufferRange> writer;
             bool may_access;
-            std::uint32_t canonical_queue;
+            detail::BufferBoundary boundary;
         };
 
         struct ProjectionBuffer final
@@ -205,8 +205,7 @@ namespace lux::render
             nri::Buffer* buffer;
             detail::SubmissionFrontiers writes, reads;
             std::uint32_t prepared_readers = 0, prepared_writers = 0;
-            std::uint32_t read_queue = kGraphInvalidIndex;
-            std::uint32_t read_projection = kGraphInvalidIndex;
+            detail::BufferBoundary selected;
         };
 
         struct BufferProduct final

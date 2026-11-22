@@ -69,7 +69,7 @@ namespace lux::render
                     inputs.read_slots.push_back(source);
                     ++entry.reads.count;
                 }
-                entry.imports.push_back({image.resource, source});
+                entry.imports.push_back({image.operand, source});
             }
             running.insert(id, index);
             writers.insert(execution.target, index);
@@ -171,6 +171,7 @@ namespace lux::render
         round.outputs.reserve(count);
         round.executions.reserve(count);
         round.storages.reserve(inputs.storages.size());
+        for (const auto& job : inputs.jobs) order_capacity += job.imports.size();
         round.job_order.reserve(order_capacity);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto elapsed = std::chrono::steady_clock::now() - started;
@@ -415,6 +416,12 @@ namespace lux::render
                 selected = {{source.target, kGraphInvalidIndex, 0, 0}, producer};
                 round.selected_sources.push_back(read_slot);
             }
+            const auto consumer = inputs.selection[index].selected;
+            for (const auto& import : job.imports)
+            {
+                const auto writer = round.reads[import.source.index].producer;
+                if (writer != no_job) round.job_order.push_back({writer, consumer, import.operand});
+            }
             for (auto storage : job.storages) inputs.used_storages[storage] = 1;
         }
         for (std::size_t i = 0; i < inputs.storages.size(); ++i)
@@ -455,7 +462,8 @@ namespace lux::render
         }
         std::ranges::sort(round.job_order, [](const auto& left, const auto& right) noexcept
         {
-            return std::tie(left.consumer, left.producer) < std::tie(right.consumer, right.producer);
+            return std::tie(left.consumer, left.producer, left.target_input) <
+                std::tie(right.consumer, right.producer, right.target_input);
         });
         return {};
     }

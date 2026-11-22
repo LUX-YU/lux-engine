@@ -33,7 +33,7 @@ namespace lux::render::runtime_detail
         std::uint32_t projection;
         GraphResourceId resource;
         std::optional<GraphBufferRange> output_range;
-        std::uint32_t canonical_queue = kGraphInvalidIndex;
+        detail::BufferBoundary boundary;
         cxx::SlotKey<detail::GraphBindingTag> subscription{};
         std::optional<FinalBufferVersion> publication;
         std::span<const detail::FinalBufferUse> uses;
@@ -154,7 +154,7 @@ namespace lux::render::runtime_detail
         struct TargetImage final
         {
             TargetId target;
-            GraphResourceId resource;
+            std::uint32_t operand;
         };
 
         std::vector<TargetImage> target_images;

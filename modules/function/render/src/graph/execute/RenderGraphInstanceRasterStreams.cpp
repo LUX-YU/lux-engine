@@ -1,4 +1,3 @@
-#include <lux/engine/render/resources/mesh/Data.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
@@ -338,28 +337,29 @@ namespace lux::render::detail
             auto& used_material_programs = input.used_material_programs;
             if (!input.materials.empty()) used_material_programs.assign(selected_programs.size(), 0);
 
-            const auto meshBuffer = [&](const RasterBufferSlice& slice, EGraphUse use) noexcept
-                -> RenderResult<const OwnedRasterStream::MeshBuffer*>
+            const auto geometrySlice = [&](const RasterBufferSlice& slice, EGraphUse use) noexcept
+                -> RenderResult<const OwnedRasterStream::Geometry*>
             {
+                const auto row = slice.buffer.index / 2;
+                const bool vertex = use == EGraphUse::VERTEX;
+                const bool wrong_operand = (slice.buffer.index % 2 == 0) != vertex;
                 const bool invalid_slot = slice.buffer.stream != p || slice.buffer.selection != input.selection ||
-                    slice.buffer.index >= input.mesh_buffers.size();
+                    row >= input.geometry.size() || wrong_operand;
                 if (invalid_slot) return cxx::unexpected(RenderError{kGraphInvalidRange, {p, slice.buffer.index}});
-                const auto& selected = input.mesh_buffers[slice.buffer.index];
-                const auto stride = use == EGraphUse::VERTEX ? selected.asset->vertex_stride :
-                    selected.asset->index_stride;
-                const bool invalid_range = !slice.size || !includes({0, selected.size}, slice) ||
-                    slice.offset % stride || slice.size % stride;
-                if (selected.use != use || invalid_range)
-                    return cxx::unexpected(RenderError{kGraphInvalidRange, {p, slice.buffer.index}});
-                return &selected;
+                const auto& geometry = input.geometry[row];
+                const auto& selected = vertex ? geometry.binding.vertices : geometry.binding.indices;
+                const bool valid_range = slice.size && includes({0, selected.size}, slice) &&
+                    slice.offset % selected.stride == 0 && slice.size % selected.stride == 0;
+                if (!valid_range) return cxx::unexpected(RenderError{kGraphInvalidRange, {p, slice.buffer.index}});
+                return &geometry;
             };
 
-            const auto recordMeshRead =
-                [&](const OwnedRasterStream::MeshBuffer& source, const RasterBufferSlice& slice) noexcept
+            const auto recordGeometryRead =
+                [&](const GeometryBufferSlice& source, const RasterBufferSlice& slice, EGraphUse use) noexcept
             {
-                const auto stages = source.use == EGraphUse::VERTEX ? 1u : 0u;
+                const auto stages = use == EGraphUse::VERTEX ? 1u : 0u;
                 const GraphBufferRange range{source.offset + slice.offset, slice.size};
-                candidate.reads.push_back({source.buffer, range, source.use, stages});
+                candidate.reads.push_back({source.buffer, range, use, stages});
                 return ResourceInput{source.buffer, range.offset, range.size};
             };
 
@@ -498,10 +498,10 @@ namespace lux::render::detail
                 const auto* indexed = std::get_if<RasterStreamIndexed>(&draw.draw);
                 const auto* indirect = std::get_if<RasterStreamIndirect>(&draw.draw);
                 const auto origin = indirect && indirect->index ? indirect->index->origin : ERasterIndexOrigin::SLICE;
-                const bool mesh_arena = origin == ERasterIndexOrigin::MESH_ARENA;
-                if (origin != ERasterIndexOrigin::SLICE && !mesh_arena)
+                const bool buffer_base = origin == ERasterIndexOrigin::BUFFER_BASE;
+                if (origin != ERasterIndexOrigin::SLICE && !buffer_base)
                     return cxx::unexpected(RenderError{kFrameContract, {p}});
-                const MeshDescription* selected_vertices = nullptr;
+                const OwnedRasterStream::GeometryBinding* selected_vertices = nullptr;
                 for (const auto& abi : program.vertices)
                 {
                     const auto vertex = std::ranges::find(vertices, abi.binding, &RasterStreamVertex::binding);
@@ -510,30 +510,35 @@ namespace lux::render::detail
                     {
                         if (!vertex->source.buffer.selection)
                         {
-                            if (mesh_arena && abi.rate == EVertexRate::VERTEX)
+                            if (buffer_base && abi.rate == EVertexRate::VERTEX)
                                 return cxx::unexpected(RenderError{kGraphInvalidRange, {p, abi.binding}});
                             return buffer(*stream, vertex->source, EGraphUse::VERTEX);
                         }
-                        auto selected = meshBuffer(vertex->source, EGraphUse::VERTEX);
+                        auto selected = geometrySlice(vertex->source, EGraphUse::VERTEX);
                         if (!selected) return cxx::unexpected(selected.error());
-                        const auto& asset = *(*selected)->asset;
-                        const bool wrong_stride = abi.rate != EVertexRate::VERTEX || abi.stride != asset.vertex_stride;
-                        const bool wrong_attributes = std::ranges::any_of(program.mesh_attributes, [&](const auto& entry)
+                        const auto& geometry = **selected;
+                        const auto& binding = geometry.binding;
+                        const auto slots = geometry.layout.attributes;
+                        const auto attributes = std::span{input.geometry_attributes}.subspan(slots.first, slots.count);
+                        const bool wrong_stride = abi.rate != EVertexRate::VERTEX ||
+                            abi.stride != binding.vertices.stride;
+                        const bool wrong_attributes = std::ranges::any_of(program.geometry_attributes, [&](const auto& entry)
                         {
                             if (entry.binding != abi.binding) return false;
                             const auto match = std::ranges::find(
-                                asset.attributes, entry.location, &MeshAttribute::location
+                                attributes, entry.location, &GeometryAttribute::location
                             );
-                            return match == asset.attributes.end() ||
+                            return match == attributes.end() ||
                                 match->offset != entry.offset || match->format != entry.format;
                         });
                         const bool indexed_draw = indexed || (indirect && indirect->index);
-                        const bool wrong_mesh = selected_vertices && selected_vertices != &asset;
-                        const bool partial_slice = vertex->source.offset || vertex->source.size != (*selected)->size;
-                        if (wrong_stride || wrong_attributes || (indexed_draw && (wrong_mesh || partial_slice)))
+                        const bool wrong_geometry = selected_vertices && *selected_vertices != binding;
+                        const bool partial_slice = vertex->source.offset ||
+                            vertex->source.size != binding.vertices.size;
+                        if (wrong_stride || wrong_attributes || (indexed_draw && (wrong_geometry || partial_slice)))
                             return cxx::unexpected(RenderError{kGraphInvalidRange, {p, abi.binding}});
-                        selected_vertices = &asset;
-                        return recordMeshRead(**selected, vertex->source);
+                        selected_vertices = &binding;
+                        return recordGeometryRead(binding.vertices, vertex->source, EGraphUse::VERTEX);
                     }();
                     if (!source) return cxx::unexpected(source.error());
                     std::uint64_t elements = 1;
@@ -547,7 +552,7 @@ namespace lux::render::detail
                         elements = std::uint64_t(indexed->first_instance) + indexed->instances;
                     if (!abi.stride || elements > source->size / abi.stride)
                         return cxx::unexpected(RenderError{kGraphInvalidRange, {p, abi.binding}});
-                    const auto offset = mesh_arena && abi.rate == EVertexRate::VERTEX ?
+                    const auto offset = buffer_base && abi.rate == EVertexRate::VERTEX ?
                         source->offset % abi.stride : source->offset;
                     candidate.vertices.push_back({abi.binding, {source->buffer, offset, abi.stride}});
                 }
@@ -564,21 +569,22 @@ namespace lux::render::detail
                     {
                         if (!index_slice->buffer.selection)
                         {
-                            if (selected_vertices || mesh_arena)
+                            if (selected_vertices || buffer_base)
                                 return cxx::unexpected(RenderError{kGraphInvalidRange, {p}});
                             return buffer(*stream, *index_slice, EGraphUse::INDEX);
                         }
-                        auto selected = meshBuffer(*index_slice, EGraphUse::INDEX);
+                        auto selected = geometrySlice(*index_slice, EGraphUse::INDEX);
                         if (!selected) return cxx::unexpected(selected.error());
-                        const auto* asset = (*selected)->asset;
-                        const bool wrong_mesh = selected_vertices && selected_vertices != asset;
-                        const bool wrong_index = stride != asset->index_stride || (indexed && indexed->vertex_offset);
-                        const bool partial_slice = index_slice->offset || index_slice->size != (*selected)->size;
-                        const bool invalid_arena = mesh_arena && (!selected_vertices || partial_slice ||
+                        const auto& binding = (*selected)->binding;
+                        const bool wrong_geometry = selected_vertices && *selected_vertices != binding;
+                        const bool wrong_index = stride != binding.indices.stride ||
+                            (indexed && indexed->vertex_offset);
+                        const bool partial_slice = index_slice->offset || index_slice->size != binding.indices.size;
+                        const bool invalid_arena = buffer_base && (!selected_vertices || partial_slice ||
                             indirect->maximum_count != 1);
-                        if (wrong_mesh || wrong_index || invalid_arena)
+                        if (wrong_geometry || wrong_index || invalid_arena)
                             return cxx::unexpected(RenderError{kGraphInvalidRange, {p}});
-                        return recordMeshRead(**selected, *index_slice);
+                        return recordGeometryRead(binding.indices, *index_slice, EGraphUse::INDEX);
                     }();
                     if (!source) return cxx::unexpected(source.error());
                     const bool invalid_slice = source->offset % stride || source->size < stride;
@@ -587,7 +593,7 @@ namespace lux::render::detail
                     if (invalid_slice || invalid_draw)
                         return cxx::unexpected(RenderError{kGraphInvalidRange, {p}});
                     packet.index = source->buffer;
-                    packet.index_offset = mesh_arena ? source->offset % stride : source->offset;
+                    packet.index_offset = buffer_base ? source->offset % stride : source->offset;
                     packet.index_type = is_16_bit ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
                 }
 
@@ -626,7 +632,7 @@ namespace lux::render::detail
                         return cxx::unexpected(RenderError{kGraphInvalidRange, {p}});
 
                     RasterDrawPacket::Indirect command{arguments->buffer, arguments->offset, maximum, stride};
-                    command.mergeable = mesh_arena;
+                    command.mergeable = buffer_base;
                     if (indirect->count_buffer)
                     {
                         auto count = buffer(*stream, *indirect->count_buffer, EGraphUse::INDIRECT);

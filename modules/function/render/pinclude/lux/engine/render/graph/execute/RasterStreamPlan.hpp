@@ -32,7 +32,7 @@ namespace lux::render::detail
             PassBindings bindings;
             std::vector<ArgumentUses> argument_to_use;
             std::vector<VertexBinding> vertices;
-            std::vector<VertexAttribute> mesh_attributes;
+            std::vector<VertexAttribute> geometry_attributes;
             std::uint32_t shared_texture_stages;
             std::uint32_t record_stages;
             rdesc::ShaderBlock record_layout;
@@ -92,7 +92,7 @@ namespace lux::render::detail
         ProgramCompileInput input;
         std::vector<CompiledRasterStream::ArgumentUses> argument_to_use;
         std::vector<VertexBinding> vertices;
-        std::vector<VertexAttribute> mesh_attributes;
+        std::vector<VertexAttribute> geometry_attributes;
         std::uint32_t shared_texture_stages;
         std::uint32_t record_stages;
         rdesc::ShaderBlock record_layout;

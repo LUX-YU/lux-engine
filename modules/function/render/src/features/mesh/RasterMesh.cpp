@@ -168,7 +168,7 @@ namespace lux::render::detail
             // The built-in vertex shader declares TEXCOORD indices matching the mesh attribute slots.
             const auto mesh_location = material.target == rdesc::EShaderTarget::DXIL ? input.semantic_index
                                                                                    : input.location;
-            const auto attribute = std::ranges::find(mesh.attributes, mesh_location, &MeshAttribute::location);
+            const auto attribute = std::ranges::find(mesh.attributes, mesh_location, &GeometryAttribute::location);
             if (attribute == mesh.attributes.end())
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});

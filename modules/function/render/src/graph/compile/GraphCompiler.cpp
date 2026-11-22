@@ -716,19 +716,19 @@ namespace lux::render::detail
             ++range.count;
         }
 
-        auto mesh_attributes = graphics.vertex_attributes;
+        auto geometry_attributes = graphics.vertex_attributes;
         if (!geometry_locations.empty())
         {
-            if (geometry_locations.size() != mesh_attributes.size())
+            if (geometry_locations.size() != geometry_attributes.size())
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            for (std::size_t i = 0; i < mesh_attributes.size(); ++i)
-                mesh_attributes[i].location = geometry_locations[i];
+            for (std::size_t i = 0; i < geometry_attributes.size(); ++i)
+                geometry_attributes[i].location = geometry_locations[i];
         }
         RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
         if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
         return RasterProgramLink{
             {artifact, std::move(*layout), std::move(key)}, std::move(argument_to_use), graphics.vertex_bindings,
-            std::move(mesh_attributes), shared_texture_stages, record_stages, std::move(record_layout)
+            std::move(geometry_attributes), shared_texture_stages, record_stages, std::move(record_layout)
         };
     }
 
@@ -748,7 +748,7 @@ namespace lux::render::detail
         bindings.initial_parameters = {};
         return CompiledRasterStream::Program{
             compiled.pipeline, compiled.id, std::move(bindings), std::move(argument_to_use), std::move(vertices),
-            std::move(mesh_attributes), shared_texture_stages, record_stages, std::move(record_layout)
+            std::move(geometry_attributes), shared_texture_stages, record_stages, std::move(record_layout)
         };
     }
 

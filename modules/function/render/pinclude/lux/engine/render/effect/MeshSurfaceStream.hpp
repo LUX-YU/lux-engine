@@ -40,6 +40,8 @@ template <> struct lux::render::ConstantBlockTraits<lux::render::detail::Visibil
 
 namespace lux::render::detail
 {
+    class IndexedTriangleMeshStorage;
+
     class MeshSurfaceStream final
     {
     public:
@@ -54,6 +56,7 @@ namespace lux::render::detail
         struct Inputs final
         {
             DrawStreamSlot stream;
+            DrawResourceSlot<IndexedTriangleMeshStorage> geometry;
             std::array<RasterBufferSlot, 5> buffers;
             std::array<std::uint32_t, 4> arguments;
             bool paged, shared_members, front_counter_clockwise;
@@ -109,7 +112,7 @@ namespace lux::render::detail
         struct SelectedGroup final
         {
             GroupLayout layout;
-            RasterMeshGeometry geometry;
+            RasterIndexedGeometry geometry;
         };
 
         struct SectionInputs final

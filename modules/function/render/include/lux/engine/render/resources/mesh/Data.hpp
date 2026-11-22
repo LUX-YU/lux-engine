@@ -4,7 +4,7 @@
 #include <array>
 #include <lux/engine/render/visibility.h>
 
-#include <lux/engine/description/Image.hpp>
+#include <lux/engine/render/graph/IndexedGeometry.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/core/ResourceId.hpp>
@@ -23,14 +23,6 @@ namespace lux::render
     class ResourceRegistry;
     struct MeshTag;
     using MeshId = ResourceId<MeshTag>;
-
-    // Asset layout, independent of the Shader's final descriptor placement and Pipeline state.
-    struct MeshAttribute final
-    {
-        std::uint32_t location = 0, offset = 0;
-        rdesc::ETextureFormat format = rdesc::ETextureFormat::UNDEFINED;
-        bool operator==(const MeshAttribute&) const noexcept = default;
-    };
 
     struct MeshSubmesh final
     {
@@ -60,7 +52,7 @@ namespace lux::render
         std::uint32_t vertex_stride = 0, vertex_count = 0;
         std::uint64_t index_offset = 0;
         std::uint32_t index_stride = 4, index_count = 0;
-        std::vector<MeshAttribute> attributes;
+        std::vector<GeometryAttribute> attributes;
         std::vector<MeshSubmesh> submeshes;
         MeshGpuBounds bounds;
         std::vector<MeshLodRange> lods;

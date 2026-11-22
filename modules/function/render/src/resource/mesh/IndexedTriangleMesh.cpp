@@ -9,7 +9,7 @@ namespace lux::render
     {
         RenderResult<std::size_t> retained(const MeshDescription& description, std::size_t bytes) noexcept
         {
-            const auto attributes = cxx::checkedMul(description.attributes.capacity(), sizeof(MeshAttribute));
+            const auto attributes = cxx::checkedMul(description.attributes.capacity(), sizeof(GeometryAttribute));
             const auto submeshes = cxx::checkedMul(description.submeshes.capacity(), sizeof(MeshSubmesh));
             if (!attributes || !submeshes)
             {
@@ -91,7 +91,7 @@ namespace lux::render
 
     RenderResult<std::size_t> ConfigValueTraits<MeshBinding>::retainedBytes(const MeshBinding& input) noexcept
     {
-        return sizeof(input) + input.attributes.capacity() * sizeof(MeshAttribute);
+        return sizeof(input) + input.attributes.capacity() * sizeof(GeometryAttribute);
     }
 
 } // namespace lux::render

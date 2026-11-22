@@ -14,6 +14,7 @@ namespace lux::render::detail
         const void* storage = nullptr;
         cxx::basic_type_info implementation;
         std::uint32_t capabilities = 0;
+        bool indexed_geometry = false;
     };
 
     struct InputSlot final
@@ -108,6 +109,7 @@ namespace lux::render::detail
         {
             std::uint32_t binding;
             std::uint32_t capabilities;
+            bool indexed_geometry;
         };
 
         std::vector<DrawBinding> draw_resource_bindings;

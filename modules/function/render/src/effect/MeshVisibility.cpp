@@ -471,7 +471,10 @@ namespace lux::render
                 const auto record_table = device.record_table ?
                     static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY) : 0u;
                 stage.draw_resources = {
-                    {std::string{GBuffer::geometry_binding}, MeshResource::drawResourceType()},
+                    {
+                        .binding = std::string{GBuffer::geometry_binding}, .source = MeshResource::drawResourceType(),
+                        .indexed_geometry = true
+                    },
                     {std::string{GBuffer::materials_binding}, MaterialResource::drawResourceType(), record_table}
                 };
                 if (device.texture_descriptors)

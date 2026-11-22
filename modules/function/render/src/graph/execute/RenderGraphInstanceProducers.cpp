@@ -8,7 +8,7 @@
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
-#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
+#include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 #include <algorithm>
 #include <bit>
@@ -16,11 +16,71 @@
 
 namespace lux::render::detail
 {
+    using extension_detail::DrawSourceAddress;
+
     namespace
     {
         OwnedRasterStream::TextureRead textureRead(const SampledTexture2DStorage::SampledImage& image) noexcept
         {
             return {&image.image(), {1, 0, image.description().mipNum, 0, image.description().layerNum}};
+        }
+
+        RenderResult<OwnedRasterStream::GeometryLayout> captureGeometryLayout(
+            OwnedRasterStream& stream,
+            const IndexedGeometryInput& input,
+            const DeviceSession& device,
+            std::uint32_t pass
+        ) noexcept
+        {
+            const auto attributes = input.attributes;
+            const auto& vertices = input.vertices;
+            const auto stride = vertices.stride;
+            const auto valid_stride = [&](std::uint32_t alignment) noexcept
+            {
+                return vertices.size == stride || stride % alignment == 0;
+            };
+            if (!stream.geometry.empty())
+            {
+                const auto& last = stream.geometry.back();
+                const auto layout = last.layout;
+                const auto range = layout.attributes;
+                const auto alignment = layout.component_alignment;
+                const auto& previous = last.binding.vertices;
+                const auto prior = std::span{stream.geometry_attributes}.subspan(range.first, range.count);
+                const bool same_origin = vertices.offset % alignment == previous.offset % alignment;
+                if (same_origin && stride == previous.stride && std::ranges::equal(prior, attributes))
+                {
+                    if (!valid_stride(alignment)) return cxx::unexpected(RenderError{kGraphInvalidRange, {pass}});
+                    return layout;
+                }
+            }
+            const auto limit = device.description().shaderStage.vertex.attributeMaxNum;
+            if (attributes.size() > limit) return cxx::unexpected(RenderError{kGraphInvalidRange, {pass}});
+            std::uint32_t alignment = 1;
+            for (std::size_t i = 0; i < attributes.size(); ++i)
+            {
+                const auto& field = attributes[i];
+                const auto format = vertexFormat(field.format);
+                const bool invalid_offset = field.offset > device.vertexOffsetLimit() ||
+                    !validInterval(field.offset, format.bytes(), stride);
+                const auto prior = attributes.first(i);
+                const auto match = std::ranges::find(prior, field.location, &GeometryAttribute::location);
+                const bool duplicate = match != prior.end();
+                if (invalid_offset || field.location >= limit || duplicate)
+                    return cxx::unexpected(RenderError{kGraphInvalidRange, {pass, i}});
+                if ((vertices.offset + field.offset) % format.component_bytes)
+                    return cxx::unexpected(RenderError{kGraphInvalidRange, {pass, i}});
+                alignment = std::max(alignment, format.component_bytes);
+            }
+            if (!valid_stride(alignment)) return cxx::unexpected(RenderError{kGraphInvalidRange, {pass}});
+            auto& selected = stream.geometry_attributes;
+            const auto first = selected.size();
+            if (attributes.size() > kGraphInvalidIndex - first)
+                return cxx::unexpected(RenderError{kStorageCapacity, {pass}});
+            selected.insert(selected.end(), attributes.begin(), attributes.end());
+            return OwnedRasterStream::GeometryLayout{
+                {static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(attributes.size())}, alignment
+            };
         }
 
     }
@@ -66,39 +126,6 @@ namespace lux::render::detail
             if (!selected || selection_index >= selected->programs.size())
                 return cxx::unexpected(RenderError{kFrameContract, {slot.index, selection_index}});
             return RasterProgramSlot{slot.index, selection_index, selected->revision};
-        }
-
-        RenderResult<RasterMeshGeometry> selectMesh(DrawStreamSlot slot, MeshId id) noexcept override
-        {
-            const auto use = std::ranges::find(linked_.raster_streams, slot.index);
-            if (use == linked_.raster_streams.end())
-                return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            const auto owner = extension_detail::ResourceIdentity::parent(id);
-            const auto storage = drawStorage<IndexedTriangleMeshStorage>(slot, owner, EStorageCapability::NONE);
-            if (!storage) return cxx::unexpected(storage.error());
-            auto views = (*storage)->bufferViews(id);
-            if (!views) return cxx::unexpected(views.error());
-
-            auto& stream = producer_.streams[use - linked_.raster_streams.begin()];
-            if (stream.mesh_buffers.size() > kGraphInvalidIndex - 2)
-                return cxx::unexpected(RenderError{kDeviceCapacity, {slot.index}});
-            const auto first = static_cast<std::uint32_t>(stream.mesh_buffers.size());
-            const auto& vertices = views->vertices;
-            const auto& indices = views->indices;
-            const auto first_index = indices.offset / views->index_stride;
-            const auto vertex_offset = vertices.offset / views->vertex_stride;
-            if (first_index > UINT32_MAX || vertex_offset > INT32_MAX)
-                return cxx::unexpected(RenderError{kStorageCapacity, {slot.index}});
-            stream.mesh_buffers.push_back({vertices.buffer, vertices.offset, vertices.size, views->layout, EGraphUse::VERTEX});
-            stream.mesh_buffers.push_back({indices.buffer, indices.offset, indices.size, views->layout, EGraphUse::INDEX});
-            const auto type = views->index_stride == 2 ? EIndexType::UINT16 : EIndexType::UINT32;
-            return RasterMeshGeometry{
-                {{first, slot.index, stream.selection}, 0, vertices.size},
-                {{first + 1, slot.index, stream.selection}, 0, indices.size},
-                type,
-                static_cast<std::uint32_t>(first_index),
-                static_cast<std::int32_t>(vertex_offset)
-            };
         }
 
         RenderResult<rdesc::MaterialGpuReference>
@@ -154,8 +181,9 @@ namespace lux::render::detail
 
     private:
         RenderResult<const PreparationPlan::DrawSourceRange*>
-        drawSourceRange(std::uint32_t pass, std::uint32_t source) const noexcept
+        drawSourceRange(DrawSourceAddress address) const noexcept
         {
+            const auto [pass, source] = address;
             const auto& ranges = instance_.preparation_plan_->draw_resource_ranges;
             if (pass >= ranges.size() || ranges[pass].producer != producer_slot_)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {pass}});
@@ -165,11 +193,58 @@ namespace lux::render::detail
             return &range;
         }
 
-        RenderResult<void> appendSampledImage(
-            std::uint32_t pass, std::uint32_t source, const nri::Texture& image, GraphImageRange range
+        RenderResult<RasterIndexedGeometry>
+        appendIndexedGeometry(DrawSourceAddress address, const IndexedGeometryInput& input) noexcept override
+        {
+            const auto [pass, source] = address;
+            const auto grant = drawSourceRange(address);
+            if (!grant) return cxx::unexpected(grant.error());
+            const auto& bound = instance_.draw_resources_[source];
+            if (!bound.storage) return cxx::unexpected(RenderError{kStorageIdentity, {pass, source}});
+            if (!bound.indexed_geometry) return cxx::unexpected(RenderError{kStorageMismatch, {pass, source}});
+
+            const auto& device = *instance_.session_;
+            const auto valid_slice = [&](const GeometryBufferSlice& slice, nri::BufferUsageBits usage) noexcept
+            {
+                if (!slice.buffer || !slice.stride) return false;
+                const auto& desc = device.nriCore().GetBufferDesc(*slice.buffer);
+                return (desc.usage & usage) != 0 && validInterval(slice.offset, slice.size, desc.size) &&
+                    slice.size % slice.stride == 0;
+            };
+            const auto& vertices = input.vertices;
+            const auto& indices = input.indices;
+            const bool valid_vertices = valid_slice(vertices, nri::BufferUsageBits::VERTEX) &&
+                vertices.stride <= device.vertexStrideLimit();
+            const bool valid_indices = (indices.stride == 2 || indices.stride == 4) &&
+                valid_slice(indices, nri::BufferUsageBits::INDEX) && indices.offset % indices.stride == 0;
+            if (!valid_vertices || !valid_indices) return cxx::unexpected(RenderError{kGraphInvalidRange, {pass}});
+
+            auto& stream = producer_.streams[(*grant)->local_stream];
+            const auto first_index = indices.offset / indices.stride;
+            const auto vertex_offset = vertices.offset / vertices.stride;
+            const bool exhausted = stream.geometry.size() >= kGraphInvalidIndex / 2;
+            if (exhausted || first_index > UINT32_MAX || vertex_offset > INT32_MAX)
+                return cxx::unexpected(RenderError{kStorageCapacity, {pass}});
+
+            const auto first = static_cast<std::uint32_t>(stream.geometry.size()) * 2u;
+            const auto layout = captureGeometryLayout(stream, input, device, pass);
+            if (!layout) return cxx::unexpected(layout.error());
+            stream.geometry.push_back({{bound.id, input.item, vertices, indices}, *layout});
+            return RasterIndexedGeometry{
+                {{first, pass, stream.selection}, 0, vertices.size},
+                {{first + 1, pass, stream.selection}, 0, indices.size},
+                indices.stride == 2 ? EIndexType::UINT16 : EIndexType::UINT32,
+                static_cast<std::uint32_t>(first_index), static_cast<std::int32_t>(vertex_offset)
+            };
+        }
+
+        RenderResult<void>
+        appendSampledImage(
+            DrawSourceAddress address, const nri::Texture& image, GraphImageRange range
         ) noexcept override
         {
-            auto grant = drawSourceRange(pass, source);
+            const auto [pass, source] = address;
+            auto grant = drawSourceRange(address);
             if (!grant) return cxx::unexpected(grant.error());
             const auto& bound = instance_.draw_resources_[source];
             constexpr auto capability = static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY);
@@ -188,9 +263,10 @@ namespace lux::render::detail
         }
 
         RenderResult<const void*>
-        readDrawSource(std::uint32_t pass, std::uint32_t source, cxx::basic_type_info type) const noexcept override
+        readDrawSource(DrawSourceAddress address, cxx::basic_type_info type) const noexcept override
         {
-            if (auto grant = drawSourceRange(pass, source); !grant) return cxx::unexpected(grant.error());
+            const auto [pass, source] = address;
+            if (auto grant = drawSourceRange(address); !grant) return cxx::unexpected(grant.error());
             const auto& bound = instance_.draw_resources_[source];
             if (bound.storage && bound.implementation != type)
                 return cxx::unexpected(RenderError{kStorageMismatch, {pass, source}});
@@ -625,7 +701,8 @@ namespace lux::render::detail
             {
                 stream.written = false;
                 stream.textures.clear();
-                stream.mesh_buffers.clear();
+                stream.geometry.clear();
+                stream.geometry_attributes.clear();
                 stream.materials.clear();
                 stream.material_images.clear();
                 stream.selection = preparation_revision_;

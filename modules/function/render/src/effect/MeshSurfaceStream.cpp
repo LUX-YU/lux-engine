@@ -1,4 +1,6 @@
 #include <lux/engine/render/resources/view/Parameters.hpp>
+#include <lux/engine/render/resources/mesh/Resource.hpp>
+#include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/MeshSurfaceStream.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/features/mesh/MeshGrouping.hpp>
@@ -18,8 +20,14 @@ namespace lux::render::detail
     {
         const auto stream = context.resolveDrawStream(config.pass);
         if (!stream) return cxx::unexpected(stream.error());
-        Inputs resolved{*stream, {}, {}, config.paged, config.shared_members, config.front_counter_clockwise,
-            config.purpose};
+        const auto geometry = context.resolveDrawResource<MeshResource::DrawStorage>(
+            config.pass, GBuffer::geometry_binding
+        );
+        if (!geometry) return cxx::unexpected(geometry.error());
+        Inputs resolved{
+            *stream, *geometry, {}, {}, config.paged, config.shared_members, config.front_counter_clockwise,
+            config.purpose
+        };
         for (std::size_t i = 0; i < config.buffers.size(); ++i)
         {
             const auto buffer = context.resolveRasterBuffer(config.pass, config.buffers[i]);
@@ -88,7 +96,7 @@ namespace lux::render::detail
             std::array<ShaderCandidateSlot, kMeshWindingCount> shaders;
             bool reads_material = false;
         };
-        using LayoutKey = std::tuple<MaterialProgramId, std::uint32_t, std::span<const MeshAttribute>>;
+        using LayoutKey = std::tuple<MaterialProgramId, std::uint32_t, std::span<const GeometryAttribute>>;
         const auto compare_layout = [](const LayoutKey& left, const LayoutKey& right) noexcept
         {
             const auto& [left_program, left_stride, left_attributes] = left;
@@ -98,7 +106,7 @@ namespace lux::render::detail
             if (a != b) return a < b;
             return std::lexicographical_compare(
                 left_attributes.begin(), left_attributes.end(), right_attributes.begin(), right_attributes.end(),
-                [](const MeshAttribute& first, const MeshAttribute& second) noexcept
+                [](const GeometryAttribute& first, const GeometryAttribute& second) noexcept
                 {
                     return std::tie(first.location, first.offset, first.format) <
                         std::tie(second.location, second.offset, second.format);
@@ -221,7 +229,7 @@ namespace lux::render::detail
             if (group.gpu_index == kGraphInvalidIndex) continue;
             const auto selected = mapping.groups.find({group.mesh, group.program});
             if (selected == mapping.groups.end()) return cxx::unexpected(RenderError{kFrameContract});
-            auto mesh = frame.selectMesh(inputs_.stream, group.mesh);
+            auto mesh = MeshResource::geometry(frame, inputs_.geometry, group.mesh);
             if (!mesh) return cxx::unexpected(mesh.error());
             vertices_.push_back({0, mesh->vertices});
             groups_.push_back({
@@ -257,7 +265,7 @@ namespace lux::render::detail
         {
             auto& index = *std::get<RasterStreamIndirect>(draw.draw).index;
             const auto& geometry = groups_[draw.vertices.first].geometry;
-            index = {geometry.indices, geometry.index_type, ERasterIndexOrigin::MESH_ARENA};
+            index = {geometry.indices, geometry.index_type, ERasterIndexOrigin::BUFFER_BASE};
         }
         for (auto& section : sections_)
         {

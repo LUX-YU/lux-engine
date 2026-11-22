@@ -1,4 +1,5 @@
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
+#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <algorithm>
 #include <cmath>
@@ -240,8 +241,8 @@ namespace lux::render::detail
         return entry ? &entry->description : nullptr;
     }
 
-    RenderResult<IndexedTriangleMeshStorage::BufferViews>
-    IndexedTriangleMeshStorage::bufferViews(MeshId id) const noexcept
+    RenderResult<IndexedGeometryInput>
+    IndexedTriangleMeshStorage::geometry(MeshId id) const noexcept
     {
         const auto* entry = findEntry(id);
         if (!entry)
@@ -250,12 +251,13 @@ namespace lux::render::detail
         }
         const auto& vertices = entry->geometry.vertices.slice;
         const auto& indices = entry->geometry.indices.slice;
-        return BufferViews{
-            {vertices.buffer, vertices.offset, vertices.size},
-            {indices.buffer, indices.offset, indices.size},
-            entry->description.vertex_stride,
-            entry->description.index_stride,
-            &entry->description
+        const auto local = extension_detail::ResourceIdentity::local(id);
+        const auto item = (std::uint64_t{local.gen} << 32) | local.index;
+        return IndexedGeometryInput{
+            item,
+            {vertices.buffer, vertices.offset, vertices.size, entry->description.vertex_stride},
+            {indices.buffer, indices.offset, indices.size, entry->description.index_stride},
+            entry->description.attributes
         };
     }
 
@@ -344,12 +346,20 @@ namespace lux::render
         if (!layout) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
         return *layout;
     }
-} // namespace lux::render
 
-namespace lux::render
-{
     DrawResourceType MeshResource::drawResourceType() noexcept
     {
         return {ResourceName{kMeshResourceName.name()}, cxx::make_basic_type_info<detail::IndexedTriangleMeshStorage>()};
+    }
+
+    RenderResult<RasterIndexedGeometry>
+    MeshResource::geometry(FramePreparation& frame, DrawResourceSlot<DrawStorage> source, MeshId id) noexcept
+    {
+        const auto storage = frame.readDrawResource(source);
+        if (!storage) return cxx::unexpected(storage.error());
+        if (!*storage) return cxx::unexpected(RenderError{kStorageIdentity});
+        auto selected = (*storage)->geometry(id);
+        if (!selected) return cxx::unexpected(selected.error());
+        return frame.bindIndexedGeometry(source, *selected);
     }
 }

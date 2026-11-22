@@ -149,7 +149,8 @@ namespace lux::render
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             const auto* factory = registry.factory(registry.declarationOf(id));
             source = {
-                id, registry.resourceInstance(id), factory->storage()->implementation_type, input.capabilities
+                id, registry.resourceInstance(id), factory->storage()->implementation_type,
+                input.capabilities, input.indexed_geometry
             };
             const auto* ops = factory->storage()->bindings();
             if (!ops || !ops->prepareFrame) continue;

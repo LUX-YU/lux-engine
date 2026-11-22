@@ -5,9 +5,13 @@
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/resources/BuiltinResources.hpp>
 #include <lux/engine/render/graph/DrawResource.hpp>
+#include <lux/engine/render/graph/DrawList.hpp>
 
 namespace lux::render
 {
+    class FramePreparation;
+    namespace detail { class IndexedTriangleMeshStorage; }
+
     class MeshResource final
     {
     public:
@@ -26,6 +30,9 @@ namespace lux::render
 
         using Ops = void;
 
+        using DrawStorage = detail::IndexedTriangleMeshStorage;
+        [[nodiscard]] static LUX_RENDER_PUBLIC RenderResult<RasterIndexedGeometry>
+        geometry(FramePreparation&, DrawResourceSlot<DrawStorage>, MeshId) noexcept;
         [[nodiscard]] static LUX_RENDER_PUBLIC DrawResourceType drawResourceType() noexcept;
     };
 } // namespace lux::render

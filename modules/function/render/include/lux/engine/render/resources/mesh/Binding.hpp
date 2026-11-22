@@ -23,7 +23,8 @@ namespace lux::render
         MeshId mesh;
         EMeshBuffer buffer = EMeshBuffer::VERTICES;
         std::uint32_t stride = 0;
-        std::vector<MeshAttribute> attributes; // Vertex input ABI only; no counts, source offsets or Section mirror.
+        // Vertex input ABI, shared with indexed draw sources.
+        std::vector<GeometryAttribute> attributes;
         bool operator==(const MeshBinding&) const noexcept = default;
     };
 

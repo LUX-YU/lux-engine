@@ -320,7 +320,7 @@ building GPU inputs. The renderer checks the reflected record layout and records
 bytes and material texture reads. Textured programs require the corresponding named texture owner.
 
 For uploaded indexed geometry, declare `MeshResource::drawResourceType()` on the stream.
-Call `FramePreparation::selectMesh()` during each preparation and use the
+Link a typed slot for `MeshResource::DrawStorage` and call `MeshResource::geometry()` during preparation. Use the
 returned vertex slice, index slice and index type. Mesh slices are scoped to the current stream and
 preparation. When the source geometry and shader use different attribute locations, supply
 `geometry_locations` in `graphics.vertex_attributes` order on the stream program. An empty list selects
@@ -329,8 +329,17 @@ the selected byte ranges through native submission. Indexed draws using selected
 whole vertex slice and use the corresponding mesh's indices with zero base vertex. The producer keeps
 GPU-written indirect arguments within those bounds.
 
-For the mesh arena's shared-buffer offsets, set `RasterStreamIndexBinding::origin` to
-`ERasterIndexOrigin::MESH_ARENA`. Use the selected mesh's `arena_first_index` and `arena_vertex_offset`
+The public layout element is `GeometryAttribute` and the selected pair is `RasterIndexedGeometry`. Existing
+authors using `MeshAttribute` or `RasterMeshGeometry` should update those type names when recompiling.
+
+An SDK Resource can supply indexed geometry directly. Set `indexed_geometry` on its named Pass input, link the typed
+slot, and pass an `IndexedGeometryInput` to `bindIndexedGeometry()`. The Resource owns both native buffers and
+supplies a stable item identity, byte ranges, strides and vertex attributes. The Job copies the attributes during
+the call. The returned slices are valid for that stream and preparation. Indexed draws require a matching vertex
+and index selection from the same owner and item; repeated selections of the same backing pair may be combined.
+
+For indirect commands addressed from the backing buffers, set `RasterStreamIndexBinding::origin` to
+`ERasterIndexOrigin::BUFFER_BASE`. Use the selected mesh's `arena_first_index` and `arena_vertex_offset`
 when generating its indexed command. Each authored draw supplies the complete vertex and index slices
 for one mesh and one indirect record. Compatible records in the same rendering section can share a
 native multi-draw call. Programs choosing this origin must accept native draw IDs within a merged call.

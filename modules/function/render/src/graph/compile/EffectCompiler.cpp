@@ -189,7 +189,7 @@ namespace lux::render::detail
                 return DrawStreamSlot{*resolved};
             }
 
-            RenderResult<std::pair<std::uint32_t, std::uint32_t>>
+            RenderResult<extension_detail::DrawSourceAddress>
             resolveDrawSource(
                 GraphPassId pass, std::string_view binding, cxx::basic_type_info type
             ) const noexcept override
@@ -209,7 +209,7 @@ namespace lux::render::detail
                         const auto& draw = std::get<EffectStorageImport::DrawContract>(declared.contract);
                         if (draw.hash != type.hash() || draw.name != type.name())
                             return cxx::unexpected(RenderError{kStorageMismatch, {pass.index, slot.binding}});
-                        return std::pair{*resolved, source};
+                        return extension_detail::DrawSourceAddress{*resolved, source};
                     }
                 }
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index}});
@@ -375,7 +375,8 @@ namespace lux::render::detail
                     if (it == imports.end() || it->binding != input.binding)
                         return cxx::unexpected(RenderError{kGraphUnknownResource, {p}});
                     plan.draw_resource_bindings.push_back({
-                        static_cast<std::uint32_t>(it - imports.begin()), input.required_capabilities
+                        static_cast<std::uint32_t>(it - imports.begin()), input.required_capabilities,
+                        input.indexed_geometry
                     });
                 }
                 plan.draw_resource_ranges[slot] = {

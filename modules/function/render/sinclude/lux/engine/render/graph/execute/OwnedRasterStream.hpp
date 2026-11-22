@@ -1,10 +1,11 @@
 #pragma once
 
 #include <lux/engine/render/graph/DrawList.hpp>
+#include <lux/engine/render/graph/IndexedGeometry.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <vector>
 
 namespace nri { struct Buffer; struct Texture; }
-namespace lux::render { struct MeshDescription; }
 
 namespace lux::render::detail
 {
@@ -15,12 +16,24 @@ namespace lux::render::detail
 
     struct OwnedRasterStream final
     {
-        struct MeshBuffer final
+        struct GeometryBinding final
         {
-            nri::Buffer* buffer;
-            std::uint64_t offset, size;
-            const MeshDescription* asset;
-            EGraphUse use;
+            ResourceInstanceId owner;
+            std::uint64_t item;
+            GeometryBufferSlice vertices, indices;
+            bool operator==(const GeometryBinding&) const noexcept = default;
+        };
+
+        struct GeometryLayout final
+        {
+            RasterStreamRange attributes;
+            std::uint32_t component_alignment;
+        };
+
+        struct Geometry final
+        {
+            GeometryBinding binding;
+            GeometryLayout layout;
         };
 
         struct TextureRead final
@@ -42,7 +55,8 @@ namespace lux::render::detail
         std::vector<std::byte> constants;
         std::vector<RasterStreamSection> sections;
         std::vector<TextureRead> textures;
-        std::vector<MeshBuffer> mesh_buffers;
+        std::vector<Geometry> geometry;
+        std::vector<GeometryAttribute> geometry_attributes;
         std::vector<MaterialRead> materials;
         std::vector<TextureRead> material_images;
         std::vector<std::uint8_t> used_material_programs;

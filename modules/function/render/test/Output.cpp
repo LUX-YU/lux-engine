@@ -4405,7 +4405,10 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
 
 static void meshRasterStream(bool d3d12)
 {
-    enum class EDraw { DIRECT, INDIRECT, ARENA, INDEX_WIDTH, VERTEX_LAYOUT, STALE, SHORT_BUFFER, RELEASED };
+    enum class EDraw
+    {
+        DIRECT, INDIRECT, ARENA, MIXED_GEOMETRY, INDEX_WIDTH, VERTEX_LAYOUT, STALE, SHORT_BUFFER, RELEASED
+    };
     constexpr auto arena_bytes = 2 * sizeof(nri::DrawIndexedDesc);
     constexpr std::uint64_t minimum_argument_bytes = 84;
     constexpr std::uint64_t maximum_argument_bytes = 168;
@@ -4428,6 +4431,7 @@ static void meshRasterStream(bool d3d12)
         struct LinkedData final
         {
             DrawStreamSlot stream;
+            DrawResourceSlot<MeshResource::DrawStorage> meshes;
             RasterBufferSlot arguments;
             RasterBufferSlot arena_arguments;
             FrameBufferSizer argument_sizer;
@@ -4439,6 +4443,7 @@ static void meshRasterStream(bool d3d12)
         {
             return LinkedData{
                 take(link.resolveDrawStream(input.pass)),
+                take(link.resolveDrawResource<MeshResource::DrawStorage>(input.pass, "meshes")),
                 take(link.resolveRasterBuffer(input.pass, input.arguments)),
                 take(link.resolveRasterBuffer(input.pass, input.arena_arguments)),
                 take(link.resolveFrameBuffer(input.arguments)),
@@ -4449,7 +4454,7 @@ static void meshRasterStream(bool d3d12)
 
         struct Workspace final
         {
-            std::optional<RasterMeshGeometry> original;
+            std::optional<RasterIndexedGeometry> original;
         };
 
         using DrawMapping = std::uint64_t;
@@ -4519,7 +4524,7 @@ static void meshRasterStream(bool d3d12)
                 std::array<RasterStreamDraw, 2> draws;
                 for (std::uint32_t i = 0; i < draws.size(); ++i)
                 {
-                    auto mesh = frame.selectMesh(linked.stream, meshes[i]);
+                    auto mesh = MeshResource::geometry(frame, linked.meshes, meshes[i]);
                     if (!mesh) return lux::cxx::unexpected(mesh.error());
                     commands[i] = {6, 1, mesh->arena_first_index, mesh->arena_vertex_offset, 0};
                     vertices[i] = {0, mesh->vertices};
@@ -4527,7 +4532,7 @@ static void meshRasterStream(bool d3d12)
                         *program, {}, {i, 1}, {0, sizeof(constants)}, RasterStreamIndirect{
                             {linked.arena_arguments, i * sizeof(nri::DrawIndexedDesc), sizeof(nri::DrawIndexedDesc)},
                             {},
-                            RasterStreamIndexBinding{mesh->indices, mesh->index_type, ERasterIndexOrigin::MESH_ARENA}
+                            RasterStreamIndexBinding{mesh->indices, mesh->index_type, ERasterIndexOrigin::BUFFER_BASE}
                         }
                     };
                 }
@@ -4540,8 +4545,15 @@ static void meshRasterStream(bool d3d12)
             auto written = frame.writeBuffer(linked.arena_writer, std::as_bytes(std::span{commands}), 1);
             if (!written) return written;
             const auto mesh = mode == EDraw::RELEASED ? meshes[0] : snapshot->value.get().instances.front().mesh;
-            auto geometry = frame.selectMesh(linked.stream, mesh);
+            auto geometry = MeshResource::geometry(frame, linked.meshes, mesh);
             if (!geometry) return lux::cxx::unexpected(geometry.error());
+            if (mode == EDraw::MIXED_GEOMETRY || mode == EDraw::DIRECT)
+            {
+                const auto other = mode == EDraw::MIXED_GEOMETRY ? meshes[0] : mesh;
+                const auto second = MeshResource::geometry(frame, linked.meshes, other);
+                if (!second) return lux::cxx::unexpected(second.error());
+                geometry->indices = second->indices;
+            }
             if (!workspace.original) workspace.original = *geometry;
             if (mode == EDraw::STALE) geometry = *workspace.original;
             if (mode == EDraw::INDEX_WIDTH) geometry->index_type = EIndexType::UINT16;
@@ -4617,7 +4629,8 @@ static void meshRasterStream(bool d3d12)
         RasterPassTemplate stage;
         stage.purpose = "mesh-stream";
         stage.draw_resources = {
-            {"meshes", MeshResource::drawResourceType()}, {"materials", MaterialResource::drawResourceType()}
+            {.binding = "meshes", .source = MeshResource::drawResourceType(), .indexed_geometry = true},
+            {"materials", MaterialResource::drawResourceType()}
         };
         stage.runtime_stream_programs = true;
         stage.resources = {
@@ -4782,6 +4795,10 @@ static void meshRasterStream(bool d3d12)
     CHECK(UniformUploadProbe::indexed_indirect_draws == indirect_draws + 2);
     CHECK(first.slot_index != second.slot_index && first.slot_index != third.slot_index);
     CHECK(second.slot_index != third.slot_index);
+    draw_mode = EDraw::MIXED_GEOMETRY;
+    const auto before_mixed = server->stats().submissions;
+    CHECK(call<RequestRenderJob>(*client, commands, {job}, false).error.type == kGraphInvalidRange);
+    CHECK(server->stats().submissions == before_mixed);
     call<MeshCommands::ReleaseMesh>(*client, commands, {meshes[0]});
     if (before)
     {

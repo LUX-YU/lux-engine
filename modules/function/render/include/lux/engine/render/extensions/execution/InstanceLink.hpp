@@ -18,7 +18,7 @@ namespace lux::render
         {
             const auto resolved = resolveDrawSource(pass, binding, cxx::make_basic_type_info<Storage>());
             if (!resolved) return cxx::unexpected(resolved.error());
-            return DrawResourceSlot<Storage>{resolved->first, resolved->second};
+            return DrawResourceSlot<Storage>{*resolved};
         }
 
         [[nodiscard]] virtual RenderResult<RasterProgramSlot>
@@ -86,7 +86,7 @@ namespace lux::render
         }
 
     private:
-        [[nodiscard]] virtual RenderResult<std::pair<std::uint32_t, std::uint32_t>>
+        [[nodiscard]] virtual RenderResult<extension_detail::DrawSourceAddress>
         resolveDrawSource(GraphPassId, std::string_view, cxx::basic_type_info) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>

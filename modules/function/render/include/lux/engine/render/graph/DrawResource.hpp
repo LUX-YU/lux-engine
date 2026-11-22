@@ -12,12 +12,20 @@ namespace lux::render
         cxx::basic_type_info implementation;
     };
 
+    namespace extension_detail
+    {
+        struct DrawSourceAddress final
+        {
+            std::uint32_t pass, source;
+        };
+    }
+
     template <class Storage> class DrawResourceSlot final
     {
         friend class FramePreparation;
         friend class InstanceLinkContext;
-        constexpr DrawResourceSlot(std::uint32_t pass, std::uint32_t source) noexcept : pass_(pass), source_(source) {}
-        std::uint32_t pass_, source_;
+        explicit constexpr DrawResourceSlot(extension_detail::DrawSourceAddress address) noexcept : address_(address) {}
+        extension_detail::DrawSourceAddress address_;
     };
 
     struct DrawResourceInput final
@@ -26,5 +34,6 @@ namespace lux::render
         DrawResourceType source;
         std::uint32_t required_capabilities = 0;
         bool optional = false;
+        bool indexed_geometry = false;
     };
 }

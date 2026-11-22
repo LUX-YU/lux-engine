@@ -577,6 +577,14 @@ namespace
         stage.purpose = "installed programs";
         DrawResourceType mask{ResourceName{DrawMask::descriptor.type.name()}, lux::cxx::make_basic_type_info<DrawMask>()};
         stage.draw_resources.push_back({"clip_height", std::move(mask), 0, true});
+        stage.draw_resources.push_back({
+            .binding = "triangle",
+            .source = {
+                ResourceName{TriangleGeometry::descriptor.type.name()}, lux::cxx::make_basic_type_info<TriangleGeometry>()
+            },
+            .indexed_geometry = true
+        });
+        stage.inputs = {{"vertices", {}, EGraphUse::VERTEX}, {"indices", {}, EGraphUse::INDEX}};
         stage.runtime_stream_programs = true;
         RasterWork raster;
         raster.program = std::move(stage);
@@ -845,6 +853,7 @@ int main(int argc, char** argv)
         options.cached_unused_programs = 0;
         take(server->registerResource<sdk_programs::CodeStorage>());
         take(server->registerResource<sdk_programs::DrawMask>());
+        take(server->registerResource<sdk_programs::TriangleGeometry>());
         const std::array commands{
             CommandBinding::declare<sdk_programs::ReleaseCode, &sdk_programs::CodeStorage::release>()
         };
@@ -908,11 +917,15 @@ int main(int argc, char** argv)
             call<ViewParameterCommands::Update>(*client, commands, {camera, std::span{&parameters, 1}});
             return camera;
         };
+        const auto triangle = call<GetOrCreateResource>(*client, commands, {
+            session, DeviceScope{}, sdk_programs::TriangleGeometry::descriptor.type
+        }).resource_id;
         const auto camera_resource = camera_for(view, 1);
         JobBinding binding;
         binding.resources = {
             {"capture", readback}, {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
             {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {"triangle", triangle, 0, EJobResourceUse::DRAW_RESOURCE},
             {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT}
         };
         for (auto mode : {"no-build", "wrong-inputs", "missing-map"})
@@ -1084,6 +1097,7 @@ int main(int argc, char** argv)
                 }
             }
         }
+        std::puts("SDK INDEXED GEOMETRY: 16-bit native indices, nonzero buffer offsets, copied vertex layout");
         std::puts("DRAW RESOURCE: optional SDK mask clips half the peer image; invalid type and foreign name rejected");
         std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, two resident PSOs");
         std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, 16 frame captures, zero relinks or builds; "

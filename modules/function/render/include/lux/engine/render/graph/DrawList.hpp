@@ -35,7 +35,7 @@ namespace lux::render
         std::uint64_t offset = 0, size = 0;
     };
 
-    struct RasterMeshGeometry final
+    struct RasterIndexedGeometry final
     {
         RasterBufferSlice vertices, indices;
         EIndexType index_type;
@@ -76,7 +76,7 @@ namespace lux::render
     enum class ERasterIndexOrigin : std::uint8_t
     {
         SLICE,
-        MESH_ARENA
+        BUFFER_BASE
     };
 
     struct RasterStreamIndexBinding final

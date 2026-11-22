@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Support.hpp"
+#include <array>
+#include <cstring>
 #include <exec/create.hpp>
 #include <lux/engine/render/resources/view/Parameters.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
@@ -51,6 +53,64 @@ namespace sdk_programs
         static constexpr std::string_view name = "test.sdk.shader_code.resume";
         using Request = EmptyRequest;
         using Response = AckResponse;
+    };
+
+    class TriangleGeometry final
+    {
+    public:
+        using Descriptor = TriangleGeometry;
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.sdk.triangle"}, 0, 0, {}, "Indexed fullscreen triangle.", EResourceDomain::DEVICE
+        };
+
+        explicit TriangleGeometry(detail::DeviceSession& device) noexcept : device_(device) {}
+        TriangleGeometry(const TriangleGeometry&) = delete;
+        TriangleGeometry& operator=(const TriangleGeometry&) = delete;
+
+        ~TriangleGeometry() noexcept
+        {
+            if (buffer_)
+                device_.deferRelease([destroy = device_.nriCore().DestroyBuffer, buffer = buffer_]() noexcept
+                {
+                    destroy(buffer);
+                });
+        }
+
+        static RenderResult<std::unique_ptr<TriangleGeometry>>
+        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        {
+            auto asset = std::make_unique<TriangleGeometry>(context.device);
+            const auto& core = context.device.nriCore();
+            const nri::BufferDesc desc{.size = 40, .usage = nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
+            const auto created = core.CreatePlacedBuffer(
+                context.device.device(), NriHostUploadHeap, desc, asset->buffer_
+            );
+            if (created != nri::Result::SUCCESS) return lux::cxx::unexpected(RenderError{kDeviceFailure});
+            auto* mapped = static_cast<std::byte*>(core.MapBuffer(*asset->buffer_, 0, desc.size));
+            if (!mapped) return lux::cxx::unexpected(RenderError{kDeviceFailure});
+            constexpr std::array positions{-1.f, -1.f, 3.f, -1.f, -1.f, 3.f};
+            constexpr std::array<std::uint16_t, 3> indices{2, 0, 1};
+            std::memcpy(mapped + 8, positions.data(), sizeof(positions));
+            std::memcpy(mapped + 32, indices.data(), sizeof(indices));
+            core.UnmapBuffer(*asset->buffer_);
+            return asset;
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            return makeResourceRegistration<Descriptor, TriangleGeometry, &create>(nullptr, nullptr);
+        }
+
+        IndexedGeometryInput input(std::span<const GeometryAttribute> attributes) const noexcept
+        {
+            return {0, {buffer_, 8, 24, 8}, {buffer_, 32, 6, 2}, attributes};
+        }
+
+    private:
+        detail::DeviceSession& device_;
+        nri::Buffer* buffer_ = nullptr;
     };
 
     struct DrawMask final
@@ -250,11 +310,16 @@ namespace sdk_programs
             StorageSnapshotSlot<CodeSnapshot> code;
             StorageSnapshotSlot<ViewGpuParameters> camera;
             DrawResourceSlot<DrawMask> mask;
+            DrawResourceSlot<TriangleGeometry> geometry;
             lux::rdesc::EShaderTarget target;
             bool stale;
         };
 
-        struct Workspace final {};
+        struct Workspace final
+        {
+            std::array<GeometryAttribute, 1> attributes;
+            bool probed_geometry = false;
+        };
 
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
@@ -270,7 +335,9 @@ namespace sdk_programs
             CHECK(!wrong_type && wrong_type.error().type == kStorageMismatch);
             auto mask = link.resolveDrawResource<DrawMask>(input.pass, "clip_height");
             if (!mask) return lux::cxx::unexpected(mask.error());
-            return LinkedData{*stream, *code, *camera, *mask, input.target, input.stale};
+            const auto geometry = link.resolveDrawResource<TriangleGeometry>(input.pass, "triangle");
+            if (!geometry) return lux::cxx::unexpected(geometry.error());
+            return LinkedData{*stream, *code, *camera, *mask, *geometry, input.target, input.stale};
         }
 
         using DrawMapping = std::array<std::uint32_t, 2>;
@@ -297,7 +364,7 @@ namespace sdk_programs
             std::vector<lux::rdesc::ShaderProgramArtifact> shaders{
                 kSdkRed.load(linked.target), kSdkGreen.load(linked.target)
             };
-            CHECK(vertex.stages.front().entry == "Fullscreen");
+            CHECK(vertex.stages.front().entry == "Fullscreen" && vertex.interface.vertex_inputs.size() == 1);
             CHECK(shaders[0].stages.front().entry == "Red" && shaders[1].stages.front().entry == "Green");
             for (auto& shader : shaders)
             {
@@ -319,6 +386,11 @@ namespace sdk_programs
             {
                 programs[i].shader = {1 - i};
                 programs[i].graphics.cull_mode = ECullMode::NONE;
+                programs[i].graphics.vertex_bindings = {{0, 8}};
+                programs[i].graphics.vertex_attributes = {{
+                    vertex.interface.vertex_inputs.front().location, 0, 0, lux::rdesc::ETextureFormat::RG32_SFLOAT
+                }};
+                programs[i].geometry_locations = {3};
                 programs[i].source = ResourceProgramSource::from<CodeStorage, &CodeStorage::lookup>(item);
             }
             auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
@@ -327,15 +399,58 @@ namespace sdk_programs
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, FramePreparation& frame, Workspace&, const DrawMapping* mapping) noexcept
+        prepare(
+            const LinkedData& linked,
+            FramePreparation& frame,
+            Workspace& workspace,
+            const DrawMapping* mapping
+        ) noexcept
         {
             CHECK(mapping);
+            const auto source = frame.readDrawResource(linked.geometry);
+            if (!source) return lux::cxx::unexpected(source.error());
+            CHECK(*source);
+            workspace.attributes[0] = {3, 0, lux::rdesc::ETextureFormat::RG32_SFLOAT};
+            const auto input = (*source)->input(workspace.attributes);
+            if (!workspace.probed_geometry)
+            {
+                auto out_of_bounds = input;
+                out_of_bounds.indices.offset = UINT64_MAX - 1;
+                const auto bounds = frame.bindIndexedGeometry(linked.geometry, out_of_bounds);
+                CHECK(!bounds && bounds.error().type == kGraphInvalidRange);
+                auto invalid_stride = input;
+                invalid_stride.vertices.stride = 0;
+                const auto stride = frame.bindIndexedGeometry(linked.geometry, invalid_stride);
+                CHECK(!stride && stride.error().type == kGraphInvalidRange);
+                const auto mask = frame.readDrawResource(linked.mask);
+                CHECK(mask);
+                const auto denied = frame.bindIndexedGeometry(linked.mask, input);
+                const auto expected = *mask ? kStorageMismatch : kStorageIdentity;
+                CHECK(!denied && denied.error().type == expected);
+            }
+            auto selected_geometry = frame.bindIndexedGeometry(linked.geometry, input);
+            if (!selected_geometry) return lux::cxx::unexpected(selected_geometry.error());
+            if (!workspace.probed_geometry)
+            {
+                auto misaligned = input;
+                ++misaligned.vertices.offset;
+                const auto rejected = frame.bindIndexedGeometry(linked.geometry, misaligned);
+                CHECK(!rejected && rejected.error().type == kGraphInvalidRange);
+                workspace.probed_geometry = true;
+            }
+            workspace.attributes[0] = {}; // Freeze must use the captured layout after the author rewrites its array.
+            CHECK(selected_geometry->index_type == EIndexType::UINT16 && selected_geometry->arena_first_index == 16);
+            CHECK(selected_geometry->arena_vertex_offset == 1);
+            const RasterStreamVertex vertex{0, selected_geometry->vertices};
             std::array<RasterStreamDraw, 2> draws{};
             for (std::uint32_t i = 0; i < draws.size(); ++i)
             {
                 auto program = frame.rasterProgram(linked.stream, (*mapping)[i]);
                 if (!program) return lux::cxx::unexpected(program.error());
-                draws[i] = {*program, {}, {}, {}, DrawVertices{3}};
+                draws[i] = {
+                    *program, {}, {0, 1}, {},
+                    RasterStreamIndexed{selected_geometry->indices, selected_geometry->index_type, 3}
+                };
             }
             const auto camera = frame.readStorage(linked.camera);
             if (!camera) return lux::cxx::unexpected(camera.error());
@@ -345,7 +460,7 @@ namespace sdk_programs
             const auto height = *mask ? (*mask)->height * viewport[3] : viewport[3];
             const RasterViewport selected{viewport[0], viewport[1], viewport[2], height};
             const RasterStreamSection section{{0, 2}, 0, selected};
-            return frame.setRasterStream(linked.stream, {draws, {}, {}, {}, std::span{&section, 1}});
+            return frame.setRasterStream(linked.stream, {draws, {}, std::span{&vertex, 1}, {}, std::span{&section, 1}});
         }
     };
 

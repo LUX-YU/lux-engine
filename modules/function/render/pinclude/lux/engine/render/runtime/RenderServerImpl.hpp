@@ -64,6 +64,8 @@ namespace lux::render
         std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
         struct RuntimeState final
         {
+            RuntimeState() noexcept { resources_.jobs_ = &jobs_; }
+
             ResourceRegistry resources_;
             cxx::StableSlotMap<std::unique_ptr<detail::DeviceEntry>, DeviceSessionTag> devices_;
             [[nodiscard]] detail::DeviceEntry* device(DeviceSessionId id) const noexcept

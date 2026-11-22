@@ -155,6 +155,15 @@ namespace lux::render::detail
         return {};
     }
 
+    void FrameResources::prepareAliasBarriers(const PhysicalResourcePlan& plan) noexcept
+    {
+        if (memory_bindings.empty()) return;
+        const auto barriers = instantiateAliasBarriers(
+            plan, memory_bindings, passes.size()
+        );
+        for (std::size_t p = 0; p < barriers.size(); ++p) passes[p].alias_barrier = barriers[p];
+    }
+
     void FrameResources::initializeRasterStreams(const RecordingDependencies& recording) noexcept
     {
         raster_draws.resize(recording.raster_list_count);

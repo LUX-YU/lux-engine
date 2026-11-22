@@ -232,7 +232,7 @@ static void graphOutput(Validation& validation)
     {
         copyBuffer(
             *session,
-            *execution->nativeBuffer(id.index, execution_job->progress.last_submitted_slot),
+            *execution_job->resourceInput(id, execution_job->progress.last_submitted_slot).buffer,
             *output,
             4096
         );
@@ -300,10 +300,10 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
               std::errc{});
         return value;
     };
-    const auto revision = [&](const RenderGraphInstance& instance)
+    const auto revision = [&](const JobExecution& job)
     {
         dump.clear();
-        CHECK(instance.dumpResources(sink));
+        CHECK(job.dumpResources(sink));
         return number("\"imported_revision\":");
     };
     const auto rebuilds = [&]()
@@ -347,7 +347,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     change_reads(1);
     render();
     CHECK(frames->completed(0, *instance_job));
-    const auto cached_revision = revision(*instance);
+    const auto cached_revision = revision(*instance_job);
     const auto cached_rebuilds = rebuilds();
     const auto* address = &*instance;
     instance_job.reset();
@@ -362,7 +362,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     change_reads(1);
     render();
     CHECK(rebuilds() == cached_rebuilds + 1);
-    CHECK(revision(*instance) == cached_revision);
+    CHECK(revision(*instance_job) == cached_revision);
     CHECK(frames->completed(0, *instance_job));
     const auto adopted_rebuilds = rebuilds();
     render();
@@ -472,9 +472,8 @@ static void importedExtentContracts(Validation& validation)
         {
             JobGpuResources invalid_gpu(*session, 1);
             JobExecution invalid_job{invalid_gpu, plan.graph, testInstallation(), TargetOutput{}};
-            auto& invalid = invalid_job.instance;
-            invalid.bindImage(source, 0, *images[0]);
-            invalid.bindImage(destination, 0, *images[1]);
+            invalid_job.bindImage(source, 0, *images[0]);
+            invalid_job.bindImage(destination, 0, *images[1]);
             const auto rejected = invalid_job.initialize();
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
         }
@@ -482,8 +481,8 @@ static void importedExtentContracts(Validation& validation)
             JobGpuResources instance_gpu(*session, 1);
             JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
             auto& instance = instance_job.instance;
-            instance.bindImage(source, 0, *images[0]);
-            instance.bindImage(destination, 0, *images[2]);
+            instance_job.bindImage(source, 0, *images[0]);
+            instance_job.bindImage(destination, 0, *images[2]);
             CHECK(instance_job.initialize());
             const std::array<TargetFrame, 1> smaller_frames{{{images[1]}}};
             const RenderGraphInstance::ImageReplacement replacement{destination, smaller_frames};

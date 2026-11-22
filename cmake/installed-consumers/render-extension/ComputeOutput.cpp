@@ -88,7 +88,7 @@ namespace
     {
         using Descriptor = ComputeCaptureDescriptor;
         static inline std::atomic_bool reject_resolve{};
-        static inline std::array<CapturedPixels, 2> results;
+        static inline std::array<CapturedPixels, 3> results;
         static inline std::size_t created = 0;
         static inline std::atomic_uint accepted{}, rejected{};
         static constexpr std::uint64_t preparation_revision = 1;
@@ -996,7 +996,8 @@ int main(int argc, char** argv)
         worker.join();
         CHECK(ran && server->stats().validation_errors == 0);
         server.reset();
-        for (std::size_t i = 0; i < ComputeCapture::results.size(); ++i)
+        CHECK(ComputeCapture::created == 2);
+        for (std::size_t i = 0; i < ComputeCapture::created; ++i)
         {
             const auto& result = ComputeCapture::results[i];
             CHECK(result.ready && result.frames.size() == 1);
@@ -1289,7 +1290,27 @@ int main(int argc, char** argv)
     CHECK(MutableReplica::accepted_no_copy == 1 && MutableReplica::accepted_copies == 1);
     CHECK(ComputeCapture::rejected == 1 && ComputeCapture::accepted == 1);
     stopAndRemoveJob(*client, commands, job);
+
+    const auto successor_view = call<CreateView>(*client, commands, {scene}).view;
+    const auto successor_capture = call<GetOrCreateResource>(*client, commands, {
+        session, ViewRequest{scene, successor_view}, ComputeCaptureDescriptor::descriptor.type
+    }).resource_id;
+    const auto successor_source = call<GetOrCreateResource>(*client, commands, {
+        session, ViewRequest{scene, successor_view}, MutableReplicaDescriptor::descriptor.type
+    }).resource_id;
+    constexpr std::uint32_t successor_marker = 0x7286cc31u;
+    call<InitializeReplica>(*client, commands, {successor_source, 0});
+    auto successor_binding = binding;
+    successor_binding.resources = {{"capture", successor_capture}, {"a_mutable", successor_source}};
+    const auto successor = startRenderJob(
+        *client, commands, session, scene, successor_view, target, created, successor_binding
+    );
+    CHECK(successor.index == job.index && successor.gen != job.gen);
+    call<InitializeReplica>(*client, commands, {successor_source, successor_marker, InitializeReplica::EProbe::REPLACE});
+    CHECK(MutableReplica::notified == 1);
     replace(marker + 5, 1);
+    renderFrame(*client, commands, successor);
+    stopAndRemoveJob(*client, commands, successor);
     renderFrame(*client, commands, peer);
     stopAndRemoveJob(*client, commands, peer);
     replace(marker + 6, 0);
@@ -1335,6 +1356,15 @@ int main(int argc, char** argv)
     const auto* peer_replica = peer_pixels.frames.front().data() + readback_bytes;
     std::memcpy(&peer_marker, peer_replica + sizeof(peer_marker), sizeof(peer_marker));
     CHECK(peer_marker == marker + 5);
+    const auto& successor_pixels = ComputeCapture::results[2];
+    CHECK(successor_pixels.ready == 1 && successor_pixels.frames.size() == 1);
+    const auto& successor_frame = successor_pixels.frames.front();
+    CHECK(successor_frame.size() >= readback_bytes + 2 * sizeof(std::uint32_t));
+    std::uint32_t observed_successor = 0;
+    std::memcpy(&observed_successor, successor_frame.data() + readback_bytes + sizeof(peer_marker), sizeof(peer_marker));
+    CHECK(observed_successor == successor_marker);
+    std::printf("PROJECTION READER PASS: Job slot %u, generations %u/%u, peer=%08x successor=%08x\n",
+        job.index, job.gen, successor.gen, peer_marker, observed_successor);
     // The later range writers replace the first 16 bytes. The next pixel still belongs to the peer Job.
     const auto peer_pixel = std::span{peer_pixels.frames.front()}.subspan(16, 4);
     CHECK(peer_pixel[0] == std::byte{64} && (peer_pixel[1] == std::byte{127} || peer_pixel[1] == std::byte{128}));

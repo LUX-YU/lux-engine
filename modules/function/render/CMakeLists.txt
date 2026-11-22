@@ -91,7 +91,6 @@ set(render_sources
     src/graph/execute/RasterFramePreparation.cpp
     src/graph/execute/RasterFrameAttachments.cpp
     src/graph/execute/RasterFrameDescriptors.cpp
-    src/graph/execute/RenderGraphInstanceResources.cpp
     src/graph/execute/RenderGraphInstanceDescriptors.cpp
     src/graph/execute/FrameExecutor.cpp
     src/graph/execute/NriRecordCommands.cpp
@@ -134,6 +133,8 @@ set(render_sources
     src/runtime/JobResourceBinding.cpp
     src/runtime/JobExecution.cpp
     src/runtime/JobFrame.cpp
+    src/runtime/JobGraphResources.cpp
+    src/runtime/JobResourceDiagnostics.cpp
     src/runtime/RasterProgramInputs.cpp
     src/runtime/RenderJob.cpp
     src/runtime/DeviceEntry.cpp

@@ -113,9 +113,11 @@ uses the device's UNKNOWN retirement protocol. Prepared readers and the accepted
 the backing even after the reading Job stops. Explicit Job ordering and final-product dependencies are checked
 together for cycles when the Job bindings or ordering change.
 
-The Resource registry owns subscriptions and writer claims. It checks the named projection and overlapping FIF
-slices in the same Resource, validates replacement slices before notifying subscribers, and removes the candidate's
-subscriptions on failure. Two output names can address overlapping bytes in the same Job when both use the same
+The Resource registry indexes installed readers by Job ID, execution generation and compiled resource slot.
+The Job owner resolves that identity for each affected reader. Installation qualifies the candidate directly and
+publishes its registrations after layout, writer and dependency checks. Discarding a candidate leaves the
+installed registrations available. The registry checks writer claims against overlapping FIF slices in the same
+Resource before publishing replacements. Two output names can address overlapping bytes in the same Job when both use the same
 projection, retain its canonical state on the same physical queue, and the cold binding predicate disables access
 through one name. This also accounts for barriers recorded by a disabled pass. Conflicting names return
 `kGraphConflictingOutput`. An installed Job retains its Resource owners. Binding a shared input adds no declared
@@ -785,8 +787,7 @@ Analysis retains both inputs and their hazards; Prepare selects existing views o
 the fallback into a History slot. Different reads can declare different initial inputs. Fallback views are cached
 with their frame bindings and change only when their physical input changes.
 
-Resize keeps the `RenderGraphInstance`, its Storage subscriptions, producer bindings, descriptor pools and immutable
-plan. Compiled reverse indexes locate the affected views, barriers, dispatches and copy layouts. A finite
+Resize preserves the installed Job identity, projection registrations, producer bindings and immutable device graph. Compiled reverse indexes locate the affected views, barriers, dispatches and copy layouts. A finite
 `ResizeResources` candidate owns only replacement physical objects; adoption exchanges those objects without
 recreating unrelated buffers or fixed-size images. Alias migration includes the connected closure of old and new
 allocation groups. Actual placement still uses `instantiatePlacements` and the existing batch-dependency proof.

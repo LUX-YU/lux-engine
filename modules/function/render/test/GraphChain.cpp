@@ -335,7 +335,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     );
     auto* instance = &instance_job->instance;
     CHECK(instance_job->initialize());
-    CHECK(instance->dumpResources(sink));
+    CHECK(instance_job->dumpResources(sink));
     CHECK(dump.find("\"allocation_requirement_bytes\":") != std::string::npos);
     CHECK(dump.find("\"owned_command_buffers\":") != std::string::npos);
     if (const auto* path = std::getenv("LUX_GRAPH_DUMP"))
@@ -392,8 +392,8 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     }
     for (std::uint32_t slot = 0; slot < fif; ++slot)
     {
-        checkPixels(*session, *instance->nativeBuffer(pixels.index, slot), 64, 256, {64, 64, 64, 255});
-        checkPixels(*session, *second_instance->nativeBuffer(pixels.index, slot), 128, 256, {64, 64, 64, 255});
+        checkPixels(*session, *instance_job->resourceInput(pixels, slot).buffer, 64, 256, {64, 64, 64, 255});
+        checkPixels(*session, *second_instance_job->resourceInput(pixels, slot).buffer, 128, 256, {64, 64, 64, 255});
     }
     CHECK(submit(instances) > 0);
     instance_job.reset();
@@ -474,15 +474,15 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     const auto bytes = std::as_bytes(std::span{&count_input, 1});
     const std::array instances{instance_job.get()};
     CHECK(!instance->recordBatch(0, 0)); // An initialized owner is not a prepared recording input.
-    const auto pixel_binding = instance->resourceInput(pixels, 0);
+    const auto pixel_binding = instance_job->resourceInput(pixels, 0);
     auto truncated_pixels = pixel_binding;
     CHECK(truncated_pixels.size == 8192);
     --truncated_pixels.size;
-    instance->setResource(pixels.index, 0, truncated_pixels);
+    instance_job->bindResource(pixels, 0, truncated_pixels);
     const auto rejected_extent = instance_job->freezeFrame(0);
     CHECK(!rejected_extent && rejected_extent.error().type == kDeviceArgument);
     CHECK(!instance->recordBatch(0, 0) && session->queue().submitted() == 0);
-    instance->setResource(pixels.index, 0, pixel_binding);
+    instance_job->bindResource(pixels, 0, pixel_binding);
     CHECK(instance->writeInlineConstant(0, count_pass, bytes, 1));
     CHECK(take(instance_job->freezeFrame(0)));
     CHECK(instance->lastOperandPatches(0).compute == 1);
@@ -506,7 +506,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     std::puts("DISPATCH FIELDS PASS: first freeze patched one indirect dispatch; stable freeze patched none");
     CHECK(RecordTextureQueries::count == 0); // An unchanged fixed slice reuses its frozen native bindings.
     core.GetTextureDesc = RecordTextureQueries::original;
-    checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
+    checkPixels(*session, *instance_job->resourceInput(pixels, 0).buffer, 32, 0, {255, 0, 0, 255}, 256);
     count_input.requested = 2;
     CHECK(instance->writeInlineConstant(0, count_pass, bytes, 3));
     CHECK(take(instance_job->freezeFrame(0)));
@@ -517,7 +517,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     for (std::uint32_t requested : {0u, 1u, 3u, 0u, 1u, 3u, 0u, 1u, 3u})
     {
         count_input.requested = requested;
-        for (std::uint32_t slot = 0; slot < instance->frameCount(); ++slot)
+        for (std::uint32_t slot = 0; slot < instance_job->frameCount(); ++slot)
         {
             CHECK(instance->writeInlineConstant(slot, count_pass, bytes));
         }
@@ -525,7 +525,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
         CHECK(session->drain());
         checkPixels(
             *session,
-            *instance->nativeBuffer(pixels.index, instance_job->progress.last_submitted_slot),
+            *instance_job->resourceInput(pixels, instance_job->progress.last_submitted_slot).buffer,
             32,
             0,
             {requested ? 255u : 0u, 0, 0, 255},
@@ -596,7 +596,7 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     const std::array instances{instance_job.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
     CHECK(session->drain());
-    checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 16, 256, {255, 0, 0, 255}, 256);
+    checkPixels(*session, *instance_job->resourceInput(pixels, 0).buffer, 16, 256, {255, 0, 0, 255}, 256);
     instance_job.reset();
     instance_gpu.reset();
     CHECK(session->drain());
@@ -644,7 +644,7 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
         const std::array instances{&instance_job};
         CHECK(take(runTask(frames.render(instances, {}))) == 1);
         CHECK(session->drain());
-        const auto words = readBufferWords<2>(*session, *instance.nativeBuffer(pixels.index, 0));
+        const auto words = readBufferWords<2>(*session, *instance_job.resourceInput(pixels, 0).buffer);
         CHECK((words == std::array{pattern, pattern}));
     }
     std::puts("BC1 COPY PASS: misaligned block rejected; automatic pitch selected the last block of the second row");
@@ -674,7 +674,7 @@ static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
     JobGpuResources gpu(device, 1);
     JobExecution instance_job{gpu, compiled.graph, testInstallation(), TargetOutput{}};
     auto& instance = instance_job.instance;
-    instance.setResource(source.index, 0, {&input, 0, 4});
+    instance_job.bindResource(source, 0, {&input, 0, 4});
     CHECK(instance_job.initialize());
     FrameHarness frames(device, 1);
     const std::array jobs{&instance_job};
@@ -687,16 +687,16 @@ static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
     CHECK(take(instance_job.freezeFrame(0)) && instance.lastOperandPatches(0).transfer == 7);
     submit();
     CHECK(instance.lastOperandPatches(0).transfer == 0);
-    CHECK(readBufferWords<1>(device, *instance.nativeBuffer(outputs[1].index, 0))[0] == 11);
-    instance.setResource(source.index, 0, {&input, 4, 2});
+    CHECK(readBufferWords<1>(device, *instance_job.resourceInput(outputs[1], 0).buffer)[0] == 11);
+    instance_job.bindResource(source, 0, {&input, 4, 2});
     CHECK(!instance_job.freezeFrame(0) && !instance.recordBatch(0, 0));
-    instance.setResource(source.index, 0, {&input, 4, 4});
+    instance_job.bindResource(source, 0, {&input, 4, 4});
     CHECK(take(instance_job.freezeFrame(0)) && instance.lastOperandPatches(0).transfer == 1);
     submit();
     CHECK(instance.lastOperandPatches(0).transfer == 0);
     for (std::size_t i = 0; i < outputs.size(); ++i)
     {
-        const auto words = readBufferWords<1>(device, *instance.nativeBuffer(outputs[i].index, 0));
+        const auto words = readBufferWords<1>(device, *instance_job.resourceInput(outputs[i], 0).buffer);
         CHECK(words[0] == (i == 1 ? 12u : 7u));
     }
     std::puts("TRANSFER FIELDS PASS: initial 7 fields, stable 0, short source rejected, "
@@ -911,7 +911,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     CHECK(session->drain());
     const std::array expected{matrix_value, array_value, 27u, 0u};
-    CHECK(readBufferWords<4>(*session, *instance->nativeBuffer(readback.index, 0)) == expected);
+    CHECK(readBufferWords<4>(*session, *instance_job->resourceInput(readback, 0).buffer) == expected);
     std::puts("CONSTANT LAYOUT PASS: typed UBO binding, incomplete ABI and offset rejection, native values");
 }
 
@@ -980,7 +980,7 @@ static void frozenProjectionReceipts(Validation& validation, bool d3d12)
         CHECK(instance_job.initialize());
         const auto publish = [&](SubmissionFrontiers& destination)
         {
-            instance.setResource(buffer.index, 0, {.buffer = native, .size = 16, .queue_uses = {nullptr, &destination}});
+            instance_job.bindResource(buffer, 0, {.buffer = native, .size = 16, .queue_uses = {nullptr, &destination}});
         };
         publish(old);
         FrameHarness frames(*device, 1);
@@ -996,7 +996,7 @@ static void frozenProjectionReceipts(Validation& validation, bool d3d12)
             CHECK(std::chrono::steady_clock::now() < deadline);
             std::this_thread::yield();
         }
-        CHECK(instance.frozenForSubmission(0));
+        CHECK(instance_job.frozenForSubmission(0));
         publish(interim);
         publish(next);
         RecordingGate::released = true;
@@ -1247,7 +1247,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
-        checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
+        checkPixels(*session, *instance_job->resourceInput(pixels, 0).buffer, 32, 0, {255, 0, 0, 255}, 256);
         instance_job.reset();
         instance_gpu.reset();
         CHECK(session->drain());
@@ -1279,7 +1279,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
-        checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
+        checkPixels(*session, *instance_job->resourceInput(pixels, 0).buffer, 32, 0, {255, 0, 0, 255}, 256);
         instance_job.reset();
         instance_gpu.reset();
         CHECK(session->drain());
@@ -1360,10 +1360,10 @@ static void typedRecording(Validation& validation, bool d3d12)
         const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
-        const auto values = readBufferWords<8>(*session, *instance->nativeBuffer(output.index, 0));
+        const auto values = readBufferWords<8>(*session, *instance_job->resourceInput(output, 0).buffer);
         const std::array<std::uint32_t, 8> expected{7, 0, 11, 11, 0, 7, 19, 7};
         CHECK(values == expected);
-        const auto zeros = readBufferWords<4>(*session, *instance->nativeBuffer(zero_output.index, 0));
+        const auto zeros = readBufferWords<4>(*session, *instance_job->resourceInput(zero_output, 0).buffer);
         const std::array<std::uint32_t, 4> expected_zeros{0, 9, 0, 9};
         CHECK(zeros == expected_zeros);
         instance_job.reset();
@@ -1580,8 +1580,8 @@ static void conditionalBindingJoin(DeviceSession& device)
             CHECK(probe.samples[2].layouts == 2 && probe.samples[2].pipelines == 2);
         }
         CHECK(device.drain());
-        checkPixels(device, *job.instance.nativeBuffer(pixels.index, 0), 4, 0, {255, 0, 0, 255}, 256);
-        const auto words = readBufferWords<4>(device, *job.instance.nativeBuffer(readback.index, 0));
+        checkPixels(device, *job.resourceInput(pixels, 0).buffer, 4, 0, {255, 0, 0, 255}, 256);
+        const auto words = readBufferWords<4>(device, *job.resourceInput(readback, 0).buffer);
         const auto expected = values[1] ? 27u : (values[0] ? 22u : 14u);
         CHECK(std::ranges::all_of(words, [&](auto word) { return word == expected; }));
     }
@@ -1655,7 +1655,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
         CHECK(counts.layouts == 0 && counts.pipelines == 0 && counts.sets == 1);
     }
     CHECK(session->drain());
-    const auto values = readBufferWords<4>(*session, *instance->nativeBuffer(readback.index, 0));
+    const auto values = readBufferWords<4>(*session, *instance_job->resourceInput(readback, 0).buffer);
     CHECK(std::ranges::all_of(values, [](auto value) { return value == 13; }));
     instance_job.reset();
     instance_gpu.reset();
@@ -2280,7 +2280,7 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
         CHECK(submitted == 1);
         CHECK(session.drain());
         const auto slot = instance_job.progress.last_submitted_slot;
-        const auto values = readBufferWords<4>(session, *instance.nativeBuffer(readback.index, slot));
+        const auto values = readBufferWords<4>(session, *instance_job.resourceInput(readback, slot).buffer);
         const auto previous = published.size() < distance ? 0u : published[published.size() - distance];
         CHECK(std::ranges::all_of(values, [previous](auto word) { return word == previous; }));
         if (inputs[1] && (inputs[0] || !hold)) published.push_back(inputs[0] ? 7u : 11u);
@@ -2335,7 +2335,7 @@ static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
         CHECK(submitted == batches.size());
         CHECK(session.drain());
         const auto slot = instance_job.progress.last_submitted_slot;
-        const auto values = readBufferWords<4>(session, *instance.nativeBuffer(result.index, slot));
+        const auto values = readBufferWords<4>(session, *instance_job.resourceInput(result, slot).buffer);
         const auto expected = selected_input ? 7u : 8u;
         CHECK(std::ranges::all_of(values, [expected](auto word) { return word == expected; }));
     }
@@ -2543,19 +2543,19 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     core.GetTextureDesc = RecordTextureQueries::original;
     CHECK(RecordTextureQueries::count == 0);
     submit();
-    CHECK(readBufferWords<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 1);
+    CHECK(readBufferWords<4>(session, *instance_job.resourceInput(output, 0).buffer)[0] == 1);
     CHECK(take(instance_job.freezeFrame(0)));
     const auto rotation = instance.lastFrozenPatches(0);
     CHECK((rotation == Counts{2, 2}));
-    const auto original = instance.resourceInput(output, 0);
+    const auto original = instance_job.resourceInput(output, 0);
     auto short_view = original;
     short_view.size = 4;
-    instance.setResource(output.index, 0, short_view);
+    instance_job.bindResource(output, 0, short_view);
     CHECK(!instance_job.freezeFrame(0) && !instance.recordBatch(0, 0));
-    instance.setResource(output.index, 0, original);
+    instance_job.bindResource(output, 0, original);
     CHECK((take(instance_job.freezeFrame(0)) && instance.lastFrozenPatches(0) == Counts{1, 1}));
     submit();
-    CHECK(readBufferWords<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 2);
+    CHECK(readBufferWords<4>(session, *instance_job.resourceInput(output, 0).buffer)[0] == 2);
     if (static_count == 4)
     {
         JobGpuResources isolated_gpu(session, 2);
@@ -2654,8 +2654,8 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     const auto& second = plan.graph.passes()[plan.diagnostics.passSlot(second_draw.pass)].fixed_bindings;
     CHECK(first.layout && first.pipeline && first.shared_sets && first.constants);
     CHECK(!second.layout && !second.pipeline && !second.shared_sets && second.constants);
-    instance.bindImage(images, 0, *image.image);
-    instance.bindImage(second_images, 0, *second_image.image);
+    instance_job.bindImage(images, 0, *image.image);
+    instance_job.bindImage(second_images, 0, *second_image.image);
     CHECK(instance_job.initialize());
     FrameHarness frames(session, 1);
     const std::array instances{&instance_job};
@@ -2664,8 +2664,8 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
         CHECK(take(runTask(frames.render(instances, {}))) > 0);
         finishSubmissions(session, frames);
         CHECK(session.drain());
-        checkPixels(session, *instance.nativeBuffer(output.index, 0), 4, 0, {7, 5, 0, 255}, 256);
-        checkPixels(session, *instance.nativeBuffer(second_output.index, 0), 4, 0, {3, 2, 0, 255}, 256);
+        checkPixels(session, *instance_job.resourceInput(output, 0).buffer, 4, 0, {7, 5, 0, 255}, 256);
+        checkPixels(session, *instance_job.resourceInput(second_output, 0).buffer, 4, 0, {3, 2, 0, 255}, 256);
     };
     {
         NativeBindingProbe probe(const_cast<nri::CoreInterface&>(session.nriCore()));
@@ -2673,9 +2673,9 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
         CHECK(probe.dispatches == 0 && probe.since_dispatch.sets == 1 && probe.since_dispatch.constants == 2);
     }
     // The imported graph ID declares table access. The actual recorded operand is the shared Set.
-    const auto image_input = instance.resourceInput(images, 0);
-    instance.setResource(images.index, 0, {});
-    instance.setResource(images.index, 0, image_input);
+    const auto image_input = instance_job.resourceInput(images, 0);
+    instance_job.bindResource(images, 0, {});
+    instance_job.bindResource(images, 0, image_input);
     CHECK(take(instance_job.freezeFrame(0)));
     auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
     EndFailure::original = core.EndCommandBuffer;
@@ -2732,14 +2732,14 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     finishSubmissions(*session, frames);
     CHECK(session->drain());
-    const auto computed = readBufferWords<4>(*session, *instance.nativeBuffer(fixture.compute_result.index, 0));
-    const auto graphics = readBufferWords<4>(*session, *instance.nativeBuffer(fixture.graphics_result.index, 0));
+    const auto computed = readBufferWords<4>(*session, *instance_job.resourceInput(fixture.compute_result, 0).buffer);
+    const auto graphics = readBufferWords<4>(*session, *instance_job.resourceInput(fixture.graphics_result, 0).buffer);
     CHECK(computed[0] == 4 && graphics[0] == 7 && graphics[2] == 11);
 
-    const auto original = instance.resourceInput(fixture.graphics_result, 0);
-    const auto other = replacement.resourceInput(fixture.graphics_result, 0);
+    const auto original = instance_job.resourceInput(fixture.graphics_result, 0);
+    const auto other = replacement_job.resourceInput(fixture.graphics_result, 0);
     CHECK(original.buffer != other.buffer);
-    instance.setResource(fixture.graphics_result.index, 0, other);
+    instance_job.bindResource(fixture.graphics_result, 0, other);
     CHECK(take(instance_job.freezeFrame(0)));
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     EndFailure::original = core.EndCommandBuffer;
@@ -2783,7 +2783,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
         for (auto slot : slots) shared.release(kind, slot);
         sharedTextureRecording(*session, backend);
     }
-    instance.setResource(fixture.graphics_result.index, 0, original);
+    instance_job.bindResource(fixture.graphics_result, 0, original);
 }
 
 static void cpuRasterPackets()
@@ -2943,7 +2943,7 @@ static void historySequence(
         CHECK(submitted == 1);
         const auto slot = instance_job->progress.last_submitted_slot;
         CHECK(session->drain());
-        const auto values = readBufferWords<13>(*session, *instance->nativeBuffer(output.index, slot));
+        const auto values = readBufferWords<13>(*session, *instance_job->resourceInput(output, slot).buffer);
         for (unsigned i = 0; i < 4; ++i)
         {
             CHECK(values[i] == (enabled_value ? published.back() : 0));
@@ -2967,7 +2967,7 @@ static void historySequence(
     }
     CHECK(session->drain());
     const auto values =
-        readBufferWords(*session, *instance->nativeBuffer(output.index, instance_job->progress.last_submitted_slot));
+        readBufferWords(*session, *instance_job->resourceInput(output, instance_job->progress.last_submitted_slot).buffer);
     CHECK(values[0] == published.back());
     if (fif == 1 && use_fallback && distance == 1)
     {
@@ -2979,8 +2979,8 @@ static void historySequence(
         CHECK(take(runTask(frames->render(pair, {}))) > 0);
         finishSubmissions(*session, *frames);
         CHECK(session->drain());
-        const auto mature = readBufferWords<13>(*session, *instance->nativeBuffer(output.index, 0));
-        const auto fresh = readBufferWords<13>(*session, *other.instance.nativeBuffer(output.index, 0));
+        const auto mature = readBufferWords<13>(*session, *instance_job->resourceInput(output, 0).buffer);
+        const auto fresh = readBufferWords<13>(*session, *other.resourceInput(output, 0).buffer);
         CHECK(mature[0] == evaluate(newestInput()) && mature[8] == 1);
         CHECK(fresh[0] == 18 && fresh[4] == 29 && fresh[8] == 0 && fresh[9] == 1);
         std::puts("JOB HISTORY PASS: one device graph, mature Job advanced; new Job read its own first-frame fallbacks");
@@ -3108,7 +3108,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
         CHECK(session->drain());
         const auto values = readBufferWords<128>(
             *session,
-            *instance_job->instance.nativeBuffer(output.index, instance_job->progress.last_submitted_slot)
+            *instance_job->resourceInput(output, instance_job->progress.last_submitted_slot).buffer
         );
         const auto width = std::max(1u, target.width >> 3);
         for (std::uint32_t x = 0; x < width; ++x)
@@ -3177,7 +3177,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
         CHECK(session->drain());
         const auto values = readBufferWords<4>(
             *session,
-            *instance->nativeBuffer(output.index, instance_job->progress.last_submitted_slot)
+            *instance_job->resourceInput(output, instance_job->progress.last_submitted_slot).buffer
         );
         const auto expected = enabled ? std::array{6u, 6u, 9u, 9u} : std::array{3u, 3u, 3u, 3u};
         CHECK(std::ranges::equal(values, expected));
@@ -3255,7 +3255,7 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     for (auto* job : {first_job.get(), second_job.get()})
     {
         const std::uint64_t offset = separate_ranges && job == second_job.get() ? 16 : 0;
-        job->instance.setResource(input.index, UINT32_MAX, {shared, offset, 16});
+        job->bindResource(input, UINT32_MAX, {shared, offset, 16});
         CHECK(job->initialize());
     }
     const std::array instances{first_job.get(), second_job.get()};
@@ -3269,9 +3269,9 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     }
     CHECK(session->drain());
     const auto a =
-        readBufferWords<4>(*session, *first->nativeBuffer(output.index, first_job->progress.last_submitted_slot));
+        readBufferWords<4>(*session, *first_job->resourceInput(output, first_job->progress.last_submitted_slot).buffer);
     const auto b =
-        readBufferWords<4>(*session, *second->nativeBuffer(output.index, second_job->progress.last_submitted_slot));
+        readBufferWords<4>(*session, *second_job->resourceInput(output, second_job->progress.last_submitted_slot).buffer);
     const auto second_value = write_back && !separate_ranges ? 2u : 1u;
     CHECK(a[0] == 1 && b[0] == second_value);
     first_job.reset();
@@ -3371,9 +3371,9 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         }
         CHECK(session->drain());
         const auto a =
-            readBufferWords<4>(*session, *first->nativeBuffer(output.index, first_job->progress.last_submitted_slot));
+            readBufferWords<4>(*session, *first_job->resourceInput(output, first_job->progress.last_submitted_slot).buffer);
         const auto b =
-            readBufferWords<4>(*session, *second->nativeBuffer(output.index, second_job->progress.last_submitted_slot));
+            readBufferWords<4>(*session, *second_job->resourceInput(output, second_job->progress.last_submitted_slot).buffer);
         CHECK(a[0] == (separate ? 4 : 4 + frame * 3));
         CHECK(b[0] == 4 + frame * 3);
         if (const auto* path = std::getenv("LUX_SYNC_PLAN_DUMP"))
@@ -3612,7 +3612,7 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
     const auto check = [&](bool split)
     {
         std::string dump;
-        CHECK(instance.dumpResources({&dump, [](void* p, std::string_view part) noexcept
+        CHECK(instance_job.dumpResources({&dump, [](void* p, std::string_view part) noexcept
         {
             static_cast<std::string*>(p)->append(part);
             return true;
@@ -3636,7 +3636,7 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
         {
             std::array<unsigned, 4> expected;
             std::ranges::transform(colors[i], expected.begin(), [](float v) { return unsigned(v * 255); });
-            checkPixels(*session, *instance.nativeBuffer(buffers[i].index, 0), widths[i / 2] >> (i % 2), 0, expected, 256);
+            checkPixels(*session, *instance_job.resourceInput(buffers[i], 0).buffer, widths[i / 2] >> (i % 2), 0, expected, 256);
         }
         std::printf("Alias mip/layer readback passed. %s\n", dump.c_str());
     };
@@ -3668,7 +3668,7 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
         instance.commitResize(std::move(*restore));
     }
     check(false);
-    DedicatedResizeRequirement::live_fixed = instance.resourceInput(images[0], 0).image;
+    DedicatedResizeRequirement::live_fixed = instance_job.resourceInput(images[0], 0).image;
     DedicatedResizeRequirement::closure_objects = 0;
     DedicatedResizeRequirement::describe = core.GetTextureDesc;
     DedicatedResizeRequirement::original = std::exchange(core.GetTextureMemoryDesc, &DedicatedResizeRequirement::query);
@@ -3735,7 +3735,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
     if (alias_memory)
     {
         std::string dump;
-        CHECK(instance->dumpResources(
+        CHECK(instance_job->dumpResources(
             {&dump,
              [](void* p, std::string_view text) noexcept
              {
@@ -3751,8 +3751,8 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
         const auto slot = instance_job->progress.last_submitted_slot;
-        checkPixels(*session, *instance->nativeBuffer(red.index, slot), 16, 0, {255, 0, 0, 255}, 256);
-        checkPixels(*session, *instance->nativeBuffer(green.index, slot), extent, 0, {0, 255, 0, 255}, 256);
+        checkPixels(*session, *instance_job->resourceInput(red, slot).buffer, 16, 0, {255, 0, 0, 255}, 256);
+        checkPixels(*session, *instance_job->resourceInput(green, slot).buffer, extent, 0, {0, 255, 0, 255}, 256);
     }
     instance_job.reset();
     instance_gpu.reset();
@@ -3854,7 +3854,7 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     if (alias_memory)
     {
         std::string dump;
-        CHECK(instance->dumpResources(
+        CHECK(instance_job->dumpResources(
             {&dump,
              [](void* p, std::string_view text) noexcept
              {
@@ -3892,11 +3892,11 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     for (std::uint32_t slot = 0; slot < fif; ++slot)
     {
         CHECK(
-            (instance->nativeBuffer(a.index, slot) == instance->nativeBuffer(b.index, slot)) == (reuse && !alias_memory)
+            (instance_job->resourceInput(a, slot).buffer == instance_job->resourceInput(b, slot).buffer) == (reuse && !alias_memory)
         );
         for (std::uint32_t previous = 0; previous < slot; ++previous)
         {
-            CHECK(instance->nativeBuffer(a.index, slot) != instance->nativeBuffer(a.index, previous));
+            CHECK(instance_job->resourceInput(a, slot).buffer != instance_job->resourceInput(a, previous).buffer);
         }
     }
     const std::array instances{instance_job.get()};
@@ -3922,13 +3922,13 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     }
     CHECK(session->drain());
     const auto slot = instance_job->progress.last_submitted_slot;
-    const auto left = readBufferWords<4>(*session, *instance->nativeBuffer(output_a.index, slot));
-    const auto right = readBufferWords<4>(*session, *instance->nativeBuffer(output_b.index, slot));
+    const auto left = readBufferWords<4>(*session, *instance_job->resourceInput(output_a, slot).buffer);
+    const auto right = readBufferWords<4>(*session, *instance_job->resourceInput(output_b, slot).buffer);
     CHECK(std::ranges::all_of(left, [](auto value) { return value == 4; }));
     CHECK(std::ranges::all_of(right, [](auto value) { return value == 8; }));
     if (witness)
     {
-        const auto bytes = readBufferWords<4>(*session, *instance->nativeBuffer(witness->index, slot));
+        const auto bytes = readBufferWords<4>(*session, *instance_job->resourceInput(*witness, slot).buffer);
         CHECK(std::ranges::all_of(bytes, [](auto value) { return value == 5; }));
     }
     take(runTask(frames->render(instances, {})));
@@ -3989,7 +3989,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
         CHECK(take(runTask(frames->render(instances, {}))) != 0);
         finishSubmissions(*session, *frames);
         CHECK(session->drain());
-        checkPixels(*session, *instance->nativeBuffer(output.index, frame), 32, 0, {64, 128, 191, 255}, 256);
+        checkPixels(*session, *instance_job->resourceInput(output, frame).buffer, 32, 0, {64, 128, 191, 255}, 256);
     }
     instance_job.reset();
     instance_gpu.reset();

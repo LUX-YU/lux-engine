@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/resource/ProgramInputRevision.hpp>
-#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 
 namespace lux::render
 {

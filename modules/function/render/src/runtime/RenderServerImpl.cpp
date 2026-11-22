@@ -441,7 +441,7 @@ namespace lux::render
         {
             const auto& output = round.outputs[i];
             for (const auto& import : round.inputs.jobs[output.input_job].imports)
-                round.executions[i]->instance.bindImage(import.resource, slot, *round.reads[import.source.index].image);
+                round.executions[i]->bindImage(import.resource, slot, *round.reads[import.source.index].image);
         }
         return {};
     }

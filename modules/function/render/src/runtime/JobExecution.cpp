@@ -80,7 +80,7 @@ namespace lux::render
             candidate.target_images.push_back({input.target, id});
             for (std::uint32_t slot = 0; slot < entry.frameProgress().frameCount(); ++slot)
             {
-                candidate.instance.bindImage(id, slot, *images.frames[slot].image);
+                candidate.bindImage(id, slot, *images.frames[slot].image);
             }
         }
         if (target_images.size() < declared_targets.size()) return cxx::unexpected(RenderError{kRuntimeIdentity});

@@ -23,7 +23,6 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC RenderGraphInstance final
     {
     public:
-        [[nodiscard]] std::uint32_t frameCount() const noexcept;
         [[nodiscard]] RenderResult<void>
         writeInlineConstant(
             std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision = 0
@@ -54,14 +53,6 @@ namespace lux::render::detail
         // prepareFrame seals attachments and barriers; no list is mutated during recording.
         [[nodiscard]] RasterDrawList&
         rasterDraws(const CompiledPass&, std::uint32_t slot, bool recording_changed = true) noexcept;
-        // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
-        void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
-
-        [[nodiscard]] RenderResult<void>
-        qualifyImportedImage(GraphResourceId, const nri::Texture&, const TargetDesc&) const noexcept;
-
-        [[nodiscard]] bool frozenForSubmission(std::uint32_t slot) const noexcept;
-
         ~RenderGraphInstance() noexcept;
         RenderGraphInstance(const RenderGraphInstance&) = delete;
         RenderGraphInstance& operator=(const RenderGraphInstance&) = delete;
@@ -79,13 +70,6 @@ namespace lux::render::detail
 
         // An empty selection invalidates every declared history at the next preparation boundary.
         [[nodiscard]] RenderResult<void> invalidateHistory(std::span<const GraphResourceId> previous = {}) noexcept;
-
-        // Trusted compiled resource index and Session slot, not a business resource lookup.
-        void setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput&) noexcept;
-        [[nodiscard]] ResourceInput resourceInput(GraphResourceId, std::uint32_t slot) const noexcept;
-        // Cold diagnostics: sum actual NRI allocation requirements for this instance's owned resources.
-        [[nodiscard]] bool dumpResources(DumpSink) const noexcept;
-        [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
 
         // Explicit dirty notification for producers that opted out of rasterDraws' conservative default.
         void invalidateRasterDraws(const CompiledPass&, std::uint32_t frame_slot) noexcept;
@@ -106,7 +90,6 @@ namespace lux::render::detail
 
         [[nodiscard]] const FrozenRecordingFrame* recordingFrame(std::uint32_t frame_slot) const & noexcept;
         const FrozenRecordingFrame* recordingFrame(std::uint32_t) const && = delete;
-        [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
@@ -114,7 +97,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> prepareResizeHistories(ResizeResources&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> prepareResizeBindings(ResizeResources&, std::uint32_t) noexcept;
 
-        void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
         [[nodiscard]] bool selectHistory() noexcept;

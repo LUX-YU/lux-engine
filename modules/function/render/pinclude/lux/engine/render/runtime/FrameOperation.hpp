@@ -8,7 +8,7 @@
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
-#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 
 namespace lux::render::runtime_detail { struct JobExecution; }
 

@@ -9,7 +9,7 @@
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <optional>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render::runtime_detail { struct JobExecution; }

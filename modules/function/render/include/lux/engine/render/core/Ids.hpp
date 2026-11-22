@@ -41,6 +41,16 @@ namespace lux::render
     using ResourceInstanceId = cxx::SlotKey<ResourceInstanceTag>;
     using CommandId = cxx::SlotKey<CommandTag>;
 
+    namespace detail
+    {
+        struct ExecutionBindingId final
+        {
+            RenderJobId job;
+            std::uint64_t generation = 0;
+            bool operator==(const ExecutionBindingId&) const noexcept = default;
+        };
+    }
+
     // Keys are local to their SlotMap. isValid() only checks the null sentinel; lookup must
     // validate generation in the owning SlotMap. View lookup also needs SceneId.
     // Keys must not cross Server lifetimes or be persisted as global IDs.

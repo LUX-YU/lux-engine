@@ -62,6 +62,34 @@ namespace lux::render::detail
         return nri::BufferDesc{bytes, 4, resource.buffer_usage};
     }
 
+    RenderResult<void> qualifyImportedImage(
+        DeviceSession& device, const CompiledResource& resource, const nri::Texture& image, const TargetDesc& target
+    ) noexcept
+    {
+        const auto* expected = std::get_if<GraphImageDesc>(&resource.description);
+        if (!expected) return cxx::unexpected(RenderError{kStorageMismatch});
+        const auto& actual = device.nriCore().GetTextureDesc(image);
+        auto width = expected->width, height = expected->height;
+        if (resource.target_sized)
+        {
+            const auto resolved = graphTextureDescription(device, resource, target);
+            if (!resolved) return cxx::unexpected(resolved.error());
+            width = resolved->width;
+            height = resolved->height;
+        }
+        const bool wrong_extent = expected->extent.source != EImageExtentSource::IMPORTED &&
+            (actual.width != width || actual.height != height);
+        const bool wrong_shape = actual.type != nri::TextureType::TEXTURE_2D || actual.depth != 1 ||
+            actual.mipNum != expected->mips || actual.layerNum != expected->layers ||
+            actual.sampleNum != expected->samples;
+        const bool wrong_format = actual.format != imageFormat(expected->format).native;
+        const bool wrong_sharing = resource.concurrent_image_read && actual.sharingMode != nri::SharingMode::CONCURRENT;
+        const bool missing_usage = (actual.usage & resource.image_usage) != static_cast<unsigned>(resource.image_usage);
+        if (wrong_extent || wrong_shape || wrong_format || missing_usage || wrong_sharing)
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        return {};
+    }
+
     RenderResult<nri::TextureDesc>
     graphTextureDescription(DeviceSession& session, const CompiledResource& resource, const TargetDesc& target) noexcept
     {

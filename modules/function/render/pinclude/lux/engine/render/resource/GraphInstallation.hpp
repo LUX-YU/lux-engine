@@ -28,6 +28,8 @@ namespace lux::render
             std::vector<BufferProduct> products;
             std::vector<ProductBufferUse> product_buffers;
         };
+        RenderResult<ProjectionFamily>
+        resolveBacking(const runtime_detail::BoundStorageProjection&, const GraphBindingUse&) noexcept;
         StorageChanges& changesFor(ResourceInstanceId) noexcept;
         void prepareProducts(
             StorageChanges&, const runtime_detail::BoundStorageProjection&, const ProjectionFamily&

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
 #include <lux/engine/render/runtime/RasterProgramInputs.hpp>
 #include <lux/engine/render/runtime/JobCpuPreparation.hpp>
 
@@ -70,6 +69,7 @@ namespace lux::render::runtime_detail
         detail::TargetOutput output_;
         detail::JobGpuResources& gpu_;
         RenderError submission_error_;
+        [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         std::vector<std::uint8_t> condition_values_, binding_values_;
         [[nodiscard]] bool conditionEnabled(const detail::FrameResources&, PassCondition) const noexcept;
         void acceptedBatch(std::uint32_t slot, std::uint32_t batch, detail::SubmissionPoint point) noexcept;
@@ -92,6 +92,15 @@ namespace lux::render::runtime_detail
         detail::RenderGraphInstance instance;
         [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return graph_; }
         const compiled::RenderGraph& graph() const && = delete;
+
+        [[nodiscard]] LUX_RENDER_PUBLIC std::uint32_t frameCount() const noexcept;
+        [[nodiscard]] LUX_RENDER_PUBLIC bool frozenForSubmission(std::uint32_t slot) const noexcept;
+        [[nodiscard]] LUX_RENDER_PUBLIC detail::ResourceInput
+        resourceInput(GraphResourceId, std::uint32_t slot) const noexcept;
+        LUX_RENDER_PUBLIC void bindResource(GraphResourceId, std::uint32_t slot, const detail::ResourceInput&) noexcept;
+        LUX_RENDER_PUBLIC void bindImage(GraphResourceId, std::uint32_t slot, nri::Texture&) noexcept;
+        [[nodiscard]] RenderResult<void> qualifyImportedImage(GraphResourceId, const nri::Texture&) const noexcept;
+        [[nodiscard]] LUX_RENDER_PUBLIC bool dumpResources(DumpSink) const noexcept;
 
         void settlePrograms(detail::RasterProgramUpdate& update) noexcept;
 

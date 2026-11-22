@@ -43,6 +43,7 @@ namespace lux::render::detail
         FrameResources(const FrameResources&) = delete;
         FrameResources& operator=(const FrameResources&) = delete;
 
+        void prepareAliasBarriers(const PhysicalResourcePlan&) noexcept;
         void invalidateImportedBindings() noexcept;
         void invalidatePass(const compiled::RenderGraph&, std::uint32_t pass) noexcept;
         void invalidateResource(const RecordingDependencies&, std::uint32_t resource) noexcept;

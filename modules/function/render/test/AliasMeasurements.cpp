@@ -334,7 +334,7 @@ namespace
         }
     }
 
-    void checkOutputs(DeviceSession& device, RenderGraphInstance& instance, const Workload& workload)
+    void checkOutputs(DeviceSession& device, const JobExecution& job, const Workload& workload)
     {
         std::array<std::uint32_t, 4> expected{};
         for (unsigned x = 0; x < expected.size(); ++x)
@@ -345,8 +345,8 @@ namespace
         }
         for (unsigned i = 0; i < group_counts.size(); ++i)
         {
-            CHECK(readBufferWords<4>(device, *instance.nativeBuffer(workload.words[i].index, 0)) == expected);
-            const auto pixel = readBufferWords<1>(device, *instance.nativeBuffer(workload.pixels[i].index, 0));
+            CHECK(readBufferWords<4>(device, *job.resourceInput(workload.words[i], 0).buffer) == expected);
+            const auto pixel = readBufferWords<1>(device, *job.resourceInput(workload.pixels[i], 0).buffer);
             CHECK(pixel[0] == (i ? 0xff00ff00u : 0xff0000ffu));
         }
     }
@@ -410,7 +410,7 @@ namespace
                         static_cast<unsigned long long>(gate_serial), static_cast<unsigned long long>(accepted),
                         static_cast<unsigned long long>(queue.completed()));
             CHECK(capture.describeMemory("384-live-512-candidate") < peak);
-            checkOutputs(device, graph, workload);
+            checkOutputs(device, sample.job, workload);
             CHECK(graph.prepareResizeAdoption(second));
             graph.commitResize(std::move(second));
         }
@@ -456,7 +456,7 @@ namespace
             auto& instance = instance_job.instance;
             CHECK(instance_job.initialize());
             std::string dump;
-            CHECK(instance.dumpResources({&dump, [](void* p, std::string_view value) noexcept
+            CHECK(instance_job.dumpResources({&dump, [](void* p, std::string_view value) noexcept
             {
                 static_cast<std::string*>(p)->append(value);
                 return true;
@@ -472,7 +472,7 @@ namespace
                 CHECK(device.drain());
             }
             else measureExtent(sample, target.width);
-            checkOutputs(device, instance, workload);
+            checkOutputs(device, instance_job, workload);
             if (inflight) measureInFlightResize(sample, workload, plan, replacement.output());
             else
             {
@@ -493,7 +493,7 @@ namespace
                 CHECK(device.drain());
             }
             else measureExtent(sample, larger.width);
-            checkOutputs(device, instance, workload);
+            checkOutputs(device, instance_job, workload);
         }
         CHECK(device.drain());
         CHECK(capture.describeMemory("drained") == 0);

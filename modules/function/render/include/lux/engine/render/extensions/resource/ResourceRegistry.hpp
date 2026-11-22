@@ -24,11 +24,14 @@ namespace lux::render
     namespace detail
     {
         class RasterMeshInstanceStorage;
-        class RenderGraphInstance;
-        struct ExecutionBindingId;
         struct GraphBindingTag;
     }
-    namespace runtime_detail { struct BoundStorageProjection; }
+    namespace runtime_detail
+    {
+        struct BoundStorageProjection;
+        struct JobExecution;
+        struct RenderJob;
+    }
 
     struct GraphImagePublication final
     {
@@ -174,10 +177,8 @@ namespace lux::render
 
         struct GraphBindingUse final
         {
-            RenderJobId job;
-            std::uint64_t generation;
+            detail::ExecutionBindingId binding;
             GraphResourceId resource;
-            detail::RenderGraphInstance* instance;
             std::optional<GraphBufferRange> writer;
             bool may_access;
             std::uint32_t canonical_queue;
@@ -217,6 +218,8 @@ namespace lux::render
 
         struct ProjectionFamily final
         {
+            std::uint32_t frame_count = 0;
+            bool image_projection = false;
             std::array<ProjectionBuffer, 3> buffers{};
             std::array<nri::Texture*, 3> images{};
             std::array<detail::ResourceQueueUses, 3> queue_uses{};
@@ -321,12 +324,12 @@ namespace lux::render
         ) noexcept;
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;
-        RenderResult<ProjectionFamily>
-        resolveGraphBacking(const runtime_detail::BoundStorageProjection&, const GraphBindingUse&) noexcept;
+        const cxx::StableSlotMap<runtime_detail::RenderJob, RenderJobTag>* jobs_ = nullptr;
+        [[nodiscard]] runtime_detail::JobExecution& installedReader(detail::ExecutionBindingId) const noexcept;
         static RenderResult<void>
         qualifyGraphImport(const ProjectionMap&, std::uint32_t, const ProjectionFamily&, const GraphBindingUse&) noexcept;
         static RenderResult<void> qualifyBufferUses(
-            const ProjectionMap&, std::uint32_t projection, const std::array<ProjectionBuffer, 3>&, const GraphBindingUse&
+            const ProjectionMap&, std::uint32_t projection, std::span<const ProjectionBuffer>, const GraphBindingUse&
         ) noexcept;
         cxx::SlotMap<Entry, ResourceInstanceTag> entries_;
         std::map<std::string, ResourceTypeId, std::less<>> types_by_name_;

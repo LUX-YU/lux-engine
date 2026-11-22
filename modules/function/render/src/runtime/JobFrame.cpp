@@ -51,7 +51,7 @@ namespace lux::render::runtime_detail
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             frames_[slot].initializeRasterStreams(plan.recordingDependencies());
-            if (auto resources = instance.createFrameResources(slot); !resources)
+            if (auto resources = createFrameResources(slot); !resources)
             {
                 return resources;
             }
@@ -59,7 +59,7 @@ namespace lux::render::runtime_detail
             {
                 return passes;
             }
-            instance.prepareAliasBarriers(frames_[slot]);
+            frames_[slot].prepareAliasBarriers(plan.physicalResources());
             frames_[slot].command_batches.resize(plan.submissions().size());
             if (auto recordings = frames_[slot].native.createBatches(session, plan.submissions()); !recordings)
             {

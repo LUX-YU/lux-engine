@@ -43,6 +43,9 @@ namespace lux::render::detail
     [[nodiscard]] RenderResult<nri::BufferDesc>
     graphBufferDescription(DeviceSession&, const CompiledResource&, std::uint64_t bytes) noexcept;
 
+    [[nodiscard]] RenderResult<void>
+    qualifyImportedImage(DeviceSession&, const CompiledResource&, const nri::Texture&, const TargetDesc&) noexcept;
+
     [[nodiscard]] RenderResult<nri::TextureDesc>
     graphTextureDescription(DeviceSession&, const CompiledResource&, const TargetDesc&) noexcept;
 

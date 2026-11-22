@@ -33,21 +33,18 @@ namespace lux::render
     RenderResult<void>
     ResourceRegistry::GraphInstallation::resolve(runtime_detail::BoundStorageProjection& link, bool may_access) noexcept
     {
-        auto& instance = execution_.instance;
         if (link.publication)
         {
             auto value = registry_.selectProduct(link.storage, link.projection, *link.publication);
             if (!value) return cxx::unexpected(value.error());
             changesFor(link.storage);
-            instance.setResource(link.resource.index, UINT32_MAX, *value);
+            execution_.bindResource(link.resource, UINT32_MAX, *value);
             return {};
         }
-        const auto identity = execution_.binding_identity;
         const GraphBindingUse user{
-            identity.job, identity.generation, link.resource, &instance,
-            link.output_range, may_access, link.canonical_queue
+            execution_.binding_identity, link.resource, link.output_range, may_access, link.canonical_queue
         };
-        auto backing = registry_.resolveGraphBacking(link, user);
+        auto backing = resolveBacking(link, user);
         if (!backing) return cxx::unexpected(backing.error());
         auto& changes = changesFor(link.storage);
         if (auto valid = qualifyGraphImport(changes.projections, link.projection, *backing, user); !valid) return valid;

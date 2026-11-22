@@ -89,7 +89,8 @@ namespace lux::render::detail
             }
             for (const auto& input : inputs)
             {
-                if (auto valid = execution.qualifyImportedImage(input.resource, *input.frames[f].image, target); !valid)
+                const auto& resource = plan.resources()[input.resource.index];
+                if (auto valid = qualifyImportedImage(gpu.session, resource, *input.frames[f].image, target); !valid)
                     return cxx::unexpected(valid.error());
                 FrameResourceBinding binding;
                 binding.image = input.frames[f].image;

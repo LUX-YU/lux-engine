@@ -311,18 +311,17 @@ namespace lux::render
         if (!ordered) return AckResponse{ordered.error()};
         if (auto capacity = subscriptions.reservePublication(); !capacity) return AckResponse{capacity.error()};
 
-        auto* previous = job.execution.get();
         auto retired_resources = entry->installJobResources(id, std::move(physical));
-        subscriptions.publish();
-        job.control.publishGeneration(*generation);
-        candidate->programs.install(*entry, candidate->binding_identity);
-        targetState(target).writer = id;
-        if (previous && previous->target != target_id)
-        {
-            targetState(*runtime_->targets_.find(previous->target)).releaseWriter(id);
-        }
         auto retired = std::exchange(job.execution, std::move(candidate));
         rollback.release();
+        job.control.publishGeneration(*generation);
+        subscriptions.publish();
+        job.execution->programs.install(*entry, job.execution->binding_identity);
+        targetState(target).writer = id;
+        if (retired && retired->target != target_id)
+        {
+            targetState(*runtime_->targets_.find(retired->target)).releaseWriter(id);
+        }
         job.content.effect = effect_id;
         job.binding = std::move(binding);
         job.last_run_error = {};

@@ -70,14 +70,6 @@ namespace lux::render::detail
         }
     }
 
-    std::uint32_t RenderGraphInstance::frameCount() const noexcept
-    { return static_cast<std::uint32_t>(frames_.size()); }
-
-    bool RenderGraphInstance::frozenForSubmission(std::uint32_t slot) const noexcept
-    {
-        return slot < frames_.size() && frames_[slot].frozen_for_submission;
-    }
-
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
         for (const auto& frame : frames_)

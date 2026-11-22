@@ -88,8 +88,6 @@ namespace lux::render
         stdexec::counting_scope command_scope_;
         stdexec::simple_counting_scope upload_scope_;
         cxx::execution::ManualContext server_context_;
-        // One dynamic program preparation may be away from the owner at a time.
-        JobExecution* preparing_execution_ = nullptr;
         std::size_t next_device_ = 0;
         std::uint64_t job_structure_revision_ = 1;
         RenderError execution_error_;
@@ -114,7 +112,6 @@ namespace lux::render
         std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
         std::atomic<std::uint64_t> raster_image_subresources_{0};
         std::atomic<std::uint64_t> raster_geometry_ranges_{0}, raster_geometry_bytes_{0};
-        std::chrono::steady_clock::time_point program_preparation_started_at_;
 #endif
 
         Impl(ServerInstanceId, RenderServerConfig, ipc::IpcResponder, execution::ExecutionRuntime&);
@@ -197,7 +194,8 @@ namespace lux::render
         [[nodiscard]] bool progressFrame(detail::DeviceEntry&) noexcept;
 
         [[nodiscard]] bool progressProgramPreparations(detail::DeviceEntry&) noexcept;
-        void startProgramPreparation(RenderJob&, JobExecution&) noexcept;
+        void startProgramPreparation(detail::DeviceEntry&, JobExecution&) noexcept;
+        [[nodiscard]] bool settleProgramCompilation(detail::DeviceEntry&) noexcept;
         void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
         void updateFrameData(const UpdateFrameData::Request&, AckResponse&) noexcept;
         [[nodiscard]] RenderResult<void> adoptFrameData(const JobExecution&, const FrameData&) noexcept;

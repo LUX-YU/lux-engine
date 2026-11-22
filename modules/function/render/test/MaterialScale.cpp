@@ -611,6 +611,118 @@ namespace
         unsigned expected_image_ranges;
     };
 
+    struct MaterialTestScene final
+    {
+        ipc::IpcRequester& ipc;
+        const CommandList& commands;
+        DeviceSessionId session;
+        SceneId scene;
+    };
+
+    class PurposeCapture final
+    {
+    public:
+        PurposeCapture(MaterialTestScene scene, EMaterialPurpose purpose) : scene_(scene)
+        {
+            const auto& [ipc, commands, session, scene_id] = scene_;
+            const auto format = purpose == EMaterialPurpose::SHADOW ? ETextureFormat::D32_SFLOAT : kTarget.format;
+            effect_ = createPreparedEffect(ipc, commands, session, rasterEffect(purpose));
+            view_ = call<CreateView>(ipc, commands, {scene_id}).view;
+            output_ = call<CreateTarget>(ipc, commands, {session, kTarget}).target;
+            const MaterialReadback::Configuration capture{{{&pixels_, format}, {}}};
+            auto binding = materialBinding(ipc, commands, session, {scene_id, view_}, capture);
+            job = startRenderJob(ipc, commands, session, scene_id, view_, output_, effect_, std::move(binding));
+        }
+
+        void renderReplicas()
+        {
+            for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(scene_.ipc, scene_.commands, job);
+        }
+
+        std::array<std::byte, 4> finish()
+        {
+            const auto& [ipc, commands, session, scene] = scene_;
+            stopAndRemoveJob(ipc, commands, job);
+            call<RemoveView>(ipc, commands, {scene, view_});
+            call<RemoveTarget>(ipc, commands, output_);
+            call<RemoveEffect>(ipc, commands, {effect_});
+            const auto deadline = Clock::now() + 15s;
+            while (!pixels_.ready.load(std::memory_order_acquire))
+            {
+                CHECK(Clock::now() < deadline);
+                std::this_thread::yield();
+            }
+            CHECK(pixels_.frames.size() == kFif);
+            std::array<std::byte, 4> center{};
+            const auto offset = 32 * pixels_.pitch + 32 * 4;
+            std::memcpy(center.data(), pixels_.frames.front().data() + offset, center.size());
+            for (const auto& frame : pixels_.frames)
+            {
+                CHECK(std::memcmp(center.data(), frame.data() + offset, center.size()) == 0);
+            }
+            return center;
+        }
+
+        RenderJobId job;
+
+    private:
+        MaterialTestScene scene_;
+        CapturedPixels pixels_;
+        EffectId effect_;
+        ViewId view_;
+        TargetId output_;
+    };
+
+    // One asset is visible to both installed Jobs. Only the requested GBuffer specialization fails.
+    void verifyPurposeFailure(
+        MaterialTestScene scene, ResourceInstanceId instances, MeshInstanceUpdate old, MaterialId replacement
+    )
+    {
+        PurposeCapture gbuffer{scene, EMaterialPurpose::GBUFFER};
+        PurposeCapture shadow{scene, EMaterialPurpose::SHADOW};
+        gbuffer.renderReplicas();
+        shadow.renderReplicas();
+        const auto source = call<GetOrCreateResource>(
+            scene.ipc, scene.commands, {scene.session, DeviceScope{}, kMaterialResourceName}
+        ).resource_id;
+        const auto warm_calls = PipelineIsolationProbe::pipeline_calls.load();
+        const std::array changed_colors{MaterialColorUpdate{old.description.material, 0, {.75F, 0, 0, 0}}};
+        call<MaterialCommands::UpdateColor>(scene.ipc, scene.commands, {source, changed_colors});
+        gbuffer.renderReplicas();
+        shadow.renderReplicas();
+        CHECK(PipelineIsolationProbe::pipeline_calls.load() == warm_calls);
+        const std::array original_colors{MaterialColorUpdate{old.description.material, 0, {1, 0, 0, 0}}};
+        call<MaterialCommands::UpdateColor>(scene.ipc, scene.commands, {source, original_colors});
+
+        auto changed = old;
+        changed.description.material = replacement;
+        call<InstanceCommands::Update>(scene.ipc, scene.commands, {instances, {&changed, 1}});
+        shadow.renderReplicas();
+        PipelineIsolationProbe::fail_pipeline = true;
+        const auto rejected = call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false);
+        CHECK(rejected.error.type == kDeviceFailure && !PipelineIsolationProbe::fail_pipeline.load());
+        const auto calls = PipelineIsolationProbe::pipeline_calls.load();
+        CHECK(call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false).error == rejected.error);
+        shadow.renderReplicas();
+        const auto depth = std::bit_cast<float>(shadow.finish());
+        CHECK(depth == 1.F);
+        call<InstanceCommands::Update>(scene.ipc, scene.commands, {instances, {&old, 1}});
+        gbuffer.renderReplicas();
+        const auto color = gbuffer.finish();
+        CHECK(std::abs(std::to_integer<int>(color[0]) - 64) <= 1);
+        CHECK(PipelineIsolationProbe::pipeline_calls.load() == calls);
+        std::printf("PURPOSE FAILURE PASS: ready Shadow depth=%g, restored GBuffer red=%u, parameter PSOs=0, extra PSOs=0\n",
+            depth, std::to_integer<unsigned>(color[0]));
+
+        PurposeCapture restarted{scene, EMaterialPurpose::GBUFFER};
+        const auto before_restart_draw = PipelineIsolationProbe::pipeline_calls.load();
+        restarted.renderReplicas();
+        const auto restart_calls = PipelineIsolationProbe::pipeline_calls.load() - before_restart_draw;
+        CHECK(restarted.finish() == color);
+        std::printf("MATERIAL READY RESIDENCY idle_cache=0 first_draw_after_restart_psos=%llu\n",
+            static_cast<unsigned long long>(restart_calls));
+    }
+
     RasterSample sampleRaster(
         RenderServer& server, ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session,
         EMaterialPurpose purpose, SceneId scene,
@@ -619,14 +731,8 @@ namespace
         bool reject_transform = false
     )
     {
-        CapturedPixels pixels;
-        const auto format = purpose == EMaterialPurpose::SHADOW ? ETextureFormat::D32_SFLOAT : kTarget.format;
-        const auto effect = createPreparedEffect(ipc, commands, session, rasterEffect(purpose));
-        const auto view = call<CreateView>(ipc, commands, {scene}).view;
-        const auto output = call<CreateTarget>(ipc, commands, {session, kTarget}).target;
-        const MaterialReadback::Configuration capture{{{&pixels, format}, {}}};
-        auto binding = materialBinding(ipc, commands, session, {scene, view}, capture);
-        const auto job = startRenderJob(ipc, commands, session, scene, view, output, effect, std::move(binding));
+        PurposeCapture capture{{ipc, commands, session, scene}, purpose};
+        const auto job = capture.job;
         if (!colors.empty())
         {
             const auto schema = call<QueryRenderJobInputLayout>(ipc, commands, job).layout;
@@ -655,24 +761,7 @@ namespace
             switched_image_ranges = switched->raster_image_ranges - after->raster_image_ranges;
             CHECK(switched_image_ranges == change->expected_image_ranges);
         }
-        stopAndRemoveJob(ipc, commands, job);
-        call<RemoveView>(ipc, commands, {scene, view});
-        call<RemoveTarget>(ipc, commands, output);
-        call<RemoveEffect>(ipc, commands, {effect});
-        const auto deadline = Clock::now() + 15s;
-        while (!pixels.ready.load(std::memory_order_acquire))
-        {
-            CHECK(Clock::now() < deadline);
-            std::this_thread::yield();
-        }
-        CHECK(pixels.frames.size() == kFif);
-        std::array<std::byte, 4> center{};
-        const auto offset = 32 * pixels.pitch + 32 * 4;
-        std::memcpy(center.data(), pixels.frames.front().data() + offset, center.size());
-        for (const auto& frame : pixels.frames)
-        {
-            CHECK(std::memcmp(center.data(), frame.data() + offset, center.size()) == 0);
-        }
+        const auto center = capture.finish();
         return {
             center, after->raster_buffer_ranges - before->raster_buffer_ranges,
             after->raster_buffer_bytes - before->raster_buffer_bytes,
@@ -699,6 +788,16 @@ namespace
         const auto original_transform = input.transform_id;
         input.render_enabled = true;
         const auto instance = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
+        {
+            auto changed = cookProgram(compiler, target, purposes, 2, .75F);
+            auto values = changed.parameter_defaults;
+            values.front()[0] = .25F;
+            const auto code = registerMaterialProgram(ipc, commands, materials, std::move(changed));
+            const auto replacement = createMaterialInstance(ipc, commands, code, std::move(values), {textures[0]});
+            verifyPurposeFailure({ipc, commands, session, scene}, instances, {instance, input}, replacement);
+            call<MaterialCommands::ReleaseInstance>(ipc, commands, {replacement});
+            call<MaterialCommands::UnregisterProgram>(ipc, commands, {code});
+        }
         const auto forward = sampleRaster(server, ipc, commands, session, purposes[0], scene);
         const auto gbuffer = sampleRaster(server, ipc, commands, session, purposes[1], scene);
         const auto shadow = sampleRaster(server, ipc, commands, session, purposes[2], scene);
@@ -819,11 +918,22 @@ namespace
         MaterialId instance;
     };
 
+    struct PipelineInterruption final
+    {
+        RenderServer& server;
+        ipc::IpcRequester& requests;
+        TargetId input;
+        MeshId mesh;
+        bool replace_job;
+    };
+
     JobSubmitted verifyPreparationLifecycle(
-        RenderServer& server, ipc::IpcRequester& client, ipc::IpcRequester& requests, const CommandList& commands, DeviceSessionId session,
-        const PipelineJob& job, TargetId input, MeshId mesh, std::span<const ProbeMaterial, 3> variants
+        MaterialTestScene owner, PipelineJob& job, const PipelineInterruption& interruption,
+        std::span<const ProbeMaterial, 3> variants
     )
     {
+        const auto& [client, commands, session, scene] = owner;
+        const auto& [server, requests, input, mesh, replace_job] = interruption;
         using Probe = PipelineIsolationProbe;
         const auto changeMaterial = [&](MaterialId material)
         {
@@ -839,14 +949,20 @@ namespace
             CHECK(stats);
             return *stats;
         };
-        const auto requireBorrowedTarget = [&](TargetId id, ETextureFormat format)
+        const auto resizeDuringCompilation = [&]
         {
-            auto resized = kTarget;
-            resized.sampled = true;
-            resized.width *= 2;
-            resized.format = format;
-            CHECK(call<ResizeTarget>(client, commands, {id, resized}, false).error.type == kDeviceBusy);
-            CHECK(call<RemoveTarget>(client, commands, id, false).error.type == kDeviceBusy);
+            // The imported target must stay sampleable. Rejection leaves its previously published pixels intact.
+            auto invalid = kTarget;
+            invalid.format = ETextureFormat::RGBA16_SFLOAT;
+            invalid.sampled = false;
+            CHECK(call<ResizeTarget>(client, commands, {input, invalid}, false).error.type == kCommandContract);
+            CHECK(call<RemoveTarget>(client, commands, input, false).error.type == kDeviceBusy);
+            auto larger = kTarget;
+            larger.height *= 2;
+            const auto changed = call<ResizeTarget>(client, commands, {job.target, larger});
+            const auto restored = call<ResizeTarget>(client, commands, {job.target, kTarget});
+            CHECK(restored.epoch == changed.epoch + 1 && restored.description == kTarget);
+            call<SetTargetActive>(client, commands, {job.target, true, restored.epoch});
         };
         const auto waitForDiscard = [&](std::uint64_t previous)
         {
@@ -859,6 +975,9 @@ namespace
             CHECK(snapshot().discarded_preparations == previous + 1);
         };
 
+        EffectId successor;
+        if (replace_job)
+            successor = createPreparedEffect(client, commands, session, rasterEffect(EMaterialPurpose::FORWARD, true));
         changeMaterial(variants[0].instance);
         const auto stop_before = snapshot();
         const auto stop_creates = Probe::created_pipelines.load();
@@ -867,23 +986,30 @@ namespace
         const auto interrupted = requestFrame(requests, commands, job.job);
         Probe::waitForDriver();
         CHECK(call<RebindRenderJobEffect>(client, commands, {session, job.job, job.effect}, false).error.type == kJobBusy);
+        resizeDuringCompilation();
         call<StopRenderJob>(client, commands, job.job);
         const auto stopped = receiveFrameBefore(requests, interrupted, Clock::now() + 10s);
         CHECK(stopped && stopped->error.type == kJobStopped);
-        CHECK(call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding}, false).error.type == kJobBusy);
-        CHECK(call<RebindRenderJobEffect>(client, commands, {session, job.job, job.effect}, false).error.type == kJobBusy);
-        CHECK(call<RemoveRenderJob>(client, commands, job.job, false).error.type == kJobBusy);
-        requireBorrowedTarget(job.target, ETextureFormat::RGBA8_UNORM);
-        requireBorrowedTarget(input, ETextureFormat::RGBA16_SFLOAT);
         changeMaterial(job.material);
         call<MaterialCommands::ReleaseInstance>(client, commands, {variants[0].instance});
         call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
+        if (replace_job)
+        {
+            const auto previous = job.job;
+            call<RemoveRenderJob>(client, commands, previous);
+            call<RemoveEffect>(client, commands, {job.effect});
+            job.effect = successor;
+            job.job = call<CreateRenderJob>(client, commands,
+                {scene, job.view, job.effect, EJobCadence::REQUESTED}
+            ).job;
+            CHECK(job.job != previous);
+        }
+        call<RebindRenderJobEffect>(client, commands, {{}, job.job, job.effect});
+        call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding});
         Probe::releaseDriver();
         waitForDiscard(stop_before.discarded_preparations);
         CHECK(Probe::created_pipelines.load() == stop_creates + 1);
         CHECK(Probe::destroyed_pipelines.load() == stop_destroys + 1);
-        call<RebindRenderJobEffect>(client, commands, {{}, job.job, job.effect});
-        call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding});
         renderFrame(client, commands, job.job);
 
         changeMaterial(variants[1].instance);
@@ -926,7 +1052,8 @@ namespace
         CHECK(after.discarded_preparations == stale_before.discarded_preparations + 1);
         CHECK(Probe::destroyed_pipelines.load() == stale_destroys + 1);
         std::puts("PIPELINE_LIFETIME stale_revisions=2048 discarded=1 stopped=1 failure_attempts=1 terminal_replies=1");
-        std::puts("MATERIAL_PROGRAM_INPUT unregistered_during_native_compile=1 stale_candidate_destroyed=1");
+        std::printf("MATERIAL_PROGRAM_INPUT unregistered_during_native_compile=1 stale_candidate_destroyed=1 "
+                    "resize_epochs=2 replaced_job_and_effect=%u\n", replace_job ? 1u : 0u);
         return *final;
     }
 
@@ -1101,7 +1228,7 @@ namespace
         {
             variants = {createMaterial(3, .375F), createMaterial(4, .75F), createMaterial(5, .5F)};
             newest = verifyPreparationLifecycle(
-                server, client, *cold_client, commands, session, jobs[1], source, mesh,
+                {client, commands, session, scenes[1]}, jobs[1], {server, *cold_client, source, mesh, workers == 1},
                 variants
             );
         }
@@ -1395,7 +1522,6 @@ int main(int argc, char** argv)
     DeviceOptions device;
     device.multiple_queues = true;
     device.texture_descriptors = true;
-    device.cached_unused_programs = 4096;
     unsigned count = 0;
     bool varied = false;
     bool instance_profile = false;
@@ -1418,6 +1544,8 @@ int main(int argc, char** argv)
             CHECK(count == 32 || count == 128 || count == 1024);
         }
     }
+    // Purpose isolation must preserve real ready users even when unused native programs are evicted.
+    device.cached_unused_programs = pipeline_isolation.has_value() || count || instance_profile ? 4096 : 0;
     const auto shader_target = device.backend == EGraphicsBackend::D3D12
         ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
     auto compiler = lux::shader::ShaderCompiler::create();
@@ -1436,7 +1564,8 @@ int main(int argc, char** argv)
     config.uploads->window_regions = 8192;
     auto server = take(RenderServer::create(config, **runtime));
     take(server->registerResource<MaterialAllocationProbe>());
-    if (pipeline_isolation.has_value()) take(server->registerResource<PipelineIsolationProbe>());
+    const bool observe_pipelines = pipeline_isolation.has_value() || (!count && !instance_profile);
+    if (observe_pipelines) take(server->registerResource<PipelineIsolationProbe>());
     take(server->registerResource(MaterialReadback::factory()));
     registerMaterialCapture<EMaterialPurpose::FORWARD>(*server);
     registerMaterialCapture<EMaterialPurpose::GBUFFER>(*server);
@@ -1454,7 +1583,7 @@ int main(int argc, char** argv)
     const auto commands = queryCommands(*ipc);
     const auto session = call<CreateDeviceSession>(*ipc, commands, device).device;
     call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, MaterialAllocationProbe::Descriptor::descriptor.type});
-    if (pipeline_isolation.has_value())
+    if (observe_pipelines)
     {
         CHECK(!count && !varied);
         call<GetOrCreateResource>(

@@ -18,6 +18,7 @@ namespace lux::rdesc { struct ShaderProgramArtifact; }
 namespace lux::render::detail
 {
     class DeviceSession;
+    class SubmissionFrontiers;
     class NativeProgramBindings;
     struct PassBindings;
     struct ProgramCompileInput;
@@ -58,7 +59,11 @@ namespace lux::render::detail
         [[nodiscard]] static LayoutId identity(const Layout&) noexcept;
 
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
-        void release(std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get) noexcept;
+        void release(
+            std::size_t count,
+            cxx::function_ref<ProgramId(std::size_t) noexcept> get,
+            const SubmissionFrontiers& accepted
+        ) noexcept;
 
         // Before cleanup_scope_ closes; no logical users or CPU compilation borrows may remain.
         void clear() noexcept;

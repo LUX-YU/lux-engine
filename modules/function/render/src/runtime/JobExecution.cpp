@@ -30,14 +30,6 @@ namespace lux::render::runtime_detail
         instance.selectViewParameters(view_parameters->parameters(), view_revision);
     }
 
-    JobExecution::~JobExecution() noexcept
-    {
-        if (pending_uses || programs.stop)
-        {
-            std::terminate();
-        }
-    }
-
 } // namespace lux::render::runtime_detail
 
 namespace lux::render

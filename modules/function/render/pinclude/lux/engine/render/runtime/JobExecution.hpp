@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
+
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/FinalBufferVersion.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
@@ -12,12 +14,6 @@
 
 namespace lux::render::detail
 {
-    struct ExecutionBindingId final
-    {
-        RenderJobId job;
-        std::uint64_t generation;
-    };
-
     class JobGpuResources;
     struct GraphBindingTag;
     class ViewParameterStorage;
@@ -53,7 +49,7 @@ namespace lux::render::runtime_detail
             Installation,
             detail::TargetOutput
         ) noexcept;
-        ~JobExecution() noexcept;
+        ~JobExecution() noexcept = default;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;
 
@@ -65,26 +61,14 @@ namespace lux::render::runtime_detail
         const compiled::RenderGraph& graph;
         const detail::RenderGraphExecutable& executable;
         detail::RenderGraphInstance instance;
-        // Resize holds this execution until the existing Job-local program preparation path is retired.
-        std::uint32_t pending_uses = 0;
-        struct ProgramPreparation final
-        {
-            std::vector<std::uint64_t> revisions;
-            std::optional<stdexec::inplace_stop_source> stop;
-            RenderError failure;
-        };
-        ProgramPreparation programs;
+        RenderError failed_program;
+        std::vector<std::uint64_t> failed_program_revisions;
 
         [[nodiscard]] RenderError programError() const noexcept
         {
-            if (programs.failure.type && instance.matchesProgramRevisions(programs.revisions))
-                return programs.failure;
+            if (failed_program.type && instance.matchesProgramRevisions(failed_program_revisions))
+                return failed_program;
             return {};
-        }
-
-        [[nodiscard]] bool programsReady() const noexcept
-        {
-            return !programs.stop && !instance.requiresProducerPrograms();
         }
 
         FrameLayout input_layout;

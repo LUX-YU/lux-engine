@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <algorithm>
 #include <exception>
@@ -200,11 +201,16 @@ namespace lux::render::detail
         return native_->idle();
     }
 
+    bool DeviceEntry::preparingProgramsFor(ExecutionBindingId binding) const noexcept
+    {
+        return program_update && program_update->binding == binding;
+    }
+
     bool DeviceEntry::hasBorrows() const noexcept
     {
         const bool has_uploads = upload_pending || (uploader_ && uploader_->hasPendingTransfers());
-        return !job_resources_.empty() || has_uploads || resources_.hasBorrows() || scopedResourceBorrows() ||
-            round.operation || !nativeIdle();
+        return program_update || !job_resources_.empty() || has_uploads || resources_.hasBorrows() ||
+            scopedResourceBorrows() || round.operation || !nativeIdle();
     }
 } // namespace lux::render::detail
 

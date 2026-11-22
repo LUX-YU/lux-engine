@@ -928,7 +928,10 @@ Start and running Rebind reserve a fresh execution generation before constructin
 consumes its generation and leaves the published Job, writer and dependency order intact. When the candidate is ready,
 the owner installs the new generation, bindings and writer together. Stop closes admission, releases the writer and
 cancels an unadmitted request. An admitted Run keeps its request until the actual submission result arrives. CPU
-recording, program preparation and host submission drain before the execution and its bindings are destroyed.
+recording and host submission drain before the execution and its bindings are destroyed. A device keeps an outstanding
+program compilation and its private candidates alive through driver return. Stop or replacement can release the original Job
+execution during compilation. The owner checks the installed Job identity, execution generation and source revisions before
+adopting the complete selection. A target Resize delays adoption until the target transaction has settled.
 RemoveTarget returns Busy for an installed output or sampled input, including a stopped Job that is still draining.
 A stopped Job keeps its logical Effect until the caller rebinds or removes the Job.
 

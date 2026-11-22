@@ -15,6 +15,8 @@ namespace lux::render::detail
     class NativeExecution;
     class JobGpuResources;
 
+    struct RasterProgramUpdate;
+
     // The session and its workers outlive all native uses on this device.
     class DeviceEntry final
     {
@@ -108,6 +110,9 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] bool hasBorrows() const noexcept;
+
+        std::unique_ptr<RasterProgramUpdate> program_update;
+        [[nodiscard]] bool preparingProgramsFor(ExecutionBindingId) const noexcept;
 
         bool retiring = false;
         bool upload_pending = false;

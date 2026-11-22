@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <algorithm>
 #include <lux/engine/render/resource/GraphInstallation.hpp>
@@ -119,6 +120,12 @@ namespace lux::render
             if (physical) std::terminate();
             return;
         }
+        auto& device = *runtime_->device(execution->device);
+        if (device.preparingProgramsFor(execution->binding_identity))
+        {
+            device.program_update->stop.request_stop();
+            execution->instance.settleProgramUpdate(*device.program_update, false);
+        }
         for (const auto& link : execution->storage_bindings)
             if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->binding_identity);
         releaseExecutionResources(std::move(execution), std::move(physical));
@@ -143,7 +150,9 @@ namespace lux::render
         const auto id = job.control.id();
         if (job.execution)
         {
-            if (auto& stop = job.execution->programs.stop) stop->request_stop();
+            auto& device = *runtime_->device(job.execution->device);
+            if (device.preparingProgramsFor(job.execution->binding_identity))
+                device.program_update->stop.request_stop();
             targetState(*runtime_->targets_.find(job.execution->target)).releaseWriter(id);
         }
         if (std::erase(running_jobs_, id) != 0) ++job_structure_revision_;
@@ -189,8 +198,7 @@ namespace lux::render
         if (job.control.hasRun() || job.control.hasRequest()) return false;
         if (!job.execution) return true;
         const auto& execution = *job.execution;
-        const bool borrowed = execution.pending_uses || execution.programs.stop;
-        return !borrowed && !executionTargetsResizing(execution);
+        return !executionTargetsResizing(execution);
     }
 
     bool RenderServer::Impl::executionTargetsResizing(const JobExecution& execution) const noexcept

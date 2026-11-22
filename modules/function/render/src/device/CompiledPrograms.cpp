@@ -472,15 +472,18 @@ namespace lux::render::detail
             });
         }
         const auto get = [&](std::size_t i) noexcept { return programs[i]; };
-        release(programs.size(), get);
-    }
-
-    void CompiledPrograms::release(std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get) noexcept
-    {
-        if (!count) return;
+        if (programs.empty()) return;
         auto accepted = session_.makeFrontiers();
         for (std::size_t q = 0; q < session_.queueCount(); ++q)
             accepted.accept(session_.submissionPoint(q, session_.physicalQueue(q).submitted()));
+        release(programs.size(), get, accepted);
+    }
+
+    void CompiledPrograms::release(
+        std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get, const SubmissionFrontiers& accepted
+    ) noexcept
+    {
+        if (!count) return;
         for (std::size_t i = 0; i < count; ++i)
         {
             auto& program = resolve(get(i));

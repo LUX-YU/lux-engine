@@ -96,6 +96,7 @@ set(render_sources
     src/graph/execute/NriRecordCommands.cpp
     src/graph/compile/RenderGraphExecutable.cpp
     src/device/CompiledPrograms.cpp
+    src/device/RasterProgramUpdate.cpp
     src/graph/PlanDiagnostics.cpp
     src/graph/compile/BuiltinPass.cpp
     src/graph/compile/GraphCompiler.cpp

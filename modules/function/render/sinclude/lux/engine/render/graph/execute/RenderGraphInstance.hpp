@@ -25,6 +25,7 @@ namespace lux::render::detail
     struct RasterDescriptorInput;
     struct LinkedUniformBlock;
     struct DynamicRasterPrograms;
+    struct RasterProgramUpdate;
     class SampledTexture2DStorage;
     class IndexedTriangleMeshStorage;
     class RasterMaterialStorage;
@@ -77,10 +78,8 @@ namespace lux::render::detail
         [[nodiscard]] bool requiresProducerPrograms() const noexcept;
         void captureProgramRevisions(std::vector<std::uint64_t>&) const noexcept;
         [[nodiscard]] bool matchesProgramRevisions(std::span<const std::uint64_t>) const noexcept;
-        [[nodiscard]] exec::task<RenderResult<bool>>
-        prepareProducerPrograms(
-            execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
-        ) noexcept;
+        [[nodiscard]] RenderResult<void> selectProgramUpdate(RasterProgramUpdate&) noexcept;
+        void settleProgramUpdate(RasterProgramUpdate&, bool adopt) noexcept;
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void>
@@ -319,9 +318,8 @@ namespace lux::render::detail
 
         class ProducerFrame;
         class ProgramSelection;
-        [[nodiscard]] exec::task<RenderResult<bool>> prepareRasterPrograms(
-            std::uint32_t, execution::CpuScheduler, std::span<const std::uint64_t>, stdexec::inplace_stop_token
-        ) noexcept;
+        [[nodiscard]] RenderResult<void>
+        selectRasterPrograms(std::uint32_t, std::span<const std::uint64_t>, RasterProgramUpdate&) noexcept;
         void releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept;
         struct PreparedBytes final
         {

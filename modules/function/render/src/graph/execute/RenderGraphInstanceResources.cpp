@@ -60,26 +60,6 @@ namespace lux::render::detail
         return revisions.empty();
     }
 
-    exec::task<RenderResult<bool>> RenderGraphInstance::prepareProducerPrograms(
-        execution::CpuScheduler cpu, std::span<const std::uint64_t> revisions, stdexec::inplace_stop_token stop
-    ) noexcept
-    {
-        if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
-        std::size_t offset = 0;
-        for (auto index : program_producers_)
-        {
-            const auto& producer = producers_[index];
-            const auto count = producer.program_sources.size() + 1;
-            const auto revision = revisions.subspan(offset, count);
-            offset += count;
-            if (std::ranges::equal(producer.program_revisions, revision)) continue;
-            auto ready = co_await prepareRasterPrograms(index, cpu, revision, stop);
-            if (stop.stop_requested() || !matchesProgramRevisions(revisions)) co_return false;
-            if (!ready || !*ready) co_return ready;
-        }
-        co_return true;
-    }
-
     void RenderGraphInstance::bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept
     {
         auto binding = resourceInput(resource, slot);

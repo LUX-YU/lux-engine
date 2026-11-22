@@ -4,7 +4,7 @@
 #include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
-#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
+#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
@@ -503,7 +503,7 @@ namespace lux::render::detail
         if (!selected) return;
         if (replacing && !selected->programs.empty()) releaseRasterBindings(pass, selected->revision);
         const auto get = [&](std::size_t i) noexcept { return selected->programs[i].cache_id; };
-        session_->programs().release(selected->programs.size(), get);
+        session_->programs().release(selected->programs.size(), get, gpu_.accepted);
         selected.reset();
     }
 
@@ -528,92 +528,99 @@ namespace lux::render::detail
         return true;
     }
 
-    exec::task<RenderResult<bool>>
-    RenderGraphInstance::prepareRasterPrograms(
-        std::uint32_t index, execution::CpuScheduler cpu, std::span<const std::uint64_t> revisions,
-        stdexec::inplace_stop_token stop
+    RenderResult<void> RenderGraphInstance::selectProgramUpdate(RasterProgramUpdate& update) noexcept
+    {
+        captureProgramRevisions(update.revisions);
+        std::size_t first = 0;
+        for (const auto index : program_producers_)
+        {
+            const auto& producer = producers_[index];
+            const auto count = producer.program_sources.size() + 1;
+            const auto revisions = std::span(update.revisions).subspan(first, count);
+            first += count;
+            if (std::ranges::equal(producer.program_revisions, revisions)) continue;
+            if (auto selected = selectRasterPrograms(index, revisions, update); !selected) return selected;
+        }
+        return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::selectRasterPrograms(
+        std::uint32_t index, std::span<const std::uint64_t> revisions, RasterProgramUpdate& update
     ) noexcept
     {
         auto& producer = producers_[index];
-        const auto is_current = [&]() noexcept
-        {
-            return !stop.stop_requested() && rasterProgramMatches(producer, revisions);
-        };
-        if (!is_current()) co_return false;
         for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
         {
             const auto slot = producer.program_sources[i];
             auto& snapshot = storage_snapshots_[slot];
             auto captured = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
-            if (!captured) co_return cxx::unexpected(captured.error());
+            if (!captured) return cxx::unexpected(captured.error());
             if (*captured != revisions[i + 1])
-                co_return cxx::unexpected(RenderError{kStorageContract, {slot}});
+                return cxx::unexpected(RenderError{kStorageContract, {slot}});
             snapshot.revision = *captured;
         }
-        bool adopted = false;
-        cxx::scope_exit settle([&]() noexcept { producer.workspace.settleRasterPrograms(adopted); });
+        const auto first = static_cast<std::size_t>(revisions.data() - update.revisions.data());
+        update.selections.push_back({index, first, revisions.size()});
         std::vector<ProgramSelection::Entry> entries;
         {
             ProgramSelection selection{*this, producer, preparation_plan_->producers[index].program_snapshots};
             if (auto gathered = producer.workspace.selectRasterPrograms(selection); !gathered)
-                co_return cxx::unexpected(gathered.error());
+                return cxx::unexpected(gathered.error());
             entries = std::move(selection.entries);
         }
-        std::vector<std::unique_ptr<DynamicRasterPrograms>> candidates;
-        candidates.reserve(entries.size());
-        cxx::scope_exit release_candidates([&]() noexcept
-        {
-            for (const auto& candidate : candidates)
-            {
-                if (!candidate) continue;
-                const auto get = [&](std::size_t i) noexcept { return candidate->programs[i].cache_id; };
-                session_->programs().release(candidate->programs.size(), get);
-            }
-        });
         for (const auto& entry : entries)
         {
             if (entry.reuse)
             {
-                candidates.emplace_back();
                 continue;
             }
-            if (!entry.programs) co_return cxx::unexpected(RenderError{kFrameContract, {entry.pass}});
+            if (!entry.programs) return cxx::unexpected(RenderError{kFrameContract, {entry.pass}});
             const auto& contract = *programs_->rasterStream(entry.pass)->runtime;
-            auto& selected = candidates.emplace_back(std::make_unique<DynamicRasterPrograms>());
+            auto& stream = update.streams.emplace_back();
+            stream.pass = entry.pass;
+            stream.candidate = std::make_unique<DynamicRasterPrograms>();
             const auto& previous = dynamic_raster_programs_[entry.pass];
             if (previous && previous->revision == UINT64_MAX)
-                co_return cxx::unexpected(RenderError{kDeviceCapacity});
-            selected->revision = previous ? previous->revision + 1 : 1;
-            selected->programs.reserve(entry.programs->size());
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+            stream.candidate->revision = previous ? previous->revision + 1 : 1;
+            stream.candidate->programs.reserve(entry.programs->size());
+            stream.links.reserve(entry.programs->size());
             for (const auto& program : *entry.programs)
             {
                 auto link = linkRasterStreamProgram(
                     *session_, {contract.arguments, program.parameters, contract.target,
                                 entry.shaders[program.shader.index], program.graphics}
                 );
-                if (!link) co_return cxx::unexpected(link.error());
-                auto prepared = co_await session_->programs().prepareSelectedProgram(std::move(link->input), cpu, stop);
-                if (prepared) selected->programs.push_back(std::move(*link).finish(std::move(*prepared)));
-                if (!is_current()) co_return false;
-                if (!prepared) co_return cxx::unexpected(prepared.error());
+                if (!link) return cxx::unexpected(link.error());
+                stream.links.push_back(std::move(*link));
             }
         }
-        if (!is_current()) co_return false;
-        for (std::size_t i = 0; i < candidates.size(); ++i)
+        return {};
+    }
+
+    void RenderGraphInstance::settleProgramUpdate(RasterProgramUpdate& update, bool adopt) noexcept
+    {
+        if (adopt)
         {
-            const auto pass = entries[i].pass;
-            const auto& previous = dynamic_raster_programs_[pass];
-            const auto& candidate = candidates[i];
-            if (!candidate) continue;
-            const bool unchanged = previous &&
-                previous->programs == candidate->programs;
-            if (unchanged) continue;
-            releaseDynamicRasterPrograms(pass, true);
-            dynamic_raster_programs_[pass] = std::move(candidates[i]);
+            for (auto& stream : update.streams)
+            {
+                auto& previous = dynamic_raster_programs_[stream.pass];
+                if (previous && previous->programs == stream.candidate->programs) continue;
+                releaseDynamicRasterPrograms(stream.pass, true);
+                previous = std::move(stream.candidate);
+            }
         }
-        producer.program_revisions.assign(revisions.begin(), revisions.end());
-        adopted = true;
-        co_return true;
+        for (const auto& selection : update.selections)
+        {
+            auto& producer = producers_[selection.producer];
+            if (adopt)
+            {
+                const auto revisions = std::span(update.revisions).subspan(selection.first_revision, selection.count);
+                producer.program_revisions.assign(revisions.begin(), revisions.end());
+            }
+            producer.workspace.settleRasterPrograms(adopt);
+        }
+        update.selections.clear();
     }
 
     RenderResult<void> RenderGraphInstance::prepareProducers(std::uint32_t slot) noexcept

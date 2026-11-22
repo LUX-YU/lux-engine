@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <exception>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
@@ -198,8 +199,7 @@ namespace lux::render
         if (auto valid = input.description.validate(); !valid) co_return response(valid.error());
 
         auto& state = targetState(*target);
-        const bool preparing_target = preparing_execution_ && preparing_execution_->bindsTarget(input.target);
-        const bool busy_target = state.resizing || frameUsesTarget(input.target) || preparing_target;
+        const bool busy_target = state.resizing || frameUsesTarget(input.target);
         if (busy_target) co_return response(RenderError{kDeviceBusy});
         auto affected = jobsBindingTarget(input.target);
         const bool different_kind = input.description.kind != targetDescription(*target).kind;
@@ -223,7 +223,8 @@ namespace lux::render
         }
         const bool busy_execution = std::ranges::any_of(affected, [&](auto id)
         {
-            return !canChangeExecution(*runtime_->jobs_.find(id));
+            const auto& job = *runtime_->jobs_.find(id);
+            return job.control.hasRun() || executionTargetsResizing(*job.execution);
         });
         if (busy_execution) co_return response(RenderError{kDeviceBusy});
         if (state.epoch == UINT64_MAX) co_return response(RenderError{kRuntimeCapacity});
@@ -233,7 +234,6 @@ namespace lux::render
         for (auto id : affected)
         {
             auto& execution = *runtime_->jobs_.find(id)->execution;
-            ++execution.pending_uses;
             instances.push_back(&execution.instance);
         }
         state.resizing = true;
@@ -243,7 +243,6 @@ namespace lux::render
             for (auto id : affected)
             {
                 auto& job = *runtime_->jobs_.find(id);
-                --job.execution->pending_uses;
                 retireStoppedExecution(job);
             }
         });
@@ -806,8 +805,7 @@ namespace lux::render
         if (device.failure.type) return;
         device.failure = error;
         cancelActiveFrame(device, error);
-        if (preparing_execution_ && preparing_execution_->device == device.id)
-            preparing_execution_->programs.stop->request_stop();
+        if (device.program_update) device.program_update->stop.request_stop();
         if (device.retiring) return;
 
         for (auto id : running_jobs_)
@@ -971,9 +969,9 @@ namespace lux::render
             const bool device_pending = std::ranges::any_of(runtime_->devices_, [](const auto& device) noexcept
             {
                 return device->round.operation ||
-                    device->upload_pending || !device->nativeIdle();
+                    device->program_update || device->upload_pending || !device->nativeIdle();
             });
-            return device_pending || preparing_execution_ || !server_context_.is_idle() || !response_outbox_.empty();
+            return device_pending || !server_context_.is_idle() || !response_outbox_.empty();
         };
         while (!joined.load(std::memory_order_acquire) || has_pending_delivery())
         {
@@ -1084,6 +1082,7 @@ namespace lux::render
                 const bool can_admit = admitting && !stop_requested_.load() && !device.admissionError().type;
                 if (can_admit) progressTargetFlights(device);
 
+                progressed |= settleProgramCompilation(device);
                 if (can_admit) progressed |= progressProgramPreparations(device);
                 progressed |= progressFrame(device);
                 if (!device.retiring) progressUploads(device);

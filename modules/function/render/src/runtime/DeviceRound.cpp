@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
@@ -200,13 +201,7 @@ namespace lux::render
                 progressed = true;
             }
         }
-        if (preparing_execution_)
-        {
-            auto& programs = preparing_execution_->programs;
-            if (!preparing_execution_->instance.matchesProgramRevisions(programs.revisions))
-                programs.stop->request_stop();
-            return progressed;
-        }
+        if (entry.program_update) return progressed;
         const auto count = running_jobs_.size();
         for (std::size_t offset = 0; offset < count; ++offset)
         {
@@ -215,72 +210,97 @@ namespace lux::render
             if (!job.readyToRun() || !jobTargetReady(job)) continue;
             auto& execution = *job.execution;
             if (execution.device != entry.id) continue;
-            if (execution.programsReady() || execution.programError().type) continue;
-            if (execution.pending_uses || !resourcesAvailable(execution.retainedResources())) continue;
+            if (!execution.instance.requiresProducerPrograms() || execution.programError().type) continue;
+            if (executionTargetsResizing(execution) || !resourcesAvailable(execution.retainedResources())) continue;
             round.preparation_cursor = (index + 1) % count;
-            startProgramPreparation(job, execution);
+            startProgramPreparation(entry, execution);
             return true;
         }
         return progressed;
     }
 
-    void RenderServer::Impl::startProgramPreparation(RenderJob& job, JobExecution& execution) noexcept
+    void RenderServer::Impl::startProgramPreparation(detail::DeviceEntry& entry, JobExecution& execution) noexcept
     {
-        auto& programs = execution.programs;
-        execution.instance.captureProgramRevisions(programs.revisions);
-        programs.failure = {};
-        programs.stop.emplace();
-        preparing_execution_ = &execution;
-        const auto stop = programs.stop->get_token();
+        entry.program_update = std::make_unique<detail::RasterProgramUpdate>(
+            entry.session(), execution.binding_identity
+        );
+        auto& update = *entry.program_update;
+        execution.failed_program = {};
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        program_preparation_started_at_ = std::chrono::steady_clock::now();
         program_preparations_.fetch_add(1, std::memory_order_relaxed);
 #endif
+        // All user callbacks, snapshots and graph linkage finish on the owner before the operation leaves it.
+        if (auto selected = execution.instance.selectProgramUpdate(update); !selected)
+        {
+            update.returned = selected.error();
+            return;
+        }
+        const bool needs_native = std::ranges::any_of(update.streams, [](const auto& stream) noexcept
+        {
+            return !stream.links.empty();
+        });
+        if (!needs_native)
+        {
+            update.returned = RenderError{};
+            (void)settleProgramCompilation(entry);
+            return;
+        }
         const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
-        auto prepared =
-            recording_workers_.beginCompilation() |
-            stdexec::let_value([this, &execution, stop]() noexcept
+        auto prepared = recording_workers_.beginCompilation() |
+            stdexec::let_value([op = &update, cpu = program_scheduler_]() noexcept { return op->compile(cpu); }) |
+            stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<void> { std::terminate(); }) |
+            stdexec::upon_stopped([]() noexcept -> RenderResult<void>
             {
-                return execution.instance.prepareProducerPrograms(program_scheduler_, execution.programs.revisions, stop);
+                return cxx::unexpected(RenderError{kCommandCancelled});
             }) |
-            stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<bool> { std::terminate(); }) |
-            stdexec::upon_stopped([]() noexcept -> RenderResult<bool> { return false; }) |
             stdexec::continues_on(scheduler) |
-            stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<bool> { std::terminate(); }) |
-            stdexec::then(
-                [this, id = job.control.id(), generation = job.control.executionGeneration()](RenderResult<bool> result)
-                    noexcept
-                {
-                    auto* job = runtime_->jobs_.find(id);
-                    if (!job || job->control.executionGeneration() != generation ||
-                        job->execution.get() != preparing_execution_) std::terminate();
-                    auto& execution = *job->execution;
-                    auto& programs = execution.programs;
-                    const bool discarded = programs.stop->stop_requested() ||
-                        !execution.instance.matchesProgramRevisions(programs.revisions);
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-                    const auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::steady_clock::now() - program_preparation_started_at_
-                    ).count();
-                    program_preparation_ns_.fetch_add(duration_ns, std::memory_order_relaxed);
-                    if (discarded) discarded_preparations_.fetch_add(1, std::memory_order_relaxed);
-#endif
-                    if (!discarded)
-                    {
-                        if (!result) programs.failure = result.error();
-                        else if (!*result || execution.instance.requiresProducerPrograms()) programs.failure = {kFrameContract};
-                    }
-                    programs.stop.reset();
-                    recording_workers_.endCompilation();
-                    preparing_execution_ = nullptr;
-                    retireStoppedExecution(*job);
-                }
-            );
+            stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<void>
+            {
+                std::terminate();
+            }) |
+            stdexec::then([this, op = &update](RenderResult<void> result) noexcept
+            {
+                recording_workers_.endCompilation();
+                op->returned = result ? RenderError{} : result.error();
+            });
         stdexec::spawn(
-            std::move(prepared),
-            command_scope_.get_token(),
+            std::move(prepared), command_scope_.get_token(),
             stdexec::env{stdexec::prop{stdexec::get_scheduler, scheduler}}
         );
+    }
+
+    bool RenderServer::Impl::settleProgramCompilation(detail::DeviceEntry& entry) noexcept
+    {
+        auto& op = entry.program_update;
+        if (!op) return false;
+        auto* job = runtime_->jobs_.find(op->binding.job);
+        const bool installed = job && job->execution && job->execution->device == entry.id &&
+            job->execution->binding_identity == op->binding;
+        auto* execution = installed ? job->execution.get() : nullptr;
+        const bool current = installed && job->control.running() &&
+            execution->instance.matchesProgramRevisions(op->revisions);
+        if (!current || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
+        if (!op->returned) return false;
+        const bool discarded = op->stop.stop_requested();
+        if (execution && executionTargetsResizing(*execution)) return false;
+        if (execution)
+        {
+            execution->instance.settleProgramUpdate(*op, !discarded && !op->returned->type);
+            if (!discarded && op->returned->type)
+            {
+                execution->failed_program = *op->returned;
+                execution->failed_program_revisions = std::move(op->revisions);
+            }
+        }
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - op->started
+        ).count();
+        program_preparation_ns_.fetch_add(ns, std::memory_order_relaxed);
+        if (discarded) discarded_preparations_.fetch_add(1, std::memory_order_relaxed);
+#endif
+        op.reset();
+        return true;
     }
 
     void RenderServer::Impl::submitFrameRendering(detail::DeviceEntry& entry) noexcept

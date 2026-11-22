@@ -4,6 +4,11 @@
 
 namespace lux::render
 {
+    namespace extension_detail
+    {
+        enum class ECpuPort : std::uint8_t { INPUT, OUTPUT };
+    }
+
     class InstanceLinkContext
     {
     public:
@@ -55,7 +60,8 @@ namespace lux::render
         [[nodiscard]] RenderResult<StorageSnapshotSlot<T>>
         resolveStorageSnapshot(GraphStorageSnapshotId source) const noexcept
         {
-            auto slot = resolveStorageSlot(source, cxx::make_basic_type_info<T>());
+            static constexpr auto type = cxx::make_basic_type_info<T>();
+            auto slot = resolveStorageSlot(source, type);
             if (!slot) return cxx::unexpected(slot.error());
             return StorageSnapshotSlot<T>{*slot};
         }
@@ -63,7 +69,9 @@ namespace lux::render
         template <CpuPreparationValue T>
         [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveCpuInput(GraphCpuDataId source) const noexcept
         {
-            auto slot = resolveCpuSlot(source, cxx::make_basic_type_info<T>(), sizeof(T), false);
+            auto slot = resolveCpuSlot(
+                source, cxx::make_basic_type_info<T>(), sizeof(T), extension_detail::ECpuPort::INPUT
+            );
             if (!slot) return cxx::unexpected(slot.error());
             return CpuInputSlot<T>{*slot};
         }
@@ -71,7 +79,9 @@ namespace lux::render
         template <CpuPreparationValue T>
         [[nodiscard]] RenderResult<CpuOutputSlot<T>> resolveCpuOutput(GraphCpuDataId source) const noexcept
         {
-            auto slot = resolveCpuSlot(source, cxx::make_basic_type_info<T>(), sizeof(T), true);
+            auto slot = resolveCpuSlot(
+                source, cxx::make_basic_type_info<T>(), sizeof(T), extension_detail::ECpuPort::OUTPUT
+            );
             if (!slot) return cxx::unexpected(slot.error());
             return CpuOutputSlot<T>{*slot};
         }
@@ -101,10 +111,12 @@ namespace lux::render
         claimEffectInput(cxx::basic_type_info, std::size_t) noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
-        resolveCpuSlot(GraphCpuDataId, cxx::basic_type_info, std::size_t, bool output) const noexcept = 0;
+        resolveCpuSlot(
+            GraphCpuDataId, cxx::basic_type_info, std::size_t, extension_detail::ECpuPort
+        ) const noexcept = 0;
 
-        [[nodiscard]] virtual RenderResult<std::uint32_t>
-        resolveStorageSlot(GraphStorageSnapshotId, cxx::basic_type_info) const noexcept = 0;
+        [[nodiscard]] virtual RenderResult<extension_detail::SnapshotOperand>
+        resolveStorageSlot(GraphStorageSnapshotId, const cxx::basic_type_info&) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimInlineBlock(GraphPassId, cxx::basic_type_info, std::size_t) noexcept = 0;

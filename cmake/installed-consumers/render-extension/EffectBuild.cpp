@@ -357,13 +357,20 @@ struct NamedSnapshots final
     };
 
     static inline thread_local std::optional<CpuOutputSlot<std::uint32_t>> upstream_writer;
+    static inline thread_local std::optional<StorageSnapshotSlot<bool>> upstream_snapshot;
 
     static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
     {
         CHECK(config.sources[0].index != config.sources[1].index);
         return LinkedData{
-            {take(link.resolveStorageSnapshot<bool>(config.sources[0])), take(link.resolveStorageSnapshot<bool>(config.sources[1]))},
-            {take(link.resolveCpuOutput<std::uint32_t>(config.words[0])), take(link.resolveCpuOutput<std::uint32_t>(config.words[1]))}
+            {
+                take(link.resolveStorageSnapshot<bool>(config.sources[0])),
+                take(link.resolveStorageSnapshot<bool>(config.sources[1]))
+            },
+            {
+                take(link.resolveCpuOutput<std::uint32_t>(config.words[0])),
+                take(link.resolveCpuOutput<std::uint32_t>(config.words[1]))
+            }
         };
     }
 
@@ -376,6 +383,7 @@ struct NamedSnapshots final
         CHECK(frame.publish(inputs.words[1], 0x1234u));
         CHECK(frame.publish(inputs.words[0], value));
         upstream_writer = inputs.words[0];
+        upstream_snapshot = inputs.sources[0];
         return {};
     }
 };
@@ -388,7 +396,9 @@ struct CheckPreparedWords final
 
     static RenderResult<LinkedData> resolve(const Configuration& words, InstanceLinkContext& link) noexcept
     {
-        return LinkedData{take(link.resolveCpuInput<std::uint32_t>(words[0])), take(link.resolveCpuInput<std::uint32_t>(words[1]))};
+        return LinkedData{
+            take(link.resolveCpuInput<std::uint32_t>(words[0])), take(link.resolveCpuInput<std::uint32_t>(words[1]))
+        };
     }
 
     static RenderResult<void> prepare(const LinkedData& words, FramePreparation& frame) noexcept
@@ -397,6 +407,10 @@ struct CheckPreparedWords final
         CHECK(foreign);
         const auto denied = frame.publish(*foreign, 99u);
         CHECK(!denied && denied.error().type == kGraphUnknownResource);
+        const auto snapshot = std::exchange(NamedSnapshots::upstream_snapshot, {});
+        CHECK(snapshot);
+        const auto inaccessible = frame.readStorage(*snapshot);
+        CHECK(!inaccessible && inaccessible.error().type == kGraphUnknownResource);
         const auto marker = take(frame.read(words[1]));
         const auto selected = take(frame.read(words[0]));
         CHECK(marker.value == 0x1234u && (selected.value == 7 || selected.value == 11));
@@ -425,6 +439,12 @@ struct InvalidSelection : WorkspaceProbe<int>
 
 template <class T>
 concept AcceptsInvalidBuild = requires { RasterProgramBuilder::make<T, &T::invalidBuild>(); };
+
+template <class T> concept CanRegisterStateless = requires { PreparationAlgorithm::stateless<T>(); };
+template <class T> concept CanRegisterWorkspace = requires { PreparationAlgorithm::withWorkspace<T>(); };
+
+static_assert(CanRegisterStateless<ClearPreparation> && !CanRegisterWorkspace<ClearPreparation>);
+static_assert(CanRegisterWorkspace<InvalidSelection> && !CanRegisterStateless<InvalidSelection>);
 
 static_assert(PreparationKernel<InvalidSelection>);
 static_assert(!AcceptsInvalidBuild<InvalidSelection>);
@@ -480,10 +500,13 @@ static void registerClearNode(RenderServer& server)
             const auto other = take(context.importStorageSnapshot<bool>(
                 "companion", {ResourceName{ColdResource::descriptor.type.name()}}
             ));
-            const std::array words{take(context.declareCpuData<std::uint32_t>()), take(context.declareCpuData<std::uint32_t>())};
+            const std::array words{
+                take(context.declareCpuData<std::uint32_t>()), take(context.declareCpuData<std::uint32_t>())
+            };
             // Register the downstream reader first. The compiled DAG orders the two stateless calls.
             auto checked = context.addPreparation({
-                PreparationAlgorithm::stateless<CheckPreparedWords>(), take(ConfigValue::make(words)), {words[1], words[0]},
+                PreparationAlgorithm::stateless<CheckPreparedWords>(), take(ConfigValue::make(words)),
+                {words[1], words[0]},
                 {}, {}, {cleared.pass}
             });
             if (!checked) return checked;
@@ -868,6 +891,7 @@ static void verifySnapshotBindings(
     binding.resources.back().resource = owners[1];
     CHECK(!call<RebindRenderJobEffect>(client, {device, job, effect, target, binding}).error.type);
     CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 3 && !CheckPreparedWords::same_selection);
+    std::puts("CPU DAG: two stateless calls, reversed dependencies and output slots, foreign writer/snapshot rejected");
     CHECK(call<QueryRenderStats>(client, {}).compiled_graphs == compiled);
     ColdResource::capture_counter = nullptr;
     CHECK(!call<StopRenderJob>(client, job).error.type);

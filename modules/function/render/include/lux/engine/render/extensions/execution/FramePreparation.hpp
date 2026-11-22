@@ -159,7 +159,7 @@ namespace lux::render
         template <class T>
         [[nodiscard]] RenderResult<PreparedStorageSnapshot<T>> readStorage(StorageSnapshotSlot<T> slot) const noexcept
         {
-            auto selected = readStorageValue(slot.slot_, cxx::make_basic_type_info<T>());
+            auto selected = readStorageValue(slot.operand_);
             if (!selected) return cxx::unexpected(selected.error());
             return PreparedStorageSnapshot<T>{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
         }
@@ -229,7 +229,7 @@ namespace lux::render
         readDrawSource(extension_detail::DrawSourceAddress, cxx::basic_type_info) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<extension_detail::SelectedStorageSnapshot>
-        readStorageValue(std::uint32_t, cxx::basic_type_info) const noexcept = 0;
+        readStorageValue(extension_detail::SnapshotOperand) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<SelectedBytes> readBytes(std::uint32_t, std::size_t) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void>

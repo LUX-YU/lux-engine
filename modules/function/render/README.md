@@ -428,7 +428,10 @@ Algorithms with a cold draw mapping receive that mapping as their final prepare 
 Declare the CPU dependency in `GraphPreparation::inputs` or `outputs`. At link time resolve a reader with
 `resolveCpuInput<T>` or a writer with `resolveCpuOutput<T>`. Effect state uses `resolveEffectInput<T>`.
 During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The compiled read table and output intervals
-address the selected value directly. All declared outputs must be written before the frame can be recorded.
+address the selected value directly. A linked Storage snapshot identifies its frame operand and, when declared for the
+cold Program build, its program operand. Link qualifies its complete type and Job installation resolves the final
+Resource selection. Frame preparation and cold Program readers can each access only their declared operands.
+All declared outputs must be written before the frame can be recorded.
 
 The Job owns each workspace, its CPU binding rows and their revisions. Each DeviceEntry owns the Job's native
 buffers, images, memory allocations, descriptor pools, views, command buffers and History backing. The device indexes

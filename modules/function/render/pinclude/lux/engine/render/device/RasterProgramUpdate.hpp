@@ -26,7 +26,7 @@ namespace lux::render::detail
         {
             std::uint32_t slot;
             ResourceInstanceId owner;
-            cxx::basic_type_info type;
+            const cxx::basic_type_info* type;
             extension_detail::SelectedStorageSnapshot selection;
         };
 

@@ -453,6 +453,8 @@ namespace sdk_programs
             const DrawMapping* previous
         ) noexcept
         {
+            const auto frame_only = selection.readStorage(linked.camera);
+            CHECK(!frame_only && frame_only.error().type == kGraphUnknownResource);
             auto code = selection.readStorage(linked.code);
             if (!code) return lux::cxx::unexpected(code.error());
             ++CodeStorage::builds;

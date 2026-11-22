@@ -571,7 +571,8 @@ namespace lux::render
             auto value = ConfigValue::make(config);
             if (!value) return cxx::unexpected(value.error());
             if (auto prepared = context.addPreparation({
-                PreparationAlgorithm::withWorkspace<PrepareMeshVisibility, &PrepareMeshVisibility::createWorkspace>(), std::move(*value), {}, {}, std::move(inline_blocks),
+                PreparationAlgorithm::withWorkspace<PrepareMeshVisibility, &PrepareMeshVisibility::createWorkspace>(),
+                std::move(*value), {}, {}, std::move(inline_blocks),
                 std::move(producer_passes), std::move(prepared_buffers), std::move(storage_inputs),
                 std::move(program_inputs), program_builder
             }); !prepared)

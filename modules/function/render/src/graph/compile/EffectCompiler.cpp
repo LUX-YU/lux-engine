@@ -111,6 +111,23 @@ namespace lux::render::detail
                 for (auto id : producer_.inputs) plan.cpu_reads.push_back({workspace_.data_slots[id.index]});
                 inputs_.count = static_cast<std::uint32_t>(input_count);
                 constants_.first = static_cast<std::uint32_t>(plan.inline_blocks.size());
+                if (producer_.storage_inputs.size() > kGraphInvalidIndex - plan.snapshot_reads.size())
+                    return cxx::unexpected(RenderError{kRuntimeCapacity});
+                snapshots_.first = static_cast<std::uint32_t>(plan.snapshot_reads.size());
+                snapshots_.count = static_cast<std::uint32_t>(producer_.storage_inputs.size());
+                for (auto id : producer_.storage_inputs)
+                    plan.snapshot_reads.push_back({workspace_.snapshot_slots[id.index], kGraphInvalidIndex, nullptr});
+                std::vector<std::uint32_t> program_snapshots;
+                for (auto id : producer_.program_storage_inputs)
+                {
+                    const auto found = std::ranges::find(producer_.storage_inputs, id);
+                    if (found == producer_.storage_inputs.end())
+                        return cxx::unexpected(RenderError{kGraphUnknownResource, {source_index, id.index}});
+                    const auto local = static_cast<std::uint32_t>(found - producer_.storage_inputs.begin());
+                    const auto operand = snapshots_.first + local;
+                    plan.snapshot_reads[operand].program = static_cast<std::uint32_t>(program_snapshots.size());
+                    program_snapshots.push_back(operand);
+                }
                 auto call = producer_.algorithm.link(producer_.configuration, *this);
                 if (!call) return cxx::unexpected(call.error());
                 const auto expected = std::ranges::count_if(producer_.inline_blocks, [&](GraphPassId pass) noexcept
@@ -136,8 +153,16 @@ namespace lux::render::detail
                     .inputs = inputs_,
                     .inline_blocks = constants_,
                     .raster_streams = std::move(streams_),
-                    .buffers = std::move(buffers_)
+                    .buffers = std::move(buffers_),
+                    .snapshots = snapshots_,
+                    .program_snapshots = std::move(program_snapshots)
                 };
+                if (linked.call.methods->create_workspace)
+                {
+                    if (plan.workspace_count == kGraphInvalidIndex)
+                        return cxx::unexpected(RenderError{kRuntimeCapacity});
+                    linked.workspace_slot = plan.workspace_count++;
+                }
                 if (!linked.linkPrograms(builder))
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
                 if (!producer_.outputs.empty())
@@ -148,24 +173,25 @@ namespace lux::render::detail
                         static_cast<std::uint32_t>(producer_.outputs.size())
                     };
                 }
-                for (auto id : producer_.storage_inputs)
-                    linked.snapshots.push_back(workspace_.snapshot_slots[id.index]);
-                for (auto id : producer_.program_storage_inputs)
-                    linked.program_snapshots.push_back(workspace_.snapshot_slots[id.index]);
                 return linked;
             }
 
         private:
-            RenderResult<std::uint32_t>
-            resolveStorageSlot(GraphStorageSnapshotId id, cxx::basic_type_info type) const noexcept override
+            RenderResult<extension_detail::SnapshotOperand>
+            resolveStorageSlot(GraphStorageSnapshotId id, const cxx::basic_type_info& type) const noexcept override
             {
-                const bool declared = std::ranges::find(producer_.storage_inputs, id) != producer_.storage_inputs.end();
-                if (!declared)
+                const auto found = std::ranges::find(producer_.storage_inputs, id);
+                if (found == producer_.storage_inputs.end())
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, id.index}});
-                const auto expected = workspace_.build.preparation.snapshots[id.index].type;
+                const auto& expected = workspace_.build.preparation.snapshots[id.index].type;
                 if (expected != type || expected.name() != type.name())
                     return cxx::unexpected(RenderError{kStorageMismatch, {id.index}});
-                return workspace_.snapshot_slots[id.index];
+                const auto local = static_cast<std::uint32_t>(found - producer_.storage_inputs.begin());
+                const auto operand = snapshots_.first + local;
+                auto& read = workspace_.plan.snapshot_reads[operand];
+                // The author supplies a static type object. Every successful resolution receives the same witness.
+                if (!read.type) read.type = &type;
+                return extension_detail::SnapshotOperand{operand, read.program, read.type};
             }
 
             RenderResult<std::uint32_t> claimEffectInput(cxx::basic_type_info type, std::size_t bytes) noexcept override
@@ -201,11 +227,9 @@ namespace lux::render::detail
                 if (!workspace_.claimStream(*resolved))
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {pass.index}});
                 auto& ranges = workspace_.plan.draw_resource_ranges;
-                if (!ranges.empty())
-                {
-                    ranges[*resolved].producer = producer_slot_;
-                    ranges[*resolved].local_stream = static_cast<std::uint32_t>(streams_.size());
-                }
+                if (ranges.empty()) ranges.resize(workspace_.compiled.executable.passes().size());
+                ranges[*resolved].producer = producer_slot_;
+                ranges[*resolved].local_stream = static_cast<std::uint32_t>(streams_.size());
                 streams_.push_back(*resolved);
                 return DrawStreamSlot{*resolved};
             }
@@ -310,8 +334,11 @@ namespace lux::render::detail
             }
 
             RenderResult<std::uint32_t>
-            resolveCpuSlot(GraphCpuDataId id, cxx::basic_type_info type, std::size_t bytes, bool output) const noexcept override
+            resolveCpuSlot(
+                GraphCpuDataId id, cxx::basic_type_info type, std::size_t bytes, extension_detail::ECpuPort direction
+            ) const noexcept override
             {
+                const bool output = direction == extension_detail::ECpuPort::OUTPUT;
                 const auto& ports = output ? producer_.outputs : producer_.inputs;
                 const auto found = std::ranges::find(ports, id);
                 if (found == ports.end()) return cxx::unexpected(RenderError{kGraphUnknownResource, {id.index}});
@@ -333,7 +360,8 @@ namespace lux::render::detail
                 const bool valid_slot = slot < workspace_.compiled.executable.passes().size();
                 const bool compatible = valid_slot &&
                     workspace_.compiled.executable.passes()[slot].parameter_size == bytes &&
-                    parameters && parameters->inline_constant.type == type;
+                    parameters && parameters->inline_constant.type == type &&
+                    parameters->inline_constant.type.name() == type.name();
                 if (!compatible) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index}});
                 auto& table = workspace_.plan.inline_blocks;
                 const auto claimed = std::span{table}.subspan(constants_.first);
@@ -364,7 +392,7 @@ namespace lux::render::detail
 
             PreparationLinkWorkspace& workspace_;
             const GraphPreparation& producer_;
-            detail::PreparationRange inputs_, constants_;
+            detail::PreparationRange inputs_, constants_, snapshots_;
             std::vector<std::uint32_t> buffers_, streams_;
             std::uint32_t source_input_, selected_input_ = kGraphInvalidIndex;
             std::uint32_t producer_slot_;

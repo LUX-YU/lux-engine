@@ -60,7 +60,7 @@ namespace lux::render
         template <class T>
         [[nodiscard]] RenderResult<PreparedStorageSnapshot<T>> readStorage(StorageSnapshotSlot<T> slot) const noexcept
         {
-            auto selected = readStorageValue(slot.slot_, cxx::make_basic_type_info<T>());
+            auto selected = readStorageValue(slot.operand_);
             if (!selected) return cxx::unexpected(selected.error());
             return PreparedStorageSnapshot<T>{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
         }
@@ -73,7 +73,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<const void*>
         readResourceValue(DrawStreamSlot, ResourceInstanceId, cxx::basic_type_info) const noexcept;
         [[nodiscard]] RenderResult<extension_detail::SelectedStorageSnapshot>
-        readStorageValue(std::uint32_t, cxx::basic_type_info) const noexcept;
+        readStorageValue(extension_detail::SnapshotOperand) const noexcept;
     };
 
     // A cold build reads the linked inputs and the last published draw mapping on the owner.

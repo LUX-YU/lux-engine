@@ -1776,7 +1776,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             const auto second_dead = take(context.declareCpuData<std::uint32_t>());
             dead_inputs.push_back(second_dead);
             CHECK(context.addPreparation({
-                PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(), take(ConfigValue::make(ProducerSourceConfig{})),
+                PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(),
+                take(ConfigValue::make(ProducerSourceConfig{})),
                 {dead}, {second_dead}, {}
             }));
         }
@@ -1784,7 +1785,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const auto dormant_passes = args == "joint-closure" ?
             std::vector{seeded.pass, dormant.pass} : std::vector{dormant.pass};
         CHECK(context.addPreparation({
-            PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(), take(ConfigValue::make(ProducerSourceConfig{})),
+            PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(),
+            take(ConfigValue::make(ProducerSourceConfig{})),
             std::move(dead_inputs), {args == "duplicate" ? slot : dead}, {}, dormant_passes
         }));
         return context.publish(node_bytes, {{node_bytes, copy.written.front()}});

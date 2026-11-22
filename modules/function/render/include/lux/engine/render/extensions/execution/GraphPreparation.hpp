@@ -80,7 +80,8 @@ namespace lux::render
             return PreparationAlgorithm{&linkTyped<T, &createWorkspace<T, Create>>};
         }
 
-        [[nodiscard]] RenderResult<Invocation> link(const ConfigValue& config, InstanceLinkContext& context) const noexcept
+        [[nodiscard]] RenderResult<Invocation>
+        link(const ConfigValue& config, InstanceLinkContext& context) const noexcept
         {
             return link_(config, context);
         }
@@ -97,7 +98,8 @@ namespace lux::render
             if (!inputs) return cxx::unexpected(inputs.error());
             static constexpr Methods methods{&prepare<T>, Create, []() constexpr
             {
-                if constexpr (extension_detail::HasDrawMapping<T>) return cxx::make_basic_type_info<typename T::DrawMapping>();
+                if constexpr (extension_detail::HasDrawMapping<T>)
+                    return cxx::make_basic_type_info<typename T::DrawMapping>();
                 else return cxx::make_basic_type_info<void>();
             }()};
             return Invocation{std::move(*inputs), &methods};
@@ -120,7 +122,8 @@ namespace lux::render
         }
 
         template <class T>
-        static RenderResult<void> prepare(const void* data, FramePreparation& frame, void* workspace, const void* map) noexcept
+        static RenderResult<void>
+        prepare(const void* data, FramePreparation& frame, void* workspace, const void* map) noexcept
         {
             const auto& inputs = *static_cast<const typename T::LinkedData*>(data);
             const auto run = [&](auto&... state) noexcept
@@ -129,7 +132,8 @@ namespace lux::render
                     return T::prepare(inputs, frame, state..., static_cast<const typename T::DrawMapping*>(map));
                 else return T::prepare(inputs, frame, state...);
             };
-            if constexpr (extension_detail::HasWorkspace<T>) return run(*static_cast<typename T::Workspace*>(workspace));
+            if constexpr (extension_detail::HasWorkspace<T>)
+                return run(*static_cast<typename T::Workspace*>(workspace));
             else return run();
         }
 

@@ -318,7 +318,6 @@ namespace lux::render::detail
 
         struct Producer final
         {
-            extension_detail::AlgorithmWorkspace workspace{nullptr, nullptr};
             std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
             std::vector<std::uint32_t> runtime_streams{};
@@ -326,9 +325,6 @@ namespace lux::render::detail
             RasterProgramBuilder::Mapping draw_mapping{nullptr, nullptr};
             bool programs_dirty = false;
         };
-
-        [[nodiscard]] RenderResult<extension_detail::SelectedStorageSnapshot>
-        readStorageSnapshot(std::span<const std::uint32_t>, std::uint32_t, cxx::basic_type_info) const noexcept;
 
         struct PreparedBufferInput final
         {
@@ -353,6 +349,7 @@ namespace lux::render::detail
         std::vector<BoundDrawResource> draw_resources_;
         std::vector<StorageSnapshot> storage_snapshots_;
         std::vector<std::uint32_t> snapshot_sources_;
+        std::vector<extension_detail::AlgorithmWorkspace> workspaces_;
         std::vector<Producer> producers_;
         std::vector<std::uint32_t> program_producers_;
         std::vector<ProgramInputRevision::Use> program_input_uses_;

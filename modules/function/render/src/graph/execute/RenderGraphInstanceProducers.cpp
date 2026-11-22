@@ -91,10 +91,9 @@ namespace lux::render::detail
 
         RenderResult<void> setRasterStream(DrawStreamSlot slot, const RasterStreamData& data) noexcept override
         {
-            const auto use = std::ranges::find(linked_.raster_streams, slot.index);
-            if (use == linked_.raster_streams.end())
-                return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            auto& stream = producer_.streams[use - linked_.raster_streams.begin()];
+            const auto grant = streamRange(slot.index);
+            if (!grant) return cxx::unexpected(grant.error());
+            auto& stream = producer_.streams[(*grant)->local_stream];
             if (stream.written) return cxx::unexpected(RenderError{kFrameContract, {slot.index}});
             const bool outside_limits = data.draws.size() >= kGraphInvalidIndex ||
                 data.vertices.size() >= kGraphInvalidIndex || data.bindings.size() >= kGraphInvalidIndex ||
@@ -112,8 +111,9 @@ namespace lux::render::detail
         RenderResult<RasterProgramSlot>
         rasterProgram(DrawStreamSlot slot, std::uint32_t selection_index) const noexcept override
         {
-            const auto& streams = producer_.runtime_streams;
-            if (std::ranges::find(streams, slot.index) == streams.end())
+            const auto grant = streamRange(slot.index);
+            if (!grant) return cxx::unexpected(grant.error());
+            if (!instance_.programs_->rasterStream(slot.index)->runtime)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
             const auto& selected = instance_.dynamic_raster_programs_[slot.index];
             if (!selected || selection_index >= selected->programs.size())
@@ -183,13 +183,21 @@ namespace lux::render::detail
         }
 
         RenderResult<const PreparationPlan::DrawSourceRange*>
-        drawSourceRange(DrawSourceAddress address) const noexcept
+        streamRange(std::uint32_t pass) const noexcept
         {
-            const auto [pass, source] = address;
             const auto& ranges = instance_.preparation_plan_->draw_resource_ranges;
             if (pass >= ranges.size() || ranges[pass].producer != producer_slot_)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {pass}});
-            const auto& range = ranges[pass];
+            return &ranges[pass];
+        }
+
+        RenderResult<const PreparationPlan::DrawSourceRange*>
+        drawSourceRange(DrawSourceAddress address) const noexcept
+        {
+            const auto [pass, source] = address;
+            const auto grant = streamRange(pass);
+            if (!grant) return cxx::unexpected(grant.error());
+            const auto& range = **grant;
             if (source < range.first || source - range.first >= range.count)
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {pass, source}});
             return &range;
@@ -292,9 +300,14 @@ namespace lux::render::detail
         }
 
         RenderResult<extension_detail::SelectedStorageSnapshot>
-        readStorageValue(std::uint32_t slot, cxx::basic_type_info type) const noexcept override
+        readStorageValue(extension_detail::SnapshotOperand operand) const noexcept override
         {
-            return instance_.readStorageSnapshot(linked_.snapshots, slot, type);
+            if (!linked_.snapshots.contains(operand.frame))
+                return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, operand.frame}});
+            const auto& read = instance_.preparation_plan_->snapshot_reads[operand.frame];
+            if (read.type != operand.type) return cxx::unexpected(RenderError{kStorageMismatch, {operand.frame}});
+            const auto& selection = instance_.storage_snapshots_[instance_.snapshot_sources_[operand.frame]];
+            return extension_detail::SelectedStorageSnapshot{selection.value.get(), selection.revision};
         }
 
         RenderResult<SelectedBytes> readBytes(std::uint32_t slot, std::size_t bytes) const noexcept override
@@ -397,19 +410,6 @@ namespace lux::render::detail
         std::uint32_t frame_slot_;
     };
 
-    RenderResult<extension_detail::SelectedStorageSnapshot> RenderGraphInstance::readStorageSnapshot(
-        std::span<const std::uint32_t> inputs, std::uint32_t slot, cxx::basic_type_info type
-    ) const noexcept
-    {
-        if (std::ranges::find(inputs, slot) == inputs.end())
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-        const auto& selected = storage_snapshots_[snapshot_sources_[slot]];
-        const auto expected = selected.source.ops->type;
-        if (expected != type || expected.name() != type.name())
-            return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
-        return extension_detail::SelectedStorageSnapshot{selected.value.get(), selected.revision};
-    }
-
     RenderResult<void> RenderGraphInstance::createProducers(
         const PreparationPlan& plan, const ResourceRegistry& registry, PreparationSources inputs
     ) noexcept
@@ -456,6 +456,8 @@ namespace lux::render::detail
             if (!value) return cxx::unexpected(RenderError{kStorageContract, {i}});
             snapshots.emplace_back(source, std::move(value));
         }
+        std::vector<extension_detail::AlgorithmWorkspace> workspaces;
+        workspaces.reserve(plan.workspace_count);
         std::vector<Producer> producers;
         std::vector<std::uint32_t> program_producers;
         producers.reserve(plan.producers.size());
@@ -467,7 +469,7 @@ namespace lux::render::detail
             {
                 auto workspace = create(linked.call.inputs.data(), target());
                 if (!workspace) return cxx::unexpected(workspace.error());
-                producer.workspace = std::move(*workspace);
+                workspaces.push_back(std::move(*workspace));
             }
             for (auto pass : linked.raster_streams)
             {
@@ -477,7 +479,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {producers.size() - 1}});
             for (auto slot : linked.program_snapshots)
             {
-                const auto source = source_slots[slot];
+                const auto source = source_slots[plan.snapshot_reads[slot].source];
                 auto& snapshot = snapshots[source];
                 if (!snapshot.program_input)
                 {
@@ -494,7 +496,10 @@ namespace lux::render::detail
                 program_producers.push_back(static_cast<std::uint32_t>(producers.size() - 1));
             }
             producer.constants.reserve(linked.inline_blocks.count);
-            for (const auto& block : std::span{plan.inline_blocks}.subspan(linked.inline_blocks.first, linked.inline_blocks.count))
+            const auto blocks = std::span{plan.inline_blocks}.subspan(
+                linked.inline_blocks.first, linked.inline_blocks.count
+            );
+            for (const auto& block : blocks)
             {
                 producer.constants.push_back({{std::vector<std::byte>(block.bytes)}});
             }
@@ -506,6 +511,7 @@ namespace lux::render::detail
         {
             frame.native.prepared_buffers.resize(plan.buffers.size());
         }
+        workspaces_ = std::move(workspaces);
         producers_ = std::move(producers);
         program_producers_ = std::move(program_producers);
         if (!program_producers_.empty())
@@ -529,7 +535,9 @@ namespace lux::render::detail
             }
         }
         storage_snapshots_ = std::move(snapshots);
-        snapshot_sources_ = std::move(source_slots);
+        snapshot_sources_.resize(plan.snapshot_reads.size());
+        for (std::size_t i = 0; i < plan.snapshot_reads.size(); ++i)
+            snapshot_sources_[i] = source_slots[plan.snapshot_reads[i].source];
         draw_resources_ = std::move(inputs.draw_resources);
         effect_values_ = std::move(inputs.effect_values);
         snapshot_registry_ = &registry;
@@ -603,7 +611,8 @@ namespace lux::render::detail
         {
             const auto& snapshot = storage_snapshots_[snapshot_sources_[slot]];
             data.snapshots.push_back({
-                slot, snapshot.source.id, snapshot.source.ops->type, {snapshot.value.get(), snapshot.revision}
+                slot, snapshot.source.id, preparation_plan_->snapshot_reads[slot].type,
+                {snapshot.value.get(), snapshot.revision}
             });
         }
         RasterProgramBuildContext context{data};
@@ -706,8 +715,10 @@ namespace lux::render::detail
                 stream.selection = preparation_revision_;
             }
             ProducerFrame frame{*this, static_cast<std::uint32_t>(i), slot};
+            auto* workspace = linked.workspace_slot == kGraphInvalidIndex ?
+                nullptr : workspaces_[linked.workspace_slot].get();
             auto prepared = linked.call.methods->prepare(
-                linked.call.inputs.data(), frame, producer.workspace.get(), producer.draw_mapping.get()
+                linked.call.inputs.data(), frame, workspace, producer.draw_mapping.get()
             );
             if (!prepared) return prepared;
 
@@ -727,7 +738,10 @@ namespace lux::render::detail
             for (std::size_t b = 0; b < linked.inline_blocks.count; ++b)
             {
                 if (!producer.constants[b].payload.written)
-                    return cxx::unexpected(RenderError{kFrameContract, {preparation_plan_->inline_blocks[linked.inline_blocks.first + b].pass}});
+                {
+                    const auto pass = preparation_plan_->inline_blocks[linked.inline_blocks.first + b].pass;
+                    return cxx::unexpected(RenderError{kFrameContract, {pass}});
+                }
             }
             for (std::size_t s = 0; s < linked.raster_streams.size(); ++s)
             {

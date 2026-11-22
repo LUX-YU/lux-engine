@@ -458,7 +458,8 @@ namespace
         background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
         const auto base = take(builder.addRasterPass("clear background", std::move(background)));
         auto clear = context.addPreparation({
-            PreparationAlgorithm::stateless<ClearBackground>(), take(ConfigValue::make(base.pass)), {}, {}, {}, {base.pass},
+            PreparationAlgorithm::stateless<ClearBackground>(), take(ConfigValue::make(base.pass)),
+            {}, {}, {}, {base.pass},
             {}, {}, {}, RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
         });
         if (!clear) return clear;

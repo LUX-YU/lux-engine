@@ -121,14 +121,13 @@ namespace lux::render
     }
 
     RenderResult<extension_detail::SelectedStorageSnapshot>
-    RasterProgramBuildContext::readStorageValue(std::uint32_t slot, cxx::basic_type_info type) const noexcept
+    RasterProgramBuildContext::readStorageValue(extension_detail::SnapshotOperand operand) const noexcept
     {
         const auto& snapshots = data_.snapshots;
-        const auto source = std::ranges::find(snapshots, slot, &detail::RasterProgramBuildData::Snapshot::slot);
-        if (source == snapshots.end())
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-        if (source->type != type || source->type.name() != type.name())
-            return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
-        return source->selection;
+        if (operand.program >= snapshots.size() || snapshots[operand.program].slot != operand.frame)
+            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, operand.frame}});
+        const auto& source = snapshots[operand.program];
+        if (source.type != operand.type) return cxx::unexpected(RenderError{kStorageMismatch, {operand.frame}});
+        return source.selection;
     }
 } // namespace lux::render

@@ -223,7 +223,11 @@ call `writeBuffer()` with the complete payload and an optional revision. A nonze
 bytes across preparations of that Job. The graph retains the producer if a live pass reads the buffer.
 Each FIF replica tracks its native allocation generation, accepted revision and size. A matching nonzero revision and
 size select the resident binding directly. New selections copy the bytes into Job-owned storage before the callback
-returns. An upload can span several windows. Only acceptance of its complete payload marks the revision resident.
+returns. The Job owns the CPU call workspaces and selects the complete set of write operands before staging.
+An upload can span several windows. Each copy receipt identifies the installed execution, FIF epoch, allocation
+generation and byte interval. The device replica records the contiguous accepted prefix and its declared total
+size. A version is resident only after the full interval has been accepted. An unknown outcome invalidates that
+replica's content qualification.
 
 Use `declareFrameBuffer()` when graph commands produce the buffer contents and the preparation determines its size.
 List it in `GraphPreparation::gpu_buffers`, resolve a sizer with `resolveFrameBuffer()`, and call `sizeBuffer()`

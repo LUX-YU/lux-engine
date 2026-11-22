@@ -16,6 +16,7 @@ namespace lux::render::detail
     struct CompiledRasterStream;
     struct DynamicRasterPrograms;
     struct RasterProgramSelection;
+    struct PreparedBufferCopy;
     struct PhysicalFrameContract;
     struct PhysicalFrameChanges;
 
@@ -66,12 +67,16 @@ namespace lux::render::detail
         {
             nri::Buffer* buffer = nullptr;
             std::uint64_t capacity = 0, generation = 0;
-            std::uint64_t accepted_revision = 0, accepted_size = 0;
-            std::size_t staged_bytes = 0;
+            struct Contents final
+            {
+                std::uint64_t revision = 0, size = 0, prefix = 0;
+            };
+
+            Contents accepted;
 
             [[nodiscard]] bool contains(std::uint64_t revision, std::uint64_t size) const noexcept
             {
-                return buffer && revision != 0 && accepted_revision == revision && accepted_size == size;
+                return buffer && revision && accepted.revision == revision && accepted.size == size && accepted.prefix == size;
             }
         };
 
@@ -144,6 +149,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<RasterProgramSelection>
         selectRasterPrograms(std::uint32_t pass, const CompiledRasterStream&) const noexcept;
         void adoptRasterPrograms(std::uint32_t list, std::unique_ptr<DynamicRasterPrograms>) noexcept;
+
+        void settlePreparedBuffer(std::uint32_t slot, const PreparedBufferCopy&, SubmissionPoint, RenderError) noexcept;
 
         DeviceSession& session;
         const std::uint64_t generation;

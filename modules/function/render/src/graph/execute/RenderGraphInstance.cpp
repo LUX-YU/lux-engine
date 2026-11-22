@@ -17,8 +17,7 @@ namespace lux::render::detail
         FrameStorage storage,
         TargetOutput output
     ) noexcept
-        : program_inputs_(storage.programs), preparation_job_(storage.binding.job), preparation_generation_(storage.binding.generation),
-          session_(&gpu.session), gpu_(gpu), frames_(storage.frames), histories_(storage.histories),
+        : session_(&gpu.session), gpu_(gpu), frames_(storage.frames), histories_(storage.histories),
           graph_(plan), output_(output)
     {
         condition_values_.resize(plan.condition_count_);
@@ -76,12 +75,16 @@ namespace lux::render::detail
     std::uint32_t RenderGraphInstance::frameCount() const noexcept
     { return static_cast<std::uint32_t>(frames_.size()); }
 
+    bool RenderGraphInstance::frozenForSubmission(std::uint32_t slot) const noexcept
+    {
+        return slot < frames_.size() && frames_[slot].frozen_for_submission;
+    }
+
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
         for (const auto& frame : frames_)
             for (const auto& batch : frame.command_batches)
                 if (batch.recording.load(std::memory_order_acquire)) std::terminate();
-        while (!producers_.empty()) producers_.pop_back();
     }
 
     RenderResult<void> RenderGraphInstance::initialize() noexcept
@@ -195,7 +198,7 @@ namespace lux::render::detail
             auto& binding = frame.bindings[graph_.output()];
             if (binding.image != output.image)
             {
-                retireRasterViews(frame, nullptr, binding.image);
+                frame.retireRasterViews(*session_, nullptr, binding.image);
                 frame.invalidateResource(graph_.recordingDependencies(), graph_.output());
                 binding.select(nullptr, output.image, session_->nriCore());
                 // A presentation image has one writer and cannot be sampled by another instance.

@@ -8,6 +8,7 @@
 
 namespace lux::render::runtime_detail
 {
+    struct JobExecution;
     struct FrameInputs final
     {
         static constexpr std::uint32_t no_job = UINT32_MAX;
@@ -128,7 +129,7 @@ namespace lux::render::runtime_detail
         std::vector<SelectedRead> reads;
         std::vector<FrameInputs::TargetReadSlot> selected_sources;
         std::vector<Output> outputs;
-        std::vector<detail::RenderGraphInstance*> instances;
+        std::vector<JobExecution*> executions;
         std::size_t run_count = 0;
         detail::SubmissionFrontiers target_uses;
         std::vector<ResourceInstanceId> storages;

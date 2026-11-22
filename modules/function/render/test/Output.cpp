@@ -216,7 +216,7 @@ static void graphOutput(Validation& validation)
     auto missing_output = RenderGraphInstance::ResizeResources::prepare(*execution_gpu, *execution, {});
     CHECK(!missing_output && missing_output.error().type == kDeviceArgument);
     CHECK(execution->target() == target); // Rejection must not withdraw the adopted output.
-    const std::array contexts{execution};
+    const std::array contexts{execution_job.get()};
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
     CHECK(
@@ -336,7 +336,7 @@ static void importedIdentityReuse(Validation& validation)
     ) == nri::Result::SUCCESS);
     const auto render = [&]()
     {
-        const std::array instances{&*instance};
+        const std::array instances{&*instance_job};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(!frames->submitting());
         CHECK(session->drain());
@@ -3653,7 +3653,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
 
 static void preparedBuffers(bool d3d12)
 {
-    enum class EPhase { SMALL, GROWN, REPLACEMENT, FAIL_AFTER_WRITE, OMIT, OVERSIZED, SHRUNK, UNVERSIONED };
+    enum class EPhase { SMALL, GROWN, REPLACEMENT, PREFIX_EXTENT, FAIL_AFTER_WRITE, OMIT, OVERSIZED, SHRUNK, UNVERSIONED };
     static std::atomic phase{EPhase::SMALL};
     static std::atomic_uint graph_builds{};
     class Producer final
@@ -3702,7 +3702,15 @@ static void preparedBuffers(bool d3d12)
                 return frame.writeBuffer(linked.writer, std::as_bytes(std::span{oversized}));
             if (selected == EPhase::SMALL)
                 return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), lights->revision);
-            const auto revision = lights->revision * 2 + (selected == EPhase::REPLACEMENT);
+            const bool replacement = selected == EPhase::REPLACEMENT || selected == EPhase::PREFIX_EXTENT;
+            const auto revision = lights->revision * 2 + replacement;
+            if (selected == EPhase::PREFIX_EXTENT)
+            {
+                std::array<std::uint32_t, 128> half{};
+                half.front() = 128;
+                half[1] = half.back() = 0x71717171u;
+                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{half}), revision);
+            }
             if (selected == EPhase::SHRUNK)
                 return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), revision);
             const auto selected_revision = selected == EPhase::UNVERSIONED ? 0 : revision;
@@ -3898,6 +3906,28 @@ static void preparedBuffers(bool d3d12)
     CHECK(submissions() - before_unversioned == 9);
     stopAndRemoveJob(*client, commands, recovery_job);
     call<RemoveView>(*client, commands, {recovery_scene, recovery_view});
+
+    // A 512-byte accepted prefix of a rejected 1024-byte selection cannot satisfy a new 512-byte
+    // payload, even when the source revision matches. Verify both FIF slots actually upload it.
+    const auto prefix_view = call<CreateView>(*client, commands, {recovery_scene}).view;
+    binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
+        device, ViewRequest{recovery_scene, prefix_view}, EffectCaptureDescriptor::descriptor.type
+    }).resource_id;
+    const auto prefix_job = call<CreateRenderJob>(*client, commands, {
+        recovery_scene, prefix_view, effect, EJobCadence::REQUESTED
+    }).job;
+    call<StartRenderJob>(*client, commands, {device, prefix_job, recovery_target, binding});
+    phase = EPhase::REPLACEMENT;
+    const auto before_prefix = submissions();
+    UniformUploadProbe::reject_submission_countdown = 2;
+    const auto partial = call<RequestRenderJob>(*client, commands, {prefix_job}, false);
+    CHECK(partial.error.type == kDeviceFailure && submissions() - before_prefix == 1);
+    phase = EPhase::PREFIX_EXTENT;
+    const auto left = call<RequestRenderJob>(*client, commands, {prefix_job});
+    const auto right = call<RequestRenderJob>(*client, commands, {prefix_job});
+    CHECK(left.slot_index != right.slot_index && submissions() - before_prefix == 5);
+    stopAndRemoveJob(*client, commands, prefix_job);
+    call<RemoveView>(*client, commands, {recovery_scene, prefix_view});
     stopAndRemoveJob(*client, commands, job);
     call<RemoveView>(*client, commands, {scene, view});
 
@@ -3916,6 +3946,11 @@ static void preparedBuffers(bool d3d12)
     CHECK(repaired.ready.load() == 1 && repaired.frames.size() == 2);
     for (const auto& frame : repaired.frames)
         CHECK(std::ranges::all_of(frame, [](std::byte data) noexcept { return data == std::byte{0x61}; }));
+    const auto& prefix_capture = EffectCaptureBuffer::pixels[2];
+    CHECK(prefix_capture.ready.load() == 1 && prefix_capture.frames.size() == 2);
+    for (const auto& frame : prefix_capture.frames)
+        CHECK(std::ranges::all_of(frame, [](std::byte byte) { return byte == std::byte{0x71}; }));
+    std::puts("PREPARED PREFIX PASS: 512/1024 accepted, same revision at 512 bytes uploaded to both FIFs, 0x71 readback");
     std::printf("PREPARED BUFFER PASS backend=%s typed Storage snapshots, revised owners and rejected suffix retry\n",
         d3d12 ? "D3D12" : "Vulkan");
 }

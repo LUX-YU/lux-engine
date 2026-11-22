@@ -130,7 +130,7 @@ namespace lux::render
             auto& control = job.control;
             if (!control.tryAdmit(context.frame_index, context.slot_index)) std::terminate();
             if (output.execution_generation != control.executionGeneration()) std::terminate();
-            round.instances.push_back(&job.execution->instance);
+            round.executions.push_back(job.execution.get());
             ++round.run_count;
         }
         if (auto applied = selectGraphInputs(entry, round.slot()); !applied) round.error = applied.error();
@@ -172,7 +172,7 @@ namespace lux::render
             );
             retireStoppedExecution(job);
         }
-        round.instances.clear();
+        round.executions.clear();
         round.clearReadSelections();
         for (auto& output : std::span{round.outputs}.first(completed))
         {

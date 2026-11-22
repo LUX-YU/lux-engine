@@ -20,7 +20,7 @@ namespace lux::render::detail
 {
     class DeviceSession;
     class FrameOperation;
-    class RenderGraphInstance;
+    class PreparedUploadWindow;
     struct StagingRange;
     class StagingArena;
 
@@ -173,7 +173,7 @@ namespace lux::render::detail
         [[nodiscard]] Task writeReplicaBuffers(std::span<const BufferWrite>, SubmissionFrontiers&) noexcept;
 
         friend class FrameOperation;
-        friend class RenderGraphInstance;
+        friend class PreparedUploadWindow;
         [[nodiscard]] std::size_t stagedFrameCopyCount() const noexcept;
         [[nodiscard]] bool canBeginCommands(const SubmissionQueue&) const noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;

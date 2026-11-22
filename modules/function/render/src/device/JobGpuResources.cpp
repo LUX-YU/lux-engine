@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -408,6 +409,27 @@ namespace lux::render::detail
     {
         for (auto* command : commands) if (command) core.DestroyCommandBuffer(command);
         for (auto* allocator : allocators) if (allocator) core.DestroyCommandAllocator(allocator);
+    }
+
+    void JobGpuResources::settlePreparedBuffer(
+        std::uint32_t slot, const PreparedBufferCopy& copy, SubmissionPoint point, RenderError error
+    ) noexcept
+    {
+        auto& replica = frames[slot].prepared_buffers[copy.buffer];
+        const bool wrong_range = copy.begin >= copy.end || copy.end > copy.size;
+        if (replica.generation != copy.generation || wrong_range) std::terminate();
+        if (error.type)
+        {
+            if (error.type == kOutcomeUnknown) replica.accepted = {};
+            return;
+        }
+        if (!point.serial) std::terminate();
+        accepted.accept(point);
+        auto& contents = replica.accepted;
+        if (!copy.begin) contents = {copy.revision, copy.size, 0};
+        const bool wrong_selection = contents.revision != copy.revision || contents.size != copy.size;
+        if (wrong_selection || contents.prefix != copy.begin) std::terminate();
+        contents.prefix = copy.end;
     }
 
     void JobFrameResources::collectRasterViews(

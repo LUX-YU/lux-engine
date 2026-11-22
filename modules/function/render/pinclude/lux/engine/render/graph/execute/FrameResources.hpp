@@ -160,6 +160,12 @@ namespace lux::render::detail
         FrozenPatchCounts last_patches;
         std::vector<std::array<HistoryClear, 2>> history_clears;
         PendingSlots pending_history_clears, pending_history_views;
+        bool frozen_for_submission = false;
+        void retireRasterViews(DeviceSession&, nri::Buffer*, nri::Texture*) noexcept;
+        void bindResource(const compiled::RenderGraph&, DeviceSession&, std::uint32_t resource, const ResourceInput&) noexcept;
+        [[nodiscard]] RenderResult<void> writeInlineConstant(
+            const compiled::RenderGraph&, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
+        ) noexcept;
         bool record_ready = false;
 
         std::vector<FrameResourceBinding> bindings;

@@ -6,8 +6,11 @@
 #include <lux/engine/render/resource/ConstantBufferStorage.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
+#include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
+#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
+
+namespace lux::render::runtime_detail { struct JobExecution; }
 
 namespace lux::render::detail
 {
@@ -58,8 +61,7 @@ namespace lux::render::detail
 
         struct ProducerParticipant final
         {
-            RenderJobId job;
-            std::uint64_t generation;
+            ExecutionBindingId binding;
             ReplicaFrame frame;
             std::size_t first, count;
         };
@@ -74,7 +76,6 @@ namespace lux::render::detail
             std::vector<std::vector<PreparedStorage>> replicas;
             std::vector<ResourceParticipant> resource_participants;
             std::vector<ProducerParticipant> producer_participants;
-            std::vector<RenderGraphInstance*> producer_instances;
             std::vector<PreparedBufferCopy> prepared_buffers;
             SubmissionFrontiers blocked_completion;
             ConstantBufferSelections buffers;
@@ -101,7 +102,7 @@ namespace lux::render::detail
             return submitting() && submission_->refersTo(instance);
         }
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> run(
-            std::span<RenderGraphInstance* const>, std::span<const ResourceInstanceId>,
+            std::span<runtime_detail::JobExecution* const>, std::span<const ResourceInstanceId>,
             std::span<const SubmissionOrder> order = {}
         ) noexcept;
         void useRecordingWorkers(RecordingWorkers& workers) noexcept { workers_ = &workers; }
@@ -127,8 +128,8 @@ namespace lux::render::detail
 
         [[nodiscard]] ReplicaFrame replicaFrame() const noexcept { return {slot(), selection_->epoch}; }
         [[nodiscard]] RenderResult<EPreparationStatus>
-        prepareStorages(std::span<RenderGraphInstance* const>, std::span<const ResourceInstanceId>) noexcept;
-        [[nodiscard]] RenderResult<EPreparationStatus> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
+        prepareStorages(std::span<runtime_detail::JobExecution* const>, std::span<const ResourceInstanceId>) noexcept;
+        [[nodiscard]] RenderResult<EPreparationStatus> prepareInstances(std::span<runtime_detail::JobExecution* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
         [[nodiscard]] std::uint32_t slot() const noexcept { return context().slot_index; }
 

@@ -280,7 +280,7 @@ namespace
     {
         DeviceSession& device;
         FrameHarness& frames;
-        RenderGraphInstance& instance;
+        JobExecution& job;
         JobGpuResources& gpu;
         NativeCapture& capture;
         std::array<SubmissionQueue*, 2> queues;
@@ -288,7 +288,7 @@ namespace
 
     void submitFrame(SampleContext& context)
     {
-        const auto instances = std::array{&context.instance};
+        const auto instances = std::array{&context.job};
         auto submitted = take(runTask(context.frames.render(instances, {})));
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         while (context.frames.submitting())
@@ -356,7 +356,7 @@ namespace
     )
     {
         auto& device = sample.device;
-        auto& graph = sample.instance;
+        auto& graph = sample.job.instance;
         auto& capture = sample.capture;
         auto& queue = device.queue();
         auto middle_desc = final_target.description;
@@ -384,7 +384,7 @@ namespace
             JobExecution retiring_job{retiring_gpu, plan.graph, JobExecution::Installation{}, retiring_target.output()};
             auto& retiring = retiring_job.instance;
             CHECK(retiring.initialize());
-            SampleContext pending{device, retiring_frames, retiring, retiring_gpu, capture, sample.queues};
+            SampleContext pending{device, retiring_frames, retiring_job, retiring_gpu, capture, sample.queues};
             submitFrame(pending);
             CHECK(queue.submitted() > gate_serial);
             before_retirement = capture.describeMemory("384-live-256-submitted");
@@ -464,7 +464,7 @@ namespace
             CHECK(dump.find("\"reason\":\"aliased\"") != std::string::npos);
             std::printf("PLACEMENT,%s\n", dump.c_str());
             capture.describeMemory("initial");
-            SampleContext sample{device, frames, instance, instance_gpu, capture, queues};
+            SampleContext sample{device, frames, instance_job, instance_gpu, capture, queues};
             if (inflight)
             {
                 capture.resetQueries();

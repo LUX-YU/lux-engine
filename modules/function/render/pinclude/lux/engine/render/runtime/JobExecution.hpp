@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/runtime/ExecutionBindingId.hpp>
 #include <lux/engine/render/runtime/RasterProgramInputs.hpp>
+#include <lux/engine/render/runtime/JobCpuPreparation.hpp>
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/FinalBufferVersion.hpp>
@@ -17,6 +18,7 @@ namespace lux::render::detail
 {
     class JobGpuResources;
     struct GraphBindingTag;
+    class FrameOperation;
 }
 
 namespace lux::render::runtime_detail
@@ -59,12 +61,14 @@ namespace lux::render::runtime_detail
         DeviceSessionId device;
         TargetId target;
     private:
+        friend class detail::FrameOperation;
         // Stable CPU rows outlive their preparation borrows. DeviceEntry owns the native resources.
         std::vector<detail::FrameResources> frames_;
         std::vector<detail::HistoryState> histories_;
 
     public:
         detail::RasterProgramInputs programs;
+        detail::JobCpuPreparation preparation;
         detail::RenderGraphInstance instance;
         [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return instance.plan(); }
         const compiled::RenderGraph& graph() const && = delete;

@@ -357,8 +357,8 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     CHECK(&instance->plan() == &plan.graph && &second_instance->plan() == &plan.graph);
     auto foreign = RenderGraphInstance::ResizeResources::prepare(*second_instance_gpu, *instance, larger->output());
     CHECK(!foreign && foreign.error().type == kFrameContract);
-    const std::array instances{instance, second_instance};
-    const auto submit = [&](std::span<RenderGraphInstance* const> selected)
+    const std::array instances{instance_job.get(), second_instance_job.get()};
+    const auto submit = [&](std::span<JobExecution* const> selected)
     {
         auto submitted = take(runTask(frames->render(selected, {})));
         submitted += finishSubmissions(*session, *frames);
@@ -400,7 +400,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     instance_gpu.reset();
     physical.reset();
     CHECK(session->drain());
-    const std::array remaining{second_instance};
+    const std::array remaining{second_instance_job.get()};
     CHECK(submit(remaining) > 0);
     second_instance_job.reset();
     second_instance_gpu.reset();
@@ -472,7 +472,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     plan.diagnostics = {};
     IndirectCountConstants count_input{1};
     const auto bytes = std::as_bytes(std::span{&count_input, 1});
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     CHECK(!instance->recordBatch(0, 0)); // An initialized owner is not a prepared recording input.
     const auto pixel_binding = instance->resourceInput(pixels, 0);
     auto truncated_pixels = pixel_binding;
@@ -593,7 +593,7 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     );
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
     CHECK(session->drain());
     checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 16, 256, {255, 0, 0, 255}, 256);
@@ -641,7 +641,7 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
             continue;
         }
         CHECK(initialized);
-        const std::array instances{&instance};
+        const std::array instances{&instance_job};
         CHECK(take(runTask(frames.render(instances, {}))) == 1);
         CHECK(session->drain());
         const auto words = readBufferWords<2>(*session, *instance.nativeBuffer(pixels.index, 0));
@@ -677,7 +677,7 @@ static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
     instance.setResource(source.index, 0, {&input, 0, 4});
     CHECK(instance.initialize());
     FrameHarness frames(device, 1);
-    const std::array jobs{&instance};
+    const std::array jobs{&instance_job};
     const auto submit = [&]
     {
         CHECK(take(runTask(frames.render(jobs, {}))) > 0);
@@ -907,7 +907,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     );
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     CHECK(session->drain());
     const std::array expected{matrix_value, array_value, 27u, 0u};
@@ -984,7 +984,7 @@ static void frozenProjectionReceipts(Validation& validation, bool d3d12)
         };
         publish(old);
         FrameHarness frames(*device, 1);
-        const std::array instances{&instance};
+        const std::array instances{&instance_job};
         RecordingGate::original = core.CmdZeroBuffer;
         RecordingGate::entered = 0;
         RecordingGate::released = false;
@@ -1107,7 +1107,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     CHECK(first && second && first->front() != second->front());
 
     auto frames = std::make_unique<FrameHarness>(*session, 2);
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     HeldCompletion::original = core.GetFenceValue;
     HeldCompletion::completed = 0;
     core.GetFenceValue = &HeldCompletion::get;
@@ -1130,7 +1130,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
         auto& retry_job = retry_job_job.instance;
         CHECK(retry_job.initialize() && &retry_job.plan() == &instance->plan());
         FrameHarness retry_frames(*session, 1);
-        const std::array retry_jobs{&retry_job};
+        const std::array retry_jobs{&retry_job_job};
         EndFailure::original = core.EndCommandBuffer;
         EndFailure::fail = true;
         EndFailure::calls = 0;
@@ -1245,7 +1245,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         auto* instance = &instance_job->instance;
         CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
-        const std::array instances{instance};
+        const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
         checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
         instance_job.reset();
@@ -1277,7 +1277,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         auto* instance = &instance_job->instance;
         CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
-        const std::array instances{instance};
+        const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
         checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
         instance_job.reset();
@@ -1357,7 +1357,7 @@ static void typedRecording(Validation& validation, bool d3d12)
         CHECK(instance->recordBatch(0, 0) && EndFailure::calls == 2);
         core.EndCommandBuffer = EndFailure::original;
         auto frames = std::make_unique<FrameHarness>(*session, 2);
-        const std::array instances{instance};
+        const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());
         const auto values = readBufferWords<8>(*session, *instance->nativeBuffer(output.index, 0));
@@ -1564,7 +1564,7 @@ static void conditionalBindingJoin(DeviceSession& device)
     red.bindings = native_program.descriptors;
     red.draw = nri::DrawDesc{3, 1, 0, 0};
     FrameHarness frames(device, 1);
-    const std::array jobs{&job.instance};
+    const std::array jobs{&job};
     using Conditions = std::array<std::uint8_t, 2>;
     for (const auto values : {Conditions{0, 0}, Conditions{1, 0}, Conditions{1, 1}, Conditions{0, 1}, Conditions{0, 0}})
     {
@@ -1642,7 +1642,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     const auto& first = executable.graph.passes()[1].fixed_bindings;
     const auto& next = executable.graph.passes()[2].fixed_bindings;
     CHECK(first.layout && first.pipeline && first.private_set);
@@ -2269,7 +2269,7 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
     auto& instance = instance_job.instance;
     CHECK(instance.initialize());
     FrameHarness frames(session, fif);
-    const std::array instances{&instance};
+    const std::array instances{&instance_job};
     std::vector<std::uint32_t> published;
     constexpr std::array<std::uint8_t, 2> selections[] = {{1, 1}, {0, 1}, {1, 0}, {1, 0}, {1, 1}, {0, 1}};
     for (const auto& inputs : selections)
@@ -2324,7 +2324,7 @@ static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
     auto& instance = instance_job.instance;
     CHECK(instance.initialize());
     FrameHarness frames(session, fif);
-    const std::array instances{&instance};
+    const std::array instances{&instance_job};
     for (const std::uint8_t selected_input : {1, 0, 1, 0})
     {
         CHECK(instance.setConditions({&selected_input, 1}));
@@ -2520,7 +2520,7 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     auto& instance = instance_job.instance;
     CHECK(instance.initialize());
     FrameHarness frames(session, 1);
-    const std::array instances{&instance};
+    const std::array instances{&instance_job};
     const auto submit = [&]
     {
         CHECK(take(runTask(frames.render(instances, {}))) > 0);
@@ -2658,7 +2658,7 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     instance.bindImage(second_images, 0, *second_image.image);
     CHECK(instance.initialize());
     FrameHarness frames(session, 1);
-    const std::array instances{&instance};
+    const std::array instances{&instance_job};
     const auto check_dimensions = [&]
     {
         CHECK(take(runTask(frames.render(instances, {}))) > 0);
@@ -2728,7 +2728,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
     auto& instance = instance_job.instance;
     CHECK(instance.initialize());
-    const std::array instances{&instance};
+    const std::array instances{&instance_job};
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
     finishSubmissions(*session, frames);
     CHECK(session->drain());
@@ -2902,7 +2902,7 @@ static void historySequence(
     );
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     std::vector<std::uint32_t> published;
     const auto newestInput = [&]()
     {
@@ -2975,7 +2975,7 @@ static void historySequence(
         JobExecution other{other_gpu, plan.graph, {}, {}};
         CHECK(other.instance.initialize() && &other.graph() == &instance_job->graph());
         CHECK(other.instance.setConditions({&enabled_value, 1}));
-        const std::array pair{instance, &other.instance};
+        const std::array pair{instance_job.get(), &other};
         CHECK(take(runTask(frames->render(pair, {}))) > 0);
         finishSubmissions(*session, *frames);
         CHECK(session->drain());
@@ -3072,7 +3072,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
         if (execution == 2)
         {
             // Retire an in-flight old instance while preparing a larger candidate from the same immutable plan.
-            const std::array old{&instance_job->instance};
+            const std::array old{instance_job.get()};
             CHECK(take(runTask(frames->render(old, {}))) > 0 && !frames->submitting());
             target.width = 17;
             target.height = 11;
@@ -3103,7 +3103,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
             for (const auto& slot : bank.slots) CHECK(slot.last_use.belongsTo(&*session, session->queueCount()));
             physical.emplace(std::move(replacement));
         }
-        const std::array instances{&instance_job->instance};
+        const std::array instances{instance_job.get()};
         CHECK(take(runTask(frames->render(instances, {}))) > 0 && !frames->submitting());
         CHECK(session->drain());
         const auto values = readBufferWords<128>(
@@ -3169,7 +3169,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     );
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     for (const std::uint8_t enabled : {0, 1, 0, 1})
     {
         CHECK(instance->setConditions({&enabled, 1}));
@@ -3258,7 +3258,7 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
         instance->setResource(input.index, UINT32_MAX, {shared, offset, 16});
         CHECK(instance->initialize());
     }
-    const std::array instances{first, second};
+    const std::array instances{first_job.get(), second_job.get()};
     const auto before = session->queue(EQueueRole::COMPUTE).submitted();
     CHECK(take(runTask(frames->render(instances, {}))) > 0);
     finishSubmissions(*session, *frames);
@@ -3345,7 +3345,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     );
     auto* second = &second_job->instance;
     CHECK(first->initialize() && second->initialize());
-    const std::array instances{first, second};
+    const std::array instances{first_job.get(), second_job.get()};
     for (unsigned frame = 0; frame < 2; ++frame)
     {
         const auto before_graphics = session->queue().submitted();
@@ -3629,7 +3629,7 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
             CHECK(dump.find("\"before_stages\":" + std::to_string(static_cast<unsigned>(all_uses))) != std::string::npos);
             CHECK(dump.find("\"after_stages\":" + std::to_string(static_cast<unsigned>(entry))) != std::string::npos);
         }
-        const std::array instances{&instance};
+        const std::array instances{&instance_job};
         CHECK(take(runTask(frames.render(instances, {}))) == 1);
         CHECK(session->drain());
         for (unsigned i = 0; i < buffers.size(); ++i)
@@ -3745,7 +3745,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
         ));
         CHECK(dump.find("\"explicit_memory_count\":3") != std::string::npos);
     }
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     for (std::uint32_t i = 0; i < fif + 1; ++i)
     {
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
@@ -3899,7 +3899,7 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
             CHECK(instance->nativeBuffer(a.index, slot) != instance->nativeBuffer(a.index, previous));
         }
     }
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     for (std::uint32_t frame = 0; frame < fif + 2; ++frame)
     {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -3983,7 +3983,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
     );
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
-    const std::array instances{instance};
+    const std::array instances{instance_job.get()};
     for (std::uint32_t frame = 0; frame < fif; ++frame)
     {
         CHECK(take(runTask(frames->render(instances, {}))) != 0);

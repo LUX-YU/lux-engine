@@ -6,6 +6,8 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/runtime/JobExecution.hpp>
+#include <lux/engine/render/device/JobGpuResources.hpp>
 
 namespace lux::render::detail
 {
@@ -72,7 +74,7 @@ namespace lux::render::detail
         for (auto* instance : workspace_.frozen_instances)
         {
             instance->frames_[slot()].replaced_projections.clear();
-            instance->frozen_slot_ = kGraphInvalidIndex;
+            instance->frames_[slot()].frozen_for_submission = false;
         }
         workspace_.frozen_instances.clear();
         const bool unknown = cancellation_ && cancellation_->type == kOutcomeUnknown;
@@ -114,19 +116,15 @@ namespace lux::render::detail
                 replicas[participant.replica] = {participant.resource, participant.revision};
         }
         workspace_.resource_participants.clear();
-        for (std::size_t i = 0; i < workspace_.producer_participants.size(); ++i)
+        for (const auto& participant : workspace_.producer_participants)
         {
-            const auto& participant = workspace_.producer_participants[i];
-            auto& instance = *workspace_.producer_instances[i];
-            const bool wrong_execution = instance.preparation_job_ != participant.job ||
-                instance.preparation_generation_ != participant.generation;
             const bool wrong_frame = participant.frame.slot != frame.slot || participant.frame.epoch != frame.epoch;
-            if (wrong_execution || wrong_frame) std::terminate();
+            if (!owner_ || wrong_frame) std::terminate();
+            auto& gpu = owner_->jobResources(participant.binding);
             for (const auto& copy : std::span{workspace_.prepared_buffers}.subspan(participant.first, participant.count))
-                instance.settlePreparedBuffer(frame.slot, copy, locate(copy.ranges), error);
+                gpu.settlePreparedBuffer(frame.slot, copy, locate(copy.ranges), error);
         }
         workspace_.producer_participants.clear();
-        workspace_.producer_instances.clear();
         workspace_.prepared_buffers.clear();
         copies_flushed_ = false;
     }
@@ -165,7 +163,7 @@ namespace lux::render::detail
     }
 
     exec::task<RenderResult<std::uint32_t>> FrameOperation::run(
-        std::span<RenderGraphInstance* const> instances, std::span<const ResourceInstanceId> storages,
+        std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages,
         std::span<const SubmissionOrder> order
     ) noexcept
     {
@@ -208,7 +206,7 @@ namespace lux::render::detail
         }
         if (phase_ == EPhase::RESOURCES)
         {
-            auto resources = prepareStorages(instances, storages);
+            auto resources = prepareStorages(executions, storages);
             if (!resources) co_return cxx::unexpected(track(resources).error());
             if (uploads_ && !uploads_->hasFrameCopies()) settlePreparation();
             if (*resources == EPreparationStatus::READY) phase_ = EPhase::PRODUCER_SELECTIONS;
@@ -216,9 +214,10 @@ namespace lux::render::detail
         auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
         if (phase_ == EPhase::PRODUCER_SELECTIONS)
         {
-            for (auto* instance : instances)
+            for (auto* job : executions)
             {
-                if (auto prepared = instance->prepareProducers(slot()); !prepared)
+                auto prepared = job->preparation.select(job->frames_[slot()], slot(), job->instance.target());
+                if (!prepared)
                     co_return cxx::unexpected(track(prepared).error());
             }
             phase_ = EPhase::PRODUCER_UPLOADS;
@@ -226,17 +225,17 @@ namespace lux::render::detail
         if (phase_ == EPhase::PRODUCER_UPLOADS)
         {
             bool ready = true;
-            for (auto* instance : instances)
+            PreparedUploadWindow window{device_, uploads_, workspace_.prepared_buffers};
+            for (auto* job : executions)
             {
                 const auto first = workspace_.prepared_buffers.size();
-                auto staged = instance->stagePreparedBuffers(slot(), uploads_, workspace_.prepared_buffers);
+                auto staged = window.stageFrame(job->frames_[slot()], job->graph(), job->preparation.bufferInputs());
                 const auto count = workspace_.prepared_buffers.size() - first;
                 if (count)
                 {
                     workspace_.producer_participants.push_back({
-                        instance->preparation_job_, instance->preparation_generation_, replicaFrame(), first, count
+                        job->binding_identity, replicaFrame(), first, count
                     });
-                    workspace_.producer_instances.push_back(instance);
                 }
                 if (!staged) co_return cxx::unexpected(track(staged).error());
                 ready = *staged;
@@ -259,7 +258,7 @@ namespace lux::render::detail
         bool ready = false;
         if (phase_ == EPhase::FREEZE)
         {
-            auto prepared = prepareInstances(instances);
+            auto prepared = prepareInstances(executions);
             if (!prepared) co_return cxx::unexpected(track(prepared).error());
             ready = *prepared == EPreparationStatus::READY;
             waiting = EExecutionOutcome::HISTORY_PENDING;
@@ -272,15 +271,15 @@ namespace lux::render::detail
             }
             device_.readCompleted(workspace_.blocked_completion);
             waiting_for_gpu_ = true;
-            for (auto* instance : instances)
-                ++instance->progress_.counts[static_cast<std::size_t>(waiting)];
+            for (auto* job : executions)
+                ++job->instance.progress_.counts[static_cast<std::size_t>(waiting)];
             co_return 0;
         }
         waiting_for_gpu_ = false;
         // Every graph now has a frozen view of its FIF replica. Workers own disjoint allocator/CB pairs.
         settlePreparation();
         if (uploads_) uploads_->reservePreparationStaging(false);
-        if (auto prepared = submission_->prepare(instances, order); !prepared)
+        if (auto prepared = submission_->prepare(workspace_.frozen_instances, order); !prepared)
             co_return cxx::unexpected(track(prepared).error());
         phase_ = EPhase::RECORDING;
         RenderResult<void> recorded;
@@ -309,16 +308,16 @@ namespace lux::render::detail
 
     RenderResult<FrameOperation::EPreparationStatus>
     FrameOperation::prepareStorages(
-        std::span<RenderGraphInstance* const> instances, std::span<const ResourceInstanceId> storages
+        std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages
     ) noexcept
     {
         const auto frame = replicaFrame();
         auto& replicas = workspace_.replicas[frame.slot];
         bool resources_ready = true;
         bool sampled_completion = false;
-        for (auto* instance : instances)
+        for (auto* job : executions)
         {
-            for (const auto& input : instance->constant_buffers_)
+            for (const auto& input : job->preparation.constantBuffers())
             {
                 if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
                 if (!sampled_completion)
@@ -339,7 +338,7 @@ namespace lux::render::detail
                     resources_ready = false;
                     continue;
                 }
-                instance->setResource(input.resource.index, frame.slot, **selected);
+                job->frames_[frame.slot].bindResource(job->graph(), device_, input.resource.index, **selected);
             }
         }
         if (!resources_ready) return EPreparationStatus::AWAITING_PROGRESS;
@@ -368,12 +367,12 @@ namespace lux::render::detail
     }
 
     RenderResult<FrameOperation::EPreparationStatus>
-    FrameOperation::prepareInstances(std::span<RenderGraphInstance* const> instances) noexcept
+    FrameOperation::prepareInstances(std::span<runtime_detail::JobExecution* const> executions) noexcept
     {
         auto& frozen = workspace_.frozen_instances;
-        while (frozen.size() < instances.size())
+        while (frozen.size() < executions.size())
         {
-            auto& instance = *instances[frozen.size()];
+            auto& instance = executions[frozen.size()]->instance;
             const auto prepared = instance.prepareFrame(slot());
             if (!prepared)
             {
@@ -397,7 +396,7 @@ namespace lux::render::detail
                     selections.push_back(selected);
                 }
             }
-            instance.frozen_slot_ = slot();
+            instance.frames_[slot()].frozen_for_submission = true;
             frozen.push_back(&instance);
         }
         return EPreparationStatus::READY;

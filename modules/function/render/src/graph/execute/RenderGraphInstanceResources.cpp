@@ -269,66 +269,12 @@ namespace lux::render::detail
         return frames_[slot].bindings[resource].buffer;
     }
 
-    void RenderGraphInstance::retireRasterViews(FrameResources& frame, nri::Buffer* buffer, nri::Texture* image) noexcept
-    {
-        std::vector<nri::Descriptor*> views;
-        frame.native.collectRasterViews(buffer, image, views);
-        if (!views.empty())
-        {
-            session_->deferRelease([core = &session_->nriCore(), views = std::move(views)]() noexcept
-            {
-                for (auto* view : views) core->DestroyDescriptor(view);
-            });
-        }
-    }
-
     void
     RenderGraphInstance::setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput& value) noexcept
     {
         const auto first = slot == UINT32_MAX ? 0 : slot;
         const auto end = slot == UINT32_MAX ? static_cast<std::uint32_t>(frames_.size()) : slot + 1;
         for (auto current = first; current < end; ++current)
-        {
-            auto& frame = frames_[current];
-            auto& binding = frame.bindings[resource];
-            const bool changed_physical = binding.buffer != value.buffer || binding.buffer_offset != value.offset ||
-                                          binding.buffer_size != value.size || binding.image != value.image;
-            const bool changed_addresses = binding.addressed_revision != value.addressed_revision ||
-                                           binding.addressed_buffers.data() != value.addressed_buffers.data() ||
-                                           binding.addressed_buffers.size() != value.addressed_buffers.size();
-            binding.addressed_buffers = value.addressed_buffers;
-            binding.addressed_revision = value.addressed_revision;
-            if (frozenForSubmission(current) && binding.queue_uses != value.queue_uses) frame.preserveUses(resource);
-            binding.queue_uses = value.queue_uses;
-            if ((changed_physical || changed_addresses) &&
-                graph_.resources()[resource].origin == EGraphOrigin::IMPORTED)
-            {
-                frame.invalidateImportedBindings();
-            }
-            if (graph_.resources()[resource].memory_used &&
-                std::holds_alternative<GraphBufferDesc>(graph_.resources()[resource].description))
-            {
-                if (!binding.buffer && value.buffer)
-                {
-                    --frame.unavailable_buffers;
-                }
-                else if (binding.buffer && !value.buffer)
-                {
-                    ++frame.unavailable_buffers;
-                }
-            }
-            // A pool rebuild must replay only views whose owners still hold the allocation.
-            retireRasterViews(frame, binding.buffer != value.buffer ? binding.buffer : nullptr,
-                binding.image != value.image ? binding.image : nullptr);
-            binding.select(value.buffer, value.image, session_->nriCore());
-            binding.buffer_offset = value.offset;
-            binding.buffer_size = value.size;
-            if (changed_physical) frame.invalidateResource(graph_.recordingDependencies(), resource);
-            if (changed_physical && !binding.dirty)
-            {
-                binding.dirty = true;
-                frame.changed_resources.push_back(resource);
-            }
-        }
+            frames_[current].bindResource(graph_, *session_, resource, value);
     }
 } // namespace lux::render::detail

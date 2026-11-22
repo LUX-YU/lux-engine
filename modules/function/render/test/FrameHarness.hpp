@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Support.hpp"
+#include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 
@@ -46,12 +47,12 @@ namespace foundation_test
         }
 
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
-        render(std::span<RenderGraphInstance* const> instances, std::span<const ResourceInstanceId> storages) noexcept
+        render(std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages) noexcept
         {
             if (auto error = device_.terminalError(); error.type) co_return lux::cxx::unexpected(error);
             const bool in_flight = operation_ && operation_->active();
-            if (!in_flight && (instances.empty() || !open())) co_return 0;
-            co_return co_await operation_->run(instances, storages);
+            if (!in_flight && (executions.empty() || !open())) co_return 0;
+            co_return co_await operation_->run(executions, storages);
         }
 
     private:

@@ -98,14 +98,6 @@ namespace lux::render::detail
         PreparationRange snapshots;
     };
 
-    struct PreparedBufferCopy final
-    {
-        std::uint32_t producer, buffer;
-        ReplicaCopyRange ranges;
-        std::size_t offset, size;
-        std::uint64_t revision;
-    };
-
     struct PreparationPlan final
     {
         struct Buffer final
@@ -156,7 +148,7 @@ namespace lux::render::detail
         struct DrawSourceRange final
         {
             std::uint32_t first = 0, count = 0;
-            std::uint32_t producer = kGraphInvalidIndex, local_stream = kGraphInvalidIndex;
+            std::uint32_t producer = kGraphInvalidIndex, list = kGraphInvalidIndex;
         };
 
         std::vector<DrawSourceRange> draw_resource_ranges;

@@ -238,8 +238,9 @@ namespace lux::render::detail
                 auto& ranges = workspace_.plan.draw_resource_ranges;
                 if (ranges.empty()) ranges.resize(workspace_.compiled.graph.passes().size());
                 ranges[*resolved].producer = producer_slot_;
-                ranges[*resolved].local_stream = static_cast<std::uint32_t>(streams_.size());
-                streams_.push_back({*resolved, workspace_.compiled.graph.programs().rasterStream(*resolved)->list});
+                const auto list = workspace_.compiled.graph.programs().rasterStream(*resolved)->list;
+                ranges[*resolved].list = list;
+                streams_.push_back({*resolved, list});
                 return DrawStreamSlot{*resolved};
             }
 

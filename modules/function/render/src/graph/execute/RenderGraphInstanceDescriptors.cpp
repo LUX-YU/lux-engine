@@ -415,19 +415,7 @@ namespace lux::render::detail
         std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
     ) noexcept
     {
-        if (slot >= frames_.size() || pass >= frames_[slot].passes.size())
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        auto& selected = frames_[slot].passes[pass];
-        const auto destination = selected.parameters;
-        if (bytes.empty() || bytes.size() != destination.size())
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        if (revision != 0 && revision == selected.parameter_source_revision) return {};
-        selected.parameter_source_revision = revision;
-        if (std::memcmp(destination.data(), bytes.data(), bytes.size()) != 0)
-        {
-            std::memcpy(destination.data(), bytes.data(), bytes.size());
-            frames_[slot].invalidatePass(graph_, pass);
-        }
-        return {};
+        if (slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
+        return frames_[slot].writeInlineConstant(graph_, pass, bytes, revision);
     }
 } // namespace lux::render::detail

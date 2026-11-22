@@ -1,3 +1,5 @@
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <cstring>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/graph/execute/CommandExtent.hpp>
@@ -74,6 +76,83 @@ namespace lux::render::detail
     {
         const auto found = std::ranges::find(replaced_projections, resource, &FrozenProjection::resource);
         return found == replaced_projections.end() ? bindings[resource].queue_uses : found->uses;
+    }
+
+    void FrameResources::retireRasterViews(DeviceSession& session, nri::Buffer* buffer, nri::Texture* image) noexcept
+    {
+        std::vector<nri::Descriptor*> views;
+        native.collectRasterViews(buffer, image, views);
+        if (!views.empty())
+        {
+            session.deferRelease([core = &session.nriCore(), views = std::move(views)]() noexcept
+            {
+                for (auto* view : views) core->DestroyDescriptor(view);
+            });
+        }
+    }
+
+    void FrameResources::bindResource(
+        const compiled::RenderGraph& graph, DeviceSession& session, std::uint32_t resource, const ResourceInput& value
+    ) noexcept
+    {
+        auto& binding = bindings[resource];
+        const bool changed_physical = binding.buffer != value.buffer || binding.buffer_offset != value.offset ||
+                                      binding.buffer_size != value.size || binding.image != value.image;
+        const bool changed_addresses = binding.addressed_revision != value.addressed_revision ||
+                                       binding.addressed_buffers.data() != value.addressed_buffers.data() ||
+                                       binding.addressed_buffers.size() != value.addressed_buffers.size();
+        binding.addressed_buffers = value.addressed_buffers;
+        binding.addressed_revision = value.addressed_revision;
+        if (frozen_for_submission && binding.queue_uses != value.queue_uses) preserveUses(resource);
+        binding.queue_uses = value.queue_uses;
+        if ((changed_physical || changed_addresses) &&
+            graph.resources()[resource].origin == EGraphOrigin::IMPORTED)
+        {
+            invalidateImportedBindings();
+        }
+        if (graph.resources()[resource].memory_used &&
+            std::holds_alternative<GraphBufferDesc>(graph.resources()[resource].description))
+        {
+            if (!binding.buffer && value.buffer)
+            {
+                --unavailable_buffers;
+            }
+            else if (binding.buffer && !value.buffer)
+            {
+                ++unavailable_buffers;
+            }
+        }
+        // A pool rebuild must replay only views whose owners still hold the allocation.
+        retireRasterViews(session, binding.buffer != value.buffer ? binding.buffer : nullptr,
+            binding.image != value.image ? binding.image : nullptr);
+        binding.select(value.buffer, value.image, session.nriCore());
+        binding.buffer_offset = value.offset;
+        binding.buffer_size = value.size;
+        if (changed_physical) invalidateResource(graph.recordingDependencies(), resource);
+        if (changed_physical && !binding.dirty)
+        {
+            binding.dirty = true;
+            changed_resources.push_back(resource);
+        }
+    }
+
+    RenderResult<void> FrameResources::writeInlineConstant(
+        const compiled::RenderGraph& graph, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
+    ) noexcept
+    {
+        if (pass >= passes.size()) return cxx::unexpected(RenderError{kDeviceArgument});
+        auto& selected = passes[pass];
+        const auto destination = selected.parameters;
+        if (bytes.empty() || bytes.size() != destination.size())
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        if (revision != 0 && revision == selected.parameter_source_revision) return {};
+        selected.parameter_source_revision = revision;
+        if (std::memcmp(destination.data(), bytes.data(), bytes.size()) != 0)
+        {
+            std::memcpy(destination.data(), bytes.data(), bytes.size());
+            invalidatePass(graph, pass);
+        }
+        return {};
     }
 
     void FrameResources::initializeRasterStreams(const RecordingDependencies& recording) noexcept

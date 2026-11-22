@@ -169,7 +169,7 @@ namespace lux::render
         round.reads.resize(inputs.sources.size());
         round.selected_sources.reserve(inputs.sources.size());
         round.outputs.reserve(count);
-        round.instances.reserve(count);
+        round.executions.reserve(count);
         round.storages.reserve(inputs.storages.size());
         round.job_order.reserve(order_capacity);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
@@ -193,7 +193,7 @@ namespace lux::render
         const auto selection_capacity = [&]() noexcept
         {
             return std::array{inputs.selection.capacity(), inputs.blocked.capacity(), inputs.used_storages.capacity(),
-                round.outputs.capacity(), round.instances.capacity(), round.storages.capacity(),
+                round.outputs.capacity(), round.executions.capacity(), round.storages.capacity(),
                 round.selected_sources.capacity()
             };
         };
@@ -229,7 +229,7 @@ namespace lux::render
 #endif
         round.clearReadSelections();
         round.outputs.clear();
-        round.instances.clear();
+        round.executions.clear();
         round.job_order.clear();
         round.storages.clear();
         inputs.blocked.clear();

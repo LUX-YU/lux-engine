@@ -32,8 +32,8 @@ namespace lux::render::runtime_detail
     ) noexcept
         : effect(installation.effect), device(installation.device), target(installation.target),
           frames_(createFrames(gpu.frames)), histories_(selected.historyCount()),
-          programs(selected, gpu),
-          instance(gpu, selected, {frames_, histories_, programs, installation.identity}, physical),
+          programs(selected, gpu), preparation(selected, gpu, programs),
+          instance(gpu, selected, {frames_, histories_}, physical),
           binding_identity(installation.identity)
     {
     }
@@ -139,7 +139,7 @@ namespace lux::render
         if (auto ready = candidate.instance.bindPredicates(std::move(selected)); !ready) return ready;
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph().preparation();
-        detail::RenderGraphInstance::PreparationSources inputs;
+        detail::JobCpuPreparation::PreparationSources inputs;
         const auto buffers = entry.effectResources(candidate.effect);
         if (buffers.size() != preparation.constant_buffers.size()) std::terminate();
         inputs.constant_buffers.reserve(buffers.size());
@@ -189,7 +189,7 @@ namespace lux::render
         }
         if (auto linked = candidate.programs.bind(preparation, registry, inputs.snapshots, inputs.draw_resources); !linked)
             return linked;
-        if (auto ready = candidate.instance.createProducers(preparation, registry, std::move(inputs)); !ready)
+        if (auto ready = candidate.preparation.bind(registry, std::move(inputs), candidate.instance.target()); !ready)
             return ready;
         if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;
         candidate.instance.setViewport(input.viewport);

@@ -8,6 +8,7 @@
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <ranges>
 
@@ -443,7 +444,7 @@ namespace lux::render
         {
             const auto& output = round.outputs[i];
             for (const auto& import : round.inputs.jobs[output.input_job].imports)
-                round.instances[i]->bindImage(import.resource, slot, *round.reads[import.source.index].image);
+                round.executions[i]->instance.bindImage(import.resource, slot, *round.reads[import.source.index].image);
         }
         return {};
     }
@@ -572,7 +573,7 @@ namespace lux::render
         const auto slot = round.slot();
         const auto& submissions = device.frameWorkspace().submissions;
         const auto submitted_before = submissions.submittedBatches(slot);
-        const auto accepted = co_await round.operation->run(round.instances, round.storages, round.job_order);
+        const auto accepted = co_await round.operation->run(round.executions, round.storages, round.job_order);
         submissions_.fetch_add(submissions.submittedBatches(slot) - submitted_before, std::memory_order_relaxed);
         RenderError settlement_error{};
         for (std::size_t i = 0; i < round.outputs.size(); ++i)
@@ -580,7 +581,7 @@ namespace lux::render
             auto& output = round.outputs[i];
             auto* offscreen = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(output.target));
             if (output.submitted) continue;
-            const auto receipt = submissions.acceptedFrameUse(slot, *round.instances[i], round.target_uses);
+            const auto receipt = submissions.acceptedFrameUse(slot, round.executions[i]->instance, round.target_uses);
             output.submitted = receipt.completed;
             const auto& execution = *runtime_->jobs_.find(output.job)->execution;
             const auto active_write = [&](const detail::FinalBufferUse& use) noexcept

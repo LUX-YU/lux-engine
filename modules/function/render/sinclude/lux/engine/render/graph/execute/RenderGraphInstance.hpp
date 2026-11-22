@@ -6,20 +6,13 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
-#include <lux/engine/render/extensions/execution/PreparedCpuValue.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
-#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
-#include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::runtime_detail { struct JobExecution; }
 
 namespace lux::render::detail
 {
-    class RasterProgramInputs;
     struct FrozenPatchCounts;
     struct FrozenOperandPatches;
     struct FrameResources;
@@ -28,28 +21,11 @@ namespace lux::render::detail
     struct RasterDrawList;
     class JobGpuResources;
     struct FrozenRecordingFrame;
-    struct RasterProgramUpdate;
 
     class LUX_RENDER_PUBLIC RenderGraphInstance final
     {
     public:
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
-        struct PreparationSources final
-        {
-            std::vector<BoundConstantBuffer> constant_buffers;
-            std::vector<SnapshotSource> snapshots;
-            std::vector<BoundDrawResource> draw_resources;
-            std::vector<std::span<const std::byte>> effect_values;
-        };
-
-        [[nodiscard]] RenderResult<void>
-        createProducers(const PreparationPlan&, const ResourceRegistry&, PreparationSources) noexcept;
-        [[nodiscard]] RenderResult<void> prepareProducers(std::uint32_t frame_slot) noexcept;
-
-        [[nodiscard]] RenderResult<bool> stagePreparedBuffers(
-            std::uint32_t frame, ResourceUploader*, std::vector<PreparedBufferCopy>&
-        ) noexcept;
-        void settlePreparedBuffer(std::uint32_t, const PreparedBufferCopy&, SubmissionPoint, RenderError) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void>
         writeInlineConstant(
@@ -59,7 +35,6 @@ namespace lux::render::detail
         // Each batch part has an exclusive allocator; encoders only borrow its prepared data.
         [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
         recordBatch(std::uint32_t frame_slot, std::uint32_t batch) noexcept;
-
 
         struct ResizeResources;
 
@@ -88,7 +63,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         qualifyImportedImage(GraphResourceId, const nri::Texture&, const TargetDesc&) const noexcept;
 
-        [[nodiscard]] bool frozenForSubmission(std::uint32_t slot) const noexcept { return frozen_slot_ == slot; }
+        [[nodiscard]] bool frozenForSubmission(std::uint32_t slot) const noexcept;
 
         ~RenderGraphInstance() noexcept;
         RenderGraphInstance(const RenderGraphInstance&) = delete;
@@ -155,14 +130,11 @@ namespace lux::render::detail
         {
             std::span<FrameResources> frames;
             std::span<HistoryState> histories;
-            const RasterProgramInputs& programs;
-            ExecutionBindingId binding;
         };
 
         RenderGraphInstance(JobGpuResources&, const compiled::RenderGraph&, FrameStorage, TargetOutput) noexcept;
 
         friend class FrameOperation;
-        std::uint32_t frozen_slot_ = kGraphInvalidIndex;
         friend class SubmissionOperation;
         [[nodiscard]] const FrozenRecordingFrame* recordingFrame(std::uint32_t frame_slot) const & noexcept;
         const FrozenRecordingFrame* recordingFrame(std::uint32_t) const && = delete;
@@ -178,7 +150,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> prepareResizeHistories(ResizeResources&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> prepareResizeBindings(ResizeResources&, std::uint32_t) noexcept;
 
-        void retireRasterViews(FrameResources&, nri::Buffer*, nri::Texture*) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
@@ -189,58 +160,6 @@ namespace lux::render::detail
         DeviceSession* session_;
         JobGpuResources& gpu_;
 
-        class ProducerFrame;
-        struct PreparedBytes final
-        {
-            std::vector<std::byte> bytes;
-            bool written = false;
-        };
-
-        struct PreparedInlineBlock final
-        {
-            PreparedBytes payload;
-            std::uint64_t source_revision = 0;
-        };
-
-        struct Producer final
-        {
-            std::vector<PreparedInlineBlock> constants;
-            std::vector<OwnedRasterStream> streams;
-
-        };
-
-        struct PreparedBufferInput final
-        {
-            enum class ESource { MISSING, SIZE_ONLY, RESIDENT, OWNED_BYTES };
-
-            ESource source = ESource::MISSING;
-            std::vector<std::byte> bytes;
-            std::uint64_t revision = 0, size = 0, resident_generation = 0;
-        };
-
-        const PreparationPlan* preparation_plan_ = nullptr;
-        struct StorageSnapshot final
-        {
-            SnapshotSource source;
-            StorageSnapshotOps::Selection value;
-            std::uint64_t revision = 0;
-            const ProgramInputRevision* program_input = nullptr;
-        };
-
-        const ResourceRegistry* snapshot_registry_ = nullptr;
-        std::vector<std::span<const std::byte>> effect_values_;
-        std::vector<BoundDrawResource> draw_resources_;
-        std::vector<StorageSnapshot> storage_snapshots_;
-        std::vector<std::uint32_t> snapshot_sources_;
-        std::vector<extension_detail::AlgorithmWorkspace> workspaces_;
-        std::vector<Producer> producers_;
-        const RasterProgramInputs& program_inputs_;
-        std::vector<PreparedBytes> cpu_data_;
-        std::vector<PreparedBufferInput> prepared_buffer_inputs_;
-        RenderJobId preparation_job_;
-        std::uint64_t preparation_generation_ = 0;
-        std::uint64_t preparation_revision_ = 0;
-        std::vector<BoundConstantBuffer> constant_buffers_;
         const std::span<FrameResources> frames_;
         const std::span<HistoryState> histories_;
         const compiled::RenderGraph& graph_;

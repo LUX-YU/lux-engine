@@ -258,7 +258,7 @@ namespace lux::render
             auto& state = inputs.selection[i];
             state.availability = EAvailability::READY;
             if (device.preparingProgramsFor(job.execution->binding_identity) ||
-                job.execution->instance.requiresProducerPrograms() || !resourcesAvailable(entry.retained))
+                job.execution->instance.needsProgramBuild() || !resourcesAvailable(entry.retained))
             {
                 block(i);
                 continue;

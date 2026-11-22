@@ -40,7 +40,7 @@ namespace lux::render::detail
         struct SnapshotSource final
         {
             ResourceInstanceId id;
-            const void* storage;
+            void* storage;
             const StorageSnapshotOps* ops;
         };
 
@@ -61,11 +61,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         createProducers(const PreparationPlan&, const ResourceRegistry&, PreparationSources) noexcept;
         [[nodiscard]] RenderResult<void> prepareProducers(std::uint32_t frame_slot) noexcept;
-        void bindPreparationOwner(RenderJobId job, std::uint64_t generation) noexcept
-        {
-            preparation_job_ = job;
-            preparation_generation_ = generation;
-        }
+        void installPreparation(RenderJobId job, std::uint64_t generation) noexcept;
 
         [[nodiscard]] RenderResult<bool> stagePreparedBuffers(
             std::uint32_t frame, ResourceUploader*, std::vector<PreparedBufferCopy>&
@@ -75,9 +71,12 @@ namespace lux::render::detail
         {
             view_parameters_ = {value, revision};
         }
-        [[nodiscard]] bool requiresProducerPrograms() const noexcept;
-        void captureProgramRevisions(std::vector<std::uint64_t>&) const noexcept;
-        [[nodiscard]] bool matchesProgramRevisions(std::span<const std::uint64_t>) const noexcept;
+        [[nodiscard]] bool hasExclusiveProgramInput() const noexcept;
+        [[nodiscard]] std::uint64_t programInputRevision() const noexcept { return program_input_revision_; }
+        [[nodiscard]] bool needsProgramBuild() const noexcept
+        {
+            return applied_program_revision_ != program_input_revision_;
+        }
         [[nodiscard]] RenderResult<void> selectProgramUpdate(RasterProgramUpdate&) noexcept;
         void adoptProgramUpdate(RasterProgramUpdate&) noexcept;
 
@@ -318,7 +317,7 @@ namespace lux::render::detail
 
         class ProducerFrame;
         [[nodiscard]] RenderResult<void>
-        buildRasterPrograms(std::uint32_t, std::size_t first_revision, RasterProgramUpdate&) noexcept;
+        buildRasterPrograms(std::uint32_t, RasterProgramUpdate&) noexcept;
         void releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept;
         struct PreparedBytes final
         {
@@ -332,12 +331,6 @@ namespace lux::render::detail
             std::uint64_t source_revision = 0;
         };
 
-        struct ReadyRasterInputs final
-        {
-            std::vector<std::uint64_t> revisions;
-            RasterProgramBuilder::Mapping draw_mapping{nullptr, nullptr};
-        };
-
         struct Producer final
         {
             ProducerWorkspace workspace;
@@ -345,12 +338,10 @@ namespace lux::render::detail
             std::vector<OwnedRasterStream> streams;
             std::vector<std::uint32_t> runtime_streams{};
             std::vector<std::uint32_t> program_sources;
-            std::optional<ReadyRasterInputs> ready_programs{};
+            RasterProgramBuilder::Mapping draw_mapping{nullptr, nullptr};
+            bool programs_dirty = false;
         };
 
-        [[nodiscard]] bool
-        rasterProgramMatches(const Producer& producer, std::span<const std::uint64_t> revisions) const noexcept;
-        [[nodiscard]] std::uint64_t programStorageRevision(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<extension_detail::SelectedStorageSnapshot>
         readStorageSnapshot(std::span<const std::uint32_t>, std::uint32_t, cxx::basic_type_info) const noexcept;
 
@@ -369,6 +360,7 @@ namespace lux::render::detail
             SnapshotSource source;
             StorageSnapshotOps::Selection value;
             std::uint64_t revision = 0;
+            ProgramInputRevision* program_input = nullptr;
         };
 
         const ResourceRegistry* snapshot_registry_ = nullptr;
@@ -378,6 +370,8 @@ namespace lux::render::detail
         std::vector<std::uint32_t> snapshot_sources_;
         std::vector<Producer> producers_;
         std::vector<std::uint32_t> program_producers_;
+        std::vector<ProgramInputRevision::Use> program_input_uses_;
+        std::uint64_t program_input_revision_ = 0, applied_program_revision_ = 0;
         std::vector<std::unique_ptr<DynamicRasterPrograms>> dynamic_raster_programs_;
         std::vector<PreparedBytes> cpu_data_;
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;

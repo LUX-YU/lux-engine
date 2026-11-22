@@ -518,12 +518,6 @@ namespace lux::render::detail
         return {};
     }
 
-    void RasterMeshInstanceStorage::invalidateSelection() noexcept
-    {
-        if (selection_revision_ == UINT64_MAX) std::terminate();
-        ++selection_revision_;
-    }
-
     const RasterMeshInstanceStorage::InstanceRecord&
     RasterMeshInstanceStorage::instanceRecord(const Entry& entry) const noexcept
     {
@@ -534,7 +528,7 @@ namespace lux::render::detail
     RenderResult<std::uint64_t>
     RasterMeshInstanceStorage::captureMeshSelections(MeshInstanceSnapshot& output) const noexcept
     {
-        if (output.revision == selection_revision_) return output.revision;
+        if (output.revision == selection_revision_.value()) return output.revision;
         output.instances.clear();
         output.instances.reserve(live_records_);
         output.sections.clear();
@@ -565,7 +559,7 @@ namespace lux::render::detail
             if (!geometry) return cxx::unexpected(geometry.error());
             output.sections.push_back({mesh, submesh, *geometry});
         }
-        output.revision = selection_revision_;
+        output.revision = selection_revision_.value();
         return output.revision;
     }
 
@@ -868,7 +862,7 @@ namespace lux::render::detail
             }
         }
         live_records_ += static_cast<std::uint32_t>(descriptions.size());
-        invalidateSelection();
+        selection_revision_.advance();
         data.clearOrder();
         updating_ = false;
         rollback.release();
@@ -906,7 +900,7 @@ namespace lux::render::detail
             }
             data.properties.push_back(*property);
         }
-        bool instances_changed = false;
+        bool instances_changed = false, selection_changed = false;
         for (std::size_t i = 0; i < instances.size(); ++i)
         {
             const auto& value = instances[i];
@@ -937,8 +931,9 @@ namespace lux::render::detail
                 mark(frame, record, fields);
             }
             instances_changed |= fields != 0;
-            if (group_changed || enabled_changed) invalidateSelection();
+            selection_changed |= group_changed || enabled_changed;
         }
+        if (selection_changed) selection_revision_.advance();
         preparation_revision_ += instances_changed;
         return {};
     }
@@ -979,7 +974,7 @@ namespace lux::render::detail
             mark(frame, record, 2);
             co_return cxx::unexpected(accepted.error());
         }
-        invalidateSelection();
+        selection_revision_.advance();
         auto& page = *pages_[record / kMeshInstancePageSlots];
         const auto local = record % kMeshInstancePageSlots;
         page.alive[local] = 0;

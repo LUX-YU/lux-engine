@@ -7,6 +7,7 @@
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resources/view/Resource.hpp>
 #include <cstring>
 #include <future>
 
@@ -556,16 +557,29 @@ namespace
     {
         using namespace sdk_programs;
         const auto type = ResourceName{CodeStorage::descriptor.type.name()};
-        const auto code = take(context.importStorageSnapshot<ItemId>("shader_code", {type}));
-        const auto alias = take(context.importStorageSnapshot<ItemId>("shader_alias", {type}));
+        const auto code = take(context.importStorageSnapshot<CodeSnapshot>("shader_code", {type}));
+        const auto alias = take(context.importStorageSnapshot<CodeSnapshot>("shader_alias", {type}));
         auto& builder = context.builder();
         auto image = take(builder.declareResource({"raster output", GraphImageDesc{width, height}}));
+        RasterPassTemplate background_stage;
+        background_stage.purpose = "independent clear";
+        background_stage.runtime_stream_programs = true;
+        RasterWork background;
+        background.program = std::move(background_stage);
+        background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
+        const auto base = take(builder.addRasterPass("clear background", std::move(background)));
+        auto clear = context.addPreparation({
+            ProducerFactory::make<ClearBackground>(), take(ConfigValue::make(base.pass)), {}, {}, {}, {base.pass},
+            {}, {}, {}, RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
+        });
+        if (!clear) return clear;
         RasterPassTemplate stage;
         stage.purpose = "installed programs";
         stage.runtime_stream_programs = true;
         RasterWork raster;
         raster.program = std::move(stage);
-        raster.colors.push_back({{{image, 0}}});
+        raster.viewport = RasterViewport{1.0f / width, 0, 1.0f - 1.0f / width, 1};
+        raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
         auto draw = take(builder.addRasterPass("two programs", std::move(raster)));
         auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
             draw.pass, alias, context.shaderTarget(), mode == "stale-code"
@@ -578,7 +592,7 @@ namespace
             program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
         auto added = context.addPreparation({
             ProducerFactory::make<ProgramDraws>(), std::move(configuration), {}, {}, {},
-            {draw.pass}, {}, {code, alias}, {alias}, program_builder
+            {draw.pass}, {}, {code, alias}, {code, alias}, program_builder
         });
         if (!added) return added;
         return context.publish(color, {{color, draw.written.front()}});
@@ -890,14 +904,8 @@ int main(int argc, char** argv)
             call<RemoveEffect>(*client, commands, {effect});
         }
         std::puts("SDK COLD LINK: missing builder, wrong linked inputs and wrong draw mapping rejected at Prepare");
-        const auto invalid = create_capture("stale-code");
-        const auto stale = startRenderJob(*client, commands, session, scene, view, target, invalid, binding);
-        CHECK(call<RequestRenderJob>(*client, commands, {stale}, false).error.type == kStorageIdentity);
-        stopAndRemoveJob(*client, commands, stale);
-        const auto effect = create_capture("raster-pixels");
         using Store = sdk_programs::CodeStorage;
         using Gate = sdk_programs::EDriverGate;
-        const auto job = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
         auto frames = ipc::IpcCore::instance().createRequester(config.channel_name);
         auto mutations = ipc::IpcCore::instance().createRequester(config.channel_name);
         CHECK(frames && mutations);
@@ -910,6 +918,31 @@ int main(int argc, char** argv)
                 std::this_thread::yield();
             }
         };
+        const auto invalid = create_capture("stale-code");
+        const auto stale = startRenderJob(*client, commands, session, scene, view, target, invalid, binding);
+        CHECK(call<RequestRenderJob>(*client, commands, {stale}, false).error.type == kStorageIdentity);
+        const auto failed_builds = Store::builds.load();
+        CHECK(call<QueryExecutionProgress>(*client, commands, stale).last_run_error.type == kStorageIdentity);
+        auto locked = std::async(std::launch::async, [&]
+        {
+            return call<sdk_programs::HoldCode>(*mutations, commands, code);
+        });
+        wait([] { return Store::held.load(); });
+        CHECK(!call<QueryExecutionProgress>(*client, commands, stale).last_run_error.type);
+        auto retry = std::async(std::launch::async, [&]
+        {
+            return call<RequestRenderJob>(*frames, commands, {stale}, false);
+        });
+        CHECK(retry.wait_for(20ms) == std::future_status::timeout);
+        call<sdk_programs::ReleaseCode>(*client, commands, {});
+        CHECK(!locked.get().error.type && retry.get().error.type == kStorageIdentity);
+        CHECK(Store::builds == failed_builds);
+        stopAndRemoveJob(*client, commands, stale);
+        const auto effect = create_capture("raster-pixels");
+        binding.view_parameters = call<GetOrCreateResource>(*client, commands, {
+            session, ViewRequest{scene, view}, kViewParameterResourceName
+        }).resource_id;
+        const auto job = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
         Store::gate = Gate::ARMED;
         auto requested = std::async(std::launch::async, [&]
         {
@@ -921,6 +954,12 @@ int main(int argc, char** argv)
             return call<sdk_programs::HoldCode>(*mutations, commands, code);
         });
         wait([] { return Store::held.load(); });
+        const auto busy_layout = call<QueryRenderJobInputLayout>(*client, commands, job).layout;
+        auto busy_packet = take(FrameData::create<std::tuple<Store, ViewParameterResource>>(busy_layout));
+        CHECK(busy_packet.addData<Store>(sdk_programs::DrawOrder{1}));
+        CHECK(busy_packet.seal());
+        CHECK(call<UpdateFrameData>(*client, commands, {job, &busy_packet}, false).error.type == kDeviceBusy);
+        busy_packet.release();
         Store::gate = Gate::OPEN;
         Store::gate.notify_all();
         wait([] { return Store::created.load() == 2; });
@@ -931,34 +970,96 @@ int main(int argc, char** argv)
         const auto restarted = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
         renderFrame(*client, commands, restarted);
         CHECK(Store::created.load() == 2);
+        const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
+        const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
+        auto peer_binding = binding;
+        peer_binding.view_parameters = {};
+        peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
+            session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
+        }).resource_id;
+        const auto links_before = Store::source_links.load();
+        const auto peer = startRenderJob(
+            *client, commands, session, scene, peer_view, peer_target, effect, peer_binding
+        );
+        renderFrame(*client, commands, peer);
+        CHECK(Store::source_links == links_before + 1);
+        const auto before_rebind = Store::builds.load();
+        call<RebindRenderJobEffect>(*client, commands, {session, restarted, effect, target, binding});
+        renderFrame(*client, commands, restarted);
+        CHECK(Store::source_links == links_before + 2 && Store::builds == before_rebind + 1);
+
+        const auto stable_builds = Store::builds.load();
+        const auto stable_clear_builds = Store::clear_builds.load();
+        const auto stable_links = Store::source_links.load();
+        const auto stable_captures = Store::captures.load();
+        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
+        ViewGpuParameters unrelated;
+        unrelated.background[0] = 0.5f;
+        call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&unrelated, 1}});
+        for (unsigned i = 0; i < 8; ++i)
+        {
+            call<QueryExecutionProgress>(*client, commands, restarted);
+            call<QueryExecutionProgress>(*client, commands, peer);
+            renderFrame(*client, commands, restarted);
+            renderFrame(*client, commands, peer);
+        }
+        CHECK(Store::captures == stable_captures + 16 && Store::builds == stable_builds);
+        CHECK(Store::source_links == stable_links && Store::created == 2);
+
+        const auto schema = call<QueryRenderJobInputLayout>(*client, commands, restarted).layout;
+        auto packet = take(FrameData::create<std::tuple<Store, ViewParameterResource>>(schema));
+        CHECK(packet.addData<Store>(sdk_programs::DrawOrder{1}));
+        auto invalid_view = unrelated;
+        invalid_view.direction_far[3] = 0;
+        CHECK(packet.addData<ViewParameterResource>(invalid_view));
+        CHECK(packet.seal());
+        CHECK(call<UpdateFrameData>(*client, commands, {restarted, &packet}, false).error.type == kFrameContract);
+        packet.release();
+        renderFrame(*client, commands, restarted);
+        renderFrame(*client, commands, peer);
+        CHECK(Store::builds == stable_builds + 2 && Store::created == 2);
+        stopAndRemoveJob(*client, commands, peer);
+        call<RemoveView>(*client, commands, {scene, peer_view});
+        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
+        renderFrame(*client, commands, restarted);
+        CHECK(Store::builds == stable_builds + 3 && Store::source_links == stable_links);
+        CHECK(Store::clear_builds == stable_clear_builds && Store::created == 2);
         stopAndRemoveJob(*client, commands, restarted);
         call<RemoveView>(*client, commands, {scene, view});
         server->stop();
         worker.join();
         CHECK(ran && server->stats().validation_errors == 0);
         server.reset();
-        const auto& result = ComputeCapture::results[0];
-        CHECK(result.ready && result.frames.size() == 1);
-        const auto& bytes = result.frames.front();
-        for (std::uint32_t y = 0; y < height; ++y)
+        for (std::size_t i = 0; i < ComputeCapture::results.size(); ++i)
         {
-            for (std::uint32_t x = 0; x < width; ++x)
+            const auto& result = ComputeCapture::results[i];
+            CHECK(result.ready && result.frames.size() == 1);
+            const auto& bytes = result.frames.front();
+            for (std::uint32_t y = 0; y < height; ++y)
             {
-                const auto pixel = y * row_pitch + x * 4;
-                const std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
-                const std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
-                const auto& expected = x < width / 2 ? red : green;
-                if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
+                for (std::uint32_t x = 0; x < width; ++x)
                 {
-                    std::fprintf(stderr, "Raster pixel (%u,%u) = %u %u %u %u\n", x, y,
-                        std::to_integer<unsigned>(bytes[pixel]), std::to_integer<unsigned>(bytes[pixel + 1]),
-                        std::to_integer<unsigned>(bytes[pixel + 2]), std::to_integer<unsigned>(bytes[pixel + 3]));
-                    CHECK(false);
+                    const auto pixel = y * row_pitch + x * 4;
+                    const std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
+                    const std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
+                    // Green covers the right half. Red covers both halves when drawn last for the peer.
+                    const std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
+                    const auto& foreground = (i == 1 || x < width / 2) ? red : green;
+                    const auto& expected = x == 0 ? blue : foreground;
+                    if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
+                    {
+                        std::fprintf(stderr, "Raster output %zu pixel (%u,%u) = %u %u %u %u\n", i, x, y,
+                            std::to_integer<unsigned>(bytes[pixel]), std::to_integer<unsigned>(bytes[pixel + 1]),
+                            std::to_integer<unsigned>(bytes[pixel + 2]), std::to_integer<unsigned>(bytes[pixel + 3]));
+                        CHECK(false);
+                    }
                 }
             }
         }
-        std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, "
-                  "two PSOs across two Jobs, 2048 RGBA pixels");
+        std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, two resident PSOs");
+        std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, 16 frame captures, zero relinks or builds; "
+                  "partial FrameData rebuilt both readers, after Stop only one, "
+                  "zero independent clear rebuilds, 4096 RGBA pixels");
         return 0;
     }
     if (receipts || product_fault)

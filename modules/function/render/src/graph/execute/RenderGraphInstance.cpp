@@ -75,6 +75,8 @@ namespace lux::render::detail
         for (const auto& frame : frames_)
             for (const auto& batch : frame.command_batches)
                 if (batch.recording.load(std::memory_order_acquire)) std::terminate();
+        if (preparation_generation_)
+            for (auto& use : program_input_uses_) use.source->detach(use);
         while (!producers_.empty()) producers_.pop_back();
         for (std::uint32_t pass = 0; pass < dynamic_raster_programs_.size(); ++pass)
             releaseDynamicRasterPrograms(pass, false);

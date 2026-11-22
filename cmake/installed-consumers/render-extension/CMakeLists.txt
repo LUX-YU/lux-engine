@@ -151,7 +151,7 @@ foreach(header IN ITEMS
     extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
     extensions/execution/ProducerFactory extensions/execution/LinkedProducer graph/DrawList resource/RasterProgramBuild
     extensions/execution/PreparedCpuValue extensions/execution/ResourceInput
-    device/NativeProgramId resource/material/ProgramSource resource/mesh/MeshLayout
+    device/NativeProgramId resource/ProgramInputRevision resource/material/ProgramSource resource/mesh/MeshLayout
     extensions/resource/ResourceProgramUses extensions/resource/ReplicaMutation
     extensions/resource/ResourceCreateContext
     extensions/resource/ResourceRegistry extensions/resource/StorageBinding extensions/upload/ResourceUploader

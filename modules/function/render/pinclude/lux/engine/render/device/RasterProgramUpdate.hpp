@@ -64,7 +64,6 @@ namespace lux::render::detail
         struct Selection final
         {
             std::uint32_t producer;
-            std::size_t first_revision, count;
             RasterProgramBuilder::Mapping draw_mapping;
         };
 
@@ -74,7 +73,7 @@ namespace lux::render::detail
         DeviceSession& device;
         const ResourceRegistry& registry;
         const ExecutionBindingId binding;
-        std::vector<std::uint64_t> revisions;
+        std::uint64_t input_revision = 0;
         struct Publication final
         {
             ResourceProgramSource source;

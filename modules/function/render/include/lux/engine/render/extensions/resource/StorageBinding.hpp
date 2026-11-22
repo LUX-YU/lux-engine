@@ -6,10 +6,12 @@
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/resource/ProgramInputRevision.hpp>
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -47,14 +49,14 @@ namespace lux::render::detail
         cxx::basic_type_info type;
         Selection (*create)() noexcept;
         RenderResult<std::uint64_t> (*capture)(const void*, void*) noexcept;
-        // Optional owner-side revision for program selection. A selectable revision starts at one.
-        std::uint64_t (*revision)(const void*) noexcept = nullptr;
+        // Resolved once during cold binding for snapshots that select programs.
+        ProgramInputRevision& (*program_input)(void*) noexcept = nullptr;
 
         // Capture fills Job-owned reusable memory on the Server owner. Copy every value
         // needed by the producer, including any variable-length data.
         template <
             class Storage, class T, RenderResult<std::uint64_t> (Storage::*Capture)(T&) const noexcept,
-            std::uint64_t Storage::*Revision = nullptr
+            ProgramInputRevision Storage::*Revision = nullptr
         >
         [[nodiscard]] static constexpr StorageSnapshotOps make() noexcept
         {
@@ -71,7 +73,10 @@ namespace lux::render::detail
             };
             if constexpr (Revision != nullptr)
             {
-                ops.revision = [](const void* storage) noexcept { return static_cast<const Storage*>(storage)->*Revision; };
+                ops.program_input = [](void* storage) noexcept -> ProgramInputRevision&
+                {
+                    return std::invoke(Revision, *static_cast<Storage*>(storage));
+                };
             }
             return ops;
         }

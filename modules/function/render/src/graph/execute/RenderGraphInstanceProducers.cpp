@@ -352,13 +352,21 @@ namespace lux::render::detail
             for (auto slot : linked.program_snapshots)
             {
                 const auto source = source_slots[slot];
-                if (!snapshots[source].source.ops->revision)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
+                auto& snapshot = snapshots[source];
+                if (!snapshot.program_input)
+                {
+                    if (!snapshot.source.ops->program_input)
+                        return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
+                    snapshot.program_input = &snapshot.source.ops->program_input(snapshot.source.storage);
+                }
                 auto& selected = producer.program_sources;
                 if (std::ranges::find(selected, source) == selected.end()) selected.push_back(source);
             }
             if (!producer.runtime_streams.empty())
+            {
+                producer.programs_dirty = true;
                 program_producers.push_back(static_cast<std::uint32_t>(producers.size() - 1));
+            }
             producer.constants.reserve(linked.inline_blocks.size());
             for (const auto& block : linked.inline_blocks)
             {
@@ -374,7 +382,26 @@ namespace lux::render::detail
         }
         producers_ = std::move(producers);
         program_producers_ = std::move(program_producers);
-        if (!program_producers_.empty()) dynamic_raster_programs_.resize(plan_->passes().size());
+        if (!program_producers_.empty())
+        {
+            program_input_revision_ = 1;
+            dynamic_raster_programs_.resize(plan_->passes().size());
+        }
+        // Build the Resource-to-kernel links while the execution is private. Publication only attaches rows.
+        for (auto index : program_producers_)
+        {
+            auto& producer = producers_[index];
+            for (auto slot : producer.program_sources)
+            {
+                auto* source = snapshots[slot].program_input;
+                auto use = std::ranges::find(program_input_uses_, source, &ProgramInputRevision::Use::source);
+                if (use == program_input_uses_.end())
+                {
+                    program_input_uses_.push_back({source, &program_input_revision_, {&producer.programs_dirty}});
+                }
+                else use->dirty_programs.push_back(&producer.programs_dirty);
+            }
+        }
         storage_snapshots_ = std::move(snapshots);
         snapshot_sources_ = std::move(source_slots);
         raster_owners_ = std::move(raster_owners);
@@ -394,57 +421,43 @@ namespace lux::render::detail
         selected.reset();
     }
 
-    std::uint64_t RenderGraphInstance::programStorageRevision(std::uint32_t slot) const noexcept
+    bool RenderGraphInstance::hasExclusiveProgramInput() const noexcept
     {
-        const auto& source = storage_snapshots_[slot].source;
-        if (snapshot_registry_->hasExclusiveCommand(source.id)) return 0;
-        return source.ops->revision(source.storage);
+        return std::ranges::any_of(storage_snapshots_, [&](const auto& snapshot) noexcept
+        {
+            return snapshot.program_input && snapshot_registry_->hasExclusiveCommand(snapshot.source.id);
+        });
     }
 
-    bool RenderGraphInstance::rasterProgramMatches(
-        const Producer& producer, std::span<const std::uint64_t> revisions
-    ) const noexcept
+    void RenderGraphInstance::installPreparation(RenderJobId job, std::uint64_t generation) noexcept
     {
-        if (revisions.size() != producer.program_sources.size()) return false;
-        for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
-        {
-            const auto current = programStorageRevision(producer.program_sources[i]);
-            if (!current || current != revisions[i]) return false;
-        }
-        return true;
+        if (!generation || preparation_generation_) std::terminate();
+        preparation_job_ = job;
+        preparation_generation_ = generation;
+        for (auto& use : program_input_uses_) use.source->attach(use);
     }
 
     RenderResult<void> RenderGraphInstance::selectProgramUpdate(RasterProgramUpdate& update) noexcept
     {
-        captureProgramRevisions(update.revisions);
-        std::size_t first = 0;
-        for (const auto index : program_producers_)
+        update.input_revision = program_input_revision_;
+        for (auto index : program_producers_)
         {
-            const auto& producer = producers_[index];
-            const auto count = producer.program_sources.size();
-            const auto revisions = std::span(update.revisions).subspan(first, count);
-            if (!producer.ready_programs || !std::ranges::equal(producer.ready_programs->revisions, revisions))
-            {
-                if (auto selected = buildRasterPrograms(index, first, update); !selected) return selected;
-            }
-            first += count;
+            if (!producers_[index].programs_dirty) continue;
+            if (auto selected = buildRasterPrograms(index, update); !selected) return selected;
         }
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::buildRasterPrograms(
-        std::uint32_t index, std::size_t first_revision, RasterProgramUpdate& update
-    ) noexcept
+    RenderResult<void>
+    RenderGraphInstance::buildRasterPrograms(std::uint32_t index, RasterProgramUpdate& update) noexcept
     {
         auto& producer = producers_[index];
-        const auto revisions = std::span(update.revisions).subspan(first_revision, producer.program_sources.size());
-        for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
+        for (auto slot : producer.program_sources)
         {
-            const auto slot = producer.program_sources[i];
             auto& snapshot = storage_snapshots_[slot];
             auto captured = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
             if (!captured) return cxx::unexpected(captured.error());
-            if (*captured != revisions[i])
+            if (*captured != snapshot.program_input->value())
                 return cxx::unexpected(RenderError{kStorageContract, {slot}});
             snapshot.revision = *captured;
         }
@@ -469,11 +482,10 @@ namespace lux::render::detail
                 slot, snapshot.source.id, snapshot.source.ops->type, {snapshot.value.get(), snapshot.revision}
             });
         }
-        const auto* previous = producer.ready_programs ? producer.ready_programs->draw_mapping.get() : nullptr;
         RasterProgramBuildContext context{data};
-        auto mapping = linked.build_programs(linked.prototype.inputs().data(), context, previous);
+        auto mapping = linked.build_programs(linked.prototype.inputs().data(), context, producer.draw_mapping.get());
         if (!mapping) return cxx::unexpected(mapping.error());
-        update.selections.push_back({index, first_revision, revisions.size(), std::move(*mapping)});
+        update.selections.push_back({index, std::move(*mapping)});
         for (const auto& entry : data.streams)
         {
             if (entry.reuse)
@@ -515,17 +527,17 @@ namespace lux::render::detail
         }
         for (auto& selection : update.selections)
         {
-            auto& ready = producers_[selection.producer].ready_programs;
-            if (!ready) ready.emplace();
-            const auto revisions = std::span(update.revisions).subspan(selection.first_revision, selection.count);
-            ready->revisions.assign(revisions.begin(), revisions.end());
-            ready->draw_mapping.swap(selection.draw_mapping);
+            auto& producer = producers_[selection.producer];
+            producer.draw_mapping.swap(selection.draw_mapping);
+            producer.programs_dirty = false;
         }
+        applied_program_revision_ = update.input_revision;
     }
 
     RenderResult<void> RenderGraphInstance::prepareProducers(std::uint32_t slot) noexcept
     {
         if (!preparation_plan_) return {};
+        if (needsProgramBuild()) return cxx::unexpected(RenderError{kDeviceBusy});
         if (slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
         if (preparation_revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
         for (const auto& snapshot : storage_snapshots_)
@@ -537,6 +549,8 @@ namespace lux::render::detail
         {
             auto revision = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
             if (!revision) return cxx::unexpected(revision.error());
+            if (snapshot.program_input && *revision != snapshot.revision)
+                return cxx::unexpected(RenderError{needsProgramBuild() ? kDeviceBusy : kStorageContract});
             snapshot.revision = *revision;
         }
         ++preparation_revision_;
@@ -555,10 +569,7 @@ namespace lux::render::detail
         {
             const auto& linked = linked_producers[i];
             auto& producer = producers_[i];
-            const bool stale_programs = !producer.runtime_streams.empty() &&
-                (!producer.ready_programs || !rasterProgramMatches(producer, producer.ready_programs->revisions));
-            if (stale_programs)
-                return cxx::unexpected(RenderError{kDeviceBusy});
+            if (producer.programs_dirty) return cxx::unexpected(RenderError{kDeviceBusy});
             for (auto& block : producer.constants) block.payload.written = false;
             for (auto& stream : producer.streams)
             {
@@ -570,8 +581,8 @@ namespace lux::render::detail
                 stream.selection = preparation_revision_;
             }
             ProducerFrame frame{*this, static_cast<std::uint32_t>(i), slot};
-            const auto* mapping = producer.ready_programs ? producer.ready_programs->draw_mapping.get() : nullptr;
-            if (auto prepared = producer.workspace.prepare(frame, mapping); !prepared) return prepared;
+            if (auto prepared = producer.workspace.prepare(frame, producer.draw_mapping.get()); !prepared)
+                return prepared;
 
             for (auto output : linked.outputs)
             {
@@ -597,6 +608,7 @@ namespace lux::render::detail
             }
         }
 
+        if (needsProgramBuild()) return cxx::unexpected(RenderError{kDeviceBusy});
         // Commit the complete selection only after every preparation callback has succeeded.
         for (auto& replica : frames_[slot].native.prepared_buffers) replica.staged_bytes = 0;
         for (std::size_t i = 0; i < linked_producers.size(); ++i)

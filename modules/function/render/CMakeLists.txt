@@ -97,6 +97,7 @@ set(render_sources
     src/graph/compile/RenderGraphExecutable.cpp
     src/device/CompiledPrograms.cpp
     src/device/RasterProgramUpdate.cpp
+    src/resource/ProgramInputRevision.cpp
     src/resource/ResourceProgramUses.cpp
     src/graph/PlanDiagnostics.cpp
     src/graph/compile/BuiltinPass.cpp

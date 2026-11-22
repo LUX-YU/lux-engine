@@ -191,11 +191,12 @@ namespace lux::render
         for (auto id : running_jobs_)
         {
             auto& job = *runtime_->jobs_.find(id);
-            if (!job.control.eligible()) continue;
+            if (!job.control.eligible() || !job.control.hasRequest()) continue;
             auto& execution = *job.execution;
             if (execution.device != entry.id) continue;
 
-            if (const auto error = execution.programError(); error.type && job.control.hasRequest())
+            const auto error = execution.programError();
+            if (error.type && !execution.instance.hasExclusiveProgramInput())
             {
                 job.control.rejectUnadmitted(error);
                 progressed = true;
@@ -210,7 +211,7 @@ namespace lux::render
             if (!job.readyToRun() || !jobTargetReady(job)) continue;
             auto& execution = *job.execution;
             if (execution.device != entry.id) continue;
-            if (!execution.instance.requiresProducerPrograms() || execution.programError().type) continue;
+            if (!execution.instance.needsProgramBuild() || execution.programError().type) continue;
             if (executionTargetsResizing(execution) || !resourcesAvailable(execution.retainedResources())) continue;
             round.preparation_cursor = (index + 1) % count;
             startProgramPreparation(entry, execution);
@@ -278,12 +279,11 @@ namespace lux::render
             job->execution->binding_identity == op->binding;
         auto* execution = installed ? job->execution.get() : nullptr;
         const bool running = installed && job->control.running();
-        const bool can_read_inputs = running && resourcesAvailable(execution->retainedResources());
-        const bool stale = can_read_inputs && !execution->instance.matchesProgramRevisions(op->revisions);
+        const bool stale = running && execution->instance.programInputRevision() != op->input_revision;
         if (!running || stale || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
         if (!op->returned || !op->publishReturnedUses()) return false;
         const bool discarded = op->stop.stop_requested();
-        if (!discarded && !can_read_inputs) return false;
+        if (running && !discarded && !resourcesAvailable(execution->retainedResources())) return false;
         if (execution && executionTargetsResizing(*execution)) return false;
         if (execution)
         {
@@ -291,7 +291,7 @@ namespace lux::render
             if (!discarded && op->returned->type)
             {
                 execution->failed_program = *op->returned;
-                execution->failed_program_revisions = std::move(op->revisions);
+                execution->failed_program_revision = op->input_revision;
             }
         }
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS

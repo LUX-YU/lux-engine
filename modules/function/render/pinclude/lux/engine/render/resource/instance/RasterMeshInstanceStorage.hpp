@@ -87,7 +87,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty>
         resolveReferences(const MeshInstanceData&, std::uint32_t frame) const noexcept;
         [[nodiscard]] const InstanceRecord& instanceRecord(const Entry&) const noexcept;
-        void invalidateSelection() noexcept;
         void publishBuffers(std::uint32_t slot) noexcept;
         void adoptFrameBuffers(std::uint32_t slot) noexcept;
         void finishFramePreparation(const ReplicaSettlement&) noexcept;
@@ -103,7 +102,7 @@ namespace lux::render::detail
 
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
-        std::uint64_t selection_revision_ = 1;
+        ProgramInputRevision selection_revision_;
         const bool paged_;
         bool updating_ = false;
         std::uint32_t live_records_ = 0;

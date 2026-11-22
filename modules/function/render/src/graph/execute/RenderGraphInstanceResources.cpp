@@ -28,37 +28,6 @@ namespace lux::render::detail
         };
     }
 
-    bool RenderGraphInstance::requiresProducerPrograms() const noexcept
-    {
-        return std::ranges::any_of(program_producers_, [&](auto index) noexcept
-        {
-            const auto& producer = producers_[index];
-            return !producer.ready_programs || !rasterProgramMatches(producer, producer.ready_programs->revisions);
-        });
-    }
-
-    void RenderGraphInstance::captureProgramRevisions(std::vector<std::uint64_t>& revisions) const noexcept
-    {
-        revisions.clear();
-        for (auto index : program_producers_)
-        {
-            const auto& producer = producers_[index];
-            for (auto slot : producer.program_sources) revisions.push_back(programStorageRevision(slot));
-        }
-    }
-
-    bool RenderGraphInstance::matchesProgramRevisions(std::span<const std::uint64_t> revisions) const noexcept
-    {
-        for (auto index : program_producers_)
-        {
-            const auto& producer = producers_[index];
-            const auto count = producer.program_sources.size();
-            if (revisions.size() < count || !rasterProgramMatches(producer, revisions.first(count))) return false;
-            revisions = revisions.subspan(count);
-        }
-        return revisions.empty();
-    }
-
     void RenderGraphInstance::bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept
     {
         auto binding = resourceInput(resource, slot);

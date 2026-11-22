@@ -1827,7 +1827,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         RenderResult<std::uint64_t> capture(ETestStreamPrograms& selected) const noexcept
         {
             selected = mode_;
-            return revision_;
+            return revision_.value();
         }
 
         static void
@@ -1836,13 +1836,13 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (storage.mode_ != request.mode)
             {
                 storage.mode_ = request.mode;
-                ++storage.revision_;
+                storage.revision_.advance();
             }
             out = {};
         }
 
         ETestStreamPrograms mode_ = ETestStreamPrograms::INITIAL;
-        std::uint64_t revision_ = 1;
+        ProgramInputRevision revision_;
     };
 
     rdesc::ShaderProgramArtifact streamShader(

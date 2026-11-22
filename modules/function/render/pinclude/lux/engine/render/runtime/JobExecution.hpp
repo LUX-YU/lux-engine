@@ -62,11 +62,11 @@ namespace lux::render::runtime_detail
         const detail::RenderGraphExecutable& executable;
         detail::RenderGraphInstance instance;
         RenderError failed_program;
-        std::vector<std::uint64_t> failed_program_revisions;
+        std::uint64_t failed_program_revision = 0;
 
         [[nodiscard]] RenderError programError() const noexcept
         {
-            if (failed_program.type && instance.matchesProgramRevisions(failed_program_revisions))
+            if (failed_program.type && instance.programInputRevision() == failed_program_revision)
                 return failed_program;
             return {};
         }

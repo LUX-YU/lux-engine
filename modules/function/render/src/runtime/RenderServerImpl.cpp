@@ -669,7 +669,9 @@ namespace lux::render
             return;
         }
         const auto program_error = job->execution->programError();
-        output_response = {{}, job->execution->instance.progress(), program_error.type ? program_error : job->last_run_error};
+        const auto& instance = job->execution->instance;
+        const bool report_program = program_error.type && !instance.hasExclusiveProgramInput();
+        output_response = {{}, instance.progress(), report_program ? program_error : job->last_run_error};
     }
 
     void RenderServer::Impl::queryRenderStats(

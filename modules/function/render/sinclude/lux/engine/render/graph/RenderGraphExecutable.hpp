@@ -286,7 +286,7 @@ namespace lux::render::detail
         std::vector<SubmissionDependency> dependencies;
         std::vector<SubmissionSuccessor> successors;
         std::vector<GraphResourceId> histories;
-        std::vector<GraphResourceId> imported_images;
+        std::vector<GraphResourceId> imported_resources;
         std::uint32_t output_begin = kGraphInvalidIndex;
         bool reusable_recording = true;
         std::vector<std::uint32_t> shared_draw_reads;

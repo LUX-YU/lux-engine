@@ -444,8 +444,8 @@ namespace lux::render::detail
     void RenderGraphInstance::acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept
     {
         gpu_.accepted.accept(point);
-        for (auto id : plan_->submissions_[batch].imported_images)
-            if (auto* reads = frames_[slot].bindings[id.index].image_uses.reads) reads->accept(point);
+        for (auto id : plan_->submissions_[batch].imported_resources)
+            if (auto* uses = frames_[slot].selectedUses(id.index).accepted) uses->accept(point);
         const auto mark = [&](JobHistoryResources::Slot& slot)
         {
             slot.last_use.accept(point);

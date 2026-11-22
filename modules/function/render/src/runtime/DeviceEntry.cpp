@@ -100,50 +100,31 @@ namespace lux::render::detail
         return retired;
     }
 
-    DeviceEntry::UniformPoolRecord::UniformPoolRecord(
-        EffectId owner, graph::NodeId source_node, std::string_view block_name, DeviceSession& device,
-        extension_detail::EffectUniformSource source, std::uint32_t frame_count
-    ) noexcept : effect(owner), node(source_node), name(block_name), versions(device, source, frame_count)
+    void DeviceEntry::installEffectResources(EffectId effect, const PreparationPlan& plan) noexcept
     {
-    }
-
-    UniformPoolId DeviceEntry::findUniformPool(EffectId effect, graph::NodeId node, std::string_view name) const noexcept
-    {
-        const auto found = std::ranges::find_if(uniform_pools_, [&](const auto& pool) noexcept
+        if (plan.constant_buffers.empty()) return;
+        EffectBuffers buffers;
+        buffers.reserve(plan.constant_buffers.size());
+        const auto frame_count = frame_progress_.frameCount();
+        for (const auto& input : plan.constant_buffers)
         {
-            return pool.effect == effect && pool.node == node && pool.name == name;
-        });
-        return found != uniform_pools_.end() ? found->id : UniformPoolId{};
-    }
-
-    DeviceEntry::UniformPoolRecord& DeviceEntry::uniformPool(UniformPoolId id) noexcept
-    {
-        auto* pool = uniform_pools_.find(id);
-        if (!pool) std::terminate();
-        return *pool;
-    }
-
-    UniformPoolId DeviceEntry::createUniformPool(
-        EffectId effect, graph::NodeId node, std::string_view name, extension_detail::EffectUniformSource source
-    ) noexcept
-    {
-        const auto id = uniform_pools_.emplace(effect, node, name, session(), source, frame_progress_.frameCount());
-        uniformPool(id).id = id;
-        return id;
-    }
-
-    void DeviceEntry::removeUniformPools(EffectId effect) noexcept
-    {
-        for (auto pool = uniform_pools_.begin(); pool != uniform_pools_.end();)
-        {
-            if (pool->effect == effect) uniform_pools_.erase(pool->id);
-            else ++pool;
+            buffers.push_back(std::make_unique<ConstantBufferStorage>(session(), input.bytes, frame_count));
         }
+        effect_buffers_.prepareCapacity(effect_buffers_.size() + 1, std::size_t(effect.index) + 1);
+        effect_buffers_.emplace(effect, std::move(buffers));
     }
 
-    void DeviceEntry::clearUniformPools() noexcept
+    std::span<const std::unique_ptr<ConstantBufferStorage>>
+    DeviceEntry::effectResources(EffectId effect) const & noexcept
     {
-        uniform_pools_.clear();
+        const auto* buffers = effect_buffers_.tryGet(effect);
+        return buffers ? std::span<const std::unique_ptr<ConstantBufferStorage>>{*buffers} :
+            std::span<const std::unique_ptr<ConstantBufferStorage>>{};
+    }
+
+    void DeviceEntry::removeEffectResources(EffectId effect) noexcept
+    {
+        if (effect_buffers_.contains(effect)) effect_buffers_.erase(effect);
     }
 
     ResourceCreateContext DeviceEntry::resourceCreateContext() noexcept

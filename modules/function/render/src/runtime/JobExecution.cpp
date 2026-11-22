@@ -121,6 +121,17 @@ namespace lux::render
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph.preparation;
         detail::RenderGraphInstance::PreparationSources inputs;
+        const auto buffers = entry.effectResources(candidate.effect);
+        if (buffers.size() != preparation.constant_buffers.size()) std::terminate();
+        inputs.constant_buffers.reserve(buffers.size());
+        for (std::size_t i = 0; i < buffers.size(); ++i)
+        {
+            const auto& input = preparation.constant_buffers[i];
+            const auto value = input.bind(effect.node_states[input.state].value.get());
+            if (value.bytes.size() != input.bytes || !value.revision || !*value.revision)
+                return cxx::unexpected(RenderError{kFrameContract, {i}});
+            inputs.constant_buffers.push_back({input.resource, buffers[i].get(), value});
+        }
         inputs.effect_values.reserve(preparation.effect_inputs.size());
         for (auto input : preparation.effect_inputs)
         {
@@ -159,7 +170,6 @@ namespace lux::render
         }
         if (auto ready = candidate.instance.createProducers(preparation, registry, std::move(inputs)); !ready)
             return ready;
-        candidate.instance.linkUniformBlocks(candidate.graph.uniforms);
         if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;
         candidate.instance.setViewport(input.viewport);
         return {};

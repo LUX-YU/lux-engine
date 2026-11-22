@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
 
-#include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
@@ -32,6 +31,5 @@ namespace lux::render::compiled
         std::vector<detail::FinalBufferExport> buffer_exports;
         std::vector<BindingComparison> binding_comparisons;
         detail::PreparationPlan preparation;
-        std::vector<detail::LinkedUniformBlock> uniforms;
     };
 } // namespace lux::render::compiled

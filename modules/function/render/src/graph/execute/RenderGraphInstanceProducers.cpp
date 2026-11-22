@@ -414,7 +414,9 @@ namespace lux::render::detail
         const PreparationPlan& plan, const ResourceRegistry& registry, PreparationSources inputs
     ) noexcept
     {
-        if (plan.producers.empty() && plan.constant_copies.empty()) return {};
+        if (inputs.constant_buffers.size() != plan.constant_buffers.size())
+            return cxx::unexpected(RenderError{kFrameContract});
+        if (plan.producers.empty() && plan.constant_copies.empty() && plan.constant_buffers.empty()) return {};
         if (preparation_plan_) return cxx::unexpected(RenderError{kDeviceArgument});
         const auto& sources = inputs.snapshots;
         if (inputs.effect_values.size() != plan.effect_inputs.size())
@@ -539,6 +541,7 @@ namespace lux::render::detail
         for (std::size_t i = 0; i < plan.snapshot_reads.size(); ++i)
             snapshot_sources_[i] = source_slots[plan.snapshot_reads[i].source];
         draw_resources_ = std::move(inputs.draw_resources);
+        constant_buffers_ = std::move(inputs.constant_buffers);
         effect_values_ = std::move(inputs.effect_values);
         snapshot_registry_ = &registry;
         preparation_plan_ = &plan;

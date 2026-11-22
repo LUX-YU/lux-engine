@@ -24,7 +24,7 @@ namespace lux::render::detail
             input.image,
             input.addressed_buffers,
             input.addressed_revision,
-            input.image_uses
+            input.queue_uses
         };
     }
 
@@ -820,7 +820,8 @@ namespace lux::render::detail
                                            binding.addressed_buffers.size() != value.addressed_buffers.size();
             binding.addressed_buffers = value.addressed_buffers;
             binding.addressed_revision = value.addressed_revision;
-            binding.image_uses = value.image_uses;
+            if (frozenForSubmission(current) && binding.queue_uses != value.queue_uses) frame.preserveUses(resource);
+            binding.queue_uses = value.queue_uses;
             if ((changed_physical || changed_addresses) &&
                 plan_->resources()[resource].origin == EGraphOrigin::IMPORTED)
             {

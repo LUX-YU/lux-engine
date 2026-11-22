@@ -3,11 +3,28 @@
 #include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <type_traits>
 #include <vector>
 
 namespace lux::render::detail
 {
+    class ConstantBufferStorage;
+
+    struct ConstantBufferInput final
+    {
+        std::uint32_t state, bytes;
+        GraphResourceId resource;
+        extension_detail::BoundConstantValue (*bind)(const void*) noexcept;
+    };
+
+    struct BoundConstantBuffer final
+    {
+        GraphResourceId resource;
+        ConstantBufferStorage* storage;
+        extension_detail::BoundConstantValue value;
+    };
+
     struct BoundDrawResource final
     {
         ResourceInstanceId id;
@@ -102,6 +119,7 @@ namespace lux::render::detail
 
         static_assert(std::is_standard_layout_v<ConstantCopy> && std::is_trivially_copyable_v<ConstantCopy>);
 
+        std::vector<ConstantBufferInput> constant_buffers;
         std::vector<ConstantCopy> constant_copies;
         std::vector<EffectInput> effect_inputs;
         std::vector<std::size_t> cpu_data_bytes;

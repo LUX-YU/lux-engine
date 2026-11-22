@@ -65,7 +65,6 @@ namespace lux::render::detail
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
             std::uint64_t preparation_serial = 0;
-            std::uint64_t uniform_upload_serial = 0;
             std::vector<InstanceExecution> instances;
             std::vector<SubmissionOrder> order;
             std::vector<BatchExecution> batches;
@@ -130,15 +129,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         prepare(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
-        using BatchAccepted = cxx::function_ref<void(const RenderGraphInstance&, std::uint32_t, SubmissionPoint) noexcept>;
-
-        [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
-        submit(const std::optional<RenderError>& cancel, std::optional<BatchAccepted> accepted = {}) noexcept;
+        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const std::optional<RenderError>& cancel) noexcept;
         void acceptPreparation(std::uint64_t serial) noexcept;
-        void waitForUniformUpload(std::uint64_t serial) noexcept
-        {
-            slot_.uniform_upload_serial = std::max(slot_.uniform_upload_serial, serial);
-        }
         void rejectSuffix(RenderError) noexcept;
         [[nodiscard]] bool complete() const noexcept { return slot_.remaining_batches == 0; }
         [[nodiscard]] bool prepared() const noexcept { return slot_.graph_started; }
@@ -151,7 +143,7 @@ namespace lux::render::detail
         void accept(const SubmissionQueue&, std::uint64_t serial) noexcept;
         void enqueueReadyBatch(Slot&, std::uint32_t) noexcept;
         void selectReadyBatches(Slot&, std::uint32_t) noexcept;
-        void acceptBatch(Slot&, std::uint32_t, std::uint64_t, std::optional<BatchAccepted>) noexcept;
+        void acceptBatch(Slot&, std::uint32_t, std::uint64_t) noexcept;
         [[nodiscard]] bool hasPresentationBoundary(const BatchExecution&) const noexcept;
         [[nodiscard]] RenderResult<void>
         rebuildDependencies(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;

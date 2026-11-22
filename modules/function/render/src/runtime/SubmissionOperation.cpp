@@ -43,7 +43,6 @@ namespace lux::render::detail
         slot_.graph_started = false;
         slot_.submitted_batches = 0;
         slot_.preparation_serial = 0;
-        slot_.uniform_upload_serial = 0;
         slot_.remaining_batches = 0;
         slot_.recorded_passes = slot_.recorded_instances = 0;
     }
@@ -174,14 +173,14 @@ namespace lux::render::detail
             batch.waits.clear();
             std::ranges::fill(batch.stages, nri::StageBits::NONE);
             const auto& instance = *frame.instances[batch.instance].instance;
-            for (auto id : instance.plan_->submissions_[batch.local_batch].imported_images)
+            for (auto id : instance.plan_->submissions_[batch.local_batch].imported_resources)
             {
-                const auto* prepared = instance.frames_[slotIndex()].bindings[id.index].image_uses.preparation;
+                const auto* prepared = instance.frames_[slotIndex()].selectedUses(id.index).preparation;
                 if (!prepared) continue;
                 for (std::uint32_t q = 0; q < prepared->size(); ++q)
                 {
                     const auto serial = prepared->serials()[q];
-                    if (q == batch.queue || !serial) continue;
+                    if (q == batch.queue || serial <= device_.physicalQueue(q).completed()) continue;
                     batch.waits.accept(device_.submissionPoint(q, serial));
                     batch.stages[q] = nri::StageBits::ALL;
                 }
@@ -504,7 +503,7 @@ namespace lux::render::detail
     }
 
     void SubmissionOperation::acceptBatch(
-        Slot& frame, std::uint32_t index, std::uint64_t serial, std::optional<BatchAccepted> accepted
+        Slot& frame, std::uint32_t index, std::uint64_t serial
     ) noexcept
     {
         auto& batch = frame.batches[index];
@@ -558,7 +557,6 @@ namespace lux::render::detail
             }
         }
         instance.acceptedBatch(slotIndex(), batch.local_batch, point);
-        if (accepted) (*accepted)(instance, batch.local_batch, point);
         if (--execution.remaining_batches == 0)
         {
             frame.recorded_passes += execution.instance->recordedPassCount(slotIndex());
@@ -606,7 +604,7 @@ namespace lux::render::detail
     }
 
     exec::task<RenderResult<std::uint32_t>>
-    SubmissionOperation::submit(const std::optional<RenderError>& cancel, std::optional<BatchAccepted> receipt) noexcept
+    SubmissionOperation::submit(const std::optional<RenderError>& cancel) noexcept
     {
         auto& frame = slot_;
         if (cancel) co_return cxx::unexpected(*cancel);
@@ -625,7 +623,7 @@ namespace lux::render::detail
             frame.wait_fences.clear();
             frame.signal_fences.clear();
             const auto graphics = device_.queueIndex(device_.queue());
-            const auto preparation_serial = std::max(frame.preparation_serial, frame.uniform_upload_serial);
+            const auto preparation_serial = frame.preparation_serial;
             if (selected_queue != graphics && preparation_serial > first.waits.serials()[graphics])
             {
                 auto wait = device_.queue().dependency(preparation_serial, nri::StageBits::ALL);
@@ -688,7 +686,7 @@ namespace lux::render::detail
             }
             for (auto index : frame.recording_batches)
             {
-                acceptBatch(frame, index, serial, receipt);
+                acceptBatch(frame, index, serial);
             }
             ++submissions;
             if (cancel) co_return cxx::unexpected(*cancel);

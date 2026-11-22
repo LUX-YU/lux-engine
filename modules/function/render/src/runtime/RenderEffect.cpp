@@ -35,7 +35,7 @@ namespace lux::render
         effect->preparing_device = input.device;
         cxx::scope_exit finish([effect]() noexcept { effect->preparing_device = {}; });
         detail::EffectCompileRequest request{
-            input.effect, {*effect->source, effect->node_configurations}, {}, effect->output
+            {*effect->source, effect->node_configurations}, {}, effect->output
         };
         request.inputs.reserve(effect->node_states.size());
         for (const auto& state : effect->node_states) request.inputs.push_back({state.node, state.type, state.bytes});
@@ -47,11 +47,10 @@ namespace lux::render
             *device, std::move(request), {effect_catalog_, program_scheduler_, config_.diagnostics, stop_requested_}
         );
         if (!compiled) co_return AckResponse{compiled.error()};
-        cxx::scope_exit discard([&]() noexcept { device->removeUniformPools(input.effect); });
         if (stop_requested_.load()) co_return AckResponse{RenderError{kCommandCancelled}};
         if (const auto error = device->admissionError(); error.type) co_return AckResponse{error};
+        device->installEffectResources(input.effect, (*compiled)->preparation);
         effect->device_graphs.push_back({input.device, std::move(*compiled)});
-        discard.release();
         compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
         co_return AckResponse{};
     }
@@ -107,7 +106,7 @@ namespace lux::render
         }
 
         runtime_->effects_.erase(input.effect);
-        for (auto& device : runtime_->devices_) device->removeUniformPools(input.effect);
+        for (auto& device : runtime_->devices_) device->removeEffectResources(input.effect);
         output = {};
     }
 } // namespace lux::render

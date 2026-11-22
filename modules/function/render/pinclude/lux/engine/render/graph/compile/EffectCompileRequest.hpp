@@ -8,7 +8,6 @@ namespace lux::render::detail
 {
     struct EffectCompileRequest final
     {
-        EffectId effect;
         runtime_detail::EffectRecipeView recipe;
         std::vector<runtime_detail::EffectInputDefinition> inputs;
         EffectOutputDesc output;

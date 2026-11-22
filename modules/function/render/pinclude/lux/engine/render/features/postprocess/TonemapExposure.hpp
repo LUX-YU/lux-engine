@@ -4,7 +4,7 @@
 #include <cmath>
 #include <lux/engine/render/commands/EffectCommands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 
 namespace lux::render::detail
 {

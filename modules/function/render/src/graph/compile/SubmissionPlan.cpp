@@ -428,18 +428,24 @@ namespace lux::render::detail
                 access.write |= std::ranges::any_of(recording.after.images, changesLayout);
             }
         }
-        const auto retain_image = [&](std::uint32_t batch, GraphResourceId resource)
+        const auto retain_import = [&](std::uint32_t batch, GraphResourceId resource)
         {
-            const auto& slot = resources[resource.index];
-            if (slot.origin != EGraphOrigin::IMPORTED || !std::holds_alternative<GraphImageDesc>(slot.description))
-                return;
-            auto& images = batches[batch].imported_images;
-            if (std::ranges::find(images, resource) == images.end()) images.push_back(resource);
+            if (resources[resource.index].origin != EGraphOrigin::IMPORTED) return;
+            auto& slots = batches[batch].imported_resources;
+            if (std::ranges::find(slots, resource) == slots.end()) slots.push_back(resource);
         };
-        for (const auto& access : imports) retain_image(access.batch, access.resource);
-        for (const auto& pass : recording.passes)
-            for (const auto& transition : pass.before.images) retain_image(pass.submission, {transition.resource});
-        for (const auto& transition : recording.after.images) retain_image(last, {transition.resource});
+        for (const auto& access : imports)
+        {
+            retain_import(access.batch, access.resource);
+            retain_import(access.release_batch, access.resource);
+        }
+        const auto retain_transitions = [&](std::uint32_t batch, const BarrierBatch& barriers)
+        {
+            for (const auto& transition : barriers.images) retain_import(batch, {transition.resource});
+            for (const auto& transition : barriers.buffers) retain_import(batch, {transition.resource});
+        };
+        for (const auto& pass : recording.passes) retain_transitions(pass.submission, pass.before);
+        retain_transitions(last, recording.after);
         for (auto& batch : batches)
         {
             std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);

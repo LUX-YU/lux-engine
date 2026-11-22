@@ -45,7 +45,7 @@ namespace lux::render::detail
         if (!opened) return cxx::unexpected(opened.error());
         if (!*opened) return false;
         selection_ = **opened;
-        phase_ = EPhase::UNIFORMS;
+        phase_ = EPhase::RESOURCES;
         waiting_for_gpu_ = false;
         submission_.emplace(device_, progress_, *selection_, workspace_.submissions);
         if (uploads_) uploads_->reservePreparationStaging(true);
@@ -69,14 +69,14 @@ namespace lux::render::detail
 
     void FrameOperation::finish() noexcept
     {
-        for (auto* instance : workspace_.frozen_instances) instance->frozen_slot_ = kGraphInvalidIndex;
+        for (auto* instance : workspace_.frozen_instances)
+        {
+            instance->frames_[slot()].replaced_projections.clear();
+            instance->frozen_slot_ = kGraphInvalidIndex;
+        }
         workspace_.frozen_instances.clear();
         const bool unknown = cancellation_ && cancellation_->type == kOutcomeUnknown;
-        for (const auto& selected : workspace_.uniforms)
-        {
-            owner_->uniformPool(selected.pool).versions.unpin(selected.version, unknown);
-        }
-        workspace_.uniforms.clear();
+        workspace_.buffers.finish(unknown);
         for (const auto& selection : workspace_.native_bindings)
             device_.descriptors().releaseNativeBindings(selection);
         workspace_.native_bindings.clear();
@@ -93,14 +93,8 @@ namespace lux::render::detail
         if (settling_) std::terminate();
         settling_ = true;
         cxx::scope_exit settled([&]() noexcept { settling_ = false; });
-        if (error.type)
-        {
-            if (uploads_) uploads_->cancelFrameCopies();
-            for (const auto& selected : workspace_.uniforms)
-            {
-                owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, {}, error);
-            }
-        }
+        if (error.type && uploads_) uploads_->cancelFrameCopies();
+        workspace_.buffers.settle(accepted, error);
         const auto locate = [&](ReplicaCopyRange copy_ranges) noexcept -> SubmissionPoint
         {
             if (error.type || !copy_ranges.count) return {};
@@ -166,17 +160,13 @@ namespace lux::render::detail
         const auto receipt = **submitted;
         submission_->acceptPreparation(receipt.point.serial);
         uploads_->acceptFrameCopies(receipt);
-        for (const auto& selected : workspace_.uniforms)
-        {
-            owner_->uniformPool(selected.pool).versions.settleUpload(selected.version, receipt.point, {});
-        }
         settlePreparation(receipt.point, receipt.ranges);
         co_return 1;
     }
 
     exec::task<RenderResult<std::uint32_t>> FrameOperation::run(
         std::span<RenderGraphInstance* const> instances, std::span<const ResourceInstanceId> storages,
-        std::span<const SubmissionOrder> order, std::optional<UniformStateLookup> uniform_state
+        std::span<const SubmissionOrder> order
     ) noexcept
     {
         if (!active() || worker_pending_ || settling_)
@@ -194,25 +184,9 @@ namespace lux::render::detail
         if (const auto error = device_.terminalError(); error.type) cancellation_ = error;
         if (cancellation_) co_return cxx::unexpected(*cancellation_);
 
-        const auto accept_uniforms = [&](const RenderGraphInstance& instance, std::uint32_t batch,
-                                         SubmissionPoint point) noexcept
-        {
-            for (const auto& block : instance.uniform_blocks_)
-            {
-                if (!std::ranges::binary_search(block.batches, batch)) continue;
-                const auto selected = std::ranges::find(workspace_.uniforms, block.pool, &SelectedUniformVersion::pool);
-                if (selected == workspace_.uniforms.end()) std::terminate();
-                owner_->uniformPool(block.pool).versions.accept(selected->version, point);
-            }
-        };
-        const auto batch_receipt = [&]() noexcept -> std::optional<SubmissionOperation::BatchAccepted>
-        {
-            if (workspace_.uniforms.empty()) return std::nullopt;
-            return SubmissionOperation::BatchAccepted{accept_uniforms};
-        };
         if (phase_ == EPhase::SUBMITTING)
         {
-            auto accepted = co_await submission_->submit(cancellation_, batch_receipt());
+            auto accepted = co_await submission_->submit(cancellation_);
             if (!accepted) cancellation_ = accepted.error();
             else if (submission_->complete()) finish();
             co_return accepted;
@@ -227,23 +201,6 @@ namespace lux::render::detail
             auto copied = co_await submitPreparation();
             co_return track(copied);
         }
-        if (phase_ == EPhase::UNIFORMS)
-        {
-            auto uniform = prepareUniforms(instances, uniform_state);
-            if (!uniform) co_return cxx::unexpected(track(uniform).error());
-            if (*uniform == EPreparationStatus::AWAITING_PROGRESS)
-            {
-                if (uploads_ && uploads_->hasFrameCopies())
-                {
-                    co_return track(co_await submitPreparation());
-                }
-                workspace_.blocked_completion = workspace_.uniform_completed;
-                waiting_for_gpu_ = true;
-                co_return 0;
-            }
-            waiting_for_gpu_ = false;
-            phase_ = EPhase::RESOURCES;
-        }
         if (!storages.empty() && !uploads_)
         {
             cancellation_ = RenderError{kDeviceArgument};
@@ -251,7 +208,7 @@ namespace lux::render::detail
         }
         if (phase_ == EPhase::RESOURCES)
         {
-            auto resources = prepareStorages(storages);
+            auto resources = prepareStorages(instances, storages);
             if (!resources) co_return cxx::unexpected(track(resources).error());
             if (uploads_ && !uploads_->hasFrameCopies()) settlePreparation();
             if (*resources == EPreparationStatus::READY) phase_ = EPhase::PRODUCER_SELECTIONS;
@@ -335,69 +292,10 @@ namespace lux::render::detail
             recorded = co_await workers_->recordings_.nest(submission_->record(cpu_, true));
         if (!recorded) co_return cxx::unexpected(track(recorded).error());
         phase_ = EPhase::SUBMITTING;
-        auto accepted = co_await submission_->submit(cancellation_, batch_receipt());
+        auto accepted = co_await submission_->submit(cancellation_);
         if (!accepted) cancellation_ = accepted.error();
         else if (submission_->complete()) finish();
         co_return accepted;
-    }
-
-    RenderResult<FrameOperation::EPreparationStatus>
-    FrameOperation::prepareUniforms(
-        std::span<RenderGraphInstance* const> instances, std::optional<UniformStateLookup> lookup
-    ) noexcept
-    {
-        if (std::ranges::none_of(instances, [](const auto* instance) noexcept
-        {
-            return !instance->uniform_blocks_.empty();
-        })) return EPreparationStatus::READY;
-        if (!uploads_ || !owner_ || !lookup) return cxx::unexpected(RenderError{kDeviceUnsupported});
-        if (!workspace_.uniform_completed.size()) workspace_.uniform_completed = device_.makeFrontiers();
-        device_.readCompleted(workspace_.uniform_completed);
-        bool ready = true;
-        for (auto* instance : instances)
-        {
-            for (const auto& block : instance->uniform_blocks_)
-            {
-                auto& pool = owner_->uniformPool(block.pool);
-                auto& versions = pool.versions;
-                const auto found = std::ranges::find(workspace_.uniforms, block.pool, &SelectedUniformVersion::pool);
-                UniformVersionId version;
-                if (found != workspace_.uniforms.end())
-                {
-                    version = found->version;
-                }
-                else
-                {
-                    const auto* state = (*lookup)(pool.effect, pool.node, versions.stateType());
-                    if (!state) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    auto selected = versions.pin(state, workspace_.uniform_completed);
-                    if (!selected)
-                    {
-                        if (selected.error().type != kDeviceBusy) return cxx::unexpected(selected.error());
-                        ready = false;
-                        continue;
-                    }
-                    version = *selected;
-                    workspace_.uniforms.push_back({block.pool, version});
-                }
-                if (!versions.ready(version))
-                {
-                    auto staged = versions.stage(version, *uploads_);
-                    if (!staged)
-                    {
-                        const bool can_retry = staged.error().type == kDeviceCapacity &&
-                            (uploads_->hasFrameCopies() || device_.pendingGpuWork());
-                        if (!can_retry) return cxx::unexpected(staged.error());
-                    }
-                    ready = false;
-                    continue;
-                }
-                instance->setResource(block.resource.index, slot(), versions.binding(version));
-                const auto upload_serial = versions.uploadSerial(version);
-                if (upload_serial > device_.queue().completed()) submission_->waitForUniformUpload(upload_serial);
-            }
-        }
-        return ready ? EPreparationStatus::READY : EPreparationStatus::AWAITING_PROGRESS;
     }
 
     std::pair<void*, const StorageBindingOps*> FrameOperation::frameStorage(ResourceInstanceId id) const noexcept
@@ -410,11 +308,41 @@ namespace lux::render::detail
     }
 
     RenderResult<FrameOperation::EPreparationStatus>
-    FrameOperation::prepareStorages(std::span<const ResourceInstanceId> storages) noexcept
+    FrameOperation::prepareStorages(
+        std::span<RenderGraphInstance* const> instances, std::span<const ResourceInstanceId> storages
+    ) noexcept
     {
         const auto frame = replicaFrame();
         auto& replicas = workspace_.replicas[frame.slot];
         bool resources_ready = true;
+        bool sampled_completion = false;
+        for (auto* instance : instances)
+        {
+            for (const auto& input : instance->constant_buffers_)
+            {
+                if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
+                if (!sampled_completion)
+                {
+                    if (!workspace_.blocked_completion.size()) workspace_.blocked_completion = device_.makeFrontiers();
+                    device_.readCompleted(workspace_.blocked_completion);
+                    sampled_completion = true;
+                }
+                auto selected = workspace_.buffers.prepare(input, workspace_.blocked_completion, *uploads_);
+                if (!selected)
+                {
+                    const bool retry = selected.error().type == kDeviceCapacity &&
+                        (uploads_->hasFrameCopies() || device_.pendingGpuWork());
+                    if (!retry) return cxx::unexpected(selected.error());
+                }
+                if (!selected || !*selected)
+                {
+                    resources_ready = false;
+                    continue;
+                }
+                instance->setResource(input.resource.index, frame.slot, **selected);
+            }
+        }
+        if (!resources_ready) return EPreparationStatus::AWAITING_PROGRESS;
         replicas.resize(storages.size());
         for (std::size_t i = 0; i < storages.size(); ++i)
         {

@@ -876,6 +876,64 @@ struct EndFailure final
     }
 };
 
+static void frozenProjectionReceipts(Validation& validation, bool d3d12)
+{
+    DeviceOptions options;
+    if (d3d12) options.backend = EGraphicsBackend::D3D12;
+    TestDevice device(options, diagnostics(validation), nativeValidationEnabled());
+    auto& core = const_cast<nri::CoreInterface&>(device->nriCore());
+    nri::Buffer* native = nullptr;
+    const nri::BufferDesc description{16, 0, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
+    CHECK(core.CreatePlacedBuffer(device->device(), NriDeviceHeap, description, native) == nri::Result::SUCCESS);
+    auto old = device->makeFrontiers(), interim = device->makeFrontiers(), next = device->makeFrontiers();
+    {
+        RenderGraphBuilder builder;
+        const auto buffer = take(builder.declareResource({"external", GraphBufferDesc{16}, EGraphOrigin::IMPORTED}));
+        CHECK(builder.addTransferPass("zero external", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}));
+        const auto graph = take(std::move(builder).finish());
+        auto compiled = compile(*device, graph, take(analyzeRenderGraph(graph)), nullptr);
+        JobGpuResources gpu(*device, 1);
+        RenderGraphInstance instance(gpu, compiled.executable, compiled.programs);
+        CHECK(instance.initialize());
+        const auto publish = [&](SubmissionFrontiers& destination)
+        {
+            instance.setResource(buffer.index, 0, {.buffer = native, .size = 16, .queue_uses = {nullptr, &destination}});
+        };
+        publish(old);
+        FrameHarness frames(*device, 1);
+        const std::array instances{&instance};
+        RecordingGate::original = core.CmdZeroBuffer;
+        RecordingGate::entered = 0;
+        RecordingGate::released = false;
+        core.CmdZeroBuffer = &RecordingGate::zero;
+        std::thread worker([&] { CHECK(take(runTask(frames.render(instances, {}))) > 0); });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!RecordingGate::entered.load())
+        {
+            CHECK(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        CHECK(instance.frozenForSubmission(0));
+        publish(interim);
+        publish(next);
+        RecordingGate::released = true;
+        RecordingGate::released.notify_all();
+        worker.join();
+        core.CmdZeroBuffer = RecordingGate::original;
+        CHECK(device->drain());
+        const auto peak = [](const SubmissionFrontiers& uses) { return std::ranges::max(uses.serials()); };
+        const auto first = peak(old);
+        CHECK(first && !peak(interim) && !peak(next));
+        CHECK(take(runTask(frames.render(instances, {}))) > 0 && device->drain());
+        CHECK(peak(old) == first && !peak(interim) && peak(next) > first);
+    }
+    CHECK(device->drain());
+    core.DestroyBuffer(native);
+    CHECK(validation.errors == 0);
+    std::puts("FROZEN PROJECTION PASS: two replacements during recording; only the frozen backing received "
+              "the first accepted frontier and only the final replacement received the next");
+}
+
 static void recordingOwnership(Validation& validation, bool d3d12)
 {
     DeviceOptions options;
@@ -3299,7 +3357,9 @@ int main(int argc, char** argv)
 #endif
     if (argc > 1 && std::string_view(argv[1]) == "recording")
     {
-        recordingOwnership(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");
+        const bool d3d12 = argc > 2 && std::string_view(argv[2]) == "d3d12";
+        frozenProjectionReceipts(validation, d3d12);
+        recordingOwnership(validation, d3d12);
         CHECK(validation.errors == 0);
         return 0;
     }

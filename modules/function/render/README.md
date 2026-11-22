@@ -78,7 +78,10 @@ For shared images that need different native layouts, give each use its own phys
 example, describe the sampled projection with `initial_use` and `read_use` set to `SAMPLED`, and the copy projection
 with both set to `TRANSFER_SOURCE`. An owner can opt a projection into cross-queue reads through
 `StorageGraphImport::concurrent_image_read`. Its native texture must use concurrent sharing. Supply stable,
-device-bound preparation and reader frontiers in `ResourceInput::image_uses` for each physical image.
+device-bound preparation and accepted-use frontiers in `ResourceInput::queue_uses` for each physical image.
+Versioned buffer inputs use the same fields. Submission waits on the selected backing's preparation and records
+its accepted use for the compiled access and release batches. An owner keeps the frontier objects alive through
+recording and native acceptance. A later publication can supply different frontier objects for the next frame.
 
 Prepare each new image with `ResourceUploader::writeImage`. Its optional `ImageUploadBoundary` selects the sampled
 or copy-source layout and collects the actual Copy/Acquire receipts, including an accepted prefix on failure.
@@ -1236,12 +1239,13 @@ specified graph buffer range. The compiler checks the complete `ConstantBlockTra
 target's reflected layout and the device's uniform buffer offset and range limits. The backend validates the
 physical buffer and applies native CBV padding as needed.
 
-An Effect node can own an `EffectUniformBlock<T>` in its typed state. The node command sets its
-value and advances the revision. During device build, `EffectBuildContext::uniformBlock<T, State, Member>(name)`
-declares a buffer version for `setUniformConstant<T>()`. Each device round selects one revision of that
-block for its Jobs. The version pool stages each revision once and keeps its backing until the upload,
-prepared consumers, and accepted uses on every physical queue retire. The pool holds up to `FIF + 1`
-versions per block. GPU completion advances the round when all backings are in use.
+An Effect state can expose a typed constant block and its nonzero 64-bit revision through
+`EffectBuildContext::constantBuffer<T, State, ValueMember, RevisionMember>()`. Its command updates both
+fields on the Server owner. The compiler qualifies the complete shader ABI and publishes a source slot
+and the imported-buffer uses for each batch. Job installation binds both fields once. Jobs on one device share
+the first selection made for a block in a round, including when backing capacity delays its upload.
+The round retains selected CPU bytes for staging. Device-owned storage retains up to `FIF + 1` native
+versions per block and reuses a version after its prepared readers, upload and accepted queue uses retire.
 
 Cooked fixed constant layouts record the matrix order and every enclosing fixed array's count and
 stride for each leaf. The SPIR-V verifier checks these facts against native types, including Slang's

@@ -44,15 +44,15 @@ namespace lux::render
                 value.addressed_revision;
         }
 
-        bool validImageUses(
-            nri::Texture* image, detail::ImageQueueUses uses, const detail::DeviceSession& device
+        bool validQueueUses(
+            bool has_backing, detail::ResourceQueueUses uses, const detail::DeviceSession& device
         ) noexcept
         {
-            const detail::SubmissionFrontiers* frontiers[]{uses.preparation, uses.reads};
+            const detail::SubmissionFrontiers* frontiers[]{uses.preparation, uses.accepted};
             for (const auto* frontier : frontiers)
             {
                 if (!frontier) continue;
-                if (!image || !frontier->belongsTo(&device, device.queueCount())) return false;
+                if (!has_backing || !frontier->belongsTo(&device, device.queueCount())) return false;
                 for (std::size_t q = 0; q < frontier->size(); ++q)
                     if (frontier->serials()[q] > device.physicalQueue(q).submitted()) return false;
             }
@@ -161,20 +161,20 @@ namespace lux::render
         ProjectionFamily candidate;
         auto& buffers = candidate.buffers;
         auto& images = candidate.images;
-        auto& image_uses = candidate.image_uses;
+        auto& queue_uses = candidate.queue_uses;
         const bool is_image = std::holds_alternative<GraphImageDesc>(description);
         for (std::size_t i = 0; i < output.size(); ++i)
         {
             if ((is_image && hasBufferFields(output[i])) || (!is_image && output[i].image))
                 return cxx::unexpected(RenderError{kStorageMismatch});
             images[i] = output[i].image;
-            image_uses[i] = output[i].image_uses;
-            if (!validImageUses(images[i], image_uses[i], *deviceOf(link.storage)))
+            queue_uses[i] = output[i].queue_uses;
+            if (!validQueueUses(images[i] || output[i].buffer, queue_uses[i], *deviceOf(link.storage)))
                 return cxx::unexpected(RenderError{kStorageMismatch});
             if (images[i])
             {
                 const auto& compiled = instance.plan().resources()[link.resource.index];
-                if (compiled.concurrent_image_read && (!image_uses[i].preparation || !image_uses[i].reads))
+                if (compiled.concurrent_image_read && (!queue_uses[i].preparation || !queue_uses[i].accepted))
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 if (auto valid = instance.qualifyImportedImage(link.resource, *images[i], instance.target()); !valid)
                     return cxx::unexpected(valid.error());
@@ -226,16 +226,18 @@ namespace lux::render
         const auto publish_image = [&]() -> RenderResult<std::size_t>
         {
             if (hasBufferFields(value)) return cxx::unexpected(RenderError{kStorageMismatch});
-            const GraphImagePublication update{projection, frame, value.image, value.image_uses};
+            const GraphImagePublication update{projection, frame, value.image, value.queue_uses};
             return publishGraphImages(storage, {&update, 1});
         };
-        if (value.image || value.image_uses != detail::ImageQueueUses{}) return publish_image();
+        if (value.image) return publish_image();
         if (found != entry->graph_bindings.end())
         {
             const auto& user = *found->second.users.begin();
             const auto& desc = user.instance->plan().resources()[user.resource.index].description;
             if (std::holds_alternative<GraphImageDesc>(desc)) return publish_image();
         }
+        if (!validQueueUses(value.buffer != nullptr, value.queue_uses, *deviceOf(storage)))
+            return cxx::unexpected(RenderError{kStorageMismatch});
         if (value.size > UINT64_MAX - value.offset) return cxx::unexpected(RenderError{kGraphInvalidRange});
         if (found == entry->graph_bindings.end())
         {
@@ -281,6 +283,7 @@ namespace lux::render
             binding.backing.buffers = candidate;
             if (!entry->product_buffers.empty()) pruneBufferProducts(storage);
         }
+        for (auto i = first; i < end; ++i) binding.backing.queue_uses[i] = value.queue_uses;
         for (const auto& user : users) user.instance->setResource(user.resource.index, frame, value);
         return users.size();
     }
@@ -298,7 +301,7 @@ namespace lux::render
         for (std::size_t i = 0; i < updates.size(); ++i)
         {
             const auto& update = updates[i];
-            if (!validImageUses(update.image, update.uses, *deviceOf(storage)))
+            if (!validQueueUses(update.image, update.uses, *deviceOf(storage)))
                 return cxx::unexpected(RenderError{kStorageMismatch});
             for (const auto& prior : updates.first(i))
             {
@@ -327,12 +330,12 @@ namespace lux::render
                 for (std::uint32_t f = 0; f < count; ++f)
                 {
                     if (!includesFrame(update, f)) continue;
-                    if (family.backing.images[f] == update.image && family.backing.image_uses[f] == update.uses) continue;
+                    if (family.backing.images[f] == update.image && family.backing.queue_uses[f] == update.uses) continue;
                     if (user.instance->frozenForSubmission(f)) return cxx::unexpected(RenderError{kDeviceBusy});
                 }
                 if (update.image)
                 {
-                    if (graph_resource.concurrent_image_read && (!update.uses.preparation || !update.uses.reads))
+                    if (graph_resource.concurrent_image_read && (!update.uses.preparation || !update.uses.accepted))
                         return cxx::unexpected(RenderError{kStorageMismatch});
                     const auto& reader = *user.instance;
                     auto valid = reader.qualifyImportedImage(user.resource, *update.image, reader.target());
@@ -358,10 +361,10 @@ namespace lux::render
             for (std::uint32_t f = 0; f < count; ++f)
             {
                 if (!includesFrame(update, f)) continue;
-                if (family.backing.images[f] == update.image && family.backing.image_uses[f] == update.uses) continue;
+                if (family.backing.images[f] == update.image && family.backing.queue_uses[f] == update.uses) continue;
                 family.backing.images[f] = update.image;
-                family.backing.image_uses[f] = update.uses;
-                const detail::ResourceInput input{.image = update.image, .image_uses = update.uses};
+                family.backing.queue_uses[f] = update.uses;
+                const detail::ResourceInput input{.image = update.image, .queue_uses = update.uses};
                 for (const auto& user : family.users) user.instance->setResource(user.resource.index, f, input);
             }
             updated += family.users.size();

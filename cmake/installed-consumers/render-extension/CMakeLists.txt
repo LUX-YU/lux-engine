@@ -42,14 +42,27 @@ if(WIN32)
 endif()
 
 set(compute_source "${CMAKE_CURRENT_LIST_DIR}/ComputeOutput.slang")
-set(compute_header "${CMAKE_CURRENT_BINARY_DIR}/GraphFill.hpp")
-add_custom_command(
-    OUTPUT "${compute_header}"
-    COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${compute_source}" main compute bundle "${compute_header}"
-        --symbol=kGraphFill
-    DEPENDS "${compute_source}" "${LUX_PROBE_SHADER_COMPILER}"
-    VERBATIM
-)
+
+foreach(entry IN ITEMS main typed)
+    set(source "${compute_source}")
+    if(entry STREQUAL "main")
+        set(symbol GraphFill)
+    else()
+        set(source "${CMAKE_CURRENT_LIST_DIR}/TypedComputeOutput.slang")
+        set(symbol TypedGraphFill)
+    endif()
+
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/${symbol}.hpp")
+    add_custom_command(
+        OUTPUT "${header}"
+        COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${source}" ${entry} compute bundle "${header}"
+            "--symbol=k${symbol}"
+        DEPENDS "${source}" "${compute_source}" "${LUX_PROBE_SHADER_COMPILER}"
+        VERBATIM
+    )
+
+    list(APPEND compute_headers "${header}")
+endforeach()
 
 foreach(entry IN ITEMS Fullscreen Red Green RecordColor)
     set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/ResidentRaster.slang")
@@ -74,7 +87,7 @@ foreach(entry IN ITEMS Fullscreen Red Green RecordColor)
     list(APPEND raster_headers "${header}")
 endforeach()
 
-add_executable(compute_output ComputeOutput.cpp "${compute_header}" ${raster_headers})
+add_executable(compute_output ComputeOutput.cpp ${compute_headers} ${raster_headers})
 
 set(joint_shader "${render_test_sources}/shaders/EffectGraphImport.slang")
 set(joint_header "${CMAKE_CURRENT_BINARY_DIR}/JointAverage.hpp")
@@ -182,7 +195,7 @@ foreach(header IN ITEMS
     core/ConfigValue core/FinalBufferVersion core/RenderErrorSink
     effect/CapabilityDefinition effect/EffectBundles effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
-    extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
+    extensions/effect/EffectBuildContext graph/ConstantBlock
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
     extensions/execution/GraphPreparation graph/DrawList graph/DrawResource
     graph/IndexedGeometry extensions/execution/FramePreparation resources/material/Resource resource/RasterProgramBuild

@@ -8,12 +8,13 @@ namespace lux::render::detail
 {
     class SubmissionFrontiers;
 
-    // Both belong to the selected physical image. The owner keeps them stable through replacement or unbind.
-    struct ImageQueueUses final
+    // The owner keeps these addresses alive through the last frozen submission and its receipt.
+    // Preparation orders the first use; accepted includes each physical queue that used the selected backing.
+    struct ResourceQueueUses final
     {
         const SubmissionFrontiers* preparation = nullptr;
-        SubmissionFrontiers* reads = nullptr;
-        bool operator==(const ImageQueueUses&) const noexcept = default;
+        SubmissionFrontiers* accepted = nullptr;
+        bool operator==(const ResourceQueueUses&) const noexcept = default;
     };
 
     // Borrowed physical bindings. The supplying object retains their lifetime.
@@ -26,6 +27,6 @@ namespace lux::render::detail
         // slice list changes only with its physical topology, independently of content updates.
         std::span<nri::Buffer* const> addressed_buffers;
         std::uint64_t addressed_revision = 0;
-        ImageQueueUses image_uses{};
+        ResourceQueueUses queue_uses{};
     };
 } // namespace lux::render::detail

@@ -258,6 +258,21 @@ endif()
 
 add_test(NAME render.graph.analysis COMMAND render_graph_chain analysis)
 add_test(NAME render.graph.cpu_recording COMMAND render_graph_chain cpu-recording)
+if(WIN32)
+    add_executable(render_constant_buffer_retirement
+        ConstantBufferRetirement.cpp
+        ../src/resource/ConstantBufferStorage.cpp
+    )
+
+    target_include_directories(render_constant_buffer_retirement PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+    target_link_libraries(render_constant_buffer_retirement PRIVATE render_native_probe_host NRI Vulkan::Headers)
+
+    foreach(backend IN ITEMS vulkan d3d12)
+        add_test(NAME render.constant_buffer.retirement_${backend} COMMAND render_constant_buffer_retirement ${backend})
+        set_tests_properties(render.constant_buffer.retirement_${backend} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+    endforeach()
+endif()
+
 if(WIN32 AND LUX_RENDER_GRAPH_ALLOCATION_PROBE)
     target_sources(render_graph_chain PRIVATE GraphMeasurements.cpp)
     target_compile_definitions(render_graph_chain PRIVATE LUX_RENDER_GRAPH_ALLOCATION_PROBE)

@@ -36,7 +36,6 @@ set(render_sources
     src/effect/MeshSurfaceStream.cpp
     src/effect/EffectCatalog.cpp
     src/effect/EffectGraphBuild.cpp
-    src/effect/UniformBlockVersions.cpp
     src/effect/EffectGraph.cpp
     src/effect/EffectValidation.cpp
     src/effect/Lighting.cpp
@@ -55,6 +54,7 @@ set(render_sources
     src/resource/ResourceDefinition.cpp
     src/resource/StorageMeta.cpp
     src/resource/GraphInstallation.cpp
+    src/resource/ConstantBufferStorage.cpp
     src/resource/ResourceRegistry.cpp
     src/resource/FinalBufferVersions.cpp
     src/resource/ResourceSet.cpp

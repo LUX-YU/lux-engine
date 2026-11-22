@@ -3,7 +3,7 @@
 #include <exec/async_scope.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
-#include <lux/engine/render/effect/UniformBlockVersions.hpp>
+#include <lux/engine/render/resource/ConstantBufferStorage.hpp>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
@@ -77,8 +77,7 @@ namespace lux::render::detail
             std::vector<RenderGraphInstance*> producer_instances;
             std::vector<PreparedBufferCopy> prepared_buffers;
             SubmissionFrontiers blocked_completion;
-            SubmissionFrontiers uniform_completed;
-            std::vector<SelectedUniformVersion> uniforms;
+            ConstantBufferSelections buffers;
             std::vector<DescriptorTable::NativeBindingSelection> native_bindings;
         };
 
@@ -101,11 +100,9 @@ namespace lux::render::detail
         {
             return submitting() && submission_->refersTo(instance);
         }
-        using UniformStateLookup = cxx::function_ref<const void*(EffectId, graph::NodeId, cxx::basic_type_info) noexcept>;
-
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> run(
             std::span<RenderGraphInstance* const>, std::span<const ResourceInstanceId>,
-            std::span<const SubmissionOrder> order = {}, std::optional<UniformStateLookup> uniform_state = {}
+            std::span<const SubmissionOrder> order = {}
         ) noexcept;
         void useRecordingWorkers(RecordingWorkers& workers) noexcept { workers_ = &workers; }
 
@@ -114,7 +111,6 @@ namespace lux::render::detail
     private:
         enum class EPhase : std::uint8_t
         {
-            UNIFORMS,
             RESOURCES,
             PRODUCER_SELECTIONS,
             PRODUCER_UPLOADS,
@@ -131,8 +127,7 @@ namespace lux::render::detail
 
         [[nodiscard]] ReplicaFrame replicaFrame() const noexcept { return {slot(), selection_->epoch}; }
         [[nodiscard]] RenderResult<EPreparationStatus>
-        prepareUniforms(std::span<RenderGraphInstance* const>, std::optional<UniformStateLookup>) noexcept;
-        [[nodiscard]] RenderResult<EPreparationStatus> prepareStorages(std::span<const ResourceInstanceId>) noexcept;
+        prepareStorages(std::span<RenderGraphInstance* const>, std::span<const ResourceInstanceId>) noexcept;
         [[nodiscard]] RenderResult<EPreparationStatus> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
         [[nodiscard]] std::uint32_t slot() const noexcept { return context().slot_index; }
@@ -145,7 +140,7 @@ namespace lux::render::detail
         RecordingWorkers* workers_ = nullptr;
         DeviceEntry* owner_;
         std::optional<FrameProgress::SlotSelection> selection_;
-        EPhase phase_ = EPhase::UNIFORMS;
+        EPhase phase_ = EPhase::RESOURCES;
         std::optional<SubmissionOperation> submission_;
         std::optional<RenderError> cancellation_;
         bool worker_pending_ = false;

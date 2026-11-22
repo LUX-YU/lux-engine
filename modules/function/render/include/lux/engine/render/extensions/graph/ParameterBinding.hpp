@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstddef>
-#include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <span>
 #include <vector>
 

@@ -4,7 +4,7 @@
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/engine/render/extensions/graph/Work.hpp>
@@ -114,16 +114,15 @@ namespace lux::render
         }
 
         // The returned version must be used as one fixed typed uniform descriptor.
-        template <ShaderConstantBlock T, class State, EffectUniformBlock<T> State::*Member>
-        [[nodiscard]] RenderResult<ResourceVersion> uniformBlock(std::string_view name) noexcept
+        template <ShaderConstantBlock T, class State, T State::*Value, std::uint64_t State::*Revision>
+        [[nodiscard]] RenderResult<ResourceVersion> constantBuffer() noexcept
         {
-            return declareUniformBlock(name, {
-                cxx::make_basic_type_info<State>(),
-                kConstantBlockContract<T>,
-                [](const void* state) noexcept -> extension_detail::UniformSnapshot
+            return declareConstantBuffer({
+                cxx::make_basic_type_info<State>(), kConstantBlockContract<T>,
+                [](const void* owner) noexcept -> extension_detail::BoundConstantValue
                 {
-                    const auto& block = static_cast<const State*>(state)->*Member;
-                    return {std::as_bytes(std::span{&block.value(), 1}), block.revision()};
+                    const auto& state = *static_cast<const State*>(owner);
+                    return {std::as_bytes(std::span{&(state.*Value), 1}), &(state.*Revision)};
                 }
             });
         }
@@ -156,7 +155,7 @@ namespace lux::render
         bindStorageProjection(std::string_view, const ResourceRequirement&, GraphResource, std::uint32_t) noexcept = 0;
         [[nodiscard]] virtual const ConfigValue* nodeConfiguration() const noexcept = 0;
         [[nodiscard]] virtual RenderResult<ResourceVersion>
-        declareUniformBlock(std::string_view, extension_detail::EffectUniformSource) noexcept = 0;
+        declareConstantBuffer(extension_detail::ConstantBufferField) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void>
         declareInlineCopy(GraphPassId, extension_detail::InlineBlockInput) noexcept = 0;
         [[nodiscard]] virtual RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info, std::size_t) noexcept = 0;

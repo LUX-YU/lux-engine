@@ -109,7 +109,7 @@ namespace lux::render::runtime_detail
             std::vector<std::vector<EffectResourceBundle>> node_inputs;
             ImportSlots slots;
             PreparationDefinition preparation;
-            std::vector<UniformBlockDeclaration> uniforms;
+            std::vector<ConstantBufferDeclaration> uniforms;
 
             EffectLoweringWorkspace(EffectBuildContract contract, std::size_t pin_count) noexcept
                 : contract(contract), bundles(pin_count)
@@ -394,21 +394,20 @@ namespace lux::render::runtime_detail
 
         private:
             RenderResult<ResourceVersion>
-            declareUniformBlock(std::string_view name, extension_detail::EffectUniformSource source) noexcept override
+            declareConstantBuffer(extension_detail::ConstantBufferField source) noexcept override
             {
                 const auto existing = std::ranges::find_if(workspace_.uniforms, [&](const auto& old) noexcept
                 {
-                    return old.node == node_.source && old.name == name;
+                    return old.node == node_.source && old.source.bind == source.bind;
                 });
-                if (name.empty() || existing != workspace_.uniforms.end())
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {node_.source.value}});
+                if (existing != workspace_.uniforms.end()) return ResourceVersion{existing->resource, 0};
                 const auto bytes = source.block.bytes;
                 auto resource = workspace_.builder.declareResource({
-                    "uniform/" + std::to_string(node_.source.value) + "/" + std::string(name),
+                    "constant buffer/" + std::to_string(workspace_.uniforms.size()),
                     GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, bytes}}, EGraphUse::UNIFORM_READ
                 });
                 if (!resource) return cxx::unexpected(resource.error());
-                workspace_.uniforms.push_back({node_.source, std::string(name), *resource, source});
+                workspace_.uniforms.push_back({node_.source, *resource, source});
                 return ResourceVersion{*resource, 0};
             }
 
@@ -527,7 +526,7 @@ namespace lux::render::runtime_detail
             {
                 const auto resource = member.version.resource;
                 const bool is_uniform =
-                    std::ranges::find(uniforms, resource, &UniformBlockDeclaration::resource) != uniforms.end();
+                    std::ranges::find(uniforms, resource, &ConstantBufferDeclaration::resource) != uniforms.end();
                 const bool is_prepared =
                     std::ranges::find(preparation.buffers, resource, &PreparationDefinition::Buffer::resource) !=
                     preparation.buffers.end();
@@ -569,7 +568,7 @@ namespace lux::render::runtime_detail
         std::vector<bool> linked_targets(source->resources().size());
         std::vector<EffectStorageImport*> linked_storages(source->resources().size());
         std::vector<bool> linked_buffers(source->resources().size());
-        std::vector<const UniformBlockDeclaration*> linked_uniforms(source->resources().size());
+        std::vector<const ConstantBufferDeclaration*> linked_uniforms(source->resources().size());
         for (const auto& uniform : uniforms) linked_uniforms[uniform.resource.index] = &uniform;
         for (const auto& buffer : preparation.buffers) linked_buffers[buffer.resource.index] = true;
         for (const auto& slot : slots.targets) linked_targets[slot.resource.index] = true;

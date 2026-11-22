@@ -35,7 +35,7 @@ namespace lux::render
         std::uint32_t projection;
         std::uint32_t frame; // UINT32_MAX addresses the installed projection's complete FIF family.
         nri::Texture* image;
-        detail::ImageQueueUses uses{};
+        detail::ResourceQueueUses uses{};
     };
 
     class LUX_RENDER_PUBLIC ResourceRegistry final
@@ -219,7 +219,7 @@ namespace lux::render
         {
             std::array<ProjectionBuffer, 3> buffers{};
             std::array<nri::Texture*, 3> images{};
-            std::array<detail::ImageQueueUses, 3> image_uses{};
+            std::array<detail::ResourceQueueUses, 3> queue_uses{};
             bool operator==(const ProjectionFamily&) const noexcept = default;
         };
 

@@ -26,6 +26,17 @@ namespace lux::render::detail
 
         void invalidateImportedBindings() noexcept;
 
+        struct FrozenProjection final
+        {
+            std::uint32_t resource;
+            ResourceQueueUses uses;
+        };
+
+        // Usually empty. Keep the original receipt destinations when an owner republishes during submission.
+        std::vector<FrozenProjection> replaced_projections;
+        [[nodiscard]] ResourceQueueUses selectedUses(std::uint32_t resource) const noexcept;
+        void preserveUses(std::uint32_t resource) noexcept;
+
         struct StreamDescriptorRows final
         {
             struct Program final

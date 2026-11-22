@@ -1,4 +1,5 @@
 #include "GraphFill.hpp"
+#include "TypedGraphFill.hpp"
 #include "BufferProductFixture.hpp"
 #include "RasterProgramFixture.hpp"
 #include "SceneCapture.hpp"
@@ -26,12 +27,28 @@ template <> struct lux::render::ConstantBlockTraits<OutputConstants> final
     }
 };
 
+struct alignas(16) OutputChannels final
+{
+    std::array<float, 4> channels;
+};
+
+template <> struct lux::render::ConstantBlockTraits<OutputChannels> final
+{
+    static ConstantBlockLayout layout(rdesc::EShaderTarget) noexcept
+    {
+        static constexpr std::array members{ConstantMemberLayout{"channels", 0, rdesc::EDataScalar::FLOAT, 4}};
+        return {sizeof(OutputChannels), alignof(OutputChannels), members};
+    }
+};
+
 namespace
 {
     struct OutputState final
     {
         OutputConstants previous{0.75f}; // A wrong projection produces a different red channel.
         OutputConstants constants{0.25f};
+        OutputChannels channels{{0.0f, 0.5f, 0.75f, 1.0f}};
+        std::uint64_t revision = 1;
     };
     namespace graph = lux::graph;
 
@@ -428,10 +445,14 @@ namespace
         auto& builder = context.builder();
         const auto generated = take(builder.declareResource({"compute storage", image}));
         const auto output = take(builder.declareResource({"compute output", image}));
+        const auto colors = context.constantBuffer<OutputChannels, OutputState,
+            &OutputState::channels, &OutputState::revision>();
+        if (!colors) return lux::cxx::unexpected(colors.error());
         ComputeWork work;
-        work.interface.program = take(builder.addProgram(GraphProgram{kGraphFill.load(context.shaderTarget())}));
+        work.interface.program = take(builder.addProgram(GraphProgram{kTypedGraphFill.load(context.shaderTarget())}));
         work.interface.parameters.setInlineConstant(OutputConstants{0});
-        work.interface.resources = {{"generated", {{generated, 0}, {}, EGraphAccess::WRITE}}};
+        work.interface.resources = {{"generated", {{generated, 0}, {}, EGraphAccess::WRITE}}, {"colors", {*colors}}};
+        work.interface.resources.back().setUniformConstant<OutputChannels>();
         work.dispatch = ImageDispatchArguments{generated};
         const auto dispatch = take(builder.addComputePass("generate compute color", std::move(work)));
         if (auto linked = context.copyInlineBlock<OutputConstants, OutputState, &OutputState::constants>(dispatch.pass);
@@ -1291,6 +1312,10 @@ int main(int argc, char** argv)
     const auto* peer_replica = peer_pixels.frames.front().data() + readback_bytes;
     std::memcpy(&peer_marker, peer_replica + sizeof(peer_marker), sizeof(peer_marker));
     CHECK(peer_marker == marker + 5);
+    // The later range writers replace the first 16 bytes. The next pixel still belongs to the peer Job.
+    const auto peer_pixel = std::span{peer_pixels.frames.front()}.subspan(16, 4);
+    CHECK(peer_pixel[0] == std::byte{64} && (peer_pixel[1] == std::byte{127} || peer_pixel[1] == std::byte{128}));
+    CHECK(peer_pixel[2] == std::byte{191} && peer_pixel[3] == std::byte{255});
     const auto claimed = std::span{peer_pixels.frames.front()}.first(16);
     CHECK(std::ranges::all_of(claimed.first(8), [](auto byte) { return byte == std::byte{0x5a}; }));
     CHECK(std::ranges::all_of(claimed.last(8), [](auto byte) { return byte == std::byte{0x6b}; }));

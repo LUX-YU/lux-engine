@@ -1,4 +1,3 @@
-#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
@@ -656,12 +655,6 @@ namespace lux::render::detail
         }
         auto preparation = linkPreparation(*built, *plan, request.inputs);
         if (!preparation) co_return cxx::unexpected(preparation.error());
-        std::vector<detail::LinkedUniformBlock> uniforms;
-        std::vector<detail::UniformPoolId> created_pools;
-        cxx::scope_exit rollback_pools([&]() noexcept
-        {
-            for (const auto pool : created_pools) entry.eraseUniformPool(pool);
-        });
         for (const auto& block : built->uniforms)
         {
             if (!plan->executable.resources()[block.resource.index].memory_used) continue;
@@ -669,38 +662,19 @@ namespace lux::render::detail
             const auto state = std::ranges::find(request.inputs, block.node, &EffectInputDefinition::node);
             if (state == request.inputs.end() || state->type != block.source.state_type)
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            auto pool = entry.findUniformPool(request.effect, block.node, block.name);
-            if (!pool.isNull() && !entry.uniformPool(pool).versions.matches(block.source))
-                co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            if (pool.isNull())
-            {
-                pool = entry.createUniformPool(request.effect, block.node, block.name, block.source);
-                created_pools.push_back(pool);
-            }
-
-            auto& linked = uniforms.emplace_back(pool, block.resource, std::vector<std::uint32_t>{});
-            for (const auto& access : plan->executable.importedAccesses())
-            {
-                if (access.resource != block.resource) continue;
-                linked.batches.push_back(access.batch);
-                linked.batches.push_back(access.release_batch);
-            }
-            std::ranges::sort(linked.batches);
-            const auto duplicates = std::ranges::unique(linked.batches);
-            linked.batches.erase(duplicates.begin(), duplicates.end());
+            const auto source = static_cast<std::uint32_t>(state - request.inputs.begin());
+            preparation->constant_buffers.push_back({source, block.source.block.bytes, block.resource, block.source.bind});
         }
         if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
         auto outputs = linkBufferOutputs(*built, plan->executable, entry.session());
         if (!outputs) co_return cxx::unexpected(outputs.error());
-        rollback_pools.release();
         co_return std::make_unique<const compiled::RenderGraph>(compiled::RenderGraph{
             std::move(plan->executable), std::move(plan->programs),
             std::move(built->target_imports), std::move(built->storage_imports), std::move(outputs->uses),
             std::move(outputs->exports),
             std::move(comparisons),
-            std::move(*preparation),
-            std::move(uniforms)
+            std::move(*preparation)
         });
     }
 } // namespace lux::render::detail

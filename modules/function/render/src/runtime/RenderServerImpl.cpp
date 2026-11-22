@@ -572,17 +572,7 @@ namespace lux::render
         const auto slot = round.slot();
         const auto& submissions = device.frameWorkspace().submissions;
         const auto submitted_before = submissions.submittedBatches(slot);
-        const auto uniform_state = [this](EffectId id, graph::NodeId node, cxx::basic_type_info type) noexcept
-            -> const void*
-        {
-            const auto* effect = runtime_->effects_.find(id);
-            if (!effect) return nullptr;
-            const auto found = std::ranges::find(effect->node_states, node, &RenderEffect::NodeState::node);
-            return found != effect->node_states.end() && found->type == type ? found->value.get() : nullptr;
-        };
-        const auto accepted = co_await round.operation->run(
-            round.instances, round.storages, round.job_order, detail::FrameOperation::UniformStateLookup{uniform_state}
-        );
+        const auto accepted = co_await round.operation->run(round.instances, round.storages, round.job_order);
         submissions_.fetch_add(submissions.submittedBatches(slot) - submitted_before, std::memory_order_relaxed);
         RenderError settlement_error{};
         for (std::size_t i = 0; i < round.outputs.size(); ++i)
@@ -1048,7 +1038,6 @@ namespace lux::render
         {
             if (auto drained = device->session().drain(); !drained) failDevice(*device, drained.error());
         }
-        for (auto& device : runtime_->devices_) device->clearUniformPools();
         runtime_.reset();
         (void)server_context_.close();
         responder_.reset();

@@ -184,7 +184,7 @@ namespace
             auto& store = *static_cast<ImageStore*>(object);
             if (!store.current_ || projection >= 2) return lux::cxx::unexpected(RenderError{kStorageMismatch});
             auto& image = store.current_->images[projection];
-            const ResourceInput input{.image = image.texture, .image_uses = {&image.preparation, &image.readers}};
+            const ResourceInput input{.image = image.texture, .queue_uses = {&image.preparation, &image.readers}};
             std::ranges::fill(out, input);
             return {};
         }

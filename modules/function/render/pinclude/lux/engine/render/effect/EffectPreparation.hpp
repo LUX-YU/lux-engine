@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/graph/GraphTypes.hpp>
-#include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 

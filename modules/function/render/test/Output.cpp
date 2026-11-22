@@ -1659,7 +1659,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
     struct UniformNodeState final
     {
-        EffectUniformBlock<TestUniformBlock> block{TestUniformBlock{{0x31313131, 0x31313131, 0x31313131, 0x31313131}}};
+        TestUniformBlock block{{0x31313131, 0x31313131, 0x31313131, 0x31313131}};
+        std::uint64_t revision = 1;
     };
 
     struct SetTestUniformBlock final
@@ -1681,8 +1682,14 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     void setTestUniformBlock(UniformNodeState& state, const SetTestUniformBlock::Request& request, AckResponse& out) noexcept
     {
         const auto v = request.value;
-        const auto result = state.block.set(TestUniformBlock{{v, v, v, v}});
-        out.error = result ? RenderError{} : result.error();
+        if (state.revision == UINT64_MAX)
+        {
+            out.error = {kRuntimeCapacity};
+            return;
+        }
+        state.block = {{v, v, v, v}};
+        ++state.revision;
+        out.error = {};
     }
 
     RenderResult<void> buildUniformOutput(EffectBuildContext& context, std::string_view arguments) noexcept
@@ -1692,7 +1699,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         });
         if (!external) return lux::cxx::unexpected(external.error());
-        const auto uniform = context.uniformBlock<TestUniformBlock, UniformNodeState, &UniformNodeState::block>("color");
+        const auto uniform = context.constantBuffer<TestUniformBlock, UniformNodeState,
+            &UniformNodeState::block, &UniformNodeState::revision>();
         if (!uniform) return lux::cxx::unexpected(uniform.error());
 
         auto& builder = context.builder();

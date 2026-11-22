@@ -45,28 +45,10 @@ namespace lux::render::detail
         installJobResources(RenderJobId, std::unique_ptr<JobGpuResources>) noexcept;
         [[nodiscard]] JobGpuResources& jobResources(ExecutionBindingId) & noexcept;
         [[nodiscard]] std::unique_ptr<JobGpuResources> takeJobResources(ExecutionBindingId) noexcept;
-        struct UniformPoolRecord final
-        {
-            UniformPoolId id;
-            EffectId effect;
-            graph::NodeId node;
-            std::string name;
-            UniformBlockVersions versions;
-
-            UniformPoolRecord(
-                EffectId, graph::NodeId, std::string_view, DeviceSession&,
-                extension_detail::EffectUniformSource, std::uint32_t frame_count
-            ) noexcept;
-        };
-
-        [[nodiscard]] UniformPoolId findUniformPool(EffectId, graph::NodeId, std::string_view) const noexcept;
-        [[nodiscard]] UniformPoolRecord& uniformPool(UniformPoolId) noexcept;
-        [[nodiscard]] UniformPoolId createUniformPool(
-            EffectId, graph::NodeId, std::string_view, extension_detail::EffectUniformSource
-        ) noexcept;
-        void eraseUniformPool(UniformPoolId id) noexcept { uniform_pools_.erase(id); }
-        void removeUniformPools(EffectId) noexcept;
-        void clearUniformPools() noexcept;
+        void installEffectResources(EffectId, const PreparationPlan&) noexcept;
+        [[nodiscard]] std::span<const std::unique_ptr<ConstantBufferStorage>> effectResources(EffectId) const & noexcept;
+        std::span<const std::unique_ptr<ConstantBufferStorage>> effectResources(EffectId) const && = delete;
+        void removeEffectResources(EffectId) noexcept;
         [[nodiscard]] ResourceSet* scopedResources(SceneId, ViewId, bool create) noexcept;
         [[nodiscard]] bool scopedResourceBorrows(SceneId = {}, ViewId = {}) const noexcept;
         void eraseResourceScope(SceneId, ViewId = {}) noexcept;
@@ -86,7 +68,8 @@ namespace lux::render::detail
         FrameOperation::Workspace frame_workspace_;
         ResourceSet resources_;
         cxx::SlotKeySparseSet<RenderJobId, std::unique_ptr<JobGpuResources>> job_resources_;
-        cxx::StableSlotMap<UniformPoolRecord, UniformPoolTag> uniform_pools_;
+        using EffectBuffers = std::vector<std::unique_ptr<ConstantBufferStorage>>;
+        cxx::SlotKeySparseSet<EffectId, EffectBuffers> effect_buffers_;
         using ScopeKey = std::pair<std::uint32_t, std::uint32_t>;
         struct SceneResources final
         {

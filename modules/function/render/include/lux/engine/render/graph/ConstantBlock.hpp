@@ -45,4 +45,26 @@ namespace lux::render
     inline constexpr ConstantBlockContract kConstantBlockContract{
         cxx::make_basic_type_info<T>(), &ConstantBlockTraits<T>::layout, sizeof(T), alignof(T)
     };
+    namespace extension_detail
+    {
+        struct BoundConstantValue final
+        {
+            std::span<const std::byte> bytes;
+            const std::uint64_t* revision;
+        };
+
+        struct InlineBlockInput final
+        {
+            cxx::basic_type_info state_type;
+            ConstantBlockContract block;
+            std::span<const std::byte> (*bind)(const void*) noexcept;
+        };
+
+        struct ConstantBufferField final
+        {
+            cxx::basic_type_info state_type;
+            ConstantBlockContract block;
+            BoundConstantValue (*bind)(const void*) noexcept;
+        };
+    }
 } // namespace lux::render

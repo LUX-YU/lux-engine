@@ -3,6 +3,18 @@
 
 namespace lux::render::detail
 {
+    ResourceQueueUses RenderGraphInstance::FrameResources::selectedUses(std::uint32_t resource) const noexcept
+    {
+        const auto found = std::ranges::find(replaced_projections, resource, &FrozenProjection::resource);
+        return found == replaced_projections.end() ? bindings[resource].queue_uses : found->uses;
+    }
+
+    void RenderGraphInstance::FrameResources::preserveUses(std::uint32_t resource) noexcept
+    {
+        if (std::ranges::find(replaced_projections, resource, &FrozenProjection::resource) == replaced_projections.end())
+            replaced_projections.push_back({resource, bindings[resource].queue_uses});
+    }
+
     void mergeIndexedIndirectDraws(RasterDrawList& draws, std::uint32_t limit) noexcept
     {
         if (limit <= 1 || draws.packets.size() < 2) return;

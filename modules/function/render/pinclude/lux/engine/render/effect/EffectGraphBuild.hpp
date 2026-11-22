@@ -9,7 +9,7 @@
 #include <lux/engine/render/effect/EffectPreparation.hpp>
 #include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
@@ -27,12 +27,11 @@ namespace lux::render::runtime_detail
         ConfigValue value;
     };
 
-    struct UniformBlockDeclaration final
+    struct ConstantBufferDeclaration final
     {
         graph::NodeId node;
-        std::string name;
         GraphResourceId resource;
-        extension_detail::EffectUniformSource source;
+        extension_detail::ConstantBufferField source;
     };
 
     struct EffectGraphBuild final
@@ -43,7 +42,7 @@ namespace lux::render::runtime_detail
         std::vector<detail::TargetImageSlot> target_imports;
         std::vector<EffectStorageImport> storage_imports;
         PreparationDefinition preparation;
-        std::vector<UniformBlockDeclaration> uniforms;
+        std::vector<ConstantBufferDeclaration> uniforms;
     };
 
     struct EffectInitialization final

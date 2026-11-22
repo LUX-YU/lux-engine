@@ -22,7 +22,6 @@ namespace lux::render::detail
     class JobGpuResources;
     struct RasterBindingKey;
     struct RasterDescriptorInput;
-    struct LinkedUniformBlock;
     struct DynamicRasterPrograms;
     struct RasterProgramUpdate;
 
@@ -42,6 +41,7 @@ namespace lux::render::detail
 
         struct PreparationSources final
         {
+            std::vector<BoundConstantBuffer> constant_buffers;
             std::vector<SnapshotSource> snapshots;
             std::vector<BoundDrawResource> draw_resources;
             std::vector<std::span<const std::byte>> effect_values;
@@ -158,7 +158,6 @@ namespace lux::render::detail
         }
 
         // Trusted compiled resource index and Session slot, not a business resource lookup.
-        void linkUniformBlocks(std::span<const LinkedUniformBlock>) noexcept;
         void setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput&) noexcept;
         [[nodiscard]] bool frozenCondition(std::uint32_t slot, PassCondition) const noexcept;
         [[nodiscard]] ResourceInput resourceInput(GraphResourceId, std::uint32_t slot) const noexcept;
@@ -225,7 +224,7 @@ namespace lux::render::detail
             std::uint64_t buffer_offset = 0, buffer_size = 0;
             std::span<nri::Buffer* const> addressed_buffers;
             std::uint64_t addressed_revision = 0;
-            ImageQueueUses image_uses{};
+            ResourceQueueUses queue_uses{};
             bool dirty = false;
         };
 
@@ -360,7 +359,7 @@ namespace lux::render::detail
         RenderJobId preparation_job_;
         std::uint64_t preparation_generation_ = 0;
         std::uint64_t preparation_revision_ = 0;
-        std::span<const LinkedUniformBlock> uniform_blocks_;
+        std::vector<BoundConstantBuffer> constant_buffers_;
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
         const RenderGraphExecutable* plan_;

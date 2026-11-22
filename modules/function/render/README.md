@@ -641,13 +641,15 @@ finish or cancel that window before destroying its borrowed inputs. These checks
 not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope_.
 
 `declareHistory(key, HistoryDeclaration{...})` declares the resource shape, first-frame value, canonical use and
-backwards distance together and creates a Previous/Current pair. `publishHistory` observes the complete resulting version,
-including inherited mip ranges. Distance counts backwards over successful publications. Each bank retains
+backwards distance together and creates a Previous/Current pair. `publishHistory(version, when)` observes the complete
+resulting version on the selected path, including inherited mip ranges. A false publication condition holds the last
+sample. A conditional final write with an explicit preserve fallback supplies its pass condition by default.
+Distance counts backwards over successful publications. Each bank retains
 the latest samples within that distance and allocates FIF plus distance physical slots.
 Image initial values are explicit; Buffer history currently
 starts at zero and requires a multiple-of-four byte size. The instance chooses a free write
-slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
-does not publish a sample. Descriptor views are created at Start, not on each rotation. Resize replaces only
+slot by actual completion frontiers and publishes after every required batch is accepted. Complementary writers
+can supply a complete sample on either path. Descriptor views are created at Start. Resize replaces only
 History banks whose physical extent changed; other banks retain their allocation and invalidate their samples.
 `InvalidateHistory` invalidates the selected attachment histories at the next preparation boundary.
 An individual Previous read can name a compatible non-History resource as its first-sample fallback.
@@ -670,9 +672,12 @@ Target. Publish matching inputs and `SetTargetActive{target, true, epoch}` in th
 checks the replied epoch so an older queued frame cannot resume resized output. A failed reply reports whether
 physical output remains available, including an unavailable SwapChain after failed replacement.
 
-`declareCondition` declares a dense Boolean input; `PassCondition` selects that input or History validity.
-Job conditions are zero/one bytes and are sampled once during preparation. Conditional writes require
-an available predecessor fallback. Consecutive passes sharing a predicate form one non-nested ConditionalRegion
+`declareCondition` declares a dense Boolean input. `PassCondition` can also select History validity or the result of
+`sameBinding(left, right)`. Sampled Target declarations keep a logical slot for each name. Cold Job installation
+compares bound Target identities and installs the result in that Job. Frame conditions and History validity are
+sampled during preparation. Compilation follows conditional writes and their predecessors by range and rejects a
+read if a reachable path leaves any observed bytes or subresources undefined.
+Consecutive passes sharing a predicate form one non-nested ConditionalRegion
 and sample it once. Both paths record the same compiled transitions; the false path preserves predecessor content.
 Rendering groups may merge within a region but never across its boundary. There are no predicate callbacks or
 GPU-to-CPU reads.

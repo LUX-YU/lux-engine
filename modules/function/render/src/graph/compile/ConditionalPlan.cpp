@@ -16,8 +16,8 @@ namespace lux::render::detail
             {
                 continue;
             }
-            const auto input_slot = condition->source == EConditionSource::INPUT
-                ? condition->input : resources[condition->input].history;
+            const auto input_slot = condition->source == EConditionSource::HISTORY_VALID
+                ? resources[condition->input].history : condition->input;
             const bool contiguous =
                 !recording.conditions.empty() &&
                 recording.conditions.back().first_pass + recording.conditions.back().pass_count == p;

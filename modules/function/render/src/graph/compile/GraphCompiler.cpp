@@ -125,7 +125,8 @@ namespace lux::render::detail
         };
         const auto validCondition = [&](const ConditionalRegion& region) noexcept
         {
-            const auto slots = region.source == EConditionSource::INPUT ? condition_slots : history_slots;
+            const auto slots = region.source == EConditionSource::HISTORY_VALID ? history_slots :
+                region.source == EConditionSource::SAME_BINDING ? plan.binding_predicate_count_ : condition_slots;
             return inBounds(region) && region.pass_count != 0 && region.input_slot < slots;
         };
         const bool valid_intervals = std::ranges::all_of(program.units, inBounds) &&
@@ -211,6 +212,7 @@ namespace lux::render::detail
         RenderGraphExecutable plan(native_device, target ? *target : EffectOutputDesc{});
         plan.device_addresses_ = device_addresses;
         plan.condition_count_ = static_cast<std::uint32_t>(graph.conditions().size());
+        plan.binding_predicate_count_ = static_cast<std::uint32_t>(graph.bindingPredicates().size());
         std::vector<bool> live(graph.resources().size(), false);
         for (const auto& lifetime : analysis.lifetimes)
         {
@@ -477,20 +479,12 @@ namespace lux::render::detail
                 previous.buffer_usage = current.buffer_usage =
                     previous.buffer_usage | current.buffer_usage | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
             }
-            for (std::uint32_t p = 0; p < analysis.execution_order.size(); ++p)
+            auto& guard = history.description.publish_when;
+            if (guard && guard->source == EConditionSource::HISTORY_VALID)
             {
-                const auto& pass = graph.passes()[analysis.execution_order[p].index];
-                if (std::ranges::any_of(
-                        pass.uses,
-                        [&](const auto& use)
-                        {
-                            return use.version.resource == history.description.current &&
-                                   use.access != EGraphAccess::READ;
-                        }
-                    ))
-                {
-                    history.writers.push_back(p);
-                }
+                const auto source_history = plan.resources_[guard->input].history;
+                if (source_history == kGraphInvalidIndex) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                guard->input = source_history;
             }
         }
         for (const auto& access : plan.imported_accesses_)

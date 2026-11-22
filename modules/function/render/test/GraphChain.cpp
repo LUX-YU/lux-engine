@@ -1540,6 +1540,84 @@ static void cpuConditionalRanges()
     }
 }
 
+static void cpuConditionalJoins()
+{
+    for (const bool independent : {false, true})
+    {
+        for (const std::uint64_t covered : {12u, 16u})
+        {
+            RenderGraphBuilder builder;
+            const auto branch = take(builder.declareCondition("branch"));
+            const auto other = independent ? take(builder.declareCondition("other")) : branch;
+            const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
+            const auto first = take(builder.addTransferPass(
+                "first", TransferWork{{FillBuffer{{{data, 0}}, 7}}},
+                {false, PassCondition{EConditionSource::INPUT, branch, true}}
+            ));
+            const auto second = take(builder.addTransferPass(
+                "second", TransferWork{{FillBuffer{{first.written.front(), GraphBufferRange{0, covered}}, 11}}},
+                {false, PassCondition{EConditionSource::INPUT, other, false}}
+            ));
+            CHECK(builder.exportOutput({second.written.front()}));
+            const auto graph = take(std::move(builder).finish());
+            if (independent || covered < 16)
+            {
+                const auto result = analyzeRenderGraph(graph);
+                CHECK(!result && result.error().type == kGraphUndefinedRead);
+                continue;
+            }
+            const auto executable = compileCpuGraph(graph);
+            for (const std::uint8_t selected : {0, 1})
+            {
+                ComputeSequenceRecorder recorder(executable);
+                recorder.execute({&selected, 1});
+                const auto expected = selected ? 7u : 11u;
+                recorder.verify(data, std::array{expected, expected, expected, expected});
+            }
+        }
+    }
+}
+
+static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif)
+{
+    RenderGraphBuilder builder;
+    const auto branch = take(builder.declareCondition("branch"));
+    const auto publish = take(builder.declareCondition("publish"));
+    const auto history = take(builder.declareHistory("samples", {GraphBufferDesc{16}, {}, EGraphUse::TRANSFER_SOURCE}));
+    const auto readback = take(builder.declareResource({"previous", GraphBufferDesc{16}}));
+    const auto first = take(builder.addTransferPass(
+        "first", TransferWork{{FillBuffer{{{history.current, 0}}, 7}}},
+        {false, PassCondition{EConditionSource::INPUT, branch, true}}
+    ));
+    const auto second = take(builder.addTransferPass(
+        "second", TransferWork{{FillBuffer{{first.written.front()}, 11}}},
+        {false, PassCondition{EConditionSource::INPUT, branch, false}}
+    ));
+    CHECK(builder.publishHistory(second.written.front(), PassCondition{EConditionSource::INPUT, publish}));
+    const auto copied = take(builder.addTransferPass(
+        "read previous", TransferWork{{CopyBuffer{{{history.previous, 0}}, {{readback, 0}}}}}
+    ));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    RenderGraphInstance instance(session, fif, plan.executable, plan.programs);
+    CHECK(instance.initialize());
+    FrameHarness frames(session, fif);
+    const std::array instances{&instance};
+    std::uint32_t previous = 0;
+    constexpr std::array<std::uint8_t, 2> selections[] = {{1, 1}, {0, 1}, {1, 0}, {1, 0}, {1, 1}, {0, 1}};
+    for (const auto& inputs : selections)
+    {
+        CHECK(instance.setConditions(inputs));
+        CHECK(take(runTask(frames.render(instances, {}))) == 1);
+        CHECK(session.drain());
+        const auto slot = instance.progress().last_submitted_slot;
+        const auto values = readBufferWords<4>(session, *instance.nativeBuffer(readback.index, slot));
+        CHECK(std::ranges::all_of(values, [previous](auto word) { return word == previous; }));
+        if (inputs[1]) previous = inputs[0] ? 7u : 11u;
+    }
+}
+
 static void cpuImportedBoundaries()
 {
     {
@@ -2242,9 +2320,10 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     auto current = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{data, 0}}, 3}}})).written.front();
     for (auto value : {6u, 9u})
     {
+        const GraphBufferRange range{value == 6 ? 0u : 8u, 8};
         current = take(builder.addTransferPass(
                            "conditional " + std::to_string(value),
-                           TransferWork{{FillBuffer{{current, {}, EGraphAccess::WRITE, 0, current}, value}}},
+                           TransferWork{{FillBuffer{{current, range, EGraphAccess::WRITE, 0, current}, value}}},
                            {false, PassCondition{EConditionSource::INPUT, input}}
                        )
         ).written.front();
@@ -2278,7 +2357,8 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
             *session,
             *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot)
         );
-        CHECK(std::ranges::all_of(values, [&](auto value) { return value == (enabled ? 9 : 3); }));
+        const auto expected = enabled ? std::array{6u, 6u, 9u, 9u} : std::array{3u, 3u, 3u, 3u};
+        CHECK(std::ranges::equal(values, expected));
     }
     instance.reset();
     CHECK(session->drain());
@@ -2929,6 +3009,7 @@ int main(int argc, char** argv)
         cpuBuilderTransactions();
         cpuRecordingTables();
         cpuConditionalRanges();
+        cpuConditionalJoins();
         cpuImportedBoundaries();
         cpuRasterPackets();
         cpuQueueBoundaries();
@@ -3018,6 +3099,12 @@ int main(int argc, char** argv)
         historySequence(validation, backend, fif, false);
         historySequence(validation, backend, fif, true);
         historySequence(validation, backend, fif, true, 2);
+        {
+            DeviceOptions options;
+            options.backend = backend;
+            TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+            conditionalHistorySamples(*session, fif);
+        }
         conditionalRegion(validation, backend, fif);
         hzbHistory(validation, backend, fif);
         physicalImageReuse(validation, backend, fif);

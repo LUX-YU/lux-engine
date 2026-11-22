@@ -123,6 +123,54 @@ namespace lux::render
             return remaining.empty();
         }
 
+        // Persistent facts for one range proof. Following a skipped write adds its inverse predicate;
+        // other ranges and other consumers keep their own path. Zero denotes the unconstrained path.
+        struct PredicatePaths final
+        {
+            struct Fact final
+            {
+                PassCondition condition;
+                std::size_t parent;
+            };
+
+            std::vector<Fact> facts;
+            std::vector<std::size_t> reads;
+
+            std::optional<bool> known(std::size_t path, PassCondition condition) const noexcept
+            {
+                while (path)
+                {
+                    const auto& fact = facts[path - 1];
+                    if (fact.condition.source == condition.source && fact.condition.input == condition.input)
+                        return fact.condition.expected;
+                    path = fact.parent;
+                }
+                return {};
+            }
+
+            std::size_t extend(std::size_t parent, PassCondition condition)
+            {
+                facts.push_back({condition, parent});
+                return facts.size();
+            }
+        };
+
+        enum class EReadPath : std::uint8_t { PRIMARY, FALLBACK, SKIPPED_WRITE };
+
+        struct Observation final
+        {
+            GraphPassId consumer;
+            EReadPath mode = EReadPath::PRIMARY;
+            std::optional<PassCondition> publication;
+        };
+
+        struct ReachingRange final
+        {
+            ResourceVersion version;
+            VGraphRange range;
+            std::size_t path;
+        };
+
         struct LifetimeCell final
         {
             Box box;
@@ -206,14 +254,23 @@ namespace lux::render
             }
         };
 
+        PredicatePaths paths;
         auto resolve =
-            [&](ResourceVersion initial_version, const VGraphRange& initial_range, GraphPassId consumer, bool fallback
-            ) -> RenderResult<void>
+            [&](ResourceVersion initial_version, const VGraphRange& initial_range, Observation observation) -> RenderResult<void>
         {
-            std::vector<std::pair<ResourceVersion, VGraphRange>> pending{{initial_version, initial_range}};
+            const auto [consumer, mode, publication] = observation;
+            std::size_t initial_path = 0;
+            auto guard = consumer.index == kGraphInvalidIndex ? publication : passes[consumer.index].condition;
+            if (guard)
+            {
+                if (mode == EReadPath::SKIPPED_WRITE) guard->expected = !guard->expected;
+                initial_path = paths.extend(0, *guard);
+            }
+            const bool fallback = mode != EReadPath::PRIMARY;
+            std::vector<ReachingRange> pending{{initial_version, initial_range, initial_path}};
             while (!pending.empty())
             {
-                auto [version, range] = std::move(pending.back());
+                auto [version, range, path] = std::move(pending.back());
                 pending.pop_back();
                 const auto& resource = resources[version.resource.index];
                 const bool image = std::holds_alternative<GraphImageDesc>(resource.description);
@@ -234,13 +291,14 @@ namespace lux::render
                     for (const auto& box : remaining)
                     {
                         result.versions.push_back({version, detail::toRange(box, image), {}, consumer, fallback});
+                        paths.reads.push_back(path);
                     }
                     continue;
                 }
                 struct Piece final
                 {
                     Box box;
-                    GraphPassId writer;
+                    const Write* writer;
                 };
                 std::vector<Piece> pieces;
                 std::optional<std::uint32_t> predecessor;
@@ -272,15 +330,11 @@ namespace lux::render
                                         kGraphAmbiguousProducer,
                                         writer.pass,
                                         version.resource,
-                                        previous.writer.index
+                                        previous.writer->pass.index
                                     ));
                                 }
                             }
-                            if (writer.pass == consumer)
-                            {
-                                return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource));
-                            }
-                            pieces.push_back({*overlap, writer.pass});
+                            pieces.push_back({*overlap, &writer});
                             removeCovered(remaining, *overlap);
                         }
                     }
@@ -295,19 +349,46 @@ namespace lux::render
                     }
                     for (const auto& part : remaining)
                     {
-                        pending.push_back({{version.resource, *predecessor}, detail::toRange(part, image)});
+                        pending.push_back({{version.resource, *predecessor}, detail::toRange(part, image), path});
                     }
                 }
                 for (const auto& piece : pieces)
                 {
-                    retain(piece.writer);
+                    const auto writer = piece.writer->pass;
                     const auto part = detail::toRange(piece.box, image);
-                    result.versions.push_back({version, part, piece.writer, consumer, fallback});
+                    auto active_path = path;
+                    if (auto guard = passes[writer.index].condition)
+                    {
+                        const auto value = paths.known(path, *guard);
+                        if (!value || *value != guard->expected)
+                        {
+                            const auto& use = *piece.writer->use;
+                            const auto previous = use.fallback.value_or(
+                                ResourceVersion{version.resource, use.input_version}
+                            );
+                            if (previous.resource != version.resource || previous.number >= version.number)
+                            {
+                                return cxx::unexpected(
+                                    graphError(kGraphUndefinedRead, consumer, version.resource, version.number)
+                                );
+                            }
+                            auto skipped = *guard;
+                            skipped.expected = !skipped.expected;
+                            pending.push_back({previous, part, value ? path : paths.extend(path, skipped)});
+                            if (value) continue;
+                        }
+                        if (!value) active_path = paths.extend(path, *guard);
+                    }
+                    if (writer == consumer)
+                        return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource));
+                    retain(writer);
+                    result.versions.push_back({version, part, writer, consumer, fallback});
+                    paths.reads.push_back(active_path);
                     if (consumer.index != kGraphInvalidIndex)
                     {
-                        addEdge(edges, piece.writer, consumer);
+                        addEdge(edges, writer, consumer);
                         result.hazards.push_back(
-                            {piece.writer,
+                            {writer,
                              consumer,
                              version.resource,
                              part,
@@ -323,7 +404,7 @@ namespace lux::render
 
         for (const auto& output : definition.outputs())
         {
-            if (auto valid = resolve(output.version, output.range, {}, false); !valid)
+            if (auto valid = resolve(output.version, output.range, {}); !valid)
             {
                 return cxx::unexpected(valid.error());
             }
@@ -335,7 +416,7 @@ namespace lux::render
                 continue;
             }
             const auto range = detail::normalize(resources[history.current.index], {});
-            if (auto valid = resolve(*history.publication, *range, {}, false); !valid)
+            if (auto valid = resolve(*history.publication, *range, {{}, EReadPath::PRIMARY, history.publish_when}); !valid)
             {
                 return cxx::unexpected(valid.error());
             }
@@ -393,7 +474,7 @@ namespace lux::render
                     // their hazards, including when the declaration also supplies initial content.
                     if (has_fallback)
                     {
-                        if (auto valid = resolve(*use.fallback, use.range, pass, true); !valid)
+                        if (auto valid = resolve(*use.fallback, use.range, {pass, EReadPath::FALLBACK}); !valid)
                         {
                             return cxx::unexpected(valid.error());
                         }
@@ -402,23 +483,16 @@ namespace lux::render
                         !has_fallback || initiallyAvailable(resources[resource_id.index], use.range);
                     if (has_primary)
                     {
-                        if (auto valid = resolve(input, use.range, pass, false); !valid)
+                        if (auto valid = resolve(input, use.range, {pass, EReadPath::PRIMARY}); !valid)
                         {
                             return cxx::unexpected(valid.error());
                         }
                     }
                 }
-                const bool needs_fallback = detail::writes(use.access) && passes[pass.index].condition.has_value();
-                if (needs_fallback)
+                if (detail::writes(use.access) && passes[pass.index].condition && use.fallback)
                 {
-                    if (!use.fallback)
-                    {
-                        return cxx::unexpected(graphError(kGraphMissingFallback, pass, resource_id));
-                    }
-                    if (auto valid = resolve(*use.fallback, use.range, pass, true); !valid)
-                    {
+                    if (auto valid = resolve(*use.fallback, use.range, {pass, EReadPath::SKIPPED_WRITE}); !valid)
                         return cxx::unexpected(valid.error());
-                    }
                 }
             }
         }
@@ -483,6 +557,11 @@ namespace lux::render
                     if (read.version.number >= a.use->version.number || read.consumer == a.pass)
                     {
                         continue;
+                    }
+                    if (const auto guard = passes[a.pass.index].condition)
+                    {
+                        const auto value = paths.known(paths.reads[index], *guard);
+                        if (value && *value != guard->expected) continue;
                     }
                     for (const auto& rr : detail::boxes(read.range))
                     {

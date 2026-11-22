@@ -802,8 +802,7 @@ namespace
         return context.initializeState<int>(args == "producer" ? 5 : 10);
     }
 
-    std::atomic_uint aliased_target_builds{};
-    std::atomic_uint distinct_target_builds{};
+    std::atomic_uint target_graph_builds{};
 
     RenderResult<void> buildImportedTargetNode(EffectBuildContext& context, std::string_view) noexcept
     {
@@ -812,23 +811,31 @@ namespace
         if (!first) return lux::cxx::unexpected(first.error());
         auto second = context.importTargetImage("second", format);
         if (!second) return lux::cxx::unexpected(second.error());
-        if (first->resource == second->resource) ++aliased_target_builds;
-        else ++distinct_target_builds;
+        CHECK(first->resource != second->resource);
+        ++target_graph_builds;
 
         GraphImageDesc image{0, 0, 1, 1, format};
         image.extent.source = EImageExtentSource::TARGET;
         auto& builder = context.builder();
         const auto output = take(builder.declareResource({"import.output", image}));
         const auto intermediate = take(builder.declareResource({"import.intermediate", image}));
-        ComputeWork work;
-        work.interface.program = take(builder.addProgram(GraphProgram{kEffectGraphImport.load(context.shaderTarget())}));
-        work.interface.resources = {
-            {"first_image", {*first}},
-            {"second_image", {*second}},
-            {"generated", {{intermediate, 0}, {}, EGraphAccess::WRITE}}
+        const auto program = take(builder.addProgram(GraphProgram{kEffectGraphImport.load(context.shaderTarget())}));
+        const auto predicate = take(builder.sameBinding(first->resource, second->resource));
+        const auto select = [&](ResourceVersion destination, ResourceVersion input, bool equal)
+        {
+            ComputeWork work;
+            work.interface.program = program;
+            work.interface.resources = {
+                {"first_image", {*first}}, {"second_image", {input}},
+                {"generated", {destination, {}, EGraphAccess::WRITE}}
+            };
+            work.dispatch = ImageDispatchArguments{intermediate};
+            auto guard = predicate;
+            guard.expected = equal;
+            return take(builder.addComputePass(equal ? "same target" : "combine targets", std::move(work), {false, guard}));
         };
-        work.dispatch = ImageDispatchArguments{intermediate};
-        const auto generated = take(builder.addComputePass("sample target inputs", std::move(work)));
+        const auto same = select({intermediate, 0}, *first, true);
+        const auto generated = select(same.written.front(), *second, false);
         const auto copied = take(builder.addTransferPass(
             "publish sampled inputs", TransferWork{{lux::render::CopyImage{{generated.written.front()}, {{output, 0}}}}}
         ));
@@ -2575,7 +2582,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         *client, commands, {device, imported_job, imported_target, bound(imported_target, target)}, false
     ).error.type == kCommandContract);
     call<StartRenderJob>(*client, commands, {device, imported_job, imported_target, bound(target, target)});
-    CHECK(aliased_target_builds.load() == 1 && distinct_target_builds.load() == 0);
+    const auto imported_builds = target_graph_builds.load();
     CHECK(call<RemoveTarget>(*client, commands, target, false).error.type == kRuntimeState);
     const TargetDesc resized_desc{128, 64, hdr, 1, ETargetKind::OFFSCREEN, true};
     const auto resized = call<ResizeTarget>(*client, commands, {target, resized_desc});
@@ -2646,10 +2653,10 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
 
     verifyTargetInput(*client, commands, device, scene, {}, imported_effect,
         bound(dim_target, dim_target), {.125, .375, .625});
-    CHECK(aliased_target_builds.load() == 1);
+    CHECK(target_graph_builds.load() == imported_builds);
     verifyTargetInput(*client, commands, device, scene, {}, imported_effect,
         bound(target, dim_target), {.1875, .4375, .6875});
-    CHECK(distinct_target_builds.load() == 1);
+    CHECK(target_graph_builds.load() == imported_builds);
     stopAndRemoveJob(*client, commands, dim_job);
     call<RemoveTarget>(*client, commands, dim_target);
     call<RemoveEffect>(*client, commands, {dim_effect});

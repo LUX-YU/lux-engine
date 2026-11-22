@@ -262,8 +262,7 @@ namespace lux::render::detail
     struct HistoryPlan final
     {
         HistoryDescription description;
-        // Compiled producer indexes, including disjoint writes composing the published version.
-        std::vector<std::uint32_t> writers;
+        // Publication is proved complete for every selected path during range analysis.
     };
 
     struct SubmissionDependency final
@@ -462,7 +461,7 @@ namespace lux::render::detail
         EffectOutputDesc output_description_;
         std::vector<CompiledResource> resources_;
         std::vector<HistoryPlan> histories_;
-        std::uint32_t condition_count_ = 0;
+        std::uint32_t condition_count_ = 0, binding_predicate_count_ = 0;
         RecordingProgram recording_;
         std::vector<SubmissionBatch> submissions_;
         std::vector<ImportedAccess> imported_accesses_;

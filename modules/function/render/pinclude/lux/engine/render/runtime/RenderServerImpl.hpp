@@ -149,9 +149,6 @@ namespace lux::render
         [[nodiscard]] RenderResult<void>
         assembleExecution(JobExecution&, const JobBinding&, const RenderEffect&) noexcept;
 
-        [[nodiscard]] RenderResult<std::vector<EffectTargetImport>>
-        qualifyEffectTargetImports(std::span<const TargetImageInput>) const noexcept;
-
         [[nodiscard]] RenderResult<EffectImportContracts>
         qualifyEffectImports(const detail::DeviceEntry&, const JobBinding&) const noexcept;
 

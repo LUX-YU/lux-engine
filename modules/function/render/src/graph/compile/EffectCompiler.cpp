@@ -402,9 +402,32 @@ namespace lux::render::detail
         if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
 
-        for (auto& slot : built->target_imports)
+        std::vector<compiled::BindingComparison> comparisons;
+        const auto resolve_operand = [&](GraphResourceId id) noexcept -> RenderResult<compiled::BindingOperand>
         {
-            if (slot.index == kGraphInvalidIndex) continue;
+            using Domain = compiled::BindingOperand::EDomain;
+            const auto targets = std::span{built->target_imports};
+            const auto target = std::ranges::find(targets, id, &TargetImageSlot::resource);
+            if (target != targets.end())
+                return compiled::BindingOperand{Domain::TARGET, static_cast<std::uint32_t>(target - targets.begin())};
+            const auto storages = std::span{built->storage_imports};
+            const auto storage = std::ranges::find(storages, id);
+            if (storage != storages.end())
+                return compiled::BindingOperand{Domain::STORAGE, static_cast<std::uint32_t>(storage - storages.begin())};
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index}});
+        };
+        comparisons.reserve(built->source.bindingPredicates().size());
+        for (const auto& predicate : built->source.bindingPredicates())
+        {
+            auto left = resolve_operand(predicate.left);
+            if (!left) co_return cxx::unexpected(left.error());
+            auto right = resolve_operand(predicate.right);
+            if (!right) co_return cxx::unexpected(right.error());
+            comparisons.push_back({*left, *right});
+        }
+        for (auto& input : built->target_imports)
+        {
+            auto& slot = input.resource;
             const auto& resource = plan->executable.resources()[slot.index];
             if (!resource.memory_used) slot = {};
             else if (!resource.sampled_target_input)
@@ -454,7 +477,8 @@ namespace lux::render::detail
         rollback_pools.release();
         co_return std::make_unique<const compiled::RenderGraph>(compiled::RenderGraph{
             std::move(plan->executable), std::move(plan->programs),
-            std::move(built->target_imports), std::move(built->storage_imports), std::move(*preparation),
+            std::move(built->target_imports), std::move(built->storage_imports), std::move(comparisons),
+            std::move(*preparation),
             std::move(uniforms)
         });
     }

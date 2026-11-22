@@ -167,22 +167,8 @@ namespace lux::render
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
             }
-            if (pass.condition)
-            {
-                const auto& condition = *pass.condition;
-                const bool valid_input =
-                    condition.source == EConditionSource::INPUT && condition.input < graph.conditions().size();
-                const bool valid_history =
-                    condition.source == EConditionSource::HISTORY_VALID &&
-                    std::ranges::any_of(
-                        graph.histories(),
-                        [&](const auto& history) { return history.previous.index == condition.input; }
-                    );
-                if (!valid_input && !valid_history)
-                {
-                    return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
-                }
-            }
+            if (pass.condition && !graph.validCondition(*pass.condition))
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
             for (const auto& use : pass.uses)
             {
                 if (auto valid = validateAccess(graph, pass, id, use); !valid) return valid;

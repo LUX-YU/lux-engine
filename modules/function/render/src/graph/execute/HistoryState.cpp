@@ -445,16 +445,11 @@ namespace lux::render::detail
             return;
         }
         const auto& frame = frames_[frame_slot];
-        for (auto& history : histories_)
+        for (std::size_t i = 0; i < histories_.size(); ++i)
         {
-            const bool produced = std::ranges::all_of(history.plan->writers, [&](auto writer)
+            if (frame.publish_history[i])
             {
-                const auto region = plan_->passes()[writer].condition_region;
-                return region == kGraphInvalidIndex || frame.enabled_regions[region] != 0;
-            });
-            if (produced)
-            {
-                history.publish();
+                histories_[i].publish();
             }
         }
     }

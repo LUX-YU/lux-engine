@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/GraphProgram.hpp>
@@ -104,6 +106,23 @@ namespace lux::render
             return histories_;
         }
 
+        [[nodiscard]] bool validCondition(PassCondition condition) const noexcept
+        {
+            switch (condition.source)
+            {
+            case EConditionSource::INPUT: return condition.input < conditions_.size();
+            case EConditionSource::SAME_BINDING: return condition.input < binding_predicates_.size();
+            case EConditionSource::HISTORY_VALID:
+                return std::ranges::any_of(histories_, [&](const auto& history) noexcept
+                {
+                    return history.previous.index == condition.input;
+                });
+            }
+            return false;
+        }
+
+        [[nodiscard]] std::span<const BindingPredicate> bindingPredicates() const noexcept { return binding_predicates_; }
+
         [[nodiscard]] std::span<const std::string> conditions() const noexcept
         {
             return conditions_;
@@ -119,6 +138,7 @@ namespace lux::render
         std::vector<GraphExport> outputs_;
         std::vector<HistoryDescription> histories_;
         std::vector<std::string> conditions_;
+        std::vector<BindingPredicate> binding_predicates_;
     };
 
 } // namespace lux::render

@@ -42,6 +42,7 @@ namespace lux::render::detail
             frame.pending_history_views.initialize(plan.histories_.size());
             frame.enabled_regions.resize(plan.recording_.conditions.size(), 1);
             frame.history_valid.resize(plan.histories_.size(), 0);
+            frame.publish_history.resize(plan.histories_.size());
             frame.history_clears.resize(plan.histories_.size());
             frame.changed_resources.reserve(plan.resources().size());
             frame.unavailable_buffers = std::ranges::count_if(
@@ -93,6 +94,7 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::initialize() noexcept
     {
+        if (binding_values_.size() != plan_->binding_predicate_count_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& session = *session_;
         const auto& plan = *plan_;
         const bool wrong_device = plan.device() != &session.device();
@@ -151,6 +153,25 @@ namespace lux::render::detail
         return {};
     }
 
+    bool RenderGraphInstance::conditionEnabled(const FrameResources& frame, PassCondition condition) const noexcept
+    {
+        switch (condition.source)
+        {
+        case EConditionSource::HISTORY_VALID: return bool(frame.history_valid[condition.input]) == condition.expected;
+        case EConditionSource::SAME_BINDING: return bool(binding_values_[condition.input]) == condition.expected;
+        case EConditionSource::INPUT: return bool(condition_values_[condition.input]) == condition.expected;
+        }
+        std::terminate();
+    }
+
+    RenderResult<void> RenderGraphInstance::bindPredicates(std::vector<std::uint8_t> selected) noexcept
+    {
+        if (selected.size() != plan_->binding_predicate_count_ || !binding_values_.empty())
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        binding_values_ = std::move(selected);
+        return {};
+    }
+
     RenderResult<void> RenderGraphInstance::setConditions(std::span<const std::uint8_t> values) noexcept
     {
         const bool is_wrong_count = values.size() != condition_values_.size();
@@ -205,13 +226,16 @@ namespace lux::render::detail
             return false;
         }
         bindHistory(slot);
+        for (std::size_t i = 0; i < histories_.size(); ++i)
+        {
+            const auto& when = histories_[i].plan->description.publish_when;
+            frame.publish_history[i] = !when || conditionEnabled(frame, *when);
+        }
         frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
         for (std::size_t r = 0; r < plan_->recording_.conditions.size(); ++r)
         {
             const auto& region = plan_->recording_.conditions[r];
-            const bool value = region.source == EConditionSource::INPUT
-                ? condition_values_[region.input_slot] != 0 : frame.history_valid[region.input_slot] != 0;
-            const bool enabled = value == region.expected;
+            const bool enabled = conditionEnabled(frame, {region.source, region.input_slot, region.expected});
             if ((frame.enabled_regions[r] != 0) != enabled)
             {
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)

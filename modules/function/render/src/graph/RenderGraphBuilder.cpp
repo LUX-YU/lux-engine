@@ -177,7 +177,8 @@ namespace lux::render
         return history;
     }
 
-    RenderResult<void> RenderGraphBuilder::publishHistory(ResourceVersion version) noexcept
+    RenderResult<void>
+    RenderGraphBuilder::publishHistory(ResourceVersion version, std::optional<PassCondition> when) noexcept
     {
         auto history = std::ranges::find(candidate_.histories_, version.resource, &HistoryDescription::current);
         if (history == candidate_.histories_.end() || history->publication || version.number == 0)
@@ -185,8 +186,50 @@ namespace lux::render
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
         }
         // Analysis resolves this whole-resource observation separately from external Graph exports.
+        if (when && !candidate_.validCondition(*when))
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
+        if (!when)
+        {
+            // An explicit write fallback preserves an older value when its producing pass is skipped.
+            for (const auto& pass : candidate_.passes())
+            {
+                if (!pass.condition) continue;
+                const bool preserves_sample = std::ranges::any_of(pass.uses, [&](const ResourceAccess& use)
+                {
+                    return detail::writes(use.access) && use.version == version && use.fallback.has_value();
+                });
+                if (preserves_sample)
+                {
+                    when = pass.condition;
+                    break;
+                }
+            }
+        }
         history->publication = version;
+        history->publish_when = when;
         return {};
+    }
+
+    RenderResult<PassCondition> RenderGraphBuilder::sameBinding(GraphResourceId left, GraphResourceId right) noexcept
+    {
+        const auto resources = candidate_.resources();
+        for (const auto id : {left, right})
+        {
+            if (id.index >= resources.size()) return cxx::unexpected(graphError(kGraphUnknownResource, {}, id));
+            if (resources[id.index].origin != EGraphOrigin::IMPORTED)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
+        }
+        if (left.index > right.index) std::swap(left, right);
+        auto& table = candidate_.binding_predicates_;
+        const BindingPredicate predicate{left, right};
+        const auto found = std::ranges::find(table, predicate);
+        const auto index = static_cast<std::uint32_t>(found - table.begin());
+        if (found == table.end())
+        {
+            if (table.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            table.push_back(predicate);
+        }
+        return PassCondition{EConditionSource::SAME_BINDING, index};
     }
 
     RenderResult<std::uint32_t> RenderGraphBuilder::declareCondition(std::string key) noexcept

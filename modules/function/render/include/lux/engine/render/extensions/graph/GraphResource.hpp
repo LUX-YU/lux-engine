@@ -154,6 +154,28 @@ namespace lux::render
         std::uint32_t distance = 1;
     };
 
+    enum class EConditionSource : std::uint8_t
+    {
+        INPUT,
+        HISTORY_VALID,
+        SAME_BINDING
+    };
+
+    struct BindingPredicate final
+    {
+        GraphResourceId left, right;
+        bool operator==(const BindingPredicate&) const noexcept = default;
+    };
+
+    struct PassCondition final
+    {
+        EConditionSource source = EConditionSource::INPUT;
+        // INPUT and SAME_BINDING index their respective tables. HISTORY_VALID names a Previous resource.
+        std::uint32_t input = 0;
+        bool expected = true;
+        bool operator==(const PassCondition&) const noexcept = default;
+    };
+
     struct HistoryDescription final
     {
         GraphResourceId previous;
@@ -163,6 +185,7 @@ namespace lux::render
         HistoryInitialValue initial;
         EGraphUse canonical_use = EGraphUse::STORAGE_READ;
         std::optional<ResourceVersion> publication;
+        std::optional<PassCondition> publish_when;
     };
 
     struct ResourceAccess final

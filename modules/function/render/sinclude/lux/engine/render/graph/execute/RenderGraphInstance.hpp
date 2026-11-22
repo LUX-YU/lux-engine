@@ -144,6 +144,7 @@ namespace lux::render::detail
             return output_.description;
         }
 
+        [[nodiscard]] RenderResult<void> bindPredicates(std::vector<std::uint8_t>) noexcept;
         [[nodiscard]] RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
 
         [[nodiscard]] std::span<const std::uint8_t> conditions() const noexcept
@@ -289,6 +290,7 @@ namespace lux::render::detail
         [[nodiscard]] bool selectHistory() noexcept;
         void bindHistory(std::uint32_t slot) noexcept;
         void updateHistoryViews(std::uint32_t slot) noexcept;
+        [[nodiscard]] bool conditionEnabled(const FrameResources&, PassCondition) const noexcept;
         void publishHistory(std::uint32_t slot) noexcept;
 
         struct Pass final
@@ -391,7 +393,7 @@ namespace lux::render::detail
         RasterViewport viewport_;
         TargetOutput output_;
 
-        std::vector<std::uint8_t> condition_values_;
+        std::vector<std::uint8_t> condition_values_, binding_values_;
         ExecutionProgress progress_;
         RenderError submission_error_;
     };

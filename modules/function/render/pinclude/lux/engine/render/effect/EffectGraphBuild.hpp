@@ -11,6 +11,7 @@
 #include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/graph/TargetImageSlot.hpp>
 #include <span>
 #include <string>
 
@@ -23,15 +24,6 @@ namespace lux::render::runtime_detail
     {
         graph::NodeId node;
         ConfigValue value;
-    };
-
-    struct EffectTargetImport final
-    {
-        std::string binding;
-        rdesc::ETextureFormat format;
-        std::uint32_t samples;
-        std::uint32_t canonical; // Binding index for the same native Target owner.
-        bool operator==(const EffectTargetImport&) const noexcept = default;
     };
 
     struct EffectStorageImport final
@@ -60,7 +52,6 @@ namespace lux::render::runtime_detail
 
     struct EffectImportContracts final
     {
-        std::vector<EffectTargetImport> targets;
         std::vector<EffectStorageImport> storages;
         bool operator==(const EffectImportContracts&) const noexcept = default;
     };
@@ -78,7 +69,7 @@ namespace lux::render::runtime_detail
         RenderGraph source;
         RenderGraphAnalysis analysis;
         EffectOutputDesc output;
-        std::vector<GraphResourceId> target_imports;
+        std::vector<detail::TargetImageSlot> target_imports;
         std::vector<GraphResourceId> storage_imports;
         PreparationDefinition preparation;
         std::vector<UniformBlockDeclaration> uniforms;

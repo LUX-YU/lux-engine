@@ -45,59 +45,41 @@ namespace lux::render
         JobExecution& candidate, const JobBinding& binding, const RenderEffect& effect
     ) noexcept
     {
-        const auto& plan = candidate.executable;
         const auto target_images = std::span(binding.target_images);
         const auto& input = binding.inputs;
         auto& entry = *runtime_->device(candidate.device);
         candidate.target_images.reserve(target_images.size());
-        if (candidate.graph.target_imports.size() != target_images.size())
-            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        const auto declared_targets = std::span{candidate.graph.target_imports};
+        if (std::ranges::adjacent_find(target_images, {}, &TargetImageInput::binding) != target_images.end())
+            return cxx::unexpected(RenderError{kCommandContract});
+        const bool matching_count = target_images.size() == declared_targets.size();
         for (std::size_t index = 0; index < target_images.size(); ++index)
         {
             const auto& input = target_images[index];
-            const auto id = candidate.graph.target_imports[index];
-            if (id.index == kGraphInvalidIndex) continue;
+            if (input.binding.empty()) return cxx::unexpected(RenderError{kCommandContract});
             const auto* source = runtime_->targets_.find(input.target);
-            if (!source || !targetDescription(*source).sampled)
-            {
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            }
-            const auto& resource = plan.resources()[id.index];
-            const auto* image = std::get_if<GraphImageDesc>(&resource.description);
-            const bool duplicate = std::ranges::any_of(
-                candidate.target_images,
-                [id](const auto& imported) noexcept { return imported.resource == id; }
-            );
-            const bool invalid_import = resource.origin != EGraphOrigin::IMPORTED || !resource.sampled_target_input;
-            if (duplicate || !image || !resource.memory_used || invalid_import)
-            {
-                return cxx::unexpected(RenderError{kCommandContract});
-            }
-            // Static imported-resource structure. This belongs in Graph compilation
-            // once the compiled import contract is available to Attachment creation.
-            if (image->layers != 1 || image->mips != 1)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-            if (targetState(*source).resizing)
-            {
-                return cxx::unexpected(RenderError{kDeviceBusy});
-            }
-
+            if (!source || !targetDescription(*source).sampled) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (!std::holds_alternative<detail::OffscreenTarget>(*source))
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (targetState(*source).device != candidate.device) return cxx::unexpected(RenderError{kJobState});
+            if (targetState(*source).resizing) return cxx::unexpected(RenderError{kDeviceBusy});
+            if (!matching_count) continue;
+            const auto& declaration = declared_targets[index];
+            if (declaration.binding != input.binding) return cxx::unexpected(RenderError{kRuntimeIdentity, {index}});
             const auto images = targetOutput(*source);
-            // Dynamic properties can change when a Target is resized. Target::description
-            // is already validated as sampled above, so do not test it a second time.
-            if (images.description.samples != image->samples || images.description.format != image->format)
-            {
-                return cxx::unexpected(RenderError{kDeviceArgument});
-            }
-
+            const bool matches = images.description.format == declaration.format &&
+                images.description.samples == declaration.samples;
+            if (!matches) return cxx::unexpected(RenderError{kDeviceArgument, {index}});
+            const auto id = declaration.resource;
+            if (id.index == kGraphInvalidIndex) continue;
             candidate.target_images.push_back({input.target, id});
             for (std::uint32_t slot = 0; slot < entry.frameProgress().frameCount(); ++slot)
             {
                 candidate.instance.bindImage(id, slot, *images.frames[slot].image);
             }
         }
+        if (target_images.size() < declared_targets.size()) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (target_images.size() > declared_targets.size()) return cxx::unexpected(RenderError{kCommandContract});
         const auto& slots = candidate.graph.storage_imports;
         if (slots.size() != binding.resources.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         candidate.storage_inputs.reserve(slots.size());
@@ -117,6 +99,20 @@ namespace lux::render
             link.reader = *bound;
             candidate.storage_inputs.push_back(link);
         }
+        const auto same_binding = [&](const compiled::BindingComparison& comparison) noexcept
+        {
+            const auto [left, right] = comparison;
+            if (left.domain != right.domain) return false;
+            if (left.domain == compiled::BindingOperand::EDomain::TARGET)
+                return target_images[left.slot].target == target_images[right.slot].target;
+            const auto& a = binding.resources[left.slot];
+            const auto& b = binding.resources[right.slot];
+            return a.resource == b.resource && a.projection == b.projection && a.use == b.use;
+        };
+        std::vector<std::uint8_t> selected;
+        selected.reserve(candidate.graph.binding_comparisons.size());
+        for (const auto& comparison : candidate.graph.binding_comparisons) selected.push_back(same_binding(comparison));
+        if (auto ready = candidate.instance.bindPredicates(std::move(selected)); !ready) return ready;
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph.preparation;
         detail::RenderGraphInstance::PreparationSources inputs;

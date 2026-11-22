@@ -41,7 +41,8 @@ namespace lux::render
         // Validates the logical description, including imported initial/final access contracts.
         [[nodiscard]] RenderResult<GraphResourceId> declareResource(GraphResource resource) noexcept;
         [[nodiscard]] RenderResult<HistoryDescription> declareHistory(std::string key, HistoryDeclaration declaration) noexcept;
-        [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion) noexcept;
+        [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion, std::optional<PassCondition> when = {}) noexcept;
+        [[nodiscard]] RenderResult<PassCondition> sameBinding(GraphResourceId left, GraphResourceId right) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> declareCondition(std::string key) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> addProgram(GraphProgram program) noexcept;
         [[nodiscard]] std::uint32_t addSampler(SamplerDescription description) noexcept

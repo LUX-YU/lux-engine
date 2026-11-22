@@ -88,10 +88,9 @@ namespace lux::render::runtime_detail
 
         struct ImportSlots final
         {
-            std::vector<GraphResourceId> targets;
+            std::vector<detail::TargetImageSlot> targets;
             std::vector<GraphResourceId> storages;
             std::vector<GraphStorageSnapshotId> snapshots;
-            std::vector<std::uint8_t> used_targets;
             std::vector<std::uint8_t> used_storages;
         };
 
@@ -115,34 +114,31 @@ namespace lux::render::runtime_detail
             EffectLoweringWorkspace(EffectBuildContract contract, std::size_t pin_count) noexcept
                 : contract(contract), bundles(pin_count)
             {
-                slots.targets.resize(contract.imports.targets.size());
                 slots.storages.resize(contract.imports.storages.size());
                 slots.snapshots.resize(contract.imports.storages.size());
-                slots.used_targets.resize(contract.imports.targets.size());
                 slots.used_storages.resize(contract.imports.storages.size());
             }
 
-            RenderResult<ResourceVersion> targetImage(std::size_t index) noexcept
+            RenderResult<ResourceVersion>
+            targetImage(std::string_view name, rdesc::ETextureFormat format, std::uint32_t samples) noexcept
             {
-                const auto& targets = contract.imports.targets;
-                const auto& target = targets[index];
-                auto& slot = slots.targets[target.canonical];
-                if (slot.index == kGraphInvalidIndex)
+                if (name.empty()) return cxx::unexpected(RenderError{kCommandContract});
+                const auto found = std::ranges::find(slots.targets, name, &detail::TargetImageSlot::binding);
+                if (found != slots.targets.end())
                 {
-                    GraphImageDesc image{0, 0, 1, 1, target.format, target.samples};
-                    image.extent.source = EImageExtentSource::IMPORTED;
-                    auto declared = builder.declareResource({
-                        "target-import/" + targets[target.canonical].binding,
-                        image,
-                        EGraphOrigin::IMPORTED,
-                        {GraphImageRange{}},
-                        EGraphUse::SAMPLED
-                    });
-                    if (!declared) return cxx::unexpected(declared.error());
-                    slot = *declared;
+                    if (found->format != format || found->samples != samples)
+                        return cxx::unexpected(RenderError{kDeviceArgument});
+                    return ResourceVersion{found->resource, 0};
                 }
-                slots.used_targets[index] = 1;
-                return ResourceVersion{slot, 0};
+                GraphImageDesc image{0, 0, 1, 1, format, samples};
+                image.extent.source = EImageExtentSource::IMPORTED;
+                auto declared = builder.declareResource({
+                    "target-import/" + std::string{name}, image, EGraphOrigin::IMPORTED,
+                    {GraphImageRange{}}, EGraphUse::SAMPLED
+                });
+                if (!declared) return cxx::unexpected(declared.error());
+                slots.targets.push_back({std::string{name}, format, samples, *declared});
+                return ResourceVersion{*declared, 0};
             }
 
             RenderResult<ResourceVersion> importStorageResource(std::size_t index, GraphResource declaration) noexcept
@@ -211,13 +207,7 @@ namespace lux::render::runtime_detail
                 std::string_view binding, rdesc::ETextureFormat format, std::uint32_t samples
             ) noexcept override
             {
-                const auto& targets = workspace_.contract.imports.targets;
-                const auto found = std::ranges::lower_bound(targets, binding, {}, &EffectTargetImport::binding);
-                if (found == targets.end() || found->binding != binding)
-                    return cxx::unexpected(RenderError{kRuntimeIdentity, {node_.source.value}});
-                if (found->format != format || found->samples != samples)
-                    return cxx::unexpected(RenderError{kDeviceArgument, {node_.source.value}});
-                return workspace_.targetImage(found - targets.begin());
+                return workspace_.targetImage(binding, format, samples);
             }
 
             RenderResult<ResourceVersion>
@@ -555,7 +545,7 @@ namespace lux::render::runtime_detail
                 GraphExport exported{member.version, {}, {}, {}};
                 if (output.target)
                 {
-                    const bool imported_target = std::ranges::find(slots.targets, member.version.resource) != slots.targets.end();
+                    const bool imported_target = std::ranges::find(slots.targets, member.version.resource, &detail::TargetImageSlot::resource) != slots.targets.end();
                     const bool imported_storage = std::ranges::find(slots.storages, member.version.resource) != slots.storages.end();
                     if (imported_target || imported_storage)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -567,19 +557,16 @@ namespace lux::render::runtime_detail
         }
         auto source = std::move(builder).finish();
         if (!source) return cxx::unexpected(source.error());
-        const bool unused_target = std::ranges::find(slots.used_targets, 0) != slots.used_targets.end();
+        std::ranges::sort(slots.targets, {}, &detail::TargetImageSlot::binding);
         const bool unused_storage = std::ranges::find(slots.used_storages, 0) != slots.used_storages.end();
-        if (unused_target || unused_storage) return cxx::unexpected(RenderError{kCommandContract});
+        if (unused_storage) return cxx::unexpected(RenderError{kCommandContract});
         std::vector<bool> linked_targets(source->resources().size());
         std::vector<bool> linked_storages(source->resources().size());
         std::vector<bool> linked_buffers(source->resources().size());
         std::vector<const UniformBlockDeclaration*> linked_uniforms(source->resources().size());
         for (const auto& uniform : uniforms) linked_uniforms[uniform.resource.index] = &uniform;
         for (const auto& buffer : preparation.buffers) linked_buffers[buffer.resource.index] = true;
-        for (const auto slot : slots.targets)
-        {
-            if (slot.index != kGraphInvalidIndex) linked_targets[slot.index] = true;
-        }
+        for (const auto& slot : slots.targets) linked_targets[slot.resource.index] = true;
         std::vector<std::optional<EGraphUse>> storage_read_uses(source->resources().size());
         for (std::size_t i = 0; i < slots.storages.size(); ++i)
         {

@@ -215,19 +215,6 @@ namespace lux::render
         if (std::holds_alternative<detail::SwapchainTarget>(*target) && !writes_target)
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         if (auto valid = binding.inputs.viewport.validate(); !valid) return valid;
-        for (const auto& input : binding.target_images)
-        {
-            if (input.binding.empty()) return cxx::unexpected(RenderError{kCommandContract});
-            const auto* source = runtime_->targets_.find(input.target);
-            if (!source || !targetDescription(*source).sampled)
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            if (!std::holds_alternative<detail::OffscreenTarget>(*source))
-                return cxx::unexpected(RenderError{kDeviceUnsupported});
-            if (targetState(*source).device != device) return cxx::unexpected(RenderError{kJobState});
-            if (targetState(*source).resizing) return cxx::unexpected(RenderError{kDeviceBusy});
-        }
-        if (targetDependencyCycle(target_id, binding.target_images, job.control.id()))
-            return cxx::unexpected(RenderError{kCommandContract});
         return {};
     }
 
@@ -261,39 +248,13 @@ namespace lux::render
         });
     }
 
-    RenderResult<std::vector<EffectTargetImport>>
-    RenderServer::Impl::qualifyEffectTargetImports(std::span<const TargetImageInput> inputs) const noexcept
-    {
-        if (inputs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        std::vector<EffectTargetImport> imports;
-        imports.reserve(inputs.size());
-        for (std::uint32_t i = 0; i < inputs.size(); ++i)
-        {
-            const auto& input = inputs[i];
-            if (i != 0 && inputs[i - 1].binding == input.binding)
-                return cxx::unexpected(RenderError{kCommandContract, {i}});
-            const auto* owner = runtime_->targets_.find(input.target);
-            if (!owner) return cxx::unexpected(RenderError{kRuntimeIdentity, {i}});
-            const auto& desc = targetDescription(*owner);
-            // Distinct offscreen Target owners allocate distinct images. The same ID under
-            // different names is one logical graph resource with one physical binding.
-            const auto same_owner = std::ranges::find(inputs.first(i), input.target, &TargetImageInput::target);
-            const auto canonical = same_owner == inputs.first(i).end() ?
-                i : static_cast<std::uint32_t>(same_owner - inputs.begin());
-            imports.push_back({input.binding, desc.format, desc.samples, canonical});
-        }
-        return imports;
-    }
-
     RenderResult<EffectImportContracts>
     RenderServer::Impl::qualifyEffectImports(const detail::DeviceEntry& entry, const JobBinding& binding) const noexcept
     {
-        auto targets = qualifyEffectTargetImports(binding.target_images);
-        if (!targets) return cxx::unexpected(targets.error());
         const auto inputs = std::span{binding.resources};
         if (inputs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto& registry = runtime_->resources_;
-        EffectImportContracts imports{std::move(*targets), {}};
+        EffectImportContracts imports;
         imports.storages.reserve(inputs.size());
         for (std::uint32_t i = 0; i < inputs.size(); ++i)
         {
@@ -481,12 +442,14 @@ namespace lux::render
         if (!variant) co_return AckResponse{variant.error()};
         if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, reservation); !valid)
             co_return AckResponse{valid.error()};
-        if (!imports->targets.empty() || !imports->storages.empty())
+        if (!imports->storages.empty())
         {
             auto current = qualifyEffectImports(entry, binding);
             if (!current) co_return AckResponse{current.error()};
             if (*current != *imports) co_return AckResponse{RenderError{kDeviceArgument}};
         }
+        if (targetDependencyCycle(target_id, binding.target_images, job.control.id()))
+            co_return AckResponse{RenderError{kCommandContract}};
         const auto qualified_view = qualify_view();
         if (!qualified_view) co_return AckResponse{qualified_view.error()};
         auto* view_parameters = *qualified_view;

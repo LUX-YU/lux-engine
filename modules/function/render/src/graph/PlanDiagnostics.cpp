@@ -305,8 +305,8 @@ namespace lux::render::detail
                 output += ',';
             }
             const auto& region = program.conditions[i];
-            const auto source_input = region.source == EConditionSource::INPUT
-                ? region.input_slot : plan.histories_[region.input_slot].description.previous.index;
+            const auto source_input = region.source == EConditionSource::HISTORY_VALID
+                ? plan.histories_[region.input_slot].description.previous.index : region.input_slot;
             output += "{\"first_pass\":" + std::to_string(region.first_pass) +
                       ",\"pass_count\":" + std::to_string(region.pass_count) +
                       ",\"source\":" + std::to_string(static_cast<unsigned>(region.source)) +

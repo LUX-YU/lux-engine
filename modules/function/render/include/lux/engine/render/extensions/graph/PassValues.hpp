@@ -41,18 +41,4 @@ namespace lux::render
         std::optional<RasterViewport> viewport;
     };
 
-    enum class EConditionSource : std::uint8_t
-    {
-        INPUT,
-        HISTORY_VALID
-    };
-
-    struct PassCondition final
-    {
-        EConditionSource source = EConditionSource::INPUT;
-        // INPUT: declared condition index. HISTORY_VALID: the Previous resource of a declared pair.
-        std::uint32_t input = 0;
-        bool expected = true;
-        bool operator==(const PassCondition&) const noexcept = default;
-    };
 } // namespace lux::render

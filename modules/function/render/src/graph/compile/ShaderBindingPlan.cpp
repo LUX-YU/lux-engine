@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <algorithm>
 #include <utility>
 #include <limits>
@@ -640,7 +640,7 @@ namespace lux::render::detail
     RenderResult<ShaderBindingPlan>
     planLayouts(
         const nri::DeviceDesc& limits,
-        const RenderGraph& graph,
+        const GraphDefinition& graph,
         const RenderGraphAnalysis& analysis,
         bool device_addresses
     ) noexcept

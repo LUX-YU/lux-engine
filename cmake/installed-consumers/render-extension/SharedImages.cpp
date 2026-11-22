@@ -308,7 +308,7 @@ namespace
         };
     }
 
-    RenderResult<void> buildReader(EffectBuildContext& context, std::string_view arguments) noexcept
+    RenderResult<void> buildReader(EffectCompileContext& context, std::string_view arguments) noexcept
     {
         const bool sample = arguments == "sample";
         const auto use = sample ? EGraphUse::SAMPLED : EGraphUse::TRANSFER_SOURCE;
@@ -317,24 +317,23 @@ namespace
             "source", {ResourceName{ImagePairDescriptor::descriptor.type.name()}, true},
             {"", image, EGraphOrigin::IMPORTED, {GraphImageRange{}}, use}, sample ? 0u : 1u
         ));
-        auto& builder = context.builder();
-        const auto color = take(builder.declareResource({"target color", image}));
-        const auto clear = take(builder.addTransferPass(
+        const auto color = take(context.declareResource({"target color", image}));
+        const auto clear = take(context.addTransferPass(
             "independent graphics work", TransferWork{{ClearImage{{{color, 0}}}}}, {.estimated_gpu_ns = 100000}
         ));
         auto selected = imported;
         if (sample)
         {
-            const auto generated = take(builder.declareResource({"sampled pixels", image}));
+            const auto generated = take(context.declareResource({"sampled pixels", image}));
             ComputeWork work;
             work.allow_async_compute = true;
             const GraphProgram program{kSharedImageRead.load(context.shaderTarget())};
-            work.interface.program = take(builder.addProgram(program));
+            work.interface.program = take(context.addProgram(program));
             work.interface.resources = {
                 {"selected", {imported}}, {"result", {{generated, 0}, {}, EGraphAccess::WRITE}}
             };
             work.dispatch = ImageDispatchArguments{generated};
-            selected = take(builder.addComputePass(
+            selected = take(context.addComputePass(
                 "sample physical image", std::move(work), {.estimated_gpu_ns = 100000}
             )).written.front();
         }
@@ -343,7 +342,7 @@ namespace
             {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION}
         ));
-        const auto copy = take(builder.addTransferPass(
+        const auto copy = take(context.addTransferPass(
             "source to readback", TransferWork{{CopyImageBuffer{
                 {selected}, {capture}, 256, GraphCaptureBuffer::image_bytes, ImageCopyRegion{0, 0, extent, extent}
             }}}, {.estimated_gpu_ns = 1000}

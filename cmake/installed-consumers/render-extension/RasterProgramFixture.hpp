@@ -9,7 +9,7 @@
 #include "SdkFullscreen.hpp"
 #include "SdkGreen.hpp"
 #include "SdkRed.hpp"
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 
 #include "SdkRecordColor.hpp"

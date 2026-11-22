@@ -11,20 +11,24 @@
 #include <lux/engine/render/extensions/CommandMethod.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <optional>
 #include <thread>
+#include <type_traits>
 #include <source_location>
 
 using namespace lux;
 using namespace lux::render;
 namespace ipc = lux::platform::ipc;
+
+static_assert(!std::is_default_constructible_v<EffectCompileContext>);
+static_assert(!std::is_copy_constructible_v<EffectCompileContext>);
+static_assert(!std::is_polymorphic_v<EffectCompileContext>);
 
 #define CHECK(value)                                                                                                   \
     do                                                                                                                 \
@@ -209,22 +213,21 @@ static CapabilityDefinition routedDefinition(CommandId command)
     };
 }
 
-static RenderResult<ResourceVersion> clearColor(EffectBuildContext& context) noexcept
+static RenderResult<ResourceVersion> clearColor(EffectCompileContext& context) noexcept
 {
     const auto& target = context.target();
     if (target.format != rdesc::ETextureFormat::RGBA8_UNORM || target.samples != 1)
         return cxx::unexpected(RenderError{kRuntimeUnsupported});
     GraphImageDesc image{16, 16};
     image.extent.source = EImageExtentSource::TARGET;
-    auto& builder = context.builder();
-    const auto output = builder.declareResource({"color", image});
+    const auto output = context.declareResource({"color", image});
     if (!output) return cxx::unexpected(output.error());
-    const auto clear = builder.addTransferPass("clear", TransferWork{{ClearImage{{{*output, 0}}, {0, 0, 0, 1}}}});
+    const auto clear = context.addTransferPass("clear", TransferWork{{ClearImage{{{*output, 0}}, {0, 0, 0, 1}}}});
     if (!clear) return cxx::unexpected(clear.error());
     return clear->written.front();
 }
 
-static RenderResult<void> buildRouted(EffectBuildContext& context, std::string_view) noexcept
+static RenderResult<void> buildRouted(EffectCompileContext& context, std::string_view) noexcept
 {
     const auto previous = context.inputs(previous_color);
     if (!previous.empty()) return context.publish(output_color, previous.front());
@@ -552,7 +555,7 @@ static CapabilityDefinition transferDefinition()
     };
 }
 
-static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string_view) noexcept
+static RenderResult<void> buildTransfer(EffectCompileContext& context, std::string_view) noexcept
 {
     if (context.outputDemanded(output_color))
     {
@@ -562,7 +565,6 @@ static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string
     }
     if (!context.outputDemanded(readback_value)) return {};
 
-    auto& builder = context.builder();
     const auto readback = context.importFinalBuffer(
         readback_binding, {ResourceName{ProbeReadback::Descriptor::descriptor.type.name()}},
         {"", GraphBufferDesc{transfer_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
@@ -570,13 +572,30 @@ static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string
     if (!readback) return cxx::unexpected(readback.error());
     const GraphBufferDesc description{transfer_bytes};
     const auto history = take(
-        builder.declareHistory("samples", {description, {}, EGraphUse::TRANSFER_SOURCE, history_distance})
+        context.declareHistory("samples", {description, {}, EGraphUse::TRANSFER_SOURCE, history_distance})
     );
-    const auto fallback = take(builder.declareResource({"history fallback", description}));
-    const auto previous = take(builder.choose(
+    const auto fallback = take(context.declareResource({"history fallback", description}));
+    // Reject after the first arm has changed both graph resources and node-side declarations.
+    const auto rejected = context.choose(
         {EConditionSource::HISTORY_VALID, history.previous.index},
-        [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{history.previous, 0}; },
-        [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
+        {
+            const auto unused = arm.declarePreparedBuffer("discarded", 4, 8);
+            if (!unused) return cxx::unexpected(unused.error());
+            const auto published = arm.publish(readback_value, {{readback_value, *unused}});
+            if (!published) return cxx::unexpected(published.error());
+            return *unused;
+        },
+        [](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion>
+        {
+            return cxx::unexpected(RenderError{kGraphInvalidRange});
+        }
+    );
+    CHECK(!rejected && rejected.error().type == kGraphInvalidRange);
+    const auto previous = take(context.choose(
+        {EConditionSource::HISTORY_VALID, history.previous.index},
+        [&](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{history.previous, 0}; },
+        [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
         {
             auto seed = arm.addTransferPass("initialize history fallback", TransferWork{{
                 FillBuffer{{{fallback, 0}}, fallback_value}
@@ -585,11 +604,11 @@ static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string
             return seed->written.front();
         }
     ));
-    const auto written = take(builder.addTransferPass("write current history", TransferWork{{
+    const auto written = take(context.addTransferPass("write current history", TransferWork{{
         FillBuffer{{{history.current, 0}}, expected_value}
     }}));
-    CHECK(builder.publishHistory(written.written.front()));
-    const auto copied = take(builder.addTransferPass("read earlier history", TransferWork{{
+    CHECK(context.publishHistory(written.written.front()));
+    const auto copied = take(context.addTransferPass("read earlier history", TransferWork{{
         CopyBuffer{{previous}, {*readback}}
     }}));
     return context.publish(readback_value, {{readback_value, copied.written.front()}});

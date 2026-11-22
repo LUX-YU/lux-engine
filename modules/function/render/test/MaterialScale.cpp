@@ -15,9 +15,8 @@
 #include <lux/engine/render/effect/MeshRaster.hpp>
 #include <lux/engine/render/effect/MeshVisibility.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
 #ifdef _WIN32
@@ -381,7 +380,7 @@ namespace
     }
 
     template <EMaterialPurpose Purpose>
-    RenderResult<void> buildMaterialCapture(EffectBuildContext& context, std::string_view arguments) noexcept
+    RenderResult<void> buildMaterialCapture(EffectCompileContext& context, std::string_view arguments) noexcept
     {
         constexpr bool depth = Purpose == EMaterialPurpose::SHADOW;
         constexpr auto member = Purpose == EMaterialPurpose::GBUFFER ?
@@ -395,7 +394,7 @@ namespace
             capture_bindings[projection], {ResourceName{MaterialReadbackDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
         ));
-        const auto copied = take(context.builder().addTransferPass(
+        const auto copied = take(context.addTransferPass(
             "copy " + std::string{capture_bindings[projection]}, TransferWork{{
                 CopyImageBuffer{
                     {source->version, GraphImageRange{depth ? 2u : 1u}},
@@ -415,7 +414,7 @@ namespace
     }
 
     template <bool Import>
-    RenderResult<void> buildHdr(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildHdr(EffectCompileContext& context, std::string_view) noexcept
     {
         ResourceVersion color;
         if constexpr (Import)
@@ -428,8 +427,8 @@ namespace
         {
             GraphImageDesc image{0, 0, 1, 1, ETextureFormat::RGBA16_SFLOAT};
             image.extent.source = EImageExtentSource::TARGET;
-            const auto output = take(context.builder().declareResource({"HDR source", image}));
-            const auto cleared = take(context.builder().addTransferPass(
+            const auto output = take(context.declareResource({"HDR source", image}));
+            const auto cleared = take(context.addTransferPass(
                 "clear HDR", TransferWork{{ClearImage{{{output, 0}}, {.25F, .5F, .75F, 1}}}}
             ));
             color = cleared.written.front();

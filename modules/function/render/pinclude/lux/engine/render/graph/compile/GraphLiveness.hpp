@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 
 namespace lux::render::detail
 {
@@ -19,5 +19,5 @@ namespace lux::render::detail
 
     // Producer groups contribute liveness. GPU ordering comes from graph edges and resource accesses.
     [[nodiscard]] RenderResult<RenderGraphAnalysis>
-    analyzeGraphWithPreparation(const RenderGraph&, PreparationLiveness*) noexcept;
+    analyzeGraphWithPreparation(const GraphDefinition&, PreparationLiveness*) noexcept;
 }

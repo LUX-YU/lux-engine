@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
@@ -6,7 +6,7 @@
 namespace lux::render
 {
     bool dumpGraph(
-        const RenderGraph& graph,
+        const GraphDefinition& graph,
         const RenderGraphAnalysis& analysis,
         EGraphDumpFormat format,
         DumpSink sink

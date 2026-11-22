@@ -10,10 +10,9 @@
 #include <lux/engine/render/effect/Shadow.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
@@ -472,7 +471,7 @@ static void registerClearNode(RenderServer& server)
     {
         return context.setConfiguration(std::array{0.0f, 1.0f, 0.0f, 1.0f});
     };
-    implementation.build = [](EffectBuildContext& context, std::string_view args) noexcept -> RenderResult<void>
+    implementation.build = [](EffectCompileContext& context, std::string_view args) noexcept -> RenderResult<void>
     {
         if (args == "hold-lowering")
         {
@@ -484,11 +483,10 @@ static void registerClearNode(RenderServer& server)
         const auto state = take(context.importStorageSnapshot<bool>(
             clear_resource, {ResourceName{ColdResource::descriptor.type.name()}}
         ));
-        auto& builder = context.builder();
         GraphImageDesc image{32, 32, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
         image.extent.source = EImageExtentSource::TARGET;
-        const auto output = take(builder.declareResource({"clear color", image}));
-        const auto cleared = take(builder.addTransferPass(
+        const auto output = take(context.declareResource({"clear color", image}));
+        const auto cleared = take(context.addTransferPass(
             "clear", TransferWork{{ClearImage{{{output, 0}}, *color}}}
         ));
         GraphPreparation preparation{

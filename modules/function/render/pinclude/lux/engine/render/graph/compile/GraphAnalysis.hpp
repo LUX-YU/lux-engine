@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/visibility.h>
+#include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 
 namespace lux::render
 {
@@ -59,6 +59,12 @@ namespace lux::render
         bool operator==(const RenderGraphAnalysis&) const noexcept = default;
     };
 
-    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<RenderGraphAnalysis> analyzeRenderGraph(const RenderGraph& definition
+    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<RenderGraphAnalysis> analyzeRenderGraph(const GraphDefinition& definition
+    ) noexcept;
+    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpGraph(
+        const GraphDefinition&,
+        const RenderGraphAnalysis&,
+        EGraphDumpFormat,
+        DumpSink
     ) noexcept;
 } // namespace lux::render

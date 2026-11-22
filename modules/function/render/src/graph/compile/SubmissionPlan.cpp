@@ -1,5 +1,5 @@
 #include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
 #include <lux/engine/render/graph/compile/BarrierPlan.hpp>
@@ -92,7 +92,7 @@ namespace lux::render::detail
     }
 
     double estimateScheduleNs(
-        const RenderGraph& graph,
+        const GraphDefinition& graph,
         std::span<const GraphPassId> order,
         std::span<const SubmissionBatch> batches,
         GraphQueueCosts costs

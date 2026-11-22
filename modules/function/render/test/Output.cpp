@@ -57,10 +57,10 @@
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include "FrameHarness.hpp"
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <optional>
@@ -168,7 +168,7 @@ static void graphOutput(Validation& validation)
     TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 3);
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{4096}}));
     const auto copied = take(builder.declareResource({"copied", GraphBufferDesc{4096}}));
@@ -269,7 +269,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 1);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
     RasterWork work;
     work.program = RasterPassTemplate{"identity regression"};
@@ -421,7 +421,7 @@ static void importedExtentContracts(Validation& validation)
     const auto& core = session->nriCore();
     for (const bool resolve : {false, true})
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         GraphImageDesc image{0, 0, 1, 1, lux::rdesc::ETextureFormat::RGBA8_UNORM};
         image.extent.source = EImageExtentSource::IMPORTED;
         image.samples = resolve ? 4 : 1;
@@ -531,20 +531,19 @@ namespace
     }
 
     template <bool Hdr>
-    RenderResult<void> buildOutputClear(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildOutputClear(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto format = Hdr ? rdesc::ETextureFormat::RGBA16_SFLOAT : context.target().format;
         GraphImageDesc image{0, 0, 1, 1, format};
         image.extent.source = EImageExtentSource::TARGET;
-        auto& builder = context.builder();
-        const auto color = take(builder.declareResource({"output clear", image}));
-        const auto clear = take(builder.addTransferPass(
+        const auto color = take(context.declareResource({"output clear", image}));
+        const auto clear = take(context.addTransferPass(
             "clear output", TransferWork{{ClearImage{{{color, 0}}, {.25f, .5f, .75f, 1}}}}
         ));
         return context.publish(ToneMapping::color, {{ToneMapping::color, clear.written.front()}});
     }
 
-    RenderResult<void> buildOutputImport(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildOutputImport(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto image = context.importTargetImage(hdr_binding, rdesc::ETextureFormat::RGBA16_SFLOAT);
         if (!image) return lux::cxx::unexpected(image.error());
@@ -850,7 +849,7 @@ namespace
 
     std::atomic_uint target_graph_builds{};
 
-    RenderResult<void> buildImportedTargetNode(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildImportedTargetNode(EffectCompileContext& context, std::string_view) noexcept
     {
         constexpr auto format = rdesc::ETextureFormat::RGBA16_SFLOAT;
         auto first = context.importTargetImage("first", format);
@@ -862,11 +861,10 @@ namespace
 
         GraphImageDesc image{0, 0, 1, 1, format};
         image.extent.source = EImageExtentSource::TARGET;
-        auto& builder = context.builder();
-        const auto output = take(builder.declareResource({"import.output", image}));
-        const auto intermediate = take(builder.declareResource({"import.intermediate", image}));
-        const auto program = take(builder.addProgram(GraphProgram{kEffectGraphImport.load(context.shaderTarget())}));
-        const auto predicate = take(builder.sameBinding(first->resource, second->resource));
+        const auto output = take(context.declareResource({"import.output", image}));
+        const auto intermediate = take(context.declareResource({"import.intermediate", image}));
+        const auto program = take(context.addProgram(GraphProgram{kEffectGraphImport.load(context.shaderTarget())}));
+        const auto predicate = take(context.sameBinding(first->resource, second->resource));
         const auto sample = [&](ResourceVersion left, ResourceVersion right, GraphResourceId destination)
         {
             ComputeWork work;
@@ -878,10 +876,10 @@ namespace
             work.dispatch = ImageDispatchArguments{destination};
             return work;
         };
-        const auto result = builder.choose(
+        const auto result = context.choose(
             predicate,
-            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return *first; },
-            [&](RenderGraphBuilder& branch) noexcept -> RenderResult<ResourceVersion>
+            [&](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion> { return *first; },
+            [&](EffectCompileContext& branch) noexcept -> RenderResult<ResourceVersion>
             {
                 auto pass = branch.addComputePass("combine targets", sample(*first, *second, intermediate));
                 if (!pass) return lux::cxx::unexpected(pass.error());
@@ -889,9 +887,9 @@ namespace
             }
         );
         if (!result) return lux::cxx::unexpected(result.error());
-        const auto color = take(builder.declareResource({"sampled color", image}));
-        const auto generated = take(builder.addComputePass("sample selected color", sample(*result, *result, color)));
-        const auto copied = take(builder.addTransferPass(
+        const auto color = take(context.declareResource({"sampled color", image}));
+        const auto generated = take(context.addComputePass("sample selected color", sample(*result, *result, color)));
+        const auto copied = take(context.addTransferPass(
             "publish sampled inputs", TransferWork{{lux::render::CopyImage{{generated.written.front()}, {{output, 0}}}}}
         ));
         return context.publish(node_color, {{node_color, copied.written.front()}});
@@ -1501,7 +1499,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     constexpr auto node_bytes = effectPortSemantic("bytes");
     std::atomic_uint storage_node_builds{};
 
-    RenderResult<void> buildImportedStorageNode(EffectBuildContext& context, std::string_view args) noexcept
+    RenderResult<void> buildImportedStorageNode(EffectCompileContext& context, std::string_view args) noexcept
     {
         const auto type = args == "wrong-type" ?
             CaptureDescriptor::descriptor.type.name() : EffectCaptureDescriptor::descriptor.type.name();
@@ -1517,9 +1515,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         if (!second) return lux::cxx::unexpected(second.error());
         ++storage_node_builds;
 
-        auto& builder = context.builder();
-        const auto transient = take(builder.declareResource({"staging", GraphBufferDesc{bytes}}));
-        const auto fill = [&](RenderGraphBuilder& arm, std::uint32_t pattern) noexcept -> RenderResult<ResourceVersion>
+        const auto transient = take(context.declareResource({"staging", GraphBufferDesc{bytes}}));
+        const auto fill = [&](EffectCompileContext& arm, std::uint32_t pattern) noexcept -> RenderResult<ResourceVersion>
         {
             auto pass = arm.addTransferPass(
                 "fill " + std::to_string(pattern), TransferWork{{FillBuffer{{{transient, 0}}, pattern}}}
@@ -1527,10 +1524,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (!pass) return lux::cxx::unexpected(pass.error());
             return pass->written.front();
         };
-        const auto selected = take(builder.choose(
-            take(builder.sameBinding(first->resource, second->resource)),
-            [&](RenderGraphBuilder& arm) noexcept { return fill(arm, 0x5a5a5a5au); },
-            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        const auto selected = take(context.choose(
+            take(context.sameBinding(first->resource, second->resource)),
+            [&](EffectCompileContext& arm) noexcept { return fill(arm, 0x5a5a5a5au); },
+            [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
             {
                 auto value = fill(arm, 0x6b6b6b6bu);
                 if (!value) return lux::cxx::unexpected(value.error());
@@ -1552,9 +1549,9 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         ));
         if (args == "ambiguous-write")
         {
-            CHECK(builder.addTransferPass("also write first", TransferWork{{CopyBuffer{{selected}, {*first}}}}));
+            CHECK(context.addTransferPass("also write first", TransferWork{{CopyBuffer{{selected}, {*first}}}}));
         }
-        const auto copied = take(builder.addTransferPass("copy to storage", TransferWork{{
+        const auto copied = take(context.addTransferPass("copy to storage", TransferWork{{
             CopyBuffer{{selected}, {*second}}
         }}));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
@@ -1713,7 +1710,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         out.error = {};
     }
 
-    RenderResult<void> buildUniformOutput(EffectBuildContext& context, std::string_view arguments) noexcept
+    RenderResult<void> buildUniformOutput(EffectCompileContext& context, std::string_view arguments) noexcept
     {
         const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
         auto external = context.importFinalBuffer("readback", requirement, {
@@ -1724,38 +1721,37 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             &UniformNodeState::block, &UniformNodeState::revision>();
         if (!uniform) return lux::cxx::unexpected(uniform.error());
 
-        auto& builder = context.builder();
-        const auto intermediate = take(builder.declareResource({"generated values", GraphBufferDesc{effect_capture_bytes}}));
+        const auto intermediate = take(context.declareResource({"generated values", GraphBufferDesc{effect_capture_bytes}}));
         const bool async = arguments == "async";
         constexpr std::uint64_t branch_gpu_ns = 80'000;
         if (async)
         {
-            const auto scratch = take(builder.declareResource({"independent graphics", GraphBufferDesc{16}}));
-            CHECK(builder.addTransferPass(
+            const auto scratch = take(context.declareResource({"independent graphics", GraphBufferDesc{16}}));
+            CHECK(context.addTransferPass(
                 "independent graphics", TransferWork{{FillBuffer{{{scratch, 0}}, 1}}},
                 {.side_effect = true, .estimated_gpu_ns = branch_gpu_ns}
             ));
         }
         ComputeWork compute;
         compute.allow_async_compute = async;
-        compute.interface.program = take(builder.addProgram(GraphProgram{kEffectNodeUniform.load(context.shaderTarget())}));
+        compute.interface.program = take(context.addProgram(GraphProgram{kEffectNodeUniform.load(context.shaderTarget())}));
         compute.interface.resources = {
             {"uniform_block", {*uniform}},
             {"generated", {{intermediate, 0}, {}, EGraphAccess::WRITE}}
         };
         compute.interface.resources.front().setUniformConstant<TestUniformBlock>();
         compute.dispatch = DispatchArguments{{effect_capture_bytes / (sizeof(std::uint32_t) * 64), 1, 1}};
-        const auto produced = take(builder.addComputePass(
+        const auto produced = take(context.addComputePass(
             "compute uniform values", std::move(compute), {.estimated_gpu_ns = async ? branch_gpu_ns : 0}
         ));
-        const auto copied = take(builder.addTransferPass(
+        const auto copied = take(context.addTransferPass(
             "read uniform values", TransferWork{{CopyBuffer{{produced.written.front()}, {*external}}}},
             {.estimated_gpu_ns = async ? 100u : 0u}
         ));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
 
-    RenderResult<void> buildPreparedOutput(EffectBuildContext& context, std::string_view args) noexcept
+    RenderResult<void> buildPreparedOutput(EffectCompileContext& context, std::string_view args) noexcept
     {
         const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
         auto imported = context.importFinalBuffer("readback", requirement, {
@@ -1766,15 +1762,14 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const auto slot = args == "type" ?
             take(context.declareCpuData<float>()) : take(context.declareCpuData<std::uint32_t>());
         const auto dead = take(context.declareCpuData<std::uint32_t>());
-        auto& builder = context.builder();
-        const auto gpu = take(builder.declareResource({"prepared values", GraphBufferDesc{effect_capture_bytes}}));
+        const auto gpu = take(context.declareResource({"prepared values", GraphBufferDesc{effect_capture_bytes}}));
         ComputeWork compute;
-        compute.interface.program = take(builder.addProgram(GraphProgram{kEffectGraphProducer.load(context.shaderTarget())}));
+        compute.interface.program = take(context.addProgram(GraphProgram{kEffectGraphProducer.load(context.shaderTarget())}));
         compute.interface.resources = {{"generated", {{gpu, 0}, {}, EGraphAccess::WRITE}}};
         compute.interface.parameters.setInlineConstant(ProducerConstants{0});
         compute.dispatch = DispatchArguments{{effect_capture_bytes / (sizeof(std::uint32_t) * 64), 1, 1}};
-        const auto produced = take(builder.addComputePass("compute prepared values", std::move(compute)));
-        const auto copy = take(builder.addTransferPass(
+        const auto produced = take(context.addComputePass("compute prepared values", std::move(compute)));
+        const auto copy = take(context.addTransferPass(
             "read prepared values", TransferWork{{CopyBuffer{{produced.written.front()}, {*imported}}}}
         ));
         struct BlockSource final
@@ -1791,15 +1786,15 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         if (args == "copy-type" || args == "copy-source")
             return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
 
-        const auto seed = take(builder.declareResource({"companion seed", GraphBufferDesc{4}}));
-        const auto scratch = take(builder.declareResource({"companion scratch", GraphBufferDesc{4}}));
-        const auto undefined = take(builder.declareResource({"uninitialized companion input", GraphBufferDesc{4}}));
-        const auto unused = take(builder.declareResource({"unused companion target", GraphBufferDesc{4}}));
-        const auto seeded = take(builder.addTransferPass("seed companion", TransferWork{{FillBuffer{{{seed, 0}}, 7}}}));
-        const auto companion = take(builder.addTransferPass(
+        const auto seed = take(context.declareResource({"companion seed", GraphBufferDesc{4}}));
+        const auto scratch = take(context.declareResource({"companion scratch", GraphBufferDesc{4}}));
+        const auto undefined = take(context.declareResource({"uninitialized companion input", GraphBufferDesc{4}}));
+        const auto unused = take(context.declareResource({"unused companion target", GraphBufferDesc{4}}));
+        const auto seeded = take(context.addTransferPass("seed companion", TransferWork{{FillBuffer{{{seed, 0}}, 7}}}));
+        const auto companion = take(context.addTransferPass(
             "keep companion", TransferWork{{CopyBuffer{{seeded.written.front()}, {{scratch, 0}}}}}
         ));
-        const auto dormant = take(builder.addTransferPass(
+        const auto dormant = take(context.addTransferPass(
             "dormant undefined read", TransferWork{{CopyBuffer{{{undefined, 0}}, {{unused, 0}}}}}
         ));
 
@@ -2173,12 +2168,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         return prependStreamVertex(fragment.load(target), vertex_shader);
     }
 
-    std::uint32_t addEffectRasterProgram(EffectBuildContext& context, const rdesc::EmbeddedShader& fragment) noexcept
+    std::uint32_t addEffectRasterProgram(EffectCompileContext& context, const rdesc::EmbeddedShader& fragment) noexcept
     {
-        return take(context.builder().addProgram(GraphProgram{streamShader(context.shaderTarget(), fragment)}));
+        return take(context.addProgram(GraphProgram{streamShader(context.shaderTarget(), fragment)}));
     }
 
-    RenderResult<void> buildRasterStreamOutput(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildRasterStreamOutput(EffectCompileContext& context, std::string_view) noexcept
     {
         auto imported = context.importFinalBuffer(
             "readback",
@@ -2186,41 +2181,40 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         );
         if (!imported) return lux::cxx::unexpected(imported.error());
-        auto& builder = context.builder();
         GraphImageDesc color_image{0, 0, 1, 2};
         color_image.extent.source = EImageExtentSource::TARGET;
-        const auto color = take(builder.declareResource({"raster stream color", color_image}));
-        const auto indices = take(builder.declareResource({"raster stream indices", GraphBufferDesc{24}}));
-        const auto arguments = take(builder.declareResource({"raster stream arguments", GraphBufferDesc{84}}));
-        const auto count = take(builder.declareResource({"raster stream count", GraphBufferDesc{16}}));
+        const auto color = take(context.declareResource({"raster stream color", color_image}));
+        const auto indices = take(context.declareResource({"raster stream indices", GraphBufferDesc{24}}));
+        const auto arguments = take(context.declareResource({"raster stream arguments", GraphBufferDesc{84}}));
+        const auto count = take(context.declareResource({"raster stream count", GraphBufferDesc{16}}));
         auto indirect_shader = kEffectStreamIndirect.load(context.shaderTarget());
         ComputeWork generate_args;
-        generate_args.interface.program = take(builder.addProgram(GraphProgram{std::move(indirect_shader)}));
+        generate_args.interface.program = take(context.addProgram(GraphProgram{std::move(indirect_shader)}));
         generate_args.interface.resources = {
             {"arguments", {{arguments, 0}, {}, EGraphAccess::WRITE}},
             {"count", {{count, 0}, {}, EGraphAccess::WRITE}}
         };
         generate_args.dispatch = DispatchArguments{{1, 1, 1}};
-        const auto generated = take(builder.addComputePass("generate indirect commands", std::move(generate_args)));
+        const auto generated = take(context.addComputePass("generate indirect commands", std::move(generate_args)));
         CHECK(generated.written.size() == 2);
         const auto arguments_ready = generated.written[0];
         const auto count_ready = generated.written[1];
         CHECK(arguments_ready.resource == arguments && count_ready.resource == count);
-        const auto uniform = take(builder.declareResource({"raster stream uniform", GraphBufferDesc{256}}));
-        const auto shade = take(builder.addTransferPass("fill uniform", TransferWork{{FillBuffer{{{uniform, 0}}, 197}}}));
+        const auto uniform = take(context.declareResource({"raster stream uniform", GraphBufferDesc{256}}));
+        const auto shade = take(context.addTransferPass("fill uniform", TransferWork{{FillBuffer{{{uniform, 0}}, 197}}}));
         GraphImageDesc sampled_image{32, 32, 2, 2};
         sampled_image.extent.source = EImageExtentSource::TARGET;
-        const auto tiles = take(builder.declareResource({"raster stream tiles", sampled_image}));
+        const auto tiles = take(context.declareResource({"raster stream tiles", sampled_image}));
         constexpr GraphImageRange first_tile{1, 0, 1, 0, 1};
         constexpr GraphImageRange second_tile{1, 1, 1, 1, 1};
-        const auto tiled = take(builder.addTransferPass("fill first tile", TransferWork{{
+        const auto tiled = take(context.addTransferPass("fill first tile", TransferWork{{
             ClearImage{{{tiles, 0}, first_tile}, {65.0f / 255, 0, 97.0f / 255, 1}}
         }}));
-        const auto mipped = take(builder.addTransferPass("fill second tile", TransferWork{{
+        const auto mipped = take(context.addTransferPass("fill second tile", TransferWork{{
             ClearImage{{tiled.written.front(), second_tile}, {129.0f / 255, 0, 161.0f / 255, 1}}
         }}));
-        const auto sampler = builder.addSampler({ESamplerFilter::NEAREST});
-        const auto comparison_sampler = builder.addSampler({
+        const auto sampler = context.addSampler({ESamplerFilter::NEAREST});
+        const auto comparison_sampler = context.addSampler({
             ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS
         });
         ResourceVersion index_data{indices, 0};
@@ -2228,7 +2222,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         {
             const auto start = (i < 3 ? 6u : 0u) + (i % 3) * 2;
             const auto pair = start | ((start + 1) << 16);
-            const auto init = take(builder.addTransferPass(
+            const auto init = take(context.addTransferPass(
                 "fill index word " + std::to_string(i),
                 TransferWork{{FillBuffer{{index_data, GraphBufferRange{i * 4, 4}}, pair}}}
             ));
@@ -2256,16 +2250,16 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         RasterWork raster;
         raster.colors.push_back({{{color, 0}}});
         raster.program = std::move(stage);
-        const auto drawn = take(builder.addRasterPass("two-program raster stream", std::move(raster)));
+        const auto drawn = take(context.addRasterPass("two-program raster stream", std::move(raster)));
         constexpr std::uint32_t layer_bytes = effect_capture_bytes / 2;
-        const auto first_copy = take(builder.addTransferPass(
+        const auto first_copy = take(context.addTransferPass(
             "read raster stream layer 0",
             TransferWork{{CopyImageBuffer{
                 {drawn.written.front(), GraphImageRange{1, 0, 1, 0, 1}},
                 {*imported, GraphBufferRange{0, layer_bytes}}, 256, layer_bytes, ImageCopyRegion{0, 0, 64, 32}
             }}}
         ));
-        const auto copied = take(builder.addTransferPass(
+        const auto copied = take(context.addTransferPass(
             "read raster stream layer 1",
             TransferWork{{CopyImageBuffer{
                 {drawn.written.front(), GraphImageRange{1, 0, 1, 1, 1}},
@@ -2355,7 +2349,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }
     };
 
-    RenderResult<void> buildRuntimeLayersOutput(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildRuntimeLayersOutput(EffectCompileContext& context, std::string_view) noexcept
     {
         auto imported = context.importFinalBuffer(
             "readback",
@@ -2363,12 +2357,11 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         );
         if (!imported) return lux::cxx::unexpected(imported.error());
-        auto& builder = context.builder();
         GraphImageDesc image{64, 32, 1, 2};
         image.runtime_layers = true;
-        const auto layers = take(builder.declareResource({"runtime raster layers", image}));
+        const auto layers = take(context.declareResource({"runtime raster layers", image}));
         image.format = rdesc::ETextureFormat::D32_SFLOAT;
-        const auto depth = take(builder.declareResource({"runtime depth layers", image}));
+        const auto depth = take(context.declareResource({"runtime depth layers", image}));
         const auto graphics = addEffectRasterProgram(context, kEffectStreamInline);
         const auto raster = [&](ResourceVersion color_input, ResourceVersion depth_input, bool preserve)
         {
@@ -2385,7 +2378,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             work.colors.push_back({{color_input}, load});
             work.depth = RasterAttachment{{depth_input}, load};
             work.program = std::move(stage);
-            const auto pass = take(builder.addRasterPass(preserve ? "load dynamic layers" : "draw dynamic layers",
+            const auto pass = take(context.addRasterPass(preserve ? "load dynamic layers" : "draw dynamic layers",
                 std::move(work)));
             CHECK(context.addPreparation({
                 PreparationAlgorithm::stateless<RuntimeLayerProducer>(),
@@ -2397,19 +2390,19 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const auto drawn = raster({layers, 0}, {depth, 0}, false);
         const auto preserved = raster(drawn[0], drawn[1], true);
         const auto words = take(
-            builder.declareResource({"runtime layer capture", GraphBufferDesc{effect_capture_bytes}})
+            context.declareResource({"runtime layer capture", GraphBufferDesc{effect_capture_bytes}})
         );
         ComputeWork read;
         auto shader = kEffectStreamLayers.load(context.shaderTarget());
-        read.interface.program = take(builder.addProgram(GraphProgram{std::move(shader)}));
+        read.interface.program = take(context.addProgram(GraphProgram{std::move(shader)}));
         read.interface.resources = {
             {"layers", {preserved[0]}},
             {"depth_layers", {preserved[1]}},
             {"generated", {{words, 0}, {}, EGraphAccess::WRITE}}
         };
         read.dispatch = DispatchArguments{{effect_capture_bytes / (sizeof(std::uint32_t) * 64), 1, 1}};
-        const auto values = take(builder.addComputePass("read dynamic layers", std::move(read)));
-        const auto copied = take(builder.addTransferPass(
+        const auto values = take(context.addComputePass("read dynamic layers", std::move(read)));
+        const auto copied = take(context.addTransferPass(
             "publish dynamic layers readback", TransferWork{{CopyBuffer{{values.written.front()}, {*imported}}}}
         ));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
@@ -2418,7 +2411,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     constexpr auto tone_left = effectPortSemantic("tone_left");
     constexpr auto tone_right = effectPortSemantic("tone_right");
 
-    RenderResult<void> buildToneCapture(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildToneCapture(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto left = context.inputs(tone_left);
         const auto right = context.inputs(tone_right);
@@ -2431,18 +2424,17 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         );
         if (!imported) return lux::cxx::unexpected(imported.error());
         constexpr std::uint32_t bytes = effect_capture_bytes / 2;
-        auto& builder = context.builder();
-        const auto first = take(builder.addTransferPass("copy left tone", TransferWork{{CopyImageBuffer{
+        const auto first = take(context.addTransferPass("copy left tone", TransferWork{{CopyImageBuffer{
             {left.front().front().version}, {*imported, GraphBufferRange{0, bytes}}, 256, bytes, ImageCopyRegion{0, 0, 64, 32}
         }}}));
-        const auto second = take(builder.addTransferPass("copy right tone", TransferWork{{CopyImageBuffer{
+        const auto second = take(context.addTransferPass("copy right tone", TransferWork{{CopyImageBuffer{
             {right.front().front().version}, {first.written.front(), GraphBufferRange{bytes, bytes}},
             256, bytes, ImageCopyRegion{0, 0, 64, 32}
         }}}));
         return context.publish(node_bytes, {{node_bytes, second.written.front()}});
     }
 
-    RenderResult<void> buildNodeTest(EffectBuildContext& context, std::string_view args) noexcept
+    RenderResult<void> buildNodeTest(EffectCompileContext& context, std::string_view args) noexcept
     {
         ++node_builds;
         if (args == "producer")
@@ -2463,28 +2455,27 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const auto format = args == "tone input" ? rdesc::ETextureFormat::RGBA16_SFLOAT : target.format;
         GraphImageDesc image{0, 0, 1, 1, format, target.samples};
         image.extent.source = EImageExtentSource::TARGET;
-        auto& builder = context.builder();
-        auto color = builder.declareResource({"node.color", image});
+        auto color = context.declareResource({"node.color", image});
         if (!color) return lux::cxx::unexpected(color.error());
         if (args == "dim" || args == "tone input")
         {
-            auto cleared = builder.addTransferPass(
+            auto cleared = context.addTransferPass(
                 "dim source", TransferWork{{ClearImage{{{*color, 0}}, {.125f, .375f, .625f, 1}}}}
             );
             if (!cleared) return lux::cxx::unexpected(cleared.error());
             return context.publish(node_color, {{node_color, cleared->written.front()}});
         }
-        auto intermediate = builder.declareResource({"node.intermediate", image});
+        auto intermediate = context.declareResource({"node.intermediate", image});
         if (!intermediate) return lux::cxx::unexpected(intermediate.error());
-        auto program = builder.addProgram(GraphProgram{kEffectGraphColor.load(context.shaderTarget())});
+        auto program = context.addProgram(GraphProgram{kEffectGraphColor.load(context.shaderTarget())});
         if (!program) return lux::cxx::unexpected(program.error());
         ComputeWork compute;
         compute.interface.program = *program;
         compute.interface.resources = {{"generated", {{*intermediate, 0}, {}, EGraphAccess::WRITE}}};
         compute.dispatch = ImageDispatchArguments{*intermediate};
-        auto generated = builder.addComputePass("node generate", std::move(compute));
+        auto generated = context.addComputePass("node generate", std::move(compute));
         if (!generated) return lux::cxx::unexpected(generated.error());
-        auto copied = builder.addTransferPass(
+        auto copied = context.addTransferPass(
             "node publish", TransferWork{{lux::render::CopyImage{{generated->written.front()}, {{*color, 0}}}}}
         );
         if (!copied) return lux::cxx::unexpected(copied.error());
@@ -3764,7 +3755,7 @@ static void preparedBuffers(bool d3d12)
     {
         return {};
     };
-    implementation.build = [](EffectBuildContext& context, std::string_view mode) noexcept -> RenderResult<void>
+    implementation.build = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
     {
         ++graph_builds;
         auto selected = context.declarePreparedBuffer("selection", 16, 1024);
@@ -3790,17 +3781,16 @@ static void preparedBuffers(bool d3d12)
         const auto readback = take(context.importFinalBuffer("readback", owner, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
-        auto& builder = context.builder();
-        const auto output = take(builder.declareResource({"generated", GraphBufferDesc{effect_capture_bytes}}));
+        const auto output = take(context.declareResource({"generated", GraphBufferDesc{effect_capture_bytes}}));
         ComputeWork compute;
-        compute.interface.program = take(builder.addProgram(GraphProgram{kEffectPreparedBuffer}));
+        compute.interface.program = take(context.addProgram(GraphProgram{kEffectPreparedBuffer}));
         compute.interface.resources = {
             {"prepared", {*selected}},
             {"generated", {{output, 0}, {}, EGraphAccess::WRITE}}
         };
         compute.dispatch = DispatchArguments{{effect_capture_bytes / (sizeof(std::uint32_t) * 64), 1, 1}};
-        const auto dispatched = take(builder.addComputePass("read producer buffer", std::move(compute)));
-        const auto result = take(builder.addTransferPass(
+        const auto dispatched = take(context.addComputePass("read producer buffer", std::move(compute)));
+        const auto result = take(context.addTransferPass(
             "capture", TransferWork{{CopyBuffer{{dispatched.written.front()}, {readback}}}}
         ));
         return context.publish(node_bytes, {{node_bytes, result.written.front()}});
@@ -4132,9 +4122,8 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     {
         return {};
     };
-    implementation.build = [](EffectBuildContext& context, std::string_view mode) noexcept -> RenderResult<void>
+    implementation.build = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
     {
-        auto& builder = context.builder();
         const auto readback = take(context.importFinalBuffer(
             "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
@@ -4168,11 +4157,11 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                 });
             }
         }
-        const auto color = take(builder.declareResource({"shared texture output", GraphImageDesc{64, 64}}));
+        const auto color = take(context.declareResource({"shared texture output", GraphImageDesc{64, 64}}));
         RasterWork raster;
         raster.program = std::move(stage);
         raster.colors.push_back({{{color, 0}}});
-        const auto drawn = take(builder.addRasterPass("sample a shared texture", std::move(raster)));
+        const auto drawn = take(context.addRasterPass("sample a shared texture", std::move(raster)));
         auto producer = take(ConfigValue::make(Producer::Configuration{
             drawn.pass, context.shaderTarget(), material, mode != "undeclared"
         }));
@@ -4180,7 +4169,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             PreparationAlgorithm::withWorkspace<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}, {}, {}, {},
             RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
         }));
-        const auto captured = take(builder.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
+        const auto captured = take(context.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
         return context.publish(node_bytes, {{node_bytes, captured.written.front()}});
@@ -4753,9 +4742,8 @@ static void meshRasterStream(bool d3d12)
     {
         return {};
     };
-    implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
-        auto& builder = context.builder();
         const auto instances = take(context.importStorageSnapshot<MeshInstanceSnapshot>(
             "instances", {ResourceName{kInstanceResourceName.name()}}
         ));
@@ -4766,12 +4754,12 @@ static void meshRasterStream(bool d3d12)
         const auto arguments = take(context.declareFrameBuffer(
             "mesh indirect arguments", minimum_argument_bytes, maximum_argument_bytes
         ));
-        const auto count = take(builder.declareResource({"mesh indirect count scratch", GraphBufferDesc{16}}));
+        const auto count = take(context.declareResource({"mesh indirect count scratch", GraphBufferDesc{16}}));
         const auto arena = take(context.declarePreparedBuffer(
             "arena arguments", arena_bytes, arena_bytes, EGraphUse::INDIRECT
         ));
         ComputeWork generate;
-        generate.interface.program = take(builder.addProgram(GraphProgram{
+        generate.interface.program = take(context.addProgram(GraphProgram{
             kEffectStreamIndirect.load(context.shaderTarget())
         }));
         generate.interface.resources = {
@@ -4779,7 +4767,7 @@ static void meshRasterStream(bool d3d12)
             {"count", {{count, 0}, {}, EGraphAccess::WRITE}}
         };
         generate.dispatch = DispatchArguments{{1, 1, 1}};
-        const auto generated = take(builder.addComputePass("generate mesh draw", std::move(generate)));
+        const auto generated = take(context.addComputePass("generate mesh draw", std::move(generate)));
 
         RasterPassTemplate stage;
         stage.purpose = "mesh-stream";
@@ -4792,11 +4780,11 @@ static void meshRasterStream(bool d3d12)
             {.version = generated.written.front(), .usage = EGraphUse::INDIRECT},
             {.version = arena, .usage = EGraphUse::INDIRECT}
         };
-        const auto color = take(builder.declareResource({"mesh output", GraphImageDesc{64, 64}}));
+        const auto color = take(context.declareResource({"mesh output", GraphImageDesc{64, 64}}));
         RasterWork raster;
         raster.program = std::move(stage);
         raster.colors.push_back({{{color, 0}}});
-        const auto drawn = take(builder.addRasterPass("draw uploaded mesh", std::move(raster)));
+        const auto drawn = take(context.addRasterPass("draw uploaded mesh", std::move(raster)));
         auto producer = take(ConfigValue::make(Producer::Configuration{
             drawn.pass, arguments.resource, arena.resource, instances
         }));
@@ -4805,7 +4793,7 @@ static void meshRasterStream(bool d3d12)
             {arguments.resource, arena.resource}, {instances}, {instances},
             RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
         }));
-        const auto captured = take(builder.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
+        const auto captured = take(context.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
         return context.publish(node_bytes, {{node_bytes, captured.written.front()}});
@@ -5067,7 +5055,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     {
         return {};
     };
-    implementation.build = [](EffectBuildContext& context, std::string_view mode) noexcept -> RenderResult<void>
+    implementation.build = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
     {
         if (mode == "visibility")
         {
@@ -5080,18 +5068,16 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
                 {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
             ));
             constexpr auto bytes = 2 * sizeof(nri::DrawIndexedDesc);
-            auto& graph = context.builder();
-            const auto initialized = take(graph.addTransferPass("initialize mesh command readback", TransferWork{{
+            const auto initialized = take(context.addTransferPass("initialize mesh command readback", TransferWork{{
                 FillBuffer{{readback}, 0}
             }}));
-            const auto capture = take(graph.addTransferPass("capture real mesh commands", TransferWork{{
+            const auto capture = take(context.addTransferPass("capture real mesh commands", TransferWork{{
                 CopyBuffer{{visible->version}, {initialized.written.front(), GraphBufferRange{0, bytes}}}
             }}));
             return context.publish(node_bytes, {{node_bytes, capture.written.front()}});
         }
         const bool paged = mode == "paged" || mode == "paged-write";
         const bool writes = mode.ends_with("write");
-        auto& builder = context.builder();
         const auto read = [&](std::string_view key, ResourceNameView resource, std::uint64_t bytes, auto projection)
         {
             return context.importResource(key, {ResourceName{resource.name()}}, {
@@ -5115,7 +5101,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         if (!alive) return lux::cxx::unexpected(alive.error());
         if (writes)
         {
-            take(builder.addTransferPass("overwrite storage-owned transform", TransferWork{{
+            take(context.addTransferPass("overwrite storage-owned transform", TransferWork{{
                 FillBuffer{{*transforms}, 0}
             }}));
         }
@@ -5125,29 +5111,29 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         const auto snapshot = take(context.declarePreparedBuffer(
             "mesh selection count", sizeof(std::uint32_t), sizeof(std::uint32_t)
         ));
-        const auto result = take(builder.declareResource({"verified instance fields", GraphBufferDesc{result_bytes}}));
+        const auto result = take(context.declareResource({"verified instance fields", GraphBufferDesc{result_bytes}}));
         const auto readback = take(context.importFinalBuffer(
             "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
         ComputeWork work;
         const auto& shader = paged ? kEffectMeshImportsPaged : kEffectMeshImports;
-        work.interface.program = take(builder.addProgram(GraphProgram{shader.load(context.shaderTarget())}));
+        work.interface.program = take(context.addProgram(GraphProgram{shader.load(context.shaderTarget())}));
         work.interface.resources = {
             {"transforms", {*transforms}}, {"properties", {*properties}}, {"alive", {*alive}},
             {"selections", {snapshot}}, {"result", {{result, 0}, {}, EGraphAccess::WRITE}}
         };
         work.dispatch = DispatchArguments{{1, 1, 1}};
-        const auto measured = take(builder.addComputePass("load storage-owned mesh fields", std::move(work)));
+        const auto measured = take(context.addComputePass("load storage-owned mesh fields", std::move(work)));
         auto producer = take(ConfigValue::make(Producer::Configuration{storage, snapshot.resource}));
         CHECK(context.addPreparation({
             PreparationAlgorithm::stateless<Producer>(), std::move(producer), {}, {}, {}, {},
             {snapshot.resource}, {storage}
         }));
-        const auto initialized = take(builder.addTransferPass("initialize readback", TransferWork{{
+        const auto initialized = take(context.addTransferPass("initialize readback", TransferWork{{
             FillBuffer{{readback}, 0}
         }}));
-        const auto captured = take(builder.addTransferPass("copy mesh fields", TransferWork{{CopyBuffer{
+        const auto captured = take(context.addTransferPass("copy mesh fields", TransferWork{{CopyBuffer{
             {measured.written.front()}, {initialized.written.front(), GraphBufferRange{0, result_bytes}}
         }}}));
         return context.publish(node_bytes, {{node_bytes, captured.written.front()}});
@@ -5477,20 +5463,19 @@ static void lightingGraphOutput(bool d3d12)
     source_implementation.identity = {"test.lighting.gbuffer.clear", 1};
     source_implementation.supported_outputs = {Lighting::surface};
     source_implementation.initialize = initialize;
-    source_implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    source_implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
         constexpr std::array<std::array<float, 4>, 4> clear{{
             {.75f, .75f, .75f, 0}, {0, 0, 1, .5f}, {0, 0, 0, 1}, {}
         }};
-        auto& builder = context.builder();
         EffectResourceBundle surface;
         for (std::size_t i = 0; i < GBufferBundle::members.size(); ++i)
         {
             const auto name = GBufferBundle::members[i];
             const bool depth = i == 3;
             const auto format = depth ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
-            const auto resource = take(builder.declareResource({std::string{name}, GraphImageDesc{64, 64, 1, 1, format}}));
-            const auto pass = take(builder.addTransferPass(std::string{name} + ".clear", TransferWork{{ClearImage{
+            const auto resource = take(context.declareResource({std::string{name}, GraphImageDesc{64, 64, 1, 1, format}}));
+            const auto pass = take(context.addTransferPass(std::string{name} + ".clear", TransferWork{{ClearImage{
                 {{resource, 0}, GraphImageRange{depth ? 2u : 1u}}, clear[i], .25f
             }}}));
             surface.push_back({effectPortSemantic(name), pass.written.front()});
@@ -5511,7 +5496,7 @@ static void lightingGraphOutput(bool d3d12)
     shadow_implementation.identity = {"test.lighting.shadow.occluder", 1};
     shadow_implementation.supported_outputs = {Lighting::shadows};
     shadow_implementation.initialize = initialize;
-    shadow_implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    shadow_implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
         using Word = std::pair<std::uint64_t, std::uint32_t>;
         constexpr auto one = std::bit_cast<std::uint32_t>(1.0f);
@@ -5528,13 +5513,12 @@ static void lightingGraphOutput(bool d3d12)
             sizeof(MeshVisibilityView), sizeof(ShadowSliceGpu), sizeof(ShadowMappingHeader) + sizeof(LightShadowRange)
         };
         const std::array<std::span<const Word>, 3> patches{views, slices, ranges};
-        auto& builder = context.builder();
         EffectResourceBundle shadow;
         for (std::size_t i = 0; i < sizes.size(); ++i)
         {
             const std::string name{ShadowBundle::members[i]};
-            const auto buffer = take(builder.declareResource({name, GraphBufferDesc{sizes[i]}}));
-            const auto initial = take(builder.addTransferPass(
+            const auto buffer = take(context.declareResource({name, GraphBufferDesc{sizes[i]}}));
+            const auto initial = take(context.addTransferPass(
                 name + ".zero", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}
             ));
             TransferWork words;
@@ -5542,13 +5526,13 @@ static void lightingGraphOutput(bool d3d12)
             {
                 words.operations.push_back(FillBuffer{{initial.written.front(), GraphBufferRange{offset, 4}}, value});
             }
-            const auto filled = take(builder.addTransferPass(name + ".records", std::move(words)));
+            const auto filled = take(context.addTransferPass(name + ".records", std::move(words)));
             shadow.push_back({effectPortSemantic(name), filled.written.front()});
         }
-        const auto depth = take(builder.declareResource({
+        const auto depth = take(context.declareResource({
             "occluder", GraphImageDesc{16, 16, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}
         }));
-        const auto cleared = take(builder.addTransferPass(
+        const auto cleared = take(context.addTransferPass(
             "clear occluder", TransferWork{{ClearImage{{{depth, 0}, GraphImageRange{2, 0, 1, 0, 2}}, {}, 0.f}}}
         ));
         shadow.push_back({effectPortSemantic(ShadowBundle::members.back()), cleared.written.front()});
@@ -5570,7 +5554,7 @@ static void lightingGraphOutput(bool d3d12)
     sink_implementation.identity = {"test.lighting.readback.full", 1};
     sink_implementation.supported_outputs = {node_bytes};
     sink_implementation.initialize = initialize;
-    sink_implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    sink_implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
         const auto input = context.inputs(ToneMapping::color);
         CHECK(input.size() == 1 && input.front().size() == 1);
@@ -5578,7 +5562,7 @@ static void lightingGraphOutput(bool d3d12)
         const auto buffer = take(context.importFinalBuffer("readback", requirement, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
-        const auto copied = take(context.builder().addTransferPass("copy lighting result", TransferWork{{CopyImageBuffer{
+        const auto copied = take(context.addTransferPass("copy lighting result", TransferWork{{CopyImageBuffer{
             {input.front().front().version}, {buffer}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
@@ -5775,13 +5759,12 @@ static void basicFeatureOutputs(bool d3d12)
     clear_depth.identity = {"test.depth.clear.fixed", 1};
     clear_depth.supported_outputs = {DepthPyramid::depth};
     clear_depth.initialize = initialize;
-    clear_depth.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    clear_depth.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
         GraphImageDesc depth{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
         depth.extent.source = EImageExtentSource::TARGET;
-        auto& builder = context.builder();
-        const auto image = take(builder.declareResource({"forward depth", depth}));
-        const auto cleared = take(builder.addTransferPass(
+        const auto image = take(context.declareResource({"forward depth", depth}));
+        const auto cleared = take(context.addTransferPass(
             "clear forward depth", TransferWork{{ClearImage{{{image, 0}, GraphImageRange{2}}, {}, .25f}}}
         ));
         return context.publish(DepthPyramid::depth, {{DepthPyramid::depth, cleared.written.front()}});
@@ -5803,7 +5786,7 @@ static void basicFeatureOutputs(bool d3d12)
     readback.identity = {"test.depth.pyramid.readback.texel", 1};
     readback.supported_outputs = {node_bytes};
     readback.initialize = initialize;
-    readback.build = [](EffectBuildContext& context, std::string_view key) noexcept -> RenderResult<void>
+    readback.build = [](EffectCompileContext& context, std::string_view key) noexcept -> RenderResult<void>
     {
         const auto source = context.inputs(pyramid_input);
         CHECK(source.size() == 1 && source.front().size() == 1);
@@ -5811,15 +5794,14 @@ static void basicFeatureOutputs(bool d3d12)
         const auto buffer = take(context.importFinalBuffer(key, resource, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
-        auto& builder = context.builder();
-        const auto setup = take(builder.addTransferPass(
+        const auto setup = take(context.addTransferPass(
             std::string{key} + ".initialize", TransferWork{{FillBuffer{{buffer}, 0}}}
         ));
         const CopyImageBuffer copy{
             {source.front().front().version, GraphImageRange{1, 3, 1, 0, 1}},
             {setup.written.front(), {}, EGraphAccess::READ_WRITE}, 256, 256, ImageCopyRegion{0, 0, 1, 1}
         };
-        const auto done = take(builder.addTransferPass(std::string{key} + ".copy", TransferWork{{copy}}));
+        const auto done = take(context.addTransferPass(std::string{key} + ".copy", TransferWork{{copy}}));
         return context.publish(node_bytes, {{node_bytes, done.written.front()}});
     };
     const auto read_selection = readback.identity;

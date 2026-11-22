@@ -67,7 +67,7 @@ namespace
         {
             std::abort();
         };
-        implementation->build = [](EffectBuildContext&, std::string_view) noexcept -> RenderResult<void>
+        implementation->build = [](EffectCompileContext&, std::string_view) noexcept -> RenderResult<void>
         {
             std::abort();
         };

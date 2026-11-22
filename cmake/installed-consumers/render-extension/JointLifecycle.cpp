@@ -2,7 +2,7 @@
 #include "JointAverage.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <cmath>
 
 namespace
@@ -92,28 +92,28 @@ namespace
         nri::Buffer* buffer_ = nullptr;
     };
 
-    ResourceVersion clear(RenderGraphBuilder& builder, const GraphImageDesc& desc, std::array<float, 4> value)
+    ResourceVersion clear(EffectCompileContext& builder, const GraphImageDesc& desc, std::array<float, 4> value)
     {
         const auto image = take(builder.declareResource({"solid color", desc}));
         return take(builder.addTransferPass("clear color", TransferWork{{ClearImage{{{image, 0}}, value}}})).written[0];
     }
 
     RenderResult<ResourceVersion>
-    fill(RenderGraphBuilder& builder, std::string key, GraphResourceId buffer, std::uint32_t word) noexcept
+    fill(EffectCompileContext& builder, std::string key, GraphResourceId buffer, std::uint32_t word) noexcept
     {
         auto pass = builder.addTransferPass(std::move(key), TransferWork{{FillBuffer{{{buffer, 0}}, word}}});
         if (!pass) return lux::cxx::unexpected(pass.error());
         return pass->written.front();
     }
 
-    ResourceVersion outputBuffer(EffectBuildContext& context, std::string_view name, GraphBufferRange bytes)
+    ResourceVersion outputBuffer(EffectCompileContext& context, std::string_view name, GraphBufferRange bytes)
     {
         return take(context.importFinalBuffer(name, {ResourceName{ProductDescriptor::descriptor.type.name()}}, {
             "", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_SOURCE, bytes
         }));
     }
 
-    ResourceVersion captureBuffer(EffectBuildContext& context, std::string_view name)
+    ResourceVersion captureBuffer(EffectCompileContext& context, std::string_view name)
     {
         const auto type = ResourceName{GraphCaptureDescriptor::descriptor.type.name()};
         return take(context.importFinalBuffer(name, {type}, {
@@ -123,34 +123,33 @@ namespace
     }
 
     ResourceVersion
-    inputBuffer(EffectBuildContext& context, std::string_view name, ResourceNameView type, std::uint32_t bytes)
+    inputBuffer(EffectCompileContext& context, std::string_view name, ResourceNameView type, std::uint32_t bytes)
     {
         return take(context.importResource(name, {ResourceName{type.name()}}, {
             "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, bytes}}, EGraphUse::TRANSFER_SOURCE
         }));
     }
 
-    RenderResult<void> buildSource(EffectBuildContext& context, std::string_view mode) noexcept
+    RenderResult<void> buildSource(EffectCompileContext& context, std::string_view mode) noexcept
     {
-        auto& builder = context.builder();
         const GraphImageDesc desc{64, 64, 1, 1, half_float};
         if (mode != "inputs")
         {
             const bool bright = mode == "bright";
             const auto rgb = bright ? std::array{.25f, .5f, .75f, 1.f} : std::array{.125f, .375f, .625f, 1.f};
-            const auto color = clear(builder, desc, rgb);
+            const auto color = clear(context, desc, rgb);
             return context.publish(hdr, {{hdr, color}});
         }
 
         ++source_builds;
         const auto first = take(context.importTargetImage("first", half_float));
         const auto second = take(context.importTargetImage("second", half_float));
-        const auto same = take(builder.sameBinding(first.resource, second.resource));
-        const auto mixed = take(builder.declareResource({"average", desc}));
-        const auto program = take(builder.addProgram(GraphProgram{kJointAverage.load(context.shaderTarget())}));
-        const auto selected = take(builder.choose(same,
-            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return first; },
-            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        const auto same = take(context.sameBinding(first.resource, second.resource));
+        const auto mixed = take(context.declareResource({"average", desc}));
+        const auto program = take(context.addProgram(GraphProgram{kJointAverage.load(context.shaderTarget())}));
+        const auto selected = take(context.choose(same,
+            [&](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion> { return first; },
+            [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
             {
                 ComputeWork work;
                 work.interface.program = program;
@@ -167,48 +166,47 @@ namespace
         return context.publish(hdr, {{hdr, selected}});
     }
 
-    RenderResult<void> buildReport(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildReport(EffectCompileContext& context, std::string_view) noexcept
     {
         ++report_builds;
         const auto colors = context.inputs(display);
         CHECK(colors.size() == 1 && colors.front().size() == 1);
-        auto& builder = context.builder();
         const auto output = outputBuffer(context, "report", report_bytes);
         const auto capture = captureBuffer(context, "capture");
         const auto other = captureBuffer(context, "comparison");
         const auto seed = inputBuffer(context, "shared_seed", SharedWord::descriptor.type, 4);
-        const auto pixel = take(builder.declareResource({"display texel", GraphBufferDesc{256}}));
-        const auto packed = take(builder.addTransferPass("read display pixel", TransferWork{{CopyImageBuffer{
+        const auto pixel = take(context.declareResource({"display texel", GraphBufferDesc{256}}));
+        const auto packed = take(context.addTransferPass("read display pixel", TransferWork{{CopyImageBuffer{
             {colors.front().front().version}, {{pixel, 0}}, 256, 256, ImageCopyRegion{0, 0, 1, 1}
         }}}));
-        const auto branch = take(builder.declareCondition("write seven"));
-        const auto publish = take(builder.declareCondition("publish history"));
-        const auto history = take(builder.declareHistory("per job", {
+        const auto branch = take(context.declareCondition("write seven"));
+        const auto publish = take(context.declareCondition("publish history"));
+        const auto history = take(context.declareHistory("per job", {
             GraphBufferDesc{4}, {}, EGraphUse::TRANSFER_SOURCE, 2
         }));
-        const auto initial = take(builder.declareResource({"first sample", GraphBufferDesc{4}}));
-        const auto previous = take(builder.choose({EConditionSource::HISTORY_VALID, history.previous.index},
-            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion>
+        const auto initial = take(context.declareResource({"first sample", GraphBufferDesc{4}}));
+        const auto previous = take(context.choose({EConditionSource::HISTORY_VALID, history.previous.index},
+            [&](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion>
             {
                 return ResourceVersion{history.previous, 0};
             },
-            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+            [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
             {
                 return fill(arm, "history fallback", initial, fallback_word);
             }
         ));
-        const auto next = take(builder.choose({EConditionSource::INPUT, branch},
-            [&](RenderGraphBuilder& arm) noexcept { return fill(arm, "sample seven", history.current, 7); },
-            [&](RenderGraphBuilder& arm) noexcept { return fill(arm, "sample eleven", history.current, 11); }
+        const auto next = take(context.choose({EConditionSource::INPUT, branch},
+            [&](EffectCompileContext& arm) noexcept { return fill(arm, "sample seven", history.current, 7); },
+            [&](EffectCompileContext& arm) noexcept { return fill(arm, "sample eleven", history.current, 11); }
         ));
-        CHECK(builder.publishHistory(next, PassCondition{EConditionSource::INPUT, publish}));
-        const auto history_word = take(builder.addTransferPass("capture previous sample", TransferWork{{
+        CHECK(context.publishHistory(next, PassCondition{EConditionSource::INPUT, publish}));
+        const auto history_word = take(context.addTransferPass("capture previous sample", TransferWork{{
             CopyBuffer{{previous}, {packed.written.front(), GraphBufferRange{8, 4}}}
         }})).written.front();
-        const auto base = take(builder.addTransferPass("read shared word", TransferWork{{
+        const auto base = take(context.addTransferPass("read shared word", TransferWork{{
             CopyBuffer{{seed}, {history_word, GraphBufferRange{12, 4}}}
         }})).written.front();
-        const auto stamp = [&](RenderGraphBuilder& arm, std::string key, std::uint32_t word) noexcept
+        const auto stamp = [&](EffectCompileContext& arm, std::string key, std::uint32_t word) noexcept
             -> RenderResult<ResourceVersion>
         {
             auto marked = arm.addTransferPass(std::move(key), TransferWork{{
@@ -217,9 +215,9 @@ namespace
             if (!marked) return lux::cxx::unexpected(marked.error());
             return marked->written.front();
         };
-        const auto selected = take(builder.choose(take(builder.sameBinding(other.resource, capture.resource)),
-            [&](RenderGraphBuilder& arm) noexcept { return stamp(arm, "equal outputs", equal_word); },
-            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        const auto selected = take(context.choose(take(context.sameBinding(other.resource, capture.resource)),
+            [&](EffectCompileContext& arm) noexcept { return stamp(arm, "equal outputs", equal_word); },
+            [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
             {
                 auto marked = stamp(arm, "distinct outputs", distinct_word);
                 if (!marked) return lux::cxx::unexpected(marked.error());
@@ -230,21 +228,21 @@ namespace
                 return *marked;
             }
         ));
-        const auto captured = take(builder.addTransferPass("capture primary output", TransferWork{{
+        const auto captured = take(context.addTransferPass("capture primary output", TransferWork{{
             CopyBuffer{{selected, report_bytes}, {capture, report_bytes}}
         }}));
         CHECK(!captured.written.empty());
-        const auto report = take(builder.addTransferPass("publish selected frame", TransferWork{{
+        const auto report = take(context.addTransferPass("publish selected frame", TransferWork{{
             CopyBuffer{{selected, report_bytes}, {output, report_bytes}}
         }}));
         return context.publish(result, {{result, report.written.front()}});
     }
 
-    RenderResult<void> buildReadback(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildReadback(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto published = inputBuffer(context, "version", ProductDescriptor::descriptor.type, 16);
         const auto capture = captureBuffer(context, "capture");
-        const auto copy = take(context.builder().addTransferPass("read receipt", TransferWork{{
+        const auto copy = take(context.addTransferPass("read receipt", TransferWork{{
             CopyBuffer{{published}, {capture, report_bytes}}
         }}));
         return context.publish(result, {{result, copy.written.front()}});

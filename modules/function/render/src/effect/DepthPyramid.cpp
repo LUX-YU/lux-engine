@@ -5,10 +5,9 @@
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/DepthPyramid.hpp>
 #include <lux/engine/render/effect/EffectArguments.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 
 namespace lux::render
@@ -30,7 +29,7 @@ namespace lux::render
             return context.setConfiguration(DepthPyramidConfiguration{*parsed.get<"mips">()});
         }
 
-        RenderResult<void> buildDepthPyramid(EffectBuildContext& context, std::string_view) noexcept
+        RenderResult<void> buildDepthPyramid(EffectCompileContext& context, std::string_view) noexcept
         {
             const auto* configuration = context.configuration<DepthPyramidConfiguration>();
             if (!configuration) return cxx::unexpected(RenderError{kCapabilityDeclaration, {context.nodeId().value}});
@@ -39,8 +38,7 @@ namespace lux::render
             if (input.size() != 1 || input.front().size() != 1)
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {context.nodeId().value}});
             const auto depth_version = input.front().front().version;
-            auto& builder = context.builder();
-            const auto* description = builder.resourceDescription(depth_version.resource);
+            const auto* description = context.resourceDescription(depth_version.resource);
             const auto* depth = description ? std::get_if<GraphImageDesc>(description) : nullptr;
             if (!depth) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {context.nodeId().value}});
             const bool invalid_format = depth->format != rdesc::ETextureFormat::D32_SFLOAT;
@@ -58,20 +56,20 @@ namespace lux::render
             ResourceVersion current, previous;
             if (needs_history)
             {
-                auto history = builder.declareHistory(key, {pyramid, {{1, 1, 1, 1}}, EGraphUse::SAMPLED});
+                auto history = context.declareHistory(key, {pyramid, {{1, 1, 1, 1}}, EGraphUse::SAMPLED});
                 if (!history) return cxx::unexpected(history.error());
                 previous = {history->previous, 0};
                 current = {history->current, 0};
             }
             else
             {
-                auto resource = builder.declareResource({key, pyramid});
+                auto resource = context.declareResource({key, pyramid});
                 if (!resource) return cxx::unexpected(resource.error());
                 current = {*resource, 0};
             }
-            const auto program = builder.addProgram(GraphProgram{kHzbDownsample});
+            const auto program = context.addProgram(GraphProgram{kHzbDownsample});
             if (!program) return cxx::unexpected(program.error());
-            const auto first = builder.nextWriteVersion(current.resource);
+            const auto first = context.nextWriteVersion(current.resource);
             if (!first) return cxx::unexpected(first.error());
             std::vector<ComputeWork> commands;
             commands.reserve(mip_count);
@@ -90,12 +88,12 @@ namespace lux::render
                 commands.push_back(std::move(work));
                 current.number = first->number + mip;
             }
-            auto pass = builder.addComputeSequence(key, std::move(commands));
+            auto pass = context.addComputeSequence(key, std::move(commands));
             if (!pass) return cxx::unexpected(pass.error());
             current = pass->written.front();
             if (needs_history)
             {
-                if (auto recorded = builder.publishHistory(current); !recorded) return recorded;
+                if (auto recorded = context.publishHistory(current); !recorded) return recorded;
                 if (auto exposed = context.publish(DepthPyramid::previous, {{DepthPyramid::previous, previous}});
                     !exposed)
                     return exposed;

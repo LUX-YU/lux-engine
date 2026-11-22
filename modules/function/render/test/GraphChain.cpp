@@ -20,7 +20,7 @@
 #include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include "FrameHarness.hpp"
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
@@ -118,20 +118,20 @@ static rdesc::ShaderProgramArtifact rasterProgram(const rdesc::EmbeddedShader& f
     return result;
 }
 
+static GraphCompileOptions targetOptions(const TargetDesc& target)
+{
+    const EffectOutputDesc output{target.format, target.samples, target.kind, target.sampled};
+    return {output, ETransientAllocation::ALIAS_MEMORY, true};
+}
+
 static PreparedRenderGraph compile(
     DeviceSession& session,
-    const RenderGraph& graph,
-    const RenderGraphAnalysis& analysis,
-    const TargetDesc* target,
-    ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY,
-    bool exercise_async = true
+    AnalyzedGraph source,
+    GraphCompileOptions options = GraphCompileOptions{std::nullopt, ETransientAllocation::ALIAS_MEMORY, true}
 )
 {
-    std::optional<EffectOutputDesc> output;
-    if (target) output.emplace(target->format, target->samples, target->kind, target->sampled);
     auto ready = stdexec::sync_wait(GraphCompiler::compile(
-        session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis},
-        {output, allocation, exercise_async}
+        session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), source, options
     ));
     CHECK(ready);
     return take(std::move(std::get<0>(*ready)));
@@ -230,17 +230,16 @@ static void checkPixels(
 }
 
 static void exportRows(
-    RenderGraphBuilder& builder,
+    GraphDraftBuilder& builder,
     ResourceVersion version,
-    std::uint32_t width,
-    std::uint32_t height,
-    std::uint32_t pitch,
-    std::uint32_t offset = 0
+    std::uint32_t extent,
+    nri::TextureDataLayoutDesc layout
 )
 {
-    for (std::uint32_t row = 0; row < height; ++row)
+    for (std::uint32_t row = 0; row < extent; ++row)
     {
-        CHECK(builder.exportOutput({version, GraphBufferRange{offset + std::uint64_t(row) * pitch, width * 4}}));
+        const auto offset = layout.offset + std::uint64_t(row) * layout.rowPitch;
+        CHECK(builder.exportOutput({version, GraphBufferRange{offset, extent * 4}}));
     }
 }
 
@@ -251,7 +250,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     options.multiple_queues = async_compute;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     GraphImageDesc image{64, 64};
     image.extent.source = EImageExtentSource::TARGET;
     auto seed_description = image;
@@ -310,7 +309,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     CHECK(builder.exportOutput({copied.written.front(), GraphBufferRange{256, 128 * 512}}));
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(*session, graph, analysis, &target);
+    auto plan = compile(*session, {graph, analysis}, targetOptions(target));
     std::string dump;
     const DumpSink sink{
         &dump,
@@ -413,7 +412,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 3);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto commands = take(builder.declareResource({"commands", GraphBufferDesc{128}}));
     const auto count = take(builder.declareResource({"count", GraphBufferDesc{128}}));
     const auto indices = take(builder.declareResource({"indices", GraphBufferDesc{12}}));
@@ -455,11 +454,11 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
         "copy result",
         TransferWork{{CopyImageBuffer{{drawn.written.front()}, {{pixels, 0}}, 256, 8192}}}
     ));
-    exportRows(builder, copied.written.front(), 32, 32, 256);
+    exportRows(builder, copied.written.front(), 32, {0, 256});
     CHECK(builder.exportOutput({drawn.written.front(), {}, {}, EGraphUse::SAMPLED}));
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(*session, graph, analysis, nullptr);
+    auto plan = compile(*session, {graph, analysis});
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, 3);
     auto instance_job = std::make_unique<JobExecution>(
         *instance_gpu, plan.graph, testInstallation(), TargetOutput{}
@@ -541,7 +540,7 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     GraphImageDesc multisample{32, 32};
     multisample.samples = 4;
     const auto source = take(builder.declareResource({"MSAA", multisample}));
@@ -581,10 +580,10 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
         TransferWork{{CopyImageBuffer{{uploaded.written.front()}, {{pixels, 0}, GraphBufferRange{256, 4096}}, 256, 4096}
         }}
     ));
-    exportRows(builder, observed.written.front(), 16, 16, 256, 256);
+    exportRows(builder, observed.written.front(), 16, {256, 256});
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(*session, graph, analysis, nullptr);
+    auto plan = compile(*session, {graph, analysis});
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
     auto instance_job = std::make_unique<JobExecution>(
         *instance_gpu, plan.graph, testInstallation(), TargetOutput{}
@@ -608,7 +607,7 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
     constexpr std::uint32_t pattern = 0x12345678;
     for (bool aligned : {false, true})
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto packed = take(builder.declareResource({"packed BC1 blocks", GraphBufferDesc{512}}));
         const auto pixels = take(builder.declareResource({"BC1 readback", GraphBufferDesc{512}}));
         const auto image = take(builder.declareResource({
@@ -627,7 +626,7 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
         }}));
         CHECK(builder.exportOutput({copy.written.front(), GraphBufferRange{0, 8}}));
         const auto graph = take(std::move(builder).finish());
-        auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+        auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))});
         JobGpuResources instance_gpu(*session, 1);
         JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
         auto initialized = instance_job.initialize();
@@ -649,7 +648,7 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
 // This pass has three copies. Changing one source view must patch only that source address.
 static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto source = take(builder.declareResource({
         "changing source", GraphBufferDesc{4}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, 4}}, EGraphUse::TRANSFER_SOURCE
     }));
@@ -666,7 +665,7 @@ static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
     const auto copied = take(builder.addTransferPass("three copies", std::move(work)));
     for (auto version : copied.written) CHECK(builder.exportOutput({version}));
     const auto graph = take(std::move(builder).finish());
-    auto compiled = compile(device, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto compiled = compile(device, {graph, take(analyzeRenderGraph(graph))});
     JobGpuResources gpu(device, 1);
     JobExecution instance_job{gpu, compiled.graph, testInstallation(), TargetOutput{}};
     instance_job.bindResource(source, 0, {&input, 0, 4});
@@ -817,7 +816,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     const std::uint32_t array_value = 19;
     const auto build = [&](std::uint64_t offset, ConstantBlockContract contract)
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto uniform_bytes = take(builder.declareResource({
             "Uniform", GraphBufferDesc{block_offset + sizeof(NestedUniformBlock)}
         }));
@@ -894,7 +893,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
         CHECK(rejected.error().args[2] == static_cast<std::uint64_t>(EDeviceBudget::ROOT_BYTES));
         std::puts("ROOT RANGE PASS: table DWORDs exhaust the native D3D12 budget before layout creation");
     }
-    auto plan = compile(*session, graph, analysis, nullptr);
+    auto plan = compile(*session, {graph, analysis});
     FrameHarness frames(*session, 1);
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, 1);
     auto instance_job = std::make_unique<JobExecution>(
@@ -963,11 +962,11 @@ static void frozenProjectionReceipts(Validation& validation, bool d3d12)
     CHECK(core.CreatePlacedBuffer(device->device(), NriDeviceHeap, description, native) == nri::Result::SUCCESS);
     auto old = device->makeFrontiers(), interim = device->makeFrontiers(), next = device->makeFrontiers();
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto buffer = take(builder.declareResource({"external", GraphBufferDesc{16}, EGraphOrigin::IMPORTED}));
         CHECK(builder.addTransferPass("zero external", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}));
         const auto graph = take(std::move(builder).finish());
-        auto compiled = compile(*device, graph, take(analyzeRenderGraph(graph)), nullptr);
+        auto compiled = compile(*device, {graph, take(analyzeRenderGraph(graph))});
         JobGpuResources gpu(*device, 1);
         JobExecution instance_job{gpu, compiled.graph, testInstallation(), TargetOutput{}};
         CHECK(instance_job.initialize());
@@ -1050,11 +1049,11 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     core.CmdZeroBuffer = &RecordingGate::zero;
     const auto graph = [&]
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto buffer = take(builder.declareResource({"recording", GraphBufferDesc{16}}));
         CHECK(builder.addTransferPass("recording", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}, {true}));
         const auto source = take(std::move(builder).finish());
-        auto compiled = compile(*session, source, take(analyzeRenderGraph(source)), nullptr);
+        auto compiled = compile(*session, {source, take(analyzeRenderGraph(source))});
         return std::move(compiled.graph);
     }();
     failedRecordingAllocation(*session, graph);
@@ -1183,7 +1182,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto color = take(builder.declareResource({"scoped color", GraphImageDesc{64, 64, 2, 2}}));
         const auto depth = take(builder.declareResource({"scoped depth",
             GraphImageDesc{64, 64, 2, 2, rdesc::ETextureFormat::D32_SFLOAT}}));
@@ -1213,10 +1212,10 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         const auto copied = take(builder.addTransferPass("scoped pixels", TransferWork{
             {CopyImageBuffer{{written(ordinary, color), GraphImageRange{1, 1, 1, 1, 1}}, {{pixels, 0}}, 256, 8192}}
         }));
-        exportRows(builder, copied.written.front(), 32, 32, 256);
+        exportRows(builder, copied.written.front(), 32, {0, 256});
         const auto graph = take(std::move(builder).finish());
         const auto analysis = take(analyzeRenderGraph(graph));
-        auto plan = compile(*session, graph, analysis, nullptr);
+        auto plan = compile(*session, {graph, analysis});
         const auto& recording = plan.graph.recordingProgram();
         CHECK(recording.raster_scopes.size() == 2 && recording.passes.size() == 3);
         CHECK(recording.rasterScope(recording.passes[0]) == &recording.raster_scopes[0]);
@@ -1225,7 +1224,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         CHECK(plan.graph.passes()[0].rendering_group == 0);
         CHECK(plan.graph.passes()[1].rendering_group == plan.graph.passes()[0].rendering_group);
         CHECK(plan.graph.programs()[0].pipeline != plan.graph.programs()[1].pipeline);
-        const auto duplicate = compile(*session, graph, analysis, nullptr);
+        const auto duplicate = compile(*session, {graph, analysis});
         CHECK(duplicate.graph.programs()[0].pipeline == plan.graph.programs()[0].pipeline);
         CHECK(duplicate.graph.programs()[1].pipeline == plan.graph.programs()[1].pipeline);
         auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
@@ -1242,7 +1241,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         CHECK(session->drain());
     }
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto color = take(builder.declareResource({"MSAA color",
             GraphImageDesc{32, 32, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM, 4}}));
         const auto resolved = take(builder.declareResource({"resolved color", GraphImageDesc{32, 32}}));
@@ -1256,9 +1255,9 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         const auto copied = take(builder.addTransferPass("resolve readback", TransferWork{
             {CopyImageBuffer{{written(drawn, resolved)}, {{pixels, 0}}, 256, 8192}}
         }));
-        exportRows(builder, copied.written.front(), 32, 32, 256);
+        exportRows(builder, copied.written.front(), 32, {0, 256});
         const auto graph = take(std::move(builder).finish());
-        auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+        auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))});
         auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
         auto instance_job = std::make_unique<JobExecution>(
             *instance_gpu, plan.graph, testInstallation(), TargetOutput{}
@@ -1282,7 +1281,7 @@ static void typedRecording(Validation& validation, bool d3d12)
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     {
         // Dispatch extents must refer to a materialized graph image, as before the compiler unification.
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto unused = take(builder.declareResource({"unused extent", GraphImageDesc{8, 8}}));
         const auto output = take(builder.declareResource({"output", GraphImageDesc{8, 8}}));
         ComputeWork work;
@@ -1299,7 +1298,7 @@ static void typedRecording(Validation& validation, bool d3d12)
         CHECK(rejected && !std::get<0>(*rejected) && std::get<0>(*rejected).error().type == kDeviceArgument);
     }
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto source = take(builder.declareResource({"source", GraphBufferDesc{32}}));
         const auto zero_source = take(builder.declareResource({"zero source", GraphBufferDesc{16}}));
         const auto output = take(builder.declareResource({"output", GraphBufferDesc{32}}));
@@ -1325,7 +1324,7 @@ static void typedRecording(Validation& validation, bool d3d12)
         auto plan = [&]
         {
             const auto graph = take(std::move(builder).finish());
-            return compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+            return compile(*session, {graph, take(analyzeRenderGraph(graph))});
         }();
         auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
         auto instance_job = std::make_unique<JobExecution>(
@@ -1363,7 +1362,7 @@ static void typedRecording(Validation& validation, bool d3d12)
 
 struct ComputeSequenceFixture final
 {
-    RenderGraph graph;
+    GraphDefinition graph;
     GraphResourceId intermediate;
     GraphResourceId readback;
 };
@@ -1380,7 +1379,7 @@ static ComputeWork incrementWork(std::uint32_t program, ResourceVersion input, G
 
 static ComputeSequenceFixture computeSequenceGraph()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
     const auto intermediate = take(builder.declareResource({"intermediate", GraphBufferDesc{16}}));
     const auto result = take(builder.declareResource({"result", GraphBufferDesc{16}}));
@@ -1484,7 +1483,7 @@ private:
 
 static void conditionalBindingJoin(DeviceSession& device)
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
     const auto shared = take(builder.declareResource({"shared", GraphBufferDesc{16}}));
     const auto after = take(builder.declareResource({"after join", GraphBufferDesc{16}}));
@@ -1530,9 +1529,9 @@ static void conditionalBindingJoin(DeviceSession& device)
         }}
     ));
     CHECK(builder.exportOutput({written(copy, readback)}));
-    exportRows(builder, written(copy, pixels), 4, 4, 256);
+    exportRows(builder, written(copy, pixels), 4, {0, 256});
     const auto source = take(std::move(builder).finish());
-    auto plan = compile(device, source, take(analyzeRenderGraph(source)), nullptr);
+    auto plan = compile(device, {source, take(analyzeRenderGraph(source))});
     const auto& passes = plan.graph.passes();
     const auto& entry = passes[plan.diagnostics.passSlot(first.pass)];
     const auto& join = passes[plan.diagnostics.passSlot(joined.pass)];
@@ -1577,7 +1576,7 @@ static void conditionalBindingJoin(DeviceSession& device)
 
 static void surfaceBindingBoundary(DeviceSession& device)
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const GraphImageDesc image{16, 16};
     const auto scratch = take(builder.declareResource({"head", image}));
     const auto surface = take(builder.declareResource({"surface", image}));
@@ -1596,7 +1595,7 @@ static void surfaceBindingBoundary(DeviceSession& device)
     CHECK(builder.exportOutput({tail.written.front(), {}, GraphOutputRequirements{image.format, 1}}));
     const auto source = take(std::move(builder).finish());
     const TargetDesc target{16, 16, image.format, 1, ETargetKind::SURFACE};
-    const auto plan = compile(device, source, take(analyzeRenderGraph(source)), &target);
+    const auto plan = compile(device, {source, take(analyzeRenderGraph(source))}, targetOptions(target));
     const auto h = plan.diagnostics.passSlot(head.pass), t = plan.diagnostics.passSlot(tail.pass);
     const auto& passes = plan.graph.passes();
     CHECK(passes[h].submission == passes[t].submission);
@@ -1619,7 +1618,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
         intermediate = fixture.intermediate;
         readback = fixture.readback;
         const auto analysis = take(analyzeRenderGraph(fixture.graph));
-        return compile(*session, fixture.graph, analysis, nullptr);
+        return compile(*session, {fixture.graph, analysis});
     }();
     checkComputeSequence(executable.graph, intermediate);
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
@@ -1767,7 +1766,7 @@ private:
 };
 
 static compiled::RenderGraph
-compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool alias_queues = false)
+compileCpuGraph(const GraphDefinition& graph, GraphQueuePolicy policy = GraphQueuePolicy{}, bool alias_queues = false)
 {
     nri::DeviceDesc capabilities{};
     capabilities.graphicsAPI = nri::GraphicsAPI::VK;
@@ -1883,7 +1882,7 @@ static void cpuAliasWaitScopes()
 
 static void cpuAliasBufferRanges()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto buffer = take(builder.declareResource({"two intervals", GraphBufferDesc{64}}));
     const auto result = take(builder.declareResource({"observed", GraphBufferDesc{8}}));
     constexpr std::array ranges{GraphBufferRange{0, 4}, GraphBufferRange{48, 4}};
@@ -1928,7 +1927,7 @@ static void cpuAliasBufferRanges()
 
 static void cpuBuilderTransactions()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     CHECK(builder.addProgram(GraphProgram{kGraphFill}));
     CHECK(std::move(builder).finish());
     const auto shader = take(builder.addProgram(GraphProgram{kGraphHistory}));
@@ -2050,7 +2049,7 @@ static void cpuRecordingTables()
 
 static void cpuConditionalRanges()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto condition = take(builder.declareCondition("overwrite middle"));
     const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
     const auto readback = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
@@ -2079,7 +2078,7 @@ static void cpuConditionalJoins()
     {
         for (const std::uint64_t covered : {12u, 16u})
         {
-            RenderGraphBuilder builder;
+            GraphDraftBuilder builder;
             const auto branch = take(builder.declareCondition("branch"));
             const auto other = independent ? take(builder.declareCondition("other")) : branch;
             const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
@@ -2113,20 +2112,20 @@ static void cpuConditionalJoins()
 
 static void cpuValueChoice()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto flag = take(builder.declareCondition("select input"));
     const PassCondition predicate{EConditionSource::INPUT, flag};
     const auto input = take(builder.declareResource({"input", GraphBufferDesc{16}}));
     const auto alternate = take(builder.declareResource({"alternate", GraphBufferDesc{16}}));
     const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
     const auto seed = take(builder.addTransferPass("initialize", TransferWork{{FillBuffer{{{input, 0}}, 7}}}));
-    const auto make_value = [&](RenderGraphBuilder& branch) noexcept -> RenderResult<ResourceVersion>
+    const auto make_value = [&](GraphDraftBuilder& branch) noexcept -> RenderResult<ResourceVersion>
     {
         auto written = branch.addTransferPass("generate", TransferWork{{FillBuffer{{{alternate, 0}}, 11}}});
         if (!written) return lux::cxx::unexpected(written.error());
         return written->written.front();
     };
-    const auto fail = [](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion>
+    const auto fail = [](GraphDraftBuilder&) noexcept -> RenderResult<ResourceVersion>
     {
         return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
     };
@@ -2134,7 +2133,7 @@ static void cpuValueChoice()
     CHECK(!rejected && builder.passCount() == 1);
     CHECK(take(builder.nextWriteVersion(alternate)).number == 1);
     const auto chosen = take(builder.choose(
-        predicate, [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
+        predicate, [&](GraphDraftBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
         make_value
     ));
     CHECK(builder.passCount() == 2 && builder.resourceCount() == 3);
@@ -2168,7 +2167,7 @@ static void cpuUndefinedChoice()
 {
     for (const bool escape : {false, true})
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto flag = take(builder.declareCondition("path"));
         const auto first = take(builder.declareResource({"first", GraphBufferDesc{16}}));
         const auto second = take(builder.declareResource({"second", GraphBufferDesc{16}}));
@@ -2176,8 +2175,8 @@ static void cpuUndefinedChoice()
         ResourceVersion private_value;
         const auto choice = take(builder.choose(
             {EConditionSource::INPUT, flag},
-            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
-            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+            [&](GraphDraftBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
+            [&](GraphDraftBuilder& arm) noexcept -> RenderResult<ResourceVersion>
             {
                 const GraphBufferRange range{0, escape ? 16u : 12u};
                 auto write = arm.addTransferPass("private write", TransferWork{{FillBuffer{{{second, 0}, range}, 9}}});
@@ -2199,7 +2198,7 @@ static void cpuChoiceImageRanges()
     const GraphImageRange missing_layer{1, 1, 1, 1, 1};
     for (const auto range : {provided, missing_mip, missing_layer})
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const GraphImageDesc image{8, 8, 2, 2};
         const auto complete = take(builder.declareResource({
             "all", image, EGraphOrigin::IMPORTED, {GraphImageRange{1, 0, 2, 0, 2}}, EGraphUse::SAMPLED
@@ -2209,8 +2208,8 @@ static void cpuChoiceImageRanges()
         }));
         const auto selected = take(builder.choose(
             take(builder.sameBinding(complete, partial)),
-            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{complete, 0}; },
-            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{partial, 0}; }
+            [&](GraphDraftBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{complete, 0}; },
+            [&](GraphDraftBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{partial, 0}; }
         ));
         CHECK(builder.exportOutput({selected, range}));
         const auto proof = analyzeRenderGraph(take(std::move(builder).finish()));
@@ -2221,7 +2220,7 @@ static void cpuChoiceImageRanges()
 
 static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif, bool hold)
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto branch = take(builder.declareCondition("branch"));
     const auto publish = take(builder.declareCondition("publish"));
     const auto distance = hold ? 2u : 1u;
@@ -2229,7 +2228,7 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
         "samples", {GraphBufferDesc{16}, {}, EGraphUse::TRANSFER_SOURCE, distance}
     ));
     const auto readback = take(builder.declareResource({"previous", GraphBufferDesc{16}}));
-    const auto write = [&](RenderGraphBuilder& arm, std::string name, std::uint32_t value) -> RenderResult<ResourceVersion>
+    const auto write = [&](GraphDraftBuilder& arm, std::string name, std::uint32_t value) -> RenderResult<ResourceVersion>
     {
         auto result = arm.addTransferPass(std::move(name), TransferWork{{FillBuffer{{{history.current, 0}}, value}}});
         if (!result) return lux::cxx::unexpected(result.error());
@@ -2237,8 +2236,8 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
     };
     const auto sample = take(builder.choose(
         {EConditionSource::INPUT, branch},
-        [&](RenderGraphBuilder& arm) noexcept { return write(arm, "first", 7); },
-        [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        [&](GraphDraftBuilder& arm) noexcept { return write(arm, "first", 7); },
+        [&](GraphDraftBuilder& arm) noexcept -> RenderResult<ResourceVersion>
         {
             if (hold) return ResourceVersion{history.previous, 0};
             return write(arm, "second", 11);
@@ -2250,7 +2249,7 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
     ));
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
-    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const auto plan = compile(session, {graph, take(analyzeRenderGraph(graph))});
     JobGpuResources instance_gpu(session, fif);
     JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
     CHECK(instance_job.initialize());
@@ -2275,7 +2274,7 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
 
 static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto flag = take(builder.declareCondition("use input"));
     const auto input = take(builder.declareResource({"input", GraphBufferDesc{16}}));
     const auto scratch = take(builder.declareResource({"incremented", GraphBufferDesc{16}}));
@@ -2284,8 +2283,8 @@ static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
     const auto program = take(builder.addProgram(GraphProgram{kGraphHistory}));
     const auto selected = take(builder.choose(
         {EConditionSource::INPUT, flag},
-        [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
-        [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        [&](GraphDraftBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
+        [&](GraphDraftBuilder& arm) noexcept -> RenderResult<ResourceVersion>
         {
             auto work = incrementWork(program, seed.written.front(), scratch);
             work.allow_async_compute = true;
@@ -2297,7 +2296,7 @@ static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
     const auto copied = take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{selected}, {{result, 0}}}}}));
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
-    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const auto plan = compile(session, {graph, take(analyzeRenderGraph(graph))});
     const bool distinct = &session.queue() != &session.queue(EQueueRole::COMPUTE);
     const auto batches = plan.graph.submissions();
     if (distinct)
@@ -2341,7 +2340,7 @@ static void nativeChoices(Validation& validation, EGraphicsBackend backend, std:
 static void cpuImportedBoundaries()
 {
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto input = take(builder.declareResource(
             {"unchanged", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {GraphBufferRange{4, 8}}}
         ));
@@ -2352,7 +2351,7 @@ static void cpuImportedBoundaries()
         CHECK(std::ranges::all_of(executable.submissions(), [](const auto& batch) { return batch.pass_count == 0; }));
     }
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const GraphImageRange range{1, 1, 1};
         const GraphImageDesc image{64, 64, 2, 1, rdesc::ETextureFormat::R32_SFLOAT};
         const auto source = take(builder.declareResource(
@@ -2382,7 +2381,7 @@ static void cpuImportedBoundaries()
 
 static void cpuQueueBoundaries()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto input = take(builder.declareResource({"input", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {{}}}));
     const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
     ComputeWork work;
@@ -2405,7 +2404,7 @@ static void cpuQueueBoundaries()
 
 struct QueueScheduleFixture final
 {
-    RenderGraph graph;
+    GraphDefinition graph;
     GraphResourceId compute_result, graphics_result;
 };
 
@@ -2413,7 +2412,7 @@ static QueueScheduleFixture queueScheduleFixture(
     EGraphicsBackend backend, std::uint64_t branch_ns, bool serialize
 )
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
     const auto compute_result = take(builder.declareResource({"compute result", GraphBufferDesc{16}}));
     const auto graphics_result = take(builder.declareResource({"graphics result", GraphBufferDesc{16}}));
@@ -2471,7 +2470,7 @@ static void cpuQueueCandidates()
 
 static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, std::uint32_t static_count)
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     for (std::uint32_t i = 0; i < static_count; ++i)
     {
         const auto key = "static image " + std::to_string(i);
@@ -2499,7 +2498,7 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     const auto drawn = take(builder.addRasterPass("stream", std::move(stream)));
     CHECK(builder.exportOutput({drawn.written.front()}));
     const auto graph = take(std::move(builder).finish());
-    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const auto plan = compile(session, {graph, take(analyzeRenderGraph(graph))});
     JobGpuResources instance_gpu(session, 1);
     JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
     CHECK(instance_job.initialize());
@@ -2598,7 +2597,7 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
         }
     ));
     CHECK(session.drain());
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto images = take(builder.declareResource({
         "images", GraphImageDesc{target.width, target.height}, EGraphOrigin::IMPORTED, {{}}, EGraphUse::SAMPLED
     }));
@@ -2626,10 +2625,10 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
             CopyImageBuffer{{second_draw.written.front()}, {{second_output, 0}}, 256, 1024}
         }}
     ));
-    exportRows(builder, written(copied, output), 4, 4, 256);
-    exportRows(builder, written(copied, second_output), 4, 4, 256);
+    exportRows(builder, written(copied, output), 4, {0, 256});
+    exportRows(builder, written(copied, second_output), 4, {0, 256});
     const auto graph = take(std::move(builder).finish());
-    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const auto plan = compile(session, {graph, take(analyzeRenderGraph(graph))});
     JobGpuResources instance_gpu(session, 1);
     JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
     const auto& first = plan.graph.passes()[plan.diagnostics.passSlot(drawn.pass)].fixed_bindings;
@@ -2694,7 +2693,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     FrameHarness frames(*session, 1);
     const auto fixture = queueScheduleFixture(backend, 80'000, false);
     const auto analysis = take(analyzeRenderGraph(fixture.graph));
-    const auto plan = compile(*session, fixture.graph, analysis, nullptr, ETransientAllocation::ALIAS_MEMORY, false);
+    const auto plan = compile(*session, {fixture.graph, analysis}, GraphCompileOptions{});
     const auto bounds = plan.graph.submissions();
     const bool separate = &session->queue() != &session->queue(EQueueRole::COMPUTE);
     CHECK(bounds.size() == (separate ? 3 : 1));
@@ -2768,7 +2767,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
 
 static void cpuRasterPackets()
 {
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const GraphImageDesc color_desc{64, 64, 1, 2, rdesc::ETextureFormat::RGBA8_UNORM, 4};
     const GraphImageDesc depth_desc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT, 4};
     const auto color = take(builder.declareResource({"color", color_desc}));
@@ -2814,7 +2813,7 @@ static void historySequence(
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto history = take(builder.declareHistory("samples", {GraphBufferDesc{16}, {}, EGraphUse::STORAGE_READ, distance}));
     const auto enabled = take(builder.declareCondition("update"));
     const auto independent = take(builder.declareHistory("independent", {GraphBufferDesc{16}}));
@@ -2875,7 +2874,7 @@ static void historySequence(
     CHECK(builder.exportOutput({observed.written.front()}));
     const auto graph = take(std::move(builder).finish());
     const auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(*session, graph, analysis, nullptr);
+    auto plan = compile(*session, {graph, analysis});
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto instance_job = std::make_unique<JobExecution>(
         *instance_gpu, plan.graph, testInstallation(), TargetOutput{}
@@ -2976,7 +2975,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
     options.multiple_queues = true;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     GraphImageDesc image{9, 7, 1, 1, rdesc::ETextureFormat::R32_SFLOAT};
     image.extent.source = EImageExtentSource::TARGET;
     const auto source = take(builder.declareResource({"depth field", image}));
@@ -3039,7 +3038,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
     const auto graph = take(std::move(builder).finish());
     const auto analysis = take(analyzeRenderGraph(graph));
     TargetDesc target{9, 7, color_description.format, 1, ETargetKind::OFFSCREEN};
-    auto plan = compile(*session, graph, analysis, &target);
+    auto plan = compile(*session, {graph, analysis}, targetOptions(target));
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto instance_job = std::make_unique<JobExecution>(
@@ -3110,7 +3109,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto input = take(builder.declareCondition("choose update"));
     const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
@@ -3128,7 +3127,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     const auto copied = take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{current}, {{output, 0}}}}}));
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
-    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))});
     std::string dump;
     CHECK(plan.diagnostics.resource_reuse[data.index] == EResourceReuse::CONDITIONAL);
     CHECK(dumpPlan(
@@ -3196,7 +3195,7 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
         }
     ));
     CHECK(session->drain());
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto input = take(builder.declareResource(
         {"shared input", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {{}}, EGraphUse::STORAGE_READ}
     ));
@@ -3215,7 +3214,7 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     const auto copied = take(builder.addTransferPass("copy result", std::move(copies)));
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
-    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))});
     auto first_gpu = std::make_unique<JobGpuResources>(*session, 2);
     auto first_job = std::make_unique<JobExecution>(
         *first_gpu, plan.graph, testInstallation(), TargetOutput{}
@@ -3262,7 +3261,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
 {
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto history = take(builder.declareHistory("samples", {GraphBufferDesc{16}}));
     const auto temporary = take(builder.declareResource({"temporary", GraphBufferDesc{16}}));
     const auto initial = take(builder.declareResource({"initial", GraphBufferDesc{16}}));
@@ -3293,7 +3292,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{current}, {{output, 0}}}}}));
     CHECK(builder.exportOutput({observed.written.front()}));
     const auto graph = take(std::move(builder).finish());
-    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))});
     const bool separate = &session->queue() != &session->queue(EQueueRole::COMPUTE);
     CHECK(plan.graph.submissions().size() == (separate ? 7 : 1));
     if (separate)
@@ -3498,7 +3497,7 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
     DeviceOptions options;
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     constexpr std::array widths{16u, 32u};
     constexpr std::array ranges{GraphImageRange{1, 0, 1, 0, 1}, GraphImageRange{1, 1, 1, 1, 1}};
     constexpr std::array colors{
@@ -3535,13 +3534,13 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
                 }}}
             ));
             last_reads[part] = copy.pass;
-            exportRows(builder, copy.written.front(), extent, extent, 256);
+            exportRows(builder, copy.written.front(), extent, {0, 256});
         }
     }
 
     const auto graph = take(std::move(builder).finish());
     const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-    const auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), &target);
+    const auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))}, targetOptions(target));
     const auto& physical = plan.graph.physicalResources();
     const auto write = nri::StageBits::COLOR_ATTACHMENT;
     const auto all_uses = write | nri::StageBits::COPY;
@@ -3667,7 +3666,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto a = take(builder.declareResource({"red temporary", GraphImageDesc{16, 16}}));
     const auto extent = alias_memory ? 32u : 16u;
     const auto b = take(builder.declareResource({"green temporary", GraphImageDesc{extent, extent}}));
@@ -3684,16 +3683,11 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
         "preserve green",
         TransferWork{{CopyImageBuffer{{second.written.front()}, {{green, 0}}, 256, extent * 256}}}
     ));
-    exportRows(builder, first_copy.written.front(), 16, 16, 256);
-    exportRows(builder, second_copy.written.front(), extent, extent, 256);
+    exportRows(builder, first_copy.written.front(), 16, {0, 256});
+    exportRows(builder, second_copy.written.front(), extent, {0, 256});
     const auto graph = take(std::move(builder).finish());
-    auto plan = compile(
-        *session,
-        graph,
-        take(analyzeRenderGraph(graph)),
-        nullptr,
-        alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS
-    );
+    const auto allocation = alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS;
+    auto plan = compile(*session, {graph, take(analyzeRenderGraph(graph))}, {std::nullopt, allocation, true});
     CHECK(
         (plan.graph.physicalResources().resource_slots[a.index] == plan.graph.physicalResources().resource_slots[b.index]) ==
         !alias_memory
@@ -3734,7 +3728,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
 static void crossQueueImageHandoff(DeviceSession& device, EGraphicsBackend backend, bool direct_wait)
 {
     const GraphImageRange base_mip{}, shader_mip{1, 1, 1};
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto shader = take(builder.addProgram(program(kGraphFill, backend)));
     std::array<GraphResourceId, 2> images;
     std::array<GraphResourceId, 4> readbacks;
@@ -3775,7 +3769,7 @@ static void crossQueueImageHandoff(DeviceSession& device, EGraphicsBackend backe
     }
 
     const auto graph = take(std::move(builder).finish());
-    auto ready = compile(device, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto ready = compile(device, {graph, take(analyzeRenderGraph(graph))});
     const auto& physical = ready.graph.physicalResources();
     const auto a = physical.resource_slots[images[0].index].index;
     const auto b = physical.resource_slots[images[1].index].index;
@@ -3834,7 +3828,7 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     const auto [order, alias_memory] = scenario;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     const auto a = take(builder.declareResource({"first temporary", GraphBufferDesc{16}}));
     const auto b = take(builder.declareResource({"second temporary", GraphBufferDesc{alias_memory ? 32u : 16u}}));
     const auto output_a = take(builder.declareResource({"first result", GraphBufferDesc{16}}));
@@ -3872,14 +3866,9 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     CHECK(builder.exportOutput({second.written.front(), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
     const auto graph = take(std::move(builder).finish());
     const auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(
-        *session,
-        graph,
-        analysis,
-        nullptr,
-        alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS
-    );
-    auto control = compile(*session, graph, analysis, nullptr, ETransientAllocation::INDEPENDENT);
+    const auto allocation = alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS;
+    auto plan = compile(*session, {graph, analysis}, {std::nullopt, allocation, true});
+    auto control = compile(*session, {graph, analysis}, {std::nullopt, ETransientAllocation::INDEPENDENT, true});
     CHECK(plan.graph.submissions().size() == control.graph.submissions().size());
     for (std::size_t i = 0; i < plan.graph.submissions().size(); ++i)
     {
@@ -4000,7 +3989,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
-    RenderGraphBuilder builder;
+    GraphDraftBuilder builder;
     GraphImageDesc description{32, 32};
     description.mips = 4;
     description.layers = 3;
@@ -4020,11 +4009,11 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
             {version, GraphImageRange{1, 0, 1, 2, 1}}, {{output, 0}}, 256, 8192
         }}}
     ));
-    exportRows(builder, copied.written.front(), 32, 32, 256);
+    exportRows(builder, copied.written.front(), 32, {0, 256});
     CHECK(builder.exportOutput({version, GraphImageRange{1, 0, 4, 0, 3}, {}, EGraphUse::SAMPLED}));
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(*session, graph, analysis, nullptr);
+    auto plan = compile(*session, {graph, analysis});
     const auto& transitions = plan.graph.passes().front().before.images;
     CHECK(transitions.size() == 1);
     const auto& transition = transitions.front();
@@ -4055,7 +4044,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
 static void cpuGraphAnalysis()
 {
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto buffer = take(builder.declareResource({"buffer", GraphBufferDesc{16}}));
         const auto written = take(builder.addTransferPass(
             "write first half", TransferWork{{FillBuffer{{{buffer, 0}, GraphBufferRange{0, 8}}, 0}}}
@@ -4066,7 +4055,7 @@ static void cpuGraphAnalysis()
         CHECK(!analysis && analysis.error().type == kGraphUndefinedRead);
     }
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         const auto dead = take(builder.declareResource({"dead", GraphBufferDesc{16}}));
         const auto external = take(builder.declareResource({
             "external", GraphBufferDesc{16}, EGraphOrigin::IMPORTED
@@ -4119,7 +4108,7 @@ int main(int argc, char** argv)
         TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
         const auto fixture = computeSequenceGraph();
         const auto analysis = take(analyzeRenderGraph(fixture.graph));
-        const auto candidate = compile(*session, fixture.graph, analysis, nullptr);
+        const auto candidate = compile(*session, {fixture.graph, analysis});
         const auto status = measureGraph(*session, candidate);
         CHECK(validation.errors == 0);
         return status;

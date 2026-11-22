@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <bit>
 
@@ -75,7 +75,7 @@ namespace lux::render
         }
 
         RenderResult<void>
-        validateAccess(const RenderGraph& graph, const GraphPass& pass, GraphPassId id, const ResourceAccess& use) noexcept
+        validateAccess(const GraphDefinition& graph, const GraphPass& pass, GraphPassId id, const ResourceAccess& use) noexcept
         {
             const auto resource_id = use.version.resource;
             const auto kind = pass.kind();
@@ -167,7 +167,7 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> validatePass(const RenderGraph& graph, const GraphPass& pass, GraphPassId id) noexcept
+        RenderResult<void> validatePass(const GraphDefinition& graph, const GraphPass& pass, GraphPassId id) noexcept
         {
             const bool is_invalid_pass =
                 id.index >= kGraphInvalidIndex || pass.key.empty();
@@ -209,11 +209,11 @@ namespace lux::render
     }
 
     // All access, version, and field claims belong to this candidate until validation succeeds.
-    class RenderGraphBuilder::PassNormalizer final
+    class GraphDraftBuilder::PassNormalizer final
     {
     public:
         PassNormalizer(
-            const RenderGraphBuilder& builder,
+            const GraphDraftBuilder& builder,
             std::span<const std::uint32_t> versions,
             GraphPassId id
         ) noexcept
@@ -612,7 +612,7 @@ namespace lux::render
             return {};
         }
 
-        const RenderGraphBuilder& builder_;
+        const GraphDraftBuilder& builder_;
         std::span<const std::uint32_t> versions_;
         GraphPassId id_;
         NormalizedPassDraft draft_;
@@ -620,7 +620,7 @@ namespace lux::render
 
     template <class Work>
     RenderResult<PassResult>
-    RenderGraphBuilder::appendPass(std::string key, Work work, GraphPassOptions options) noexcept
+    GraphDraftBuilder::appendPass(std::string key, Work work, GraphPassOptions options) noexcept
     {
         const GraphPassId id{static_cast<std::uint32_t>(passCount())};
         PassNormalizer operation{*this, versions_, id};
@@ -652,24 +652,24 @@ namespace lux::render
     }
 
     RenderResult<PassResult>
-    RenderGraphBuilder::addRasterPass(std::string key, RasterWork work, GraphPassOptions options) noexcept
+    GraphDraftBuilder::addRasterPass(std::string key, RasterWork work, GraphPassOptions options) noexcept
     {
         return appendPass(std::move(key), std::move(work), options);
     }
 
     RenderResult<PassResult>
-    RenderGraphBuilder::addComputePass(std::string key, ComputeWork work, GraphPassOptions options) noexcept
+    GraphDraftBuilder::addComputePass(std::string key, ComputeWork work, GraphPassOptions options) noexcept
     {
         return appendPass(std::move(key), std::move(work), options);
     }
 
     RenderResult<PassResult>
-    RenderGraphBuilder::addTransferPass(std::string key, TransferWork work, GraphPassOptions options) noexcept
+    GraphDraftBuilder::addTransferPass(std::string key, TransferWork work, GraphPassOptions options) noexcept
     {
         return appendPass(std::move(key), std::move(work), options);
     }
 
-    RenderResult<PassResult> RenderGraphBuilder::addComputeSequence(
+    RenderResult<PassResult> GraphDraftBuilder::addComputeSequence(
         std::string key, std::vector<ComputeWork> commands, GraphPassOptions options
     ) noexcept
     {

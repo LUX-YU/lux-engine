@@ -8,7 +8,6 @@ namespace lux::render
 {
     namespace detail
     {
-        struct MeshCullConstants final { std::uint32_t frustum_culling, shadow_pass; };
         struct MeshCompactConstants final { std::uint32_t shared_members; };
     }
 
@@ -39,8 +38,8 @@ namespace lux::render
     };
 
     RenderResult<detail::MeshVisibilityOutputs> detail::addMeshVisibilityPasses(
-        RenderGraphBuilder& graph, const std::string& pass_prefix, const MeshVisibilityBuffers& input,
-        bool frustum_culling, bool shadow_pass, bool indirect_first_instance
+        EffectCompileContext& graph, const std::string& pass_prefix, const MeshVisibilityBuffers& input,
+        MeshCullConstants culling
     ) noexcept
     {
         GraphProgram cull_variants{kMeshFrustumCull};
@@ -85,7 +84,7 @@ namespace lux::render
             {"chunks", {input.chunks}},
             {"visible", {visible, {}, EGraphAccess::READ_WRITE}}
         };
-        cull.interface.parameters.setInlineConstant(detail::MeshCullConstants{frustum_culling, shadow_pass});
+        cull.interface.parameters.setInlineConstant(culling);
         cull.dispatch = IndirectDispatchArguments{dispatch, 0};
         cull.allow_async_compute = true;
         auto culled = graph.addComputePass(
@@ -104,7 +103,7 @@ namespace lux::render
             {"visible", {visible}},
             {"commands", {input.commands, {}, EGraphAccess::WRITE}}
         };
-        compact.interface.parameters.setInlineConstant(detail::MeshCompactConstants{indirect_first_instance});
+        compact.interface.parameters.setInlineConstant(detail::MeshCompactConstants{graph.device().indirect_first_instance});
         compact.dispatch = IndirectDispatchArguments{dispatch, 12};
         compact.allow_async_compute = true;
         auto completed = graph.addComputePass(

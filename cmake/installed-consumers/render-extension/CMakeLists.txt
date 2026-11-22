@@ -195,8 +195,8 @@ foreach(header IN ITEMS
     core/ConfigValue core/FinalBufferVersion core/RenderErrorSink
     effect/CapabilityDefinition effect/EffectBundles effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
-    extensions/effect/EffectBuildContext graph/ConstantBlock
-    extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
+    effect/EffectCompileContext graph/ConstantBlock
+    extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
     extensions/execution/GraphPreparation graph/DrawList graph/DrawResource
     graph/IndexedGeometry extensions/execution/FramePreparation resources/material/Resource resource/RasterProgramBuild
     extensions/execution/PreparedCpuValue extensions/execution/ResourceInput

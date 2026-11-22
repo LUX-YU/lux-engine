@@ -4,7 +4,7 @@
 
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <optional>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
 #include <lux/engine/render/core/Ids.hpp>

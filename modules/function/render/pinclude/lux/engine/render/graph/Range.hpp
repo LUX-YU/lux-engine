@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <array>
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 
 namespace lux::render::detail
 {

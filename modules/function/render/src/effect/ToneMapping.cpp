@@ -6,7 +6,7 @@
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/features/common/FullscreenRaster.hpp>
@@ -29,7 +29,7 @@ namespace lux::render
         }
 
         template <bool Srgb>
-        RenderResult<void> buildToneMapping(EffectBuildContext& context, std::string_view) noexcept
+        RenderResult<void> buildToneMapping(EffectCompileContext& context, std::string_view) noexcept
         {
             const auto input = context.inputs(ToneMapping::hdr_color);
             const bool valid_input = input.size() == 1 && input.front().size() == 1;
@@ -43,21 +43,20 @@ namespace lux::render
             if (!valid_input || target.samples != 1 || (!is_unorm_format && !valid_srgb))
                 return cxx::unexpected(RenderError{kCapabilityDeclaration, {context.nodeId().value}});
 
-            auto& builder = context.builder();
             const std::string key = "tone-mapping/" + std::to_string(context.nodeId().value);
             GraphImageDesc image{0, 0, 1, 1, format};
             image.extent.source = EImageExtentSource::TARGET;
-            const auto color = builder.declareResource({key, image});
+            const auto color = context.declareResource({key, image});
             if (!color) return cxx::unexpected(color.error());
             const bool encode = Srgb && !is_srgb_format;
             auto shaders = encode ? GraphProgram{kTonemapSrgb} : GraphProgram{kTonemapLinear};
-            auto work = detail::fullscreenRaster(builder, std::move(shaders));
+            auto work = detail::fullscreenRaster(context, std::move(shaders));
             if (!work) return cxx::unexpected(work.error());
             auto& shader = work->fixed().interface;
             shader.parameters.setInlineConstant(detail::TonemapConstants{0});
             shader.resources = {{"hdr_color", {input.front().front().version}}};
             work->colors.push_back({{{*color, 0}}});
-            auto pass = builder.addRasterPass(key, std::move(*work));
+            auto pass = context.addRasterPass(key, std::move(*work));
             if (!pass) return cxx::unexpected(pass.error());
             auto copy = context.copyInlineBlock<detail::TonemapConstants, detail::TonemapExposure,
                                                 &detail::TonemapExposure::constants>(pass->pass);

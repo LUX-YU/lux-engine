@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 
 #include <bit>
 #include <lux/engine/render/graph/Range.hpp>
@@ -112,7 +112,7 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<GraphResourceId> RenderGraphBuilder::declareResource(GraphResource resource) noexcept
+    RenderResult<GraphResourceId> GraphDraftBuilder::declareResource(GraphResource resource) noexcept
     {
         const GraphResourceId id{static_cast<std::uint32_t>(candidate_.resources_.size())};
         if (candidate_.resources_.size() >= kGraphInvalidIndex)
@@ -147,7 +147,7 @@ namespace lux::render
     }
 
     RenderResult<HistoryDescription>
-    RenderGraphBuilder::declareHistory(std::string key, HistoryDeclaration declaration) noexcept
+    GraphDraftBuilder::declareHistory(std::string key, HistoryDeclaration declaration) noexcept
     {
         const auto& [description, initial, canonical_use, distance] = declaration;
         const bool invalid_capacity = candidate_.resources_.size() > kGraphInvalidIndex - 2;
@@ -187,7 +187,7 @@ namespace lux::render
     }
 
     RenderResult<void>
-    RenderGraphBuilder::publishHistory(ResourceVersion version, std::optional<PassCondition> when) noexcept
+    GraphDraftBuilder::publishHistory(ResourceVersion version, std::optional<PassCondition> when) noexcept
     {
         if (branch_)
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
@@ -250,7 +250,7 @@ namespace lux::render
     }
 
     RenderResult<ResourceVersion>
-    RenderGraphBuilder::declareChoice(PassCondition predicate, ChoiceArm when_true, ChoiceArm when_false) noexcept
+    GraphDraftBuilder::declareChoice(PassCondition predicate, ChoiceArm when_true, ChoiceArm when_false) noexcept
     {
         if (branch_ || !candidate_.validCondition(predicate) || choices_.size() >= kGraphInvalidIndex)
             return cxx::unexpected(graphError(kGraphInvalidDescriptor));
@@ -316,7 +316,7 @@ namespace lux::render
         return ResourceVersion{first->resource, first->number, index};
     }
 
-    RenderResult<PassCondition> RenderGraphBuilder::sameBinding(GraphResourceId left, GraphResourceId right) noexcept
+    RenderResult<PassCondition> GraphDraftBuilder::sameBinding(GraphResourceId left, GraphResourceId right) noexcept
     {
         const auto resources = candidate_.resources();
         for (const auto id : {left, right})
@@ -338,7 +338,7 @@ namespace lux::render
         return PassCondition{EConditionSource::SAME_BINDING, index};
     }
 
-    RenderResult<std::uint32_t> RenderGraphBuilder::declareCondition(std::string key) noexcept
+    RenderResult<std::uint32_t> GraphDraftBuilder::declareCondition(std::string key) noexcept
     {
         if (key.empty() || candidate_.conditions_.size() >= kGraphInvalidIndex)
         {
@@ -353,7 +353,7 @@ namespace lux::render
         return index;
     }
 
-    RenderResult<std::uint32_t> RenderGraphBuilder::addProgram(GraphProgram program) noexcept
+    RenderResult<std::uint32_t> GraphDraftBuilder::addProgram(GraphProgram program) noexcept
     {
         if (!program.valid() || candidate_.programs_.size() >= kGraphInvalidIndex)
         {
@@ -386,7 +386,7 @@ namespace lux::render
         return index;
     }
 
-    RenderResult<ResourceVersion> RenderGraphBuilder::nextWriteVersion(GraphResourceId resource) const noexcept
+    RenderResult<ResourceVersion> GraphDraftBuilder::nextWriteVersion(GraphResourceId resource) const noexcept
     {
         if (resource.index >= versions_.size())
         {
@@ -400,7 +400,7 @@ namespace lux::render
         return ResourceVersion{resource, version + 1};
     }
 
-    RenderResult<void> RenderGraphBuilder::dependsOn(GraphPassId before, GraphPassId after) noexcept
+    RenderResult<void> GraphDraftBuilder::dependsOn(GraphPassId before, GraphPassId after) noexcept
     {
         const bool is_unknown = before.index >= candidate_.passes_.size() || after.index >= candidate_.passes_.size();
         if (is_unknown)
@@ -433,7 +433,7 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> RenderGraphBuilder::exportOutput(GraphExport output) noexcept
+    RenderResult<void> GraphDraftBuilder::exportOutput(GraphExport output) noexcept
     {
         if (branch_ || output.alternate) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         const auto selection = output.version.selection;
@@ -466,7 +466,7 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> RenderGraphBuilder::validateOutput(GraphExport& output) const noexcept
+    RenderResult<void> GraphDraftBuilder::validateOutput(GraphExport& output) const noexcept
     {
         const auto id = output.version.resource;
         if (output.final_use &&
@@ -527,7 +527,7 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<RenderGraph> RenderGraphBuilder::finish() && noexcept
+    RenderResult<GraphDefinition> GraphDraftBuilder::finish() && noexcept
     {
         if (branch_) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         if (auto valid = uniqueKeys(candidate_.resources(), false); !valid)

@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/RenderingPlan.hpp>

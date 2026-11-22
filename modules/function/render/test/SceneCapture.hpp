@@ -15,9 +15,8 @@
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
 #include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/resources/texture/Binding.hpp>
@@ -711,7 +710,7 @@ struct ColorCapture final
     }
 
 private:
-    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    static RenderResult<void> build(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto input = context.inputs(color);
         CHECK(input.size() == 1 && input.front().size() == 1);
@@ -722,7 +721,7 @@ private:
                 EGraphUse::TRANSFER_DESTINATION}
         );
         if (!readback) return lux::cxx::unexpected(readback.error());
-        const auto copy = take(context.builder().addTransferPass(
+        const auto copy = take(context.addTransferPass(
             "copy color pixels", TransferWork{{CopyImageBuffer{
                 {input.front().front().version}, {*readback}, 256, GraphCaptureBuffer::image_bytes,
                 ImageCopyRegion{0, 0, 64, 64}

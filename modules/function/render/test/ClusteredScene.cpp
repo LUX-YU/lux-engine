@@ -17,9 +17,8 @@
 #include <lux/engine/render/effect/GBuffer.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
 #include <lux/engine/render/effect/MeshVisibility.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/resources/instance/Binding.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
@@ -108,15 +107,14 @@ struct ClusterReadback final
 };
 
 static RenderResult<void> copyReadback(
-    EffectBuildContext& context, std::uint32_t projection, std::span<const ResourceVersion> sources
+    EffectCompileContext& context, std::uint32_t projection, std::span<const ResourceVersion> sources
 ) noexcept
 {
     std::uint64_t bytes = 0;
-    auto& builder = context.builder();
     TransferWork work;
     for (const auto source : sources)
     {
-        const auto* description = builder.resourceDescription(source.resource);
+        const auto* description = context.resourceDescription(source.resource);
         const auto* buffer = description ? std::get_if<GraphBufferDesc>(description) : nullptr;
         if (!buffer) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         work.operations.push_back(CopyBuffer{{source}, {{}, GraphBufferRange{bytes, buffer->size}}});
@@ -128,7 +126,7 @@ static RenderResult<void> copyReadback(
     );
     if (!bound) return lux::cxx::unexpected(bound.error());
     for (auto& operation : work.operations) std::get<CopyBuffer>(operation).destination.version = *bound;
-    const auto copied = builder.addTransferPass(std::string{readback_bindings[projection]}, std::move(work));
+    const auto copied = context.addTransferPass(std::string{readback_bindings[projection]}, std::move(work));
     if (!copied) return lux::cxx::unexpected(copied.error());
     const auto name = projection == 0 ? first_bytes : second_bytes;
     return context.publish(name, {{name, copied->written.front()}});
@@ -155,7 +153,7 @@ static CapabilityDefinition inspectionDefinition(std::string_view name, bool sce
     return definition;
 }
 
-static RenderResult<void> compareClustered(EffectBuildContext& context, std::string_view) noexcept
+static RenderResult<void> compareClustered(EffectCompileContext& context, std::string_view) noexcept
 {
     const auto reference = context.inputs(reference_hdr);
     const auto candidate = context.inputs(candidate_hdr);
@@ -163,17 +161,16 @@ static RenderResult<void> compareClustered(EffectBuildContext& context, std::str
     CHECK(reference.size() == 1 && reference.front().size() == 1 && reference.front().front().member == Lighting::hdr);
     CHECK(candidate.size() == 1 && candidate.front().size() == 1 && candidate.front().front().member == Lighting::hdr);
     CHECK(lists.size() == 1 && lists.front().size() == outputs.size());
-    auto& builder = context.builder();
-    const auto difference = take(builder.declareResource({"HDR differences", GraphBufferDesc{difference_bytes}}));
+    const auto difference = take(context.declareResource({"HDR differences", GraphBufferDesc{difference_bytes}}));
     ComputeWork work;
-    work.interface.program = take(builder.addProgram(GraphProgram{kClusterCompare.load(context.shaderTarget())}));
+    work.interface.program = take(context.addProgram(GraphProgram{kClusterCompare.load(context.shaderTarget())}));
     work.interface.resources = {
         {"reference_image", {reference.front().front().version}},
         {"candidate_image", {candidate.front().front().version}},
         {"differences", {{difference, 0}, {}, EGraphAccess::WRITE}}
     };
     work.dispatch = DispatchArguments{{8, 8, 1}};
-    const auto compared = take(builder.addComputePass("compare HDR", std::move(work)));
+    const auto compared = take(context.addComputePass("compare HDR", std::move(work)));
     if (auto copied = copyReadback(context, 0, compared.written); !copied) return copied;
 
     std::array<ResourceVersion, outputs.size()> ordered;
@@ -187,17 +184,16 @@ static RenderResult<void> compareClustered(EffectBuildContext& context, std::str
     return copyReadback(context, 1, ordered);
 }
 
-static RenderResult<void> testScanOverflow(EffectBuildContext& context, std::string_view) noexcept
+static RenderResult<void> testScanOverflow(EffectCompileContext& context, std::string_view) noexcept
 {
-    auto& builder = context.builder();
-    const auto counts = take(builder.declareResource({"counts", GraphBufferDesc{129 * sizeof(std::uint32_t)}}));
-    const auto offsets = take(builder.declareResource({"offsets", GraphBufferDesc{scan_offset_bytes}}));
-    const auto status = take(builder.declareResource({"status", GraphBufferDesc{scan_status_bytes}}));
-    const auto initialized = take(builder.addTransferPass("initialize scan inputs", TransferWork{{
+    const auto counts = take(context.declareResource({"counts", GraphBufferDesc{129 * sizeof(std::uint32_t)}}));
+    const auto offsets = take(context.declareResource({"offsets", GraphBufferDesc{scan_offset_bytes}}));
+    const auto status = take(context.declareResource({"status", GraphBufferDesc{scan_status_bytes}}));
+    const auto initialized = take(context.addTransferPass("initialize scan inputs", TransferWork{{
         FillBuffer{{{counts, 0}}, UINT32_MAX}, FillBuffer{{{status, 0}}, 0}
     }}));
     ComputeWork work;
-    work.interface.program = take(builder.addProgram(GraphProgram{kClusterScan.load(context.shaderTarget())}));
+    work.interface.program = take(context.addProgram(GraphProgram{kClusterScan.load(context.shaderTarget())}));
     work.interface.resources = {
         {"counts", {initialized.written[0]}},
         {"offsets", {{offsets, 0}, {}, EGraphAccess::WRITE}},
@@ -207,7 +203,7 @@ static RenderResult<void> testScanOverflow(EffectBuildContext& context, std::str
     const auto bytes = std::as_bytes(std::span{constants});
     work.interface.parameters.values.assign(bytes.begin(), bytes.end());
     work.dispatch = DispatchArguments{{1, 1, 1}};
-    const auto scanned = take(builder.addComputePass("scan", std::move(work)));
+    const auto scanned = take(context.addComputePass("scan", std::move(work)));
     const auto written = std::span{scanned.written};
     if (auto copied = copyReadback(context, 0, written.first(1)); !copied) return copied;
     return copyReadback(context, 1, written.subspan(1, 1));

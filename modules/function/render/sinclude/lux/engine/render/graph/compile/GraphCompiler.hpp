@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 #include <optional>
@@ -18,7 +18,7 @@ namespace lux::render::detail
 
     struct AnalyzedGraph final
     {
-        const RenderGraph& graph;
+        const GraphDefinition& graph;
         const RenderGraphAnalysis& analysis;
         std::span<const GraphResourceId> concurrent_image_reads{};
     };
@@ -57,7 +57,7 @@ namespace lux::render::detail
         struct Workspace;
         [[nodiscard]] static RenderResult<void>
         lowerCommands(
-            compiled::RenderGraph&, const RenderGraph&, std::span<const GraphPassId>, const nri::DeviceDesc&
+            compiled::RenderGraph&, const GraphDefinition&, std::span<const GraphPassId>, const nri::DeviceDesc&
         ) noexcept;
     };
 } // namespace lux::render::detail

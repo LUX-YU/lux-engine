@@ -1,5 +1,5 @@
 #include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/compile/SubmissionPlan.hpp>

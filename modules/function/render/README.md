@@ -49,17 +49,29 @@ After join, call `RenderClient::serverStopped` so real responses settle before a
 the related messages, configurations, FrameData, operations, Client, and Server, and let their final callbacks
 and typed destructors return before unloading extension code.
 
-EffectGraph builds typed GPU work from the actual output format, sample count, Target kind, and device Shader ABI
-during `StartRenderJob`. Target-relative extents are evaluated by the instance. Compatible starts share one in-flight
-build and its terminal result. Live Jobs share the compiled plan and native program leases, with independent frame
-resources and History.
+During `PrepareEffect`, each selected node receives an `EffectCompileContext&` borrowed for that callback.
+Use it directly to declare resources, add passes, read upstream ports and publish output versions. For example,
+a build callback can clear and publish a color image as follows.
 
-Use `EffectBuildContext::importTargetImage` to declare a sampled input by name, format and sample count. Each
+```cpp
+auto image = context.declareResource({"color", GraphImageDesc{64, 64}});
+if (!image) return cxx::unexpected(image.error());
+auto clear = context.addTransferPass("clear", TransferWork{{ClearImage{{{*image, 0}}}}});
+if (!clear) return cxx::unexpected(clear.error());
+return context.publish(color, {{color, clear->written.front()}});
+```
+
+Recompile extensions against `<lux/engine/render/effect/EffectCompileContext.hpp>`. The compiler owns the
+graph draft, finalization and dependency analysis. A rejected choice rolls back both arms, including node output
+publications and Resource imports made inside them. Jobs bind a ready device graph and own their per-frame state
+and History.
+
+Use `EffectCompileContext::importTargetImage` to declare a sampled input by name, format and sample count. Each
 name has its own logical slot. During cold installation a Job supplies a same-device sampled offscreen Target
 for each name. Duplicate Target identities select one publication. The compiled graph and its two `sameBinding`
 paths can serve Jobs with either equal or distinct bindings.
 
-Use `EffectBuildContext::importResource` to declare a shared input by name, type, projection, shape, required
+Use `EffectCompileContext::importResource` to declare a shared input by name, type, projection, shape, required
 initialized ranges and boundary state. Compilation assigns each name its own slot. The author can require a
 concurrent image using `ResourceRequirement::concurrent_image_read`. The graph records its accesses even when a
 particular Job will disable a branch. At Start or Rebind, `JobBinding::resources` supplies the actual owners.
@@ -259,7 +271,7 @@ implementation, connect a `lux.color.linear-hdr` input to `hdr_color`, and consu
 Built-in node arguments use named options from the installed `lux-cxx` arguments component
 (`lux/cxx/arguments/TypedOptions.hpp`). The Server parses live nodes during `CreateEffect`. Extensions can
 publish a typed immutable value with `EffectInitializationContext::setConfiguration` and borrow it in
-a device build with `EffectBuildContext::configuration<T>()`. The value belongs to the logical Effect.
+a device build with `EffectCompileContext::configuration<T>()`. The value belongs to the logical Effect.
 
 `effect/EffectBundles.hpp` defines the GBuffer, Shadow, HDR and cluster-list schemas shared by Effect producers
 and consumers. Use the schema's type, version and member names when declaring or connecting these bundles.
@@ -573,7 +585,7 @@ candidate image extents before adoption and the next Freeze resolves the new phy
 compilation and supply draws and resource bindings through `FramePreparation`. The graph declares attachments
 and fixed graph resources.
 
-`RenderGraphBuilder` indexes each program’s reflected fields when the program is added. Raster, Compute and Transfer
+`GraphDraftBuilder` indexes each program’s reflected fields when the program is added. Raster, Compute and Transfer
 each normalize their own work into a private draft. The Builder publishes passes and write versions after range,
 binding and overlap validation. A Compute sequence publishes its passes and dependencies together.
 `finish()` produces one self-contained immutable Definition;
@@ -1269,7 +1281,7 @@ target's reflected layout and the device's uniform buffer offset and range limit
 physical buffer and applies native CBV padding as needed.
 
 An Effect state can expose a typed constant block and its nonzero 64-bit revision through
-`EffectBuildContext::constantBuffer<T, State, ValueMember, RevisionMember>()`. Its command updates both
+`EffectCompileContext::constantBuffer<T, State, ValueMember, RevisionMember>()`. Its command updates both
 fields on the Server owner. The compiler qualifies the complete shader ABI and publishes a source slot
 and the imported-buffer uses for each batch. Job installation binds both fields once. Jobs on one device share
 the first selection made for a block in a round, including when backing capacity delays its upload.

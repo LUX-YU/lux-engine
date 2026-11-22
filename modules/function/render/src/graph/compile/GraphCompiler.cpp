@@ -26,7 +26,7 @@ namespace lux::render::detail
     namespace
     {
         RenderResult<void>
-        validateRasterScope(const RasterScope& scope, const RenderGraph& graph, const nri::DeviceDesc& limits) noexcept
+        validateRasterScope(const RasterScope& scope, const GraphDefinition& graph, const nri::DeviceDesc& limits) noexcept
         {
             const auto* raster = &scope;
             if (!scope.hasAttachments())
@@ -1033,7 +1033,7 @@ namespace lux::render::detail
 
     RenderResult<void>
     GraphCompiler::lowerCommands(
-        compiled::RenderGraph& plan, const RenderGraph& graph, std::span<const GraphPassId> order,
+        compiled::RenderGraph& plan, const GraphDefinition& graph, std::span<const GraphPassId> order,
         const nri::DeviceDesc& limits
     ) noexcept
     {

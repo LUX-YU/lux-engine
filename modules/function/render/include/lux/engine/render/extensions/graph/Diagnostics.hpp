@@ -6,9 +6,6 @@
 
 namespace lux::render
 {
-    class RenderGraph;
-    struct RenderGraphAnalysis;
-
     enum class EGraphDumpFormat : std::uint8_t
     {
         JSON,
@@ -21,11 +18,4 @@ namespace lux::render
         void* destination = nullptr;
         bool (*write)(void*, std::string_view) noexcept = nullptr;
     };
-
-    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpGraph(
-        const RenderGraph&,
-        const RenderGraphAnalysis&,
-        EGraphDumpFormat,
-        DumpSink
-    ) noexcept;
 } // namespace lux::render

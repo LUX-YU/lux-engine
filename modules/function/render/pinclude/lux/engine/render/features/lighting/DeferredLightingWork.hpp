@@ -4,7 +4,7 @@
 
 namespace lux::render
 {
-    class RenderGraphBuilder;
+    class EffectCompileContext;
 }
 
 namespace lux::render::detail
@@ -16,5 +16,5 @@ namespace lux::render::detail
     };
 
     [[nodiscard]] RenderResult<RasterWork>
-    deferredLightingWork(RenderGraphBuilder&, const DeferredLightingInputs&) noexcept;
+    deferredLightingWork(EffectCompileContext&, const DeferredLightingInputs&) noexcept;
 }

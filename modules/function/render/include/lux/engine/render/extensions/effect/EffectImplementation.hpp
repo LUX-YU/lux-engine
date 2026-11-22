@@ -9,7 +9,7 @@
 
 namespace lux::render
 {
-    class EffectBuildContext;
+    class EffectCompileContext;
     class EffectInitializationContext;
 
     // Registered once during module assembly, immutable after admission. This is
@@ -17,7 +17,7 @@ namespace lux::render
     struct EffectImplementation final
     {
         using Initialize = RenderResult<void> (*)(EffectInitializationContext&, std::string_view arguments) noexcept;
-        using Build = RenderResult<void> (*)(EffectBuildContext&, std::string_view arguments) noexcept;
+        using Build = RenderResult<void> (*)(EffectCompileContext&, std::string_view arguments) noexcept;
 
         graph::NodeTypeId capability;
         std::uint32_t capability_version = 1;

@@ -2,7 +2,7 @@
 
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/core/RenderErrorSink.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
@@ -10,7 +10,7 @@
 #include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 #include <span>
@@ -76,7 +76,7 @@ namespace lux::render::runtime_detail
             extension_detail::InlineBlockInput input;
         };
 
-        RenderGraph source;
+        GraphDefinition source;
         RenderGraphAnalysis analysis;
         std::vector<detail::TargetImageSlot> target_imports;
         std::vector<EffectStorageImport> storage_imports;

@@ -9,7 +9,7 @@
 
 namespace lux::render
 {
-    class RenderGraphBuilder;
+    class EffectCompileContext;
 }
 
 namespace lux::render::detail
@@ -59,12 +59,9 @@ namespace lux::render::detail
         };
     }
 
-    [[nodiscard]] RenderResult<ClusterBuffers>
-    declareClusterBuffers(RenderGraphBuilder&, std::string_view key, const ClusterGrid&) noexcept;
-
     [[nodiscard]] RenderResult<ClusterBuildResult> buildClusterLightLists(
-        RenderGraphBuilder&, std::string_view key, const ClusterGrid&, const ClusterBuffers&,
-        const std::array<ResourceVersion, 4>& light_bindings, ParameterBinding
+        EffectCompileContext&, std::string_view key, const ClusterGrid&,
+        const std::array<ResourceVersion, 4>& light_bindings
     ) noexcept;
 }
 

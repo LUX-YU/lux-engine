@@ -10,7 +10,7 @@
 #include <lux/engine/render/effect/MeshSurfaceStream.hpp>
 #include <lux/engine/render/effect/MeshVisibility.hpp>
 #include <lux/engine/render/effect/Shadow.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/features/mesh/MeshGrouping.hpp>
@@ -321,7 +321,7 @@ namespace lux::render
         }
 
         template <EMeshEffect Effect, bool CounterClockwise = true>
-        RenderResult<void> buildVisibility(EffectBuildContext& context, std::string_view) noexcept
+        RenderResult<void> buildVisibility(EffectCompileContext& context, std::string_view) noexcept
         {
             const auto& device = context.device();
             const auto max_bytes = std::min(device.storage_buffer_max_range, UINT64_MAX / 2) & ~std::uint64_t{3};
@@ -358,7 +358,6 @@ namespace lux::render
                 ESnapshotScope::JOB_LOCAL
             );
             if (!camera) return cxx::unexpected(camera.error());
-            auto& graph = context.builder();
             const std::string key = "mesh-visibility/" + std::to_string(context.nodeId().value) + "/";
             ResourceVersion views;
             std::vector<GraphPassId> inline_blocks;
@@ -399,9 +398,9 @@ namespace lux::render
                 const auto* configuration = context.configuration<MeshVisibilityConfiguration>();
                 if (!configuration) return cxx::unexpected(RenderError{kCapabilityDeclaration, {context.nodeId().value}});
                 frustum_culling = configuration->frustum_culling;
-                const auto view_resource = graph.declareResource({key + "views", GraphBufferDesc{sizeof(MeshVisibilityView)}});
+                const auto view_resource = context.declareResource({key + "views", GraphBufferDesc{sizeof(MeshVisibilityView)}});
                 if (!view_resource) return cxx::unexpected(view_resource.error());
-                const auto shader = graph.addProgram(GraphProgram{kMeshView.load(context.shaderTarget())});
+                const auto shader = context.addProgram(GraphProgram{kMeshView.load(context.shaderTarget())});
                 if (!shader) return cxx::unexpected(shader.error());
                 ComputeWork view;
                 view.interface.program = *shader;
@@ -409,7 +408,7 @@ namespace lux::render
                 view.interface.parameters.setInlineConstant(detail::VisibilityViewConstants{});
                 view.dispatch = DispatchArguments{{1, 1, 1}};
                 view.allow_async_compute = true;
-                const auto view_pass = graph.addComputePass(key + "view", std::move(view));
+                const auto view_pass = context.addComputePass(key + "view", std::move(view));
                 if (!view_pass) return cxx::unexpected(view_pass.error());
                 views = view_pass->written.front();
                 inline_blocks.push_back(view_pass->pass);
@@ -432,10 +431,10 @@ namespace lux::render
             const auto commands = context.declareFrameBuffer("commands", command_bytes, max_bytes);
             if (!commands) return cxx::unexpected(commands.error());
             const auto passes = detail::addMeshVisibilityPasses(
-                graph, key, {
+                context, key, {
                     *transforms, *alive, *properties, views,
                     *groups, *candidates, *chunks, *visible, *commands, *dispatch
-                }, frustum_culling, Effect == EMeshEffect::SHADOW, device.indirect_first_instance
+                }, {frustum_culling, Effect == EMeshEffect::SHADOW}
             );
             if (!passes) return cxx::unexpected(passes.error());
             auto config = PrepareMeshVisibility::Configuration{
@@ -497,7 +496,7 @@ namespace lux::render
                 raster.program = std::move(stage);
                 if constexpr (Effect == EMeshEffect::SHADOW)
                 {
-                    const auto depth = graph.declareResource({key + "shadow-depth", shadow->settings.shape.image()});
+                    const auto depth = context.declareResource({key + "shadow-depth", shadow->settings.shape.image()});
                     if (!depth) return cxx::unexpected(depth.error());
                     raster.depth = RasterAttachment{{{*depth, 0}}};
                     for (std::size_t i = 0; i < shadow->uploads.size(); ++i)
@@ -511,7 +510,7 @@ namespace lux::render
                         const auto format = GBufferBundle::formats[i];
                         GraphImageDesc image{0, 0, 1, 1, format};
                         image.extent.source = EImageExtentSource::TARGET;
-                        const auto attachment = graph.declareResource({key + std::string{GBufferBundle::members[i]}, image});
+                        const auto attachment = context.declareResource({key + std::string{GBufferBundle::members[i]}, image});
                         if (!attachment) return cxx::unexpected(attachment.error());
                         if (is_depth) raster.depth = RasterAttachment{{{*attachment, 0}}};
                         else raster.colors.push_back({{{*attachment, 0}}});
@@ -521,19 +520,19 @@ namespace lux::render
                 {
                     GraphImageDesc depth_image{0, 0, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
                     depth_image.extent.source = EImageExtentSource::TARGET;
-                    const auto depth = graph.declareResource({key + "depth", depth_image});
+                    const auto depth = context.declareResource({key + "depth", depth_image});
                     if (!depth) return cxx::unexpected(depth.error());
                     raster.depth = RasterAttachment{{{*depth, 0}}};
                     if constexpr (Effect == EMeshEffect::FORWARD)
                     {
                         GraphImageDesc color_image{0, 0, 1, 1, target.format};
                         color_image.extent.source = EImageExtentSource::TARGET;
-                        const auto color = graph.declareResource({key + "color", color_image});
+                        const auto color = context.declareResource({key + "color", color_image});
                         if (!color) return cxx::unexpected(color.error());
                         raster.colors.push_back({{{*color, 0}}});
                     }
                 }
-                const auto drawn = graph.addRasterPass(key + "raster", std::move(raster));
+                const auto drawn = context.addRasterPass(key + "raster", std::move(raster));
                 if (!drawn) return cxx::unexpected(drawn.error());
                 if constexpr (Effect == EMeshEffect::SHADOW)
                     bundle.push_back({effectPortSemantic(ShadowBundle::members.back()), drawn->written.front()});

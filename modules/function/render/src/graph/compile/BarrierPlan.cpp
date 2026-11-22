@@ -1,5 +1,5 @@
 #include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <algorithm>
 #include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 #include <tuple>

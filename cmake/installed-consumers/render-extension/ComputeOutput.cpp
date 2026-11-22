@@ -4,7 +4,7 @@
 #include "RasterProgramFixture.hpp"
 #include "SceneCapture.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
@@ -444,46 +444,44 @@ namespace
         };
     }
 
-    RenderResult<void> buildCompute(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildCompute(EffectCompileContext& context, std::string_view) noexcept
     {
         GraphImageDesc image{width, height};
         image.extent.source = EImageExtentSource::TARGET;
-        auto& builder = context.builder();
-        const auto generated = take(builder.declareResource({"compute storage", image}));
-        const auto output = take(builder.declareResource({"compute output", image}));
+        const auto generated = take(context.declareResource({"compute storage", image}));
+        const auto output = take(context.declareResource({"compute output", image}));
         const auto colors = context.constantBuffer<OutputChannels, OutputState,
             &OutputState::channels, &OutputState::revision>();
         if (!colors) return lux::cxx::unexpected(colors.error());
         ComputeWork work;
-        work.interface.program = take(builder.addProgram(GraphProgram{kTypedGraphFill.load(context.shaderTarget())}));
+        work.interface.program = take(context.addProgram(GraphProgram{kTypedGraphFill.load(context.shaderTarget())}));
         work.interface.parameters.setInlineConstant(OutputConstants{0});
         work.interface.resources = {{"generated", {{generated, 0}, {}, EGraphAccess::WRITE}}, {"colors", {*colors}}};
         work.interface.resources.back().setUniformConstant<OutputChannels>();
         work.dispatch = ImageDispatchArguments{generated};
-        const auto dispatch = take(builder.addComputePass("generate compute color", std::move(work)));
+        const auto dispatch = take(context.addComputePass("generate compute color", std::move(work)));
         if (auto linked = context.copyInlineBlock<OutputConstants, OutputState, &OutputState::constants>(dispatch.pass);
             !linked) return linked;
-        const auto copied = take(builder.addTransferPass(
+        const auto copied = take(context.addTransferPass(
             "copy compute color", TransferWork{{CopyImage{{dispatch.written.front()}, {{output, 0}}}}}
         ));
         return context.publish(color, {{color, copied.written.front()}});
     }
 
-    RenderResult<void> buildResidentRaster(EffectBuildContext& context, std::string_view mode) noexcept
+    RenderResult<void> buildResidentRaster(EffectCompileContext& context, std::string_view mode) noexcept
     {
         using namespace sdk_programs;
         const auto type = ResourceName{CodeStorage::descriptor.type.name()};
         const auto code = take(context.importStorageSnapshot<CodeSnapshot>("shader_code", {type}));
         const auto alias = take(context.importStorageSnapshot<CodeSnapshot>("shader_alias", {type}));
-        auto& builder = context.builder();
-        auto image = take(builder.declareResource({"raster output", GraphImageDesc{width, height}}));
+        auto image = take(context.declareResource({"raster output", GraphImageDesc{width, height}}));
         RasterPassTemplate background_stage;
         background_stage.purpose = "independent clear";
         background_stage.runtime_stream_programs = true;
         RasterWork background;
         background.program = std::move(background_stage);
         background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
-        const auto base = take(builder.addRasterPass("clear background", std::move(background)));
+        const auto base = take(context.addRasterPass("clear background", std::move(background)));
         const auto settings = take(context.importStorageSnapshot<std::uint32_t>(
             "background", {ResourceName{BackgroundSettings::descriptor.type.name()}}
         ));
@@ -526,7 +524,7 @@ namespace
             ESnapshotScope::JOB_LOCAL
         ));
         raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
-        auto draw = take(builder.addRasterPass("two programs", std::move(raster)));
+        auto draw = take(context.addRasterPass("two programs", std::move(raster)));
         auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
             draw.pass, alias, camera, context.shaderTarget(), mode == "stale-code", reads_records
         }));
@@ -544,7 +542,7 @@ namespace
         return context.publish(color, {{color, draw.written.front()}});
     }
 
-    RenderResult<void> buildCaptureRange(EffectBuildContext& context, std::string_view mode) noexcept
+    RenderResult<void> buildCaptureRange(EffectCompileContext& context, std::string_view mode) noexcept
     {
         const std::uint64_t offset = mode == "upper" ? 8u : mode == "overlap" ? 4u : 0u;
         const GraphBufferRange claim{offset, 8};
@@ -562,21 +560,19 @@ namespace
             "capture", {ResourceName{type.name()}}, std::move(declaration)
         );
         if (!output) return lux::cxx::unexpected(output.error());
-        auto& builder = context.builder();
-        const auto scratch = take(builder.declareResource({"pattern", GraphBufferDesc{claim.size}}));
+        const auto scratch = take(context.declareResource({"pattern", GraphBufferDesc{claim.size}}));
         const auto pattern = offset == 0 ? 0x5a5a5a5au : 0x6b6b6b6bu;
-        const auto fill = take(builder.addTransferPass("fill", TransferWork{{FillBuffer{{{scratch, 0}}, pattern}}}));
+        const auto fill = take(context.addTransferPass("fill", TransferWork{{FillBuffer{{{scratch, 0}}, pattern}}}));
         const GraphBufferRange destination{mode == "spill" ? 4u : offset, claim.size};
-        const auto copy = builder.addTransferPass("copy", TransferWork{{
+        const auto copy = context.addTransferPass("copy", TransferWork{{
             CopyBuffer{{fill.written.front()}, {*output, destination}}
         }});
         if (!copy) return lux::cxx::unexpected(copy.error());
         return context.publish(pixels, {{pixels, copy->written.front()}});
     }
 
-    RenderResult<void> buildCapture(EffectBuildContext& context, std::string_view mode) noexcept
+    RenderResult<void> buildCapture(EffectCompileContext& context, std::string_view mode) noexcept
     {
-        auto& builder = context.builder();
         if (mode == "publish-7" || mode == "publish-11" || mode == "publish-low")
         {
             const GraphBufferRange range{mode == "publish-low" ? 0u : 8u, 8};
@@ -587,13 +583,13 @@ namespace
                     EGraphUse::TRANSFER_SOURCE, range
                 }
             ));
-            const auto tmp = take(builder.declareResource({"sample", GraphBufferDesc{range.size}}));
+            const auto tmp = take(context.declareResource({"sample", GraphBufferDesc{range.size}}));
             const auto word = mode == "publish-7" ? 7u : 11u;
-            const auto fill = take(builder.addTransferPass("sample", TransferWork{{
+            const auto fill = take(context.addTransferPass("sample", TransferWork{{
                 FillBuffer{{{tmp, 0}, GraphBufferRange{0, 4}}, word},
                 FillBuffer{{{tmp, 0}, GraphBufferRange{4, 4}}, word + 1}
             }}));
-            const auto copy = take(builder.addTransferPass(
+            const auto copy = take(context.addTransferPass(
                 "publish", TransferWork{{CopyBuffer{{fill.written.front()}, {dest, range}}}}
             ));
             return context.publish(pixels, {{pixels, copy.written.front()}});
@@ -610,7 +606,7 @@ namespace
                 "capture", {ResourceName{ComputeCaptureDescriptor::descriptor.type.name()}},
                 {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, bytes}
             ));
-            const auto copy = take(builder.addTransferPass(
+            const auto copy = take(context.addTransferPass(
                 "read version", TransferWork{{CopyBuffer{{*source}, {dest, bytes}}}}
             ));
             return context.publish(pixels, {{pixels, copy.written.front()}});
@@ -625,7 +621,7 @@ namespace
             {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, claim}
         ));
         const ImageCopyRegion region{0, 0, width, height};
-        const auto copied = take(context.builder().addTransferPass("copy to readback", TransferWork{{
+        const auto copied = take(context.addTransferPass("copy to readback", TransferWork{{
             CopyImageBuffer{{input.front().front().version}, {output}, row_pitch, readback_bytes, region}
         }}));
         if (raster_only) return context.publish(pixels, {{pixels, copied.written.front()}});
@@ -636,7 +632,7 @@ namespace
                 {GraphBufferRange{0, replica_bytes}}, EGraphUse::TRANSFER_SOURCE
             }
         ));
-        const auto complete = take(context.builder().addTransferPass("copy mutable replica", TransferWork{{
+        const auto complete = take(context.addTransferPass("copy mutable replica", TransferWork{{
             CopyBuffer{{mutable_input}, {copied.written.front(), GraphBufferRange{readback_bytes, replica_bytes}}}
         }}));
         return context.publish(pixels, {{pixels, complete.written.front()}});
@@ -655,33 +651,32 @@ namespace
         };
     }
 
-    RenderResult<void> buildPartialOutput(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildPartialOutput(EffectCompileContext& context, std::string_view) noexcept
     {
-        auto& builder = context.builder();
         constexpr GraphBufferRange range{8, 8};
         const auto dest = take(context.importFinalBuffer(
             "product", {ResourceName{ProductDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_SOURCE, range}
         ));
-        const auto write = take(builder.addTransferPass(
+        const auto write = take(context.addTransferPass(
             "write product", TransferWork{{FillBuffer{{dest, range}, 11}}}, {.estimated_gpu_ns = 1000}
         ));
-        const auto image = take(builder.declareResource({"async result", GraphImageDesc{width, height}}));
+        const auto image = take(context.declareResource({"async result", GraphImageDesc{width, height}}));
         ComputeWork work;
         work.allow_async_compute = true;
-        work.interface.program = take(builder.addProgram(GraphProgram{kGraphFill.load(context.shaderTarget())}));
+        work.interface.program = take(context.addProgram(GraphProgram{kGraphFill.load(context.shaderTarget())}));
         work.interface.parameters.setInlineConstant(OutputConstants{0.25f});
         work.interface.resources = {{"generated", {{image, 0}, {}, EGraphAccess::WRITE}}};
         work.dispatch = ImageDispatchArguments{image};
-        const auto async = take(builder.addComputePass(
+        const auto async = take(context.addComputePass(
             "async work", std::move(work), {.side_effect = true, .estimated_gpu_ns = 100000}
         ));
-        const auto output = take(builder.declareResource({"graphics color", GraphImageDesc{width, height}}));
-        const auto graphics = take(builder.addTransferPass(
+        const auto output = take(context.declareResource({"graphics color", GraphImageDesc{width, height}}));
+        const auto graphics = take(context.addTransferPass(
             "graphics work", TransferWork{{ClearImage{{{output, 0}}}}}, {.estimated_gpu_ns = 100000}
         ));
-        CHECK(builder.dependsOn(write.pass, async.pass));
-        CHECK(builder.dependsOn(write.pass, graphics.pass));
+        CHECK(context.dependsOn(write.pass, async.pass));
+        CHECK(context.dependsOn(write.pass, graphics.pass));
         if (auto published = context.publish(color, {{color, graphics.written.front()}}); !published) return published;
         return context.publish(pixels, {{pixels, write.written.front()}});
     }

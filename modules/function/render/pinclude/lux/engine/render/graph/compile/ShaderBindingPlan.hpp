@@ -9,7 +9,7 @@
 
 namespace lux::render
 {
-    class RenderGraph;
+    class GraphDefinition;
     struct RenderGraphAnalysis;
 }
 
@@ -78,7 +78,7 @@ namespace lux::render::detail
 
     [[nodiscard]] RenderResult<ShaderBindingPlan> planLayouts(
         const nri::DeviceDesc& limits,
-        const RenderGraph& graph,
+        const GraphDefinition& graph,
         const RenderGraphAnalysis& analysis,
         bool device_addresses = false
     ) noexcept;

@@ -202,13 +202,13 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<RenderGraphAnalysis> analyzeRenderGraph(const RenderGraph& definition) noexcept
+    RenderResult<RenderGraphAnalysis> analyzeRenderGraph(const GraphDefinition& definition) noexcept
     {
         return detail::analyzeGraphWithPreparation(definition, nullptr);
     }
 
     RenderResult<RenderGraphAnalysis>
-    detail::analyzeGraphWithPreparation(const RenderGraph& definition, PreparationLiveness* preparation) noexcept
+    detail::analyzeGraphWithPreparation(const GraphDefinition& definition, PreparationLiveness* preparation) noexcept
     {
         const auto resources = definition.resources();
         const auto passes = definition.passes();

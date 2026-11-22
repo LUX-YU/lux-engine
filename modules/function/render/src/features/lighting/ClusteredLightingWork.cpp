@@ -3,7 +3,7 @@
 #include "ClusterFill.hpp"
 #include "ClusterScan.hpp"
 #include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/features/lighting/ClusteredLightingWork.hpp>
 
 namespace lux::render::detail
@@ -35,10 +35,12 @@ namespace lux::render
 
 namespace lux::render::detail
 {
-    RenderResult<ClusterBuffers>
-    declareClusterBuffers(RenderGraphBuilder& builder, std::string_view key, const ClusterGrid& grid) noexcept
+    RenderResult<ClusterBuildResult> buildClusterLightLists(
+        EffectCompileContext& builder, std::string_view key, const ClusterGrid& grid,
+        const std::array<ResourceVersion, 4>& light_bindings
+    ) noexcept
     {
-        ClusterBuffers buffers;
+        ClusterBuffers initial;
         const auto sizes = clusterBufferSizes(grid);
         for (std::size_t i = 0; i < clusterBindings.size(); ++i)
         {
@@ -47,20 +49,8 @@ namespace lux::render::detail
                 std::string{key} + "/" + std::string{name}, GraphBufferDesc{sizes[i]}
             });
             if (!resource) return cxx::unexpected(resource.error());
-            buffers.*field = {*resource, 0};
+            initial.*field = {*resource, 0};
         }
-        return buffers;
-    }
-
-    RenderResult<ClusterBuildResult> buildClusterLightLists(
-        RenderGraphBuilder& builder,
-        std::string_view key,
-        const ClusterGrid& grid,
-        const ClusterBuffers& initial,
-        const std::array<ResourceVersion, 4>& light_bindings,
-        ParameterBinding parameters
-    ) noexcept
-    {
         const auto count = static_cast<std::uint32_t>(grid.count());
         const auto dispatch = (count / 64) + (count % 64 != 0);
         const auto prefix = std::string{key} + "/";
@@ -83,7 +73,7 @@ namespace lux::render::detail
             {"grid_data", {initial.grid, {}, EGraphAccess::WRITE}},
             {"status", {status, {}, EGraphAccess::READ_WRITE}}
         };
-        build.interface.parameters = std::move(parameters);
+        build.interface.parameters.setInlineConstant(clusterBuildConstants(grid));
         build.dispatch = DispatchArguments{{dispatch, 1, 1}};
         build.allow_async_compute = true;
         auto built = builder.addComputePass(prefix + "build", std::move(build));

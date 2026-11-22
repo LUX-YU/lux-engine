@@ -6,7 +6,7 @@
 namespace lux::render::detail
 {
     RenderResult<RasterWork>
-    fullscreenRaster(RenderGraphBuilder& graph, GraphProgram shaders) noexcept
+    fullscreenRaster(EffectCompileContext& graph, GraphProgram shaders) noexcept
     {
         if (shaders.targets.empty()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         auto parameter_bytes = UINT32_MAX;

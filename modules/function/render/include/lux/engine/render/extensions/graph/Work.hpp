@@ -80,7 +80,7 @@ namespace lux::render
 
         struct StreamProgram final
         {
-            // Index returned by RenderGraphBuilder::addProgram.
+            // Index returned by EffectCompileContext::addProgram.
             std::uint32_t program = kGraphInvalidIndex;
             GraphicsState graphics;
             ParameterBinding parameters;

@@ -52,21 +52,20 @@ struct SamplerProbe final
     }
 
 private:
-    static RenderResult<void> build(EffectBuildContext& context, std::string_view config) noexcept
+    static RenderResult<void> build(EffectCompileContext& context, std::string_view config) noexcept
     {
-        auto& builder = context.builder();
         GraphImageDesc color_image{64, 64, 1, 1, context.target().format};
         color_image.extent.source = EImageExtentSource::TARGET;
-        const auto output = take(builder.declareResource({"sampler output", color_image}));
-        const auto depths = take(builder.declareResource(
+        const auto output = take(context.declareResource({"sampler output", color_image}));
+        const auto depths = take(context.declareResource(
             {"sampler depths", GraphImageDesc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}}
         ));
         auto depth = ResourceVersion{depths, 0};
         // A dead declaration precedes both live inputs and consumes no compiled sampler slot.
-        (void)builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS});
+        (void)context.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS});
         for (std::uint32_t layer = 0; layer < 2; ++layer)
         {
-            const auto cleared = builder.addTransferPass(
+            const auto cleared = context.addTransferPass(
                 "clear sampler depth " + std::to_string(layer),
                 TransferWork{{ClearImage{{depth, GraphImageRange{2, 0, 1, layer, 1}}, {}, layer ? .75F : .25F}}}
             );
@@ -85,11 +84,11 @@ private:
         }
         RasterWork work;
         auto& fixed_work = work.fixed();
-        fixed_work.interface.program = take(builder.addProgram(std::move(shaders)));
+        fixed_work.interface.program = take(context.addProgram(std::move(shaders)));
         fixed_work.interface.resources = {{"depths", {depth}}};
-        auto ordinary = builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE});
+        auto ordinary = context.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE});
         auto comparison =
-            builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS_EQUAL});
+            context.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS_EQUAL});
         if (config == "undeclared") comparison = 32;
         if (config == "wrong comparison") comparison = ordinary;
         fixed_work.interface.samplers = {
@@ -97,7 +96,7 @@ private:
             {"comparison", {comparison}, kGraphInvalidIndex, true}
         };
         work.colors.push_back({{{output, 0}}});
-        const auto drawn = builder.addRasterPass("sample shadow layers", std::move(work));
+        const auto drawn = context.addRasterPass("sample shadow layers", std::move(work));
         if (!drawn)
         {
             return lux::cxx::unexpected(drawn.error());
@@ -275,7 +274,7 @@ struct ShadowReadback final
     }
 
 private:
-    static ResourceVersion member(EffectBuildContext& context, lux::graph::PinSemanticId pin,
+    static ResourceVersion member(EffectCompileContext& context, lux::graph::PinSemanticId pin,
         lux::graph::PinSemanticId semantic) noexcept
     {
         const auto input = context.inputs(pin);
@@ -285,9 +284,8 @@ private:
         return found->version;
     }
 
-    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    static RenderResult<void> build(EffectCompileContext& context, std::string_view) noexcept
     {
-        auto& graph = context.builder();
         const bool compare = !context.inputs(reference).empty();
         const std::uint32_t count = compare ? bindings.size() : 4;
         std::array<ResourceVersion, bindings.size()> sinks;
@@ -306,10 +304,10 @@ private:
         constexpr std::uint32_t commands_bytes = maximum_views * kMeshWindingCount * sizeof(nri::DrawIndexedDesc);
         static_assert(sizeof(MeshVisibilityView) == 44 * sizeof(std::uint32_t));
         static_assert(kMeshWindingCount * sizeof(nri::DrawIndexedDesc) == 10 * sizeof(std::uint32_t));
-        const auto views = take(graph.declareResource({"readback views", GraphBufferDesc{views_bytes}}));
-        const auto commands = take(graph.declareResource({"readback indirect", GraphBufferDesc{commands_bytes}}));
+        const auto views = take(context.declareResource({"readback views", GraphBufferDesc{views_bytes}}));
+        const auto commands = take(context.declareResource({"readback indirect", GraphBufferDesc{commands_bytes}}));
         ComputeWork snapshot;
-        snapshot.interface.program = take(graph.addProgram(GraphProgram{kShadowReadback.load(context.shaderTarget())}));
+        snapshot.interface.program = take(context.addProgram(GraphProgram{kShadowReadback.load(context.shaderTarget())}));
         snapshot.interface.resources = {
             {"shadow_views", {member(context, Shadow::shadows, effectPortSemantic(ShadowBundle::members[0]))}},
             {"shadow_commands", {member(context, Shadow::draws, MeshVisibility::commands)}},
@@ -319,13 +317,13 @@ private:
         constexpr auto threads_bytes = 64 * sizeof(std::uint32_t);
         snapshot.dispatch = DispatchArguments{{(std::max(views_bytes, commands_bytes) + threads_bytes - 1) /
             threads_bytes, 1, 1}};
-        const auto sampled = take(graph.addComputePass("sample shadow buffers", std::move(snapshot)));
+        const auto sampled = take(context.addComputePass("sample shadow buffers", std::move(snapshot)));
         const auto copy_buffer = [&](std::uint32_t index, ResourceVersion source, std::uint32_t bytes)
         {
-            const auto cleared = take(graph.addTransferPass(
+            const auto cleared = take(context.addTransferPass(
                 "clear " + std::string{bindings[index]}, TransferWork{{FillBuffer{{sinks[index]}, 0}}}
             ));
-            const auto copied = take(graph.addTransferPass(
+            const auto copied = take(context.addTransferPass(
                 "copy " + std::string{bindings[index]}, TransferWork{{CopyBuffer{
                     {source, GraphBufferRange{0, bytes}},
                     {cleared.written.front(), GraphBufferRange{0, bytes}, EGraphAccess::READ_WRITE}
@@ -341,7 +339,7 @@ private:
             const bool depth = i == 3;
             const auto semantic = effectPortSemantic(depth ? GBufferBundle::members.back() : GBufferBundle::members[0]);
             const auto source = member(context, GBuffer::surface, semantic);
-            const auto copied = take(graph.addTransferPass("copy " + std::string{bindings[i]},
+            const auto copied = take(context.addTransferPass("copy " + std::string{bindings[i]},
                 TransferWork{{CopyImageBuffer{
                     {source, GraphImageRange{depth ? 2u : 1u}}, {sinks[i]}, 256, GraphCaptureBuffer::image_bytes,
                     ImageCopyRegion{0, 0, 64, 64}
@@ -351,18 +349,18 @@ private:
         }
         if (compare)
         {
-            const auto difference = take(graph.declareResource(
+            const auto difference = take(context.declareResource(
                 {"HDR differences", GraphBufferDesc{GraphCaptureBuffer::image_bytes}}
             ));
             ComputeWork comparison;
-            comparison.interface.program = take(graph.addProgram(GraphProgram{kClusterCompare.load(context.shaderTarget())}));
+            comparison.interface.program = take(context.addProgram(GraphProgram{kClusterCompare.load(context.shaderTarget())}));
             comparison.interface.resources = {
                 {"reference_image", {member(context, reference, Lighting::hdr)}},
                 {"candidate_image", {member(context, candidate, Lighting::hdr)}},
                 {"differences", {{difference, 0}, {}, EGraphAccess::WRITE}}
             };
             comparison.dispatch = DispatchArguments{{8, 8, 1}};
-            const auto compared = take(graph.addComputePass("compare shadow lighting HDR", std::move(comparison)));
+            const auto compared = take(context.addComputePass("compare shadow lighting HDR", std::move(comparison)));
             copy_buffer(4, compared.written.front(), GraphCaptureBuffer::image_bytes);
             copy_buffer(5, member(context, Lighting::cluster_lists, effectPortSemantic(ClusterListBundle::members.back())),
                 sizeof(ClusterStatusGpu));

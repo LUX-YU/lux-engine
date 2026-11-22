@@ -5,6 +5,6 @@
 namespace lux::render::detail
 {
     void planConditions(
-        const RenderGraph&, std::span<const GraphPassId>, std::span<const CompiledResource>, RecordingProgram&
+        const GraphDefinition&, std::span<const GraphPassId>, std::span<const CompiledResource>, RecordingProgram&
     ) noexcept;
 }

@@ -1,10 +1,10 @@
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/graph/compile/ConditionalPlan.hpp>
 
 namespace lux::render::detail
 {
     void planConditions(
-        const RenderGraph& graph, std::span<const GraphPassId> order, std::span<const CompiledResource> resources,
+        const GraphDefinition& graph, std::span<const GraphPassId> order, std::span<const CompiledResource> resources,
         RecordingProgram& recording
     ) noexcept
     {

@@ -5,7 +5,7 @@
 #include "GraphAliasLoad.hpp"
 #include "NativeDevice.hpp"
 #include "RetirementFence.hpp"
-#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/target/OffscreenTarget.hpp>
@@ -31,7 +31,7 @@ namespace
 
     struct Workload final
     {
-        RenderGraph graph;
+        GraphDefinition graph;
         std::array<GraphResourceId, 2> words;
         std::array<GraphResourceId, 2> pixels;
         std::array<GraphPassId, 2> dispatches;
@@ -39,7 +39,7 @@ namespace
 
     Workload buildWorkload(EGraphicsBackend backend)
     {
-        RenderGraphBuilder builder;
+        GraphDraftBuilder builder;
         Workload result;
         const auto target = backend == EGraphicsBackend::D3D12 ? lux::rdesc::EShaderTarget::DXIL :
             lux::rdesc::EShaderTarget::SPIRV;

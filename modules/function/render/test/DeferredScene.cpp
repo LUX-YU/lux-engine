@@ -24,7 +24,7 @@
 #include <lux/engine/render/effect/MeshVisibility.hpp>
 #include <lux/engine/render/effect/Shadow.hpp>
 #include <lux/engine/render/effect/ToneMapping.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
 #include <lux/engine/render/resources/lighting/Binding.hpp>
@@ -148,14 +148,13 @@ namespace
         {
             return {};
         };
-        implementation.build = [](EffectBuildContext& context, std::string_view args) noexcept -> RenderResult<void>
+        implementation.build = [](EffectCompileContext& context, std::string_view args) noexcept -> RenderResult<void>
         {
             const ResourceRequirement owner{ResourceName{GBufferCaptureDescriptor::descriptor.type.name()}};
             auto buffer = take(context.importFinalBuffer("readback", owner, {
                 "", GraphBufferDesc{gbuffer_capture_total}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION
             }));
-            auto& builder = context.builder();
             if (args == "shadow")
             {
                 const auto color = context.inputs(ToneMapping::color);
@@ -165,16 +164,16 @@ namespace
                     shadow.front(), effectPortSemantic("shadow_depth"), &EffectResourceValue::member
                 );
                 CHECK(depth != shadow.front().end());
-                const auto initial = take(builder.addTransferPass("clear shadow readback", TransferWork{{
+                const auto initial = take(context.addTransferPass("clear shadow readback", TransferWork{{
                     FillBuffer{{buffer}, 0}
                 }}));
-                const auto composed = take(builder.addTransferPass("copy shadow lighting", TransferWork{{
+                const auto composed = take(context.addTransferPass("copy shadow lighting", TransferWork{{
                     CopyImageBuffer{
                         {color.front().front().version}, {initial.written.front(), GraphBufferRange{0, gbuffer_capture_bytes}},
                         256, gbuffer_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
                     }
                 }}));
-                const auto copied = take(builder.addTransferPass("copy first shadow layer", TransferWork{{
+                const auto copied = take(context.addTransferPass("copy first shadow layer", TransferWork{{
                     CopyImageBuffer{
                         {depth->version},
                         {composed.written.front(), GraphBufferRange{gbuffer_capture_bytes, gbuffer_capture_bytes}},
@@ -197,7 +196,7 @@ namespace
                 const auto input = std::ranges::find(inputs.front(), semantic, &EffectResourceValue::member);
                 CHECK(input != inputs.front().end());
                 const GraphBufferRange range{destination, bytes};
-                const auto copy = take(builder.addTransferPass(names[i], TransferWork{{
+                const auto copy = take(context.addTransferPass(names[i], TransferWork{{
                     CopyImageBuffer{
                         {input->version, GraphImageRange{depth ? 2u : 1u, 0, 1, 0, 1}},
                         {buffer, range}, pitch, bytes, ImageCopyRegion{0, 0, 64, 64}
@@ -462,7 +461,7 @@ struct DeferredCommandCapture final
     }
 
 private:
-    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    static RenderResult<void> build(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto input = context.inputs(MeshVisibility::draws);
         CHECK(input.size() == 1);
@@ -475,12 +474,11 @@ private:
             1
         );
         if (!readback) return lux::cxx::unexpected(readback.error());
-        auto& graph = context.builder();
-        const auto initialized = take(graph.addTransferPass("initialize indirect readback", TransferWork{{
+        const auto initialized = take(context.addTransferPass("initialize indirect readback", TransferWork{{
             FillBuffer{{*readback}, 0}
         }}));
         constexpr auto bytes = kMeshWindingCount * sizeof(nri::DrawIndexedDesc);
-        const auto copied = take(graph.addTransferPass("copy indirect draws", TransferWork{{CopyBuffer{
+        const auto copied = take(context.addTransferPass("copy indirect draws", TransferWork{{CopyBuffer{
             {commands->version}, {initialized.written.front(), GraphBufferRange{0, bytes}}
         }}}));
         return context.publish(pixels, {{pixels, copied.written.front()}});
@@ -519,7 +517,7 @@ struct DepthCoverageCapture final
     }
 
 private:
-    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    static RenderResult<void> build(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto input = context.inputs(MeshRaster::depth);
         CHECK(input.size() == 1 && input.front().size() == 1);
@@ -529,7 +527,7 @@ private:
                 EGraphUse::TRANSFER_DESTINATION}
         );
         if (!readback) return lux::cxx::unexpected(readback.error());
-        const auto copied = take(context.builder().addTransferPass(
+        const auto copied = take(context.addTransferPass(
             "copy coverage depth", TransferWork{{CopyImageBuffer{
                 {input.front().front().version, GraphImageRange{2}}, {*readback}, 256, GraphCaptureBuffer::image_bytes,
                 ImageCopyRegion{0, 0, 64, 64}

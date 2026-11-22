@@ -9,7 +9,7 @@
 #include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
 #include <lux/engine/render/effect/Lighting.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
-#include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
+#include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/features/common/FullscreenRaster.hpp>
@@ -22,7 +22,7 @@
 namespace lux::render::detail
 {
     RenderResult<RasterWork>
-    deferredLightingWork(RenderGraphBuilder& builder, const DeferredLightingInputs& inputs) noexcept
+    deferredLightingWork(EffectCompileContext& builder, const DeferredLightingInputs& inputs) noexcept
     {
         constexpr std::array shaders{
             &kDeferredLighting, &kDeferredLightingShadow, &kDeferredLightingClustered, &kDeferredLightingClusteredShadow
@@ -245,17 +245,16 @@ namespace lux::render
         }
 
         template <bool Clustered>
-        RenderResult<void> buildLighting(EffectBuildContext& context, std::string_view) noexcept
+        RenderResult<void> buildLighting(EffectCompileContext& context, std::string_view) noexcept
         {
             const auto node = context.nodeId();
             auto surface = resolveLightingBundle(context.inputs(Lighting::surface), GBufferBundle::members, node);
             if (!surface) return cxx::unexpected(surface.error());
             detail::DeferredLightingInputs lighting{*surface, {}};
-            auto& builder = context.builder();
             GraphImageDesc extent;
             for (std::size_t i = 0; i < surface->size(); ++i)
             {
-                const auto* description = builder.resourceDescription((*surface)[i].resource);
+                const auto* description = context.resourceDescription((*surface)[i].resource);
                 const auto* image = description ? std::get_if<GraphImageDesc>(description) : nullptr;
                 const auto format = GBufferBundle::formats[i];
                 const bool invalid_shape = image &&
@@ -304,13 +303,7 @@ namespace lux::render
                 const auto* grid = context.configuration<ClusterGrid>();
                 if (!grid) return cxx::unexpected(RenderError{kCapabilityDeclaration, {node.value}});
                 const auto cluster_key = key + "/clusters";
-                auto buffers = detail::declareClusterBuffers(builder, cluster_key, *grid);
-                if (!buffers) return cxx::unexpected(buffers.error());
-                ParameterBinding parameters;
-                parameters.setInlineConstant(detail::clusterBuildConstants(*grid));
-                const auto lists = detail::buildClusterLightLists(
-                    builder, cluster_key, *grid, *buffers, lighting.lights, std::move(parameters)
-                );
+                const auto lists = detail::buildClusterLightLists(context, cluster_key, *grid, lighting.lights);
                 if (!lists) return cxx::unexpected(lists.error());
                 const auto& b = lists->buffers;
                 lighting.clusters = {{b.grid, b.offsets, b.indices, b.status}};
@@ -327,13 +320,13 @@ namespace lux::render
             }
             if (context.outputDemanded(Lighting::hdr))
             {
-                const auto hdr = builder.declareResource({key, extent});
+                const auto hdr = context.declareResource({key, extent});
                 if (!hdr) return cxx::unexpected(hdr.error());
-                auto work = detail::deferredLightingWork(builder, lighting);
+                auto work = detail::deferredLightingWork(context, lighting);
                 if (!work) return cxx::unexpected(work.error());
                 work->fixed().interface.parameters.setInlineConstant(detail::LightingConstants{});
                 work->colors.push_back({{{*hdr, 0}}});
-                auto pass = builder.addRasterPass(key, std::move(*work));
+                auto pass = context.addRasterPass(key, std::move(*work));
                 if (!pass) return cxx::unexpected(pass.error());
                 preparation.lighting = pass->pass;
                 writers.push_back(pass->pass);

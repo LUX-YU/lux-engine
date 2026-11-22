@@ -2,7 +2,7 @@
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 
 namespace lux::render

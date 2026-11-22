@@ -9,7 +9,6 @@
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <map>
-#include <lux/engine/render/effect/EffectGraphBuild.hpp>
 
 namespace lux::render::detail
 {
@@ -24,7 +23,6 @@ namespace lux::render::detail
         DeviceVariantId id;
         EffectId effect;
         EffectOutputDesc target;
-        runtime_detail::EffectImportContracts imports;
         struct Waiter final
         {
             void* receiver;
@@ -60,10 +58,8 @@ namespace lux::render::detail
         [[nodiscard]] FrameOperation::Workspace& frameWorkspace() noexcept { return frame_workspace_; }
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;
-        [[nodiscard]] EffectDeviceVariant*
-        findVariant(EffectId, const EffectOutputDesc&, const runtime_detail::EffectImportContracts&) noexcept;
-        [[nodiscard]] EffectDeviceVariant&
-        beginVariant(EffectId, const EffectOutputDesc&, const runtime_detail::EffectImportContracts&) noexcept;
+        [[nodiscard]] EffectDeviceVariant* findVariant(EffectId, const EffectOutputDesc&) noexcept;
+        [[nodiscard]] EffectDeviceVariant& beginVariant(EffectId, const EffectOutputDesc&) noexcept;
         [[nodiscard]] const EffectDeviceVariant& readyVariant(DeviceVariantId) const noexcept;
         void releaseVariant(DeviceVariantId) noexcept;
 

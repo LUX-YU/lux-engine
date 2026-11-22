@@ -5,6 +5,7 @@
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
+#include <lux/engine/render/effect/EffectStorageImport.hpp>
 #include <lux/engine/render/effect/EffectPreparation.hpp>
 #include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/core/Target.hpp>
@@ -12,7 +13,6 @@
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
-#include <lux/engine/render/graph/StorageBindingSlot.hpp>
 #include <span>
 #include <string>
 
@@ -25,37 +25,6 @@ namespace lux::render::runtime_detail
     {
         graph::NodeId node;
         ConfigValue value;
-    };
-
-    struct EffectStorageImport final
-    {
-        struct SnapshotContract final
-        {
-            cxx::basic_type_info::id_t hash;
-            std::string name;
-            bool operator==(const SnapshotContract&) const noexcept = default;
-        };
-
-        enum class ERasterOwner : std::uint8_t
-        {
-            TEXTURES,
-            MESHES,
-            MATERIALS
-        };
-
-        std::string binding;
-        ResourceName type;
-        std::variant<detail::StorageGraphImport, SnapshotContract, ERasterOwner> contract;
-        // CPU snapshots and raster owner tables can share a preparation source. GPU imports have named slots.
-        std::uint32_t preparation_source;
-        std::uint32_t projection;
-        bool operator==(const EffectStorageImport&) const noexcept = default;
-    };
-
-    struct EffectImportContracts final
-    {
-        std::vector<EffectStorageImport> storages;
-        bool operator==(const EffectImportContracts&) const noexcept = default;
     };
 
     struct UniformBlockDeclaration final
@@ -72,7 +41,7 @@ namespace lux::render::runtime_detail
         RenderGraphAnalysis analysis;
         EffectOutputDesc output;
         std::vector<detail::TargetImageSlot> target_imports;
-        std::vector<detail::StorageBindingSlot> storage_imports;
+        std::vector<EffectStorageImport> storage_imports;
         PreparationDefinition preparation;
         std::vector<UniformBlockDeclaration> uniforms;
     };
@@ -93,7 +62,6 @@ namespace lux::render::runtime_detail
     {
         const EffectOutputDesc& target;
         const EffectBuildDevice& device;
-        const EffectImportContracts& imports;
     };
 
     [[nodiscard]] RenderResult<EffectGraphBuild>

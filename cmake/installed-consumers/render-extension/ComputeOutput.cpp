@@ -182,10 +182,11 @@ namespace
         static constexpr std::uint64_t preparation_revision = 1;
         CaptureBuffer buffer;
         CapturedPixels& result;
+        std::uint32_t capacity;
         std::uint64_t epoch = 0;
 
         ComputeCapture(ResourceCreateContext& context, CapturedPixels& pixels) noexcept
-            : buffer(context), result(pixels)
+            : buffer(context), result(pixels), capacity(capture_bytes + (&pixels == &results[1] ? 16384u : 0u))
         {
         }
 
@@ -202,11 +203,12 @@ namespace
                     return true;
                 },
                 .preparationRevision = [](const void*) noexcept { return &preparation_revision; },
-                .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
+                .describeGraphImport = [](const void* owner, std::uint32_t projection) noexcept
                     -> RenderResult<StorageGraphImport>
                 {
                     if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport::bufferOutput(capture_bytes, EGraphUse::TRANSFER_DESTINATION);
+                    const auto capacity = static_cast<const ComputeCapture*>(owner)->capacity;
+                    return StorageGraphImport::bufferOutput(capacity, EGraphUse::TRANSFER_DESTINATION);
                 },
                 .resolveGraphImport = [](
                     void* storage,
@@ -218,7 +220,7 @@ namespace
                     if (reject_resolve.exchange(false))
                         return RenderResult<void>{lux::cxx::unexpected(RenderError{kStorageMismatch})};
                     auto& capture = *static_cast<ComputeCapture*>(storage);
-                    const CaptureConfig config{.result = &capture.result, .bytes = capture_bytes};
+                    const CaptureConfig config{.result = &capture.result, .bytes = capture.capacity};
                     return CaptureBuffer::resolve(&capture.buffer, description, &config, output);
                 },
                 .settleFrame = [](void* owner, const ReplicaSettlement& receipt) noexcept
@@ -285,6 +287,7 @@ namespace
 
     struct MutableReplica final
     {
+        static inline std::atomic_bool omit_upper_range{};
         using Descriptor = MutableReplicaDescriptor;
         static inline std::atomic_uint accepted_copies{}, accepted_no_copy{}, rejected{};
         DeviceSession& device;
@@ -447,10 +450,12 @@ namespace
                     -> RenderResult<StorageGraphImport>
                 {
                     if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport{
-                        GraphBufferDesc{replica_bytes}, {GraphBufferRange{0, replica_bytes}},
+                    StorageGraphImport schema{
+                        GraphBufferDesc{replica_bytes}, {GraphBufferRange{0, 4}},
                         EGraphUse::TRANSFER_SOURCE
                     };
+                    if (!omit_upper_range) schema.initial_ranges.push_back(GraphBufferRange{4, 4});
+                    return schema;
                 },
                 .resolveGraphImport = [](
                     void* owner, std::uint32_t, const VGraphResourceDesc&, std::span<ResourceInput> output
@@ -988,7 +993,16 @@ int main(int argc, char** argv)
     ).resource_id;
     auto peer_binding = binding;
     peer_binding.resources.front().resource = peer_capture;
+    const auto compiled_before_peer = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
     call<StartRenderJob>(*client, commands, {session, peer, peer_target, peer_binding});
+    CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compiled_before_peer);
+    MutableReplica::omit_upper_range = true;
+    const auto missing_bytes = call<RebindRenderJobEffect>(
+        *client, commands, {session, peer, created, peer_target, peer_binding}, false
+    );
+    CHECK(missing_bytes.error.type == kStorageMismatch);
+    MutableReplica::omit_upper_range = false;
+    CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compiled_before_peer);
     CHECK(call<RebindRenderJobEffect>(
         *client, commands, {session, peer, created, peer_target, binding}, false
     ).error.type == kJobBusy);
@@ -1063,7 +1077,9 @@ int main(int argc, char** argv)
     CHECK(ran && server->stats().validation_errors == 0);
     const auto& peer_pixels = ComputeCapture::results[1];
     CHECK(peer_pixels.ready == 1 && peer_pixels.frames.size() == 1);
-    CHECK(peer_pixels.frames.front().size() >= capture_bytes);
+    CHECK(peer_pixels.frames.front().size() >= capture_bytes + 16384u);
+    const auto outside_graph = std::span{peer_pixels.frames.front()}.subspan(capture_bytes);
+    CHECK(std::ranges::all_of(outside_graph, [](auto byte) { return byte == std::byte{}; }));
     std::uint32_t peer_marker = 0;
     const auto* peer_replica = peer_pixels.frames.front().data() + readback_bytes;
     std::memcpy(&peer_marker, peer_replica + sizeof(peer_marker), sizeof(peer_marker));

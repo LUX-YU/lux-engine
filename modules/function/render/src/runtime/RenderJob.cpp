@@ -5,9 +5,6 @@
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
-#include <lux/engine/render/resources/mesh/Resource.hpp>
-#include <lux/engine/render/resources/material/Resource.hpp>
-#include <lux/engine/render/resources/texture/Resource.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
@@ -264,111 +261,11 @@ namespace lux::render
         });
     }
 
-    RenderResult<EffectImportContracts>
-    RenderServer::Impl::qualifyEffectImports(const detail::DeviceEntry& entry, const JobBinding& binding) const noexcept
-    {
-        const auto inputs = std::span{binding.resources};
-        if (inputs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        auto& registry = runtime_->resources_;
-        EffectImportContracts imports;
-        imports.storages.reserve(inputs.size());
-        for (std::uint32_t i = 0; i < inputs.size(); ++i)
-        {
-            const auto& input = inputs[i];
-            if (input.publication && input.use != EJobResourceUse::GPU_BINDING)
-                return cxx::unexpected(RenderError{kStorageContract, {i}});
-            const bool is_duplicate = i != 0 && inputs[i - 1].binding == input.binding;
-            if (input.binding.empty() || is_duplicate)
-                return cxx::unexpected(RenderError{kCommandContract, {i}});
-            const auto type = registry.declarationOf(input.resource);
-            const auto* factory = registry.factory(type);
-            if (!factory) return cxx::unexpected(RenderError{kStorageIdentity, {i}});
-            if (registry.deviceOf(input.resource) != &entry.session())
-                return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-            if (registry.hasExclusiveCommand(input.resource))
-                return cxx::unexpected(RenderError{kDeviceBusy, {i}});
-            const auto* ops = factory->storage()->bindings();
-            const auto same_binding = std::ranges::find_if(inputs.first(i), [&](const JobResourceInput& earlier) noexcept
-            {
-                return earlier.resource == input.resource && earlier.projection == input.projection &&
-                    earlier.use == input.use && earlier.publication == input.publication;
-            });
-            const auto canonical = static_cast<std::uint32_t>(same_binding - inputs.begin());
-            const auto name = ResourceName{factory->descriptor->type.name()};
-            const bool raster_textures = input.use == EJobResourceUse::RASTER_TEXTURES;
-            const bool raster_meshes = input.use == EJobResourceUse::RASTER_MESHES;
-            const bool raster_materials = input.use == EJobResourceUse::RASTER_MATERIALS;
-            if (raster_textures || raster_meshes || raster_materials)
-            {
-                const auto expected = raster_textures ? TextureResource::descriptor.type :
-                    raster_meshes ? MeshResource::descriptor.type : MaterialResource::descriptor.type;
-                if (input.projection != 0 || factory->descriptor->type != expected)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-                const auto& enabled = entry.session().enabledFeatures();
-                const bool unsupported = (raster_textures && !enabled.texture_descriptors) ||
-                    (raster_materials && !enabled.buffer_descriptors);
-                if (unsupported)
-                    return cxx::unexpected(RenderError{kDeviceUnsupported, {i}});
-                using Owner = EffectStorageImport::ERasterOwner;
-                const auto kind = raster_textures ? Owner::TEXTURES :
-                    raster_meshes ? Owner::MESHES : Owner::MATERIALS;
-                imports.storages.push_back({input.binding, name, kind, canonical, 0});
-                continue;
-            }
-            if (input.use == EJobResourceUse::CPU_SNAPSHOT)
-            {
-                const auto* snapshot = ops ? ops->cpu_snapshot : nullptr;
-                const bool invalid_snapshot = !snapshot || !snapshot->create || !snapshot->capture ||
-                    !snapshot->type.isValid() || snapshot->type.name().empty() || input.projection != 0;
-                if (invalid_snapshot) return cxx::unexpected(RenderError{kStorageContract, {i}});
-                EffectStorageImport::SnapshotContract contract{
-                    snapshot->type.hash(), std::string{snapshot->type.name()}
-                };
-                imports.storages.push_back({input.binding, name, std::move(contract), canonical, input.projection});
-                continue;
-            }
-            const bool invalid_binding = input.use != EJobResourceUse::GPU_BINDING || !ops ||
-                !ops->resolveGraphImport || !ops->describeGraphImport;
-            if (invalid_binding) return cxx::unexpected(RenderError{kStorageContract, {i}});
-            auto contract = canonical == i || input.publication ?
-                ops->describeGraphImport(registry.resourceInstance(input.resource), input.projection) :
-                RenderResult<detail::StorageGraphImport>{
-                    std::get<detail::StorageGraphImport>(imports.storages[canonical].contract)
-                };
-            if (!contract) return cxx::unexpected(contract.error());
-            if (input.publication)
-            {
-                if (!contract->final_buffer_output) return cxx::unexpected(RenderError{kStorageContract, {i}});
-                auto selected = registry.selectProduct(input.resource, input.projection, *input.publication);
-                if (!selected) return cxx::unexpected(selected.error());
-                const auto bytes = selected->size;
-                contract->description = GraphBufferDesc{bytes};
-                contract->initial_ranges = {GraphBufferRange{0, bytes}};
-                contract->final_buffer_output = false;
-            }
-            // The Storage retains this boundary state through uploads and any replacement.
-            const bool invalid_writer = contract->final_buffer_output &&
-                (contract->read_use || !std::holds_alternative<GraphBufferDesc>(contract->description));
-            const bool read_layout = contract->initial_use == EGraphUse::SAMPLED ||
-                contract->initial_use == EGraphUse::TRANSFER_SOURCE;
-            const bool invalid_concurrent_read = contract->concurrent_image_read &&
-                (!std::holds_alternative<GraphImageDesc>(contract->description) ||
-                    contract->read_use != contract->initial_use || !read_layout);
-            if (invalid_writer || invalid_concurrent_read || contract->initial_use == EGraphUse::UNSPECIFIED)
-                return cxx::unexpected(RenderError{kStorageContract, {i}});
-            imports.storages.push_back({
-                input.binding, name, std::move(*contract), kGraphInvalidIndex, input.projection
-            });
-        }
-        return imports;
-    }
-
     exec::task<detail::EffectVariantResult> RenderServer::Impl::acquireEffectVariant(
-        EffectId id, detail::DeviceEntry& entry, EffectOutputDesc target,
-        const EffectImportContracts& imports
+        EffectId id, detail::DeviceEntry& entry, EffectOutputDesc target
     ) noexcept
     {
-        if (auto* variant = entry.findVariant(id, target, imports))
+        if (auto* variant = entry.findVariant(id, target))
         {
             if (variant->readers == UINT32_MAX) co_return cxx::unexpected(RenderError{kRuntimeCapacity});
             const auto identity = variant->id;
@@ -391,10 +288,10 @@ namespace lux::render
             co_return result;
         }
 
-        auto& variant = entry.beginVariant(id, target, imports);
+        auto& variant = entry.beginVariant(id, target);
         const auto identity = variant.id;
         const auto& effect = *runtime_->effects_.find(id);
-        detail::EffectCompileRequest request{id, {*effect.source, effect.node_configurations}, {}, target, imports};
+        detail::EffectCompileRequest request{id, {*effect.source, effect.node_configurations}, {}, target};
         request.inputs.reserve(effect.node_states.size());
         for (const auto& state : effect.node_states) request.inputs.push_back({state.node, state.type, state.bytes});
         auto compiled = co_await detail::GraphCompiler::compileEffect(
@@ -469,9 +366,7 @@ namespace lux::render
         };
         std::ranges::sort(binding.target_images, {}, &TargetImageInput::binding);
         std::ranges::sort(binding.resources, {}, &JobResourceInput::binding);
-        auto imports = qualifyEffectImports(entry, binding);
-        if (!imports) co_return AckResponse{imports.error()};
-        const auto variant = co_await acquireEffectVariant(effect_id, entry, output_contract, *imports);
+        const auto variant = co_await acquireEffectVariant(effect_id, entry, output_contract);
         cxx::scope_exit release_variant([&]() noexcept { if (variant) entry.releaseVariant(*variant); });
         if (stop_requested_.load()) co_return AckResponse{RenderError{kCommandCancelled}};
         if (!job.control.canPublishStart(reservation.start_serial))
@@ -479,12 +374,6 @@ namespace lux::render
         if (!variant) co_return AckResponse{variant.error()};
         if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, reservation); !valid)
             co_return AckResponse{valid.error()};
-        if (!imports->storages.empty())
-        {
-            auto current = qualifyEffectImports(entry, binding);
-            if (!current) co_return AckResponse{current.error()};
-            if (*current != *imports) co_return AckResponse{RenderError{kDeviceArgument}};
-        }
         const auto self = std::ranges::find(binding.target_images, target_id, &TargetImageInput::target);
         if (self != binding.target_images.end())
             co_return AckResponse{RenderError{kCommandContract}};
@@ -495,13 +384,15 @@ namespace lux::render
         const auto& selected = entry.readyVariant(*variant);
         if (!selected.plan->executable.compatible(targetDescription(target)))
             co_return AckResponse{RenderError{kDeviceArgument}};
+        auto resources = bindEffectResources(entry, selected.plan->storage_imports, binding.resources);
+        if (!resources) co_return AckResponse{resources.error()};
         auto candidate = std::make_unique<JobExecution>(entry, selected, target_id, targetOutput(target));
         release_variant.release();
         release_effect.release();
         cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
         candidate->storage_start = reservation;
         candidate->view_parameters = view_parameters;
-        if (auto assembled = assembleExecution(*candidate, binding, *effect); !assembled)
+        if (auto assembled = assembleExecution(*candidate, binding, *effect, *resources); !assembled)
             co_return AckResponse{assembled.error()};
 
         if (view_parameters)

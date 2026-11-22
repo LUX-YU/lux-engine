@@ -35,6 +35,7 @@ namespace lux::render
         std::array<std::uint32_t, 3> compute_dispatch_limit;
         std::uint64_t storage_buffer_max_range;
         std::uint32_t texture_layer_limit;
+        bool texture_descriptors = false;
     };
 
     // Short-lived contribution context for one device/target variant. Bundles hold graph versions

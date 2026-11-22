@@ -387,7 +387,7 @@ namespace lux::render::detail
             std::vector<std::uint32_t> owner(build.source.resources().size(), kGraphInvalidIndex);
             for (std::uint32_t i = 0; i < slots.size(); ++i)
             {
-                const auto resource = slots[i].resource.index;
+                const auto resource = slots[i].slot.resource.index;
                 if (resource == kGraphInvalidIndex) continue;
                 if (std::holds_alternative<GraphBufferDesc>(build.source.resources()[resource].description))
                     owner[resource] = i;
@@ -398,10 +398,10 @@ namespace lux::render::detail
             {
                 const auto binding = owner[id.index];
                 if (binding == kGraphInvalidIndex) return;
-                if (slots[binding].output_range)
+                if (slots[binding].slot.output_range)
                     uses[binding].push_back({pass, std::get<GraphBufferRange>(use.range), write});
                 if (!preserves_boundary[binding]) return;
-                auto& queue = slots[binding].canonical_queue;
+                auto& queue = slots[binding].slot.canonical_queue;
                 const auto physical = session.queueIndex(session.queue(executable.passes()[pass].queue));
                 const bool same_queue = queue == kGraphInvalidIndex || queue == physical;
                 preserves_boundary[binding] = same_queue && use.usage == build.source.resources()[id.index].initial_use;
@@ -433,7 +433,7 @@ namespace lux::render::detail
                 const auto append = [&](ResourceVersion version)
                 {
                     const auto binding = owner[version.resource.index];
-                    if (binding != kGraphInvalidIndex && slots[binding].output_range)
+                    if (binding != kGraphInvalidIndex && slots[binding].slot.output_range)
                         exports[binding].push_back({std::get<GraphBufferRange>(output.range), guard});
                 };
                 append(output.version);
@@ -445,7 +445,7 @@ namespace lux::render::detail
             }
             for (std::size_t i = 0; i < slots.size(); ++i)
             {
-                auto& binding = slots[i];
+                auto& binding = slots[i].slot;
                 binding.first_use = static_cast<std::uint32_t>(result.uses.size());
                 binding.use_count = static_cast<std::uint32_t>(uses[i].size());
                 result.uses.insert(result.uses.end(), uses[i].begin(), uses[i].end());
@@ -469,7 +469,7 @@ namespace lux::render::detail
         const EffectBuildDevice device{
             features.shader_target, session.usesDeviceAddresses(), features.indirect_first_instance,
             {dispatch[0], dispatch[1], dispatch[2]}, limits.memory.storageBufferMaxRange,
-            limits.dimensions.textureLayerMaxNum
+            limits.dimensions.textureLayerMaxNum, features.texture_descriptors
         };
         const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
         auto built = co_await (
@@ -477,7 +477,7 @@ namespace lux::render::detail
             stdexec::then([&]() noexcept
             {
                 return lowerEffectGraph(
-                    request.recipe, env.catalog, {request.output, device, request.imports}, env.diagnostics
+                    request.recipe, env.catalog, {request.output, device}, env.diagnostics
                 );
             }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<EffectGraphBuild>
@@ -494,9 +494,9 @@ namespace lux::render::detail
         std::vector<GraphResourceId> concurrent_reads;
         for (std::size_t i = 0; i < built->storage_imports.size(); ++i)
         {
-            const auto resource = built->storage_imports[i].resource;
+            const auto resource = built->storage_imports[i].slot.resource;
             if (resource.index == kGraphInvalidIndex) continue;
-            const auto* storage = std::get_if<StorageGraphImport>(&request.imports.storages[i].contract);
+            const auto* storage = std::get_if<StorageGraphImport>(&built->storage_imports[i].contract);
             if (storage && storage->concurrent_image_read) concurrent_reads.push_back(resource);
         }
         auto plan = co_await compile(
@@ -515,7 +515,7 @@ namespace lux::render::detail
             if (target != targets.end())
                 return compiled::BindingOperand{Domain::TARGET, static_cast<std::uint32_t>(target - targets.begin())};
             const auto storages = std::span{built->storage_imports};
-            const auto storage = std::ranges::find(storages, id, &StorageBindingSlot::resource);
+            const auto storage = std::ranges::find(storages, id, [](const auto& input) { return input.slot.resource; });
             if (storage != storages.end())
                 return compiled::BindingOperand{Domain::STORAGE, static_cast<std::uint32_t>(storage - storages.begin())};
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index}});
@@ -537,8 +537,9 @@ namespace lux::render::detail
             else if (!resource.sampled_target_input)
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
         }
-        for (auto& slot : built->storage_imports)
+        for (auto& declaration : built->storage_imports)
         {
+            auto& slot = declaration.slot;
             const auto id = slot.resource.index;
             if (id != kGraphInvalidIndex && !plan->executable.resources()[id].memory_used) slot = {};
         }

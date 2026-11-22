@@ -42,7 +42,8 @@ namespace lux::render
 {
     RenderResult<void>
     RenderServer::Impl::assembleExecution(
-        JobExecution& candidate, const JobBinding& binding, const RenderEffect& effect
+        JobExecution& candidate, const JobBinding& binding, const RenderEffect& effect,
+        std::span<const std::uint32_t> columns
     ) noexcept
     {
         const auto target_images = std::span(binding.target_images);
@@ -81,15 +82,15 @@ namespace lux::render
         if (target_images.size() < declared_targets.size()) return cxx::unexpected(RenderError{kRuntimeIdentity});
         if (target_images.size() > declared_targets.size()) return cxx::unexpected(RenderError{kCommandContract});
         const auto& slots = candidate.graph.storage_imports;
-        if (slots.size() != binding.resources.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        if (slots.size() != columns.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         const auto same_binding = [&](const compiled::BindingComparison& comparison) noexcept
         {
             const auto [left, right] = comparison;
             if (left.domain != right.domain) return false;
             if (left.domain == compiled::BindingOperand::EDomain::TARGET)
                 return target_images[left.slot].target == target_images[right.slot].target;
-            const auto& a = binding.resources[left.slot];
-            const auto& b = binding.resources[right.slot];
+            const auto& a = binding.resources[columns[left.slot]];
+            const auto& b = binding.resources[columns[right.slot]];
             return a.resource == b.resource && a.projection == b.projection && a.use == b.use &&
                 a.publication == b.publication;
         };
@@ -100,17 +101,18 @@ namespace lux::render
         auto& registry = runtime_->resources_;
         for (std::size_t i = 0; i < slots.size(); ++i)
         {
-            const auto slot = slots[i].resource.index;
+            const auto& compiled = slots[i].slot;
+            const auto slot = compiled.resource.index;
             if (slot == kGraphInvalidIndex) continue;
-            const auto& input = binding.resources[i];
+            const auto& input = binding.resources[columns[i]];
             const auto id = input.resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             BoundStorageProjection link{
-                id, input.projection, slots[i].resource, slots[i].output_range, slots[i].canonical_queue
+                id, input.projection, compiled.resource, compiled.output_range, compiled.canonical_queue
             };
-            link.uses = std::span(candidate.graph.output_uses).subspan(slots[i].first_use, slots[i].use_count);
+            link.uses = std::span(candidate.graph.output_uses).subspan(compiled.first_use, compiled.use_count);
             const auto exports = std::span{candidate.graph.buffer_exports};
-            link.exports = exports.subspan(slots[i].first_export, slots[i].export_count);
+            link.exports = exports.subspan(compiled.first_export, compiled.export_count);
             link.publication = input.publication;
             if (link.publication)
             {
@@ -157,7 +159,7 @@ namespace lux::render
         sources.reserve(preparation.snapshots.size());
         for (const auto& snapshot : preparation.snapshots)
         {
-            const auto id = binding.resources[snapshot.binding].resource;
+            const auto id = binding.resources[columns[snapshot.binding]].resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             const auto* factory = registry.factory(registry.declarationOf(id));
             const auto* ops = factory->storage()->bindings();
@@ -167,7 +169,8 @@ namespace lux::render
             -> RenderResult<void>
         {
             if (slot == kGraphInvalidIndex) return {};
-            const auto id = binding.resources[slot].resource;
+            if (columns[slot] == kGraphInvalidIndex) return {}; // Absent optional raster owner.
+            const auto id = binding.resources[columns[slot]].resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
             auto storage = registry.borrow<Storage>(id);
             if (!storage) return cxx::unexpected(storage.error());

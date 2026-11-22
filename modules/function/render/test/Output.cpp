@@ -1422,7 +1422,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     {
         const auto type = args == "wrong-type" ?
             CaptureDescriptor::descriptor.type.name() : EffectCaptureDescriptor::descriptor.type.name();
-        const auto bytes = args == "wrong-shape" ? sizeof(std::uint32_t) : effect_capture_bytes;
+        const auto bytes = args == "wrong-shape" ? effect_capture_bytes + sizeof(std::uint32_t) : effect_capture_bytes;
         const ResourceRequirement requirement{ResourceName{type}};
         const GraphResource declaration{
             "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
@@ -1435,7 +1435,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         ++storage_node_builds;
 
         auto& builder = context.builder();
-        const auto transient = take(builder.declareResource({"staging", GraphBufferDesc{effect_capture_bytes}}));
+        const auto transient = take(builder.declareResource({"staging", GraphBufferDesc{bytes}}));
         const auto fill = [&](RenderGraphBuilder& arm, std::uint32_t pattern) noexcept -> RenderResult<ResourceVersion>
         {
             auto pass = arm.addTransferPass(
@@ -2753,6 +2753,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         ).error.type == kStorageMismatch);
         call<RemoveRenderJob>(*client, commands, {rejected});
     }
+    const auto before_valid_storage = storage_node_builds.load();
     call<StartRenderJob>(*client, commands, {device, storage_job, storage_output, storage_binding(owner, owner)});
     // A second Job binds another physical owner with the same import contract.
     const auto other_storage_output = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
@@ -2762,7 +2763,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<StartRenderJob>(
         *client, commands, {device, other_storage_job, other_storage_output, storage_binding(other_owner, other_owner)}
     );
-    CHECK(storage_node_builds.load() == 1);
+    CHECK(storage_node_builds.load() == before_valid_storage + 1);
     CHECK(call<RemoveView>(*client, commands, {scene, owner_view}, false).error.type == kDeviceBusy);
     const auto storage_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
     const auto other_receipt = call<RequestRenderJob>(*client, commands, {other_storage_job});
@@ -2770,7 +2771,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<RebindRenderJobEffect>(
         *client, commands, {device, storage_job, storage_effect, storage_output, storage_binding(owner, other_owner)}
     );
-    CHECK(storage_node_builds.load() == 1);
+    CHECK(storage_node_builds.load() == before_valid_storage + 1);
     const auto distinct_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
     stopAndRemoveJob(*client, commands, storage_job);
     const auto shared_write = make_storage_effect(storage_selection, "shared-write");

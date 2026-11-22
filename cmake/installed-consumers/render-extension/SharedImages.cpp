@@ -314,7 +314,7 @@ namespace
         const auto use = sample ? EGraphUse::SAMPLED : EGraphUse::TRANSFER_SOURCE;
         const GraphImageDesc image{extent, extent};
         const auto imported = take(context.importResource(
-            "source", {ResourceName{ImagePairDescriptor::descriptor.type.name()}},
+            "source", {ResourceName{ImagePairDescriptor::descriptor.type.name()}, true},
             {"", image, EGraphOrigin::IMPORTED, {GraphImageRange{}}, use}, sample ? 0u : 1u
         ));
         auto& builder = context.builder();

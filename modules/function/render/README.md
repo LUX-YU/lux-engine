@@ -59,10 +59,17 @@ name has its own logical slot. During cold installation a Job supplies a same-de
 for each name. Duplicate Target identities select one publication. The compiled graph and its two `sameBinding`
 paths can serve Jobs with either equal or distinct bindings.
 
-Use `EffectBuildContext::importResource` for a shared input. `JobBinding::resources` supplies its physical owner
-and projection. The Resource specifies the shape, initialized ranges and canonical boundary state through
-`describeGraphImport`. When the owner specifies a read use, the compiler also requires the declared GPU reads to
-match that use. `resolveGraphImport` supplies a borrowed physical slice for each FIF.
+Use `EffectBuildContext::importResource` to declare a shared input by name, type, projection, shape, required
+initialized ranges and boundary state. Compilation assigns each name its own slot. The author can require a
+concurrent image using `ResourceRequirement::concurrent_image_read`. The graph records its accesses even when a
+particular Job will disable a branch. At Start or Rebind, `JobBinding::resources` supplies the actual owners.
+Their `describeGraphImport` results must satisfy the declared image shape or Buffer capacity, cover the required
+ranges and permit the graph's accesses. `resolveGraphImport` supplies each FIF's physical slice. Its size can
+grow with the owner's record or page table. Explicit writes remain bounded by the graph's output claim.
+
+CPU snapshot and Raster owner names follow the same static slot assignment. Two names bound to one snapshot
+Resource share one capture per Job preparation. Rebinding one name to another Resource selects two independent
+values from the same compiled graph. Optional Raster texture owners can remain unbound on a Job.
 The Resource publishes a replacement through `ResourceRegistry::publishGraphInput` on the device owner.
 Pass a FIF index to update one slice or `UINT32_MAX` to update all slices. The return value counts the updated
 bindings. A shared input may be withdrawn. A replacement for an installed output must cover its claimed bytes.

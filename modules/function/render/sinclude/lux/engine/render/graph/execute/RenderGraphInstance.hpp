@@ -353,7 +353,7 @@ namespace lux::render::detail
             std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
             std::vector<std::uint32_t> runtime_streams{};
-            std::span<const std::uint32_t> program_snapshots{};
+            std::vector<std::uint32_t> program_sources;
             std::vector<std::uint64_t> program_revisions{};
         };
 
@@ -384,6 +384,7 @@ namespace lux::render::detail
         std::vector<std::span<const std::byte>> effect_values_;
         std::vector<RasterOwners> raster_owners_;
         std::vector<StorageSnapshot> storage_snapshots_;
+        std::vector<std::uint32_t> snapshot_sources_;
         std::vector<Producer> producers_;
         std::vector<std::uint32_t> program_producers_;
         std::vector<std::unique_ptr<DynamicRasterPrograms>> dynamic_raster_programs_;

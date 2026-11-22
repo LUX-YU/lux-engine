@@ -45,8 +45,9 @@ namespace lux::render::detail
             bool reuse = false;
         };
 
-        ProgramSelection(const RenderGraphInstance& instance, const Producer& producer) noexcept
-            : instance_(instance), snapshots_(producer.program_snapshots)
+        ProgramSelection(
+            const RenderGraphInstance& instance, const Producer& producer, std::span<const std::uint32_t> inputs
+        ) noexcept : instance_(instance), snapshots_(inputs)
         {
             entries.reserve(producer.runtime_streams.size());
             for (auto pass : producer.runtime_streams) entries.emplace_back(pass);
@@ -411,7 +412,7 @@ namespace lux::render::detail
     {
         if (std::ranges::find(inputs, slot) == inputs.end())
             return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-        const auto& selected = storage_snapshots_[slot];
+        const auto& selected = storage_snapshots_[snapshot_sources_[slot]];
         const auto expected = selected.source.ops->type;
         if (expected != type || expected.name() != type.name())
             return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
@@ -439,6 +440,8 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kStorageContract});
         std::vector<StorageSnapshot> snapshots;
         snapshots.reserve(sources.size());
+        std::vector<std::uint32_t> source_slots;
+        source_slots.reserve(sources.size());
         for (std::size_t i = 0; i < sources.size(); ++i)
         {
             const auto& source = sources[i];
@@ -448,6 +451,17 @@ namespace lux::render::detail
                 (source.ops->type != expected || source.ops->type.name() != expected.name());
             if (invalid_source || wrong_type)
                 return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+            const auto found = std::ranges::find_if(snapshots, [&](const StorageSnapshot& selected)
+            {
+                return selected.source.id == source.id;
+            });
+            source_slots.push_back(static_cast<std::uint32_t>(found - snapshots.begin()));
+            if (found != snapshots.end())
+            {
+                if (found->source.ops != source.ops || found->source.storage != source.storage)
+                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+                continue;
+            }
             auto value = source.ops->create();
             if (!value) return cxx::unexpected(RenderError{kStorageContract, {i}});
             snapshots.emplace_back(source, std::move(value));
@@ -472,11 +486,13 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {producers.size() - 1}});
             for (auto slot : linked.program_snapshots)
             {
-                if (!snapshots[slot].source.ops->revision)
+                const auto source = source_slots[slot];
+                if (!snapshots[source].source.ops->revision)
                     return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
+                auto& selected = producer.program_sources;
+                if (std::ranges::find(selected, source) == selected.end()) selected.push_back(source);
             }
-            producer.program_snapshots = linked.program_snapshots;
-            producer.program_revisions.reserve(linked.program_snapshots.size() + 1);
+            producer.program_revisions.reserve(producer.program_sources.size() + 1);
             if (!producer.runtime_streams.empty())
                 program_producers.push_back(static_cast<std::uint32_t>(producers.size() - 1));
             producer.constants.reserve(linked.inline_blocks.size());
@@ -496,6 +512,7 @@ namespace lux::render::detail
         program_producers_ = std::move(program_producers);
         if (!program_producers_.empty()) dynamic_raster_programs_.resize(plan_->passes().size());
         storage_snapshots_ = std::move(snapshots);
+        snapshot_sources_ = std::move(source_slots);
         raster_owners_ = std::move(raster_owners);
         effect_values_ = std::move(inputs.effect_values);
         snapshot_registry_ = &registry;
@@ -524,11 +541,11 @@ namespace lux::render::detail
         const Producer& producer, std::span<const std::uint64_t> revisions
     ) const noexcept
     {
-        if (revisions.size() != producer.program_snapshots.size() + 1) return false;
+        if (revisions.size() != producer.program_sources.size() + 1) return false;
         if (producer.workspace.rasterProgramRevision() != revisions.front()) return false;
-        for (std::size_t i = 0; i < producer.program_snapshots.size(); ++i)
+        for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
         {
-            const auto current = programStorageRevision(producer.program_snapshots[i]);
+            const auto current = programStorageRevision(producer.program_sources[i]);
             if (!current || current != revisions[i + 1]) return false;
         }
         return true;
@@ -546,9 +563,9 @@ namespace lux::render::detail
             return !stop.stop_requested() && rasterProgramMatches(producer, revisions);
         };
         if (!is_current()) co_return false;
-        for (std::size_t i = 0; i < producer.program_snapshots.size(); ++i)
+        for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
         {
-            const auto slot = producer.program_snapshots[i];
+            const auto slot = producer.program_sources[i];
             auto& snapshot = storage_snapshots_[slot];
             auto captured = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
             if (!captured) co_return cxx::unexpected(captured.error());
@@ -556,7 +573,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kStorageContract, {slot}});
             snapshot.revision = *captured;
         }
-        ProgramSelection selection{*this, producer};
+        ProgramSelection selection{*this, producer, preparation_plan_->producers[index].program_snapshots};
         bool adopted = false;
         cxx::scope_exit finish_materials([&]() noexcept { selection.finishMaterialInputs(); });
         cxx::scope_exit settle([&]() noexcept { producer.workspace.settleRasterPrograms(adopted); });

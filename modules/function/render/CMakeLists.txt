@@ -125,6 +125,7 @@ set(render_sources
     src/runtime/SubmissionOperation.cpp
     src/runtime/JobControl.cpp
     src/runtime/JobRelations.cpp
+    src/runtime/JobResourceBinding.cpp
     src/runtime/JobExecution.cpp
     src/runtime/RenderJob.cpp
     src/runtime/DeviceEntry.cpp

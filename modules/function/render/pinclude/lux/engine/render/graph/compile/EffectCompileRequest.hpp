@@ -12,7 +12,6 @@ namespace lux::render::detail
         runtime_detail::EffectRecipeView recipe;
         std::vector<runtime_detail::EffectInputDefinition> inputs;
         EffectOutputDesc output;
-        const runtime_detail::EffectImportContracts& imports;
     };
 
     struct EffectCompileEnvironment final

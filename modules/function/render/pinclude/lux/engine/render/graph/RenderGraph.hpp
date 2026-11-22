@@ -1,9 +1,10 @@
 #pragma once
 
+#include <lux/engine/render/effect/EffectStorageImport.hpp>
+
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
-#include <lux/engine/render/graph/StorageBindingSlot.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::compiled
@@ -26,7 +27,7 @@ namespace lux::render::compiled
         detail::RenderGraphExecutable executable;
         detail::NativeProgramBindings programs;
         std::vector<detail::TargetImageSlot> target_imports;
-        std::vector<detail::StorageBindingSlot> storage_imports;
+        std::vector<runtime_detail::EffectStorageImport> storage_imports;
         std::vector<detail::FinalBufferUse> output_uses;
         std::vector<detail::FinalBufferExport> buffer_exports;
         std::vector<BindingComparison> binding_comparisons;

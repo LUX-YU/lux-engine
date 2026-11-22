@@ -64,22 +64,21 @@ namespace lux::render::detail
     }
 
     EffectDeviceVariant* DeviceEntry::findVariant(
-        EffectId effect, const EffectOutputDesc& target, const runtime_detail::EffectImportContracts& imports
+        EffectId effect, const EffectOutputDesc& target
     ) noexcept
     {
         const auto found = std::ranges::find_if(variants_, [&](const auto& variant) noexcept
         {
-            return !variant.failure.type && variant.effect == effect && variant.target == target &&
-                variant.imports == imports;
+            return !variant.failure.type && variant.effect == effect && variant.target == target;
         });
         return found != variants_.end() ? &*found : nullptr;
     }
 
     EffectDeviceVariant& DeviceEntry::beginVariant(
-        EffectId effect, const EffectOutputDesc& target, const runtime_detail::EffectImportContracts& imports
+        EffectId effect, const EffectOutputDesc& target
     ) noexcept
     {
-        const auto id = variants_.emplace(EffectDeviceVariant{.effect = effect, .target = target, .imports = imports});
+        const auto id = variants_.emplace(EffectDeviceVariant{.effect = effect, .target = target});
         auto& variant = *variants_.find(id);
         variant.id = id;
         return variant;

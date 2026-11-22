@@ -148,13 +148,17 @@ namespace lux::render
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
         [[nodiscard]] RenderResult<void>
-        assembleExecution(JobExecution&, const JobBinding&, const RenderEffect&) noexcept;
+        assembleExecution(
+            JobExecution&, const JobBinding&, const RenderEffect&, std::span<const std::uint32_t>
+        ) noexcept;
 
-        [[nodiscard]] RenderResult<EffectImportContracts>
-        qualifyEffectImports(const detail::DeviceEntry&, const JobBinding&) const noexcept;
+        [[nodiscard]] RenderResult<std::vector<std::uint32_t>>
+        bindEffectResources(
+            const detail::DeviceEntry&, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
+        ) const noexcept;
 
         exec::task<detail::EffectVariantResult> acquireEffectVariant(
-            EffectId, detail::DeviceEntry&, EffectOutputDesc, const EffectImportContracts&
+            EffectId, detail::DeviceEntry&, EffectOutputDesc
         ) noexcept;
 
         enum class EJobStartMode : std::uint8_t { START, REBIND };

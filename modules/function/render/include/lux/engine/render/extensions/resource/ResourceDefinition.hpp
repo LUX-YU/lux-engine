@@ -40,6 +40,8 @@ namespace lux::render
     struct ResourceRequirement final
     {
         ResourceName type;
+        // GPU image imports can require a concurrent read-only backing in the declared boundary layout.
+        bool concurrent_image_read = false;
         bool operator==(const ResourceRequirement&) const noexcept = default;
     };
 

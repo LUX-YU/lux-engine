@@ -1,3 +1,5 @@
+#include <numeric>
+#include <lux/engine/render/resources/BuiltinResources.hpp>
 #include <lux/engine/render/commands/CommandRegistry.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
@@ -89,9 +91,8 @@ namespace lux::render::runtime_detail
         struct ImportSlots final
         {
             std::vector<detail::TargetImageSlot> targets;
-            std::vector<detail::StorageBindingSlot> storages;
+            std::vector<EffectStorageImport> storages;
             std::vector<GraphStorageSnapshotId> snapshots;
-            std::vector<std::uint8_t> used_storages;
         };
 
         struct NodePinView final
@@ -114,9 +115,27 @@ namespace lux::render::runtime_detail
             EffectLoweringWorkspace(EffectBuildContract contract, std::size_t pin_count) noexcept
                 : contract(contract), bundles(pin_count)
             {
-                slots.storages.resize(contract.imports.storages.size());
-                slots.snapshots.resize(contract.imports.storages.size());
-                slots.used_storages.resize(contract.imports.storages.size());
+            }
+
+            RenderResult<std::uint32_t> declareStorage(EffectStorageImport declaration) noexcept
+            {
+                if (declaration.binding.empty() || !declaration.type.isValid())
+                    return cxx::unexpected(RenderError{kStorageContract});
+                auto& declarations = slots.storages;
+                auto found = std::ranges::find(declarations, declaration.binding, &EffectStorageImport::binding);
+                if (found != declarations.end())
+                {
+                    const bool mismatch = found->type != declaration.type || found->contract != declaration.contract ||
+                        found->projection != declaration.projection;
+                    if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
+                    found->optional &= declaration.optional;
+                    return static_cast<std::uint32_t>(found - declarations.begin());
+                }
+                if (declarations.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
+                const auto index = static_cast<std::uint32_t>(declarations.size());
+                declarations.push_back(std::move(declaration));
+                slots.snapshots.emplace_back();
+                return index;
             }
 
             RenderResult<ResourceVersion>
@@ -143,8 +162,8 @@ namespace lux::render::runtime_detail
 
             RenderResult<ResourceVersion> importStorageResource(std::size_t index, GraphResource declaration) noexcept
             {
-                const auto& storages = contract.imports.storages;
-                auto& slot = slots.storages[index];
+                const auto& storages = slots.storages;
+                auto& slot = slots.storages[index].slot;
                 if (slot.resource.index == kGraphInvalidIndex)
                 {
                     const auto range = declaration.output_range;
@@ -155,21 +174,39 @@ namespace lux::render::runtime_detail
                 }
                 else if (declaration.output_range != slot.output_range)
                     return cxx::unexpected(RenderError{kStorageMismatch, {index}});
-                slots.used_storages[index] = 1;
                 return ResourceVersion{slot.resource, 0};
             }
 
-            GraphStorageSnapshotId storageSnapshot(std::size_t index, cxx::basic_type_info type) noexcept
+            GraphStorageSnapshotId storageSnapshot(std::uint32_t index, cxx::basic_type_info type) noexcept
             {
-                const auto source = contract.imports.storages[index].preparation_source;
-                auto& slot = slots.snapshots[source];
+                auto& slot = slots.snapshots[index];
                 if (slot.index == kGraphInvalidIndex)
                 {
                     slot.index = static_cast<std::uint32_t>(preparation.snapshots.size());
-                    preparation.snapshots.push_back({type, source});
+                    preparation.snapshots.push_back({type, index});
                 }
-                slots.used_storages[index] = 1;
                 return slot;
+            }
+
+            void orderStorageBindings() noexcept
+            {
+                const auto count = slots.storages.size();
+                std::vector<std::uint32_t> order(count), remap(count);
+                std::iota(order.begin(), order.end(), 0u);
+                auto& declarations = slots.storages;
+                const auto name = [&](auto index) -> std::string_view { return declarations[index].binding; };
+                std::ranges::sort(order, {}, name);
+                std::vector<EffectStorageImport> ordered;
+                ordered.reserve(count);
+                for (const auto index : order)
+                {
+                    remap[index] = static_cast<std::uint32_t>(ordered.size());
+                    ordered.push_back(std::move(declarations[index]));
+                }
+                declarations = std::move(ordered);
+                for (auto& snapshot : preparation.snapshots) snapshot.binding = remap[snapshot.binding];
+                for (auto* sets : {&preparation.texture_sets, &preparation.mesh_sets, &preparation.material_sets})
+                    for (auto& slot : *sets) slot = remap[slot];
             }
 
             RenderResult<EffectGraphBuild> finish(const ValidatedEffectGraph&) && noexcept;
@@ -218,22 +255,25 @@ namespace lux::render::runtime_detail
                 std::uint32_t projection
             ) noexcept override
             {
-                const auto& storages = workspace_.contract.imports.storages;
-                const auto found = std::ranges::lower_bound(storages, binding, {}, &EffectStorageImport::binding);
-                if (found == storages.end() || found->binding != binding)
-                    return cxx::unexpected(RenderError{kStorageIdentity, {node_.source.value}});
-                const auto* contract = std::get_if<detail::StorageGraphImport>(&found->contract);
-                const bool wrong_owner = found->type != required.type || found->projection != projection ||
-                    declaration.origin != EGraphOrigin::IMPORTED;
-                const bool wrong_shape = !contract || declaration.description != contract->description;
-                const bool wrong_boundary = contract && (declaration.initial_ranges != contract->initial_ranges ||
-                    declaration.initial_use != contract->initial_use);
-                const bool unauthorized_output = declaration.output_range &&
-                    (!contract || !contract->final_buffer_output || contract->read_use.has_value());
-                if (wrong_owner || wrong_shape || wrong_boundary || unauthorized_output)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
-
-                return workspace_.importStorageResource(found - storages.begin(), std::move(declaration));
+                detail::StorageGraphImport schema{
+                    declaration.description, declaration.initial_ranges, declaration.initial_use, {},
+                    declaration.output_range.has_value(), required.concurrent_image_read
+                };
+                if (declaration.origin != EGraphOrigin::IMPORTED || schema.initial_use == EGraphUse::UNSPECIFIED)
+                    return cxx::unexpected(RenderError{kStorageContract, {node_.source.value}});
+                const bool read_layout = schema.initial_use == EGraphUse::SAMPLED ||
+                    schema.initial_use == EGraphUse::TRANSFER_SOURCE;
+                if (schema.concurrent_image_read)
+                {
+                    if (!std::holds_alternative<GraphImageDesc>(schema.description) || !read_layout)
+                        return cxx::unexpected(RenderError{kStorageContract, {node_.source.value}});
+                    schema.read_use = schema.initial_use;
+                }
+                auto slot = workspace_.declareStorage({
+                    std::string{binding}, required.type, std::move(schema), projection
+                });
+                if (!slot) return cxx::unexpected(slot.error());
+                return workspace_.importStorageResource(*slot, std::move(declaration));
             }
 
             RenderResult<GraphStorageSnapshotId>
@@ -241,17 +281,12 @@ namespace lux::render::runtime_detail
                 std::string_view binding, const ResourceRequirement& required, cxx::basic_type_info type
             ) noexcept override
             {
-                const auto& storages = workspace_.contract.imports.storages;
-                const auto found = std::ranges::lower_bound(storages, binding, {}, &EffectStorageImport::binding);
-                if (found == storages.end() || found->binding != binding)
-                    return cxx::unexpected(RenderError{kStorageIdentity, {node_.source.value}});
-
-                const auto* contract = std::get_if<EffectStorageImport::SnapshotContract>(&found->contract);
-                const bool wrong_type = !contract || contract->hash != type.hash() || contract->name != type.name();
-                if (found->type != required.type || wrong_type)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
-
-                return workspace_.storageSnapshot(found - storages.begin(), type);
+                if (!type.isValid() || required.concurrent_image_read)
+                    return cxx::unexpected(RenderError{kStorageContract});
+                EffectStorageImport::SnapshotContract schema{type.hash(), std::string{type.name()}};
+                auto slot = workspace_.declareStorage({std::string{binding}, required.type, std::move(schema), 0});
+                if (!slot) return cxx::unexpected(slot.error());
+                return workspace_.storageSnapshot(*slot, type);
             }
 
             RenderResult<GraphRasterTextureSetId> importRasterTextures(std::string_view binding) noexcept override
@@ -273,12 +308,11 @@ namespace lux::render::runtime_detail
             RenderResult<std::optional<GraphRasterTextureSetId>>
             importOptionalRasterTextures(std::string_view binding) noexcept override
             {
-                const auto& storages = workspace_.contract.imports.storages;
-                if (!std::ranges::binary_search(storages, binding, {}, &EffectStorageImport::binding))
-                    return std::nullopt;
-                auto slot = importRasterTextures(binding);
+                if (!device().texture_descriptors) return std::nullopt;
+                auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::TEXTURES,
+                    workspace_.preparation.texture_sets, true);
                 if (!slot) return cxx::unexpected(slot.error());
-                return *slot;
+                return GraphRasterTextureSetId{*slot};
             }
 
             RenderResult<GraphRasterMaterialSetId> importRasterMaterials(std::string_view binding) noexcept override
@@ -290,21 +324,20 @@ namespace lux::render::runtime_detail
             }
 
             RenderResult<std::uint32_t> importRasterOwner(
-                std::string_view binding, EffectStorageImport::ERasterOwner kind, std::vector<std::uint32_t>& sets
+                std::string_view binding, EffectStorageImport::ERasterOwner kind, std::vector<std::uint32_t>& sets,
+                bool optional = false
             ) noexcept
             {
-                const auto& storages = workspace_.contract.imports.storages;
-                const auto found = std::ranges::lower_bound(storages, binding, {}, &EffectStorageImport::binding);
-                if (found == storages.end() || found->binding != binding)
-                    return cxx::unexpected(RenderError{kStorageIdentity, {node_.source.value}});
-                const auto* owner = std::get_if<EffectStorageImport::ERasterOwner>(&found->contract);
-                if (!owner || *owner != kind)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
-
-                workspace_.slots.used_storages[found - storages.begin()] = 1;
-                const auto previous = std::ranges::find(sets, found->preparation_source);
+                using Owner = EffectStorageImport::ERasterOwner;
+                const auto type = kind == Owner::TEXTURES ? kTextureResourceName :
+                    kind == Owner::MESHES ? kMeshResourceName : kMaterialResourceName;
+                auto slot = workspace_.declareStorage({
+                    std::string{binding}, ResourceName{type.name()}, kind, 0, optional
+                });
+                if (!slot) return cxx::unexpected(slot.error());
+                const auto previous = std::ranges::find(sets, *slot);
                 const auto index = static_cast<std::uint32_t>(previous - sets.begin());
-                if (previous == sets.end()) sets.push_back(found->preparation_source);
+                if (previous == sets.end()) sets.push_back(*slot);
                 return index;
             }
 
@@ -551,7 +584,7 @@ namespace lux::render::runtime_detail
                 {
                     const bool imported_target = std::ranges::find(slots.targets, member.version.resource, &detail::TargetImageSlot::resource) != slots.targets.end();
                     const bool imported_storage = std::ranges::find(
-                        slots.storages, member.version.resource, &detail::StorageBindingSlot::resource
+                        slots.storages, member.version.resource, [](const auto& input) { return input.slot.resource; }
                     ) != slots.storages.end();
                     if (imported_target || imported_storage)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -564,10 +597,8 @@ namespace lux::render::runtime_detail
         auto source = std::move(builder).finish();
         if (!source) return cxx::unexpected(source.error());
         std::ranges::sort(slots.targets, {}, &detail::TargetImageSlot::binding);
-        const bool unused_storage = std::ranges::find(slots.used_storages, 0) != slots.used_storages.end();
-        if (unused_storage) return cxx::unexpected(RenderError{kCommandContract});
         std::vector<bool> linked_targets(source->resources().size());
-        std::vector<bool> linked_storages(source->resources().size());
+        std::vector<EffectStorageImport*> linked_storages(source->resources().size());
         std::vector<bool> linked_buffers(source->resources().size());
         std::vector<const UniformBlockDeclaration*> linked_uniforms(source->resources().size());
         for (const auto& uniform : uniforms) linked_uniforms[uniform.resource.index] = &uniform;
@@ -576,10 +607,10 @@ namespace lux::render::runtime_detail
         std::vector<std::optional<EGraphUse>> storage_read_uses(source->resources().size());
         for (std::size_t i = 0; i < slots.storages.size(); ++i)
         {
-            const auto slot = slots.storages[i].resource;
+            const auto slot = slots.storages[i].slot.resource;
             if (slot.index == kGraphInvalidIndex) continue;
-            linked_storages[slot.index] = true;
-            const auto& import = std::get<detail::StorageGraphImport>(contract.imports.storages[i].contract);
+            linked_storages[slot.index] = &slots.storages[i];
+            const auto& import = std::get<detail::StorageGraphImport>(slots.storages[i].contract);
             storage_read_uses[slot.index] = import.read_use;
         }
         for (std::size_t index = 0; index < source->resources().size(); ++index)
@@ -598,6 +629,9 @@ namespace lux::render::runtime_detail
             {
                 const auto valid = [&](GraphResourceId resource) noexcept
                 {
+                    if (static_cast<unsigned>(use.usage) > static_cast<unsigned>(EGraphUse::UNIFORM_READ)) return false;
+                    if (auto* declaration = linked_storages[resource.index])
+                        declaration->graph_uses |= 1u << static_cast<unsigned>(use.usage);
                     if (linked_storages[resource.index] && use.access != EGraphAccess::READ &&
                         !source->resources()[resource.index].output_range) return false;
                     const auto required = storage_read_uses[resource.index];
@@ -638,6 +672,7 @@ namespace lux::render::runtime_detail
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index, use.version.resource.index}});
             }
         }
+        orderStorageBindings();
         return EffectGraphBuild{
             std::move(*source), std::move(*analysis), contract.target,
             std::move(slots.targets), std::move(slots.storages),

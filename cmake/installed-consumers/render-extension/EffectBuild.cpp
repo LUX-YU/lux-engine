@@ -240,6 +240,7 @@ struct ParkDispatch final
 
 struct ColdResource final
 {
+    static inline std::atomic<std::atomic_uint*> capture_counter{};
     using Descriptor = ColdResource;
     using Config = void;
     using Ops = void;
@@ -299,6 +300,7 @@ struct ColdResource final
 private:
     RenderResult<std::uint64_t> capture(bool& ready) const noexcept
     {
+        if (auto* counter = capture_counter.load(std::memory_order_relaxed)) ++*counter;
         ready = ready_;
         return 1;
     }
@@ -328,6 +330,31 @@ struct ClearPreparation final
 };
 
 static_assert(PreparationKernel<ClearPreparation>);
+
+struct NamedSnapshots final
+{
+    using Configuration = std::array<GraphStorageSnapshotId, 2>;
+    using LinkedData = std::array<StorageSnapshotSlot<bool>, 2>;
+    struct Workspace final {};
+    static inline std::atomic_bool same_selection{};
+
+    static RenderResult<LinkedData> resolve(const Configuration& sources, InstanceLinkContext& link) noexcept
+    {
+        CHECK(sources[0].index != sources[1].index);
+        return LinkedData{
+            take(link.resolveStorageSnapshot<bool>(sources[0])), take(link.resolveStorageSnapshot<bool>(sources[1]))
+        };
+    }
+
+    static RenderResult<void> prepare(const LinkedData& inputs, FramePreparation& frame, Workspace&) noexcept
+    {
+        const auto a = take(frame.readStorage(inputs[0]));
+        const auto b = take(frame.readStorage(inputs[1]));
+        CHECK(a.value.get() && b.value.get());
+        same_selection = &a.value.get() == &b.value.get();
+        return {};
+    }
+};
 
 template <class W>
 struct WorkspaceProbe
@@ -372,7 +399,7 @@ static void registerClearNode(RenderServer& server)
     {
         return context.setConfiguration(std::array{0.0f, 1.0f, 0.0f, 1.0f});
     };
-    implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
+    implementation.build = [](EffectBuildContext& context, std::string_view args) noexcept -> RenderResult<void>
     {
         const auto* color = context.configuration<std::array<float, 4>>();
         if (!color) return cxx::unexpected(RenderError{kInvalidConfig});
@@ -390,18 +417,29 @@ static void registerClearNode(RenderServer& server)
             ProducerFactory::make<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
             {cleared.pass}, {}, {state}
         };
+        if (args == "named-snapshots")
+        {
+            const auto other = take(context.importStorageSnapshot<bool>(
+                "companion", {ResourceName{ColdResource::descriptor.type.name()}}
+            ));
+            auto config = take(ConfigValue::make(NamedSnapshots::Configuration{state, other}));
+            preparation = {
+                ProducerFactory::make<NamedSnapshots>(), std::move(config),
+                {}, {}, {}, {cleared.pass}, {}, {state, other}
+            };
+        }
         if (auto added = context.addPreparation(std::move(preparation)); !added) return added;
         return context.publish(clear_color, {{clear_color, cleared.written.front()}});
     };
     CHECK(server.registerEffectImplementation(std::move(implementation)));
 }
 
-static CreateEffectRequest clearEffect()
+static CreateEffectRequest clearEffect(std::string arguments = std::string{})
 {
     CreateEffectRequest request;
     request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit edit{*request.graph};
-    const auto node = take(edit.addNode(clearDefinition(), {std::string{clear_node}, 1}));
+    const auto node = take(edit.addNode(clearDefinition(), {std::string{clear_node}, 1}, std::move(arguments)));
     CHECK(edit.setOutput("color", edit.pinId(node, clear_color), true));
     CHECK(edit.commit());
     return request;
@@ -737,6 +775,32 @@ static void profileJobRounds(
 }
 
 
+static void verifySnapshotBindings(
+    ipc::IpcRequester& client, DeviceSessionId device, ViewRequest scope, std::array<ResourceInstanceId, 2> owners
+)
+{
+    const auto effect = call<CreateEffect>(client, clearEffect("named-snapshots")).effect;
+    const auto target = call<CreateTarget>(client, {device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
+    const auto job = call<CreateRenderJob>(client, {scope.scene, scope.view, effect, EJobCadence::REQUESTED}).job;
+    auto binding = clearBinding(owners[0]);
+    binding.resources.push_back({"companion", owners[0], 0, EJobResourceUse::CPU_SNAPSHOT});
+    CHECK(!call<StartRenderJob>(client, {device, job, target, binding}).error.type);
+    std::atomic_uint captures{};
+    ColdResource::capture_counter = &captures;
+    const auto compiled = call<QueryRenderStats>(client, {}).compiled_graphs;
+    CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 1 && NamedSnapshots::same_selection);
+    binding.resources.back().resource = owners[1];
+    CHECK(!call<RebindRenderJobEffect>(client, {device, job, effect, target, binding}).error.type);
+    CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 3 && !NamedSnapshots::same_selection);
+    CHECK(call<QueryRenderStats>(client, {}).compiled_graphs == compiled);
+    ColdResource::capture_counter = nullptr;
+    CHECK(!call<StopRenderJob>(client, job).error.type);
+    CHECK(!call<RemoveRenderJob>(client, job).error.type);
+    CHECK(!call<RemoveTarget>(client, target).error.type);
+    CHECK(!call<RemoveEffect>(client, {effect}).error.type);
+    std::puts("NAMED SNAPSHOTS: same owner captured once, two owners captured twice, device graph reused");
+}
+
 static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptions device, unsigned profile_jobs = 0)
 {
     RenderServerConfig config{"installed.effect.open_raster", enableNativeValidation()};
@@ -787,6 +851,7 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     const auto other_job = call<CreateRenderJob>(client, {other_scene, other_view, effect.effect, EJobCadence::REQUESTED}).job;
     const auto other_binding = clearBinding(getSceneState(client, session, other_scene));
     CHECK(call<StartRenderJob>(client, {session, other_job, other_target, other_binding}).error.type == 0);
+    verifySnapshotBindings(client, session, {scene, view}, {cold, other_binding.resources.front().resource});
     auto park_wire = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     auto second_wire = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const std::array names{CommandName{RequestRenderJob::name}};

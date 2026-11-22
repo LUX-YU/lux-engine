@@ -1,6 +1,7 @@
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 
 #include <lux/engine/render/core/RasterViewport.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
 #include <algorithm>
 #include <cmath>
@@ -65,13 +66,16 @@ namespace lux::render::detail
 
     ResourceRegistration ViewParameterStorage::factory() noexcept
     {
+        static constexpr auto snapshot =
+            StorageSnapshotOps::make<ViewParameterStorage, ViewGpuParameters, &ViewParameterStorage::capture>();
+        static constexpr StorageBindingOps binding{.cpu_snapshot = &snapshot};
         static const auto frame_call =
             FrameDataCall::declare<ViewParameterResource, ViewParameterStorage, &updateViewParameters>();
         static const std::array commands{
             CommandBinding::declare<ViewParameterCommands::Update, &updateViewParametersCommand>()
         };
         return makeResourceRegistration<ViewParameterResource, ViewParameterStorage, createViewParameters>(
-            nullptr, nullptr, commands, frame_call
+            nullptr, &binding, commands, frame_call
         );
     }
 } // namespace lux::render::detail

@@ -16,7 +16,6 @@ namespace lux::render::detail
 {
     class JobGpuResources;
     struct GraphBindingTag;
-    class ViewParameterStorage;
 }
 
 namespace lux::render::runtime_detail
@@ -120,8 +119,5 @@ namespace lux::render::runtime_detail
         {
             return target == id || std::ranges::find(target_images, id, &TargetImage::target) != target_images.end();
         }
-        void selectViewParameters() noexcept;
-        const detail::ViewParameterStorage* view_parameters = nullptr;
-        std::uint64_t view_revision = 0;
     };
 } // namespace lux::render::runtime_detail

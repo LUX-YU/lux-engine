@@ -34,13 +34,6 @@ namespace lux::render::detail
 
         const TargetDesc& target() const noexcept override { return instance_.target(); }
 
-        RenderResult<PreparedCpuValue<ViewGpuParameters>> viewParameters() const noexcept override
-        {
-            if (!instance_.view_parameters_.revision)
-                return cxx::unexpected(RenderError{kGraphUndefinedRead});
-            return instance_.view_parameters_;
-        }
-
         RenderResult<void> setRasterStream(DrawStreamSlot slot, const RasterStreamData& data) noexcept override
         {
             const auto use = std::ranges::find(linked_.raster_streams, slot.index);

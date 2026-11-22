@@ -9,7 +9,6 @@
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/resources/material/Data.hpp>
 #include <lux/engine/render/resources/mesh/Data.hpp>
-#include <lux/engine/render/resources/view/Parameters.hpp>
 #include <lux/engine/render/resources/texture/Data.hpp>
 #include <array>
 #include <bit>
@@ -70,7 +69,6 @@ namespace lux::render
     public:
         virtual ~FramePreparation() noexcept = default;
         [[nodiscard]] virtual const TargetDesc& target() const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<PreparedCpuValue<ViewGpuParameters>> viewParameters() const noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> setRasterStream(DrawStreamSlot, const RasterStreamData&) noexcept = 0;
         [[nodiscard]] virtual RenderResult<RasterProgramSlot>
         rasterProgram(DrawStreamSlot, std::uint32_t selection_index) const noexcept = 0;

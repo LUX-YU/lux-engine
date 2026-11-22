@@ -531,12 +531,13 @@ namespace
             return call<GetOrCreateResource>(ipc, commands, {session, view, name}).resource_id;
         };
         JobBinding binding;
-        binding.view_parameters = local(kViewParameterResourceName);
         MaterialReadback::creation_input.store(&capture);
         const auto readback = local(MaterialReadbackDescriptor::descriptor.type);
         MaterialReadback::creation_input.store(nullptr);
         const auto instances = local(kInstanceResourceName);
         binding.resources = {
+            {std::string{ViewParameterResource::snapshot_binding}, local(kViewParameterResourceName),
+                0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::transforms_binding}, local(kTransformResourceName),
                 static_cast<std::uint32_t>(ETransformGraphProjection::RECORDS)},

@@ -16,6 +16,7 @@
 #include <lux/engine/render/features/lighting/ClusteredLightingWork.hpp>
 #include <lux/engine/render/features/lighting/DeferredLightingWork.hpp>
 #include <lux/engine/render/resources/lighting/Resource.hpp>
+#include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 
 namespace lux::render::detail
@@ -111,6 +112,7 @@ namespace lux::render
 
             struct Configuration final
             {
+                GraphStorageSnapshotId camera;
                 std::optional<GraphPassId> lighting;
                 std::optional<ClusterConfiguration> cluster;
             };
@@ -129,6 +131,7 @@ namespace lux::render
 
             struct LinkedData final
             {
+                StorageSnapshotSlot<ViewGpuParameters> camera;
                 std::optional<LightingWriter> lighting;
                 std::optional<ClusterWriter> cluster;
             };
@@ -136,7 +139,9 @@ namespace lux::render
             [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
-                LinkedData inputs;
+                const auto camera = context.resolveStorageSnapshot<ViewGpuParameters>(config.camera);
+                if (!camera) return cxx::unexpected(camera.error());
+                LinkedData inputs{*camera, {}, {}};
                 if (config.lighting)
                 {
                     auto state = context.resolveEffectInput<LightingState>();
@@ -158,9 +163,9 @@ namespace lux::render
 
             static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
             {
-                const auto snapshot = frame.viewParameters();
+                const auto snapshot = frame.readStorage(linked.camera);
                 if (!snapshot) return cxx::unexpected(snapshot.error());
-                const auto& view = snapshot->value;
+                const auto& view = snapshot->value.get();
                 if (linked.cluster)
                 {
                     auto constants = linked.cluster->constants;
@@ -289,7 +294,12 @@ namespace lux::render
                 lighting.lights[index] = *input;
             }
             const std::string key = "lighting/" + std::to_string(node.value);
-            LightingPreparation::Configuration preparation;
+            const auto camera = context.importStorageSnapshot<ViewGpuParameters>(
+                ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
+                ESnapshotScope::JOB_LOCAL
+            );
+            if (!camera) return cxx::unexpected(camera.error());
+            LightingPreparation::Configuration preparation{*camera, {}, {}};
             std::vector<GraphPassId> writers;
             if constexpr (Clustered)
             {
@@ -335,7 +345,8 @@ namespace lux::render
             auto config = ConfigValue::make(std::move(preparation));
             if (!config) return cxx::unexpected(config.error());
             return context.addPreparation({
-                ProducerFactory::make<LightingPreparation>(), std::move(*config), {}, {}, std::move(writers)
+                ProducerFactory::make<LightingPreparation>(), std::move(*config), {}, {},
+                std::move(writers), {}, {}, {*camera}
             });
         }
     }

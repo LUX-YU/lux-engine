@@ -130,7 +130,6 @@ namespace lux::render
             auto& control = job.control;
             if (!control.tryAdmit(context.frame_index, context.slot_index)) std::terminate();
             if (output.execution_generation != control.executionGeneration()) std::terminate();
-            job.execution->selectViewParameters();
             round.instances.push_back(&job.execution->instance);
             ++round.run_count;
         }

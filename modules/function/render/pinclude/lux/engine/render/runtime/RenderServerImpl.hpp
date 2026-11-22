@@ -153,8 +153,8 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<std::vector<std::uint32_t>>
         bindEffectResources(
-            const detail::DeviceEntry&, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
-        ) const noexcept;
+            detail::DeviceEntry&, ViewRequest, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
+        ) noexcept;
 
         enum class EJobStartMode : std::uint8_t { START, REBIND };
         struct JobStartRequest final

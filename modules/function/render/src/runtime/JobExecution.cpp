@@ -5,7 +5,6 @@
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
-#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 
 namespace lux::render::runtime_detail
@@ -21,13 +20,6 @@ namespace lux::render::runtime_detail
           instance(gpu, executable, graph.programs, physical),
           binding_identity(installation.identity)
     {
-    }
-
-    void JobExecution::selectViewParameters() noexcept
-    {
-        if (!view_parameters || view_revision == view_parameters->revision()) return;
-        view_revision = view_parameters->revision();
-        instance.selectViewParameters(view_parameters->parameters(), view_revision);
     }
 
 } // namespace lux::render::runtime_detail
@@ -182,7 +174,6 @@ namespace lux::render
         candidate.instance.linkUniformBlocks(candidate.graph.uniforms);
         if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;
         candidate.instance.setViewport(input.viewport);
-        candidate.selectViewParameters();
         return {};
     }
 } // namespace lux::render

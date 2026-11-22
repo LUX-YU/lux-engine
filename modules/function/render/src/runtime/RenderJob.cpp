@@ -4,8 +4,6 @@
 #include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <exec/create.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
 namespace lux::render
@@ -277,18 +275,6 @@ namespace lux::render
         if (!selected) return AckResponse{RenderError{kJobState}};
         if (auto valid = validateJobBinding(request, job, *selected); !valid)
             return AckResponse{valid.error()};
-        const auto qualify_view = [&]() noexcept -> RenderResult<detail::ViewParameterStorage*>
-        {
-            if (binding.view_parameters.isNull()) return nullptr;
-            ResourceResponse owner;
-            queryResource({device, ViewRequest{job.content.scene, job.content.view}, kViewParameterResourceName}, owner);
-            if (owner.error.type) return cxx::unexpected(owner.error);
-            if (owner.resource_id != binding.view_parameters)
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            if (runtime_->resources_.hasExclusiveCommand(owner.resource_id))
-                return cxx::unexpected(RenderError{kDeviceBusy});
-            return runtime_->resources_.borrow<detail::ViewParameterStorage>(owner.resource_id);
-        };
         auto relations = jobRelations();
         std::ranges::find(relations, id, &detail::JobRelationEntry::id)->device = device;
         if (auto valid = detail::validateJobDevices(relations); !valid) return AckResponse{valid.error()};
@@ -299,13 +285,12 @@ namespace lux::render
         const auto self = std::ranges::find(binding.target_images, target_id, &TargetImageInput::target);
         if (self != binding.target_images.end())
             return AckResponse{RenderError{kCommandContract}};
-        const auto qualified_view = qualify_view();
-        if (!qualified_view) return AckResponse{qualified_view.error()};
-        auto* view_parameters = *qualified_view;
         auto& target = *runtime_->targets_.find(target_id);
         if (!selected->executable.compatible(targetDescription(target)))
             return AckResponse{RenderError{kDeviceArgument}};
-        auto resources = bindEffectResources(*entry, selected->storage_imports, binding.resources);
+        auto resources = bindEffectResources(
+            *entry, {job.content.scene, job.content.view}, selected->storage_imports, binding.resources
+        );
         if (!resources) return AckResponse{resources.error()};
         const JobExecution::Installation installation{device, effect_id, target_id, {id, *generation}};
         auto physical = entry->prepareJobResources(installation.identity);
@@ -315,15 +300,9 @@ namespace lux::render
         {
             releaseExecutionResources(std::move(candidate), std::move(physical));
         });
-        candidate->view_parameters = view_parameters;
         if (auto assembled = assembleExecution(subscriptions, binding, *effect, *resources); !assembled)
             return AckResponse{assembled.error()};
 
-        if (view_parameters)
-        {
-            if (auto retained = retainExecutionResource(*candidate, binding.view_parameters); !retained)
-                return AckResponse{retained.error()};
-        }
         if (auto layout = buildJobInputLayout(job, *candidate); !layout) return AckResponse{layout.error()};
 
         auto running = running_jobs_;
@@ -451,7 +430,6 @@ namespace lux::render
         }
         job->binding.inputs = input.inputs;
         execution.instance.setViewport(input.inputs.viewport);
-        execution.view_revision = 0;
         job->last_run_error = {};
         reply = {};
     }

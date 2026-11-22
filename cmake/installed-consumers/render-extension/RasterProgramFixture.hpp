@@ -2,6 +2,7 @@
 
 #include "Support.hpp"
 #include <exec/create.hpp>
+#include <lux/engine/render/resources/view/Parameters.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include "SdkFullscreen.hpp"
 #include "SdkGreen.hpp"
@@ -216,7 +217,7 @@ namespace sdk_programs
         struct Configuration final
         {
             GraphPassId pass;
-            GraphStorageSnapshotId code;
+            GraphStorageSnapshotId code, camera;
             lux::rdesc::EShaderTarget target;
             bool stale;
         };
@@ -225,6 +226,7 @@ namespace sdk_programs
         {
             DrawStreamSlot stream;
             StorageSnapshotSlot<CodeSnapshot> code;
+            StorageSnapshotSlot<ViewGpuParameters> camera;
             lux::rdesc::EShaderTarget target;
             bool stale;
         };
@@ -237,7 +239,9 @@ namespace sdk_programs
             if (!stream) return lux::cxx::unexpected(stream.error());
             auto code = link.resolveStorageSnapshot<CodeSnapshot>(input.code);
             if (!code) return lux::cxx::unexpected(code.error());
-            return LinkedData{*stream, *code, input.target, input.stale};
+            const auto camera = link.resolveStorageSnapshot<ViewGpuParameters>(input.camera);
+            if (!camera) return lux::cxx::unexpected(camera.error());
+            return LinkedData{*stream, *code, *camera, input.target, input.stale};
         }
 
         using DrawMapping = std::array<std::uint32_t, 2>;
@@ -304,7 +308,12 @@ namespace sdk_programs
                 if (!program) return lux::cxx::unexpected(program.error());
                 draws[i] = {*program, {}, {}, {}, DrawVertices{3}};
             }
-            return frame.setRasterStream(linked.stream, {draws, {}, {}, {}});
+            const auto camera = frame.readStorage(linked.camera);
+            if (!camera) return lux::cxx::unexpected(camera.error());
+            const auto& viewport = camera->value.get().viewport;
+            const RasterViewport selected{viewport[0], viewport[1], viewport[2], viewport[3]};
+            const RasterStreamSection section{{0, 2}, 0, selected};
+            return frame.setRasterStream(linked.stream, {draws, {}, {}, {}, std::span{&section, 1}});
         }
     };
 

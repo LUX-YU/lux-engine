@@ -278,12 +278,16 @@ namespace lux::render::runtime_detail
 
             RenderResult<GraphStorageSnapshotId>
             importStorageValue(
-                std::string_view binding, const ResourceRequirement& required, cxx::basic_type_info type
+                std::string_view binding,
+                const ResourceRequirement& required,
+                cxx::basic_type_info type,
+                ESnapshotScope scope
             ) noexcept override
             {
-                if (!type.isValid() || required.concurrent_image_read)
+                const bool valid_scope = scope == ESnapshotScope::ANY_ON_DEVICE || scope == ESnapshotScope::JOB_LOCAL;
+                if (!type.isValid() || required.concurrent_image_read || !valid_scope)
                     return cxx::unexpected(RenderError{kStorageContract});
-                EffectStorageImport::SnapshotContract schema{type.hash(), std::string{type.name()}};
+                EffectStorageImport::SnapshotContract schema{type.hash(), std::string{type.name()}, scope};
                 auto slot = workspace_.declareStorage({std::string{binding}, required.type, std::move(schema), 0});
                 if (!slot) return cxx::unexpected(slot.error());
                 return workspace_.storageSnapshot(*slot, type);

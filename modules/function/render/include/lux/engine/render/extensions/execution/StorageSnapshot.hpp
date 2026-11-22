@@ -5,6 +5,12 @@
 
 namespace lux::render
 {
+    enum class ESnapshotScope : std::uint8_t
+    {
+        ANY_ON_DEVICE,
+        JOB_LOCAL
+    };
+
     template <class T> class StorageSnapshotSlot final
     {
         friend class FramePreparation;

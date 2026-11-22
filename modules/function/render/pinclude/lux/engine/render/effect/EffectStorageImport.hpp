@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Resource.hpp>
+#include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
 #include <lux/engine/render/graph/StorageBindingSlot.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 
@@ -12,6 +13,7 @@ namespace lux::render::runtime_detail
         {
             cxx::basic_type_info::id_t hash;
             std::string name;
+            ESnapshotScope scope;
             bool operator==(const SnapshotContract&) const noexcept = default;
         };
 

@@ -21,6 +21,7 @@
 #include <lux/engine/render/resources/instance/Binding.hpp>
 #include <lux/engine/render/resources/instance/Resource.hpp>
 #include <lux/engine/render/resources/lighting/Resource.hpp>
+#include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
 #include <lux/engine/render/resources/transform/Resource.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -47,6 +48,7 @@ namespace lux::render
             struct Configuration final
             {
                 GraphStorageSnapshotId instances;
+                GraphStorageSnapshotId camera;
                 GraphPassId view;
                 std::array<GraphResourceId, 4> uploads;
                 GraphResourceId visible, commands;
@@ -65,6 +67,7 @@ namespace lux::render
             struct LinkedData final
             {
                 StorageSnapshotSlot<MeshInstanceSnapshot> instances;
+                StorageSnapshotSlot<ViewGpuParameters> camera;
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
                 std::array<PreparedBufferWriter, 4> uploads;
                 FrameBufferSizer visible, commands;
@@ -78,6 +81,8 @@ namespace lux::render
             {
                 const auto instances = context.resolveStorageSnapshot<MeshInstanceSnapshot>(config.instances);
                 if (!instances) return cxx::unexpected(instances.error());
+                const auto camera = context.resolveStorageSnapshot<ViewGpuParameters>(config.camera);
+                if (!camera) return cxx::unexpected(camera.error());
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
                 std::optional<ShadowInputs> shadow;
                 if (config.shadow)
@@ -119,7 +124,7 @@ namespace lux::render
                     surface = *resolved;
                 }
                 return LinkedData{
-                    *instances, view, {*groups, *candidates, *chunks, *dispatch},
+                    *instances, *camera, view, {*groups, *candidates, *chunks, *dispatch},
                     *visible, *commands, config.dispatch_limit, surface, shadow
                 };
             }
@@ -166,15 +171,15 @@ namespace lux::render
                 const DrawMapping* mapping
             ) noexcept
             {
-                const auto view = frame.viewParameters();
-                if (!view) return cxx::unexpected(view.error());
+                const auto selected_view = frame.readStorage(linked.camera);
+                if (!selected_view) return cxx::unexpected(selected_view.error());
+                const auto& view = selected_view->value.get();
                 if (workspace.shadow)
                 {
                     const auto lights = frame.readStorage(linked.shadow->lights);
                     if (!lights) return cxx::unexpected(lights.error());
-                    const auto& value = view->value;
                     const detail::ShadowCamera camera{
-                        value.inverse_view_projection, value.position_near, value.direction_far
+                        view.inverse_view_projection, view.position_near, view.direction_far
                     };
                     const auto projected = workspace.shadow->select(camera, lights->value.get());
                     if (!projected) return cxx::unexpected(projected.error());
@@ -194,7 +199,7 @@ namespace lux::render
                 }
                 else
                 {
-                    auto constants = frame.write(*linked.view, {view->value.view, view->value.projection});
+                    auto constants = frame.write(*linked.view, {view.view, view.projection});
                     if (!constants) return constants;
                 }
                 const auto selected = frame.readStorage(linked.instances);
@@ -226,7 +231,7 @@ namespace lux::render
                     return workspace.surface->prepareShadow(
                         inputs, workspace.shadow->views(), workspace.shadow->rasterStates()
                     );
-                return workspace.surface->prepare(inputs, view->value);
+                return workspace.surface->prepare(inputs, view);
             }
 
         private:
@@ -345,6 +350,11 @@ namespace lux::render
             );
             if (!instances) return cxx::unexpected(instances.error());
 
+            const auto camera = context.importStorageSnapshot<ViewGpuParameters>(
+                ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
+                ESnapshotScope::JOB_LOCAL
+            );
+            if (!camera) return cxx::unexpected(camera.error());
             auto& graph = context.builder();
             const std::string key = "mesh-visibility/" + std::to_string(context.nodeId().value) + "/";
             ResourceVersion views;
@@ -426,7 +436,7 @@ namespace lux::render
             );
             if (!passes) return cxx::unexpected(passes.error());
             auto config = PrepareMeshVisibility::Configuration{
-                *instances, inline_blocks.empty() ? GraphPassId{} : inline_blocks.front(),
+                *instances, *camera, inline_blocks.empty() ? GraphPassId{} : inline_blocks.front(),
                 {groups->resource, candidates->resource, chunks->resource, dispatch->resource},
                 visible->resource, commands->resource,
                 {device.compute_dispatch_limit[0], device.compute_dispatch_limit[1]}, {}, shadow
@@ -539,7 +549,7 @@ namespace lux::render
                 groups->resource, candidates->resource, chunks->resource, dispatch->resource,
                 visible->resource, commands->resource
             };
-            std::vector<GraphStorageSnapshotId> storage_inputs{*instances};
+            std::vector<GraphStorageSnapshotId> storage_inputs{*instances, *camera};
             if (shadow)
             {
                 prepared_buffers.insert(prepared_buffers.end(), shadow->uploads.begin(), shadow->uploads.end());

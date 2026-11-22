@@ -144,9 +144,13 @@ namespace lux::render
 
         template <class T>
         [[nodiscard]] RenderResult<GraphStorageSnapshotId>
-        importStorageSnapshot(std::string_view binding, const ResourceRequirement& required) noexcept
+        importStorageSnapshot(
+            std::string_view binding,
+            const ResourceRequirement& required,
+            ESnapshotScope scope = ESnapshotScope::ANY_ON_DEVICE
+        ) noexcept
         {
-            return importStorageValue(binding, required, cxx::make_basic_type_info<T>());
+            return importStorageValue(binding, required, cxx::make_basic_type_info<T>(), scope);
         }
 
         [[nodiscard]] virtual RenderResult<void> addPreparation(GraphPreparation) noexcept = 0;
@@ -165,6 +169,8 @@ namespace lux::render
         declareInlineCopy(GraphPassId, extension_detail::InlineBlockInput) noexcept = 0;
         [[nodiscard]] virtual RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info, std::size_t) noexcept = 0;
         [[nodiscard]] virtual RenderResult<GraphStorageSnapshotId>
-        importStorageValue(std::string_view, const ResourceRequirement&, cxx::basic_type_info) noexcept = 0;
+        importStorageValue(
+            std::string_view, const ResourceRequirement&, cxx::basic_type_info, ESnapshotScope
+        ) noexcept = 0;
     };
 }

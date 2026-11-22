@@ -4,7 +4,13 @@
 #include <lux/engine/render/resources/instance/Data.hpp>
 #include <map>
 
-namespace lux::render { class RasterProgramBuildContext; struct MeshVisibilityView; struct RasterState; }
+namespace lux::render
+{
+    class RasterProgramBuildContext;
+    struct ViewGpuParameters;
+    struct MeshVisibilityView;
+    struct RasterState;
+}
 
 namespace lux::render::detail
 {

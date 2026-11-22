@@ -578,11 +578,14 @@ int main(int argc, char** argv)
             auto output = call<CreateTarget>(*client, commands, {session, target}).target;
             JobBinding binding;
             const ViewRequest scope{scene, view};
-            binding.view_parameters = call<GetOrCreateResource>(*client, commands, {
+            const auto camera_resource = call<GetOrCreateResource>(*client, commands, {
                 session, scope, kViewParameterResourceName
             }).resource_id;
+            binding.resources.push_back({
+                std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT
+            });
             call<ViewParameterCommands::Update>(*client, commands, {
-                binding.view_parameters, std::span{&input, 1}
+                camera_resource, std::span{&input, 1}
             });
             bindReadback(*client, commands, session, scope, capture, binding);
             const auto transforms = device.buffer_device_address ?

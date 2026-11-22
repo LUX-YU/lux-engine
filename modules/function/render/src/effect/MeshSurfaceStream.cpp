@@ -1,3 +1,4 @@
+#include <lux/engine/render/resources/view/Parameters.hpp>
 #include <lux/engine/render/effect/MeshSurfaceStream.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/features/mesh/MeshGrouping.hpp>

@@ -433,9 +433,12 @@ static void runPresets(
         const auto image = call<CreateTarget>(client, commands, {session, target}).target;
         const ViewRequest view_scope{scene, view};
         JobBinding binding = scene_binding;
-        binding.view_parameters = call<GetOrCreateResource>(client, commands,
+        const auto camera_resource = call<GetOrCreateResource>(client, commands,
             {session, view_scope, kViewParameterResourceName}).resource_id;
-        call<ViewParameterCommands::Update>(client, commands, {binding.view_parameters, std::span{&camera, 1}});
+        binding.resources.push_back({
+            std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT
+        });
+        call<ViewParameterCommands::Update>(client, commands, {camera_resource, std::span{&camera, 1}});
         if (shadows)
             binding.resources.push_back({std::string{Shadow::lights_binding}, lights, 0, EJobResourceUse::CPU_SNAPSHOT});
         if (!profile_frames)
@@ -843,10 +846,13 @@ int main(int argc, char** argv)
         {
             const ViewRequest scope{scene, view};
             auto binding = scene_binding;
-            binding.view_parameters = call<GetOrCreateResource>(
+            const auto camera_resource = call<GetOrCreateResource>(
                 *client, commands, {session, scope, kViewParameterResourceName}
             ).resource_id;
-            update_camera(binding.view_parameters, input);
+            binding.resources.push_back({
+                std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT
+            });
+            update_camera(camera_resource, input);
             const std::array configurations{
                 CaptureConfig{&pixels}, CaptureConfig{&view_bytes}, CaptureConfig{&indirect},
                 CaptureConfig{&surface_pixels}, CaptureConfig{&depth_pixels, rdesc::ETextureFormat::D32_SFLOAT},
@@ -865,6 +871,9 @@ int main(int argc, char** argv)
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         const auto binding = make_binding(view, camera);
+        const auto camera_resource = call<QueryResource>(*client, commands, {
+            session, ViewRequest{scene, view}, kViewParameterResourceName
+        }).resource_id;
         const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect, binding);
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;
         const auto second_target = call<CreateTarget>(*client, commands, {session, target}).target;
@@ -879,8 +888,8 @@ int main(int argc, char** argv)
         moving.position_near[0] = -.2F;
         moving.view[12] = .2F;
         moving.inverse_view_projection[12] = -.2F;
-        update_camera(binding.view_parameters, moving);
-        update_camera(binding.view_parameters, camera);
+        update_camera(camera_resource, moving);
+        update_camera(camera_resource, camera);
         CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compile_count);
         // A live attachment observes dense reordering; an old cached index must not shadow another light.
         if (!projection_revisions || !cast)
@@ -1047,7 +1056,7 @@ int main(int argc, char** argv)
                 std::printf("PROJECTION BEGIN %s expected=1\n", name);
                 std::fflush(stdout);
                 const auto before = copy_bytes();
-                update_camera(binding.view_parameters, moved_camera ? moving : camera);
+                update_camera(camera_resource, moved_camera ? moving : camera);
                 for (unsigned frame = 0; frame < fif; ++frame) renderFrame(*client, commands, attachment);
                 CHECK(copy_bytes() > before + stable_bytes);
                 std::printf("PROJECTION END %s\n", name);

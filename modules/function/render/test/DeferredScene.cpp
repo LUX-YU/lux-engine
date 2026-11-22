@@ -1187,12 +1187,13 @@ int main(int argc, char** argv)
             return call<GetOrCreateResource>(*client, commands, {session, ViewRequest{scene, view}, name}).resource_id;
         };
         JobBinding binding;
-        binding.view_parameters = owner(kViewParameterResourceName);
+        const auto camera_resource = owner(kViewParameterResourceName);
         const auto paged = device.buffer_device_address;
         const auto transforms = paged ? ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
         const auto properties = paged ? EMeshInstanceBinding::PAGED_ROOT : EMeshInstanceBinding::PROPERTIES;
         binding.resources = {
             {"readback", owner(GBufferCaptureDescriptor::descriptor.type)},
+            {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::transforms_binding}, transform_storage, static_cast<std::uint32_t>(transforms)},
             {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties)},
@@ -1225,7 +1226,7 @@ int main(int argc, char** argv)
             camera.inverse_view_projection[14] = 1.F;
             camera.position_near = {0, 0, 1.1F, .1F};
             camera.direction_far = {0, 0, -1, 1.1F};
-            call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&camera, 1}});
+            call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&camera, 1}});
             base_matrices[0][12] = -.6F;
             base_matrices[0][14] = .25F;
             base_matrices[1][12] = .1F;
@@ -1446,7 +1447,10 @@ int main(int argc, char** argv)
             auto binding = mesh_binding();
             for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
                 binding.resources.push_back({std::string{Lighting::light_bindings[i]}, light_storage, i});
-            binding.view_parameters = set_view(scope, input);
+            binding.resources.push_back({
+                std::string{ViewParameterResource::snapshot_binding}, set_view(scope, input),
+                0, EJobResourceUse::CPU_SNAPSHOT
+            });
             const auto readback = GraphCaptureBuffer::bind(
                 *client, commands, session, scope, {&pixels},
                 {.result = &visible_commands, .bytes = kMeshWindingCount * sizeof(nri::DrawIndexedDesc)}
@@ -1468,8 +1472,11 @@ int main(int argc, char** argv)
             auto invalid = view_parameters;
             invalid.direction_far[3] = 0;
             const std::array invalid_batch{moved, invalid};
+            const auto camera_resource = call<QueryResource>(*client, commands, {
+                session, view_scope, kViewParameterResourceName
+            }).resource_id;
             const auto rejected = call<ViewParameterCommands::Update>(
-                *client, commands, {binding.view_parameters, invalid_batch}, false
+                *client, commands, {camera_resource, invalid_batch}, false
             );
             CHECK(rejected.error.type == kFrameContract);
             CHECK(packet.addData<ViewParameterResource>(moved));
@@ -2276,7 +2283,10 @@ int main(int argc, char** argv)
     auto invalid_binding = mesh_binding();
     for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
         invalid_binding.resources.push_back({std::string{Lighting::light_bindings[i]}, light_storage, i});
-    invalid_binding.view_parameters = set_view({scene, invalid_view}, initial_camera);
+    invalid_binding.resources.push_back({
+        std::string{ViewParameterResource::snapshot_binding}, set_view({scene, invalid_view}, initial_camera),
+        0, EJobResourceUse::CPU_SNAPSHOT
+    });
     const auto invalid_attachment = startRenderJob(
         *client, commands, session, scene, invalid_view, invalid_target, invalid_effect, invalid_binding
     );
@@ -2285,7 +2295,7 @@ int main(int argc, char** argv)
     const auto shared_target = call<CreateTarget>(*client, commands, {session, target}).target;
     auto other_camera = initial_camera;
     other_camera.background = {.1F, .2F, .3F, 1};
-    invalid_binding.view_parameters = set_view({scene, shared_view}, other_camera);
+    invalid_binding.resources.back().resource = set_view({scene, shared_view}, other_camera);
     const auto shared_attachment = startRenderJob(
         *client, commands, session, scene, shared_view, shared_target, invalid_effect, invalid_binding
     );
@@ -2339,7 +2349,10 @@ int main(int argc, char** argv)
         auto view = call<CreateView>(*client, commands, {scene}).view;
         auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         auto binding = mesh_binding();
-        binding.view_parameters = set_view({scene, view}, camera);
+        binding.resources.push_back({
+            std::string{ViewParameterResource::snapshot_binding}, set_view({scene, view}, camera),
+            0, EJobResourceUse::CPU_SNAPSHOT
+        });
         const auto readback = GraphCaptureBuffer::bind(
             *client, commands, session, {scene, view}, {&pixels, rdesc::ETextureFormat::D32_SFLOAT}
         );

@@ -73,10 +73,10 @@ namespace lux::render
 
     RenderResult<std::vector<std::uint32_t>>
     RenderServer::Impl::bindEffectResources(
-        const detail::DeviceEntry& entry,
+        detail::DeviceEntry& entry, ViewRequest job_scope,
         std::span<const EffectStorageImport> declarations,
         std::span<const JobResourceInput> inputs
-    ) const noexcept
+    ) noexcept
     {
         auto& registry = runtime_->resources_;
         if (std::ranges::adjacent_find(inputs, {}, &JobResourceInput::binding) != inputs.end())
@@ -125,6 +125,15 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kStorageMismatch, {i}});
                 if (!ops_snapshot->create || !ops_snapshot->capture)
                     return cxx::unexpected(RenderError{kStorageContract, {i}});
+                if (type->scope == ESnapshotScope::JOB_LOCAL)
+                {
+                    const auto declaration_id = registry.declarationOf(input.resource);
+                    auto owner = resourceScope(entry, job_scope, declaration_id, false);
+                    if (!owner) return cxx::unexpected(owner.error());
+                    auto local = (*owner)->query(entry.resourceCreateContext(), declaration_id);
+                    if (!local) return cxx::unexpected(local.error());
+                    if (*local != input.resource) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+                }
                 if (ops_snapshot->type.hash() != type->hash || ops_snapshot->type.name() != type->name)
                     return cxx::unexpected(RenderError{kStorageMismatch, {i}});
             }

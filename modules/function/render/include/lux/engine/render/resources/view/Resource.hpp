@@ -31,6 +31,7 @@ namespace lux::render
 
     struct ViewParameterResource final
     {
+        static constexpr std::string_view snapshot_binding = "view_parameters";
         using Commands = std::tuple<ViewParameterCommands::Update>;
         using PerFrameData = std::tuple<ViewGpuParameters>;
         using Config = void;

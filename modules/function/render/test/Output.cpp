@@ -122,6 +122,7 @@ template <> struct lux::render::ConstantBlockTraits<TestUniformBlock> final
 struct ProducerSourceConfig final
 {
     lux::render::GraphCpuDataId output;
+    lux::render::GraphStorageSnapshotId camera;
     std::shared_ptr<const int> lifetime;
 };
 
@@ -1526,12 +1527,20 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     {
     public:
         using Configuration = ProducerSourceConfig;
-        using LinkedData = PreparedDataSlot<std::uint32_t>;
+        struct LinkedData final
+        {
+            PreparedDataSlot<std::uint32_t> output;
+            StorageSnapshotSlot<ViewGpuParameters> camera;
+        };
 
         static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
         {
             ++source_links;
-            return link.resolveCpuData<std::uint32_t>(config.output);
+            const auto output = link.resolveCpuData<std::uint32_t>(config.output);
+            if (!output) return lux::cxx::unexpected(output.error());
+            const auto camera = link.resolveStorageSnapshot<ViewGpuParameters>(config.camera);
+            if (!camera) return lux::cxx::unexpected(camera.error());
+            return LinkedData{*output, *camera};
         }
 
         struct Workspace final
@@ -1558,14 +1567,14 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (selected == ETestProducerResult::OMIT_OUTPUT) return {};
             if (selected == ETestProducerResult::FAIL_AFTER_WRITE)
             {
-                if (auto staged = frame.publish(linked, 0xbad0bad0u); !staged) return staged;
+                if (auto staged = frame.publish(linked.output, 0xbad0bad0u); !staged) return staged;
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             }
-            const auto view = frame.viewParameters();
+            const auto view = frame.readStorage(linked.camera);
             if (!view) return lux::cxx::unexpected(view.error());
             CHECK(view->revision > workspace.view_revision);
             workspace.view_revision = view->revision;
-            return frame.publish(linked, std::bit_cast<std::uint32_t>(view->value.background[0]));
+            return frame.publish(linked.output, std::bit_cast<std::uint32_t>(view->value.get().background[0]));
         }
     };
 
@@ -1743,11 +1752,16 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }));
         if (args != "missing")
         {
+            const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
+                ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
+                ESnapshotScope::JOB_LOCAL
+            ));
             auto lifetime = std::make_shared<const int>(0);
             if (args.empty()) producer_source_lifetime = lifetime;
             CHECK(context.addPreparation({
                 ProducerFactory::make<TestValueProducer>(),
-                take(ConfigValue::make(ProducerSourceConfig{slot, std::move(lifetime)})), {}, {slot}, {}, {companion.pass}
+                take(ConfigValue::make(ProducerSourceConfig{slot, camera, std::move(lifetime)})),
+                {}, {slot}, {}, {companion.pass}, {}, {camera}
             }));
         }
         // The unused preparation has an unlinkable configuration. Even a dead cycle has to be rejected.
@@ -2855,6 +2869,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         EffectGraphEdit edit{*request.graph};
         request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
         const auto node = take(edit.addNode(storage_capability, selection, std::string{arguments}));
+        // The unconnected node consumes a local View when live. These Jobs bind only their Buffer inputs.
+        if (selection == storage_selection && arguments.empty())
+            take(edit.addNode(storage_capability, producer_selection));
         CHECK(edit.setOutput("readback", edit.pinId(node, node_bytes), false));
         CHECK(edit.commit());
         return call<CreateEffect>(*client, commands, std::move(request)).effect;
@@ -3010,10 +3027,13 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto first_view_data = make_resource(producer_view, kViewParameterResourceName);
     const auto peer_view_data = make_resource(producer_peer_view, kViewParameterResourceName);
     auto first_binding = producer_binding(first_data);
-    first_binding.view_parameters = peer_view_data;
-    first_binding.view_parameters = first_view_data;
+    first_binding.resources.push_back({
+        std::string{ViewParameterResource::snapshot_binding}, first_view_data, 0, EJobResourceUse::CPU_SNAPSHOT
+    });
     auto peer_binding = producer_binding(peer_data);
-    peer_binding.view_parameters = peer_view_data;
+    peer_binding.resources.push_back({
+        std::string{ViewParameterResource::snapshot_binding}, peer_view_data, 0, EJobResourceUse::CPU_SNAPSHOT
+    });
     ViewGpuParameters first_view_parameters, peer_view_parameters;
     first_view_parameters.background[0] = std::bit_cast<float>(0x3c3c3c3cu);
     peer_view_parameters.background[0] = std::bit_cast<float>(0x5b5b5b5bu);
@@ -3025,12 +3045,16 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(source_links.load() == source_before + 1 && sink_links.load() == sink_before + 1);
     CHECK(!source_instances.load() && producer_source_lifetime.expired());
     call<PrepareEffect>(*client, commands, {producer_effect, device});
-    first_binding.view_parameters = peer_view_data;
+    auto missing_camera = first_binding;
+    missing_camera.resources.pop_back();
+    CHECK(call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, missing_camera}, false)
+        .error.type == kStorageIdentity);
+    first_binding.resources.back().resource = peer_view_data;
     const auto mismatched = call<StartRenderJob>(
         *client, commands, {device, prepared_job, producer_target, first_binding}, false
     );
     CHECK(mismatched.error.type == kStorageMismatch);
-    first_binding.view_parameters = first_view_data;
+    first_binding.resources.back().resource = first_view_data;
     call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, first_binding});
     reject_sink_workspace = true;
     const auto rejected_workspace = call<StartRenderJob>(
@@ -3052,7 +3076,30 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(packet.seal());
     CHECK(call<UpdateFrameData>(*client, commands, {prepared_job, &packet}, false).error.type == kFrameContract);
     packet.release();
-    const auto prepared_first = call<RequestRenderJob>(*client, commands, {prepared_job});
+    auto wrong_camera = first_binding;
+    wrong_camera.resources.back().resource = peer_view_data;
+    const auto rejected_camera = call<RebindRenderJobEffect>(
+        *client, commands, {device, prepared_job, producer_effect, producer_target, wrong_camera}, false
+    );
+    CHECK(rejected_camera.error.type == kStorageMismatch);
+    using SubmitGate = UniformUploadProbe::EPipelineGate;
+    auto frame_client = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(frame_client);
+    UniformUploadProbe::submission_gate = SubmitGate::ARMED;
+    auto frozen_view = std::async(std::launch::async, [&]
+    {
+        return call<RequestRenderJob>(*frame_client, commands, {prepared_job});
+    });
+    const auto freeze_deadline = Clock::now() + 10s;
+    while (UniformUploadProbe::submission_gate != SubmitGate::HELD)
+    {
+        CHECK(Clock::now() < freeze_deadline);
+        std::this_thread::yield();
+    }
+    call<ViewParameterCommands::Update>(*client, commands, {first_view_data, std::span{&changed_view, 1}});
+    UniformUploadProbe::submission_gate = SubmitGate::OPEN;
+    UniformUploadProbe::submission_gate.notify_all();
+    const auto prepared_first = frozen_view.get();
     producer_result = ETestProducerResult::FAIL_AFTER_WRITE;
     CHECK(call<RequestRenderJob>(*client, commands, {prepared_job}, false).error.type == kFrameContract);
     producer_result = ETestProducerResult::OMIT_OUTPUT;
@@ -3079,13 +3126,14 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         const auto frame = std::span{capture.frames[slot]}.first(effect_capture_bytes);
         CHECK(std::ranges::all_of(frame, [expected](std::byte byte) noexcept { return byte == expected; }));
     };
-    if (prepared_first.slot_index != prepared_recovered.slot_index)
-        verify_prepared(2, prepared_first.slot_index, std::byte{0x3c});
+    CHECK(prepared_first.slot_index != prepared_recovered.slot_index);
+    verify_prepared(2, prepared_first.slot_index, std::byte{0x3c});
     verify_prepared(2, prepared_recovered.slot_index, std::byte{0x4d});
     verify_prepared(3, prepared_peer_first.slot_index, std::byte{0x5b});
     call<RemoveTarget>(*client, commands, producer_target);
     call<RemoveTarget>(*client, commands, producer_peer_target);
     call<RemoveEffect>(*client, commands, {producer_effect});
+    std::puts("VIEW SNAPSHOTS: missing live input and foreign rebind rejected; frozen 0x3c, next 0x4d, peer 0x5b");
     std::puts("PRODUCER PASS: joint liveness, shared prototype, failure propagation, and native View parameter readback");
 
     const auto stream_effect = make_storage_effect(stream_selection, "");
@@ -5003,13 +5051,14 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     JobBinding binding;
     if (visibility)
     {
-        binding.view_parameters = call<GetOrCreateResource>(*client, commands, {
+        const auto camera_resource = call<GetOrCreateResource>(*client, commands, {
             device, ViewRequest{scene, view}, kViewParameterResourceName
         }).resource_id;
         ViewGpuParameters parameters;
-        call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&parameters, 1}});
+        call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
         binding.resources = {
             {"readback", readback},
+            {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::transforms_binding}, transforms, static_cast<std::uint32_t>(transform_role)},
             {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties_role)}
@@ -5032,7 +5081,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         call<StartRenderJob>(*client, commands, {device, job, target, binding});
         const auto inside = call<RequestRenderJob>(*client, commands, {job});
         parameters.view[12] = 5;
-        call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&parameters, 1}});
+        call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
         const auto outside = call<RequestRenderJob>(*client, commands, {job});
         call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
         call<InstanceCommands::ReleaseInstance>(*client, commands, {reflected});
@@ -5317,17 +5366,20 @@ static void lightingGraphOutput(bool d3d12)
         return call<GetOrCreateResource>(*client, commands, {device, ViewRequest{scene, owner}, type}).resource_id;
     };
     JobBinding binding;
-    binding.view_parameters = view_resource(view, kViewParameterResourceName);
+    const auto camera_resource = view_resource(view, kViewParameterResourceName);
     binding.resources.push_back({"readback", view_resource(view, EffectCaptureDescriptor::descriptor.type)});
     for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
         binding.resources.push_back({std::string{Lighting::light_bindings[i]}, light_resource, i});
+    binding.resources.push_back({
+        std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT
+    });
     auto parameters = ViewGpuParameters{};
     parameters.position_near[2] = 2;
     parameters.direction_far[3] = 4;
     // A forward depth ray runs from world z=1 to z=0, in the view's -Z direction.
     parameters.inverse_view_projection[10] = -1;
     parameters.inverse_view_projection[14] = 1;
-    call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&parameters, 1}});
+    call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
     const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     auto malformed = binding;
     malformed.resources[1].projection = static_cast<std::uint32_t>(EDirectLightingBuffer::COUNTS);
@@ -5347,9 +5399,10 @@ static void lightingGraphOutput(bool d3d12)
     const auto draw = [&](EffectId selected)
     {
         const auto selected_view = call<CreateView>(*client, commands, {scene}).view;
-        binding.view_parameters = view_resource(selected_view, kViewParameterResourceName);
+        const auto selected_camera = view_resource(selected_view, kViewParameterResourceName);
+        binding.resources.back().resource = selected_camera;
         binding.resources.front().resource = view_resource(selected_view, EffectCaptureDescriptor::descriptor.type);
-        call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&parameters, 1}});
+        call<ViewParameterCommands::Update>(*client, commands, {selected_camera, std::span{&parameters, 1}});
         const auto selected_job = call<CreateRenderJob>(*client, commands, {
             scene, selected_view, selected, EJobCadence::REQUESTED
         }).job;

@@ -578,11 +578,14 @@ namespace
         stage.runtime_stream_programs = true;
         RasterWork raster;
         raster.program = std::move(stage);
-        raster.viewport = RasterViewport{1.0f / width, 0, 1.0f - 1.0f / width, 1};
+        const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
+            ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
+            ESnapshotScope::JOB_LOCAL
+        ));
         raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
         auto draw = take(builder.addRasterPass("two programs", std::move(raster)));
         auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
-            draw.pass, alias, context.shaderTarget(), mode == "stale-code"
+            draw.pass, alias, camera, context.shaderTarget(), mode == "stale-code"
         }));
         auto program_builder = RasterProgramBuilder::make<ProgramDraws, &ProgramDraws::buildPrograms>();
         if (mode == "no-build") program_builder = {};
@@ -592,7 +595,7 @@ namespace
             program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
         auto added = context.addPreparation({
             ProducerFactory::make<ProgramDraws>(), std::move(configuration), {}, {}, {},
-            {draw.pass}, {}, {code, alias}, {code, alias}, program_builder
+            {draw.pass}, {}, {code, alias, camera}, {code, alias}, program_builder
         });
         if (!added) return added;
         return context.publish(color, {{color, draw.written.front()}});
@@ -891,10 +894,23 @@ int main(int argc, char** argv)
         const auto code = call<GetOrCreateResource>(*client, commands, {
             session, DeviceScope{}, sdk_programs::CodeStorage::descriptor.type
         }).resource_id;
+        const auto camera_for = [&](ViewId owner, unsigned inset)
+        {
+            const auto camera = call<GetOrCreateResource>(*client, commands, {
+                session, ViewRequest{scene, owner}, kViewParameterResourceName
+            }).resource_id;
+            ViewGpuParameters parameters;
+            const auto left = static_cast<float>(inset) / width;
+            parameters.viewport = {left, 0, 1 - left, 1};
+            call<ViewParameterCommands::Update>(*client, commands, {camera, std::span{&parameters, 1}});
+            return camera;
+        };
+        const auto camera_resource = camera_for(view, 1);
         JobBinding binding;
         binding.resources = {
             {"capture", readback}, {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
-            {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT}
+            {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT}
         };
         for (auto mode : {"no-build", "wrong-inputs", "missing-map"})
         {
@@ -939,9 +955,6 @@ int main(int argc, char** argv)
         CHECK(Store::builds == failed_builds);
         stopAndRemoveJob(*client, commands, stale);
         const auto effect = create_capture("raster-pixels");
-        binding.view_parameters = call<GetOrCreateResource>(*client, commands, {
-            session, ViewRequest{scene, view}, kViewParameterResourceName
-        }).resource_id;
         const auto job = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
         Store::gate = Gate::ARMED;
         auto requested = std::async(std::launch::async, [&]
@@ -973,7 +986,7 @@ int main(int argc, char** argv)
         const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
         const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
         auto peer_binding = binding;
-        peer_binding.view_parameters = {};
+        peer_binding.resources.back().resource = camera_for(peer_view, 2);
         peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
             session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
         }).resource_id;
@@ -994,8 +1007,9 @@ int main(int argc, char** argv)
         const auto stable_captures = Store::captures.load();
         call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
         ViewGpuParameters unrelated;
+        unrelated.viewport = {1.0f / width, 0, 1.0f - 1.0f / width, 1};
         unrelated.background[0] = 0.5f;
-        call<ViewParameterCommands::Update>(*client, commands, {binding.view_parameters, std::span{&unrelated, 1}});
+        call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&unrelated, 1}});
         for (unsigned i = 0; i < 8; ++i)
         {
             call<QueryExecutionProgress>(*client, commands, restarted);
@@ -1045,7 +1059,7 @@ int main(int argc, char** argv)
                     // Green covers the right half. Red covers both halves when drawn last for the peer.
                     const std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
                     const auto& foreground = (i == 1 || x < width / 2) ? red : green;
-                    const auto& expected = x == 0 ? blue : foreground;
+                    const auto& expected = x < (i == 1 ? 2u : 1u) ? blue : foreground;
                     if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
                     {
                         std::fprintf(stderr, "Raster output %zu pixel (%u,%u) = %u %u %u %u\n", i, x, y,

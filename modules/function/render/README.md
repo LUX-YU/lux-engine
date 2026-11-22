@@ -121,7 +121,7 @@ Editor consumer.
 
 The built-in `Lighting` node consumes a GBuffer surface and an optional connected shadow bundle. Its
 `direct` implementation binds the four `EDirectLightingBuffer` projections of a scene `LightResource`
-and takes its View data from `JobBinding::view_parameters`. `SetLightingEnvironment` updates the node's
+and takes its View data from its named `ViewParameterResource::snapshot_binding` CPU snapshot. `SetLightingEnvironment` updates the node's
 ambient radiance. Its HDR output connects to `ToneMapping`.
 Select `Lighting::clustered` to build the bounds, count, scan and fill passes inside the node. The
 default grid is 16 by 9 by 24, with logarithmic depth and capacity for 65,536 light indices. Override it
@@ -155,6 +155,8 @@ Use `importStorageSnapshot<T>()` for CPU preparation data supplied by a Resource
 with `resolveStorageSnapshot<T>()`. The Resource registers a capture function for the owning value type.
 Each Job retains its actual Resource owner and reuses its own snapshot storage. Selection finishes before the
 producer callbacks, and the reference returned by `readStorage()` is valid for the current callback.
+Pass `ESnapshotScope::JOB_LOCAL` when the named input requires the Resource in the Job’s own scope.
+The default permits a named input to share a Resource on the same device.
 CPU snapshot inputs create no graph Buffer, GPU view, or barrier. Declare any GPU access to the same owner
 through a GPU binding as well.
 
@@ -178,7 +180,7 @@ The snapshot also carries each instance's material program identity and a dedupl
 arena offsets and bounds. Geometry records are selected on the Server owner with the instance identities.
 
 The built-in `MeshVisibility` camera implementation generates a `draws` bundle with the group table,
-visible members, and indexed indirect commands. Bind the Job's `view_parameters` and use the named
+visible members, and indexed indirect commands. Bind the Job's named View snapshot and use the named
 `mesh.instances`, `mesh.properties`, `mesh.transforms`, and contiguous `mesh.alive` inputs.
 The address-enabled implementation reads both instance fields through the `PAGED_ROOT` projection.
 The node defaults to frustum culling. Pass `frustum-culling=false` as the node argument to keep every enabled instance
@@ -1309,11 +1311,12 @@ projection. The batch qualifies every record and field before adopting any value
 supplies each FIF's upload, and the full material update command handles texture and structural changes.
 
 To supply a View block, create `kViewParameterResourceName` with `GetOrCreateResource` in the Job's device and
-`ViewRequest` scope. Set `JobBinding::view_parameters` to that Resource identity. The application supplies complete
+`ViewRequest` scope. Add a `JobResourceInput` with the name `ViewParameterResource::snapshot_binding`,
+that Resource identity, projection zero and `EJobResourceUse::CPU_SNAPSHOT` to `JobBinding::resources`. The application supplies complete
 `ViewGpuParameters`, including column-major matrices, and publishes through `ViewParameterCommands::Update` or the
 `ViewParameterResource` FrameData column. Each batch validates every value before applying the last element.
-At round admission, the Job selects the value and revision. Updates after that selection take effect in subsequent rounds.
-Producers read the selected values through `FramePreparation::viewParameters()` and write complete shader
+At frame preparation, the Job captures the value and revision. Updates after that selection take effect in subsequent rounds.
+Producers read the selected values through `readStorage()` on the linked typed slot and write complete shader
 constant blocks. `SetToneMappingExposure` addresses a ToneMapping node by EffectId and NodeId. Compilation
 validates the block's reflected ABI and links its writer. Before Freeze, a changed exposure revision updates the
 writable FIF replica and invalidates the recording that references that block.

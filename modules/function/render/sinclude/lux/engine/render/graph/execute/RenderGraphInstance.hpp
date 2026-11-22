@@ -13,7 +13,6 @@
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
-#include <lux/engine/render/resources/view/Parameters.hpp>
 
 namespace lux::render::detail
 {
@@ -67,10 +66,6 @@ namespace lux::render::detail
             std::uint32_t frame, ResourceUploader*, std::vector<PreparedBufferCopy>&
         ) noexcept;
         void settlePreparedBuffer(std::uint32_t, const PreparedBufferCopy&, SubmissionPoint, RenderError) noexcept;
-        void selectViewParameters(const ViewGpuParameters& value, std::uint64_t revision) noexcept
-        {
-            view_parameters_ = {value, revision};
-        }
         [[nodiscard]] bool hasExclusiveProgramInput() const noexcept;
         [[nodiscard]] std::uint64_t programInputRevision() const noexcept { return program_input_revision_; }
         [[nodiscard]] bool needsProgramBuild() const noexcept
@@ -379,7 +374,6 @@ namespace lux::render::detail
         std::uint64_t preparation_generation_ = 0;
         std::uint64_t preparation_revision_ = 0;
         std::span<const LinkedUniformBlock> uniform_blocks_;
-        PreparedCpuValue<ViewGpuParameters> view_parameters_{};
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
         const RenderGraphExecutable* plan_;

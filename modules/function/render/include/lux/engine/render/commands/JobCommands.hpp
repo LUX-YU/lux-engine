@@ -79,7 +79,6 @@ namespace lux::render
         JobInputs inputs;
         std::vector<TargetImageInput> target_images;
         std::vector<JobResourceInput> resources{};
-        ResourceInstanceId view_parameters{}; // Optional ViewParameterResource in this Job's device and View scope.
     };
 
     struct CreateRenderJob final

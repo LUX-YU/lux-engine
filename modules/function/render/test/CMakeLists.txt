@@ -187,6 +187,9 @@ if(WIN32)
     add_test(NAME render.effect.mesh_imports_d3d12 COMMAND render_output_test --mesh-imports d3d12)
     set_tests_properties(render.effect.mesh_imports_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
+    add_test(NAME render.effect.mesh_imports_paged_d3d12 COMMAND render_output_test --mesh-imports d3d12 paged)
+    set_tests_properties(render.effect.mesh_imports_paged_d3d12 PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+
     add_test(NAME render.effect.mesh_visibility_d3d12 COMMAND render_output_test --mesh-visibility d3d12)
     set_tests_properties(render.effect.mesh_visibility_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 

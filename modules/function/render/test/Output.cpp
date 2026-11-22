@@ -35,7 +35,7 @@
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/render/resources/mesh/Resource.hpp>
 #include <lux/engine/render/resources/texture/Resource.hpp>
-#include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
+#include <lux/engine/render/resource/transform/TransformRecords.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
 #include <lux/engine/render/resources/transform/Resource.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
@@ -899,45 +899,69 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     };
     std::array submitted{session->makeFrontiers(), session->makeFrontiers(), session->makeFrontiers()};
     auto completed = session->makeFrontiers();
-    TransformSlotRetirement retirement;
     constexpr unsigned width = 16'384;
-    std::vector<std::uint32_t> free;
-    free.reserve(width * submitted.size());
+    TransformRecords records{{1, 1}};
+    using Identity = extension_detail::ResourceIdentity;
+    const auto collect = [&](bool active)
+    {
+        session->readCompleted(completed);
+        records.collect(active, submitted, completed);
+    };
     for (unsigned round = 0; round < submitted.size(); ++round)
     {
         submitted[round].accept(accept(graphics, graphics_gate));
         for (unsigned slot = 0; slot < width; ++slot)
         {
-            // The second round acquires a compute receipt after some releases have already arrived.
             if (round && slot == (round == 1 ? width / 2 : 0)) submitted[round].accept(accept(compute, compute_gate));
             const bool active = round == 1 && slot < width / 2;
-            retirement.release(round * width + slot);
-            session->readCompleted(completed);
-            retirement.collect(active, submitted, completed, free);
-            CHECK(free.empty());
+            const auto id = records.insert(kIdentityTransform);
+            const auto key = Identity::local(id);
+            CHECK(key.index == round * width + slot && key.gen == 1);
+            if (slot == 0)
+            {
+                records.retainInstance(id);
+                const auto busy = records.release(id);
+                CHECK(!busy && busy.error().type == kDeviceBusy && records.contains(id));
+                records.releaseInstance(id);
+            }
+            CHECK(records.release(id) && !records.contains(id));
+            auto future = key;
+            ++future.gen;
+            CHECK(!records.contains(Identity::make<TransformId>(records.owner(), future)));
+            collect(active);
         }
     }
     CHECK(graphics.poll() && compute.poll());
-    session->readCompleted(completed);
-    retirement.collect(false, submitted, completed, free);
-    CHECK(free.empty());
+    collect(false);
+    CHECK(Identity::local(records.insert(kIdentityTransform)).index == width * 3);
 
+    const auto verify_reuse = [&](unsigned first, unsigned count)
+    {
+        std::vector<bool> seen(count);
+        for (unsigned i = 0; i < count; ++i)
+        {
+            const auto id = records.insert(kIdentityTransform);
+            const auto key = Identity::local(id);
+            CHECK(key.index >= first && key.index - first < count && key.gen == 2);
+            CHECK(!seen[key.index - first] && records.contains(id));
+            seen[key.index - first] = true;
+        }
+    };
     graphics_gate.signal();
     CHECK(take(graphics.wait(graphics.submitted(), 5'000'000'000)));
-    CHECK(compute.poll());
-    session->readCompleted(completed);
-    retirement.collect(false, submitted, completed, free);
-    CHECK(free.size() == width && !retirement.empty());
+    collect(false);
+    CHECK(records.hasRetired());
+    verify_reuse(0, width);
+    CHECK(Identity::local(records.insert(kIdentityTransform)).index == width * 3 + 1);
 
     compute_gate.signal();
     CHECK(take(compute.wait(compute.submitted(), 5'000'000'000)));
-    session->readCompleted(completed);
-    retirement.collect(false, submitted, completed, free);
-    CHECK(retirement.empty() && free.size() == width * submitted.size());
-    for (std::uint32_t i = 0; i < free.size(); ++i) CHECK(free[i] == i);
+    collect(false);
+    CHECK(!records.hasRetired());
+    verify_reuse(width, width * 2);
     CHECK(session->drain() && validation.errors == 0);
-    std::printf("TRANSFORM RETIREMENT PASS: 49152 releases, both held=0, graphics complete=16384, "
-                "both complete=49152, late compute receipt protected\n");
+    std::puts("TRANSFORM RETIREMENT PASS: 49152 logical IDs invalidated; graphics released 16384 indices, "
+              "compute released 32768; all reused once with generation 2");
     return 0;
 }
 
@@ -4911,7 +4935,7 @@ static void meshRasterStream(bool d3d12)
 
 static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffer_visibility)
 {
-    constexpr auto result_bytes = sizeof(std::uint32_t) * 4;
+    constexpr auto result_bytes = sizeof(std::uint32_t) * 5;
     static std::atomic_uint64_t observed_revision{};
     static MeshId expected_mesh;
     class Producer final
@@ -5115,6 +5139,12 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     program.programs.push_back({rdesc::EMaterialPurpose::FORWARD, "", kEffectStreamInline.load(program.target)});
     const auto registered = call<MaterialCommands::RegisterProgram>(*client, commands, {materials, std::move(program)});
     const auto material = call<MaterialCommands::CreateInstance>(*client, commands, {registered.program, {}, {}}).material;
+    if (!visibility)
+    {
+        const std::vector<TransformMatrix> prefix(kMeshInstancePageSlots - 1, kIdentityTransform);
+        const auto records = call<TransformCommands::Create>(*client, commands, {transforms, prefix});
+        CHECK(records.transforms.size() == prefix.size());
+    }
     auto matrix = kIdentityTransform;
     matrix[0] = 3;
     const auto transform = call<TransformCommands::Create>(*client, commands, {
@@ -5223,21 +5253,52 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     const auto bad = create_effect(paged ? "paged-write" : "write");
     CHECK(call<PrepareEffect>(*client, commands, {bad, device}, false).error.type == kGraphInvalidDescriptor);
     call<RemoveEffect>(*client, commands, {bad});
-    const auto job = create_job(paged ? "paged" : "");
+    const auto effect = create_effect(paged ? "paged" : "");
+    call<PrepareEffect>(*client, commands, {effect, device});
+    const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     auto wrong = binding;
     wrong.resources[3].projection = static_cast<std::uint32_t>(
         paged ? EMeshInstanceBinding::PROPERTIES : EMeshInstanceBinding::PAGED_ROOT
     );
     CHECK(call<StartRenderJob>(*client, commands, {device, job, target, wrong}, false).error.type == kStorageMismatch);
     call<StartRenderJob>(*client, commands, {device, job, target, binding});
+    const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
+    const auto peer_target = call<CreateTarget>(*client, commands, {
+        device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
+    }).target;
+    auto peer_binding = binding;
+    peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
+        device, ViewRequest{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
+    }).resource_id;
+    const auto peer = startRenderJob(*client, commands, device, scene, peer_view, peer_target, effect, peer_binding);
     const auto first = call<RequestRenderJob>(*client, commands, {job});
     const auto revision = observed_revision.load();
-    CHECK(revision != 0);
+    const auto first_key = extension_detail::ResourceIdentity::local(transform);
+    CHECK(revision != 0 && first_key.index == kMeshInstancePageSlots - 1);
+
+    auto next_matrix = kIdentityTransform;
+    next_matrix[0] = 5;
+    const auto next = call<TransformCommands::Create>(*client, commands, {
+        transforms, std::span{&next_matrix, 1}
+    }).transforms.front();
+    const auto next_key = extension_detail::ResourceIdentity::local(next);
+    CHECK(next_key.index == kMeshInstancePageSlots);
     matrix[0] = 11;
     const TransformRecordUpdate update{transform, matrix};
     call<TransformCommands::Update>(*client, commands, {transforms, std::span{&update, 1}});
-    const auto changed = call<RequestRenderJob>(*client, commands, {job});
+    const auto after_growth = call<RequestRenderJob>(*client, commands, {peer});
     CHECK(observed_revision == revision);
+    const auto rebind = [&](TransformId id)
+    {
+        const MeshInstanceUpdate change{instance, {expected_mesh, material, 0, id, true, false}};
+        call<InstanceCommands::Update>(*client, commands, {instances, std::span{&change, 1}});
+    };
+    rebind(next);
+    const auto next_page = call<RequestRenderJob>(*client, commands, {peer});
+    const auto next_fif = call<RequestRenderJob>(*client, commands, {peer});
+    rebind(transform);
+    const auto changed = call<RequestRenderJob>(*client, commands, {job});
+    CHECK(observed_revision == revision); // Rebinding a Transform preserves the Mesh draw selection.
     call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
     const auto removed = call<RequestRenderJob>(*client, commands, {job});
     CHECK(observed_revision > revision);
@@ -5246,24 +5307,71 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         const auto dependencies = call<ReadPagedDependencies>(*client, commands, {readback, instances});
         for (const auto count : dependencies.counts) CHECK(count == 3);
     }
+    stopAndRemoveJob(*client, commands, peer);
+    call<RemoveView>(*client, commands, {scene, peer_view});
     stopAndRemoveJob(*client, commands, job);
     call<RemoveView>(*client, commands, {scene, view});
+    const auto retirement_deadline = Clock::now() + 10s;
+    while (!EffectCaptureBuffer::pixels[0].ready || !EffectCaptureBuffer::pixels[1].ready)
+    {
+        CHECK(Clock::now() < retirement_deadline);
+        std::this_thread::yield();
+    }
+    call<TransformCommands::Release>(*client, commands, transform);
+    CHECK(call<TransformCommands::Update>(*client, commands, {transforms, std::span{&update, 1}}, false)
+        .error.type == kStorageIdentity);
+    matrix[0] = 17;
+    const auto replacement = call<TransformCommands::Create>(*client, commands, {
+        transforms, std::span{&matrix, 1}
+    }).transforms.front();
+    const auto recycled = extension_detail::ResourceIdentity::local(replacement);
+    CHECK(recycled.index == first_key.index && recycled.gen == first_key.gen + 1);
+    CHECK(call<TransformCommands::Release>(*client, commands, transform, false).error.type == kStorageIdentity);
+    const auto new_instance = call<InstanceCommands::CreateInstance>(*client, commands, {
+        instances, {expected_mesh, material, 0, replacement, true, false}
+    }).instance;
+    CHECK(call<TransformCommands::Release>(*client, commands, replacement, false).error.type == kDeviceBusy);
+    const auto new_view = call<CreateView>(*client, commands, {scene}).view;
+    binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
+        device, ViewRequest{scene, new_view}, EffectCaptureDescriptor::descriptor.type
+    }).resource_id;
+    const auto restarted = startRenderJob(*client, commands, device, scene, new_view, target, effect, binding);
+    const auto reused = call<RequestRenderJob>(*client, commands, {restarted});
+    stopAndRemoveJob(*client, commands, restarted);
+    call<RemoveView>(*client, commands, {scene, new_view});
+    call<InstanceCommands::ReleaseInstance>(*client, commands, {new_instance});
+    call<TransformCommands::Release>(*client, commands, replacement);
+    call<TransformCommands::Release>(*client, commands, next);
     server->stop();
     worker.join();
     CHECK(server->stats().validation_errors == 0);
     CHECK(first.slot_index != changed.slot_index && first.slot_index != removed.slot_index);
     CHECK(changed.slot_index != removed.slot_index);
-    const auto& capture = EffectCaptureBuffer::pixels.front();
-    CHECK(capture.ready.load() == 1 && capture.frames.size() == 3);
-    const auto verify = [&](std::uint32_t slot, std::array<std::uint32_t, 4> expected)
+    const auto verify = [](const CapturedPixels& capture, std::uint32_t slot, std::array<std::uint32_t, 5> expected)
     {
-        std::array<std::uint32_t, 4> actual;
+        CHECK(capture.ready.load() == 1 && capture.frames.size() == 3);
+        std::array<std::uint32_t, 5> actual;
         std::memcpy(actual.data(), capture.frames[slot].data(), sizeof(actual));
+        if (actual != expected)
+            std::fprintf(stderr, "slot=%u count=%u flags=%u alive=%u matrix=%08x index=%u expected=%08x/%u\n",
+                slot, actual[0], actual[1], actual[2], actual[3], actual[4], expected[3], expected[4]);
         CHECK(actual == expected);
     };
-    verify(first.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(3.f)});
-    verify(changed.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(11.f)});
-    verify(removed.slot_index, {});
+    const auto& capture = EffectCaptureBuffer::pixels[0];
+    const auto& peer_capture = EffectCaptureBuffer::pixels[1];
+    verify(capture, first.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(3.f), first_key.index});
+    verify(capture, changed.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(11.f), first_key.index});
+    verify(capture, removed.slot_index, {});
+    verify(peer_capture, after_growth.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(11.f), first_key.index});
+    for (auto slot : {next_page.slot_index, next_fif.slot_index})
+        verify(peer_capture, slot, {1, 1, 1, std::bit_cast<std::uint32_t>(5.f), next_key.index});
+    CHECK(after_growth.slot_index != next_page.slot_index && after_growth.slot_index != next_fif.slot_index);
+    CHECK(next_page.slot_index != next_fif.slot_index);
+    verify(EffectCaptureBuffer::pixels[2], reused.slot_index, {
+        1, 1, 1, std::bit_cast<std::uint32_t>(17.f), recycled.index
+    });
+    std::printf("TRANSFORM INDEX PASS: FIF=3 GPU records=%u/%u reused=%u generation=%u matrix values=3/11/5/17\n",
+        first_key.index, next_key.index, recycled.index, recycled.gen);
     std::printf("MESH IMPORT PASS backend=%s paged=%u native fields, snapshot revision, and read-only qualification\n",
         d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned>(paged));
     return 0;
@@ -6463,7 +6571,8 @@ int main(int argc, char** argv)
     if (probe == "--mesh-imports" || mesh_visibility || gbuffer_visibility)
     {
         const auto mode = argc > 2 ? std::string_view{argv[2]} : std::string_view{};
-        return meshGraphImports(mode == "d3d12", mode == "paged", mesh_visibility || gbuffer_visibility, gbuffer_visibility);
+        const bool paged = mode == "paged" || (argc > 3 && std::string_view{argv[3]} == "paged");
+        return meshGraphImports(mode == "d3d12", paged, mesh_visibility || gbuffer_visibility, gbuffer_visibility);
     }
     if (argc > 1 && std::string_view{argv[1]} == "--effect-graph")
     {

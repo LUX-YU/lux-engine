@@ -55,6 +55,7 @@ void main()
     uint flags = 0;
     uint present = 0;
     float value = 0;
+    uint record = 0;
     if (count != 0)
     {
 #ifdef PAGED_INSTANCES
@@ -62,12 +63,13 @@ void main()
         const PageAddresses alive_page = ((PageAddresses*)address(alive[0].value))[0];
         const Property item = ((Property*)address(property_page.properties))[0];
         present = ((Word*)address(alive_page.alive))[0].value;
-        const uint record = item.transform_record;
+        record = item.transform_record;
         value = ((Transform*)address(transforms[record >> 14].value))[record & 16383].rows[0].x;
 #else
         const Property item = properties[0];
         present = alive[0].value;
-        value = transforms[item.transform_record].rows[0].x;
+        record = item.transform_record;
+        value = transforms[record].rows[0].x;
 #endif
         flags = item.render_flags;
     }
@@ -75,4 +77,5 @@ void main()
     result[1].value = flags;
     result[2].value = present;
     result[3].value = asuint(value);
+    result[4].value = record;
 }

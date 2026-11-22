@@ -1327,10 +1327,11 @@ Create Scene transform records with `TransformCommands::Create` and set `MeshIns
 with other Mesh instances in the same device and Scene. `TransformCommands::Update` and
 `FrameData::appendData<TransformResource, TransformRecordUpdate>()` validate the whole batch before writing.
 Rebinding or removing a Mesh instance releases its old reference. Releasing a referenced transform returns Busy.
-TransformResource owns flat buffers or device-address pages per FIF replica. Mesh properties carry a qualified
-Transform GPU slot, and culling, raster and shadow shaders load the matrix from that binding. Staging detaches its
-selected dirty ranges, so later writes remain pending. Logical release invalidates the identity immediately.
-The GPU slot becomes available after the active round settles and the accepted physical queue frontiers complete.
+TransformResource owns flat buffers or device-address pages per FIF replica. After the owner and generation check,
+the local TransformId index is the property stream's matrix index on every Job and FIF. Paged shaders use its
+upper bits to select a page and its low 14 bits to select the matrix. Staging detaches the selected dirty ranges
+from later updates. Logical release invalidates the ID immediately. The same index can be issued to a new
+generation after the active round closes and all accepted physical queue frontiers complete.
 Releases with the same frontier share a retirement batch. The Transform owner reuses batch rows in FIFO order,
 drops idle slot arrays above 4 KiB, and shrinks excess rows after a backlog subsides.
 

@@ -588,9 +588,9 @@ namespace lux::render::detail
         }
         const auto* description = (*mesh)->find(input.mesh);
         const auto material_slot = (*material)->gpuReference(input.material, frame);
-        const auto transform_slot = transforms_.gpuSlot(input.transform_id);
+        const bool valid_transform = transforms_.contains(input.transform_id);
         const bool invalid_mesh = !description || input.submesh >= description->submeshes.size();
-        const bool invalid_reference = invalid_mesh || !material_slot || !transform_slot;
+        const bool invalid_reference = invalid_mesh || !material_slot || !valid_transform;
         if (invalid_reference)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
@@ -601,7 +601,7 @@ namespace lux::render::detail
             material_slot->record_index,
             input.submesh,
             (input.render_enabled ? kRenderEnabledBit : 0u) | (input.cast_shadow ? 2u : 0u),
-            *transform_slot
+            extension_detail::ResourceIdentity::local(input.transform_id).index
         };
     }
 
@@ -665,7 +665,7 @@ namespace lux::render::detail
         }
         for (const auto& description : selected)
         {
-            if (!transforms_.gpuSlot(description.transform_id))
+            if (!transforms_.contains(description.transform_id))
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
 

@@ -1,13 +1,11 @@
 #pragma once
 
-#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
-#include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
+#include <lux/engine/render/resource/transform/TransformRecords.hpp>
 #include <lux/engine/render/resources/transform/Resource.hpp>
 #include <array>
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -33,19 +31,11 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<std::vector<TransformId>> create(std::span<const TransformMatrix>) noexcept;
         [[nodiscard]] RenderResult<void> update(std::span<const TransformRecordUpdate>) noexcept;
         [[nodiscard]] RenderResult<void> release(TransformId) noexcept;
-        [[nodiscard]] std::optional<std::uint32_t> gpuSlot(TransformId) const noexcept;
-        void retainInstance(TransformId) noexcept;
-        void releaseInstance(TransformId) noexcept;
+        [[nodiscard]] bool contains(TransformId id) const noexcept { return records_.contains(id); }
+        void retainInstance(TransformId id) noexcept { records_.retainInstance(id); }
+        void releaseInstance(TransformId id) noexcept { records_.releaseInstance(id); }
     private:
-        [[nodiscard]] bool canCreate(std::size_t count) const noexcept;
-        [[nodiscard]] TransformId insert(const TransformMatrix&) noexcept;
         static constexpr std::uint32_t kPageSlots = 16'384;
-
-        struct Record final
-        {
-            std::uint32_t gpu_slot;
-            std::uint32_t references = 0;
-        };
 
         struct Replica final
         {
@@ -61,8 +51,6 @@ namespace lux::render::detail
             bool table_staged = false;
         };
 
-        [[nodiscard]] Record* find(TransformId) noexcept;
-        [[nodiscard]] const Record* find(TransformId) const noexcept;
         void collectRetired() noexcept;
         void markDirty(std::uint32_t) noexcept;
 
@@ -75,15 +63,11 @@ namespace lux::render::detail
         void finishPreparation(const ReplicaSettlement&) noexcept;
         void destroy(nri::Buffer*) noexcept;
 
-        ResourceInstanceId id_;
         DeviceSession& session_;
         const FrameProgress& progress_;
         const std::uint32_t frame_count_;
         const bool paged_;
-        cxx::SlotMap<Record, TransformTag> records_;
-        std::vector<TransformMatrix> matrices_{2};
-        std::vector<std::uint32_t> free_slots_{1, 0};
-        TransformSlotRetirement retirement_;
+        TransformRecords records_;
         SubmissionFrontiers completed_;
         std::array<Replica, 3> replicas_;
         ResourceRegistry& resources_;

@@ -44,7 +44,7 @@ namespace lux::render::detail
     {
         if (paged_)
         {
-            const auto pages = (matrices_.size() + kPageSlots - 1) / kPageSlots;
+            const auto pages = (records_.matrices().size() + kPageSlots - 1) / kPageSlots;
             const auto addresses = std::bit_ceil(std::max<std::size_t>(kTransformInitialPageAddresses, pages));
             auto* table = replica.candidate ? replica.candidate : replica.binding;
             const auto bytes = addresses * sizeof(std::uint64_t);
@@ -65,21 +65,21 @@ namespace lux::render::detail
                 replica.pages.push_back(*page);
                 replica.table_dirty = true;
                 const auto first = index * kPageSlots;
-                replica.dirty.grow(matrices_.size());
-                replica.dirty.markRange(first, std::min<std::size_t>(kPageSlots, matrices_.size() - first));
+                replica.dirty.grow(records_.matrices().size());
+                replica.dirty.markRange(first, std::min<std::size_t>(kPageSlots, records_.matrices().size() - first));
             }
             return {};
         }
 
         auto* buffer = replica.candidate ? replica.candidate : replica.binding;
-        const auto size = matrices_.size() * sizeof(TransformMatrix);
+        const auto size = records_.matrices().size() * sizeof(TransformMatrix);
         if (!buffer || session_.nriCore().GetBufferDesc(*buffer).size < size)
         {
             auto candidate = allocate(std::bit_ceil(size));
             if (!candidate) return cxx::unexpected(candidate.error());
             destroy(std::exchange(replica.candidate, *candidate));
-            replica.dirty.grow(matrices_.size());
-            replica.dirty.markRange(0, matrices_.size());
+            replica.dirty.grow(records_.matrices().size());
+            replica.dirty.markRange(0, records_.matrices().size());
         }
         return {};
     }
@@ -109,7 +109,7 @@ namespace lux::render::detail
             {
                 const auto local = paged_ ? first % kPageSlots : first;
                 auto* target = paged_ ? replica.pages[first / kPageSlots] : binding;
-                const auto bytes = std::as_bytes(std::span(matrices_).subspan(first, count));
+                const auto bytes = std::as_bytes(records_.matrices().subspan(first, count));
                 const auto offset = std::uint64_t{local} * sizeof(TransformMatrix);
                 auto copied = uploader.stageBuffer({target, offset, bytes}, sizeof(TransformMatrix));
                 if (!copied)
@@ -164,7 +164,7 @@ namespace lux::render::detail
         {
             const auto projection = paged_ ? ETransformGraphProjection::PAGE_ADDRESSES
                                            : ETransformGraphProjection::RECORDS;
-            if (!resources_.publishGraphInput(id_, static_cast<std::uint32_t>(projection), frame, binding(frame)))
+            if (!resources_.publishGraphInput(records_.owner(), static_cast<std::uint32_t>(projection), frame, binding(frame)))
                 std::terminate();
         }
     }

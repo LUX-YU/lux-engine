@@ -52,77 +52,27 @@ namespace lux::render::detail
     } // namespace
 
     TransformStorage::TransformStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
-        : id_(id), session_(context.device), progress_(context.retirement_progress_), frame_count_(context.frame_count),
-          paged_(session_.usesDeviceAddresses()), completed_(session_.makeFrontiers()), resources_(context.resources)
+        : session_(context.device), progress_(context.retirement_progress_), frame_count_(context.frame_count),
+          paged_(session_.usesDeviceAddresses()), records_(id), completed_(session_.makeFrontiers()),
+          resources_(context.resources)
     {
-    }
-
-    const TransformStorage::Record* TransformStorage::find(TransformId id) const noexcept
-    {
-        using Identity = extension_detail::ResourceIdentity;
-        return Identity::parent(id) == id_ ? records_.find(Identity::local(id)) : nullptr;
-    }
-
-    TransformStorage::Record* TransformStorage::find(TransformId id) noexcept
-    {
-        using Identity = extension_detail::ResourceIdentity;
-        return Identity::parent(id) == id_ ? records_.find(Identity::local(id)) : nullptr;
-    }
-
-    std::optional<std::uint32_t> TransformStorage::gpuSlot(TransformId id) const noexcept
-    {
-        if (const auto* record = find(id)) return record->gpu_slot;
-        return std::nullopt;
-    }
-
-    void TransformStorage::retainInstance(TransformId id) noexcept
-    {
-        auto* record = find(id);
-        if (!record || record->references == UINT32_MAX) std::terminate();
-        ++record->references;
-    }
-
-    void TransformStorage::releaseInstance(TransformId id) noexcept
-    {
-        auto* record = find(id);
-        if (!record || !record->references) std::terminate();
-        --record->references;
-    }
-
-    bool TransformStorage::canCreate(std::size_t count) const noexcept
-    {
-        const auto growth = count > free_slots_.size() ? count - free_slots_.size() : 0;
-        return count <= UINT32_MAX - records_.size() && growth <= UINT32_MAX - matrices_.size();
-    }
-
-    TransformId TransformStorage::insert(const TransformMatrix& matrix) noexcept
-    {
-        std::uint32_t slot;
-        if (free_slots_.empty())
-        {
-            slot = static_cast<std::uint32_t>(matrices_.size());
-            matrices_.push_back(matrix);
-        }
-        else
-        {
-            slot = free_slots_.back();
-            free_slots_.pop_back();
-            matrices_[slot] = matrix;
-        }
-        markDirty(slot);
-        return extension_detail::ResourceIdentity::make<TransformId>(id_, records_.emplace(Record{slot}));
     }
 
     RenderResult<std::vector<TransformId>> TransformStorage::create(std::span<const TransformMatrix> matrices) noexcept
     {
         if (matrices.empty()) return std::vector<TransformId>{};
         collectRetired();
-        if (revision_ == UINT64_MAX || !canCreate(matrices.size()))
+        if (revision_ == UINT64_MAX || !records_.canInsert(matrices.size()))
             return cxx::unexpected(RenderError{kStorageCapacity});
         if (!std::ranges::all_of(matrices, isFiniteTransform)) return cxx::unexpected(RenderError{kStorageContract});
         std::vector<TransformId> identities;
         identities.reserve(matrices.size());
-        for (const auto& matrix : matrices) identities.push_back(insert(matrix));
+        for (const auto& matrix : matrices)
+        {
+            const auto id = records_.insert(matrix);
+            markDirty(extension_detail::ResourceIdentity::local(id).index);
+            identities.push_back(id);
+        }
         ++revision_;
         return identities;
     }
@@ -133,13 +83,13 @@ namespace lux::render::detail
         if (revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
         for (const auto& update : updates)
         {
-            if (!find(update.transform)) return cxx::unexpected(RenderError{kStorageIdentity});
+            if (!records_.contains(update.transform)) return cxx::unexpected(RenderError{kStorageIdentity});
             if (!isFiniteTransform(update.matrix)) return cxx::unexpected(RenderError{kStorageContract});
         }
         for (const auto& update : updates)
         {
-            const auto slot = find(update.transform)->gpu_slot;
-            matrices_[slot] = update.matrix;
+            const auto slot = extension_detail::ResourceIdentity::local(update.transform).index;
+            records_.writeValidated(slot, update.matrix);
             markDirty(slot);
         }
         ++revision_;
@@ -148,20 +98,17 @@ namespace lux::render::detail
 
     RenderResult<void> TransformStorage::release(TransformId id) noexcept
     {
-        const auto* record = find(id);
-        if (!record) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (record->references) return cxx::unexpected(RenderError{kDeviceBusy});
-        retirement_.release(record->gpu_slot);
-        records_.erase(extension_detail::ResourceIdentity::local(id));
+        auto released = records_.release(id);
+        if (!released) return released;
         collectRetired();
         return {};
     }
 
     void TransformStorage::collectRetired() noexcept
     {
-        if (retirement_.empty() || session_.terminalError().type) return;
+        if (!records_.hasRetired() || session_.terminalError().type) return;
         session_.readCompleted(completed_);
-        retirement_.collect(progress_.active(), progress_.frontiers(), completed_, free_slots_);
+        records_.collect(progress_.active(), progress_.frontiers(), completed_);
     }
 
     void TransformStorage::markDirty(std::uint32_t slot) noexcept
@@ -169,7 +116,7 @@ namespace lux::render::detail
         for (std::uint32_t frame = 0; frame < frame_count_; ++frame)
         {
             auto& dirty = replicas_[frame].dirty;
-            dirty.grow(matrices_.size());
+            dirty.grow(records_.matrices().size());
             dirty.mark(slot);
         }
     }

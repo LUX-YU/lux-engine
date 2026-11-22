@@ -61,20 +61,28 @@ namespace lux::render
         }
 
         template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<PreparedDataSlot<T>> resolveCpuData(GraphCpuDataId source) const noexcept
+        [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveCpuInput(GraphCpuDataId source) const noexcept
         {
-            auto slot = resolveCpuSlot(source, cxx::make_basic_type_info<T>(), sizeof(T));
+            auto slot = resolveCpuSlot(source, cxx::make_basic_type_info<T>(), sizeof(T), false);
             if (!slot) return cxx::unexpected(slot.error());
-            return PreparedDataSlot<T>{*slot};
+            return CpuInputSlot<T>{*slot};
+        }
+
+        template <CpuPreparationValue T>
+        [[nodiscard]] RenderResult<CpuOutputSlot<T>> resolveCpuOutput(GraphCpuDataId source) const noexcept
+        {
+            auto slot = resolveCpuSlot(source, cxx::make_basic_type_info<T>(), sizeof(T), true);
+            if (!slot) return cxx::unexpected(slot.error());
+            return CpuOutputSlot<T>{*slot};
         }
 
         // Grants a value snapshot of this producer's owning EffectGraph node.
         template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<PreparedDataSlot<T>> resolveEffectInput() noexcept
+        [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveEffectInput() noexcept
         {
             auto slot = claimEffectInput(cxx::make_basic_type_info<T>(), sizeof(T));
             if (!slot) return cxx::unexpected(slot.error());
-            return PreparedDataSlot<T>{*slot};
+            return CpuInputSlot<T>{*slot};
         }
 
         template <ShaderConstantBlock T>
@@ -93,7 +101,7 @@ namespace lux::render
         claimEffectInput(cxx::basic_type_info, std::size_t) noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
-        resolveCpuSlot(GraphCpuDataId, cxx::basic_type_info, std::size_t) const noexcept = 0;
+        resolveCpuSlot(GraphCpuDataId, cxx::basic_type_info, std::size_t, bool output) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveStorageSlot(GraphStorageSnapshotId, cxx::basic_type_info) const noexcept = 0;

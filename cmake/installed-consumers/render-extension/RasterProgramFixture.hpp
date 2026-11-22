@@ -373,8 +373,6 @@ namespace sdk_programs
     {
         using Configuration = GraphPassId;
         using LinkedData = DrawStreamSlot;
-        struct Workspace final {};
-
         static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& link) noexcept
         {
             return link.resolveDrawStream(pass);
@@ -386,7 +384,7 @@ namespace sdk_programs
             return build.setPrograms(stream, {}, {});
         }
 
-        static RenderResult<void> prepare(const LinkedData& stream, FramePreparation& frame, Workspace&) noexcept
+        static RenderResult<void> prepare(const LinkedData& stream, FramePreparation& frame) noexcept
         {
             return frame.setRasterStream(stream, {});
         }

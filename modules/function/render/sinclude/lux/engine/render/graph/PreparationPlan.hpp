@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/LinkedProducer.hpp>
+#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <type_traits>
@@ -34,13 +34,21 @@ namespace lux::render::detail
         std::uint32_t alternate = kGraphInvalidIndex;
     };
 
+    struct PreparationRange final
+    {
+        std::uint32_t first = 0, count = 0;
+
+        [[nodiscard]] bool contains(std::uint32_t slot) const noexcept
+        {
+            return slot >= first && slot - first < count;
+        }
+    };
+
     struct LinkedPreparationProducer final
     {
-        LinkedProducer prototype;
+        extension_detail::PreparationCall call;
         RasterProgramBuilder::Build build_programs = nullptr;
-        std::vector<std::uint32_t> inputs;
-        std::vector<std::uint32_t> outputs;
-        std::vector<LinkedInlineBlock> inline_blocks;
+        PreparationRange inputs, outputs, inline_blocks;
         std::vector<std::uint32_t> raster_streams;
         std::vector<std::uint32_t> buffers;
         std::vector<std::uint32_t> snapshots;
@@ -48,7 +56,7 @@ namespace lux::render::detail
 
         [[nodiscard]] bool linkPrograms(const RasterProgramBuilder& builder) noexcept
         {
-            build_programs = builder.link(prototype.inputs().type(), prototype.mappingType());
+            build_programs = builder.link(call.inputs.type(), call.methods->mapping_type);
             return !builder || build_programs;
         }
     };
@@ -96,6 +104,8 @@ namespace lux::render::detail
         std::vector<ConstantCopy> constant_copies;
         std::vector<EffectInput> effect_inputs;
         std::vector<std::size_t> cpu_data_bytes;
+        std::vector<InputSlot> cpu_reads;
+        std::vector<LinkedInlineBlock> inline_blocks;
         std::vector<Buffer> buffers;
         std::vector<Snapshot> snapshots;
         struct DrawSourceRange final

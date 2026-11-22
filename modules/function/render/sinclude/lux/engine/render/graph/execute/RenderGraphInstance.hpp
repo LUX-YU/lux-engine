@@ -318,7 +318,7 @@ namespace lux::render::detail
 
         struct Producer final
         {
-            ProducerWorkspace workspace;
+            extension_detail::AlgorithmWorkspace workspace{nullptr, nullptr};
             std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
             std::vector<std::uint32_t> runtime_streams{};

@@ -322,9 +322,7 @@ struct ClearPreparation final
         return link.resolveStorageSnapshot<bool>(source);
     }
 
-    struct Workspace final {};
-
-    static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
+    static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
     {
         const auto selected = frame.readStorage(linked);
         if (!selected) return cxx::unexpected(selected.error());
@@ -335,27 +333,74 @@ struct ClearPreparation final
 
 static_assert(PreparationKernel<ClearPreparation>);
 
+template <class Slot> concept ReadableWord = requires(FramePreparation& frame, Slot slot) { frame.read(slot); };
+template <class Slot> concept WritableWord = requires(FramePreparation& frame, Slot slot)
+{
+    frame.publish(slot, std::uint32_t{});
+};
+
+static_assert(ReadableWord<CpuInputSlot<std::uint32_t>> && !WritableWord<CpuInputSlot<std::uint32_t>>);
+static_assert(WritableWord<CpuOutputSlot<std::uint32_t>> && !ReadableWord<CpuOutputSlot<std::uint32_t>>);
+
 struct NamedSnapshots final
 {
-    using Configuration = std::array<GraphStorageSnapshotId, 2>;
-    using LinkedData = std::array<StorageSnapshotSlot<bool>, 2>;
-    struct Workspace final {};
-    static inline std::atomic_bool same_selection{};
-
-    static RenderResult<LinkedData> resolve(const Configuration& sources, InstanceLinkContext& link) noexcept
+    struct Configuration final
     {
-        CHECK(sources[0].index != sources[1].index);
+        std::array<GraphStorageSnapshotId, 2> sources;
+        std::array<GraphCpuDataId, 2> words;
+    };
+
+    struct LinkedData final
+    {
+        std::array<StorageSnapshotSlot<bool>, 2> sources;
+        std::array<CpuOutputSlot<std::uint32_t>, 2> words;
+    };
+
+    static inline thread_local std::optional<CpuOutputSlot<std::uint32_t>> upstream_writer;
+
+    static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
+    {
+        CHECK(config.sources[0].index != config.sources[1].index);
         return LinkedData{
-            take(link.resolveStorageSnapshot<bool>(sources[0])), take(link.resolveStorageSnapshot<bool>(sources[1]))
+            {take(link.resolveStorageSnapshot<bool>(config.sources[0])), take(link.resolveStorageSnapshot<bool>(config.sources[1]))},
+            {take(link.resolveCpuOutput<std::uint32_t>(config.words[0])), take(link.resolveCpuOutput<std::uint32_t>(config.words[1]))}
         };
     }
 
-    static RenderResult<void> prepare(const LinkedData& inputs, FramePreparation& frame, Workspace&) noexcept
+    static RenderResult<void> prepare(const LinkedData& inputs, FramePreparation& frame) noexcept
     {
-        const auto a = take(frame.readStorage(inputs[0]));
-        const auto b = take(frame.readStorage(inputs[1]));
-        CHECK(a.value.get() && b.value.get());
-        same_selection = &a.value.get() == &b.value.get();
+        const auto a = take(frame.readStorage(inputs.sources[0]));
+        const auto b = take(frame.readStorage(inputs.sources[1]));
+        CHECK(a.value.get() && b.value.get() && !upstream_writer);
+        const auto value = &a.value.get() == &b.value.get() ? 7u : 11u;
+        CHECK(frame.publish(inputs.words[1], 0x1234u));
+        CHECK(frame.publish(inputs.words[0], value));
+        upstream_writer = inputs.words[0];
+        return {};
+    }
+};
+
+struct CheckPreparedWords final
+{
+    using Configuration = std::array<GraphCpuDataId, 2>;
+    using LinkedData = std::array<CpuInputSlot<std::uint32_t>, 2>;
+    static inline std::atomic_bool same_selection{};
+
+    static RenderResult<LinkedData> resolve(const Configuration& words, InstanceLinkContext& link) noexcept
+    {
+        return LinkedData{take(link.resolveCpuInput<std::uint32_t>(words[0])), take(link.resolveCpuInput<std::uint32_t>(words[1]))};
+    }
+
+    static RenderResult<void> prepare(const LinkedData& words, FramePreparation& frame) noexcept
+    {
+        const auto foreign = std::exchange(NamedSnapshots::upstream_writer, {});
+        CHECK(foreign);
+        const auto denied = frame.publish(*foreign, 99u);
+        CHECK(!denied && denied.error().type == kGraphUnknownResource);
+        const auto marker = take(frame.read(words[1]));
+        const auto selected = take(frame.read(words[0]));
+        CHECK(marker.value == 0x1234u && (selected.value == 7 || selected.value == 11));
+        same_selection = selected.value == 7;
         return {};
     }
 };
@@ -427,7 +472,7 @@ static void registerClearNode(RenderServer& server)
             "clear", TransferWork{{ClearImage{{{output, 0}}, *color}}}
         ));
         GraphPreparation preparation{
-            ProducerFactory::make<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
+            PreparationAlgorithm::stateless<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
             {cleared.pass}, {}, {state}
         };
         if (args == "named-snapshots")
@@ -435,10 +480,17 @@ static void registerClearNode(RenderServer& server)
             const auto other = take(context.importStorageSnapshot<bool>(
                 "companion", {ResourceName{ColdResource::descriptor.type.name()}}
             ));
-            auto config = take(ConfigValue::make(NamedSnapshots::Configuration{state, other}));
+            const std::array words{take(context.declareCpuData<std::uint32_t>()), take(context.declareCpuData<std::uint32_t>())};
+            // Register the downstream reader first. The compiled DAG orders the two stateless calls.
+            auto checked = context.addPreparation({
+                PreparationAlgorithm::stateless<CheckPreparedWords>(), take(ConfigValue::make(words)), {words[1], words[0]},
+                {}, {}, {cleared.pass}
+            });
+            if (!checked) return checked;
+            auto config = take(ConfigValue::make(NamedSnapshots::Configuration{{state, other}, words}));
             preparation = {
-                ProducerFactory::make<NamedSnapshots>(), std::move(config),
-                {}, {}, {}, {cleared.pass}, {}, {state, other}
+                PreparationAlgorithm::stateless<NamedSnapshots>(), std::move(config),
+                {}, {words[1], words[0]}, {}, {}, {}, {state, other}
             };
         }
         if (auto added = context.addPreparation(std::move(preparation)); !added) return added;
@@ -812,10 +864,10 @@ static void verifySnapshotBindings(
     std::atomic_uint captures{};
     ColdResource::capture_counter = &captures;
     const auto compiled = call<QueryRenderStats>(client, {}).compiled_graphs;
-    CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 1 && NamedSnapshots::same_selection);
+    CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 1 && CheckPreparedWords::same_selection);
     binding.resources.back().resource = owners[1];
     CHECK(!call<RebindRenderJobEffect>(client, {device, job, effect, target, binding}).error.type);
-    CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 3 && !NamedSnapshots::same_selection);
+    CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 3 && !CheckPreparedWords::same_selection);
     CHECK(call<QueryRenderStats>(client, {}).compiled_graphs == compiled);
     ColdResource::capture_counter = nullptr;
     CHECK(!call<StopRenderJob>(client, job).error.type);

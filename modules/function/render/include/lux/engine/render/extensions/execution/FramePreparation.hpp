@@ -49,11 +49,19 @@ namespace lux::render
         bool operator==(const GraphStorageSnapshotId&) const noexcept = default;
     };
 
-    template <CpuPreparationValue T> class PreparedDataSlot final
+    template <CpuPreparationValue T> class CpuInputSlot final
     {
         friend class FramePreparation;
         friend class InstanceLinkContext;
-        explicit constexpr PreparedDataSlot(std::uint32_t slot) noexcept : slot_(slot) {}
+        explicit constexpr CpuInputSlot(std::uint32_t slot) noexcept : slot_(slot) {}
+        std::uint32_t slot_;
+    };
+
+    template <CpuPreparationValue T> class CpuOutputSlot final
+    {
+        friend class FramePreparation;
+        friend class InstanceLinkContext;
+        explicit constexpr CpuOutputSlot(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
     };
 
@@ -157,7 +165,7 @@ namespace lux::render
         }
 
         template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<PreparedCpuValue<T>> read(PreparedDataSlot<T> slot) const noexcept
+        [[nodiscard]] RenderResult<PreparedCpuValue<T>> read(CpuInputSlot<T> slot) const noexcept
         {
             auto selected = readBytes(slot.slot_, sizeof(T));
             if (!selected) return cxx::unexpected(selected.error());
@@ -167,7 +175,7 @@ namespace lux::render
         }
 
         template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<void> publish(PreparedDataSlot<T> slot, const T& value) noexcept
+        [[nodiscard]] RenderResult<void> publish(CpuOutputSlot<T> slot, const T& value) noexcept
         {
             return publishBytes(slot.slot_, std::as_bytes(std::span{&value, 1}));
         }

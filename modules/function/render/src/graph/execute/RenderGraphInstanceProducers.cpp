@@ -299,11 +299,12 @@ namespace lux::render::detail
 
         RenderResult<SelectedBytes> readBytes(std::uint32_t slot, std::size_t bytes) const noexcept override
         {
-            if (std::ranges::find(linked_.inputs, slot) == linked_.inputs.end())
+            if (!linked_.inputs.contains(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-            const auto& selection = instance_.cpu_data_[slot];
+            const auto input = instance_.preparation_plan_->cpu_reads[slot].index;
+            const auto& selection = instance_.cpu_data_[input];
             if (!selection.written)
-                return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, slot}});
+                return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, input}});
             if (selection.bytes.size() != bytes)
                 return cxx::unexpected(RenderError{kFrameContract, {slot}});
             return SelectedBytes{selection.bytes, instance_.preparation_revision_};
@@ -311,7 +312,7 @@ namespace lux::render::detail
 
         RenderResult<void> publishBytes(std::uint32_t slot, std::span<const std::byte> bytes) noexcept override
         {
-            if (std::ranges::find(linked_.outputs, slot) == linked_.outputs.end())
+            if (!linked_.outputs.contains(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
             return stage(instance_.cpu_data_[slot], bytes);
         }
@@ -319,10 +320,9 @@ namespace lux::render::detail
         RenderResult<void>
         writeInlineBlock(std::uint32_t slot, std::span<const std::byte> bytes, std::uint64_t revision) noexcept override
         {
-            const auto use = std::ranges::find(linked_.inline_blocks, slot, &LinkedInlineBlock::pass);
-            if (use == linked_.inline_blocks.end())
+            if (!linked_.inline_blocks.contains(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot}});
-            auto& output = producer_.constants[use - linked_.inline_blocks.begin()];
+            auto& output = producer_.constants[slot - linked_.inline_blocks.first];
             const bool unchanged = revision != 0 && revision == output.source_revision;
             auto written = stage(output.payload, bytes, unchanged);
             if (written) output.source_revision = revision;
@@ -461,12 +461,14 @@ namespace lux::render::detail
         producers.reserve(plan.producers.size());
         for (const auto& linked : plan.producers)
         {
-            auto data = linked.prototype.instantiate(target());
-            if (!data) return cxx::unexpected(data.error());
-            auto& producer = producers.emplace_back(
-                std::move(*data), std::vector<PreparedInlineBlock>{},
-                std::vector<OwnedRasterStream>(linked.raster_streams.size())
-            );
+            auto& producer = producers.emplace_back();
+            producer.streams.resize(linked.raster_streams.size());
+            if (const auto create = linked.call.methods->create_workspace)
+            {
+                auto workspace = create(linked.call.inputs.data(), target());
+                if (!workspace) return cxx::unexpected(workspace.error());
+                producer.workspace = std::move(*workspace);
+            }
             for (auto pass : linked.raster_streams)
             {
                 if (programs_->rasterStream(pass)->runtime) producer.runtime_streams.push_back(pass);
@@ -491,8 +493,8 @@ namespace lux::render::detail
                 producer.programs_dirty = true;
                 program_producers.push_back(static_cast<std::uint32_t>(producers.size() - 1));
             }
-            producer.constants.reserve(linked.inline_blocks.size());
-            for (const auto& block : linked.inline_blocks)
+            producer.constants.reserve(linked.inline_blocks.count);
+            for (const auto& block : std::span{plan.inline_blocks}.subspan(linked.inline_blocks.first, linked.inline_blocks.count))
             {
                 producer.constants.push_back({{std::vector<std::byte>(block.bytes)}});
             }
@@ -605,7 +607,7 @@ namespace lux::render::detail
             });
         }
         RasterProgramBuildContext context{data};
-        auto mapping = linked.build_programs(linked.prototype.inputs().data(), context, producer.draw_mapping.get());
+        auto mapping = linked.build_programs(linked.call.inputs.data(), context, producer.draw_mapping.get());
         if (!mapping) return cxx::unexpected(mapping.error());
         update.selections.push_back({index, std::move(*mapping)});
         for (const auto& entry : data.streams)
@@ -704,11 +706,14 @@ namespace lux::render::detail
                 stream.selection = preparation_revision_;
             }
             ProducerFrame frame{*this, static_cast<std::uint32_t>(i), slot};
-            if (auto prepared = producer.workspace.prepare(frame, producer.draw_mapping.get()); !prepared)
-                return prepared;
+            auto prepared = linked.call.methods->prepare(
+                linked.call.inputs.data(), frame, producer.workspace.get(), producer.draw_mapping.get()
+            );
+            if (!prepared) return prepared;
 
-            for (auto output : linked.outputs)
+            for (std::uint32_t j = 0; j < linked.outputs.count; ++j)
             {
+                const auto output = linked.outputs.first + j;
                 if (!cpu_data_[output].written)
                     return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, output}});
             }
@@ -719,10 +724,10 @@ namespace lux::render::detail
                         kGraphUndefinedRead, {kGraphInvalidIndex, preparation_plan_->buffers[output].resource}
                     });
             }
-            for (std::size_t b = 0; b < linked.inline_blocks.size(); ++b)
+            for (std::size_t b = 0; b < linked.inline_blocks.count; ++b)
             {
                 if (!producer.constants[b].payload.written)
-                    return cxx::unexpected(RenderError{kFrameContract, {linked.inline_blocks[b].pass}});
+                    return cxx::unexpected(RenderError{kFrameContract, {preparation_plan_->inline_blocks[linked.inline_blocks.first + b].pass}});
             }
             for (std::size_t s = 0; s < linked.raster_streams.size(); ++s)
             {
@@ -741,7 +746,9 @@ namespace lux::render::detail
             {
                 std::swap(frames_[slot].stream_inputs[linked.raster_streams[s]], producers_[i].streams[s]);
             }
-            const auto& blocks = linked.inline_blocks;
+            const auto blocks = std::span{preparation_plan_->inline_blocks}.subspan(
+                linked.inline_blocks.first, linked.inline_blocks.count
+            );
             for (std::size_t b = 0; b < blocks.size(); ++b)
             {
                 const auto& selected = producers_[i].constants[b];

@@ -184,8 +184,7 @@ foreach(header IN ITEMS
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
     extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
-    extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
-    extensions/execution/ProducerFactory extensions/execution/LinkedProducer graph/DrawList graph/DrawResource
+    extensions/execution/GraphPreparation graph/DrawList graph/DrawResource
     graph/IndexedGeometry extensions/execution/FramePreparation resources/material/Resource resource/RasterProgramBuild
     extensions/execution/PreparedCpuValue extensions/execution/ResourceInput
     device/NativeProgramId resource/ProgramInputRevision resource/material/ProgramSource resource/mesh/MeshLayout

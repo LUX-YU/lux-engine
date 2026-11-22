@@ -419,14 +419,21 @@ Stateful Handlers retain constructor-injected dependencies. All forms use the ex
 Resource borrow and ResponseOutbox; an async request's source bytes remain borrowed until its real response.
 
 `JobExecution` owns CPU input bindings and Resource subscriptions. The Effect's device graph owns each producer's immutable linked inputs.
-Register a kernel with `ProducerFactory::make<Kernel>()`. Its static `resolve` links configuration once,
-and `prepare(const LinkedData&, FramePreparation&, Workspace&)` receives the current Job's workspace.
+Register a stateless algorithm with `PreparationAlgorithm::stateless<Kernel>()`. Its `prepare(linked, frame)`
+uses the immutable inputs produced by `resolve`. An algorithm with per-Job state uses
+`PreparationAlgorithm::withWorkspace<Kernel>()` and receives its workspace as the third argument.
+Pass `&Kernel::createWorkspace` as the second template argument for fallible construction from the linked inputs and Target.
+Algorithms with a cold draw mapping receive that mapping as their final prepare argument.
+
+Declare the CPU dependency in `GraphPreparation::inputs` or `outputs`. At link time resolve a reader with
+`resolveCpuInput<T>` or a writer with `resolveCpuOutput<T>`. Effect state uses `resolveEffectInput<T>`.
+During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The compiled read table and output intervals
+address the selected value directly. All declared outputs must be written before the frame can be recorded.
+
 The Job owns each workspace, its CPU binding rows and their revisions. Each DeviceEntry owns the Job's native
 buffers, images, memory allocations, descriptor pools, views, command buffers and History backing. The device indexes
 the stable allocation by JobId and checks the execution generation at cold binding and retirement boundaries.
-A kernel may supply a fallible
-`createWorkspace(const LinkedData&, const TargetDesc&)` when construction depends on linked inputs or the target. Cold assembly
-resolves Resource borrows once; instance preparation uses those borrows and contributes copies to `Preparation`.
+Cold assembly resolves Resource borrows once. Instance preparation uses those borrows and contributes preparation copies.
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
 Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces while
 the Effect still owns the prepared graph. The CPU state releases its native borrows before the device queues the physical

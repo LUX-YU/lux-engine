@@ -125,7 +125,7 @@ namespace lux::render
 
             struct LightingWriter final
             {
-                PreparedDataSlot<LightingState> state;
+                CpuInputSlot<LightingState> state;
                 InlineConstantWriter<detail::LightingConstants> writer;
             };
 
@@ -159,9 +159,7 @@ namespace lux::render
                 return inputs;
             }
 
-            struct Workspace final {};
-
-            static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
+            static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
             {
                 const auto snapshot = frame.readStorage(linked.camera);
                 if (!snapshot) return cxx::unexpected(snapshot.error());
@@ -345,7 +343,7 @@ namespace lux::render
             auto config = ConfigValue::make(std::move(preparation));
             if (!config) return cxx::unexpected(config.error());
             return context.addPreparation({
-                ProducerFactory::make<LightingPreparation>(), std::move(*config), {}, {},
+                PreparationAlgorithm::stateless<LightingPreparation>(), std::move(*config), {}, {},
                 std::move(writers), {}, {}, {*camera}
             });
         }

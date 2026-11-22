@@ -458,7 +458,7 @@ namespace
         background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
         const auto base = take(builder.addRasterPass("clear background", std::move(background)));
         auto clear = context.addPreparation({
-            ProducerFactory::make<ClearBackground>(), take(ConfigValue::make(base.pass)), {}, {}, {}, {base.pass},
+            PreparationAlgorithm::stateless<ClearBackground>(), take(ConfigValue::make(base.pass)), {}, {}, {}, {base.pass},
             {}, {}, {}, RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
         });
         if (!clear) return clear;
@@ -506,7 +506,7 @@ namespace
         if (mode == "missing-map")
             program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
         auto added = context.addPreparation({
-            ProducerFactory::make<ProgramDraws>(), std::move(configuration), {}, {}, {},
+            PreparationAlgorithm::withWorkspace<ProgramDraws>(), std::move(configuration), {}, {}, {},
             {draw.pass}, {}, {code, alias, camera}, {code, alias}, program_builder
         });
         if (!added) return added;

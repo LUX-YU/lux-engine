@@ -5,7 +5,8 @@
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/execute/HistoryState.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
+#include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <atomic>
@@ -14,11 +15,53 @@
 
 namespace lux::render::detail
 {
+    struct FrameResourceBinding final
+    {
+        // NRI returns descriptions owned by the selected native objects.
+        void select(nri::Buffer* next_buffer, nri::Texture* next_image, const nri::CoreInterface& core) noexcept
+        {
+            if (!next_buffer) buffer_description = nullptr;
+            else if (buffer != next_buffer || !buffer_description)
+                buffer_description = &core.GetBufferDesc(*next_buffer);
+            if (!next_image) image_description = nullptr;
+            else if (image != next_image || !image_description)
+                image_description = &core.GetTextureDesc(*next_image);
+            buffer = next_buffer;
+            image = next_image;
+        }
+
+        const nri::BufferDesc* buffer_description = nullptr;
+        const nri::TextureDesc* image_description = nullptr;
+        nri::Texture* image = nullptr;
+        nri::Descriptor* view = nullptr;
+        nri::Buffer* buffer = nullptr;
+        std::uint64_t buffer_offset = 0, buffer_size = 0;
+        std::span<nri::Buffer* const> addressed_buffers;
+        std::uint64_t addressed_revision = 0;
+        ResourceQueueUses queue_uses{};
+        bool dirty = false;
+    };
+
+    struct FramePass final
+    {
+        const CompiledPass* compiled_pass;
+        std::vector<nri::TextureBarrierDesc> images;
+        std::vector<nri::BufferBarrierDesc> buffers;
+        std::optional<nri::GlobalBarrierDesc> alias_barrier;
+        nri::DescriptorSet* private_descriptors = nullptr;
+        std::span<nri::Descriptor*> private_views;
+        std::vector<nri::Descriptor*> history_views;
+        std::vector<nri::AttachmentDesc> colors;
+        nri::AttachmentDesc depth{};
+        std::vector<nri::Descriptor*> clear_views;
+        std::span<std::byte> parameters;
+        std::uint64_t parameter_source_revision = 0;
+    };
+
     struct RecordingDependencies;
-    struct CopyAlignment;
 
     // CPU state for one Job and FIF slot. Native ownership stays in the device's stable Job row.
-    struct RenderGraphInstance::FrameResources final
+    struct FrameResources final
     {
         explicit FrameResources(JobFrameResources& frame) noexcept : native(frame) {}
         JobFrameResources& native;
@@ -28,9 +71,30 @@ namespace lux::render::detail
         FrameResources& operator=(const FrameResources&) = delete;
 
         void invalidateImportedBindings() noexcept;
-        [[nodiscard]] RenderResult<void>
-        patchTransferFields(const TransferProgram&, const RecordingDependencies&, CopyAlignment) noexcept;
+        void invalidatePass(const compiled::RenderGraph&, std::uint32_t pass) noexcept;
+        void invalidateResource(const RecordingDependencies&, std::uint32_t resource) noexcept;
+        void invalidateRecordings() noexcept;
+        void bindHistory(std::span<const HistoryState>, const RecordingDependencies&) noexcept;
+        void updateHistoryViews(std::span<const HistoryState>, const nri::CoreInterface&) noexcept;
+        void linkRecordInputs(const RecordingProgram&) noexcept;
+        [[nodiscard]] RenderResult<void> freeze(
+            const compiled::RenderGraph&, std::span<const HistoryState>, const nri::DeviceDesc&
+        ) noexcept;
+        [[nodiscard]] RenderResult<FrozenRecordingFrame> recordingFrame(const compiled::RenderGraph&) & noexcept;
+        RenderResult<FrozenRecordingFrame> recordingFrame(const compiled::RenderGraph&) && = delete;
 
+    private:
+        void prepareDrawReads() noexcept;
+        void patchRecordResource(std::uint32_t index, std::uint32_t history) noexcept;
+        void patchDrawSection(std::uint32_t pass, const RasterListCommands&) noexcept;
+        void patchRecordPass(const RecordingProgram&, std::uint32_t pass) noexcept;
+        void freezeHistoryInitializations(
+            std::span<const HistoryState>, std::span<const CompiledResource>, nri::GraphicsAPI
+        ) noexcept;
+        [[nodiscard]] RenderResult<void>
+        patchOperandFields(const RecordingProgram&, const RecordingDependencies&, const nri::DeviceDesc&) noexcept;
+
+    public:
         struct FrozenProjection final
         {
             std::uint32_t resource;
@@ -104,19 +168,19 @@ namespace lux::render::detail
             bool operator==(const HistoryClear&) const noexcept = default;
         };
 
-        PendingSlots pending_resources, pending_passes, pending_transfer_fields;
+        PendingSlots pending_resources, pending_passes, pending_operand_fields;
         TransferOperands transfers;
-        std::size_t patched_transfer_fields = 0;
+        FrozenOperandPatches last_operands;
         FrozenPatchCounts last_patches;
         std::vector<std::array<HistoryClear, 2>> history_clears;
         PendingSlots pending_history_clears, pending_history_views;
         bool record_ready = false;
 
-        std::vector<Binding> bindings;
+        std::vector<FrameResourceBinding> bindings;
         // Changes when a potentially shared imported identity/range changes. Private presentation rotation
         // updates bindings and barriers separately; resource contents do not invalidate dependencies.
         std::uint64_t imported_revision = 0;
-        std::vector<Pass> passes;
+        std::vector<FramePass> passes;
         std::vector<OwnedRasterStream> stream_inputs;
         RasterDrawList stream_scratch;
         std::vector<std::uint8_t> stream_layers_seen;

@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "BufferReadback.hpp"
 #include "FrameHarness.hpp"
@@ -23,6 +24,7 @@
 namespace
 {
     using namespace foundation_test;
+    using lux::render::runtime_detail::JobExecution;
     constexpr std::array group_counts{512u, 511u};
     constexpr unsigned warmup = 8;
     constexpr unsigned samples = 32;
@@ -379,7 +381,8 @@ namespace
         {
             FrameHarness retiring_frames(device, 1);
             JobGpuResources retiring_gpu(device, 1);
-            RenderGraphInstance retiring(retiring_gpu, plan.graph, retiring_target.output());
+            JobExecution retiring_job{retiring_gpu, plan.graph, JobExecution::Installation{}, retiring_target.output()};
+            auto& retiring = retiring_job.instance;
             CHECK(retiring.initialize());
             SampleContext pending{device, retiring_frames, retiring, retiring_gpu, capture, sample.queues};
             submitFrame(pending);
@@ -449,7 +452,8 @@ namespace
         NativeCapture capture(device, !inflight);
         {
             JobGpuResources instance_gpu(device, 1);
-            RenderGraphInstance instance(instance_gpu, plan.graph, initial.output());
+            JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, initial.output()};
+            auto& instance = instance_job.instance;
             CHECK(instance.initialize());
             std::string dump;
             CHECK(instance.dumpResources({&dump, [](void* p, std::string_view value) noexcept

@@ -11,6 +11,7 @@
 namespace lux::render::detail
 {
     class DeviceSession;
+    struct SubmissionBatch;
 
     struct RasterBindingKey final
     {
@@ -77,6 +78,8 @@ namespace lux::render::detail
         {
             std::array<nri::CommandAllocator*, 2> allocators{};
             std::array<nri::CommandBuffer*, 2> commands{};
+
+            void release(const nri::CoreInterface&) const noexcept;
         };
 
         std::vector<NativeBatch> batches;
@@ -90,6 +93,7 @@ namespace lux::render::detail
         std::vector<MemoryAllocation> memories;
         nri::DescriptorPool* descriptor_pool = nullptr;
 
+        [[nodiscard]] RenderResult<void> createBatches(DeviceSession&, std::span<const SubmissionBatch>) noexcept;
         void release(const nri::CoreInterface&) noexcept;
     };
 

@@ -14,8 +14,15 @@
 #include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 
+namespace lux::render::runtime_detail { struct JobExecution; }
+
 namespace lux::render::detail
 {
+    struct FrozenPatchCounts;
+    struct FrozenOperandPatches;
+    struct FrameResourceBinding;
+    struct FrameResources;
+    struct HistoryState;
     class DeviceSession;
     struct RasterDrawList;
     struct PassBindings;
@@ -29,9 +36,6 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC RenderGraphInstance final
     {
     public:
-        RenderGraphInstance(
-            JobGpuResources&, const compiled::RenderGraph&, TargetOutput = TargetOutput{}
-        ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
         struct SnapshotSource final
         {
@@ -165,16 +169,20 @@ namespace lux::render::detail
         // Explicit dirty notification for producers that opted out of rasterDraws' conservative default.
         void invalidateRasterDraws(const CompiledPass&, std::uint32_t frame_slot) noexcept;
 
-        struct FrozenPatchCounts final
-        {
-            std::size_t resources = 0, passes = 0;
-            bool operator==(const FrozenPatchCounts&) const noexcept = default;
-        };
-
-        [[nodiscard]] std::size_t lastTransferFieldPatches(std::uint32_t slot) const noexcept;
+        [[nodiscard]] FrozenOperandPatches lastOperandPatches(std::uint32_t slot) const noexcept;
         [[nodiscard]] FrozenPatchCounts lastFrozenPatches(std::uint32_t slot) const noexcept;
 
     private:
+        friend struct runtime_detail::JobExecution;
+
+        struct FrameStorage final
+        {
+            std::span<FrameResources> frames;
+            std::span<HistoryState> histories;
+        };
+
+        RenderGraphInstance(JobGpuResources&, const compiled::RenderGraph&, FrameStorage, TargetOutput) noexcept;
+
         friend class FrameOperation;
         std::uint32_t frozen_slot_ = kGraphInvalidIndex;
         friend class SubmissionOperation;
@@ -184,10 +192,6 @@ namespace lux::render::detail
         void failedSubmission(RenderError error) noexcept;
         [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<void> growRasterDescriptorPool(std::uint32_t slot) noexcept;
-        void invalidateRecording(std::uint32_t frame_slot, std::uint32_t compiled_pass) noexcept;
-        void invalidateResourceRecordings(std::uint32_t frame_slot, std::uint32_t resource) noexcept;
-        void invalidateRecordings(std::uint32_t frame_slot) noexcept;
-        [[nodiscard]] RenderResult<void> createRecordings(std::uint32_t frame_slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
@@ -197,36 +201,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         prepareResizePhysical(ResizeResources&, std::uint32_t, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> prepareResizeBindings(ResizeResources&, std::uint32_t) noexcept;
-
-        struct Binding final
-        {
-            // NRI returns descriptions owned by the selected native objects.
-            void select(nri::Buffer* next_buffer, nri::Texture* next_image, const nri::CoreInterface& core) noexcept
-            {
-                if (!next_buffer) buffer_description = nullptr;
-                else if (buffer != next_buffer || !buffer_description)
-                    buffer_description = &core.GetBufferDesc(*next_buffer);
-                if (!next_image) image_description = nullptr;
-                else if (image != next_image || !image_description)
-                    image_description = &core.GetTextureDesc(*next_image);
-                buffer = next_buffer;
-                image = next_image;
-            }
-
-            const nri::BufferDesc* buffer_description = nullptr;
-            const nri::TextureDesc* image_description = nullptr;
-            nri::Texture* image = nullptr;
-            nri::Descriptor* view = nullptr;
-            nri::Buffer* buffer = nullptr;
-            std::uint64_t buffer_offset = 0, buffer_size = 0;
-            std::span<nri::Buffer* const> addressed_buffers;
-            std::uint64_t addressed_revision = 0;
-            ResourceQueueUses queue_uses{};
-            bool dirty = false;
-        };
-
-        struct HistoryState;
-        struct FrameResources;
 
         [[nodiscard]] RenderResult<void> prepareRasterDescriptorCapacity(std::uint32_t slot, bool resize_pool) noexcept;
         [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
@@ -249,40 +223,16 @@ namespace lux::render::detail
         RenderResult<void> prepareRasterSections(std::uint32_t slot) noexcept;
         RenderResult<void>
         materializeRasterSections(std::uint32_t slot, std::uint32_t pass, const OwnedRasterStream&) noexcept;
-        void linkRecordInputs(FrameResources&) noexcept;
-        void patchRecordResource(FrameResources&, std::uint32_t resource) noexcept;
-        [[nodiscard]] RenderResult<void> patchRecordPass(FrameResources&, std::uint32_t pass) noexcept;
-        void freezeHistoryInitializations(FrameResources&) const noexcept;
-        void patchDrawSection(FrameResources&, std::uint32_t pass) noexcept;
-        void prepareStreamedDraws(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> freezeRecordInput(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
-        [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&) noexcept;
-        [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&, const TargetDesc&) noexcept;
+        [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, FrameResourceBinding&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        createResource(std::uint32_t resource, FrameResourceBinding&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
         [[nodiscard]] bool selectHistory() noexcept;
-        void bindHistory(std::uint32_t slot) noexcept;
-        void updateHistoryViews(std::uint32_t slot) noexcept;
         [[nodiscard]] bool conditionEnabled(const FrameResources&, PassCondition) const noexcept;
         void publishHistory(std::uint32_t slot) noexcept;
-
-        struct Pass final
-        {
-            const CompiledPass* compiled_pass;
-            std::vector<nri::TextureBarrierDesc> images;
-            std::vector<nri::BufferBarrierDesc> buffers;
-            std::optional<nri::GlobalBarrierDesc> alias_barrier;
-            nri::DescriptorSet* private_descriptors = nullptr;
-            std::span<nri::Descriptor*> private_views;
-            std::vector<nri::Descriptor*> history_views;
-            std::vector<nri::AttachmentDesc> colors;
-            nri::AttachmentDesc depth{};
-            std::vector<nri::Descriptor*> clear_views;
-            std::span<std::byte> parameters;
-            std::uint64_t parameter_source_revision = 0;
-        };
 
         DeviceSession* session_;
         JobGpuResources& gpu_;
@@ -348,8 +298,8 @@ namespace lux::render::detail
         std::uint64_t preparation_generation_ = 0;
         std::uint64_t preparation_revision_ = 0;
         std::vector<BoundConstantBuffer> constant_buffers_;
-        std::vector<FrameResources> frames_;
-        std::vector<HistoryState> histories_;
+        const std::span<FrameResources> frames_;
+        const std::span<HistoryState> histories_;
         const compiled::RenderGraph& graph_;
         RasterViewport viewport_;
         TargetOutput output_;

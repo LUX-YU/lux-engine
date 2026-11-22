@@ -79,7 +79,7 @@ namespace lux::render::detail
             }
             if (plan.output() != kGraphInvalidIndex && !output.frames.empty())
             {
-                Binding binding;
+                FrameResourceBinding binding;
                 binding.image = output.frames[f].image;
                 candidate.resources.push_back({plan.output(), binding});
             }
@@ -87,15 +87,15 @@ namespace lux::render::detail
             {
                 if (auto valid = execution.qualifyImportedImage(input.resource, *input.frames[f].image, target); !valid)
                     return cxx::unexpected(valid.error());
-                Binding binding;
+                FrameResourceBinding binding;
                 binding.image = input.frames[f].image;
                 candidate.resources.push_back({input.resource.index, binding});
             }
             for (const auto& [h, history] : result.histories)
             {
-                Binding previous;
+                FrameResourceBinding previous;
                 previous.image = history.slots[history.previous].image;
-                Binding current;
+                FrameResourceBinding current;
                 current.image = history.slots[history.current].image;
                 candidate.resources.push_back({history.plan->description.previous.index, previous});
                 candidate.resources.push_back({history.plan->description.current.index, current});
@@ -172,7 +172,7 @@ namespace lux::render::detail
         const bool aliases = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
         const auto& frame = frames_[f];
         auto& candidate = result.frames[f];
-        std::vector<Binding> replacements(physical.slots.size());
+        std::vector<FrameResourceBinding> replacements(physical.slots.size());
         candidate.replaced_slots.resize(physical.slots.size());
         std::vector<nri::MemoryDesc> requirements(aliases ? physical.slots.size() : 0);
         const auto create = [&](std::uint32_t s) -> RenderResult<void>
@@ -375,7 +375,7 @@ namespace lux::render::detail
         auto& candidate = result.frames[f];
         const auto output = result.output;
         std::ranges::sort(candidate.resources, {}, &ResizeResources::Resource::index);
-        const auto binding = [&](std::uint32_t index) -> const Binding&
+        const auto binding = [&](std::uint32_t index) -> const FrameResourceBinding&
         {
             const auto found =
                 std::ranges::lower_bound(candidate.resources, index, {}, &ResizeResources::Resource::index);
@@ -490,7 +490,8 @@ namespace lux::render::detail
         return {};
     }
 
-    nri::Descriptor*& RenderGraphInstance::ResizeResources::destination(Pass& pass, const ImageViewBinding& use) noexcept
+    nri::Descriptor*&
+    RenderGraphInstance::ResizeResources::destination(FramePass& pass, const ImageViewBinding& use) noexcept
     {
         switch (use.target)
         {
@@ -522,7 +523,7 @@ namespace lux::render::detail
             auto& candidate = result.frames[f];
             candidate.image_adoptions.clear();
             candidate.buffer_adoptions.clear();
-            const auto binding = [&](std::uint32_t resource) -> const Binding&
+            const auto binding = [&](std::uint32_t resource) -> const FrameResourceBinding&
             {
                 const auto changed =
                     std::ranges::lower_bound(candidate.resources, resource, {}, &ResizeResources::Resource::index);
@@ -622,13 +623,13 @@ namespace lux::render::detail
                          current->before.stages == incoming->before.stages &&
                          current->after.access == incoming->after.access &&
                          current->after.stages == incoming->after.stages);
-                    if (current.has_value() != incoming.has_value() || !same_scope) invalidateRecording(f, p);
+                    if (current.has_value() != incoming.has_value() || !same_scope) frame.invalidatePass(graph_, p);
                     current = incoming;
                 }
             }
             for (const auto& replacement : candidate.resources)
             {
-                invalidateResourceRecordings(f, replacement.index);
+                frame.invalidateResource(graph_.recordingDependencies(), replacement.index);
                 auto& binding = frame.bindings[replacement.index];
                 collectRasterViews(
                     frame,
@@ -715,8 +716,8 @@ namespace lux::render::detail
         output_ = result.output;
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
-            bindHistory(slot);
-            updateHistoryViews(slot);
+            frames_[slot].bindHistory(histories_, graph_.recordingDependencies());
+            frames_[slot].updateHistoryViews(histories_, session_->nriCore());
         }
     }
 
@@ -749,7 +750,7 @@ namespace lux::render::detail
                     views.push_back(std::exchange(descriptor, nullptr));
                 }
             }
-            invalidateResourceRecordings(static_cast<std::uint32_t>(&frame - frames_.data()), resource);
+            frame.invalidateResource(graph_.recordingDependencies(), resource);
             frame.invalidateImportedBindings();
         }
         output_.frames = {};

@@ -1,3 +1,6 @@
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <utility>
@@ -37,13 +40,15 @@ namespace lux::render::detail
         }
     }
 
+    void JobFrameResources::NativeBatch::release(const nri::CoreInterface& core) const noexcept
+    {
+        for (auto* command : commands) if (command) core.DestroyCommandBuffer(command);
+        for (auto* allocator : allocators) if (allocator) core.DestroyCommandAllocator(allocator);
+    }
+
     void JobFrameResources::release(const nri::CoreInterface& nri_core) noexcept
     {
-        for (const auto& batch : batches)
-        {
-            for (auto* command : batch.commands) if (command) nri_core.DestroyCommandBuffer(command);
-            for (auto* allocator : batch.allocators) if (allocator) nri_core.DestroyCommandAllocator(allocator);
-        }
+        for (const auto& batch : batches) batch.release(nri_core);
         nri_core.DestroyDescriptorPool(descriptor_pool);
         for (const auto& binding : raster_bindings)
             for (auto* view : binding.views) nri_core.DestroyDescriptor(view);
@@ -74,5 +79,43 @@ namespace lux::render::detail
         {
             nri_core.FreeMemory(allocation.memory);
         }
+    }
+
+    RenderResult<void>
+    JobFrameResources::createBatches(DeviceSession& session, std::span<const SubmissionBatch> schedule) noexcept
+    {
+        if (!batches.empty()) return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto& core = session.nriCore();
+        std::vector<NativeBatch> candidate(schedule.size());
+        cxx::scope_exit rollback([&]() noexcept
+        {
+            for (const auto& batch : candidate) batch.release(core);
+        });
+        for (std::size_t batch = 0; batch < schedule.size(); ++batch)
+        {
+            const auto& description = schedule[batch];
+            const bool has_tail = description.output_begin != kGraphInvalidIndex;
+            const std::uint32_t first_part = has_tail && description.output_begin == description.first_pass ? 1u : 0u;
+            const std::uint32_t end_part = has_tail ? 2u : 1u;
+            for (auto part = first_part; part < end_part; ++part)
+            {
+                auto result = core.CreateCommandAllocator(
+                    session.queue(description.queue).native(), candidate[batch].allocators[part]
+                );
+                if (result == nri::Result::SUCCESS)
+                {
+                    result = core.CreateCommandBuffer(
+                        *candidate[batch].allocators[part], candidate[batch].commands[part]
+                    );
+                }
+                if (result != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(result));
+                }
+            }
+        }
+        batches = std::move(candidate);
+        rollback.release();
+        return {};
     }
 } // namespace lux::render::detail

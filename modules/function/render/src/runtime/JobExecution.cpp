@@ -1,4 +1,4 @@
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
@@ -6,6 +6,19 @@
 
 namespace lux::render::runtime_detail
 {
+    namespace
+    {
+        std::vector<detail::FrameResources> createFrames(std::span<detail::JobFrameResources> physical) noexcept
+        {
+            std::vector<detail::FrameResources> frames;
+            frames.reserve(physical.size());
+            for (auto& frame : physical) frames.emplace_back(frame);
+            return frames;
+        }
+    }
+
+    JobExecution::~JobExecution() noexcept = default;
+
     JobExecution::JobExecution(
         detail::JobGpuResources& gpu,
         const compiled::RenderGraph& selected,
@@ -13,7 +26,8 @@ namespace lux::render::runtime_detail
         detail::TargetOutput physical
     ) noexcept
         : effect(installation.effect), device(installation.device), target(installation.target),
-          instance(gpu, selected, physical),
+          frames_(createFrames(gpu.frames)), histories_(selected.historyCount()),
+          instance(gpu, selected, {frames_, histories_}, physical),
           binding_identity(installation.identity)
     {
     }

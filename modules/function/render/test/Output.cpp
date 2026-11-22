@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
@@ -67,6 +68,7 @@
 #include <string>
 #include <string_view>
 using namespace foundation_test;
+using lux::render::runtime_detail::JobExecution;
 
 struct ProducerConstants final
 {
@@ -200,9 +202,10 @@ static void graphOutput(Validation& validation)
     auto graph = take(std::move(std::get<0>(*ready_result)));
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
     auto execution_gpu = std::make_unique<JobGpuResources>(*session, frames->frameCount());
-    auto execution = std::make_unique<RenderGraphInstance>(
-        *execution_gpu, graph.graph, physical->output()
+    auto execution_job = std::make_unique<JobExecution>(
+        *execution_gpu, graph.graph, JobExecution::Installation{}, physical->output()
     );
+    auto* execution = &execution_job->instance;
     CHECK(execution->initialize());
     auto incompatible_output = physical->output();
     incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
@@ -213,7 +216,7 @@ static void graphOutput(Validation& validation)
     auto missing_output = RenderGraphInstance::ResizeResources::prepare(*execution_gpu, *execution, {});
     CHECK(!missing_output && missing_output.error().type == kDeviceArgument);
     CHECK(execution->target() == target); // Rejection must not withdraw the adopted output.
-    const std::array contexts{execution.get()};
+    const std::array contexts{execution};
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
     CHECK(
@@ -254,7 +257,7 @@ static void graphOutput(Validation& validation)
     auto last_uses = session->makeFrontiers();
     physical->appendUses(last_uses);
     CHECK(last_uses != prior_uses);
-    execution.reset();
+    execution_job.reset();
     execution_gpu.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
@@ -308,14 +311,20 @@ static void importedIdentityReuse(Validation& validation)
         return number("\"dependency_rebuilds\":");
     };
     std::optional<JobGpuResources> instance_gpu;
-    std::optional<RenderGraphInstance> instance;
-    instance.emplace(instance_gpu.emplace(*session, 1), plan.graph);
+    std::optional<JobExecution> instance_job;
+    const auto create = [&]() -> RenderGraphInstance*
+    {
+        auto& gpu = instance_gpu.emplace(*session, 1);
+        return &instance_job.emplace(gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}).instance;
+    };
+    auto* instance = create();
     CHECK(instance->initialize());
     const auto initial_revision = revision(*instance);
     std::uint64_t creation_revisions = 0;
     {
         JobGpuResources probe_gpu(*session, 1);
-        RenderGraphInstance probe{probe_gpu, plan.graph};
+        JobExecution probe_job{probe_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
+        auto& probe = probe_job.instance;
         CHECK(probe.initialize());
         creation_revisions = revision(probe) - initial_revision;
     }
@@ -346,10 +355,10 @@ static void importedIdentityReuse(Validation& validation)
     const auto cached_revision = revision(*instance);
     const auto cached_rebuilds = rebuilds();
     const auto* address = &*instance;
-    instance.reset();
+    instance_job.reset();
     instance_gpu.reset();
     CHECK(session->drain());
-    instance.emplace(instance_gpu.emplace(*session, 1), plan.graph);
+    instance = create();
     CHECK(&*instance == address);
     CHECK(instance->initialize());
     render();
@@ -358,7 +367,7 @@ static void importedIdentityReuse(Validation& validation)
     const auto adopted_rebuilds = rebuilds();
     render();
     CHECK(rebuilds() == adopted_rebuilds); // Stable inputs still reuse the dependency cache.
-    instance.reset();
+    instance_job.reset();
     instance_gpu.reset();
     CHECK(session->drain());
     session->nriCore().DestroyBuffer(buffer);
@@ -460,7 +469,8 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources invalid_gpu(*session, 1);
-            RenderGraphInstance invalid{invalid_gpu, plan.graph};
+            JobExecution invalid_job{invalid_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
+            auto& invalid = invalid_job.instance;
             invalid.bindImage(source, 0, *images[0]);
             invalid.bindImage(destination, 0, *images[1]);
             const auto rejected = invalid.initialize();
@@ -468,7 +478,8 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources instance_gpu(*session, 1);
-            RenderGraphInstance instance{instance_gpu, plan.graph};
+            JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
+            auto& instance = instance_job.instance;
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
             CHECK(instance.initialize());

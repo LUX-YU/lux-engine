@@ -25,6 +25,7 @@ namespace lux::render::compiled { class RenderGraph; }
 namespace lux::render::detail
 {
     struct GraphBindingPlan;
+    struct RecordingDependencies;
     struct DescriptorAccess;
     class DeviceSession;
     class GraphCompiler;
@@ -272,7 +273,20 @@ namespace lux::render::detail
 
     struct HistoryPlan final
     {
+        using VViewDescription = std::variant<nri::BufferViewDesc, nri::TextureViewDesc>;
+
+        struct View final
+        {
+            std::uint32_t pass, index;
+            EImageViewTarget target;
+            bool previous;
+            VViewDescription description;
+            std::uint32_t binding = 0, element = 0;
+            bool has_fallback = false;
+        };
+
         HistoryDescription description;
+        std::vector<View> views;
         // Publication is proved complete for every selected path during range analysis.
     };
 
@@ -506,9 +520,14 @@ namespace lux::render::compiled
         }
         const detail::RecordingProgram& recordingProgram() const && = delete;
 
+        [[nodiscard]] const detail::RecordingDependencies& recordingDependencies() const & noexcept;
+        const detail::RecordingDependencies& recordingDependencies() const && = delete;
+
         [[nodiscard]] std::span<const detail::DescriptorAccess>
         descriptorUses(std::uint32_t binding_slot) const & noexcept;
         std::span<const detail::DescriptorAccess> descriptorUses(std::uint32_t) const && = delete;
+
+        [[nodiscard]] std::size_t historyCount() const noexcept { return histories_.size(); }
 
         [[nodiscard]] std::uint32_t output() const noexcept
         {

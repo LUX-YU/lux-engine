@@ -21,11 +21,7 @@ namespace lux::render::detail
                     add(indirect->count_buffer.buffer);
                 }
             }
-            else if (const auto* compute = recording.computeCommands(pass))
-            {
-                if (const auto* indirect = std::get_if<BufferLocation>(&compute->dispatch)) add(indirect->buffer);
-                else if (const auto* extent = std::get_if<ImageDispatchExtent>(&compute->dispatch)) add(extent->image);
-            }
+
         }
     } // namespace
 
@@ -49,25 +45,36 @@ namespace lux::render::detail
         {
             const auto& pass = recording.passes[p];
             commandResources(recording, pass, [&](std::uint32_t resource) { add(resource, p); });
-            result.pass_field_offsets.push_back(static_cast<std::uint32_t>(result.transfer_fields.size()));
-            if (const auto* range = recording.transferCommands(pass))
+            result.pass_field_offsets.push_back(static_cast<std::uint32_t>(result.operand_fields.size()));
+            using Field = RecordingDependencies::EOperandField;
+            const auto addField = [&](Field field, std::uint32_t row)
+            {
+                const auto index = static_cast<std::uint32_t>(result.operand_fields.size());
+                result.operand_fields.push_back({field, p, row});
+                return index;
+            };
+            const auto depends = [&](std::uint32_t resource, std::uint32_t field)
+            {
+                if (resource == kGraphInvalidIndex) return;
+                add(resource, p);
+                field_uses.emplace_back(resource, field);
+            };
+            if (const auto* slot = std::get_if<ComputeCommandSlot>(&pass.commands))
+            {
+                const auto& dispatch = recording.compute[slot->index].dispatch;
+                if (const auto* indirect = std::get_if<BufferLocation>(&dispatch))
+                    depends(indirect->buffer, addField(Field::INDIRECT_DISPATCH, slot->index));
+                else if (const auto* extent = std::get_if<ImageDispatchExtent>(&dispatch))
+                    depends(extent->image, addField(Field::IMAGE_DISPATCH, slot->index));
+            }
+            else if (const auto* range = recording.transferCommands(pass))
             {
                 const auto& program = recording.transfers;
-                using Field = RecordingDependencies::ETransferField;
                 const auto patch = [&](Field field, std::uint32_t operand, const auto&... sources)
                 {
-                    const auto index = static_cast<std::uint32_t>(result.transfer_fields.size());
-                    result.transfer_fields.push_back({field, p, operand});
-                    const auto depend = [&](const auto& source)
-                    {
-                        for (auto slot : {source.slot, source.fallback})
-                        {
-                            if (slot == kGraphInvalidIndex) continue;
-                            add(slot, p);
-                            field_uses.emplace_back(slot, index);
-                        }
-                    };
-                    (depend(sources), ...);
+                    const auto index = addField(field, operand);
+                    (depends(sources.slot, index), ...);
+                    (depends(sources.fallback, index), ...);
                 };
                 for (const auto [opcode, row] : program.commands(*range))
                 {
@@ -95,11 +102,7 @@ namespace lux::render::detail
             if (scope && !scope->viewport) result.viewport_passes.push_back(p);
             const auto* raster = recording.rasterCommands(pass);
             const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
-            if (list)
-            {
-                result.dynamic_passes.push_back(p);
-                if (list->producer_stream) result.producer_passes.push_back(p);
-            }
+            if (list && list->producer_stream) result.producer_passes.push_back(p);
             const auto batch = pass.submission;
             if (!batches[batch].reusable_recording || p >= batches[batch].output_begin) continue;
             const auto& sets = bindings.passes[pass.binding_slot].shared_sets;
@@ -137,8 +140,8 @@ namespace lux::render::detail
             }
             std::partial_sum(index.offsets.begin(), index.offsets.end(), index.offsets.begin());
         };
-        result.pass_field_offsets.push_back(static_cast<std::uint32_t>(result.transfer_fields.size()));
-        publish(field_uses, result.resource_transfer_fields);
+        result.pass_field_offsets.push_back(static_cast<std::uint32_t>(result.operand_fields.size()));
+        publish(field_uses, result.resource_operand_fields);
         publish(pass_uses, result.resource_passes);
         publish(batch_uses, result.resource_batches);
         return result;

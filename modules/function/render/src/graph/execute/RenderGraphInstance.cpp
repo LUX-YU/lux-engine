@@ -1,7 +1,9 @@
+#include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <algorithm>
 #include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
@@ -11,15 +13,15 @@ namespace lux::render::detail
     RenderGraphInstance::RenderGraphInstance(
         JobGpuResources& gpu,
         const compiled::RenderGraph& plan,
+        FrameStorage storage,
         TargetOutput output
     ) noexcept
-        : session_(&gpu.session), gpu_(gpu), graph_(plan), output_(output)
+        : session_(&gpu.session), gpu_(gpu), frames_(storage.frames), histories_(storage.histories),
+          graph_(plan), output_(output)
     {
         condition_values_.resize(plan.condition_count_);
         const auto parameter_bytes = plan.passes().empty() ? 0 :
             plan.passes().back().parameter_offset + plan.passes().back().parameter_size;
-        frames_.reserve(gpu.frames.size());
-        for (auto& physical : gpu.frames) frames_.emplace_back(physical);
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
@@ -35,7 +37,7 @@ namespace lux::render::detail
             frame.record_passes.resize(plan.passes().size());
             frame.pending_resources.initialize(plan.resources().size());
             frame.pending_passes.initialize(plan.passes().size());
-            frame.pending_transfer_fields.initialize(plan.binding_plan_->recordings.transfer_fields.size());
+            frame.pending_operand_fields.initialize(plan.binding_plan_->recordings.operand_fields.size());
             frame.transfers.initialize(plan.recordingProgram().transfers);
             const auto clear_capacity = plan.histories_.size() * 2;
             frame.history_initializations.prepareCapacity(clear_capacity, clear_capacity);
@@ -126,7 +128,8 @@ namespace lux::render::detail
                 return passes;
             }
             prepareAliasBarriers(frames_[slot]);
-            if (auto recordings = createRecordings(slot); !recordings)
+            frames_[slot].command_batches.resize(plan.submissions().size());
+            if (auto recordings = frames_[slot].native.createBatches(session, plan.submissions()); !recordings)
             {
                 return recordings;
             }
@@ -137,9 +140,9 @@ namespace lux::render::detail
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
-            linkRecordInputs(frames_[slot]);
-            bindHistory(slot);
-            updateHistoryViews(slot);
+            frames_[slot].linkRecordInputs(plan.recordingProgram());
+            frames_[slot].bindHistory(histories_, graph_.recordingDependencies());
+            frames_[slot].updateHistoryViews(histories_, session_->nriCore());
         }
         return {};
     }
@@ -194,7 +197,7 @@ namespace lux::render::detail
             if (binding.image != output.image)
             {
                 retireRasterViews(frame, nullptr, binding.image);
-                invalidateResourceRecordings(slot, graph_.output());
+                frame.invalidateResource(graph_.recordingDependencies(), graph_.output());
                 binding.select(nullptr, output.image, session_->nriCore());
                 // A presentation image has one writer and cannot be sampled by another instance.
                 // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
@@ -221,7 +224,7 @@ namespace lux::render::detail
         {
             return false;
         }
-        bindHistory(slot);
+        frame.bindHistory(histories_, graph_.recordingDependencies());
         std::ranges::copy(condition_values_, frame.conditions.begin());
         for (std::size_t i = 0; i < histories_.size(); ++i)
         {
@@ -239,10 +242,10 @@ namespace lux::render::detail
             {
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)
                 {
-                    invalidateRecording(slot, p);
+                    frame.invalidatePass(graph_, p);
                     if (!enabled) continue;
-                    const auto& offsets = graph_.binding_plan_->recordings.pass_field_offsets;
-                    for (auto i = offsets[p]; i < offsets[p + 1]; ++i) frame.pending_transfer_fields.mark(i);
+                    const auto& offsets = graph_.recordingDependencies().pass_field_offsets;
+                    for (auto i = offsets[p]; i < offsets[p + 1]; ++i) frame.pending_operand_fields.mark(i);
                 }
             }
             frame.enabled_regions[r] = enabled;
@@ -258,10 +261,10 @@ namespace lux::render::detail
                 return cxx::unexpected(rebound.error());
             }
         }
-        updateHistoryViews(slot);
+        frame.updateHistoryViews(histories_, session_->nriCore());
         if (frame.viewport != viewport_)
         {
-            for (const auto p : graph_.binding_plan_->recordings.viewport_passes) invalidateRecording(slot, p);
+            for (const auto p : graph_.recordingDependencies().viewport_passes) frame.invalidatePass(graph_, p);
             frame.viewport = viewport_;
         }
         const auto& shared = session_->descriptors();
@@ -284,7 +287,7 @@ namespace lux::render::detail
             constexpr std::array kinds{
                 nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
             };
-            const auto& dependencies = graph_.binding_plan_->recordings;
+            const auto& dependencies = graph_.recordingDependencies();
             for (std::size_t kind = 0; kind < kinds.size(); ++kind)
             {
                 const auto generation = shared.nativeSetGeneration(kinds[kind]);
@@ -308,9 +311,8 @@ namespace lux::render::detail
             return cxx::unexpected(sections.error());
         if (auto streams = materializeRasterStreams(slot); !streams)
             return cxx::unexpected(streams.error());
-        prepareStreamedDraws(slot);
-        if (auto frozen = freezeRecordInput(slot); !frozen) return cxx::unexpected(frozen.error());
-        frame.record_ready = true;
+        auto frozen = frame.freeze(graph_, histories_, session_->description());
+        if (!frozen) return cxx::unexpected(frozen.error());
         return true;
     }
 
@@ -324,5 +326,48 @@ namespace lux::render::detail
         publishHistory(slot);
         progress_.last_submitted_slot = slot;
         ++progress_.counts[static_cast<std::size_t>(EExecutionOutcome::EXECUTED)];
+    }
+
+    RenderResult<std::span<nri::CommandBuffer* const>>
+    RenderGraphInstance::recordBatch(std::uint32_t frame_slot, std::uint32_t batch) noexcept
+    {
+        if (const auto error = session_->terminalError(); error.type) return cxx::unexpected(error);
+        auto frame = recordingFrame(frame_slot);
+        if (!frame) return cxx::unexpected(frame.error());
+        return FrameExecutor::recordBatch(*frame, *session_, batch);
+    }
+
+    RenderResult<FrozenRecordingFrame> RenderGraphInstance::recordingFrame(std::uint32_t frame_slot) noexcept
+    {
+        if (frame_slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
+        return frames_[frame_slot].recordingFrame(graph_);
+    }
+
+    void RenderGraphInstance::invalidateRasterDraws(const CompiledPass& pass, std::uint32_t frame_slot) noexcept
+    {
+        frames_[frame_slot].invalidatePass(graph_, pass.binding_slot);
+    }
+
+    RasterDrawList&
+    RenderGraphInstance::rasterDraws(const CompiledPass& pass, std::uint32_t slot, bool recording_changed) noexcept
+    {
+        if (recording_changed) invalidateRasterDraws(pass, slot);
+        const auto& raster = *graph_.rasterCommands(pass);
+        return frames_[slot].raster_draws[std::get<RasterListCommands>(raster.draw).data_index];
+    }
+
+    FrozenOperandPatches RenderGraphInstance::lastOperandPatches(std::uint32_t slot) const noexcept
+    {
+        return frames_[slot].last_operands;
+    }
+
+    FrozenPatchCounts RenderGraphInstance::lastFrozenPatches(std::uint32_t slot) const noexcept
+    {
+        return frames_[slot].last_patches;
+    }
+
+    std::uint32_t RenderGraphInstance::recordedPassCount(std::uint32_t slot) const noexcept
+    {
+        return frames_[slot].enabled_pass_count;
     }
 } // namespace lux::render::detail

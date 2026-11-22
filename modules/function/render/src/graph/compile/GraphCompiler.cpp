@@ -92,6 +92,76 @@ namespace lux::render::detail
             return {};
         }
 
+        nri::TextureViewDesc historyImageView(nri::Format format, const GraphImageRange& range, nri::TextureView type) noexcept
+        {
+            using Dim = nri::Dim_t;
+            nri::TextureViewDesc view{
+                nullptr, type, format, Dim(range.first_mip), Dim(range.mip_count),
+                Dim(range.first_layer), Dim(range.layer_count)
+            };
+            view.planes = range.aspects == 1 ? nri::PlaneBits::COLOR :
+                range.aspects == 2 ? nri::PlaneBits::DEPTH : nri::PlaneBits::STENCIL;
+            return view;
+        }
+
+        void linkHistoryViews(
+            std::span<HistoryPlan> histories, const compiled::RenderGraph& graph, const GraphBindingPlan& bindings
+        ) noexcept
+        {
+            if (histories.empty()) return;
+            const auto resources = graph.resources();
+            for (const auto& pass : graph.passes())
+            {
+                const auto layout = bindings.pass(pass.binding_slot);
+                for (std::uint32_t i = 0; i < layout.uses.size(); ++i)
+                {
+                    const auto& use = layout.uses[i];
+                    if (use.resource == kGraphInvalidIndex) continue;
+                    const auto& resource = resources[use.resource];
+                    if (resource.history == kGraphInvalidIndex) continue;
+                    auto& history = histories[resource.history];
+                    const auto& field = layout.bindings[use.field];
+                    HistoryPlan::VViewDescription view;
+                    if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
+                    {
+                        const bool storage = use.kind == EDescriptorKind::STORAGE_IMAGE;
+                        const auto type = field.image_arrayed
+                            ? (storage ? nri::TextureView::STORAGE_TEXTURE_ARRAY : nri::TextureView::TEXTURE_ARRAY)
+                            : (storage ? nri::TextureView::STORAGE_TEXTURE : nri::TextureView::TEXTURE);
+                        view = historyImageView(imageFormat(image->format).native, std::get<GraphImageRange>(use.range), type);
+                    }
+                    else
+                    {
+                        const auto range = std::get<GraphBufferRange>(use.range);
+                        view = field.bufferView(nullptr, range.offset, range.size);
+                    }
+                    history.views.push_back({
+                        pass.binding_slot, i, EImageViewTarget::DESCRIPTOR,
+                        use.resource == history.description.previous.index, view, use.binding, use.element,
+                        use.fallback != kGraphInvalidIndex
+                    });
+                }
+            }
+            for (auto& history : histories)
+            {
+                for (auto id : {history.description.previous, history.description.current})
+                {
+                    const auto& resource = resources[id.index];
+                    const auto* image = std::get_if<GraphImageDesc>(&resource.description);
+                    if (!image) continue;
+                    for (const auto& target : resource.image_views)
+                    {
+                        const auto type = target.range.aspects == 1 ?
+                            nri::TextureView::COLOR_ATTACHMENT : nri::TextureView::DEPTH_STENCIL_ATTACHMENT;
+                        history.views.push_back({
+                            target.pass, target.index, target.target, id == history.description.previous,
+                            historyImageView(imageFormat(image->format).native, target.range, type)
+                        });
+                    }
+                }
+            }
+        }
+
         bool validTransferTables(const RecordingProgram& recording) noexcept
         {
             const auto& program = recording.transfers;
@@ -134,6 +204,13 @@ namespace lux::render::detail
                 if (clear - pass.first_clear != pass.clear_view_count) return false;
                 next_instruction += pass.count;
             }
+            const auto dynamic_dispatches = std::ranges::count_if(recording.compute, [](const auto& command)
+            {
+                return !std::holds_alternative<nri::DispatchDesc>(command.dispatch);
+            });
+            const auto transfer_fields = program.instructions.size() + program.buffer_copies.size();
+            if (transfer_fields > UINT32_MAX || std::size_t(dynamic_dispatches) > UINT32_MAX - transfer_fields)
+                return false;
             return next_instruction == program.instructions.size() && buffer_copy == program.buffer_copies.size() &&
                 image_copy == program.image_copies.size() && image_buffer == program.image_buffers.size() &&
                 fill == program.fills.size() && clear == program.clears.size();
@@ -684,6 +761,7 @@ namespace lux::render::detail
                 });
             }
         }
+        linkHistoryViews(plan.histories_, plan, *table);
         plan.binding_plan_ = std::move(table);
         return {};
     }
@@ -1117,6 +1195,11 @@ namespace lux::render::compiled
     RenderGraph::~RenderGraph() noexcept = default;
 
     RenderGraph::RenderGraph(RenderGraph&&) noexcept = default;
+
+    const detail::RecordingDependencies& RenderGraph::recordingDependencies() const & noexcept
+    {
+        return binding_plan_->recordings;
+    }
 
     std::span<const detail::DescriptorAccess> RenderGraph::descriptorUses(std::uint32_t binding_slot) const & noexcept
     {

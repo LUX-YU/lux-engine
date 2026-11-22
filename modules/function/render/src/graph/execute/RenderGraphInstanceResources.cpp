@@ -7,6 +7,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
@@ -190,7 +191,7 @@ namespace lux::render::detail
             layer_views.push_back(descriptor);
         }
         // The acquired FIF slot has no GPU reader. Adopt all views before releasing the old image.
-        invalidateResourceRecordings(slot, resource.index);
+        frame.invalidateResource(graph_.recordingDependencies(), resource.index);
         for (auto& replacement : replacements)
         {
             auto& pass = frame.passes[replacement.use.pass];
@@ -583,13 +584,15 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::createResource(std::uint32_t index, Binding& binding) noexcept
+    RenderResult<void> RenderGraphInstance::createResource(std::uint32_t index, FrameResourceBinding& binding) noexcept
     {
         return createResource(index, binding, output_.description);
     }
 
     RenderResult<void>
-    RenderGraphInstance::createResource(std::uint32_t index, Binding& binding, const TargetDesc& target) noexcept
+    RenderGraphInstance::createResource(
+        std::uint32_t index, FrameResourceBinding& binding, const TargetDesc& target
+    ) noexcept
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
@@ -845,7 +848,7 @@ namespace lux::render::detail
             binding.select(value.buffer, value.image, session_->nriCore());
             binding.buffer_offset = value.offset;
             binding.buffer_size = value.size;
-            if (changed_physical) invalidateResourceRecordings(current, resource);
+            if (changed_physical) frame.invalidateResource(graph_.recordingDependencies(), resource);
             if (changed_physical && !binding.dirty)
             {
                 binding.dirty = true;

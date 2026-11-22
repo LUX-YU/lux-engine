@@ -79,21 +79,21 @@ namespace lux::render::detail
             std::vector<std::uint32_t> slots;
         };
 
-        enum class ETransferField : std::uint8_t
+        enum class EOperandField : std::uint8_t
         {
-            BUFFER_SOURCE, BUFFER_DESTINATION, IMAGE_COPY, IMAGE_BUFFER, FILL, CLEAR
+            BUFFER_SOURCE, BUFFER_DESTINATION, IMAGE_COPY, IMAGE_BUFFER, FILL, CLEAR, INDIRECT_DISPATCH, IMAGE_DISPATCH
         };
 
-        struct TransferPatch final
+        struct OperandPatch final
         {
-            ETransferField field;
+            EOperandField field;
             std::uint32_t pass, operand;
         };
 
-        ResourceIndex resource_passes, resource_batches, resource_transfer_fields;
-        std::vector<TransferPatch> transfer_fields;
+        ResourceIndex resource_passes, resource_batches, resource_operand_fields;
+        std::vector<OperandPatch> operand_fields;
         std::vector<std::uint32_t> pass_field_offsets;
-        std::vector<std::uint32_t> viewport_passes, dynamic_passes, producer_passes;
+        std::vector<std::uint32_t> viewport_passes, producer_passes;
         std::array<std::vector<std::uint32_t>, 3> shared_batches;
         std::vector<RasterList> raster_lists;
     };

@@ -42,13 +42,13 @@ namespace lux::render::runtime_detail
             TargetId target;
             detail::ExecutionBindingId identity;
         };
-        JobExecution(
+        LUX_RENDER_PUBLIC JobExecution(
             detail::JobGpuResources&,
             const compiled::RenderGraph&,
             Installation,
             detail::TargetOutput
         ) noexcept;
-        ~JobExecution() noexcept = default;
+        LUX_RENDER_PUBLIC ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;
 
@@ -57,6 +57,12 @@ namespace lux::render::runtime_detail
         std::vector<ResourceInstanceId> gpu_resources;
         DeviceSessionId device;
         TargetId target;
+    private:
+        // Stable CPU rows outlive their preparation borrows. DeviceEntry owns the native resources.
+        std::vector<detail::FrameResources> frames_;
+        std::vector<detail::HistoryState> histories_;
+
+    public:
         detail::RenderGraphInstance instance;
         [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return instance.plan(); }
         const compiled::RenderGraph& graph() const && = delete;

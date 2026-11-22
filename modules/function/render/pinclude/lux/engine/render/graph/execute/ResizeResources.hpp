@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 
 namespace lux::render::detail
@@ -23,7 +24,7 @@ namespace lux::render::detail
         struct Resource final
         {
             std::uint32_t index;
-            Binding binding;
+            FrameResourceBinding binding;
         };
 
         struct OwnershipSlots final
@@ -63,7 +64,7 @@ namespace lux::render::detail
 
     private:
         friend class RenderGraphInstance;
-        [[nodiscard]] static nri::Descriptor*& destination(Pass&, const ImageViewBinding&) noexcept;
+        [[nodiscard]] static nri::Descriptor*& destination(FramePass&, const ImageViewBinding&) noexcept;
 
         std::vector<JobFrameResources> native_frames_;
         std::vector<JobHistoryResources> native_histories_;

@@ -12,6 +12,17 @@ namespace lux::render::compiled { class RenderGraph; }
 
 namespace lux::render::detail
 {
+    struct FrozenOperandPatches final
+    {
+        std::size_t transfer = 0, compute = 0;
+    };
+
+    struct FrozenPatchCounts final
+    {
+        std::size_t resources = 0, passes = 0;
+        bool operator==(const FrozenPatchCounts&) const noexcept = default;
+    };
+
     struct RasterDrawList;
 
     struct FrozenBufferFill final

@@ -10,6 +10,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
@@ -66,7 +67,7 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         frame.stream_descriptor_rows.resize(frame.stream_inputs.size());
         nri::DescriptorPoolDesc additional{};
-        for (const auto p : graph_.binding_plan_->recordings.producer_passes)
+        for (const auto p : graph_.recordingDependencies().producer_passes)
         {
             const auto* stream = graph_.programs().rasterStream(p);
             if (!stream) continue;
@@ -184,7 +185,7 @@ namespace lux::render::detail
             record.inputs[i] = source;
             const nri::UpdateDescriptorRangeDesc write{record.set, use.binding, use.element, &descriptor, 1};
             core.UpdateDescriptorRanges(&write, 1);
-            invalidateRecording(slot, record.program.pass);
+            frames_[slot].invalidatePass(graph_, record.program.pass);
         }
         return record.set;
     }
@@ -281,7 +282,7 @@ namespace lux::render::detail
             }
         };
         for (auto& list : frame.raster_draws) relocate(list);
-        invalidateRecordings(slot);
+        frames_[slot].invalidateRecordings();
         auto* old_pool = std::exchange(frame.native.descriptor_pool, pool);
         frame.descriptor_capacity = capacity;
         frame.descriptor_reserved = required;
@@ -303,7 +304,7 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
-            invalidateRecording(slot, pass);
+            frames_[slot].invalidatePass(graph_, pass);
             std::erase_if(frame.native.raster_bindings, [&](auto& record) noexcept
             {
                 if (record.program.pass != pass || record.program.generation != generation) return false;
@@ -415,10 +416,10 @@ namespace lux::render::detail
         };
         for (const auto& compiled_pass : plan.passes())
         {
-            Pass pass{&compiled_pass};
+            FramePass pass{&compiled_pass};
             auto extent = validatePassExtent(
                 session, plan, compiled_pass,
-                [&](std::uint32_t resource) -> const Binding& { return frame.bindings[resource]; }
+                [&](std::uint32_t resource) -> const FrameResourceBinding& { return frame.bindings[resource]; }
             );
             if (!extent)
             {
@@ -715,7 +716,7 @@ namespace lux::render::detail
                 pass.history_views[index] = nullptr;
                 const auto history = graph_.resources()[use.resource].history;
                 if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
-                invalidateRecording(slot, p);
+                frames_[slot].invalidatePass(graph_, p);
             }
             source.dirty = false;
         }
@@ -738,7 +739,7 @@ namespace lux::render::detail
         if (std::memcmp(destination.data(), bytes.data(), bytes.size()) != 0)
         {
             std::memcpy(destination.data(), bytes.data(), bytes.size());
-            invalidateRecording(slot, pass);
+            frames_[slot].invalidatePass(graph_, pass);
         }
         return {};
     }

@@ -3,6 +3,7 @@
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <cmath>
@@ -90,7 +91,7 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         for (auto& image : frame.layered_images) image.requested_layers = 0;
 
-        for (const auto p : graph_.binding_plan_->recordings.producer_passes)
+        for (const auto p : graph_.recordingDependencies().producer_passes)
         {
             if (!graph_.programs().rasterStream(p)) continue;
             const auto& stream = frame.stream_inputs[p];
@@ -318,7 +319,7 @@ namespace lux::render::detail
 
         auto& candidate = frame.stream_scratch;
         auto& inputs = frame.stream_binding_inputs;
-        for (const auto p : graph_.binding_plan_->recordings.producer_passes)
+        for (const auto p : graph_.recordingDependencies().producer_passes)
         {
             const auto* stream = graph_.programs().rasterStream(p);
             if (!stream) continue;
@@ -755,7 +756,7 @@ namespace lux::render::detail
             }
             resident.dependency_reads.swap(candidate.dependency_reads);
             std::swap(resident, candidate);
-            invalidateRecording(slot, p);
+            frames_[slot].invalidatePass(graph_, p);
         }
         return {};
     }

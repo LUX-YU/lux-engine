@@ -1,13 +1,15 @@
+#include <lux/engine/render/device/BufferAccess.hpp>
 #include <algorithm>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 namespace lux::render::detail
 {
-    bool RenderGraphInstance::HistoryState::select(const DeviceSession& session) noexcept
+    bool HistoryState::select(const DeviceSession& session) noexcept
     {
         if (invalidate)
         {
@@ -52,7 +54,7 @@ namespace lux::render::detail
         return true;
     }
 
-    void RenderGraphInstance::HistoryState::publish() noexcept
+    void HistoryState::publish() noexcept
     {
         if (sequence == UINT64_MAX)
         {
@@ -68,7 +70,6 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::createHistories() noexcept
     {
-        histories_.resize(graph_.histories_.size());
         gpu_.histories.resize(histories_.size());
         for (std::size_t index = 0; index < histories_.size(); ++index)
         {
@@ -86,7 +87,7 @@ namespace lux::render::detail
             for (auto& slot : history.slots)
             {
                 slot.last_use = session_->makeFrontiers();
-                Binding candidate;
+                FrameResourceBinding candidate;
                 if (auto created = createResource(history.plan->description.current.index, candidate); !created)
                 {
                     return created;
@@ -106,152 +107,29 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::createHistoryViews(HistoryState& history) noexcept
     {
-        using Target = EImageViewTarget;
         const auto& core = session_->nriCore();
         const auto& description = history.plan->description;
-        const auto belongs = [&](GraphResourceId id)
-        { return id == description.previous || id == description.current; };
-        const auto addView = [&](GraphResourceId resource,
-                                 const VGraphRange& range,
-                                 std::uint32_t pass,
-                                 std::uint32_t index,
-                                 Target target,
-                                 EDescriptorKind kind) -> RenderResult<void>
+        for (auto& slot : history.slots)
         {
-            if (!belongs(resource))
-            {
-                return {};
-            }
-            history.views.push_back({resource, pass, index, target});
-            for (auto& slot : history.slots)
+            slot.views.reserve(history.plan->views.size());
+            for (const auto& use : history.plan->views)
             {
                 nri::Descriptor* view = nullptr;
                 nri::Result result;
-                if (slot.image)
+                if (const auto* image = std::get_if<nri::TextureViewDesc>(&use.description))
                 {
-                    const auto& selected = std::get<GraphImageRange>(range);
-                    const bool attachment = target != Target::DESCRIPTOR;
-                    const bool depth = selected.aspects != 1;
-                    const auto type =
-                        attachment
-                            ? (depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT)
-                            : (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
-                                                                      : nri::TextureView::TEXTURE);
-                    const auto& program = graph_.binding_plan_->pass(pass);
-                    const bool arrayed =
-                        target == Target::DESCRIPTOR && program.bindings[program.uses[index].field].image_arrayed;
-                    const auto view_type =
-                        arrayed ? (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE_ARRAY
-                                                                          : nri::TextureView::TEXTURE_ARRAY)
-                                : type;
-                    nri::TextureViewDesc input{
-                        slot.image,
-                        view_type,
-                        core.GetTextureDesc(*slot.image).format,
-                        static_cast<nri::Dim_t>(selected.first_mip),
-                        static_cast<nri::Dim_t>(selected.mip_count),
-                        static_cast<nri::Dim_t>(selected.first_layer),
-                        static_cast<nri::Dim_t>(selected.layer_count)
-                    };
-                    input.planes = selected.aspects == 1   ? nri::PlaneBits::COLOR
-                                   : selected.aspects == 2 ? nri::PlaneBits::DEPTH
-                                                           : nri::PlaneBits::STENCIL;
-                    result = core.CreateTextureView(input, view);
+                    auto native = *image;
+                    native.texture = slot.image;
+                    result = core.CreateTextureView(native, view);
                 }
                 else
                 {
-                    const auto& selected = std::get<GraphBufferRange>(range);
-                    const auto& plan = graph_.binding_plan_->pass(pass);
-                    const auto& shader = plan.bindings[plan.uses[index].field];
-                    const auto input = shader.bufferView(slot.buffer, selected.offset, selected.size);
-                    result = createBufferView(input, view);
+                    auto native = std::get<nri::BufferViewDesc>(use.description);
+                    native.buffer = slot.buffer;
+                    result = createBufferView(native, view);
                 }
-                if (result != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(result));
-                }
+                if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
                 slot.views.push_back(view);
-            }
-            return {};
-        };
-        for (std::uint32_t p = 0; p < graph_.passes().size(); ++p)
-        {
-            const auto& pass = graph_.passes()[p];
-            const auto& uses = graph_.binding_plan_->pass(pass.binding_slot).uses;
-            for (std::uint32_t i = 0; i < uses.size(); ++i)
-            {
-                const auto& use = uses[i];
-                if (auto created = addView({use.resource}, use.range, p, i, Target::DESCRIPTOR, use.kind); !created)
-                {
-                    return created;
-                }
-            }
-            if (const auto* raster = graph_.recordingProgram().rasterScope(pass))
-            {
-                const auto addAttachment = [&](const RasterAttachment& attachment, std::uint32_t i, bool depth
-                                           ) -> RenderResult<void>
-                {
-                    const auto& access = attachment.access;
-                    if (auto view = addView(
-                            access.version.resource,
-                            access.range,
-                            p,
-                            i,
-                            depth ? Target::DEPTH : Target::COLOR,
-                            EDescriptorKind::SAMPLED_IMAGE
-                        );
-                        !view)
-                    {
-                        return view;
-                    }
-                    if (attachment.resolve)
-                    {
-                        const auto& resolve = *attachment.resolve;
-                        return addView(
-                            resolve.version.resource,
-                            resolve.range,
-                            p,
-                            i,
-                            depth ? Target::DEPTH_RESOLVE : Target::COLOR_RESOLVE,
-                            EDescriptorKind::SAMPLED_IMAGE
-                        );
-                    }
-                    return {};
-                };
-                for (std::uint32_t i = 0; i < raster->colors.size(); ++i)
-                {
-                    if (auto created = addAttachment(raster->colors[i], i, false); !created)
-                    {
-                        return created;
-                    }
-                }
-                if (raster->depth)
-                {
-                    if (auto created = addAttachment(*raster->depth, 0, true); !created)
-                    {
-                        return created;
-                    }
-                }
-            }
-            if (const auto* transfer = graph_.transferCommands(pass))
-            {
-                const auto& transfers = graph_.recordingProgram().transfers;
-                for (const auto& clear : transfers.clearCommands(*transfer))
-                {
-                    const auto& access = clear.destination;
-                    if (auto created = addView(
-                            GraphResourceId{access.slot},
-                            access.range,
-                            p,
-                            clear.view,
-                            Target::CLEAR,
-                            EDescriptorKind::SAMPLED_IMAGE
-                        );
-                        !created)
-                    {
-                        return created;
-                    }
-                }
             }
         }
         // Initialization views are immutable and shared by the safe frame descriptor banks.
@@ -294,12 +172,11 @@ namespace lux::render::detail
         return std::ranges::all_of(histories_, [&](auto& history) { return history.select(*session_); });
     }
 
-    void RenderGraphInstance::bindHistory(std::uint32_t frame_slot) noexcept
+    void FrameResources::bindHistory(std::span<const HistoryState> histories, const RecordingDependencies& dependencies) noexcept
     {
-        auto& frame = frames_[frame_slot];
-        for (std::uint32_t h = 0; h < histories_.size(); ++h)
+        for (std::uint32_t h = 0; h < histories.size(); ++h)
         {
-            const auto& history = histories_[h];
+            const auto& history = histories[h];
             const auto clear = [&](bool required, std::uint32_t slot) noexcept
             {
                 return required ? FrameResources::HistoryClear{slot, history.slots[slot].initialized}
@@ -307,67 +184,62 @@ namespace lux::render::detail
             };
             const std::array clears{clear(history.clear_previous, history.previous),
                                     clear(history.clear_current, history.current)};
-            if (frame.history_clears[h] != clears)
+            if (history_clears[h] != clears)
             {
-                frame.history_clears[h] = clears;
-                frame.pending_history_clears.mark(h);
+                history_clears[h] = clears;
+                pending_history_clears.mark(h);
             }
             const bool valid = !history.clear_previous;
-            const bool validity_changed = static_cast<bool>(frame.history_valid[h]) != valid;
-            frame.history_valid[h] = valid;
+            const bool validity_changed = static_cast<bool>(history_valid[h]) != valid;
+            history_valid[h] = valid;
             const auto& description = history.plan->description;
             for (const auto [resource, selected] :
                  {std::pair{description.previous, history.previous}, std::pair{description.current, history.current}})
             {
                 const auto& physical = history.slots[selected];
-                auto& binding = frame.bindings[resource.index];
+                auto& binding = bindings[resource.index];
                 const bool unchanged = binding.image == physical.image && binding.buffer == physical.buffer &&
                     binding.buffer_size == physical.buffer_size;
                 if (unchanged && !validity_changed) continue;
-                frame.pending_history_views.mark(h);
+                pending_history_views.mark(h);
                 binding.image = physical.image;
                 binding.image_description = physical.image_description;
                 binding.buffer = physical.buffer;
                 binding.buffer_description = physical.buffer_description;
                 binding.buffer_size = physical.buffer_size;
-                invalidateResourceRecordings(frame_slot, resource.index);
+                invalidateResource(dependencies, resource.index);
                 if (!binding.dirty)
                 {
                     binding.dirty = true;
-                    frame.changed_resources.push_back(resource.index);
+                    changed_resources.push_back(resource.index);
                 }
             }
         }
     }
 
-    void RenderGraphInstance::updateHistoryViews(std::uint32_t frame_slot) noexcept
+    void FrameResources::updateHistoryViews(std::span<const HistoryState> histories, const nri::CoreInterface& core) noexcept
     {
         using Target = EImageViewTarget;
-        auto& frame = frames_[frame_slot];
-        const auto& core = session_->nriCore();
-        for (const auto h : frame.pending_history_views.slots())
+        for (const auto h : pending_history_views.slots())
         {
-            const auto& history = histories_[h];
-            const auto& description = history.plan->description;
-            for (std::size_t i = 0; i < history.views.size(); ++i)
+            const auto& history = histories[h];
+            for (std::size_t i = 0; i < history.plan->views.size(); ++i)
             {
-                const auto& use = history.views[i];
-                const auto selected = use.resource == description.previous ? history.previous : history.current;
+                const auto& use = history.plan->views[i];
+                const auto selected = use.previous ? history.previous : history.current;
                 auto* view = history.slots[selected].views[i];
-                auto& pass = frame.passes[use.pass];
+                auto& pass = passes[use.pass];
                 switch (use.target)
                 {
                 case Target::DESCRIPTOR:
                 {
-                    const auto& binding =
-                        graph_.binding_plan_->pass(pass.compiled_pass->binding_slot).uses[use.index];
-                    if (!frame.history_valid[h] && binding.fallback != kGraphInvalidIndex)
+                    if (!history_valid[h] && use.has_fallback)
                     {
                         view = pass.private_views[use.index];
                     }
                     if (pass.history_views[use.index] == view) break;
                     const nri::UpdateDescriptorRangeDesc
-                        update{pass.private_descriptors, binding.binding, binding.element, &view, 1};
+                        update{pass.private_descriptors, use.binding, use.element, &view, 1};
                     core.UpdateDescriptorRanges(&update, 1);
                     pass.history_views[use.index] = view;
                     break;
@@ -390,7 +262,7 @@ namespace lux::render::detail
                 }
             }
         }
-        frame.pending_history_views.clear();
+        pending_history_views.clear();
     }
 
     RenderResult<void> RenderGraphInstance::invalidateHistory(std::span<const GraphResourceId> previous) noexcept
@@ -469,5 +341,85 @@ namespace lux::render::detail
             auto& history = histories_[compiled.history];
             mark(history.slots[compiled.origin == EGraphOrigin::HISTORY_PREVIOUS ? history.previous : history.current]);
         }
+    }
+
+    void FrameResources::freezeHistoryInitializations(
+        std::span<const HistoryState> histories, std::span<const CompiledResource> resources, nri::GraphicsAPI api
+    ) noexcept
+    {
+        for (const auto h : pending_history_clears.slots())
+        {
+            const auto& history = histories[h];
+            const auto& description = history.plan->description;
+            const auto canonical_layout = description.canonical_use == EGraphUse::SAMPLED ? nri::Layout::SHADER_RESOURCE
+                : description.canonical_use == EGraphUse::TRANSFER_SOURCE ? nri::Layout::COPY_SOURCE
+                                                                         : nri::Layout::SHADER_RESOURCE_STORAGE;
+            const auto canonical_access = description.canonical_use == EGraphUse::SAMPLED
+                ? nri::AccessBits::SHADER_RESOURCE
+                : description.canonical_use == EGraphUse::TRANSFER_SOURCE ? nri::AccessBits::COPY_SOURCE
+                                                                         : nri::AccessBits::SHADER_RESOURCE_STORAGE;
+            const auto& selections = history_clears[h];
+            for (std::size_t side = 0; side < selections.size(); ++side)
+            {
+                // History banks own disjoint resources. Each active clear is independently recordable.
+                const auto key = static_cast<std::size_t>(h) * selections.size() + side;
+                const auto selection = selections[side];
+                if (selection.slot == kGraphInvalidIndex)
+                {
+                    history_initializations.erase(key);
+                    continue;
+                }
+                const auto& selected = history.slots[selection.slot];
+                auto& record = history_initializations.emplace(key);
+                if (selected.image)
+                {
+                    const auto& graph_image =
+                        std::get<GraphImageDesc>(resources[description.current.index].description);
+                    const auto aspects = rdesc::textureAspectMask(graph_image.format);
+                    record.depth = aspects != 1;
+                    record.views = selected.initial_views;
+                    auto& transition = record.image_before;
+                    transition.texture = selected.image;
+                    if (selected.initialized)
+                        transition.before = {canonical_access, canonical_layout, nri::StageBits::ALL};
+                    transition.after = record.depth
+                        ? nri::AccessLayoutStage{
+                            nri::AccessBits::DEPTH_STENCIL_ATTACHMENT, nri::Layout::DEPTH_STENCIL_ATTACHMENT,
+                            nri::StageBits::DEPTH_STENCIL_ATTACHMENT
+                        }
+                        : nri::AccessLayoutStage{
+                            nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT,
+                            nri::StageBits::COLOR_ATTACHMENT
+                        };
+                    transition.mipNum = selected.image_description->mipNum;
+                    transition.layerNum = selected.image_description->layerNum;
+                    transition.planes = record.depth ? nri::PlaneBits::DEPTH : nri::PlaneBits::COLOR;
+                    if (aspects & 4) transition.planes |= nri::PlaneBits::STENCIL;
+                    if (record.depth) record.clear_value.depthStencil.depth = description.initial.depth;
+                    else
+                    {
+                        const auto& color = description.initial.color;
+                        record.clear_value.color.f = {color[0], color[1], color[2], color[3]};
+                    }
+                    record.image_after = transition;
+                    record.image_after.before = transition.after;
+                    record.image_after.after = {canonical_access, canonical_layout, nri::StageBits::ALL};
+                }
+                else
+                {
+                    auto& transition = record.buffer_before;
+                    transition.buffer = selected.buffer;
+                    if (selected.initialized) transition.before = {canonical_access, nri::StageBits::ALL};
+                    transition.after = {
+                        nri::AccessBits::COPY_DESTINATION, zeroBufferStages(api)
+                    };
+                    record.buffer_size = selected.buffer_size;
+                    record.buffer_after = transition;
+                    record.buffer_after.before = transition.after;
+                    record.buffer_after.after = {canonical_access, nri::StageBits::ALL};
+                }
+            }
+        }
+        pending_history_clears.clear();
     }
 } // namespace lux::render::detail

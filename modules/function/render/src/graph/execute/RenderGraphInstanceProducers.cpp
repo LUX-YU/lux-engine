@@ -4,6 +4,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>

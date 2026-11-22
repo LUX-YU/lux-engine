@@ -25,7 +25,7 @@ namespace lux::render::detail
             std::uint32_t slot;
             ResourceInstanceId owner;
             const cxx::basic_type_info* type;
-            extension_detail::SelectedStorageSnapshot selection;
+            RevisionedValue<const void*> selection;
         };
 
         const ResourceRegistry& registry;

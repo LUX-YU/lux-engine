@@ -485,10 +485,9 @@ namespace
         const auto settings = take(context.importStorageSnapshot<std::uint32_t>(
             "background", {ResourceName{BackgroundSettings::descriptor.type.name()}}
         ));
-        auto clear = context.addPreparation({
-            PreparationAlgorithm::stateless<ClearBackground>(), take(ConfigValue::make(ClearBackground::Configuration{base.pass, settings})),
-            {}, {}, {}, {base.pass},
-            {}, {settings}, {settings}, RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
+        auto clear = context.addCpuCall<ClearBackground>(ClearBackground::Configuration{base.pass, settings}, {
+            .passes = {base.pass}, .storage_inputs = {settings}, .program_storage_inputs = {settings},
+            .program_builder = RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
         });
         if (!clear) return clear;
         RasterPassTemplate stage;
@@ -525,18 +524,17 @@ namespace
         ));
         raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
         auto draw = take(context.addRasterPass("two programs", std::move(raster)));
-        auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
+        auto configuration = ProgramDraws::Configuration{
             draw.pass, alias, camera, context.shaderTarget(), mode == "stale-code", reads_records
-        }));
+        };
         auto program_builder = RasterProgramBuilder::make<ProgramDraws, &ProgramDraws::buildPrograms>();
         if (mode == "no-build") program_builder = {};
         if (mode == "wrong-inputs")
             program_builder = RasterProgramBuilder::make<WrongProgramInputs, &WrongProgramInputs::build>();
         if (mode == "missing-map")
             program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
-        auto added = context.addPreparation({
-            PreparationAlgorithm::withWorkspace<ProgramDraws>(), std::move(configuration), {}, {}, {},
-            {draw.pass}, {}, {code, alias, camera}, {code, alias}, program_builder
+        auto added = context.addCpuCall<ProgramDraws>(std::move(configuration), {
+            {}, {}, {}, {draw.pass}, {}, {code, alias, camera}, {code, alias}, program_builder
         });
         if (!added) return added;
         return context.publish(color, {{color, draw.written.front()}});

@@ -169,7 +169,7 @@ namespace lux::render
             static RenderResult<void>
             prepare(
                 const LinkedData& linked,
-                FramePreparation& frame,
+                CpuCallFrame& frame,
                 Workspace& workspace,
                 const DrawMapping* mapping
             ) noexcept
@@ -567,14 +567,13 @@ namespace lux::render
             using Kernel = PrepareMeshVisibility;
             constexpr auto build = RasterProgramBuilder::make<Kernel, &Kernel::buildPrograms>();
             const auto program_builder = config.surface ? build : RasterProgramBuilder{};
-            auto value = ConfigValue::make(config);
-            if (!value) return cxx::unexpected(value.error());
-            if (auto prepared = context.addPreparation({
-                PreparationAlgorithm::withWorkspace<PrepareMeshVisibility, &PrepareMeshVisibility::createWorkspace>(),
-                std::move(*value), {}, {}, std::move(inline_blocks),
-                std::move(producer_passes), std::move(prepared_buffers), std::move(storage_inputs),
-                std::move(program_inputs), program_builder
-            }); !prepared)
+            if (auto prepared = context.addCpuCall<Kernel, &Kernel::createWorkspace>(
+                std::move(config), {
+                    .inline_blocks = std::move(inline_blocks), .passes = std::move(producer_passes),
+                    .gpu_buffers = std::move(prepared_buffers), .storage_inputs = std::move(storage_inputs),
+                    .program_storage_inputs = std::move(program_inputs), .program_builder = program_builder
+                }
+            ); !prepared)
                 return prepared;
             if constexpr (Effect == EMeshEffect::VISIBILITY || Effect == EMeshEffect::GBUFFER || Effect == EMeshEffect::SHADOW)
             {

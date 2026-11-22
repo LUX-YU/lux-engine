@@ -159,7 +159,7 @@ namespace lux::render
                 return inputs;
             }
 
-            static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
+            static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
             {
                 const auto snapshot = frame.readStorage(linked.camera);
                 if (!snapshot) return cxx::unexpected(snapshot.error());
@@ -333,11 +333,8 @@ namespace lux::render
                 if (auto published = context.publish(Lighting::hdr, {{Lighting::hdr, pass->written.front()}}); !published)
                     return published;
             }
-            auto config = ConfigValue::make(std::move(preparation));
-            if (!config) return cxx::unexpected(config.error());
-            return context.addPreparation({
-                PreparationAlgorithm::stateless<LightingPreparation>(), std::move(*config), {}, {},
-                std::move(writers), {}, {}, {*camera}
+            return context.addCpuCall<LightingPreparation>(std::move(preparation), {
+                {}, {}, std::move(writers), {}, {}, {*camera}
             });
         }
     }

@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/extensions/execution/PreparedCpuValue.hpp>
 #include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/engine/render/graph/DrawResource.hpp>
@@ -11,7 +10,8 @@
 #include <lux/engine/render/graph/IndexedGeometry.hpp>
 #include <array>
 #include <bit>
-#include <cstring>
+#include <concepts>
+#include <type_traits>
 #include <functional>
 #include <span>
 
@@ -19,9 +19,15 @@ namespace lux::rdesc { struct ShaderBlock; }
 
 namespace lux::render
 {
+    namespace detail { class JobCpuPreparation; struct CpuCall; }
+
+    template <class T>
+    concept CpuPreparationValue = std::is_trivially_copyable_v<T> && std::same_as<T, std::remove_cv_t<T>> &&
+        !std::is_array_v<T>;
+
     class PreparedBufferWriter final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class InstanceLinkContext;
         explicit constexpr PreparedBufferWriter(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
@@ -29,7 +35,7 @@ namespace lux::render
 
     class FrameBufferSizer final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class InstanceLinkContext;
         explicit constexpr FrameBufferSizer(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
@@ -51,7 +57,7 @@ namespace lux::render
 
     template <CpuPreparationValue T> class CpuInputSlot final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class InstanceLinkContext;
         explicit constexpr CpuInputSlot(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
@@ -59,7 +65,7 @@ namespace lux::render
 
     template <CpuPreparationValue T> class CpuOutputSlot final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class InstanceLinkContext;
         explicit constexpr CpuOutputSlot(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
@@ -67,13 +73,13 @@ namespace lux::render
 
     template <ShaderConstantBlock T> class InlineConstantWriter final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class InstanceLinkContext;
         explicit constexpr InlineConstantWriter(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;
     };
 
-    class FramePreparation;
+    class CpuCallFrame;
 
     struct RasterRecordLayout final
     {
@@ -87,7 +93,7 @@ namespace lux::render
         struct RasterRecordDestination final
         {
             DrawSourceAddress source;
-            std::uint32_t program;
+            std::uint32_t list, program;
             RasterRecordLayout layout;
         };
     }
@@ -106,30 +112,32 @@ namespace lux::render
         write(const RasterRecordInput& record, DrawResourceSlot<Storage> images) const noexcept;
 
     private:
-        friend class FramePreparation;
+        friend class CpuCallFrame;
 
-        RasterRecordWriter(FramePreparation& frame, extension_detail::RasterRecordDestination destination) noexcept
+        RasterRecordWriter(CpuCallFrame& frame, extension_detail::RasterRecordDestination destination) noexcept
             : frame_(frame), destination_(destination) {}
 
-        FramePreparation& frame_;
+        CpuCallFrame& frame_;
         extension_detail::RasterRecordDestination destination_;
     };
 
-    class FramePreparation
+    // Valid only for the current CPU call on this Job and frame slot.
+    class LUX_RENDER_PUBLIC CpuCallFrame final
     {
     public:
-        virtual ~FramePreparation() noexcept = default;
-        [[nodiscard]] virtual const TargetDesc& target() const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<void> setRasterStream(DrawStreamSlot, const RasterStreamData&) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<RasterProgramSlot>
-        rasterProgram(DrawStreamSlot, std::uint32_t selection_index) const noexcept = 0;
+        CpuCallFrame(const CpuCallFrame&) = delete;
+        CpuCallFrame& operator=(const CpuCallFrame&) = delete;
+        [[nodiscard]] const TargetDesc& target() const noexcept { return target_; }
+        [[nodiscard]] RenderResult<void> setRasterStream(DrawStreamSlot, const RasterStreamData&) noexcept;
+        [[nodiscard]] RenderResult<RasterProgramSlot>
+        rasterProgram(DrawStreamSlot, std::uint32_t selection_index) const noexcept;
         template <class Storage>
         [[nodiscard]] RenderResult<RasterRecordWriter>
         rasterRecord(DrawResourceSlot<Storage> source, RasterProgramSlot program) noexcept
         {
-            auto contract = recordLayout(source.address_, program);
-            if (!contract) return cxx::unexpected(contract.error());
-            return RasterRecordWriter{*this, {source.address_, program.index, *contract}};
+            auto destination = recordDestination(source.address_, program);
+            if (!destination) return cxx::unexpected(destination.error());
+            return RasterRecordWriter{*this, *destination};
         }
 
         // Borrow the installed Resource only during this preparation. An absent optional source returns null.
@@ -157,21 +165,21 @@ namespace lux::render
 
         // The Job owns this selection. The reference is valid only during prepare().
         template <class T>
-        [[nodiscard]] RenderResult<PreparedStorageSnapshot<T>> readStorage(StorageSnapshotSlot<T> slot) const noexcept
+        [[nodiscard]] RenderResult<RevisionedValue<std::reference_wrapper<const T>>>
+        readStorage(StorageSnapshotSlot<T> slot) const noexcept
         {
             auto selected = readStorageValue(slot.operand_);
             if (!selected) return cxx::unexpected(selected.error());
-            return PreparedStorageSnapshot<T>{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
+            return RevisionedValue{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
         }
 
         template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<PreparedCpuValue<T>> read(CpuInputSlot<T> slot) const noexcept
+        [[nodiscard]] RenderResult<RevisionedValue<T>> read(CpuInputSlot<T> slot) const noexcept
         {
-            auto selected = readBytes(slot.slot_, sizeof(T));
-            if (!selected) return cxx::unexpected(selected.error());
             std::array<std::byte, sizeof(T)> bytes;
-            std::memcpy(bytes.data(), selected->bytes.data(), bytes.size());
-            return PreparedCpuValue<T>{std::bit_cast<T>(bytes), selected->revision};
+            auto revision = readBytes(slot.slot_, bytes);
+            if (!revision) return cxx::unexpected(revision.error());
+            return RevisionedValue<T>{std::bit_cast<T>(bytes), *revision};
         }
 
         template <CpuPreparationValue T>
@@ -188,55 +196,48 @@ namespace lux::render
             return writeInlineBlock(writer.slot_, std::as_bytes(std::span{&value, 1}), revision);
         }
 
-        // Publish a complete Buffer payload. A nonzero revision identifies unchanged bytes in later calls.
-        [[nodiscard]] RenderResult<void> writeBuffer(
-            PreparedBufferWriter writer, std::span<const std::byte> bytes, std::uint64_t revision = 0
-        ) noexcept
-        {
-            return writeGpuBuffer(writer.slot_, bytes, revision);
-        }
-
-        // Set the logical range for the current frame. Graph commands define its contents.
-        [[nodiscard]] RenderResult<void> sizeBuffer(FrameBufferSizer slot, std::uint64_t bytes) noexcept
-        {
-            return sizeGpuBuffer(slot.slot_, bytes);
-        }
-
-    protected:
-        struct SelectedBytes final
-        {
-            std::span<const std::byte> bytes;
-            std::uint64_t revision;
-        };
+        // A nonzero revision identifies unchanged bytes from this writer across calls.
+        [[nodiscard]] RenderResult<void>
+        writeBuffer(PreparedBufferWriter, std::span<const std::byte>, std::uint64_t revision = 0) noexcept;
+        [[nodiscard]] RenderResult<void> sizeBuffer(FrameBufferSizer, std::uint64_t bytes) noexcept;
 
     private:
+        friend class detail::JobCpuPreparation;
+        CpuCallFrame(detail::JobCpuPreparation&, std::uint32_t call, std::uint32_t frame, const TargetDesc&) noexcept;
+
         friend class RasterRecordWriter;
-        [[nodiscard]] virtual RenderResult<RasterRecordLayout>
-        recordLayout(extension_detail::DrawSourceAddress, RasterProgramSlot) const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<void>
+        [[nodiscard]] RenderResult<extension_detail::RasterRecordDestination>
+        recordDestination(extension_detail::DrawSourceAddress, RasterProgramSlot) const noexcept;
+        [[nodiscard]] RenderResult<void>
         appendRasterRecord(
             const extension_detail::RasterRecordDestination&,
             const RasterRecordInput&,
             std::optional<extension_detail::DrawSourceAddress>
-        ) noexcept = 0;
+        ) noexcept;
 
-        [[nodiscard]] virtual RenderResult<RasterIndexedGeometry>
-        appendIndexedGeometry(extension_detail::DrawSourceAddress, const IndexedGeometryInput&) noexcept = 0;
+        [[nodiscard]] RenderResult<RasterIndexedGeometry>
+        appendIndexedGeometry(extension_detail::DrawSourceAddress, const IndexedGeometryInput&) noexcept;
 
-        [[nodiscard]] virtual RenderResult<void>
-        appendSampledImage(extension_detail::DrawSourceAddress, const nri::Texture&, GraphImageRange) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<const void*>
-        readDrawSource(extension_detail::DrawSourceAddress, cxx::basic_type_info) const noexcept = 0;
+        [[nodiscard]] RenderResult<void>
+        appendSampledImage(extension_detail::DrawSourceAddress, const nri::Texture&, GraphImageRange) noexcept;
+        [[nodiscard]] RenderResult<const void*>
+        readDrawSource(extension_detail::DrawSourceAddress, cxx::basic_type_info) const noexcept;
 
-        [[nodiscard]] virtual RenderResult<extension_detail::SelectedStorageSnapshot>
-        readStorageValue(extension_detail::SnapshotOperand) const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<SelectedBytes> readBytes(std::uint32_t, std::size_t) const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<void>
-        writeInlineBlock(std::uint32_t, std::span<const std::byte>, std::uint64_t revision) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<void>
-        writeGpuBuffer(std::uint32_t, std::span<const std::byte>, std::uint64_t) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<void> sizeGpuBuffer(std::uint32_t, std::uint64_t) noexcept = 0;
+        [[nodiscard]] RenderResult<RevisionedValue<const void*>>
+        readStorageValue(extension_detail::SnapshotOperand) const noexcept;
+        [[nodiscard]] RenderResult<std::uint64_t> readBytes(std::uint32_t, std::span<std::byte>) const noexcept;
+        [[nodiscard]] RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept;
+        [[nodiscard]] RenderResult<void>
+        writeInlineBlock(std::uint32_t, std::span<const std::byte>, std::uint64_t revision) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t>
+        drawList(std::uint32_t pass, std::optional<std::uint32_t> source = std::nullopt) const noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> sampledImageList(extension_detail::DrawSourceAddress) const noexcept;
+        [[nodiscard]] bool validSampledImage(const RasterSampledImageRead&) const noexcept;
+
+        detail::JobCpuPreparation& job_;
+        const detail::CpuCall& linked_;
+        std::uint32_t call_slot_, frame_slot_;
+        const TargetDesc& target_;
     };
 
     inline RenderResult<void> RasterRecordWriter::write(const RasterRecordInput& record) const noexcept

@@ -58,11 +58,12 @@ namespace lux::render
 
         // The selected value is valid for the duration of the cold build.
         template <class T>
-        [[nodiscard]] RenderResult<PreparedStorageSnapshot<T>> readStorage(StorageSnapshotSlot<T> slot) const noexcept
+        [[nodiscard]] RenderResult<RevisionedValue<std::reference_wrapper<const T>>>
+        readStorage(StorageSnapshotSlot<T> slot) const noexcept
         {
             auto selected = readStorageValue(slot.operand_);
             if (!selected) return cxx::unexpected(selected.error());
-            return PreparedStorageSnapshot<T>{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
+            return RevisionedValue{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
         }
 
     private:
@@ -72,7 +73,7 @@ namespace lux::render
         detail::RasterProgramBuildData& data_;
         [[nodiscard]] RenderResult<const void*>
         readResourceValue(DrawStreamSlot, ResourceInstanceId, cxx::basic_type_info) const noexcept;
-        [[nodiscard]] RenderResult<extension_detail::SelectedStorageSnapshot>
+        [[nodiscard]] RenderResult<RevisionedValue<const void*>>
         readStorageValue(extension_detail::SnapshotOperand) const noexcept;
     };
 

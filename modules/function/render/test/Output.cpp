@@ -1606,7 +1606,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
+        prepare(const LinkedData& linked, CpuCallFrame& frame, Workspace& workspace) noexcept
         {
             const auto selected = producer_result.exchange(ETestProducerResult::SUCCESS);
             if (selected == ETestProducerResult::OMIT_OUTPUT) return {};
@@ -1664,7 +1664,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
+        prepare(const LinkedData& linked, CpuCallFrame& frame, Workspace& workspace) noexcept
         {
             auto value = frame.read(linked.input);
             if (!value) return lux::cxx::unexpected(value.error());
@@ -1798,11 +1798,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             "dormant undefined read", TransferWork{{CopyBuffer{{{undefined, 0}}, {{unused, 0}}}}}
         ));
 
-        CHECK(context.addPreparation({
-            PreparationAlgorithm::withWorkspace<TestInlineProducer, &TestInlineProducer::createWorkspace>(),
-            take(ConfigValue::make(TestInlineProducer::Configuration{slot, produced.pass})),
-            {slot}, {}, {produced.pass}
-        }));
+        CHECK((context.addCpuCall<TestInlineProducer, &TestInlineProducer::createWorkspace>(
+            TestInlineProducer::Configuration{slot, produced.pass},
+            {{slot}, {}, {produced.pass}}
+        )));
         if (args != "missing")
         {
             const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
@@ -1811,11 +1810,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             ));
             auto lifetime = std::make_shared<const int>(0);
             if (args.empty()) producer_source_lifetime = lifetime;
-            CHECK(context.addPreparation({
-                PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(),
-                take(ConfigValue::make(ProducerSourceConfig{slot, camera, std::move(lifetime)})),
-                {}, {slot}, {}, {companion.pass}, {}, {camera}
-            }));
+            CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
+                ProducerSourceConfig{slot, camera, std::move(lifetime)},
+                {{}, {slot}, {}, {companion.pass}, {}, {camera}}
+            )));
         }
         // The unused preparation has an unlinkable configuration. Even a dead cycle has to be rejected.
         std::vector<GraphCpuDataId> dead_inputs;
@@ -1823,20 +1821,18 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         {
             const auto second_dead = take(context.declareCpuData<std::uint32_t>());
             dead_inputs.push_back(second_dead);
-            CHECK(context.addPreparation({
-                PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(),
-                take(ConfigValue::make(ProducerSourceConfig{})),
-                {dead}, {second_dead}, {}
-            }));
+            CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
+                ProducerSourceConfig{},
+                {{dead}, {second_dead}, {}}
+            )));
         }
         // The companion's RAW predecessor activates this second group only when they are associated.
         const auto dormant_passes = args == "joint-closure" ?
             std::vector{seeded.pass, dormant.pass} : std::vector{dormant.pass};
-        CHECK(context.addPreparation({
-            PreparationAlgorithm::withWorkspace<TestValueProducer, &TestValueProducer::createWorkspace>(),
-            take(ConfigValue::make(ProducerSourceConfig{})),
-            std::move(dead_inputs), {args == "duplicate" ? slot : dead}, {}, dormant_passes
-        }));
+        CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
+            ProducerSourceConfig{},
+            {std::move(dead_inputs), {args == "duplicate" ? slot : dead}, {}, dormant_passes}
+        )));
         return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
     }
 
@@ -2036,7 +2032,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            FramePreparation& frame,
+            CpuCallFrame& frame,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
@@ -2271,14 +2267,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             "stream_programs", {ResourceName{StreamProgramStorage::descriptor.type.name()}}
         );
         if (!programs) return lux::cxx::unexpected(programs.error());
-        CHECK(context.addPreparation({
-            PreparationAlgorithm::withWorkspace<TestRasterProducer>(),
-            take(ConfigValue::make(TestRasterProducer::Configuration{
-                drawn.pass, *programs, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
-                comparison_sampler
-            })),
-            {}, {}, {}, {drawn.pass}, {}, {*programs}, {*programs},
-            RasterProgramBuilder::make<TestRasterProducer, &TestRasterProducer::buildPrograms>()
+        CHECK(context.addCpuCall<TestRasterProducer>({
+            drawn.pass, *programs, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
+            comparison_sampler
+        }, {
+            .passes = {drawn.pass}, .storage_inputs = {*programs}, .program_storage_inputs = {*programs},
+            .program_builder = RasterProgramBuilder::make<TestRasterProducer, &TestRasterProducer::buildPrograms>()
         }));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
@@ -2314,7 +2308,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             return LinkedData{*stream, *program, input.preserve};
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
         {
             const auto requested = runtime_layer_count.load();
             const auto count = linked.preserve && runtime_layer_conflict.load() ? requested % 3 + 1 : requested;
@@ -2380,11 +2374,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             work.program = std::move(stage);
             const auto pass = take(context.addRasterPass(preserve ? "load dynamic layers" : "draw dynamic layers",
                 std::move(work)));
-            CHECK(context.addPreparation({
-                PreparationAlgorithm::stateless<RuntimeLayerProducer>(),
-                take(ConfigValue::make(RuntimeLayerProducer::Configuration{pass.pass, graphics, preserve})),
-                {}, {}, {}, {pass.pass}
-            }));
+            CHECK(context.addCpuCall<RuntimeLayerProducer>(
+                RuntimeLayerProducer::Configuration{pass.pass, graphics, preserve},
+                {.passes = {pass.pass}}
+            ));
             return std::array{pass.written[0], pass.written[1]};
         };
         const auto drawn = raster({layers, 0}, {depth, 0}, false);
@@ -3687,7 +3680,7 @@ static void preparedBuffers(bool d3d12)
             return LinkedData{*writer, *scratch, *lights};
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
         {
             const auto selected = phase.load();
             if (auto sized = frame.sizeBuffer(linked.scratch, 16); !sized) return sized;
@@ -3768,11 +3761,8 @@ static void preparedBuffers(bool d3d12)
         if (!lights) return lux::cxx::unexpected(lights.error());
         const auto add_producer = [&]() noexcept -> RenderResult<void>
         {
-            return context.addPreparation({
-                PreparationAlgorithm::stateless<Producer>(), take(ConfigValue::make(Producer::Configuration{
-                    selected->resource, scratch->resource, *lights
-                })),
-                {}, {}, {}, {}, {selected->resource, scratch->resource}, {*lights}
+            return context.addCpuCall<Producer>({selected->resource, scratch->resource, *lights}, {
+                .gpu_buffers = {selected->resource, scratch->resource}, .storage_inputs = {*lights}
             });
         };
         if (mode != "missing") CHECK(add_producer());
@@ -4034,7 +4024,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
+        prepare(const LinkedData& linked, CpuCallFrame& frame, Workspace& workspace) noexcept
         {
             const auto index = selected_texture.load();
             auto program = frame.rasterProgram(linked.stream, linked.materials ? index : 0);
@@ -4162,12 +4152,11 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         raster.program = std::move(stage);
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(context.addRasterPass("sample a shared texture", std::move(raster)));
-        auto producer = take(ConfigValue::make(Producer::Configuration{
+        auto producer = Producer::Configuration{
             drawn.pass, context.shaderTarget(), material, mode != "undeclared"
-        }));
-        CHECK(context.addPreparation({
-            PreparationAlgorithm::withWorkspace<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}, {}, {}, {},
-            RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
+        };
+        CHECK(context.addCpuCall<Producer>(std::move(producer), {
+            .passes = {drawn.pass}, .program_builder = RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
         }));
         const auto captured = take(context.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
@@ -4646,7 +4635,7 @@ static void meshRasterStream(bool d3d12)
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            FramePreparation& frame,
+            CpuCallFrame& frame,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
@@ -4785,13 +4774,13 @@ static void meshRasterStream(bool d3d12)
         raster.program = std::move(stage);
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(context.addRasterPass("draw uploaded mesh", std::move(raster)));
-        auto producer = take(ConfigValue::make(Producer::Configuration{
+        auto producer = Producer::Configuration{
             drawn.pass, arguments.resource, arena.resource, instances
-        }));
-        CHECK(context.addPreparation({
-            PreparationAlgorithm::withWorkspace<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass},
-            {arguments.resource, arena.resource}, {instances}, {instances},
-            RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
+        };
+        CHECK(context.addCpuCall<Producer>(std::move(producer), {
+            .passes = {drawn.pass}, .gpu_buffers = {arguments.resource, arena.resource},
+            .storage_inputs = {instances}, .program_storage_inputs = {instances},
+            .program_builder = RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
         }));
         const auto captured = take(context.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
@@ -5017,7 +5006,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
             };
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
         {
             auto selected = frame.readStorage(linked.instances);
             if (!selected) return lux::cxx::unexpected(selected.error());
@@ -5125,11 +5114,8 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         };
         work.dispatch = DispatchArguments{{1, 1, 1}};
         const auto measured = take(context.addComputePass("load storage-owned mesh fields", std::move(work)));
-        auto producer = take(ConfigValue::make(Producer::Configuration{storage, snapshot.resource}));
-        CHECK(context.addPreparation({
-            PreparationAlgorithm::stateless<Producer>(), std::move(producer), {}, {}, {}, {},
-            {snapshot.resource}, {storage}
-        }));
+        auto producer = Producer::Configuration{storage, snapshot.resource};
+        CHECK(context.addCpuCall<Producer>(std::move(producer), {.gpu_buffers = {snapshot.resource}, .storage_inputs = {storage}}));
         const auto initialized = take(context.addTransferPass("initialize readback", TransferWork{{
             FillBuffer{{readback}, 0}
         }}));

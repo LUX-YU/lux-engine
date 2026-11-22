@@ -6,7 +6,7 @@
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
-#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
+#include <lux/engine/render/effect/CpuCall.hpp>
 #include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
@@ -65,8 +65,10 @@ namespace lux::render::runtime_detail
 
         struct Producer final
         {
-            GraphPreparation declaration;
+            CpuCallDependencies declaration;
             graph::NodeId node;
+            ConfigValue configuration;
+            extension_detail::BindCpuCall bind;
         };
 
         struct InlineCopy final

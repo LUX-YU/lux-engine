@@ -152,23 +152,23 @@ lighting pass uses. The bundle carries grid metadata, cell bounds, counts, exclu
 and status. `ClusterLists.hpp` defines the record layouts. Check status before consuming the indices.
 Valid indices use bit 31 to select spot lights and the low 31 bits for the dense light index.
 
-Use `declareCpuData<T>()` and `addPreparation()` to declare CPU-only producer dependencies in an
+Use `declareCpuData<T>()` and `addCpuCall<Kernel>()` to declare CPU-only producer dependencies in an
 EffectGraph. A preparation declares its input values, unique outputs, associated GPU passes, and complete
 typed inline block writers. The compiler validates the whole CPU dependency graph, then finds the live
 GPU passes and CPU producers together. A live GPU pass retains its associated preparations, which retain their
 declared passes and input producers. GPU execution order and synchronization follow the actual resource uses and
 explicit graph dependencies. The compiler links typed configurations to final slots. Resolved inputs contain
-final slots and owned values. Job creation uses the shared prototypes
-to create independent producer objects without source graph or shader schema lookups.
+final slots and owned values. Each Job allocates a workspace for calls that declare one. Stateless calls
+share the device graph’s immutable inputs and function table.
 
-During preparation, a producer reads published values with `FramePreparation::read`, stages outputs with
+During preparation, a producer reads published values with `CpuCallFrame::read`, stages outputs with
 `publish`, and supplies complete inline constants with `write`. All declared outputs must be supplied on each
 successful call. Values belong to the current Job preparation revision. Failure stops the chain before any
 inline blocks are adopted into the writable frame. CPU-only slots are outside the GPU resource,
 descriptor and synchronization tables.
 
 Use `importStorageSnapshot<T>()` for CPU preparation data supplied by a Resource. Bind the named input with
-`EJobResourceUse::CPU_SNAPSHOT`, declare it in `GraphPreparation::storage_inputs`, and resolve its typed slot
+`EJobResourceUse::CPU_SNAPSHOT`, declare it in `CpuCallDependencies::storage_inputs`, and resolve its typed slot
 with `resolveStorageSnapshot<T>()`. The Resource registers a capture function for the owning value type.
 Each Job retains its actual Resource owner and reuses its own snapshot storage. Selection finishes before the
 producer callbacks, and the reference returned by `readStorage()` is valid for the current callback.
@@ -232,7 +232,7 @@ The optional `Shadow::draws` port exposes the visibility groups, members, and in
 pass. The command table contains two winding streams per active view of each group.
 
 Use `declarePreparedBuffer()` for read-only graph buffers filled by CPU producers. List the resource in
-`GraphPreparation::gpu_buffers` and resolve its writer with `resolvePreparedBuffer()`. During preparation,
+`CpuCallDependencies::gpu_buffers` and resolve its writer with `resolvePreparedBuffer()`. During preparation,
 call `writeBuffer()` with the complete payload and an optional revision. A nonzero revision identifies the same
 bytes across preparations of that Job. The graph retains the producer if a live pass reads the buffer.
 Each FIF replica tracks its native allocation generation, accepted revision and size. A matching nonzero revision and
@@ -244,14 +244,14 @@ size. A version is resident only after the full interval has been accepted. An u
 replica's content qualification.
 
 Use `declareFrameBuffer()` when graph commands produce the buffer contents and the preparation determines its size.
-List it in `GraphPreparation::gpu_buffers`, resolve a sizer with `resolveFrameBuffer()`, and call `sizeBuffer()`
+List it in `CpuCallDependencies::gpu_buffers`, resolve a sizer with `resolveFrameBuffer()`, and call `sizeBuffer()`
 once during each successful preparation. Sizes are multiples of four within the declared bounds.
 Declare whole-buffer accesses and use the version produced by the GPU write for subsequent reads.
 Each writable frame keeps its own growable allocation. Descriptors and indirect draw ranges are checked against
 the selected logical size.
 
 A node initializes its state with `EffectInitializationContext::initializeState`. Producers use
-`InstanceLinkContext::resolveEffectInput<T>()` to link a typed input slot and `FramePreparation::read(slot)`
+`InstanceLinkContext::resolveEffectInput<T>()` to link a typed input slot and `CpuCallFrame::read(slot)`
 to read the selected value. The compiled graph contains input indices. Each Job binds those indices to its
 Effect and captures their bytes on the Server owner before invoking producers.
 Rebuild external producers against these installed headers. Calls to the former `resolveNodeState<T>()` and
@@ -316,7 +316,7 @@ use set after validating its generational ID. The renderer resolves the register
 before publishing. An exclusive Resource command defers that publication until its return. A new code identity
 gets a new item generation. A default source gives the selection its ordinary
 Job lifetime. Device compilation owns its shader bytes and binding, vertex and attachment ABI across worker hops.
-Use `FramePreparation::rasterProgram()` to obtain a slot for a selection index during the current call.
+Use `CpuCallFrame::rasterProgram()` to obtain a slot for a selection index during the current call.
 Slots carry the published program-set revision, so a producer must resolve them again after replacement.
 
 Declare the Resource owners a draw stream reads in `RasterPassTemplate::draw_resources`. Each entry has a
@@ -443,13 +443,13 @@ Stateful Handlers retain constructor-injected dependencies. All forms use the ex
 Resource borrow and ResponseOutbox; an async request's source bytes remain borrowed until its real response.
 
 `JobExecution` owns CPU input bindings and Resource subscriptions. The Effect's device graph owns each producer's immutable linked inputs.
-Register a stateless algorithm with `PreparationAlgorithm::stateless<Kernel>()`. Its `prepare(linked, frame)`
-uses the immutable inputs produced by `resolve`. An algorithm with per-Job state uses
-`PreparationAlgorithm::withWorkspace<Kernel>()` and receives its workspace as the third argument.
-Pass `&Kernel::createWorkspace` as the second template argument for fallible construction from the linked inputs and Target.
+Register a CPU call with `context.addCpuCall<Kernel>(configuration, dependencies)`. The argument has type
+`Kernel::Configuration`. Its `prepare(linked, frame)` consumes the immutable inputs produced by `resolve`.
+A kernel declaring `Workspace` receives Job-owned state as the third argument. Supply `&Kernel::createWorkspace`
+as the second template argument for fallible construction from the linked inputs and Target.
 Algorithms with a cold draw mapping receive that mapping as their final prepare argument.
 
-Declare the CPU dependency in `GraphPreparation::inputs` or `outputs`. At link time resolve a reader with
+Declare the CPU dependency in `CpuCallDependencies::inputs` or `outputs`. At link time resolve a reader with
 `resolveCpuInput<T>` or a writer with `resolveCpuOutput<T>`. Effect state uses `resolveEffectInput<T>`.
 During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The compiled read table and output intervals
 address the selected value directly. A linked Storage snapshot identifies its frame operand and, when declared for the
@@ -582,7 +582,7 @@ Compute and Transfer compilation resolves resource versions into typed image or 
 current History bank or fallback, checks the bound slice, and resolves indirect offsets, dispatch dimensions,
 compressed block regions and copy pitches. Recording consumes those per-FIF native operands. Resize validates
 candidate image extents before adoption and the next Freeze resolves the new physical bindings. Dynamic producers link `RasterStream` slots during
-compilation and supply draws and resource bindings through `FramePreparation`. The graph declares attachments
+compilation and supply draws and resource bindings through `CpuCallFrame`. The graph declares attachments
 and fixed graph resources.
 
 `GraphDraftBuilder` indexes each program’s reflected fields when the program is added. Raster, Compute and Transfer

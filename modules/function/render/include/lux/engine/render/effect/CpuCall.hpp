@@ -13,7 +13,7 @@ namespace lux::render
 
         struct PreparationMethods final
         {
-            RenderResult<void> (*prepare)(const void*, FramePreparation&, void*, const void*) noexcept;
+            RenderResult<void> (*prepare)(const void*, CpuCallFrame&, void*, const void*) noexcept;
             RenderResult<AlgorithmWorkspace> (*create_workspace)(const void*, const TargetDesc&) noexcept;
             cxx::basic_type_info mapping_type;
         };
@@ -28,7 +28,7 @@ namespace lux::render
         template <class T> concept HasDrawMapping = requires { typename T::DrawMapping; };
 
         template <class T, class... Args>
-        concept PreparesFrame = requires(const typename T::LinkedData& inputs, FramePreparation& frame, Args... args)
+        concept PreparesFrame = requires(const typename T::LinkedData& inputs, CpuCallFrame& frame, Args... args)
         {
             { T::prepare(inputs, frame, args...) } noexcept -> std::same_as<RenderResult<void>>;
         };
@@ -53,60 +53,25 @@ namespace lux::render
         std::same_as<typename T::LinkedData, std::remove_cvref_t<typename T::LinkedData>> &&
         ((!extension_detail::HasWorkspace<T> && extension_detail::FrameAlgorithm<T>) ||
          (extension_detail::OwnsWorkspace<T> && extension_detail::FrameAlgorithm<T, typename T::Workspace&>)) &&
-        requires(const typename T::Configuration& config, typename T::LinkedData& linked, InstanceLinkContext& link)
+        requires(typename T::Configuration& config, typename T::LinkedData& linked, InstanceLinkContext& link)
         {
-            { T::resolve(config, link) } noexcept -> std::same_as<RenderResult<typename T::LinkedData>>;
+            { ConfigValue::make(std::move(config)) } noexcept -> std::same_as<RenderResult<ConfigValue>>;
+            { T::resolve(std::as_const(config), link) } noexcept -> std::same_as<RenderResult<typename T::LinkedData>>;
             { ConfigValue::make(std::move(linked)) } noexcept -> std::same_as<RenderResult<ConfigValue>>;
         };
 
-    class PreparationAlgorithm final
+    namespace extension_detail
     {
-        using Workspace = extension_detail::AlgorithmWorkspace;
-        using Invocation = extension_detail::PreparationCall;
-        using Methods = extension_detail::PreparationMethods;
+        template <class T, auto Create>
+        concept CpuWorkspaceFactory =
+            (std::same_as<decltype(Create), std::nullptr_t> &&
+             (!HasWorkspace<T> || std::default_initializable<typename T::Workspace>)) ||
+            (OwnsWorkspace<T> && std::same_as<decltype(Create), CreateWorkspace<T>> && Create != nullptr);
 
-    public:
-        template <PreparationKernel T> requires (!extension_detail::HasWorkspace<T>)
-        [[nodiscard]] static constexpr PreparationAlgorithm stateless() noexcept
-        {
-            return PreparationAlgorithm{&linkTyped<T, nullptr>};
-        }
+        using BindCpuCall = RenderResult<PreparationCall> (*)(const void*, InstanceLinkContext&) noexcept;
 
-        template <PreparationKernel T, extension_detail::CreateWorkspace<T> Create = nullptr>
-            requires (extension_detail::OwnsWorkspace<T> &&
-                      (Create != nullptr || std::default_initializable<typename T::Workspace>))
-        [[nodiscard]] static constexpr PreparationAlgorithm withWorkspace() noexcept
-        {
-            return PreparationAlgorithm{&linkTyped<T, &createWorkspace<T, Create>>};
-        }
-
-        [[nodiscard]] RenderResult<Invocation>
-        link(const ConfigValue& config, InstanceLinkContext& context) const noexcept
-        {
-            return link_(config, context);
-        }
-
-    private:
-        template <class T, decltype(Methods::create_workspace) Create>
-        static RenderResult<Invocation> linkTyped(const ConfigValue& config, InstanceLinkContext& context) noexcept
-        {
-            const auto* typed = config.borrow<typename T::Configuration>();
-            if (!typed) return cxx::unexpected(RenderError{kInvalidConfig});
-            auto linked = T::resolve(*typed, context);
-            if (!linked) return cxx::unexpected(linked.error());
-            auto inputs = ConfigValue::make(std::move(*linked));
-            if (!inputs) return cxx::unexpected(inputs.error());
-            static constexpr Methods methods{&prepare<T>, Create, []() constexpr
-            {
-                if constexpr (extension_detail::HasDrawMapping<T>)
-                    return cxx::make_basic_type_info<typename T::DrawMapping>();
-                else return cxx::make_basic_type_info<void>();
-            }()};
-            return Invocation{std::move(*inputs), &methods};
-        }
-
-        template <class T, extension_detail::CreateWorkspace<T> Create>
-        static RenderResult<Workspace> createWorkspace(const void* inputs, const TargetDesc& target) noexcept
+        template <class T, CreateWorkspace<T> Create>
+        RenderResult<AlgorithmWorkspace> createWorkspace(const void* inputs, const TargetDesc& target) noexcept
         {
             using State = typename T::Workspace;
             std::unique_ptr<State> state;
@@ -118,12 +83,12 @@ namespace lux::render
                 state = std::move(*created);
             }
             else state = std::make_unique<State>();
-            return Workspace{state.release(), [](void* value) noexcept { delete static_cast<State*>(value); }};
+            return AlgorithmWorkspace{state.release(), [](void* value) noexcept { delete static_cast<State*>(value); }};
         }
 
         template <class T>
-        static RenderResult<void>
-        prepare(const void* data, FramePreparation& frame, void* workspace, const void* map) noexcept
+        RenderResult<void>
+        prepareCpuCall(const void* data, CpuCallFrame& frame, void* workspace, const void* map) noexcept
         {
             const auto& inputs = *static_cast<const typename T::LinkedData*>(data);
             const auto run = [&](auto&... state) noexcept
@@ -137,15 +102,29 @@ namespace lux::render
             else return run();
         }
 
-        using Link = RenderResult<Invocation> (*)(const ConfigValue&, InstanceLinkContext&) noexcept;
-        explicit constexpr PreparationAlgorithm(Link link) noexcept : link_(link) {}
-        Link link_;
-    };
+        template <class T, auto Create>
+        RenderResult<PreparationCall> bindCpuCall(const void* configuration, InstanceLinkContext& context) noexcept
+        {
+            auto linked = T::resolve(*static_cast<const typename T::Configuration*>(configuration), context);
+            if (!linked) return cxx::unexpected(linked.error());
+            auto inputs = ConfigValue::make(std::move(*linked));
+            if (!inputs) return cxx::unexpected(inputs.error());
+            static constexpr PreparationMethods methods{&prepareCpuCall<T>, []() constexpr -> decltype(PreparationMethods::create_workspace)
+            {
+                if constexpr (HasWorkspace<T>) return &createWorkspace<T, Create>;
+                else return nullptr;
+            }(), []() constexpr
+            {
+                if constexpr (extension_detail::HasDrawMapping<T>)
+                    return cxx::make_basic_type_info<typename T::DrawMapping>();
+                else return cxx::make_basic_type_info<void>();
+            }()};
+            return PreparationCall{std::move(*inputs), &methods};
+        }
+    }
 
-    struct GraphPreparation final
+    struct CpuCallDependencies final
     {
-        PreparationAlgorithm algorithm;
-        ConfigValue configuration;
         std::vector<GraphCpuDataId> inputs;
         std::vector<GraphCpuDataId> outputs;
         std::vector<GraphPassId> inline_blocks;

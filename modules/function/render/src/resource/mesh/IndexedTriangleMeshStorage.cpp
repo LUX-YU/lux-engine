@@ -1,5 +1,5 @@
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
-#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
+#include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <algorithm>
 #include <cmath>
@@ -353,7 +353,7 @@ namespace lux::render
     }
 
     RenderResult<RasterIndexedGeometry>
-    MeshResource::geometry(FramePreparation& frame, DrawResourceSlot<DrawStorage> source, MeshId id) noexcept
+    MeshResource::geometry(CpuCallFrame& frame, DrawResourceSlot<DrawStorage> source, MeshId id) noexcept
     {
         const auto storage = frame.readDrawResource(source);
         if (!storage) return cxx::unexpected(storage.error());

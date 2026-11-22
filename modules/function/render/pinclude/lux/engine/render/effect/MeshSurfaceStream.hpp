@@ -81,7 +81,7 @@ namespace lux::render::detail
 
         struct DrawInputs final
         {
-            FramePreparation& frame;
+            CpuCallFrame& frame;
             const MeshDrawGroupSource& groups;
             const DrawMapping& mapping;
         };
@@ -133,7 +133,7 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<void>
         prepareSections(DrawInputs, SectionInputs) noexcept;
-        [[nodiscard]] RenderResult<void> buildLayout(FramePreparation&, std::uint32_t view_count) noexcept;
+        [[nodiscard]] RenderResult<void> buildLayout(CpuCallFrame&, std::uint32_t view_count) noexcept;
 
         MaterialRecordReader material_records_;
         std::optional<LayoutVersion> layout_version_;

@@ -9,7 +9,7 @@
 
 namespace lux::render
 {
-    class FramePreparation;
+    class CpuCallFrame;
     namespace detail { class RasterMaterialStorage; class SampledTexture2DStorage; }
 
     struct MaterialDrawSources final
@@ -22,7 +22,7 @@ namespace lux::render
     {
     public:
         [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<rdesc::MaterialGpuReference>
-        select(FramePreparation&, const MaterialDrawSources&, RasterProgramSlot, MaterialId) noexcept;
+        select(CpuCallFrame&, const MaterialDrawSources&, RasterProgramSlot, MaterialId) noexcept;
 
     private:
         std::vector<RasterSampledImageRead> images_;

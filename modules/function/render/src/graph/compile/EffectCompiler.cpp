@@ -88,7 +88,7 @@ namespace lux::render::detail
         public:
             LinkContext(
                 PreparationLinkWorkspace& workspace,
-                const GraphPreparation& producer,
+                const CpuCallDependencies& producer,
                 std::uint32_t source,
                 std::uint32_t slot
             ) noexcept : workspace_(workspace), producer_(producer), source_input_(source), producer_slot_(slot)
@@ -125,7 +125,8 @@ namespace lux::render::detail
                 const auto first_stream = static_cast<std::uint32_t>(plan.streams.size());
                 const auto buffer_count = static_cast<std::uint32_t>(producer_.gpu_buffers.size());
                 const auto first_buffer = buffer_count ? workspace_.buffer_slots[producer_.gpu_buffers.front().index] : 0u;
-                auto call = producer_.algorithm.link(producer_.configuration, *this);
+                const auto& source = workspace_.build.producers[source_index];
+                auto call = source.bind(source.configuration.data(), *this);
                 if (!call) return cxx::unexpected(call.error());
                 const auto expected = std::ranges::count_if(producer_.inline_blocks, [&](GraphPassId pass) noexcept
                 {
@@ -396,7 +397,7 @@ namespace lux::render::detail
             }
 
             PreparationLinkWorkspace& workspace_;
-            const GraphPreparation& producer_;
+            const CpuCallDependencies& producer_;
             detail::PreparationRange inputs_, constants_, snapshots_;
             std::uint32_t claimed_buffers_ = 0;
             std::uint32_t source_input_, selected_input_ = kGraphInvalidIndex;
@@ -466,12 +467,12 @@ namespace lux::render::detail
             plan.calls.reserve(definition.live_order.size());
             for (auto index : definition.live_order)
             {
-                const auto& [declaration, node] = definition.producers[index];
-                const auto input = std::ranges::find(inputs, node, &EffectInputDefinition::node);
+                const auto& producer = definition.producers[index];
+                const auto input = std::ranges::find(inputs, producer.node, &EffectInputDefinition::node);
                 const auto slot = input == inputs.end() ? kGraphInvalidIndex :
                     static_cast<std::uint32_t>(input - inputs.begin());
                 LinkContext context{
-                    workspace, declaration, slot,
+                    workspace, producer.declaration, slot,
                     static_cast<std::uint32_t>(plan.calls.size())
                 };
                 auto linked = context.link(index);

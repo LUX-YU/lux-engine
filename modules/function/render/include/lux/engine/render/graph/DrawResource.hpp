@@ -22,7 +22,7 @@ namespace lux::render
 
     template <class Storage> class DrawResourceSlot final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class RasterRecordWriter;
         friend class InstanceLinkContext;
         explicit constexpr DrawResourceSlot(extension_detail::DrawSourceAddress address) noexcept : address_(address) {}

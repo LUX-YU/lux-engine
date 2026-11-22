@@ -292,7 +292,7 @@ namespace lux::render::detail
         );
     }
 
-    RenderResult<void> MeshSurfaceStream::buildLayout(FramePreparation& frame, std::uint32_t view_count) noexcept
+    RenderResult<void> MeshSurfaceStream::buildLayout(CpuCallFrame& frame, std::uint32_t view_count) noexcept
     {
         draws_.clear();
         bindings_.clear();

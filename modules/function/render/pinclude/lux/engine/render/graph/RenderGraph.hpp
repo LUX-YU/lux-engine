@@ -16,7 +16,7 @@
 #include <memory>
 
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
-#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
+#include <lux/engine/render/effect/CpuCall.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 

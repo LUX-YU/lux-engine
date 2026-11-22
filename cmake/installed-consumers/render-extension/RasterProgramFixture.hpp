@@ -441,7 +441,7 @@ namespace sdk_programs
             return build.setPrograms(linked.stream, {}, {});
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
         {
             return frame.setRasterStream(linked.stream, {});
         }
@@ -566,7 +566,7 @@ namespace sdk_programs
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            FramePreparation& frame,
+            CpuCallFrame& frame,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept

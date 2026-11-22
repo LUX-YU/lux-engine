@@ -9,7 +9,7 @@
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
-#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
+#include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
 
 namespace lux::render::detail
@@ -457,7 +457,7 @@ namespace lux::render
     }
 
     RenderResult<TextureGpuRef>
-    TextureResource::sample(FramePreparation& frame, DrawResourceSlot<DrawStorage> source, TextureId id) noexcept
+    TextureResource::sample(CpuCallFrame& frame, DrawResourceSlot<DrawStorage> source, TextureId id) noexcept
     {
         auto storage = frame.readDrawResource(source);
         if (!storage) return cxx::unexpected(storage.error());

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
-#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
+#include <lux/engine/render/effect/CpuCall.hpp>
 #include <lux/engine/render/resource/ConstantBufferStorage.hpp>
 #include <lux/engine/render/runtime/RasterProgramInputs.hpp>
 #include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
@@ -40,11 +40,14 @@ namespace lux::render::detail
         const compiled::RenderGraph& graph_;
         JobGpuResources& gpu_;
         const RasterProgramInputs& program_inputs_;
-        class ProducerFrame;
+        friend class lux::render::CpuCallFrame;
+
         struct PreparedBytes final
         {
             std::span<std::byte> bytes;
             bool written = false;
+
+            RenderResult<void> write(std::span<const std::byte>, bool unchanged = false) noexcept;
         };
 
         struct PreparedInlineBlock final

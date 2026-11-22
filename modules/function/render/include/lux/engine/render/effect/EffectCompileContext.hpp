@@ -6,7 +6,7 @@
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
-#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
+#include <lux/engine/render/effect/CpuCall.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
@@ -186,7 +186,14 @@ namespace lux::render
             return importStorageValue(binding, required, cxx::make_basic_type_info<T>(), scope);
         }
 
-        [[nodiscard]] RenderResult<void> addPreparation(GraphPreparation) noexcept;
+        template <PreparationKernel T, auto Create = nullptr> requires extension_detail::CpuWorkspaceFactory<T, Create>
+        [[nodiscard]] RenderResult<void>
+        addCpuCall(typename T::Configuration configuration, CpuCallDependencies uses) noexcept
+        {
+            auto owned = ConfigValue::make(std::move(configuration));
+            if (!owned) return cxx::unexpected(owned.error());
+            return declareCpuCall(std::move(uses), std::move(*owned), &extension_detail::bindCpuCall<T, Create>);
+        }
 
         [[nodiscard]] std::span<const EffectResourceBundle> inputs(graph::PinSemanticId) const noexcept;
         [[nodiscard]] bool outputDemanded(graph::PinSemanticId) const noexcept;
@@ -194,6 +201,8 @@ namespace lux::render
 
     private:
         friend struct runtime_detail::EffectLoweringWorkspace;
+        RenderResult<void> declareCpuCall(CpuCallDependencies, ConfigValue, extension_detail::BindCpuCall) noexcept;
+
         EffectCompileContext(
             runtime_detail::EffectLoweringWorkspace&, const effect_detail::ValidatedEffectNode&,
             const ConfigValue*, const runtime_detail::NodePinView&

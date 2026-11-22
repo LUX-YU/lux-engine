@@ -9,7 +9,7 @@
 
 namespace lux::render
 {
-    class FramePreparation;
+    class CpuCallFrame;
     namespace detail { class IndexedTriangleMeshStorage; }
 
     class MeshResource final
@@ -32,7 +32,7 @@ namespace lux::render
 
         using DrawStorage = detail::IndexedTriangleMeshStorage;
         [[nodiscard]] static LUX_RENDER_PUBLIC RenderResult<RasterIndexedGeometry>
-        geometry(FramePreparation&, DrawResourceSlot<DrawStorage>, MeshId) noexcept;
+        geometry(CpuCallFrame&, DrawResourceSlot<DrawStorage>, MeshId) noexcept;
         [[nodiscard]] static LUX_RENDER_PUBLIC DrawResourceType drawResourceType() noexcept;
     };
 } // namespace lux::render

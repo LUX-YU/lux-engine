@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
+#include <lux/engine/render/effect/CpuCallFrame.hpp>
 
 namespace lux::render
 {

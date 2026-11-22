@@ -351,11 +351,13 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> EffectCompileContext::addPreparation(GraphPreparation recipe) noexcept
+    RenderResult<void> EffectCompileContext::declareCpuCall(
+        CpuCallDependencies uses, ConfigValue configuration, extension_detail::BindCpuCall bind
+    ) noexcept
     {
         if (workspace_.draft.producers.size() >= kGraphInvalidIndex)
             return cxx::unexpected(RenderError{kRuntimeCapacity});
-        workspace_.draft.producers.push_back({std::move(recipe), node_.source});
+        workspace_.draft.producers.push_back({std::move(uses), node_.source, std::move(configuration), bind});
         return {};
     }
 

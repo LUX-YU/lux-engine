@@ -23,7 +23,7 @@ namespace lux::render
 
     template <class T> class StorageSnapshotSlot final
     {
-        friend class FramePreparation;
+        friend class CpuCallFrame;
         friend class RasterProgramBuildContext;
         friend class InstanceLinkContext;
         explicit constexpr StorageSnapshotSlot(extension_detail::SnapshotOperand operand) noexcept
@@ -31,18 +31,9 @@ namespace lux::render
         extension_detail::SnapshotOperand operand_;
     };
 
-    template <class T> struct PreparedStorageSnapshot final
+    template <class T> struct RevisionedValue final
     {
-        std::reference_wrapper<const T> value;
+        T value;
         std::uint64_t revision;
     };
-
-    namespace extension_detail
-    {
-        struct SelectedStorageSnapshot final
-        {
-            const void* value;
-            std::uint64_t revision;
-        };
-    }
 } // namespace lux::render

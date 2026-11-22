@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
+#include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
@@ -987,7 +987,7 @@ namespace lux::render
 {
     RenderResult<rdesc::MaterialGpuReference>
     MaterialRecordReader::select(
-        FramePreparation& frame, const MaterialDrawSources& sources, RasterProgramSlot program, MaterialId id
+        CpuCallFrame& frame, const MaterialDrawSources& sources, RasterProgramSlot program, MaterialId id
     ) noexcept
     {
         auto writer = frame.rasterRecord(sources.records, program);

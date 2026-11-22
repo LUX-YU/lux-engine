@@ -120,7 +120,7 @@ namespace lux::render
         return *storage;
     }
 
-    RenderResult<extension_detail::SelectedStorageSnapshot>
+    RenderResult<RevisionedValue<const void*>>
     RasterProgramBuildContext::readStorageValue(extension_detail::SnapshotOperand operand) const noexcept
     {
         const auto& snapshots = data_.snapshots;

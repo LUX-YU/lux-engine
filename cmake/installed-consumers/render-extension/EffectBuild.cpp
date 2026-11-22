@@ -321,7 +321,7 @@ struct ClearPreparation final
         return link.resolveStorageSnapshot<bool>(source);
     }
 
-    static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
+    static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
     {
         const auto selected = frame.readStorage(linked);
         if (!selected) return cxx::unexpected(selected.error());
@@ -331,9 +331,11 @@ struct ClearPreparation final
 };
 
 static_assert(PreparationKernel<ClearPreparation>);
+static_assert(std::is_final_v<CpuCallFrame> && !std::is_polymorphic_v<CpuCallFrame>);
+static_assert(!std::is_copy_constructible_v<CpuCallFrame> && !std::is_default_constructible_v<CpuCallFrame>);
 
-template <class Slot> concept ReadableWord = requires(FramePreparation& frame, Slot slot) { frame.read(slot); };
-template <class Slot> concept WritableWord = requires(FramePreparation& frame, Slot slot)
+template <class Slot> concept ReadableWord = requires(CpuCallFrame& frame, Slot slot) { frame.read(slot); };
+template <class Slot> concept WritableWord = requires(CpuCallFrame& frame, Slot slot)
 {
     frame.publish(slot, std::uint32_t{});
 };
@@ -373,7 +375,7 @@ struct NamedSnapshots final
         };
     }
 
-    static RenderResult<void> prepare(const LinkedData& inputs, FramePreparation& frame) noexcept
+    static RenderResult<void> prepare(const LinkedData& inputs, CpuCallFrame& frame) noexcept
     {
         const auto a = take(frame.readStorage(inputs.sources[0]));
         const auto b = take(frame.readStorage(inputs.sources[1]));
@@ -400,7 +402,7 @@ struct CheckPreparedWords final
         };
     }
 
-    static RenderResult<void> prepare(const LinkedData& words, FramePreparation& frame) noexcept
+    static RenderResult<void> prepare(const LinkedData& words, CpuCallFrame& frame) noexcept
     {
         const auto foreign = std::exchange(NamedSnapshots::upstream_writer, {});
         CHECK(foreign);
@@ -425,7 +427,7 @@ struct WorkspaceProbe
     using LinkedData = ClearPreparation::LinkedData;
     using Workspace = W;
     static RenderResult<LinkedData> resolve(const Configuration&, InstanceLinkContext&) noexcept;
-    static RenderResult<void> prepare(const LinkedData&, FramePreparation&, Workspace&) noexcept;
+    static RenderResult<void> prepare(const LinkedData&, CpuCallFrame&, Workspace&) noexcept;
 };
 
 static_assert(!PreparationKernel<WorkspaceProbe<int&>>);
@@ -439,11 +441,15 @@ struct InvalidSelection : WorkspaceProbe<int>
 template <class T>
 concept AcceptsInvalidBuild = requires { RasterProgramBuilder::make<T, &T::invalidBuild>(); };
 
-template <class T> concept CanRegisterStateless = requires { PreparationAlgorithm::stateless<T>(); };
-template <class T> concept CanRegisterWorkspace = requires { PreparationAlgorithm::withWorkspace<T>(); };
+template <class Kernel, class Config>
+concept CanDeclareCpuCall = requires(EffectCompileContext& context, Config config)
+{
+    context.addCpuCall<Kernel>(std::move(config), CpuCallDependencies{});
+};
 
-static_assert(CanRegisterStateless<ClearPreparation> && !CanRegisterWorkspace<ClearPreparation>);
-static_assert(CanRegisterWorkspace<InvalidSelection> && !CanRegisterStateless<InvalidSelection>);
+static_assert(CanDeclareCpuCall<ClearPreparation, ClearPreparation::Configuration>);
+static_assert(!CanDeclareCpuCall<ClearPreparation, std::string>);
+static_assert(CanDeclareCpuCall<InvalidSelection, InvalidSelection::Configuration>);
 
 static_assert(PreparationKernel<InvalidSelection>);
 static_assert(!AcceptsInvalidBuild<InvalidSelection>);
@@ -489,10 +495,6 @@ static void registerClearNode(RenderServer& server)
         const auto cleared = take(context.addTransferPass(
             "clear", TransferWork{{ClearImage{{{output, 0}}, *color}}}
         ));
-        GraphPreparation preparation{
-            PreparationAlgorithm::stateless<ClearPreparation>(), take(ConfigValue::make(state)), {}, {}, {},
-            {cleared.pass}, {}, {state}
-        };
         if (args == "named-snapshots")
         {
             const auto other = take(context.importStorageSnapshot<bool>(
@@ -502,19 +504,15 @@ static void registerClearNode(RenderServer& server)
                 take(context.declareCpuData<std::uint32_t>()), take(context.declareCpuData<std::uint32_t>())
             };
             // Register the downstream reader first. The compiled DAG orders the two stateless calls.
-            auto checked = context.addPreparation({
-                PreparationAlgorithm::stateless<CheckPreparedWords>(), take(ConfigValue::make(words)),
-                {words[1], words[0]},
-                {}, {}, {cleared.pass}
-            });
+            auto checked = context.addCpuCall<CheckPreparedWords>(words, {{words[1], words[0]}, {}, {}, {cleared.pass}});
             if (!checked) return checked;
-            auto config = take(ConfigValue::make(NamedSnapshots::Configuration{{state, other}, words}));
-            preparation = {
-                PreparationAlgorithm::stateless<NamedSnapshots>(), std::move(config),
+            auto added = context.addCpuCall<NamedSnapshots>({{state, other}, words}, {
                 {}, {words[1], words[0]}, {}, {}, {}, {state, other}
-            };
+            });
+            if (!added) return added;
         }
-        if (auto added = context.addPreparation(std::move(preparation)); !added) return added;
+        else if (auto added = context.addCpuCall<ClearPreparation>(state, {{}, {}, {}, {cleared.pass}, {}, {state}}); !added)
+            return added;
         return context.publish(clear_color, {{clear_color, cleared.written.front()}});
     };
     CHECK(server.registerEffectImplementation(std::move(implementation)));

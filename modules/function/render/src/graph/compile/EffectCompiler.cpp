@@ -370,6 +370,55 @@ namespace lux::render::detail
             }
             return std::move(workspace.plan);
         }
+        std::vector<std::uint32_t> linkOutputPasses(
+            EffectGraphBuild& build, const RenderGraphExecutable& executable, DeviceSession& session
+        ) noexcept
+        {
+            auto& slots = build.storage_imports;
+            if (std::ranges::none_of(slots, [](const auto& slot) { return slot.output_range.has_value(); })) return {};
+            std::vector<std::uint32_t> owner(build.source.resources().size(), kGraphInvalidIndex);
+            for (std::uint32_t i = 0; i < slots.size(); ++i)
+            {
+                const auto resource = slots[i].resource.index;
+                if (slots[i].output_range && resource != kGraphInvalidIndex) owner[resource] = i;
+            }
+            std::vector<std::pair<std::uint32_t, std::uint32_t>> uses;
+            std::vector<bool> preserves_boundary(slots.size(), true);
+            const auto observe = [&](GraphResourceId id, std::uint32_t pass, EGraphUse use)
+            {
+                const auto binding = owner[id.index];
+                if (binding == kGraphInvalidIndex) return;
+                uses.emplace_back(binding, pass);
+                if (!preserves_boundary[binding]) return;
+                auto& queue = slots[binding].canonical_queue;
+                const auto physical = session.queueIndex(session.queue(executable.passes()[pass].queue));
+                const bool same_queue = queue == kGraphInvalidIndex || queue == physical;
+                preserves_boundary[binding] = same_queue && use == build.source.resources()[id.index].initial_use;
+                queue = preserves_boundary[binding] ? static_cast<std::uint32_t>(physical) : kGraphInvalidIndex;
+            };
+            const auto& order = build.analysis.execution_order;
+            for (std::uint32_t p = 0; p < order.size(); ++p)
+            {
+                for (const auto& use : build.source.passes()[order[p].index].uses)
+                {
+                    observe(use.version.resource, p, use.usage);
+                    if (use.fallback) observe(use.fallback->resource, p, use.usage);
+                }
+            }
+            std::ranges::sort(uses);
+            const auto unique = std::ranges::unique(uses);
+            uses.erase(unique.begin(), unique.end());
+            std::vector<std::uint32_t> passes;
+            passes.reserve(uses.size());
+            for (const auto& [slot, pass] : uses)
+            {
+                auto& binding = slots[slot];
+                if (!binding.use_count) binding.first_use = static_cast<std::uint32_t>(passes.size());
+                ++binding.use_count;
+                passes.push_back(pass);
+            }
+            return passes;
+        }
     } // namespace
 
     exec::task<GraphCompiler::EffectResult>
@@ -422,7 +471,7 @@ namespace lux::render::detail
             if (target != targets.end())
                 return compiled::BindingOperand{Domain::TARGET, static_cast<std::uint32_t>(target - targets.begin())};
             const auto storages = std::span{built->storage_imports};
-            const auto storage = std::ranges::find(storages, id);
+            const auto storage = std::ranges::find(storages, id, &StorageBindingSlot::resource);
             if (storage != storages.end())
                 return compiled::BindingOperand{Domain::STORAGE, static_cast<std::uint32_t>(storage - storages.begin())};
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index}});
@@ -446,7 +495,8 @@ namespace lux::render::detail
         }
         for (auto& slot : built->storage_imports)
         {
-            if (slot.index != kGraphInvalidIndex && !plan->executable.resources()[slot.index].memory_used) slot = {};
+            const auto id = slot.resource.index;
+            if (id != kGraphInvalidIndex && !plan->executable.resources()[id].memory_used) slot = {};
         }
         auto preparation = linkPreparation(*built, *plan, request.inputs);
         if (!preparation) co_return cxx::unexpected(preparation.error());
@@ -485,10 +535,12 @@ namespace lux::render::detail
         }
         if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
+        auto output_passes = linkOutputPasses(*built, plan->executable, entry.session());
         rollback_pools.release();
         co_return std::make_unique<const compiled::RenderGraph>(compiled::RenderGraph{
             std::move(plan->executable), std::move(plan->programs),
-            std::move(built->target_imports), std::move(built->storage_imports), std::move(comparisons),
+            std::move(built->target_imports), std::move(built->storage_imports), std::move(output_passes),
+            std::move(comparisons),
             std::move(*preparation),
             std::move(uniforms)
         });

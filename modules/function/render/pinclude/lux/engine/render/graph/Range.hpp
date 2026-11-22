@@ -31,6 +31,12 @@ namespace lux::render::detail
         return count != 0 && start <= limit && count <= limit - start;
     }
 
+    inline bool contains(GraphBufferRange claim, GraphBufferRange use) noexcept
+    {
+        return use.offset >= claim.offset && use.size <= claim.size &&
+            use.offset - claim.offset <= claim.size - use.size;
+    }
+
     inline RenderResult<VGraphRange> normalize(const GraphResource& resource, VGraphRange range) noexcept
     {
         if (const auto* buffer = std::get_if<GraphBufferDesc>(&resource.description))

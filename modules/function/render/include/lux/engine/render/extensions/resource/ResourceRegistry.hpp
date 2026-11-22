@@ -7,6 +7,9 @@
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <array>
 #include <deque>
 #include <map>
 #include <optional>
@@ -21,10 +24,9 @@ namespace lux::render
         class RasterMeshInstanceStorage;
         class RenderGraphInstance;
         struct TargetReservation;
-        struct GraphReaderTag;
-        struct ResourceInput;
+        struct GraphBindingTag;
     }
-    namespace runtime_detail { struct StorageInput; }
+    namespace runtime_detail { struct BoundStorageProjection; }
 
     class LUX_RENDER_PUBLIC ResourceRegistry final
     {
@@ -150,17 +152,38 @@ namespace lux::render
         friend class RenderServer;
         friend void runtime_detail::finishResourceCommand(ResourceRegistry&, ResourceInstanceId) noexcept;
 
-        [[nodiscard]] RenderResult<cxx::SlotKey<detail::GraphReaderTag>> bindGraphInput(
-            const runtime_detail::StorageInput&, const detail::TargetReservation&, detail::RenderGraphInstance&
+        [[nodiscard]] RenderResult<cxx::SlotKey<detail::GraphBindingTag>> bindGraphProjection(
+            const runtime_detail::BoundStorageProjection&,
+            const detail::TargetReservation&,
+            detail::RenderGraphInstance&,
+            bool may_access
         ) noexcept;
-        void unbindGraphInput(const runtime_detail::StorageInput&, const detail::TargetReservation&) noexcept;
+        void unbindGraphProjection(
+            const runtime_detail::BoundStorageProjection&, const detail::TargetReservation&
+        ) noexcept;
 
-        struct InputReader final
+        struct GraphBindingUse final
         {
             RenderJobId job;
             std::uint64_t start_serial;
             GraphResourceId resource;
             detail::RenderGraphInstance* instance;
+            std::optional<GraphBufferRange> writer;
+            bool may_access;
+            std::uint32_t canonical_queue;
+        };
+
+        struct ProjectionBuffer final
+        {
+            nri::Buffer* buffer = nullptr;
+            GraphBufferRange bytes{};
+            bool operator==(const ProjectionBuffer&) const noexcept = default;
+        };
+
+        struct ProjectionBindings final
+        {
+            std::array<ProjectionBuffer, 3> buffers{};
+            cxx::SlotMap<GraphBindingUse, detail::GraphBindingTag> users;
         };
 
         struct ResolvedCommand final
@@ -226,10 +249,13 @@ namespace lux::render
             bool exclusive_command = false;
             std::uint32_t dependent_storages = 0;
             std::vector<ResourceInstanceId> dependencies{};
-            std::map<std::uint32_t, cxx::SlotMap<InputReader, detail::GraphReaderTag>> graph_readers{};
+            std::map<std::uint32_t, ProjectionBindings> graph_bindings{};
         };
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;
+        static RenderResult<void> qualifyGraphBinding(
+            const Entry&, std::uint32_t projection, const std::array<ProjectionBuffer, 3>&, const GraphBindingUse&
+        ) noexcept;
         cxx::SlotMap<Entry, ResourceInstanceTag> entries_;
         std::map<std::string, ResourceTypeId, std::less<>> types_by_name_;
         // Derived non-owning index of the existing Device/Scene/View sets.

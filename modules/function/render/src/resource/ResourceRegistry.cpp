@@ -9,14 +9,79 @@
 
 namespace lux::render
 {
-    RenderResult<cxx::SlotKey<detail::GraphReaderTag>> ResourceRegistry::bindGraphInput(
-        const runtime_detail::StorageInput& link,
+    RenderResult<void> ResourceRegistry::qualifyGraphBinding(
+        const Entry& entry,
+        std::uint32_t projection,
+        const std::array<ProjectionBuffer, 3>& buffers,
+        const GraphBindingUse& user
+    ) noexcept
+    {
+        const auto overlaps = [](GraphBufferRange a, GraphBufferRange b) noexcept
+        {
+            return a.offset <= b.offset ? b.offset - a.offset < a.size : a.offset - b.offset < b.size;
+        };
+        const auto physical = [](ProjectionBuffer slice, std::optional<GraphBufferRange> writer) noexcept
+        {
+            if (writer) return GraphBufferRange{slice.bytes.offset + writer->offset, writer->size};
+            return slice.bytes;
+        };
+        for (const auto& slice : std::span{buffers}.first(user.instance->frameCount()))
+        {
+            if (slice.bytes.size > UINT64_MAX - slice.bytes.offset)
+                return cxx::unexpected(RenderError{kGraphInvalidRange});
+            if (!user.writer) continue;
+            const auto claim = *user.writer;
+            if (!slice.buffer || claim.offset > slice.bytes.size || claim.size > slice.bytes.size - claim.offset)
+                return cxx::unexpected(RenderError{kGraphInvalidRange});
+        }
+        for (const auto& [other_projection, binding] : entry.graph_bindings)
+        {
+            const bool same_projection = projection == other_projection;
+            const auto& previous = same_projection ? buffers : binding.buffers;
+            for (const auto& bound : binding.users)
+            {
+                if (!bound.writer && !user.writer) continue;
+                const bool replacing = bound.job == user.job && bound.start_serial != user.start_serial;
+                const bool same_use = bound.job == user.job && bound.resource == user.resource;
+                // Disabled command bodies still record their planned barriers.
+                const bool compatible_barriers = same_projection && bound.canonical_queue != kGraphInvalidIndex &&
+                    bound.canonical_queue == user.canonical_queue;
+                const bool exclusive_paths = compatible_barriers && bound.job == user.job && bound.writer &&
+                    user.writer && (!bound.may_access || !user.may_access);
+                if (replacing || same_use || exclusive_paths) continue;
+                const auto conflict = bound.job == user.job ? kGraphConflictingOutput : kJobBusy;
+                if (same_projection && (!bound.writer || !user.writer || overlaps(*bound.writer, *user.writer)))
+                    return cxx::unexpected(RenderError{conflict});
+                for (const auto& a : buffers)
+                {
+                    if (!a.buffer) continue;
+                    for (const auto& b : previous)
+                        if (a.buffer == b.buffer && overlaps(physical(a, user.writer), physical(b, bound.writer)))
+                            return cxx::unexpected(RenderError{conflict});
+                }
+            }
+        }
+        return {};
+    }
+
+    RenderResult<cxx::SlotKey<detail::GraphBindingTag>> ResourceRegistry::bindGraphProjection(
+        const runtime_detail::BoundStorageProjection& link,
         const detail::TargetReservation& start,
-        detail::RenderGraphInstance& instance
+        detail::RenderGraphInstance& instance,
+        bool may_access
     ) noexcept
     {
         auto* entry = entries_.find(link.storage);
         if (!entry || !entry->execution_uses) return cxx::unexpected(RenderError{kStorageIdentity});
+        const GraphBindingUse user{
+            start.job, start.start_serial, link.resource, &instance, link.output_range, may_access, link.canonical_queue
+        };
+        const auto installed = entry->graph_bindings.find(link.projection);
+        if (installed != entry->graph_bindings.end())
+        {
+            if (auto valid = qualifyGraphBinding(*entry, link.projection, installed->second.buffers, user); !valid)
+                return cxx::unexpected(valid.error());
+        }
         const auto& ops = *types_.find(entry->type)->factory.storage()->bindings();
         std::array<detail::ResourceInput, 3> slices{};
         auto output = std::span(slices).first(instance.frameCount());
@@ -25,25 +90,35 @@ namespace lux::render
             return cxx::unexpected(resolved.error());
 
         // An extension may have created other resources during resolution. Reacquire the row by identity.
-        auto& readers = entries_.find(link.storage)->graph_readers[link.projection];
-        const auto reader = readers.emplace(InputReader{start.job, start.start_serial, link.resource, &instance});
+        entry = entries_.find(link.storage);
+        std::array<ProjectionBuffer, 3> buffers{};
+        for (std::size_t i = 0; i < output.size(); ++i)
+            buffers[i] = {output[i].buffer, {output[i].offset, output[i].size}};
+        if (auto valid = qualifyGraphBinding(*entry, link.projection, buffers, user); !valid)
+            return cxx::unexpected(valid.error());
+        auto& binding = entry->graph_bindings[link.projection];
+        if (!binding.users.empty() && binding.buffers != buffers)
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        binding.buffers = buffers;
+        const auto subscription = binding.users.emplace(user);
         for (std::uint32_t slot = 0; slot < output.size(); ++slot)
             instance.setResource(link.resource.index, slot, output[slot]);
-        return reader;
+        return subscription;
     }
 
-    void ResourceRegistry::unbindGraphInput(
-        const runtime_detail::StorageInput& link, const detail::TargetReservation& start
+    void ResourceRegistry::unbindGraphProjection(
+        const runtime_detail::BoundStorageProjection& link, const detail::TargetReservation& start
     ) noexcept
     {
-        auto& projections = entries_.find(link.storage)->graph_readers;
+        auto& projections = entries_.find(link.storage)->graph_bindings;
         const auto found = projections.find(link.projection);
         if (found == projections.end()) std::terminate();
-        const auto* reader = found->second.find(link.reader);
+        auto& users = found->second.users;
+        const auto* reader = users.find(link.subscription);
         const bool matches_start = reader && reader->job == start.job && reader->start_serial == start.start_serial;
         if (!matches_start || reader->resource != link.resource) std::terminate();
-        found->second.erase(link.reader);
-        if (found->second.empty()) projections.erase(found);
+        users.erase(link.subscription);
+        if (users.empty()) projections.erase(found);
     }
 
     RenderResult<std::size_t> ResourceRegistry::publishGraphInput(
@@ -52,13 +127,38 @@ namespace lux::render
     {
         auto* entry = entries_.find(storage);
         if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
-        const auto found = entry->graph_readers.find(projection);
-        if (found == entry->graph_readers.end()) return 0;
+        const auto found = entry->graph_bindings.find(projection);
+        if (found == entry->graph_bindings.end()) return 0;
+        auto& binding = found->second;
+        const auto& users = binding.users;
         // Each storage belongs to one device with a single configured FIF count.
-        if (frame != UINT32_MAX && frame >= found->second.begin()->instance->frameCount())
+        const auto count = users.begin()->instance->frameCount();
+        if (frame != UINT32_MAX && frame >= count)
             return cxx::unexpected(RenderError{kFrameContract});
-        for (const auto& reader : found->second) reader.instance->setResource(reader.resource.index, frame, value);
-        return found->second.size();
+        auto candidate = binding.buffers;
+        const auto first = frame == UINT32_MAX ? 0u : frame;
+        const auto end = frame == UINT32_MAX ? count : frame + 1;
+        for (auto i = first; i < end; ++i) candidate[i] = {value.buffer, {value.offset, value.size}};
+        if (candidate != binding.buffers)
+        {
+            if (value.size > UINT64_MAX - value.offset) return cxx::unexpected(RenderError{kGraphInvalidRange});
+            const bool has_writer = std::ranges::any_of(entry->graph_bindings, [](const auto& current)
+            {
+                return std::ranges::any_of(current.second.users, [](const auto& use)
+                {
+                    return use.writer.has_value();
+                });
+            });
+            if (has_writer)
+            {
+                for (const auto& user : users)
+                    if (auto valid = qualifyGraphBinding(*entry, projection, candidate, user); !valid)
+                        return cxx::unexpected(valid.error());
+            }
+            binding.buffers = candidate;
+        }
+        for (const auto& user : users) user.instance->setResource(user.resource.index, frame, value);
+        return users.size();
     }
 
     void runtime_detail::finishResourceCommand(ResourceRegistry& registry, ResourceInstanceId id) noexcept
@@ -435,7 +535,7 @@ namespace lux::render
 
     void ResourceRegistry::revoke(ResourceInstanceId id) noexcept
     {
-        if (hasBorrows(id) || hasDependents(id) || !entries_.find(id)->graph_readers.empty())
+        if (hasBorrows(id) || hasDependents(id) || !entries_.find(id)->graph_bindings.empty())
         {
             std::terminate();
         }

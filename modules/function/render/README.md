@@ -54,25 +54,35 @@ during `StartRenderJob`. Target-relative extents are evaluated by the instance. 
 build and its terminal result. Live Jobs share the compiled plan and native program leases, with independent frame
 resources and History.
 
-Use `EffectBuildContext::importTargetImage` to declare a sampled input by name, format, and sample count. The Job
-supplies the corresponding `TargetImageInput::binding` and sampled offscreen Target on the same device. The
-compiler represents multiple names bound to the same Target as one resource. The variant key includes the
-names, image contracts, and alias pattern. Different physical Targets with the same contracts and alias pattern can
-reuse the plan. The bound instance uses the existing output publication and Resize contracts.
+Use `EffectBuildContext::importTargetImage` to declare a sampled input by name, format and sample count. Each
+name has its own logical slot. During cold installation a Job supplies a same-device sampled offscreen Target
+for each name. Duplicate Target identities select one publication. The compiled graph and its two `sameBinding`
+paths can serve Jobs with either equal or distinct bindings.
 
-Use `EffectBuildContext::importResource` and `JobBinding::resources` to bind an existing same-device Resource
-by name, `ResourceInstanceId` and a Resource-defined projection index. The index defaults to zero for a
-Resource with one graph binding. `describeGraphImport` qualifies the shape, initialized ranges and boundary
-use. `resolveGraphImport` supplies the FIF slices and maintains disjoint backing across distinct bindings,
-including through backing replacement. A Resource publishes each changed physical slice on the device owner through
-`ResourceRegistry::publishGraphInput(storage, projection, frame, input)`. The result counts the graph bindings
-updated. Use `UINT32_MAX` to replace all slices, including clearing a projection before replacing its backing.
-The registry indexes readers by Resource identity and projection. Each successful Job binding records its ticket;
-failed Start, failed Rebind, replacement and Stop remove only that execution’s tickets before releasing its instance.
-The first positional `StorageBindingOps::Resolve` signature is retained for the deferred Editor consumer.
-Multiple names for the same owner and projection resolve to a single
-graph resource. The Job retains each live owner through instance retirement. Variants can be reused with
-different owners that supply the same projection contracts and alias pattern.
+Use `EffectBuildContext::importResource` for a shared input. `JobBinding::resources` supplies its physical owner
+and projection. The Resource specifies the shape, initialized ranges and canonical boundary state through
+`describeGraphImport`. When the owner specifies a read use, the compiler also requires the declared GPU reads to
+match that use. `resolveGraphImport` supplies a borrowed physical slice for each FIF.
+The Resource publishes a replacement through `ResourceRegistry::publishGraphInput` on the device owner.
+Pass a FIF index to update one slice or `UINT32_MAX` to update all slices. The return value counts the updated
+bindings. A shared input may be withdrawn. A replacement for an installed output must cover its claimed bytes.
+
+Use `importFinalBuffer` for a writable Buffer projection. Its owner grants this capability in
+`StorageGraphImport::final_buffer_output`. The graph may narrow its claim with `GraphResource::output_range`.
+A default claim covers the declared Buffer. Each write is checked against the claim, and exporting the written
+version observes that range. For example, two Jobs may write [0, 8) and [8, 16) of the same projection.
+A competing writer of [4, 12) receives `kJobBusy`. A copy extending beyond its own declared range fails graph
+validation. GPU binding names keep distinct graph slots when several names refer to one owner. Use `sameBinding`
+to select prepared work according to their logical identities.
+
+The Resource registry owns subscriptions and writer claims. It checks the named projection and overlapping FIF
+slices in the same Resource, validates replacement slices before notifying subscribers, and removes the candidate's
+subscriptions on failure. Two output names can address overlapping bytes in the same Job when both use the same
+projection, retain its canonical state on the same physical queue, and the cold binding predicate disables access
+through one name. This also accounts for barriers recorded by a disabled pass. Conflicting names return
+`kGraphConflictingOutput`. An installed Job retains its Resource owners. Binding a shared input adds no declared
+Job scheduling edge. The first positional `StorageBindingOps::Resolve` signature remains available to the deferred
+Editor consumer.
 
 The built-in `Lighting` node consumes a GBuffer surface and an optional connected shadow bundle. Its
 `direct` implementation binds the four `EDirectLightingBuffer` projections of a scene `LightResource`
@@ -500,7 +510,7 @@ It estimates GPU completion across queues, includes native submit costs, and req
 preserve the baseline's reuse of identical physical objects. Runtime memory alias placement still uses NRI requirements.
 Imported images, surface output uses, sequences, and conditional intervals constrain queue assignment.
 
-Each Effect lowering invocation owns its builder, canonical import slots and bundle storage. Each node receives
+Each Effect lowering invocation owns its builder, named import slots and bundle storage. Each node receives
 its own pin range; the upstream input lists are valid through its build call. Producer linking assigns dense slots
 once in live order and tracks stream claims for the entire link. Each producer publishes its linked payload and
 operand lists after its factory and declaration checks succeed.

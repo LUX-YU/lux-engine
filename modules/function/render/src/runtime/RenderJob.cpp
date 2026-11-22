@@ -98,8 +98,8 @@ namespace lux::render
         const auto device = execution->device;
         const auto variant = execution->variant;
         auto resources = std::move(execution->resource_ids);
-        for (const auto& link : execution->storage_inputs)
-            runtime_->resources_.unbindGraphInput(link, execution->storage_start);
+        for (const auto& link : execution->storage_bindings)
+            runtime_->resources_.unbindGraphProjection(link, execution->storage_start);
         execution.reset();
         for (const auto id : resources) runtime_->resources_.releaseExecution(id);
         runtime_->device(device)->releaseVariant(variant);
@@ -319,9 +319,13 @@ namespace lux::render
                 };
             if (!contract) return cxx::unexpected(contract.error());
             // The Storage retains this boundary state through uploads and any replacement.
-            if (contract->initial_use == EGraphUse::UNSPECIFIED)
+            const bool invalid_writer = contract->final_buffer_output &&
+                (contract->read_use || !std::holds_alternative<GraphBufferDesc>(contract->description));
+            if (invalid_writer || contract->initial_use == EGraphUse::UNSPECIFIED)
                 return cxx::unexpected(RenderError{kStorageContract, {i}});
-            imports.storages.push_back({input.binding, name, std::move(*contract), canonical, input.projection});
+            imports.storages.push_back({
+                input.binding, name, std::move(*contract), kGraphInvalidIndex, input.projection
+            });
         }
         return imports;
     }

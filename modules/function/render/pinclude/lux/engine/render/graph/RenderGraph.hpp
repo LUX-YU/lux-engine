@@ -3,6 +3,7 @@
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
+#include <lux/engine/render/graph/StorageBindingSlot.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 
 namespace lux::render::compiled
@@ -25,7 +26,8 @@ namespace lux::render::compiled
         detail::RenderGraphExecutable executable;
         detail::NativeProgramBindings programs;
         std::vector<detail::TargetImageSlot> target_imports;
-        std::vector<GraphResourceId> storage_imports;
+        std::vector<detail::StorageBindingSlot> storage_imports;
+        std::vector<std::uint32_t> output_passes;
         std::vector<BindingComparison> binding_comparisons;
         detail::PreparationPlan preparation;
         std::vector<detail::LinkedUniformBlock> uniforms;

@@ -72,9 +72,7 @@ namespace
                     -> RenderResult<StorageGraphImport>
                 {
                     if (projection) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport{
-                        GraphBufferDesc{gbuffer_capture_total}, {}, EGraphUse::TRANSFER_DESTINATION
-                    };
+                    return StorageGraphImport::bufferOutput(gbuffer_capture_total, EGraphUse::TRANSFER_DESTINATION);
                 },
                 .resolveGraphImport = [](
                     void* object, std::uint32_t, const VGraphResourceDesc& desc, std::span<ResourceInput> output
@@ -153,7 +151,7 @@ namespace
         implementation.build = [](EffectBuildContext& context, std::string_view args) noexcept -> RenderResult<void>
         {
             const ResourceRequirement owner{ResourceName{GBufferCaptureDescriptor::descriptor.type.name()}};
-            auto buffer = take(context.importResource("readback", owner, {
+            auto buffer = take(context.importFinalBuffer("readback", owner, {
                 "", GraphBufferDesc{gbuffer_capture_total}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION
             }));
@@ -470,7 +468,7 @@ private:
         CHECK(input.size() == 1);
         const auto commands = std::ranges::find(input.front(), MeshVisibility::commands, &EffectResourceValue::member);
         CHECK(commands != input.front().end());
-        const auto readback = context.importResource(
+        const auto readback = context.importFinalBuffer(
             name, {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION},
@@ -525,7 +523,7 @@ private:
     {
         const auto input = context.inputs(MeshRaster::depth);
         CHECK(input.size() == 1 && input.front().size() == 1);
-        const auto readback = context.importResource(
+        const auto readback = context.importFinalBuffer(
             name, {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION}

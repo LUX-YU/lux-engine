@@ -89,7 +89,7 @@ namespace lux::render::runtime_detail
         struct ImportSlots final
         {
             std::vector<detail::TargetImageSlot> targets;
-            std::vector<GraphResourceId> storages;
+            std::vector<detail::StorageBindingSlot> storages;
             std::vector<GraphStorageSnapshotId> snapshots;
             std::vector<std::uint8_t> used_storages;
         };
@@ -144,27 +144,29 @@ namespace lux::render::runtime_detail
             RenderResult<ResourceVersion> importStorageResource(std::size_t index, GraphResource declaration) noexcept
             {
                 const auto& storages = contract.imports.storages;
-                const auto canonical = storages[index].canonical;
-                auto& slot = slots.storages[canonical];
-                if (slot.index == kGraphInvalidIndex)
+                auto& slot = slots.storages[index];
+                if (slot.resource.index == kGraphInvalidIndex)
                 {
-                    declaration.key = "storage-import/" + storages[canonical].binding;
+                    const auto range = declaration.output_range;
+                    declaration.key = "storage-import/" + storages[index].binding;
                     auto declared = builder.declareResource(std::move(declaration));
                     if (!declared) return cxx::unexpected(declared.error());
-                    slot = *declared;
+                    slot = {*declared, range};
                 }
+                else if (declaration.output_range != slot.output_range)
+                    return cxx::unexpected(RenderError{kStorageMismatch, {index}});
                 slots.used_storages[index] = 1;
-                return ResourceVersion{slot, 0};
+                return ResourceVersion{slot.resource, 0};
             }
 
             GraphStorageSnapshotId storageSnapshot(std::size_t index, cxx::basic_type_info type) noexcept
             {
-                const auto canonical = contract.imports.storages[index].canonical;
-                auto& slot = slots.snapshots[canonical];
+                const auto source = contract.imports.storages[index].preparation_source;
+                auto& slot = slots.snapshots[source];
                 if (slot.index == kGraphInvalidIndex)
                 {
                     slot.index = static_cast<std::uint32_t>(preparation.snapshots.size());
-                    preparation.snapshots.push_back({type, canonical});
+                    preparation.snapshots.push_back({type, source});
                 }
                 slots.used_storages[index] = 1;
                 return slot;
@@ -211,7 +213,7 @@ namespace lux::render::runtime_detail
             }
 
             RenderResult<ResourceVersion>
-            importResource(
+            bindStorageProjection(
                 std::string_view binding, const ResourceRequirement& required, GraphResource declaration,
                 std::uint32_t projection
             ) noexcept override
@@ -226,7 +228,9 @@ namespace lux::render::runtime_detail
                 const bool wrong_shape = !contract || declaration.description != contract->description;
                 const bool wrong_boundary = contract && (declaration.initial_ranges != contract->initial_ranges ||
                     declaration.initial_use != contract->initial_use);
-                if (wrong_owner || wrong_shape || wrong_boundary)
+                const bool unauthorized_output = declaration.output_range &&
+                    (!contract || !contract->final_buffer_output || contract->read_use.has_value());
+                if (wrong_owner || wrong_shape || wrong_boundary || unauthorized_output)
                     return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
 
                 return workspace_.importStorageResource(found - storages.begin(), std::move(declaration));
@@ -298,9 +302,9 @@ namespace lux::render::runtime_detail
                     return cxx::unexpected(RenderError{kStorageMismatch, {node_.source.value}});
 
                 workspace_.slots.used_storages[found - storages.begin()] = 1;
-                const auto previous = std::ranges::find(sets, found->canonical);
+                const auto previous = std::ranges::find(sets, found->preparation_source);
                 const auto index = static_cast<std::uint32_t>(previous - sets.begin());
-                if (previous == sets.end()) sets.push_back(found->canonical);
+                if (previous == sets.end()) sets.push_back(found->preparation_source);
                 return index;
             }
 
@@ -546,7 +550,9 @@ namespace lux::render::runtime_detail
                 if (output.target)
                 {
                     const bool imported_target = std::ranges::find(slots.targets, member.version.resource, &detail::TargetImageSlot::resource) != slots.targets.end();
-                    const bool imported_storage = std::ranges::find(slots.storages, member.version.resource) != slots.storages.end();
+                    const bool imported_storage = std::ranges::find(
+                        slots.storages, member.version.resource, &detail::StorageBindingSlot::resource
+                    ) != slots.storages.end();
                     if (imported_target || imported_storage)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                     exported.target = GraphOutputRequirements{contract.target.format, contract.target.samples};
@@ -570,7 +576,7 @@ namespace lux::render::runtime_detail
         std::vector<std::optional<EGraphUse>> storage_read_uses(source->resources().size());
         for (std::size_t i = 0; i < slots.storages.size(); ++i)
         {
-            const auto slot = slots.storages[i];
+            const auto slot = slots.storages[i].resource;
             if (slot.index == kGraphInvalidIndex) continue;
             linked_storages[slot.index] = true;
             const auto& import = std::get<detail::StorageGraphImport>(contract.imports.storages[i].contract);
@@ -592,6 +598,8 @@ namespace lux::render::runtime_detail
             {
                 const auto valid = [&](GraphResourceId resource) noexcept
                 {
+                    if (linked_storages[resource.index] && use.access != EGraphAccess::READ &&
+                        !source->resources()[resource.index].output_range) return false;
                     const auto required = storage_read_uses[resource.index];
                     return !required || (use.access == EGraphAccess::READ && use.usage == *required);
                 };

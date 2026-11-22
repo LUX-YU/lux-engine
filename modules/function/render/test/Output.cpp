@@ -1367,7 +1367,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<StorageGraphImport> describe(const void*, std::uint32_t projection) noexcept
         {
             if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
-            return StorageGraphImport{GraphBufferDesc{effect_capture_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+            return StorageGraphImport::bufferOutput(effect_capture_bytes, EGraphUse::TRANSFER_DESTINATION);
         }
 
         static RenderResult<void> resolve(
@@ -1427,27 +1427,52 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const GraphResource declaration{
             "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         };
-        auto first = context.importResource("first", requirement, declaration);
+        auto first = args == "shared-write" ? context.importResource("first", requirement, declaration) :
+            context.importFinalBuffer("first", requirement, declaration);
         if (!first) return lux::cxx::unexpected(first.error());
-        auto second = context.importResource("second", requirement, declaration);
+        auto second = context.importFinalBuffer("second", requirement, declaration);
         if (!second) return lux::cxx::unexpected(second.error());
         ++storage_node_builds;
 
         auto& builder = context.builder();
-        const bool share_owner = first->resource == second->resource;
-        const auto pattern = share_owner ? 0x5a5a5a5au : 0x6b6b6b6bu;
         const auto transient = take(builder.declareResource({"staging", GraphBufferDesc{effect_capture_bytes}}));
-        const auto filled = take(builder.addTransferPass("fill readback", TransferWork{{
-            FillBuffer{{{transient, 0}}, pattern}
-        }}));
-        if (!share_owner)
+        const auto fill = [&](RenderGraphBuilder& arm, std::uint32_t pattern) noexcept -> RenderResult<ResourceVersion>
         {
-            CHECK(builder.addTransferPass("copy to first storage", TransferWork{{
-                CopyBuffer{{filled.written.front()}, {*first}}
-            }}));
+            auto pass = arm.addTransferPass(
+                "fill " + std::to_string(pattern), TransferWork{{FillBuffer{{{transient, 0}}, pattern}}}
+            );
+            if (!pass) return lux::cxx::unexpected(pass.error());
+            return pass->written.front();
+        };
+        const auto selected = take(builder.choose(
+            take(builder.sameBinding(first->resource, second->resource)),
+            [&](RenderGraphBuilder& arm) noexcept { return fill(arm, 0x5a5a5a5au); },
+            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+            {
+                auto value = fill(arm, 0x6b6b6b6bu);
+                if (!value) return lux::cxx::unexpected(value.error());
+                auto copy = arm.addTransferPass("copy to first output", TransferWork{{CopyBuffer{{*value}, {*first}}}});
+                if (!copy) return lux::cxx::unexpected(copy.error());
+                if (args == "mixed-boundary")
+                {
+                    const auto temporary = take(arm.declareResource({
+                        "copy back", GraphBufferDesc{effect_capture_bytes}
+                    }));
+                    auto read = arm.addTransferPass("read first output", TransferWork{{
+                        CopyBuffer{{copy->written.front()}, {{temporary, 0}}}
+                    }});
+                    if (!read) return lux::cxx::unexpected(read.error());
+                    return read->written.front();
+                }
+                return *value;
+            }
+        ));
+        if (args == "ambiguous-write")
+        {
+            CHECK(builder.addTransferPass("also write first", TransferWork{{CopyBuffer{{selected}, {*first}}}}));
         }
         const auto copied = take(builder.addTransferPass("copy to storage", TransferWork{{
-            CopyBuffer{{filled.written.front()}, {*second}}
+            CopyBuffer{{selected}, {*second}}
         }}));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
@@ -1589,7 +1614,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     RenderResult<void> buildUniformOutput(EffectBuildContext& context, std::string_view arguments) noexcept
     {
         const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
-        auto external = context.importResource("readback", requirement, {
+        auto external = context.importFinalBuffer("readback", requirement, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         });
         if (!external) return lux::cxx::unexpected(external.error());
@@ -1630,7 +1655,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     RenderResult<void> buildPreparedOutput(EffectBuildContext& context, std::string_view args) noexcept
     {
         const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
-        auto imported = context.importResource("readback", requirement, {
+        auto imported = context.importFinalBuffer("readback", requirement, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         });
         if (!imported) return lux::cxx::unexpected(imported.error());
@@ -1940,7 +1965,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
     RenderResult<void> buildRasterStreamOutput(EffectBuildContext& context, std::string_view) noexcept
     {
-        auto imported = context.importResource(
+        auto imported = context.importFinalBuffer(
             "readback",
             {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
@@ -2113,7 +2138,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
     RenderResult<void> buildRuntimeLayersOutput(EffectBuildContext& context, std::string_view) noexcept
     {
-        auto imported = context.importResource(
+        auto imported = context.importFinalBuffer(
             "readback",
             {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
@@ -2180,7 +2205,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const auto right = context.inputs(tone_right);
         CHECK(left.size() == 1 && left.front().size() == 1);
         CHECK(right.size() == 1 && right.front().size() == 1);
-        auto imported = context.importResource(
+        auto imported = context.importFinalBuffer(
             "readback",
             {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
@@ -2731,6 +2756,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<StartRenderJob>(*client, commands, {device, storage_job, storage_output, storage_binding(owner, owner)});
     // A second Job binds another physical owner with the same import contract.
     const auto other_storage_output = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
+    CHECK(call<StartRenderJob>(
+        *client, commands, {device, other_storage_job, other_storage_output, storage_binding(owner, owner)}, false
+    ).error.type == kJobBusy);
     call<StartRenderJob>(
         *client, commands, {device, other_storage_job, other_storage_output, storage_binding(other_owner, other_owner)}
     );
@@ -2738,15 +2766,30 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(call<RemoveView>(*client, commands, {scene, owner_view}, false).error.type == kDeviceBusy);
     const auto storage_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
     const auto other_receipt = call<RequestRenderJob>(*client, commands, {other_storage_job});
-    stopAndRemoveJob(*client, commands, storage_job);
     stopAndRemoveJob(*client, commands, other_storage_job);
-    const auto distinct_storage_job = make_storage_job(storage_effect);
-    call<StartRenderJob>(
-        *client, commands, {device, distinct_storage_job, storage_output, storage_binding(owner, other_owner)}
+    call<RebindRenderJobEffect>(
+        *client, commands, {device, storage_job, storage_effect, storage_output, storage_binding(owner, other_owner)}
     );
-    CHECK(storage_node_builds.load() == 2);
-    const auto distinct_receipt = call<RequestRenderJob>(*client, commands, {distinct_storage_job});
-    stopAndRemoveJob(*client, commands, distinct_storage_job);
+    CHECK(storage_node_builds.load() == 1);
+    const auto distinct_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
+    stopAndRemoveJob(*client, commands, storage_job);
+    const auto shared_write = make_storage_effect(storage_selection, "shared-write");
+    const auto shared_write_job = make_storage_job(shared_write);
+    CHECK(call<StartRenderJob>(
+        *client, commands, {device, shared_write_job, storage_output, storage_binding(owner, other_owner)}, false
+    ).error.type == kGraphInvalidDescriptor);
+    call<RemoveRenderJob>(*client, commands, {shared_write_job});
+    call<RemoveEffect>(*client, commands, {shared_write});
+    for (const auto mode : {"ambiguous-write", "mixed-boundary"})
+    {
+        const auto ambiguous = make_storage_effect(storage_selection, mode);
+        const auto ambiguous_job = make_storage_job(ambiguous);
+        CHECK(call<StartRenderJob>(
+            *client, commands, {device, ambiguous_job, storage_output, storage_binding(owner, owner)}, false
+        ).error.type == kGraphConflictingOutput);
+        call<RemoveRenderJob>(*client, commands, {ambiguous_job});
+        call<RemoveEffect>(*client, commands, {ambiguous});
+    }
     call<RemoveView>(*client, commands, {scene, owner_view});
     const auto stale_job = make_storage_job(storage_effect);
     CHECK(call<StartRenderJob>(
@@ -3459,7 +3502,7 @@ static void preparedBuffers(bool d3d12)
         if (mode != "missing") CHECK(add_producer());
         if (mode == "duplicate") CHECK(add_producer());
         const ResourceRequirement owner{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
-        const auto readback = take(context.importResource("readback", owner, {
+        const auto readback = take(context.importFinalBuffer("readback", owner, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
         auto& builder = context.builder();
@@ -3724,7 +3767,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     implementation.build = [](EffectBuildContext& context, std::string_view mode) noexcept -> RenderResult<void>
     {
         auto& builder = context.builder();
-        const auto readback = take(context.importResource(
+        const auto readback = take(context.importFinalBuffer(
             "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
@@ -4275,7 +4318,7 @@ static void meshRasterStream(bool d3d12)
         const auto instances = take(context.importStorageSnapshot<MeshInstanceSnapshot>(
             "instances", {ResourceName{kInstanceResourceName.name()}}
         ));
-        const auto readback = take(context.importResource(
+        const auto readback = take(context.importFinalBuffer(
             "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
@@ -4580,7 +4623,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
             CHECK(input.size() == 1);
             const auto visible = std::ranges::find(input.front(), MeshVisibility::commands, &EffectResourceValue::member);
             CHECK(visible != input.front().end());
-            const auto readback = take(context.importResource(
+            const auto readback = take(context.importFinalBuffer(
                 "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
                 {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
             ));
@@ -4631,7 +4674,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
             "mesh selection count", sizeof(std::uint32_t), sizeof(std::uint32_t)
         ));
         const auto result = take(builder.declareResource({"verified instance fields", GraphBufferDesc{result_bytes}}));
-        const auto readback = take(context.importResource(
+        const auto readback = take(context.importFinalBuffer(
             "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
@@ -4991,7 +5034,7 @@ static void lightingGraphOutput(bool d3d12)
         const auto input = context.inputs(ToneMapping::color);
         CHECK(input.size() == 1 && input.front().size() == 1);
         const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
-        const auto buffer = take(context.importResource("readback", requirement, {
+        const auto buffer = take(context.importFinalBuffer("readback", requirement, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
         const auto copied = take(context.builder().addTransferPass("copy lighting result", TransferWork{{CopyImageBuffer{
@@ -5218,7 +5261,7 @@ static void basicFeatureOutputs(bool d3d12)
         const auto source = context.inputs(pyramid_input);
         CHECK(source.size() == 1 && source.front().size() == 1);
         const ResourceRequirement resource{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
-        const auto buffer = take(context.importResource(key, resource, {
+        const auto buffer = take(context.importFinalBuffer(key, resource, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
         auto& builder = context.builder();

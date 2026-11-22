@@ -82,6 +82,13 @@ namespace lux::render
             // Typed ingestion already resolved the resource and normalized its range.
             const auto& resource = graph.resources()[resource_id.index];
             const bool is_write = detail::writes(use.access);
+            if (resource.output_range && is_write)
+            {
+                const auto claimed = *resource.output_range;
+                const auto bytes = std::get<GraphBufferRange>(use.range);
+                if (!detail::contains(claimed, bytes))
+                    return cxx::unexpected(graphError(kGraphInvalidRange, id, resource_id));
+            }
             const bool is_invalid_access =
                 use.access > EGraphAccess::ATTACHMENT_LOAD ||
                 (is_write && (use.version.number == 0 || resource.origin == EGraphOrigin::HISTORY_PREVIOUS));

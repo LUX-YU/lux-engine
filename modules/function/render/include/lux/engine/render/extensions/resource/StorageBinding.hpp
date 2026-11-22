@@ -29,6 +29,12 @@ namespace lux::render::detail
         EGraphUse initial_use = EGraphUse::UNSPECIFIED;
         // When set, the graph may only read the projection in this use.
         std::optional<EGraphUse> read_use{};
+        // The owner can grant an exclusive writer for bytes within this Buffer projection.
+        bool final_buffer_output = false;
+        [[nodiscard]] static StorageGraphImport bufferOutput(std::uint64_t bytes, EGraphUse boundary) noexcept
+        {
+            return {GraphBufferDesc{bytes}, {}, boundary, {}, true};
+        }
         bool operator==(const StorageGraphImport&) const noexcept = default;
     };
 

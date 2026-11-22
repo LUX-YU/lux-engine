@@ -659,7 +659,7 @@ private:
         if (projection >= capture.config_.size() || !capture.config_[projection].result)
             return lux::cxx::unexpected(RenderError{kStorageContract});
         const auto bytes = std::max(image_bytes, capture.config_[projection].bytes);
-        return StorageGraphImport{GraphBufferDesc{bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+        return StorageGraphImport::bufferOutput(bytes, EGraphUse::TRANSFER_DESTINATION);
     }
 
     static RenderResult<void> resolve(
@@ -715,7 +715,7 @@ private:
     {
         const auto input = context.inputs(color);
         CHECK(input.size() == 1 && input.front().size() == 1);
-        const auto readback = context.importResource(
+        const auto readback = context.importFinalBuffer(
             name,
             {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},

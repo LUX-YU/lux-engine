@@ -293,7 +293,7 @@ private:
         std::array<ResourceVersion, bindings.size()> sinks;
         for (std::uint32_t i = 0; i < count; ++i)
         {
-            const auto buffer = context.importResource(
+            const auto buffer = context.importFinalBuffer(
                 bindings[i], {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
                 {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
                     EGraphUse::TRANSFER_DESTINATION}, i + 1

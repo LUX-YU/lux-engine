@@ -129,6 +129,8 @@ namespace lux::render
         std::vector<VGraphRange> initial_ranges;
         // Imported physical input state. UNSPECIFIED is legal only when no image contents are read.
         EGraphUse initial_use = EGraphUse::UNSPECIFIED;
+        // Cold Job installation claims this half-open byte range from a named final Buffer's owner.
+        std::optional<GraphBufferRange> output_range;
     };
 
     struct ResourceVersion final

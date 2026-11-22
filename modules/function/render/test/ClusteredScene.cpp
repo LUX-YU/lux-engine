@@ -85,9 +85,9 @@ struct ClusterReadback final
                 const auto& readback = *static_cast<const ClusterReadback*>(object);
                 if (projection >= readback.configuration.size())
                     return lux::cxx::unexpected(RenderError{kStorageContract});
-                return StorageGraphImport{
-                    GraphBufferDesc{readback.configuration[projection].bytes}, {}, EGraphUse::TRANSFER_DESTINATION
-                };
+                return StorageGraphImport::bufferOutput(
+                    readback.configuration[projection].bytes, EGraphUse::TRANSFER_DESTINATION
+                );
             },
             .resolveGraphImport = [](
                 void* object, std::uint32_t projection, const VGraphResourceDesc& description,
@@ -122,7 +122,7 @@ static RenderResult<void> copyReadback(
         work.operations.push_back(CopyBuffer{{source}, {{}, GraphBufferRange{bytes, buffer->size}}});
         bytes += buffer->size;
     }
-    const auto bound = context.importResource(
+    const auto bound = context.importFinalBuffer(
         readback_bindings[projection], {ResourceName{ClusterReadbackDescriptor::descriptor.type.name()}},
         {"", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
     );

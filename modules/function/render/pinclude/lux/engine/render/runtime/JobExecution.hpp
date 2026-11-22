@@ -12,7 +12,7 @@ namespace lux::render::detail
 {
     class DeviceEntry;
     struct EffectDeviceVariant;
-    struct GraphReaderTag;
+    struct GraphBindingTag;
     class ViewParameterStorage;
     struct DeviceVariantTag;
     using DeviceVariantId = cxx::SlotKey<DeviceVariantTag>;
@@ -20,12 +20,14 @@ namespace lux::render::detail
 
 namespace lux::render::runtime_detail
 {
-    struct StorageInput final
+    struct BoundStorageProjection final
     {
         ResourceInstanceId storage;
         std::uint32_t projection;
         GraphResourceId resource;
-        cxx::SlotKey<detail::GraphReaderTag> reader{};
+        std::optional<GraphBufferRange> output_range;
+        std::uint32_t canonical_queue = kGraphInvalidIndex;
+        cxx::SlotKey<detail::GraphBindingTag> subscription{};
     };
 
     struct JobExecution final
@@ -94,7 +96,7 @@ namespace lux::render::runtime_detail
         std::span<const std::uint32_t> columnsFor(const Input&) const && = delete;
 
         detail::TargetReservation storage_start;
-        std::vector<StorageInput> storage_inputs;
+        std::vector<BoundStorageProjection> storage_bindings;
 
         struct TargetImage final
         {

@@ -82,23 +82,6 @@ namespace lux::render
         if (target_images.size() > declared_targets.size()) return cxx::unexpected(RenderError{kCommandContract});
         const auto& slots = candidate.graph.storage_imports;
         if (slots.size() != binding.resources.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-        candidate.storage_inputs.reserve(slots.size());
-        auto& registry = runtime_->resources_;
-        for (std::size_t i = 0; i < slots.size(); ++i)
-        {
-            const auto slot = slots[i].index;
-            if (slot == kGraphInvalidIndex) continue;
-            const auto& input = binding.resources[i];
-            const auto id = input.resource;
-            if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
-            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
-                candidate.gpu_resources.push_back(id);
-            StorageInput link{id, input.projection, slots[i]};
-            auto bound = registry.bindGraphInput(link, candidate.storage_start, candidate.instance);
-            if (!bound) return cxx::unexpected(bound.error());
-            link.reader = *bound;
-            candidate.storage_inputs.push_back(link);
-        }
         const auto same_binding = [&](const compiled::BindingComparison& comparison) noexcept
         {
             const auto [left, right] = comparison;
@@ -112,6 +95,35 @@ namespace lux::render
         std::vector<std::uint8_t> selected;
         selected.reserve(candidate.graph.binding_comparisons.size());
         for (const auto& comparison : candidate.graph.binding_comparisons) selected.push_back(same_binding(comparison));
+        candidate.storage_bindings.reserve(slots.size());
+        auto& registry = runtime_->resources_;
+        for (std::size_t i = 0; i < slots.size(); ++i)
+        {
+            const auto slot = slots[i].resource.index;
+            if (slot == kGraphInvalidIndex) continue;
+            const auto& input = binding.resources[i];
+            const auto id = input.resource;
+            if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
+            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
+                candidate.gpu_resources.push_back(id);
+            BoundStorageProjection link{
+                id, input.projection, slots[i].resource, slots[i].output_range, slots[i].canonical_queue
+            };
+            const auto uses = std::span(candidate.graph.output_passes).subspan(slots[i].first_use, slots[i].use_count);
+            const auto& recording = candidate.executable.recordingProgram();
+            const bool may_access = !link.output_range || std::ranges::any_of(uses, [&](auto pass)
+            {
+                const auto region = recording.passes[pass].condition_region;
+                if (region == kGraphInvalidIndex) return true;
+                const auto& guard = recording.conditions[region];
+                return guard.source != EConditionSource::SAME_BINDING ||
+                    bool(selected[guard.input_slot]) == guard.expected;
+            });
+            auto bound = registry.bindGraphProjection(link, candidate.storage_start, candidate.instance, may_access);
+            if (!bound) return cxx::unexpected(bound.error());
+            link.subscription = *bound;
+            candidate.storage_bindings.push_back(link);
+        }
         if (auto ready = candidate.instance.bindPredicates(std::move(selected)); !ready) return ready;
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph.preparation;

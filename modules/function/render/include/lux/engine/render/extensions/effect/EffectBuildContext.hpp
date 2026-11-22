@@ -62,10 +62,31 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<ResourceVersion> importTargetImage(
             std::string_view binding, rdesc::ETextureFormat format, std::uint32_t samples = 1
         ) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<ResourceVersion>
+        [[nodiscard]] RenderResult<ResourceVersion>
         importResource(
-            std::string_view binding, const ResourceRequirement&, GraphResource declaration, std::uint32_t projection = 0
-        ) noexcept = 0;
+            std::string_view binding,
+            const ResourceRequirement& owner,
+            GraphResource declaration,
+            std::uint32_t projection = 0
+        ) noexcept
+        {
+            if (declaration.output_range) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            return bindStorageProjection(binding, owner, std::move(declaration), projection);
+        }
+
+        [[nodiscard]] RenderResult<ResourceVersion>
+        importFinalBuffer(
+            std::string_view binding,
+            const ResourceRequirement& owner,
+            GraphResource declaration,
+            std::uint32_t projection = 0
+        ) noexcept
+        {
+            const auto* buffer = std::get_if<GraphBufferDesc>(&declaration.description);
+            if (!buffer) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if (!declaration.output_range) declaration.output_range = GraphBufferRange{0, buffer->size};
+            return bindStorageProjection(binding, owner, std::move(declaration), projection);
+        }
 
         [[nodiscard]] virtual RenderResult<GraphRasterTextureSetId>
         importRasterTextures(std::string_view binding) noexcept = 0;
@@ -134,6 +155,8 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<void> publish(graph::PinSemanticId, EffectResourceBundle) noexcept = 0;
 
     private:
+        [[nodiscard]] virtual RenderResult<ResourceVersion>
+        bindStorageProjection(std::string_view, const ResourceRequirement&, GraphResource, std::uint32_t) noexcept = 0;
         [[nodiscard]] virtual const ConfigValue* nodeConfiguration() const noexcept = 0;
         [[nodiscard]] virtual RenderResult<ResourceVersion>
         declareUniformBlock(std::string_view, extension_detail::EffectUniformSource) noexcept = 0;

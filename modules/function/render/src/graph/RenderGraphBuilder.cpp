@@ -123,6 +123,15 @@ namespace lux::render
         {
             return cxx::unexpected(graphError(valid.error().type, {}, id));
         }
+        if (resource.output_range)
+        {
+            const bool is_buffer = std::holds_alternative<GraphBufferDesc>(resource.description);
+            if (resource.origin != EGraphOrigin::IMPORTED || !is_buffer)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
+            auto range = detail::normalize(resource, *resource.output_range);
+            if (!range) return cxx::unexpected(graphError(kGraphInvalidRange, {}, id));
+            resource.output_range = std::get<GraphBufferRange>(*range);
+        }
         for (auto& range : resource.initial_ranges)
         {
             auto normalized = detail::normalize(resource, range);
@@ -470,6 +479,8 @@ namespace lux::render
             return cxx::unexpected(graphError(kGraphUnknownResource, {}, id));
         }
         const auto& resource = candidate_.resources_[id.index];
+        if (resource.output_range && std::holds_alternative<std::monostate>(output.range))
+            output.range = *resource.output_range;
         if (output.final_use && !compatibleUse(resource.description, *output.final_use))
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
@@ -480,6 +491,13 @@ namespace lux::render
             return cxx::unexpected(graphError(kGraphInvalidRange, {}, id));
         }
         output.range = *range;
+        if (resource.output_range)
+        {
+            const auto bytes = std::get<GraphBufferRange>(output.range);
+            const auto claim = *resource.output_range;
+            if (!detail::contains(claim, bytes))
+                return cxx::unexpected(graphError(kGraphInvalidRange, {}, id));
+        }
         if (output.target)
         {
             const auto* image = std::get_if<GraphImageDesc>(&resource.description);

@@ -60,13 +60,18 @@ namespace
     {
         using Descriptor = ComputeCaptureDescriptor;
         static inline std::atomic_bool reject_resolve{};
-        static inline CapturedPixels result;
+        static inline std::array<CapturedPixels, 2> results;
+        static inline std::size_t created = 0;
         static inline std::atomic_uint accepted{}, rejected{};
         static constexpr std::uint64_t preparation_revision = 1;
         CaptureBuffer buffer;
+        CapturedPixels& result;
         std::uint64_t epoch = 0;
 
-        explicit ComputeCapture(ResourceCreateContext& context) noexcept : buffer(context) {}
+        ComputeCapture(ResourceCreateContext& context, CapturedPixels& pixels) noexcept
+            : buffer(context), result(pixels)
+        {
+        }
 
         static ResourceRegistration factory() noexcept
         {
@@ -84,7 +89,7 @@ namespace
                     -> RenderResult<StorageGraphImport>
                 {
                     if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport{GraphBufferDesc{capture_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+                    return StorageGraphImport::bufferOutput(capture_bytes, EGraphUse::TRANSFER_DESTINATION);
                 },
                 .resolveGraphImport = [](
                     void* storage,
@@ -95,10 +100,9 @@ namespace
                 {
                     if (reject_resolve.exchange(false))
                         return RenderResult<void>{lux::cxx::unexpected(RenderError{kStorageMismatch})};
-                    const CaptureConfig config{.result = &result, .bytes = capture_bytes};
-                    return CaptureBuffer::resolve(
-                        &static_cast<ComputeCapture*>(storage)->buffer, description, &config, output
-                    );
+                    auto& capture = *static_cast<ComputeCapture*>(storage);
+                    const CaptureConfig config{.result = &capture.result, .bytes = capture_bytes};
+                    return CaptureBuffer::resolve(&capture.buffer, description, &config, output);
                 },
                 .settleFrame = [](void* owner, const ReplicaSettlement& receipt) noexcept
                 {
@@ -116,7 +120,8 @@ namespace
         static RenderResult<std::unique_ptr<ComputeCapture>>
         create(ResourceCreateContext& context, ResourceInstanceId) noexcept
         {
-            return std::make_unique<ComputeCapture>(context);
+            CHECK(created < results.size());
+            return std::make_unique<ComputeCapture>(context, results[created++]);
         }
     };
 
@@ -402,11 +407,42 @@ namespace
         return context.publish(color, {{color, copied.written.front()}});
     }
 
-    RenderResult<void> buildCapture(EffectBuildContext& context, std::string_view) noexcept
+    RenderResult<void> buildCaptureRange(EffectBuildContext& context, std::string_view mode) noexcept
     {
+        const std::uint64_t offset = mode == "upper" ? 8u : mode == "overlap" ? 4u : 0u;
+        const GraphBufferRange claim{offset, 8};
+        const bool shared = mode == "unauthorized";
+        GraphResource declaration{
+            "", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, claim
+        };
+        if (shared) declaration = {
+            "", GraphBufferDesc{replica_bytes}, EGraphOrigin::IMPORTED,
+            {GraphBufferRange{0, replica_bytes}}, EGraphUse::TRANSFER_SOURCE, claim
+        };
+        const auto type = shared ? MutableReplicaDescriptor::descriptor.type :
+            ComputeCaptureDescriptor::descriptor.type;
+        const auto output = context.importFinalBuffer(
+            "capture", {ResourceName{type.name()}}, std::move(declaration)
+        );
+        if (!output) return lux::cxx::unexpected(output.error());
+        auto& builder = context.builder();
+        const auto scratch = take(builder.declareResource({"pattern", GraphBufferDesc{claim.size}}));
+        const auto pattern = offset == 0 ? 0x5a5a5a5au : 0x6b6b6b6bu;
+        const auto fill = take(builder.addTransferPass("fill", TransferWork{{FillBuffer{{{scratch, 0}}, pattern}}}));
+        const GraphBufferRange destination{mode == "spill" ? 4u : offset, claim.size};
+        const auto copy = builder.addTransferPass("copy", TransferWork{{
+            CopyBuffer{{fill.written.front()}, {*output, destination}}
+        }});
+        if (!copy) return lux::cxx::unexpected(copy.error());
+        return context.publish(pixels, {{pixels, copy->written.front()}});
+    }
+
+    RenderResult<void> buildCapture(EffectBuildContext& context, std::string_view mode) noexcept
+    {
+        if (!mode.empty()) return buildCaptureRange(context, mode);
         const auto input = context.inputs(color);
         CHECK(input.size() == 1 && input.front().size() == 1 && input.front().front().member == color);
-        const auto output = take(context.importResource(
+        const auto output = take(context.importFinalBuffer(
             "capture", {ResourceName{ComputeCaptureDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
@@ -438,8 +474,14 @@ namespace
         implementation.initialize = [](EffectInitializationContext& context, std::string_view arguments) noexcept
             -> RenderResult<void>
         {
-            if (!arguments.empty()) return lux::cxx::unexpected(RenderError{kInvalidConfig});
-            if constexpr (Build == buildCompute) return context.initializeState<OutputState>();
+            if constexpr (Build == buildCompute)
+            {
+                if (!arguments.empty()) return lux::cxx::unexpected(RenderError{kInvalidConfig});
+                return context.initializeState<OutputState>();
+            }
+            const bool known = arguments.empty() || arguments == "lower" || arguments == "upper" ||
+                arguments == "overlap" || arguments == "spill" || arguments == "unauthorized";
+            if (!known) return lux::cxx::unexpected(RenderError{kInvalidConfig});
             return {};
         };
         implementation.build = Build;
@@ -478,17 +520,21 @@ int main(int argc, char** argv)
     const auto mutable_resource = call<GetOrCreateResource>(
         *client, commands, {session, ViewRequest{scene, view}, MutableReplicaDescriptor::descriptor.type}
     ).resource_id;
-    CreateEffectRequest effect;
-    effect.graph = std::make_unique<EffectGraph>();
-    EffectGraphEdit edit{*effect.graph};
-    const auto compute = take(edit.addNode(computeDefinition(), {std::string{compute_node}, 1}));
-    const auto capture = take(edit.addNode(captureDefinition(), {std::string{capture_node}, 1}));
-    const auto color_pin = edit.pinId(compute, color);
-    CHECK(edit.connect(color_pin, edit.pinId(capture, color)));
-    CHECK(edit.setOutput("color", color_pin, true));
-    CHECK(edit.setOutput("pixels", edit.pinId(capture, pixels)));
-    CHECK(edit.commit());
-    const auto created = call<CreateEffect>(*client, commands, std::move(effect)).effect;
+    const auto create_capture = [&](std::string mode)
+    {
+        CreateEffectRequest effect;
+        effect.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit edit{*effect.graph};
+        const auto compute = take(edit.addNode(computeDefinition(), {std::string{compute_node}, 1}));
+        const auto capture = take(edit.addNode(captureDefinition(), {std::string{capture_node}, 1}, std::move(mode)));
+        const auto color_pin = edit.pinId(compute, color);
+        CHECK(edit.connect(color_pin, edit.pinId(capture, color)));
+        CHECK(edit.setOutput("color", color_pin, true));
+        CHECK(edit.setOutput("pixels", edit.pinId(capture, pixels)));
+        CHECK(edit.commit());
+        return call<CreateEffect>(*client, commands, std::move(effect)).effect;
+    };
+    const auto created = create_capture({});
     JobBinding binding;
     constexpr std::uint32_t marker = 0x4d340123;
     if (argc > 2 && std::string_view{argv[2]} == "unknown")
@@ -527,7 +573,18 @@ int main(int argc, char** argv)
     CHECK(MutableReplica::notified == 0);
     const auto job = startRenderJob(*client, commands, session, scene, view, target, created, binding);
     const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
-    const auto peer = startRenderJob(*client, commands, session, scene, view, peer_target, created, binding);
+    const auto peer = call<CreateRenderJob>(*client, commands, {scene, view, created, EJobCadence::REQUESTED}).job;
+    CHECK(call<StartRenderJob>(*client, commands, {session, peer, peer_target, binding}, false).error.type == kJobBusy);
+    const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
+    const auto peer_capture = call<GetOrCreateResource>(
+        *client, commands, {session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type}
+    ).resource_id;
+    auto peer_binding = binding;
+    peer_binding.resources.front().resource = peer_capture;
+    call<StartRenderJob>(*client, commands, {session, peer, peer_target, peer_binding});
+    CHECK(call<RebindRenderJobEffect>(
+        *client, commands, {session, peer, created, peer_target, binding}, false
+    ).error.type == kJobBusy);
     const auto replace = [&](std::uint32_t value, std::size_t expected)
     {
         call<InitializeReplica>(*client, commands, {mutable_resource, value, InitializeReplica::EProbe::REPLACE});
@@ -542,8 +599,7 @@ int main(int argc, char** argv)
     replace(marker + 2, 2);
     call<RebindRenderJobEffect>(*client, commands, {session, job, created, target, binding});
     replace(marker + 3, 2);
-    stopAndRemoveJob(*client, commands, peer);
-    replace(marker + 4, 1);
+    replace(marker + 4, 2);
     constexpr std::uint32_t expected_replica = 0x12345678;
     call<SetReplicaValue>(*client, commands, {mutable_resource, expected_replica, true});
     const auto failed = call<RequestRenderJob>(*client, commands, {job}, false);
@@ -560,11 +616,56 @@ int main(int argc, char** argv)
     CHECK(MutableReplica::accepted_no_copy == 1 && MutableReplica::accepted_copies == 1);
     CHECK(ComputeCapture::rejected == 1 && ComputeCapture::accepted == 1);
     stopAndRemoveJob(*client, commands, job);
-    replace(marker + 5, 0);
+    replace(marker + 5, 1);
+    renderFrame(*client, commands, peer);
+    stopAndRemoveJob(*client, commands, peer);
+    replace(marker + 6, 0);
+    JobBinding range_binding;
+    range_binding.resources = {{"capture", peer_capture}};
+    const auto lower = startRenderJob(
+        *client, commands, session, scene, view, target, create_capture("lower"), range_binding
+    );
+    const auto candidate = [&](std::string mode)
+    {
+        const auto effect = create_capture(std::move(mode));
+        return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+    };
+    for (const auto& [mode, error] : {std::pair{"overlap", kJobBusy}, std::pair{"spill", kGraphInvalidRange}})
+    {
+        const auto rival = candidate(mode);
+        const StartRenderJob::Request request{session, rival, peer_target, range_binding};
+        const auto failed = call<StartRenderJob>(*client, commands, request, false);
+        CHECK(failed.error.type == error);
+        call<RemoveRenderJob>(*client, commands, {rival});
+    }
+    const auto upper = candidate("upper");
+    const auto unauthorized = candidate("unauthorized");
+    auto shared_binding = range_binding;
+    shared_binding.resources.front().resource = mutable_resource;
+    CHECK(call<StartRenderJob>(
+        *client, commands, {session, unauthorized, peer_target, shared_binding}, false
+    ).error.type == kStorageMismatch);
+    call<RemoveRenderJob>(*client, commands, {unauthorized});
+    call<StartRenderJob>(*client, commands, {session, upper, peer_target, range_binding});
+    renderFrame(*client, commands, upper);
+    renderFrame(*client, commands, lower);
+    stopAndRemoveJob(*client, commands, upper);
+    stopAndRemoveJob(*client, commands, lower);
     server->stop();
     worker.join();
     CHECK(ran && server->stats().validation_errors == 0);
-    const auto& readback_pixels = ComputeCapture::result;
+    const auto& peer_pixels = ComputeCapture::results[1];
+    CHECK(peer_pixels.ready == 1 && peer_pixels.frames.size() == 1);
+    CHECK(peer_pixels.frames.front().size() >= capture_bytes);
+    std::uint32_t peer_marker = 0;
+    const auto* peer_replica = peer_pixels.frames.front().data() + readback_bytes;
+    std::memcpy(&peer_marker, peer_replica + sizeof(peer_marker), sizeof(peer_marker));
+    CHECK(peer_marker == marker + 5);
+    const auto claimed = std::span{peer_pixels.frames.front()}.first(16);
+    CHECK(std::ranges::all_of(claimed.first(8), [](auto byte) { return byte == std::byte{0x5a}; }));
+    CHECK(std::ranges::all_of(claimed.last(8), [](auto byte) { return byte == std::byte{0x6b}; }));
+    std::puts("FINAL BUFFER PASS: shared input, failed writer Rebind, exclusive byte ranges and 0x5a/0x6b readback");
+    const auto& readback_pixels = ComputeCapture::results[0];
     CHECK(readback_pixels.ready == 1 && readback_pixels.frames.size() == 1);
     constexpr std::size_t pixel_size = 4;
     const auto data = std::span(readback_pixels.frames.front());

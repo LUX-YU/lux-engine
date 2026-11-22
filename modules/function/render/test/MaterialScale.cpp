@@ -320,7 +320,7 @@ namespace
                     const auto& capture = *static_cast<const MaterialReadback*>(object);
                     if (projection >= capture.configuration.size() || !capture.configuration[projection].result)
                         return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport{GraphBufferDesc{capture_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+                    return StorageGraphImport::bufferOutput(capture_bytes, EGraphUse::TRANSFER_DESTINATION);
                 },
                 .resolveGraphImport = [](
                     void* object, std::uint32_t projection, const VGraphResourceDesc& description,
@@ -367,7 +367,7 @@ namespace
         const auto source = std::ranges::find(inputs.front(), member, &EffectResourceValue::member);
         CHECK(source != inputs.front().end());
         const std::uint32_t projection = arguments == "extra" ? 1 : 0;
-        const auto readback = take(context.importResource(
+        const auto readback = take(context.importFinalBuffer(
             capture_bindings[projection], {ResourceName{MaterialReadbackDescriptor::descriptor.type.name()}},
             {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
         ));

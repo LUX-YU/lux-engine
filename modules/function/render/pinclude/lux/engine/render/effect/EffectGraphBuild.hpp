@@ -12,6 +12,7 @@
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
+#include <lux/engine/render/graph/StorageBindingSlot.hpp>
 #include <span>
 #include <string>
 
@@ -45,7 +46,8 @@ namespace lux::render::runtime_detail
         std::string binding;
         ResourceName type;
         std::variant<detail::StorageGraphImport, SnapshotContract, ERasterOwner> contract;
-        std::uint32_t canonical;
+        // CPU snapshots and raster owner tables can share a preparation source. GPU imports have named slots.
+        std::uint32_t preparation_source;
         std::uint32_t projection;
         bool operator==(const EffectStorageImport&) const noexcept = default;
     };
@@ -70,7 +72,7 @@ namespace lux::render::runtime_detail
         RenderGraphAnalysis analysis;
         EffectOutputDesc output;
         std::vector<detail::TargetImageSlot> target_imports;
-        std::vector<GraphResourceId> storage_imports;
+        std::vector<detail::StorageBindingSlot> storage_imports;
         PreparationDefinition preparation;
         std::vector<UniformBlockDeclaration> uniforms;
     };

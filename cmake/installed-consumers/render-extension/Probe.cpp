@@ -524,7 +524,7 @@ struct ProbeReadback final
                 -> RenderResult<detail::StorageGraphImport>
             {
                 if (projection != 0) return cxx::unexpected(RenderError{kStorageContract});
-                return detail::StorageGraphImport{GraphBufferDesc{transfer_bytes}, {}, EGraphUse::TRANSFER_DESTINATION};
+                return detail::StorageGraphImport::bufferOutput(transfer_bytes, EGraphUse::TRANSFER_DESTINATION);
             },
             .resolveGraphImport = [](
                 void* object, std::uint32_t, const VGraphResourceDesc&, std::span<detail::ResourceInput> outputs
@@ -563,7 +563,7 @@ static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string
     if (!context.outputDemanded(readback_value)) return {};
 
     auto& builder = context.builder();
-    const auto readback = context.importResource(
+    const auto readback = context.importFinalBuffer(
         readback_binding, {ResourceName{ProbeReadback::Descriptor::descriptor.type.name()}},
         {"", GraphBufferDesc{transfer_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
     );

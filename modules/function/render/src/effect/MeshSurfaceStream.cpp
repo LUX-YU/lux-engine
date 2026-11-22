@@ -24,8 +24,21 @@ namespace lux::render::detail
             config.pass, GBuffer::geometry_binding
         );
         if (!geometry) return cxx::unexpected(geometry.error());
+        const auto records = context.resolveDrawResource<MaterialResource::DrawStorage>(
+            config.pass, GBuffer::materials_binding
+        );
+        if (!records) return cxx::unexpected(records.error());
+        MaterialDrawSources material{*records, {}};
+        if (config.texture_descriptors)
+        {
+            const auto textures = context.resolveDrawResource<SampledTexture2DStorage>(
+                config.pass, GBuffer::textures_binding
+            );
+            if (!textures) return cxx::unexpected(textures.error());
+            material.textures = *textures;
+        }
         Inputs resolved{
-            *stream, *geometry, {}, {}, config.paged, config.shared_members, config.front_counter_clockwise,
+            *stream, *geometry, material, {}, {}, config.paged, config.shared_members, config.front_counter_clockwise,
             config.purpose
         };
         for (std::size_t i = 0; i < config.buffers.size(); ++i)
@@ -220,7 +233,7 @@ namespace lux::render::detail
             {
                 auto program = frame.rasterProgram(inputs_.stream, index + winding);
                 if (!program) return cxx::unexpected(program.error());
-                auto selected = frame.selectMaterial(inputs_.stream, *program, material);
+                auto selected = material_records_.select(frame, inputs_.material, *program, material);
                 if (!selected) return cxx::unexpected(selected.error());
             }
         }

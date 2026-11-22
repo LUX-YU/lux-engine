@@ -314,10 +314,15 @@ A stream that reads only the material program declares the owner with zero requi
 Declare the unbounded read-only structured buffer argument with
 `RasterPassTemplate::Input::shared_records = true` and give it the name reflected by the shader. The built-in
 material adapter uses `uMats`. Declare the shared sampled texture and sampler arguments the programs use. The renderer prepares the writable
-frame's material replicas before the producer runs. Call `FramePreparation::selectMaterial()` with the
-program slot for each material the program can read. Use the returned page and record indices when
-building GPU inputs. The renderer checks the reflected record layout and records the selected page
-bytes and material texture reads. Textured programs require the corresponding named texture owner.
+frame's material replicas before the producer runs. Link the material and optional texture sources
+by name into a `MaterialDrawSources`. Keep a `MaterialRecordReader` in the algorithm's Job workspace and call
+`reader.select(frame, sources, program, id)` to obtain the GPU page and record indices. Only the selected draw
+programs contribute their exact page bytes and sampled subresources to the frozen reads.
+
+An external Resource with its own structured records can use `frame.rasterRecord(source, program)` directly.
+Its writer borrows the reflected block and writable frame slot for this preparation. Publish a single native
+record slice with `write(input)`, or use `write(input, image_source)` when that record also reads sampled
+subresources. The writer checks the record stride, bounds and all image operands before appending any reads.
 
 For uploaded indexed geometry, declare `MeshResource::drawResourceType()` on the stream.
 Link a typed slot for `MeshResource::DrawStorage` and call `MeshResource::geometry()` during preparation. Use the

@@ -13,7 +13,7 @@ struct TextureReference
 struct MaterialRecord
 {
     float4 params[1];
-    TextureReference tex[1];
+    TextureReference tex[2];
 };
 
 [[vk::binding(0, 0)]] Texture2D<float4> uTex[] : register(t0, space0);

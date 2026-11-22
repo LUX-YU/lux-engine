@@ -36,13 +36,7 @@ namespace lux::render::detail
             GeometryLayout layout;
         };
 
-        struct TextureRead final
-        {
-            const nri::Texture* image;
-            GraphImageRange range;
-        };
-
-        struct MaterialRead final
+        struct RecordRead final
         {
             const nri::Buffer* buffer;
             GraphBufferRange range;
@@ -54,12 +48,12 @@ namespace lux::render::detail
         std::vector<RasterStreamVertex> vertices;
         std::vector<std::byte> constants;
         std::vector<RasterStreamSection> sections;
-        std::vector<TextureRead> textures;
+        std::vector<RasterSampledImageRead> textures;
         std::vector<Geometry> geometry;
         std::vector<GeometryAttribute> geometry_attributes;
-        std::vector<MaterialRead> materials;
-        std::vector<TextureRead> material_images;
-        std::vector<std::uint8_t> used_material_programs;
+        std::vector<RecordRead> records;
+        std::vector<RasterSampledImageRead> record_images;
+        std::vector<std::uint8_t> used_record_programs;
         std::uint64_t selection = 0;
         bool written = false;
     };

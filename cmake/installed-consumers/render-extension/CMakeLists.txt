@@ -51,8 +51,12 @@ add_custom_command(
     VERBATIM
 )
 
-set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/ResidentRaster.slang")
-foreach(entry IN ITEMS Fullscreen Red Green)
+foreach(entry IN ITEMS Fullscreen Red Green RecordColor)
+    set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/ResidentRaster.slang")
+    if(entry STREQUAL "RecordColor")
+        set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/RecordColor.slang")
+    endif()
+
     set(stage fragment)
     if(entry STREQUAL "Fullscreen")
         set(stage vertex)
@@ -119,6 +123,9 @@ if(WIN32)
 endif()
 
 foreach(backend IN LISTS receipt_backends)
+    add_test(NAME installed.render.raster_records_${backend} COMMAND compute_output ${backend} resident-records)
+    set_tests_properties(installed.render.raster_records_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
+
     add_test(NAME installed.render.shared_images_${backend} COMMAND shared_images ${backend})
 
     set_tests_properties(installed.render.shared_images_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
@@ -150,7 +157,7 @@ foreach(header IN ITEMS
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
     extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
     extensions/execution/ProducerFactory extensions/execution/LinkedProducer graph/DrawList graph/DrawResource
-    graph/IndexedGeometry resource/RasterProgramBuild
+    graph/IndexedGeometry extensions/execution/FramePreparation resources/material/Resource resource/RasterProgramBuild
     extensions/execution/PreparedCpuValue extensions/execution/ResourceInput
     device/NativeProgramId resource/ProgramInputRevision resource/material/ProgramSource resource/mesh/MeshLayout
     extensions/resource/ResourceProgramUses extensions/resource/ReplicaMutation

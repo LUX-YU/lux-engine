@@ -12,6 +12,26 @@
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 
+#include "SdkRecordColor.hpp"
+
+namespace sdk_programs
+{
+    struct ColorIndex final { std::uint32_t page, index; };
+}
+
+template <> struct lux::render::ConstantBlockTraits<sdk_programs::ColorIndex> final
+{
+    static ConstantBlockLayout layout(lux::rdesc::EShaderTarget target) noexcept
+    {
+        constexpr auto scalar = lux::rdesc::EDataScalar::UINT;
+        static constexpr std::array members{
+            ConstantMemberLayout{"page", 0, scalar}, ConstantMemberLayout{"index", 4, scalar}
+        };
+        const auto alignment = target == lux::rdesc::EShaderTarget::DXIL ? 16u : 4u;
+        return {sizeof(sdk_programs::ColorIndex), alignment, members};
+    }
+};
+
 namespace sdk_programs
 {
     using namespace lux::render;
@@ -111,6 +131,84 @@ namespace sdk_programs
     private:
         detail::DeviceSession& device_;
         nri::Buffer* buffer_ = nullptr;
+    };
+
+    class ColorPage final
+    {
+    public:
+        using Descriptor = ColorPage;
+        using Config = void;
+        using Ops = void;
+        static constexpr auto capability = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.sdk.color_page"}, capability, 0, {}, "Two RGBA records.", EResourceDomain::DEVICE
+        };
+
+        explicit ColorPage(detail::DeviceSession& device) noexcept : device_(device) {}
+        ColorPage(const ColorPage&) = delete;
+        ColorPage& operator=(const ColorPage&) = delete;
+
+        ~ColorPage() noexcept
+        {
+            device_.deferRelease([device = &device_, slot = slot_, view = view_, buffer = buffer_]() noexcept
+            {
+                if (!slot.isNull()) device->descriptors().release(nri::DescriptorType::STRUCTURED_BUFFER, slot);
+                if (view) device->nriCore().DestroyDescriptor(view);
+                if (buffer) device->nriCore().DestroyBuffer(buffer);
+            });
+        }
+
+        static RenderResult<std::unique_ptr<ColorPage>>
+        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        {
+            auto page = std::make_unique<ColorPage>(context.device);
+            const auto& core = context.device.nriCore();
+            constexpr std::array colors{0.f, 0.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f};
+            const nri::BufferDesc desc{sizeof(colors), 16, nri::BufferUsageBits::SHADER_RESOURCE};
+            const auto created = core.CreatePlacedBuffer(
+                context.device.device(), NriHostUploadHeap, desc, page->buffer_
+            );
+            if (created != nri::Result::SUCCESS) return lux::cxx::unexpected(RenderError{kDeviceFailure});
+            auto* mapped = core.MapBuffer(*page->buffer_, 0, desc.size);
+            if (!mapped) return lux::cxx::unexpected(RenderError{kDeviceFailure});
+            std::memcpy(mapped, colors.data(), sizeof(colors));
+            core.UnmapBuffer(*page->buffer_);
+            const nri::BufferViewDesc view{page->buffer_, nri::BufferView::STRUCTURED_BUFFER, 0, desc.size};
+            if (core.CreateBufferView(view, page->view_) != nri::Result::SUCCESS)
+                return lux::cxx::unexpected(RenderError{kDeviceFailure});
+            auto slot = context.device.descriptors().allocate(nri::DescriptorType::STRUCTURED_BUFFER);
+            if (!slot) return lux::cxx::unexpected(slot.error());
+            page->slot_ = *slot;
+            context.device.descriptors().write(nri::DescriptorType::STRUCTURED_BUFFER, *slot, page->view_);
+            return page;
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            return makeResourceRegistration<Descriptor, ColorPage, &create>(nullptr, nullptr);
+        }
+
+        ColorIndex select(const RasterRecordWriter& writer) const noexcept
+        {
+            const auto& layout = writer.layout();
+            CHECK(layout.block.runtime_records && layout.block.size == 16 && layout.frame_slot == 0 && !layout.reads_images);
+            const RasterRecordInput record{buffer_, {16, 16}, {}};
+            CHECK(writer.write(record));
+            auto invalid = record;
+            invalid.range.offset = 1;
+            const auto rejected = writer.write(invalid);
+            CHECK(!rejected && rejected.error().type == kGraphInvalidRange);
+            invalid.range = {32, 16};
+            const auto past_end = writer.write(invalid);
+            CHECK(!past_end && past_end.error().type == kGraphInvalidRange);
+            return {slot_.index, 1};
+        }
+
+    private:
+        detail::DeviceSession& device_;
+        nri::Buffer* buffer_ = nullptr;
+        nri::Descriptor* view_ = nullptr;
+        detail::DescriptorTable::Slot slot_{};
     };
 
     struct DrawMask final
@@ -301,7 +399,7 @@ namespace sdk_programs
             GraphPassId pass;
             GraphStorageSnapshotId code, camera;
             lux::rdesc::EShaderTarget target;
-            bool stale;
+            bool stale, reads_records;
         };
 
         struct LinkedData final
@@ -311,6 +409,7 @@ namespace sdk_programs
             StorageSnapshotSlot<ViewGpuParameters> camera;
             DrawResourceSlot<DrawMask> mask;
             DrawResourceSlot<TriangleGeometry> geometry;
+            std::optional<DrawResourceSlot<ColorPage>> records;
             lux::rdesc::EShaderTarget target;
             bool stale;
         };
@@ -337,7 +436,14 @@ namespace sdk_programs
             if (!mask) return lux::cxx::unexpected(mask.error());
             const auto geometry = link.resolveDrawResource<TriangleGeometry>(input.pass, "triangle");
             if (!geometry) return lux::cxx::unexpected(geometry.error());
-            return LinkedData{*stream, *code, *camera, *mask, *geometry, input.target, input.stale};
+            LinkedData linked{*stream, *code, *camera, *mask, *geometry, {}, input.target, input.stale};
+            if (input.reads_records)
+            {
+                const auto records = link.resolveDrawResource<ColorPage>(input.pass, "colors");
+                if (!records) return lux::cxx::unexpected(records.error());
+                linked.records = *records;
+            }
+            return linked;
         }
 
         using DrawMapping = std::array<std::uint32_t, 2>;
@@ -362,10 +468,11 @@ namespace sdk_programs
             }
             auto vertex = kSdkFullscreen.load(linked.target);
             std::vector<lux::rdesc::ShaderProgramArtifact> shaders{
-                kSdkRed.load(linked.target), kSdkGreen.load(linked.target)
+                (linked.records ? kSdkRecordColor : kSdkRed).load(linked.target), kSdkGreen.load(linked.target)
             };
             CHECK(vertex.stages.front().entry == "Fullscreen" && vertex.interface.vertex_inputs.size() == 1);
-            CHECK(shaders[0].stages.front().entry == "Red" && shaders[1].stages.front().entry == "Green");
+            CHECK(shaders[0].stages.front().entry == (linked.records ? "RecordColor" : "Red"));
+            CHECK(shaders[1].stages.front().entry == "Green");
             for (auto& shader : shaders)
             {
                 shader.interface.vertex_inputs = vertex.interface.vertex_inputs;
@@ -393,6 +500,7 @@ namespace sdk_programs
                 programs[i].geometry_locations = {3};
                 programs[i].source = ResourceProgramSource::from<CodeStorage, &CodeStorage::lookup>(item);
             }
+            if (linked.records) programs[1].parameters.setInlineConstant(ColorIndex{});
             auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
             if (!built) return lux::cxx::unexpected(built.error());
             return std::make_unique<DrawMapping>(mapping);
@@ -442,6 +550,7 @@ namespace sdk_programs
             CHECK(selected_geometry->index_type == EIndexType::UINT16 && selected_geometry->arena_first_index == 16);
             CHECK(selected_geometry->arena_vertex_offset == 1);
             const RasterStreamVertex vertex{0, selected_geometry->vertices};
+            ColorIndex color{};
             std::array<RasterStreamDraw, 2> draws{};
             for (std::uint32_t i = 0; i < draws.size(); ++i)
             {
@@ -451,6 +560,15 @@ namespace sdk_programs
                     *program, {}, {0, 1}, {},
                     RasterStreamIndexed{selected_geometry->indices, selected_geometry->index_type, 3}
                 };
+                if (linked.records && program->index == 1)
+                {
+                    auto writer = frame.rasterRecord(*linked.records, *program);
+                    if (!writer) return lux::cxx::unexpected(writer.error());
+                    const auto page = frame.readDrawResource(*linked.records);
+                    if (!page) return lux::cxx::unexpected(page.error());
+                    color = (*page)->select(*writer);
+                    draws[i].constants = {0, sizeof(color)};
+                }
             }
             const auto camera = frame.readStorage(linked.camera);
             if (!camera) return lux::cxx::unexpected(camera.error());
@@ -460,7 +578,10 @@ namespace sdk_programs
             const auto height = *mask ? (*mask)->height * viewport[3] : viewport[3];
             const RasterViewport selected{viewport[0], viewport[1], viewport[2], height};
             const RasterStreamSection section{{0, 2}, 0, selected};
-            return frame.setRasterStream(linked.stream, {draws, {}, std::span{&vertex, 1}, {}, std::span{&section, 1}});
+            const auto constants = linked.records ? std::as_bytes(std::span{&color, 1}) : std::span<const std::byte>{};
+            return frame.setRasterStream(linked.stream, {
+                draws, {}, std::span{&vertex, 1}, constants, std::span{&section, 1}
+            });
         }
     };
 

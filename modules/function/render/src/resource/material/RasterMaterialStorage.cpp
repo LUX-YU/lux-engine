@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
@@ -984,6 +985,45 @@ namespace lux::render
 
 namespace lux::render
 {
+    RenderResult<rdesc::MaterialGpuReference>
+    MaterialRecordReader::select(
+        FramePreparation& frame, const MaterialDrawSources& sources, RasterProgramSlot program, MaterialId id
+    ) noexcept
+    {
+        auto writer = frame.rasterRecord(sources.records, program);
+        if (!writer) return cxx::unexpected(writer.error());
+        auto storage = frame.readDrawResource(sources.records);
+        if (!storage) return cxx::unexpected(storage.error());
+        const auto& layout = writer->layout();
+        auto record = (*storage)->selectRasterRecord(id, layout.frame_slot, layout.block);
+        if (!record) return cxx::unexpected(record.error());
+        cxx::scope_exit clear_reads([this]() noexcept { images_.clear(); });
+        if (layout.reads_images)
+        {
+            const detail::SampledTexture2DStorage* textures = nullptr;
+            for (const auto texture : record->textures)
+            {
+                if (texture.isNull()) continue;
+                if (!textures)
+                {
+                    if (!sources.textures) return cxx::unexpected(RenderError{kStorageIdentity});
+                    auto bound = frame.readDrawResource(*sources.textures);
+                    if (!bound) return cxx::unexpected(bound.error());
+                    textures = *bound;
+                }
+                const auto* image = textures ? textures->find(texture) : nullptr;
+                if (!image) return cxx::unexpected(RenderError{kStorageIdentity});
+                const auto& desc = image->description();
+                images_.push_back({&image->image(), {1, 0, desc.mipNum, 0, desc.layerNum}});
+            }
+        }
+        const auto& buffer = record->buffer;
+        const RasterRecordInput input{buffer.buffer, {buffer.offset, buffer.size}, images_};
+        const auto wrote = images_.empty() ? writer->write(input) : writer->write(input, *sources.textures);
+        if (!wrote) return cxx::unexpected(wrote.error());
+        return record->reference;
+    }
+
     DrawResourceType MaterialResource::drawResourceType() noexcept
     {
         return {ResourceName{kMaterialResourceName.name()}, cxx::make_basic_type_info<detail::RasterMaterialStorage>()};

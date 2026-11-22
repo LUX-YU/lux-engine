@@ -5,8 +5,23 @@
 #include <optional>
 #include <span>
 
+namespace nri { struct Texture; struct Buffer; }
+
 namespace lux::render
 {
+    struct RasterSampledImageRead final
+    {
+        const nri::Texture* image;
+        GraphImageRange range;
+    };
+
+    struct RasterRecordInput final
+    {
+        const nri::Buffer* buffer;
+        GraphBufferRange range;
+        std::span<const RasterSampledImageRead> images;
+    };
+
     // Resolved by InstanceLinkContext for one compiled variant.
     struct DrawStreamSlot final { std::uint32_t index = kGraphInvalidIndex; };
     struct RasterProgramSlot final

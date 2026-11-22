@@ -550,7 +550,7 @@ namespace lux::render
                 config.surface = detail::MeshSurfaceStream::Configuration{
                     drawn->pass,
                     {transforms->resource, properties->resource, alive->resource, visible->resource, commands->resource},
-                    paged, device.indirect_first_instance, CounterClockwise, purpose
+                    paged, device.indirect_first_instance, CounterClockwise, device.texture_descriptors, purpose
                 };
                 producer_passes.push_back(drawn->pass);
                 program_inputs.push_back(*instances);

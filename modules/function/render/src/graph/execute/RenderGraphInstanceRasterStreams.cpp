@@ -334,8 +334,8 @@ namespace lux::render::detail
             candidate.descriptors.clear();
             candidate.reads.clear();
             candidate.parameters.assign(input.constants.begin(), input.constants.end());
-            auto& used_material_programs = input.used_material_programs;
-            if (!input.materials.empty()) used_material_programs.assign(selected_programs.size(), 0);
+            auto& used_record_programs = input.used_record_programs;
+            if (!input.records.empty()) used_record_programs.assign(selected_programs.size(), 0);
 
             const auto geometrySlice = [&](const RasterBufferSlice& slice, EGraphUse use) noexcept
                 -> RenderResult<const OwnedRasterStream::Geometry*>
@@ -478,7 +478,7 @@ namespace lux::render::detail
             for (const auto& draw : input.draws)
             {
                 const auto& program = selected_programs[draw.program.index];
-                if (!input.materials.empty()) used_material_programs[draw.program.index] = 1;
+                if (!input.records.empty()) used_record_programs[draw.program.index] = 1;
                 texture_stages |= program.shared_texture_stages;
                 if (auto bound = selectInputs(draw, program); !bound) return bound;
 
@@ -647,19 +647,19 @@ namespace lux::render::detail
                 candidate.packets.push_back(packet);
             }
 
-            const auto readImage = [&](OwnedRasterStream::TextureRead texture, std::uint32_t stages) noexcept
+            const auto readImage = [&](RasterSampledImageRead texture, std::uint32_t stages) noexcept
             {
                 candidate.reads.push_back({texture.image, texture.range, EGraphUse::SAMPLED, stages});
             };
-            for (const auto& material : input.materials)
+            for (const auto& record : input.records)
             {
-                if (!used_material_programs[material.program]) continue;
-                const auto& program = selected_programs[material.program];
+                if (!used_record_programs[record.program]) continue;
+                const auto& program = selected_programs[record.program];
                 candidate.reads.push_back({
-                    material.buffer, material.range, EGraphUse::STORAGE_READ, program.record_stages
+                    record.buffer, record.range, EGraphUse::STORAGE_READ, program.record_stages
                 });
                 for (const auto texture :
-                     std::span{input.material_images}.subspan(material.first_image, material.image_count))
+                     std::span{input.record_images}.subspan(record.first_image, record.image_count))
                 {
                     readImage(texture, program.shared_texture_stages);
                 }

@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/extensions/execution/InstanceLink.hpp>
 #include <lux/engine/render/resources/instance/Data.hpp>
+#include <lux/engine/render/resources/material/Resource.hpp>
 #include <map>
 
 namespace lux::render
@@ -49,7 +50,7 @@ namespace lux::render::detail
         {
             GraphPassId pass;
             std::array<GraphResourceId, 5> buffers;
-            bool paged, shared_members, front_counter_clockwise;
+            bool paged, shared_members, front_counter_clockwise, texture_descriptors;
             rdesc::EMaterialPurpose purpose;
         };
 
@@ -57,6 +58,7 @@ namespace lux::render::detail
         {
             DrawStreamSlot stream;
             DrawResourceSlot<IndexedTriangleMeshStorage> geometry;
+            MaterialDrawSources material;
             std::array<RasterBufferSlot, 5> buffers;
             std::array<std::uint32_t, 4> arguments;
             bool paged, shared_members, front_counter_clockwise;
@@ -133,6 +135,7 @@ namespace lux::render::detail
         prepareSections(DrawInputs, SectionInputs) noexcept;
         [[nodiscard]] RenderResult<void> buildLayout(FramePreparation&, std::uint32_t view_count) noexcept;
 
+        MaterialRecordReader material_records_;
         std::optional<LayoutVersion> layout_version_;
         std::vector<GroupLayout> layout_groups_;
 

@@ -8,7 +8,6 @@
 #include <lux/engine/render/graph/DrawResource.hpp>
 #include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
-#include <lux/engine/render/resources/material/Data.hpp>
 #include <lux/engine/render/graph/IndexedGeometry.hpp>
 #include <array>
 #include <bit>
@@ -16,7 +15,7 @@
 #include <functional>
 #include <span>
 
-namespace nri { struct Texture; }
+namespace lux::rdesc { struct ShaderBlock; }
 
 namespace lux::render
 {
@@ -66,6 +65,48 @@ namespace lux::render
         std::uint32_t slot_;
     };
 
+    class FramePreparation;
+
+    struct RasterRecordLayout final
+    {
+        const rdesc::ShaderBlock& block;
+        std::uint32_t frame_slot;
+        bool reads_images;
+    };
+
+    namespace extension_detail
+    {
+        struct RasterRecordDestination final
+        {
+            DrawSourceAddress source;
+            std::uint32_t program;
+            RasterRecordLayout layout;
+        };
+    }
+
+    // Borrows this preparation and its selected Program until prepare() returns.
+    class RasterRecordWriter final
+    {
+    public:
+        [[nodiscard]] const RasterRecordLayout& layout() const & noexcept { return destination_.layout; }
+        const RasterRecordLayout& layout() const && = delete;
+
+        [[nodiscard]] RenderResult<void> write(const RasterRecordInput& record) const noexcept;
+
+        template <class Storage>
+        [[nodiscard]] RenderResult<void>
+        write(const RasterRecordInput& record, DrawResourceSlot<Storage> images) const noexcept;
+
+    private:
+        friend class FramePreparation;
+
+        RasterRecordWriter(FramePreparation& frame, extension_detail::RasterRecordDestination destination) noexcept
+            : frame_(frame), destination_(destination) {}
+
+        FramePreparation& frame_;
+        extension_detail::RasterRecordDestination destination_;
+    };
+
     class FramePreparation
     {
     public:
@@ -74,9 +115,14 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<void> setRasterStream(DrawStreamSlot, const RasterStreamData&) noexcept = 0;
         [[nodiscard]] virtual RenderResult<RasterProgramSlot>
         rasterProgram(DrawStreamSlot, std::uint32_t selection_index) const noexcept = 0;
-        // Select a record for the program that will read its page and textures in this preparation.
-        [[nodiscard]] virtual RenderResult<rdesc::MaterialGpuReference>
-        selectMaterial(DrawStreamSlot, RasterProgramSlot, MaterialId) noexcept = 0;
+        template <class Storage>
+        [[nodiscard]] RenderResult<RasterRecordWriter>
+        rasterRecord(DrawResourceSlot<Storage> source, RasterProgramSlot program) noexcept
+        {
+            auto contract = recordLayout(source.address_, program);
+            if (!contract) return cxx::unexpected(contract.error());
+            return RasterRecordWriter{*this, {source.address_, program.index, *contract}};
+        }
 
         // Borrow the installed Resource only during this preparation. An absent optional source returns null.
         template <class Storage>
@@ -156,6 +202,16 @@ namespace lux::render
         };
 
     private:
+        friend class RasterRecordWriter;
+        [[nodiscard]] virtual RenderResult<RasterRecordLayout>
+        recordLayout(extension_detail::DrawSourceAddress, RasterProgramSlot) const noexcept = 0;
+        [[nodiscard]] virtual RenderResult<void>
+        appendRasterRecord(
+            const extension_detail::RasterRecordDestination&,
+            const RasterRecordInput&,
+            std::optional<extension_detail::DrawSourceAddress>
+        ) noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<RasterIndexedGeometry>
         appendIndexedGeometry(extension_detail::DrawSourceAddress, const IndexedGeometryInput&) noexcept = 0;
 
@@ -174,4 +230,16 @@ namespace lux::render
         writeGpuBuffer(std::uint32_t, std::span<const std::byte>, std::uint64_t) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> sizeGpuBuffer(std::uint32_t, std::uint64_t) noexcept = 0;
     };
+
+    inline RenderResult<void> RasterRecordWriter::write(const RasterRecordInput& record) const noexcept
+    {
+        return frame_.appendRasterRecord(destination_, record, {});
+    }
+
+    template <class Storage>
+    RenderResult<void>
+    RasterRecordWriter::write(const RasterRecordInput& record, DrawResourceSlot<Storage> images) const noexcept
+    {
+        return frame_.appendRasterRecord(destination_, record, images.address_);
+    }
 } // namespace lux::render

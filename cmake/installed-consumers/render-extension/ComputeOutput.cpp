@@ -585,6 +585,19 @@ namespace
             .indexed_geometry = true
         });
         stage.inputs = {{"vertices", {}, EGraphUse::VERTEX}, {"indices", {}, EGraphUse::INDEX}};
+        const bool reads_records = context.device().texture_descriptors && context.device().record_table;
+        if (reads_records)
+        {
+            stage.draw_resources.push_back({
+                "colors",
+                {ResourceName{ColorPage::descriptor.type.name()}, lux::cxx::make_basic_type_info<ColorPage>()},
+                ColorPage::capability
+            });
+            stage.inputs.push_back({
+                .name = "colorPages", .kind = rdesc::EDescriptorType::STORAGE_BUFFER,
+                .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
+            });
+        }
         stage.runtime_stream_programs = true;
         RasterWork raster;
         raster.program = std::move(stage);
@@ -595,7 +608,7 @@ namespace
         raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
         auto draw = take(builder.addRasterPass("two programs", std::move(raster)));
         auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
-            draw.pass, alias, camera, context.shaderTarget(), mode == "stale-code"
+            draw.pass, alias, camera, context.shaderTarget(), mode == "stale-code", reads_records
         }));
         auto program_builder = RasterProgramBuilder::make<ProgramDraws, &ProgramDraws::buildPrograms>();
         if (mode == "no-build") program_builder = {};
@@ -838,7 +851,8 @@ int main(int argc, char** argv)
     CHECK(execution);
     RenderServerConfig config{"lux.render.sdk.compute_output", nativeValidationEnabled()};
     const auto mode = argc > 2 ? std::string_view{argv[2]} : std::string_view{};
-    const bool resident_programs = mode == "resident-programs";
+    const bool records = mode == "resident-records";
+    const bool resident_programs = records || mode == "resident-programs";
     const bool receipts = mode == "receipts";
     const bool product_fault = mode == "receipt-partial" || mode == "receipt-unknown";
     config.frames_in_flight = receipts ? 2 : 1;
@@ -851,6 +865,8 @@ int main(int argc, char** argv)
     if (resident_programs)
     {
         options.cached_unused_programs = 0;
+        options.texture_descriptors = records;
+        if (records) take(server->registerResource<sdk_programs::ColorPage>());
         take(server->registerResource<sdk_programs::CodeStorage>());
         take(server->registerResource<sdk_programs::DrawMask>());
         take(server->registerResource<sdk_programs::TriangleGeometry>());
@@ -928,6 +944,20 @@ int main(int argc, char** argv)
             {"triangle", triangle, 0, EJobResourceUse::DRAW_RESOURCE},
             {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT}
         };
+        if (records)
+        {
+            const auto page = call<GetOrCreateResource>(*client, commands, {
+                session, DeviceScope{}, sdk_programs::ColorPage::descriptor.type
+            }, false);
+            if (page.error.type == kDeviceUnsupported)
+            {
+                server->stop();
+                worker.join();
+                return 77;
+            }
+            CHECK(!page.error.type);
+            binding.resources.push_back({"colors", page.resource_id, 0, EJobResourceUse::DRAW_RESOURCE});
+        }
         for (auto mode : {"no-build", "wrong-inputs", "missing-map"})
         {
             const auto effect = call<CreateEffect>(*client, commands, capture_request(mode)).effect;
@@ -1008,7 +1038,11 @@ int main(int argc, char** argv)
         );
         CHECK(mismatched.error.type == kStorageMismatch);
         auto peer_binding = binding;
-        peer_binding.resources.back().resource = camera_for(peer_view, 2);
+        const auto peer_camera = std::ranges::find(
+            peer_binding.resources, ViewParameterResource::snapshot_binding, &JobResourceInput::binding
+        );
+        CHECK(peer_camera != peer_binding.resources.end());
+        peer_camera->resource = camera_for(peer_view, 2);
         peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
             session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
         }).resource_id;
@@ -1082,9 +1116,11 @@ int main(int argc, char** argv)
                     const auto pixel = y * row_pitch + x * 4;
                     const std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
                     const std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
-                    // Green covers the right half. Red covers both halves when drawn last for the peer.
+                    // The peer draws its full-width foreground after the green half.
                     const std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
-                    const auto& foreground = (i == 1 || x < width / 2) ? red : green;
+                    const std::array yellow{std::byte{255}, std::byte{255}, std::byte{0}, std::byte{255}};
+                    const auto& base = records ? yellow : red;
+                    const auto& foreground = (i == 1 || x < width / 2) ? base : green;
                     const bool clipped = x < (i == 1 ? 2u : 1u) || (i == 1 && y >= height / 2);
                     const auto& expected = clipped ? blue : foreground;
                     if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
@@ -1097,6 +1133,7 @@ int main(int argc, char** argv)
                 }
             }
         }
+        if (records) std::puts("SDK RECORDS: yellow at byte 16, aligned and unaligned invalid ranges rejected, 4096 RGBA pixels");
         std::puts("SDK INDEXED GEOMETRY: 16-bit native indices, nonzero buffer offsets, copied vertex layout");
         std::puts("DRAW RESOURCE: optional SDK mask clips half the peer image; invalid type and foreign name rejected");
         std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, two resident PSOs");

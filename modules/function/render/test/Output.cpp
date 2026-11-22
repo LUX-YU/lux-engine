@@ -3879,6 +3879,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     static std::array<TextureId, 2> textures;
     static std::array<MaterialId, 2> materials;
     static MaterialProgramId selected_material_program;
+    static MaterialId stale_second_texture;
     static std::atomic_uint selected_texture{};
     class Producer final
     {
@@ -3888,7 +3889,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         {
             DrawStreamSlot stream;
             rdesc::EShaderTarget target;
-            bool materials;
+            std::optional<MaterialDrawSources> materials;
             std::optional<DrawResourceSlot<TextureResource::DrawStorage>> textures;
         };
 
@@ -3896,17 +3897,25 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         {
             auto stream = context.resolveDrawStream(input.pass);
             if (!stream) return lux::cxx::unexpected(stream.error());
-            LinkedData linked{*stream, input.target, input.materials, {}};
+            LinkedData linked{*stream, input.target, {}, {}};
             if (input.declares_texture)
             {
                 const auto slot = context.resolveDrawResource<TextureResource::DrawStorage>(input.pass, "textures");
                 if (!slot) return lux::cxx::unexpected(slot.error());
                 linked.textures = *slot;
             }
+            if (input.materials)
+            {
+                const auto records = context.resolveDrawResource<MaterialResource::DrawStorage>(
+                    input.pass, "materials"
+                );
+                if (!records) return lux::cxx::unexpected(records.error());
+                linked.materials = MaterialDrawSources{*records, linked.textures};
+            }
             return linked;
         }
 
-        struct Workspace final {};
+        struct Workspace final { MaterialRecordReader records; };
 
         static RenderResult<void>
         buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection) noexcept
@@ -3932,17 +3941,35 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             return selection.setPrograms(linked.stream, std::move(shaders), std::span{&program, 1});
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
+        static RenderResult<void>
+        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
         {
             const auto index = selected_texture.load();
             auto program = frame.rasterProgram(linked.stream, linked.materials ? index : 0);
             if (!program) return lux::cxx::unexpected(program.error());
             if (linked.materials)
             {
-                auto value = frame.selectMaterial(linked.stream, *program, materials[index]);
+                auto value = workspace.records.select(frame, *linked.materials, *program, materials[index]);
                 if (!value) return lux::cxx::unexpected(value.error());
-                auto repeated = frame.selectMaterial(linked.stream, *program, materials[index]);
+                auto repeated = workspace.records.select(frame, *linked.materials, *program, materials[index]);
                 if (!repeated) return lux::cxx::unexpected(repeated.error());
+                if (index == 0)
+                {
+                    const auto unused = frame.rasterProgram(linked.stream, 1);
+                    CHECK(unused);
+                    // This other material has a distinct record and texture. No draw uses its Program.
+                    const auto ignored = workspace.records.select(frame, *linked.materials, *unused, materials[1]);
+                    CHECK(ignored);
+                    auto stale = *program;
+                    ++stale.revision;
+                    const auto rejected = frame.rasterRecord(linked.materials->records, stale);
+                    CHECK(!rejected && rejected.error().type == kFrameContract);
+                }
+                else
+                {
+                    const auto rejected = workspace.records.select(frame, *linked.materials, *program, stale_second_texture);
+                    CHECK(!rejected && rejected.error().type == kStorageIdentity);
+                }
                 const RasterStreamDraw draw{*program, {}, {}, {0, sizeof(*value)}, DrawVertices{12}};
                 return frame.setRasterStream(linked.stream, {
                     std::span{&draw, 1}, {}, {}, std::as_bytes(std::span{&*value, 1})
@@ -4134,6 +4161,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     MaterialProgramId material_program, replacement_program;
     rdesc::MaterialProgramSet replacement_code;
     std::uint32_t material_bytes = 0;
+    TextureId unused_texture;
     if (use_materials)
     {
         material_owner = call<GetOrCreateResource>(*client, commands, {
@@ -4149,7 +4177,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         material_bytes = program.parameters.size;
         CHECK(material_bytes != 0);
         program.parameter_defaults = {{{1, 1, 1, 1}}};
-        program.texture_count = 1;
+        program.texture_count = 2;
         program.programs.push_back({rdesc::EMaterialPurpose::FORWARD, "", std::move(shader)});
         const auto registered = call<MaterialCommands::RegisterProgram>(
             *client, commands, {material_owner, program}, false
@@ -4170,9 +4198,13 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         for (std::size_t i = 0; i < materials.size(); ++i)
         {
             materials[i] = call<MaterialCommands::CreateInstance>(*client, commands, {
-                material_program, {{{0, 0, 0, 1}}}, {textures[i]}
+                material_program, {{{0, 0, 0, 1}}}, {textures[i], textures[i]}
             }).material;
         }
+        unused_texture = call<TextureCommands::Upload>(*client, commands, {owner, {info, colors[1]}}).texture;
+        stale_second_texture = call<MaterialCommands::CreateInstance>(*client, commands, {
+            material_program, {{{1, 1, 1, 1}}}, {unused_texture, textures[0]}
+        }).material;
         const std::array updates{
             MaterialColorUpdate{materials[0], 0, {1, 1, 1, 1}}, MaterialColorUpdate{materials[1], 0, {1, 1, 1, 1}}
         };
@@ -4367,6 +4399,8 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         }
         std::puts("MATERIAL GENERATION PASS: old PSO retired with replacement asset still registered");
         call<MaterialCommands::UnregisterProgram>(*client, commands, {replacement_program});
+        call<MaterialCommands::ReleaseInstance>(*client, commands, {stale_second_texture});
+        call<TextureCommands::Release>(*client, commands, {unused_texture});
         for (auto material : materials) call<MaterialCommands::ReleaseInstance>(*client, commands, {material});
         call<MaterialCommands::UnregisterProgram>(*client, commands, {material_program});
     }
@@ -4389,7 +4423,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         std::puts("UPLOAD HANDOFF PASS: rejected Acquire, fence retirement, staging reuse and retry pixels");
     }
 #endif
-    if (use_materials) std::puts("RECORD TABLES PASS: uMats and surfacePages read their selected RGBA pixels");
+    if (use_materials) std::puts("RECORD TABLES PASS: both RGBA pixels, unused Program filtered and stale second texture rejected atomically");
     if (!use_materials) std::puts("TEXTURE CLONE PASS: pending source protection, stale ID and patched pixel");
     if (exercise_growth)
     {

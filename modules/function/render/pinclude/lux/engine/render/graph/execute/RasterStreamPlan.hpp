@@ -14,7 +14,7 @@ namespace lux::render::detail
         std::uint32_t samples;
         bool dynamic_depth_bias;
         bool shared_textures;
-        bool shared_materials;
+        bool shared_records;
     };
 
     struct CompiledRasterStream final
@@ -34,8 +34,8 @@ namespace lux::render::detail
             std::vector<VertexBinding> vertices;
             std::vector<VertexAttribute> mesh_attributes;
             std::uint32_t shared_texture_stages;
-            std::uint32_t material_stages;
-            rdesc::ShaderBlock material_layout;
+            std::uint32_t record_stages;
+            rdesc::ShaderBlock record_layout;
 
             bool operator==(const Program&) const noexcept = default;
         };
@@ -84,6 +84,7 @@ namespace lux::render::detail
         const RasterStreamTarget& target;
         const rdesc::ShaderProgramArtifact& artifact;
         const GraphicsState& graphics;
+        std::span<const std::uint32_t> geometry_locations;
     };
 
     struct RasterProgramLink final
@@ -93,8 +94,8 @@ namespace lux::render::detail
         std::vector<VertexBinding> vertices;
         std::vector<VertexAttribute> mesh_attributes;
         std::uint32_t shared_texture_stages;
-        std::uint32_t material_stages;
-        rdesc::ShaderBlock material_layout;
+        std::uint32_t record_stages;
+        rdesc::ShaderBlock record_layout;
 
         [[nodiscard]] CompiledRasterStream::Program finish(PreparedProgram) && noexcept;
     };

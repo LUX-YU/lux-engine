@@ -319,7 +319,7 @@ namespace lux::render::detail
         class ProducerFrame;
         class ProgramSelection;
         [[nodiscard]] RenderResult<void>
-        selectRasterPrograms(std::uint32_t, std::span<const std::uint64_t>, RasterProgramUpdate&) noexcept;
+        selectRasterPrograms(std::uint32_t, std::size_t first_revision, RasterProgramUpdate&) noexcept;
         void releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept;
         struct PreparedBytes final
         {
@@ -340,7 +340,7 @@ namespace lux::render::detail
             std::vector<OwnedRasterStream> streams;
             std::vector<std::uint32_t> runtime_streams{};
             std::vector<std::uint32_t> program_sources;
-            std::vector<std::uint64_t> program_revisions{};
+            std::optional<std::vector<std::uint64_t>> program_revisions{};
         };
 
         [[nodiscard]] bool

@@ -152,27 +152,28 @@ namespace lux::render::detail
         return shader;
     }
 
-    RenderResult<GraphicsState> meshGraphicsState(
-        std::uint32_t vertex_stride,
-        std::span<const MeshAttribute> attributes,
+    RenderResult<MeshRasterLayout>
+    meshRasterLayout(
+        const MeshDescription& mesh,
         const rdesc::MaterialProgramSet& material,
         const rdesc::ShaderInfo& shader,
-        bool front_counter_clockwise,
-        bool reflected
+        MeshRasterWinding winding
     ) noexcept
     {
-        GraphicsState state;
-        state.vertex_bindings = {{0, vertex_stride}};
+        MeshRasterLayout layout;
+        auto& state = layout.graphics;
+        state.vertex_bindings = {{0, mesh.vertex_stride}};
         for (const auto& input : shader.vertex_inputs)
         {
             // The built-in vertex shader declares TEXCOORD indices matching the mesh attribute slots.
             const auto mesh_location = material.target == rdesc::EShaderTarget::DXIL ? input.semantic_index
                                                                                    : input.location;
-            const auto attribute = std::ranges::find(attributes, mesh_location, &MeshAttribute::location);
-            if (attribute == attributes.end())
+            const auto attribute = std::ranges::find(mesh.attributes, mesh_location, &MeshAttribute::location);
+            if (attribute == mesh.attributes.end())
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
+            layout.geometry_locations.push_back(mesh_location);
             state.vertex_attributes.push_back({input.location, 0, attribute->offset, attribute->format});
         }
         state.depth_test = state.depth_write = true;
@@ -180,8 +181,8 @@ namespace lux::render::detail
         // Mesh packets use the bottom-left viewport convention. D3D12's flipped viewport
         // reverses which framebuffer orientation is treated as front-facing.
         const bool flip_viewport_winding = material.target == rdesc::EShaderTarget::DXIL;
-        state.front_counter_clockwise = (front_counter_clockwise != reflected) != flip_viewport_winding;
-        return state;
+        state.front_counter_clockwise = (winding.front_counter_clockwise != winding.reflected) != flip_viewport_winding;
+        return layout;
     }
 
     std::vector<RasterPassTemplate::Input> meshRasterInputs()
@@ -193,7 +194,8 @@ namespace lux::render::detail
             inputs.push_back({std::string{name}, rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1});
         }
         inputs.push_back({
-            std::string{rdesc::kMaterialTableName}, rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 2
+            .name = std::string{rdesc::kMaterialTableName}, .kind = rdesc::EDescriptorType::STORAGE_BUFFER,
+            .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
         });
         inputs.push_back({"uTex", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2});
         inputs.push_back({"uTexSamplers", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2});

@@ -264,7 +264,9 @@ program identity, constant size, geometry, buffer bounds, image subresources and
 materializing native draw packets.
 
 Set `RasterPassTemplate::runtime_stream_programs` for a stream whose programs are selected by its producer.
-Advance the revision returned by the kernel’s optional `rasterProgramRevision()` when the selection changes. In `selectRasterPrograms()`,
+Declare the Resource snapshots that select its programs in the preparation’s program inputs. A Resource publishes
+a new revision when those inputs change. A stream with no mutable sources selects its programs once per installation.
+In `selectRasterPrograms()`,
 transfer the shader artifacts and provide the complete ordered set with `setPrograms()`. Each program
 names a `ShaderCandidateSlot` in that artifact list. Several programs can use one candidate.
 Use `reusePrograms()` for a stream whose complete program keys and binding order still match. Producers
@@ -296,8 +298,9 @@ native submission.
 
 For reflected material pages, declare a named `MaterialResource` with
 `EffectBuildContext::importRasterMaterials()`, set `RasterPassTemplate::shared_materials` and bind the owner
-with `EJobResourceUse::RASTER_MATERIALS`. Declare the read-only `uMats` storage-buffer argument and any
-shared sampled texture and sampler arguments used by the programs. The renderer prepares the writable
+with `EJobResourceUse::RASTER_MATERIALS`. Declare the unbounded read-only structured buffer argument with
+`RasterPassTemplate::Input::shared_records = true` and give it the name reflected by the shader. The built-in
+material adapter uses `uMats`. Declare the shared sampled texture and sampler arguments the programs use. The renderer prepares the writable
 frame's material replicas before the producer runs. Call `FramePreparation::selectMaterial()` with the
 program slot for each material the program can read. Use the returned page and record indices when
 building GPU inputs. The renderer checks the reflected record layout and records the selected page
@@ -307,7 +310,9 @@ For uploaded indexed geometry, declare a named `MeshResource` with `EffectBuildC
 and attach the result to `RasterPassTemplate::mesh_geometry`. Bind the owner with
 `EJobResourceUse::RASTER_MESHES`. Call `FramePreparation::selectMesh()` during each preparation and use the
 returned vertex slice, index slice and index type. Mesh slices are scoped to the current stream and
-preparation. The renderer checks the program's vertex layout, index width and slice bounds and tracks
+preparation. When the source geometry and shader use different attribute locations, supply
+`geometry_locations` in `graphics.vertex_attributes` order on the stream program. An empty list selects
+the identity mapping. The graphics state keeps the shader locations for native pipeline creation. The renderer checks the program's vertex layout, index width and slice bounds and tracks
 the selected byte ranges through native submission. Indexed draws using selected Mesh vertices bind the
 whole vertex slice and use the corresponding mesh's indices with zero base vertex. The producer keeps
 GPU-written indirect arguments within those bounds.

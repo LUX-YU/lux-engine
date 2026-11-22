@@ -83,6 +83,8 @@ namespace lux::render
             // Shader reads use Vertex=1 / Fragment=2. Geometry/indirect stages derive from usage.
             std::uint32_t stages = 0;
             bool comparison_sampler = false;
+            // An unbounded read-only table of structured records supplied by the declared Resource.
+            bool shared_records = false;
         };
 
         std::string purpose;
@@ -98,6 +100,8 @@ namespace lux::render
             std::uint32_t program = kGraphInvalidIndex;
             GraphicsState graphics;
             ParameterBinding parameters;
+            // One source geometry location per shader attribute, or empty for the identity mapping.
+            std::vector<std::uint32_t> geometry_locations;
         };
 
         std::vector<StreamProgram> stream_programs{};

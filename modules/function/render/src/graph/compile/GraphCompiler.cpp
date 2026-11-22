@@ -1,5 +1,4 @@
 #include <lux/engine/render/device/ProgramCompileInput.hpp>
-#include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
@@ -660,35 +659,41 @@ namespace lux::render::detail
     RenderResult<RasterProgramLink>
     linkRasterStreamProgram(const DeviceSession& session, RasterProgramRecipe recipe) noexcept
     {
-        const auto& [arguments, parameters, target, artifact, graphics] = recipe;
+        const auto& [arguments, parameters, target, artifact, graphics, geometry_locations] = recipe;
         if (artifact.target != session.enabledFeatures().shader_target)
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         auto layout = planRasterLayout(session.description(), artifact.interface, arguments, parameters);
         if (!layout) return cxx::unexpected(layout.error());
         std::uint32_t shared_texture_stages = 0;
-        std::uint32_t material_stages = 0;
-        rdesc::ShaderBlock material_layout;
-        for (const auto& field : layout->bindings)
+        std::uint32_t record_stages = 0;
+        rdesc::ShaderBlock record_layout;
+        // Layout planning already resolved each reflected field to its declared argument.
+        for (const auto& use : layout->uses)
         {
+            if (use.element != 0) continue;
+            const auto& field = layout->bindings[use.field];
+            const auto index = field.count && field.kind == EDescriptorKind::SAMPLER ? use.sampler : use.resource;
+            const auto& argument = arguments[index];
             const bool supported_kind = field.kind == EDescriptorKind::UNIFORM_BUFFER ||
                 field.kind == EDescriptorKind::STORAGE_BUFFER || field.kind == EDescriptorKind::SAMPLED_IMAGE ||
                 field.kind == EDescriptorKind::SAMPLER;
             if (!supported_kind) return cxx::unexpected(RenderError{kRuntimeUnsupported});
-            if (field.count != 0) continue;
+            if (field.count != 0)
+            {
+                if (argument.shared_records) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                continue;
+            }
 
             const bool shared_image = field.kind == EDescriptorKind::SAMPLED_IMAGE && !field.image_arrayed &&
                 !field.image_depth;
-            const auto slot = std::ranges::find(arguments, field.name, &RasterPassTemplate::Input::name);
-            const bool shared_sampler = field.kind == EDescriptorKind::SAMPLER &&
-                slot != arguments.end() && !slot->comparison_sampler;
-            const bool material_argument = slot != arguments.end() && slot->usage == EGraphUse::STORAGE_READ;
-            const bool material_record = field.block.runtime_records && field.block.hasStructuredLayout();
-            const bool shared_material = field.kind == EDescriptorKind::STORAGE_BUFFER &&
-                field.name == rdesc::kMaterialTableName && material_argument && material_record && !material_stages;
-            if (shared_material && target.shared_materials)
+            const bool shared_sampler = field.kind == EDescriptorKind::SAMPLER && !argument.comparison_sampler;
+            const bool structured = field.block.runtime_records && field.block.hasStructuredLayout();
+            const bool shared_records = argument.shared_records && field.kind == EDescriptorKind::STORAGE_BUFFER &&
+                structured && target.shared_records && !record_stages;
+            if (shared_records)
             {
-                material_stages = field.stages;
-                material_layout = field.block;
+                record_stages = field.stages;
+                record_layout = field.block;
                 continue;
             }
             if (!target.shared_textures || (!shared_image && !shared_sampler))
@@ -712,22 +717,18 @@ namespace lux::render::detail
         }
 
         auto mesh_attributes = graphics.vertex_attributes;
-        if (artifact.target == rdesc::EShaderTarget::DXIL)
+        if (!geometry_locations.empty())
         {
-            for (auto& attribute : mesh_attributes)
-            {
-                const auto input = std::ranges::find(
-                    artifact.interface.vertex_inputs, attribute.location, &rdesc::ShaderIoVariable::location
-                );
-                if (input != artifact.interface.vertex_inputs.end() && input->semantic == "TEXCOORD")
-                    attribute.location = input->semantic_index;
-            }
+            if (geometry_locations.size() != mesh_attributes.size())
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            for (std::size_t i = 0; i < mesh_attributes.size(); ++i)
+                mesh_attributes[i].location = geometry_locations[i];
         }
         RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
         if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
         return RasterProgramLink{
             {artifact, std::move(*layout), std::move(key)}, std::move(argument_to_use), graphics.vertex_bindings,
-            std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
+            std::move(mesh_attributes), shared_texture_stages, record_stages, std::move(record_layout)
         };
     }
 
@@ -747,7 +748,7 @@ namespace lux::render::detail
         bindings.initial_parameters = {};
         return CompiledRasterStream::Program{
             compiled.pipeline, compiled.id, std::move(bindings), std::move(argument_to_use), std::move(vertices),
-            std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
+            std::move(mesh_attributes), shared_texture_stages, record_stages, std::move(record_layout)
         };
     }
 
@@ -881,7 +882,9 @@ namespace lux::render::detail
                     );
                     if (!artifact) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
                     auto link = linkRasterStreamProgram(
-                        session, {description->inputs, authored.parameters, target, *artifact, authored.graphics}
+                        session,
+                        {description->inputs, authored.parameters, target, *artifact, authored.graphics,
+                         authored.geometry_locations}
                     );
                     if (!link) co_return cxx::unexpected(link.error());
                     auto program = co_await program_cache.prepareEffectProgram(std::move(link->input), cpu);

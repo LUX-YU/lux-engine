@@ -33,7 +33,7 @@ namespace lux::render::detail
         return std::ranges::any_of(program_producers_, [&](auto index) noexcept
         {
             const auto& producer = producers_[index];
-            return !rasterProgramMatches(producer, producer.program_revisions);
+            return !producer.program_revisions || !rasterProgramMatches(producer, *producer.program_revisions);
         });
     }
 
@@ -43,7 +43,6 @@ namespace lux::render::detail
         for (auto index : program_producers_)
         {
             const auto& producer = producers_[index];
-            revisions.push_back(producer.workspace.rasterProgramRevision());
             for (auto slot : producer.program_sources) revisions.push_back(programStorageRevision(slot));
         }
     }
@@ -53,7 +52,7 @@ namespace lux::render::detail
         for (auto index : program_producers_)
         {
             const auto& producer = producers_[index];
-            const auto count = producer.program_sources.size() + 1;
+            const auto count = producer.program_sources.size();
             if (revisions.size() < count || !rasterProgramMatches(producer, revisions.first(count))) return false;
             revisions = revisions.subspan(count);
         }

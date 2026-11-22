@@ -407,7 +407,10 @@ namespace lux::render
                     input.usage == EGraphUse::SAMPLED || input.usage == EGraphUse::STORAGE_READ;
                 const bool is_invalid_stage =
                     is_shader_input ? input.stages == 0 || (input.stages & ~3u) != 0 : input.stages != 0;
-                const bool is_invalid_kind = !is_shader_input && input.kind.has_value();
+                const bool invalid_records = input.shared_records &&
+                    (!dynamic.shared_materials || input.kind != rdesc::EDescriptorType::STORAGE_BUFFER ||
+                     input.usage != EGraphUse::STORAGE_READ);
+                const bool is_invalid_kind = (!is_shader_input && input.kind.has_value()) || invalid_records;
                 const bool is_invalid_comparison = input.comparison_sampler &&
                     input.kind != rdesc::EDescriptorType::SAMPLER;
                 const bool is_image_or_sampler = input.kind == rdesc::EDescriptorType::SAMPLED_IMAGE ||

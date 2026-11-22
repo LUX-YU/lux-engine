@@ -156,14 +156,15 @@ namespace lux::render::detail
                     for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                     {
                         const auto shader = shaders.shaders[winding];
-                        auto state = meshGraphicsState(
-                            layout.vertex_stride, layout.attributes, *shaders.program,
-                            artifacts[shader.index].interface, inputs_.front_counter_clockwise, winding != 0
+                        auto state = meshRasterLayout(
+                            layout, *shaders.program, artifacts[shader.index].interface,
+                            {inputs_.front_counter_clockwise, winding != 0}
                         );
                         if (!state) return cxx::unexpected(state.error());
-                        auto& program = candidates.emplace_back(shader, std::move(*state), ParameterBinding{});
+                        auto& program = candidates.emplace_back(shader, std::move(state->graphics), ParameterBinding{});
                         program.parameters.setInlineConstant(VisibilityViewConstants{});
                         program.source = shaders.source;
+                        program.geometry_locations = std::move(state->geometry_locations);
                     }
                 }
                 group->second = {use->second, shaders.reads_material};

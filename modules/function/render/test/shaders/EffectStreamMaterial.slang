@@ -1,3 +1,7 @@
+#ifndef RECORD_TABLE
+#define RECORD_TABLE uMats
+#endif
+
 struct TextureReference
 {
     uint representation_index;
@@ -14,7 +18,7 @@ struct MaterialRecord
 
 [[vk::binding(0, 0)]] Texture2D<float4> uTex[] : register(t0, space0);
 [[vk::binding(0, 1)]] SamplerState uTexSamplers[] : register(s0, space1);
-[[vk::binding(0, 2)]] StructuredBuffer<MaterialRecord> uMats[] : register(t0, space2);
+[[vk::binding(0, 2)]] StructuredBuffer<MaterialRecord> RECORD_TABLE[] : register(t0, space2);
 
 struct Parameters
 {
@@ -27,7 +31,7 @@ struct Parameters
 [shader("fragment")]
 float4 main() : SV_Target0
 {
-    const MaterialRecord value = uMats[NonUniformResourceIndex(parameters.buffer_index)][parameters.record_index];
+    const MaterialRecord value = RECORD_TABLE[NonUniformResourceIndex(parameters.buffer_index)][parameters.record_index];
     const TextureReference texture = value.tex[0];
     if ((texture.flags & 1u) != 0)
         return value.params[0];

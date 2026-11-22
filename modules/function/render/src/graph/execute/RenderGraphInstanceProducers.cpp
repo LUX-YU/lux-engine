@@ -244,12 +244,12 @@ namespace lux::render::detail
             const auto revision = dynamic ? dynamic->revision : 0;
             const bool invalid_program = program.stream != slot.index || program.revision != revision ||
                 program.index >= programs.size();
-            if (invalid_program || !programs[program.index].material_stages)
+            if (invalid_program || !programs[program.index].record_stages)
                 return cxx::unexpected(RenderError{kFrameContract, {slot.index, program.index}});
 
             const auto& selected = programs[program.index];
             const auto& storage = owners[slot.index];
-            auto record = storage.materials->selectRasterRecord(id, frame_slot_, selected.material_layout);
+            auto record = storage.materials->selectRasterRecord(id, frame_slot_, selected.record_layout);
             if (!record) return cxx::unexpected(record.error());
             auto& stream = producer_.streams[use - linked_.raster_streams.begin()];
             const auto first = stream.material_images.size();
@@ -470,7 +470,6 @@ namespace lux::render::detail
                 auto& selected = producer.program_sources;
                 if (std::ranges::find(selected, source) == selected.end()) selected.push_back(source);
             }
-            producer.program_revisions.reserve(producer.program_sources.size() + 1);
             if (!producer.runtime_streams.empty())
                 program_producers.push_back(static_cast<std::uint32_t>(producers.size() - 1));
             producer.constants.reserve(linked.inline_blocks.size());
@@ -519,12 +518,11 @@ namespace lux::render::detail
         const Producer& producer, std::span<const std::uint64_t> revisions
     ) const noexcept
     {
-        if (revisions.size() != producer.program_sources.size() + 1) return false;
-        if (producer.workspace.rasterProgramRevision() != revisions.front()) return false;
+        if (revisions.size() != producer.program_sources.size()) return false;
         for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
         {
             const auto current = programStorageRevision(producer.program_sources[i]);
-            if (!current || current != revisions[i + 1]) return false;
+            if (!current || current != revisions[i]) return false;
         }
         return true;
     }
@@ -536,32 +534,34 @@ namespace lux::render::detail
         for (const auto index : program_producers_)
         {
             const auto& producer = producers_[index];
-            const auto count = producer.program_sources.size() + 1;
+            const auto count = producer.program_sources.size();
             const auto revisions = std::span(update.revisions).subspan(first, count);
+            if (!producer.program_revisions || !std::ranges::equal(*producer.program_revisions, revisions))
+            {
+                if (auto selected = selectRasterPrograms(index, first, update); !selected) return selected;
+            }
             first += count;
-            if (std::ranges::equal(producer.program_revisions, revisions)) continue;
-            if (auto selected = selectRasterPrograms(index, revisions, update); !selected) return selected;
         }
         return {};
     }
 
     RenderResult<void> RenderGraphInstance::selectRasterPrograms(
-        std::uint32_t index, std::span<const std::uint64_t> revisions, RasterProgramUpdate& update
+        std::uint32_t index, std::size_t first_revision, RasterProgramUpdate& update
     ) noexcept
     {
         auto& producer = producers_[index];
+        const auto revisions = std::span(update.revisions).subspan(first_revision, producer.program_sources.size());
         for (std::size_t i = 0; i < producer.program_sources.size(); ++i)
         {
             const auto slot = producer.program_sources[i];
             auto& snapshot = storage_snapshots_[slot];
             auto captured = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
             if (!captured) return cxx::unexpected(captured.error());
-            if (*captured != revisions[i + 1])
+            if (*captured != revisions[i])
                 return cxx::unexpected(RenderError{kStorageContract, {slot}});
             snapshot.revision = *captured;
         }
-        const auto first = static_cast<std::size_t>(revisions.data() - update.revisions.data());
-        update.selections.push_back({index, first, revisions.size()});
+        update.selections.push_back({index, first_revision, revisions.size()});
         std::vector<ProgramSelection::Entry> entries;
         {
             ProgramSelection selection{*this, producer, preparation_plan_->producers[index].program_snapshots};
@@ -590,7 +590,7 @@ namespace lux::render::detail
             {
                 auto link = linkRasterStreamProgram(
                     *session_, {contract.arguments, program.parameters, contract.target,
-                                entry.shaders[program.shader.index], program.graphics}
+                                entry.shaders[program.shader.index], program.graphics, program.geometry_locations}
                 );
                 if (!link) return cxx::unexpected(link.error());
                 stream.programs.push_back({std::move(*link), program.source});
@@ -617,7 +617,8 @@ namespace lux::render::detail
             if (adopt)
             {
                 const auto revisions = std::span(update.revisions).subspan(selection.first_revision, selection.count);
-                producer.program_revisions.assign(revisions.begin(), revisions.end());
+                if (!producer.program_revisions) producer.program_revisions.emplace();
+                producer.program_revisions->assign(revisions.begin(), revisions.end());
             }
             producer.workspace.settleRasterPrograms(adopt);
         }
@@ -656,7 +657,9 @@ namespace lux::render::detail
         {
             const auto& linked = linked_producers[i];
             auto& producer = producers_[i];
-            if (!producer.runtime_streams.empty() && !rasterProgramMatches(producer, producer.program_revisions))
+            const bool stale_programs = !producer.runtime_streams.empty() &&
+                (!producer.program_revisions || !rasterProgramMatches(producer, *producer.program_revisions));
+            if (stale_programs)
                 return cxx::unexpected(RenderError{kDeviceBusy});
             for (auto& block : producer.constants) block.payload.written = false;
             for (auto& stream : producer.streams)

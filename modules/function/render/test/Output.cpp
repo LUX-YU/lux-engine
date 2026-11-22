@@ -22,6 +22,7 @@
 #include "EffectStreamLayers.hpp"
 #include "EffectStreamMaterial.hpp"
 #include "EffectStreamMesh.hpp"
+#include "EffectRecordTable.hpp"
 #include "EffectStreamSharedTexture.hpp"
 #include "EffectStreamUniform.hpp"
 #include "EffectStreamVertex.hpp"
@@ -1777,9 +1778,69 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         BAD_INDIRECT_STRIDE, SHORT_INDIRECT_ARGS, BAD_COUNT, WRONG_INDIRECT_USE, NO_COUNT, OLD_PROGRAM_SLOT
     };
     std::atomic<ETestStreamMode> stream_mode{ETestStreamMode::VALID};
-    enum class ETestStreamPrograms : std::uint8_t { INITIAL, INVALID, PENDING, REVERSED };
-    std::atomic stream_programs{ETestStreamPrograms::INITIAL};
-    std::atomic_uint64_t stream_program_revision{1};
+    enum class ETestStreamPrograms : std::uint8_t { INITIAL, INVALID, BAD_GEOMETRY, PENDING, REVERSED };
+    struct SetStreamPrograms final
+    {
+        static constexpr std::string_view name = "test.effect.set_stream_programs";
+        struct Request final
+        {
+            ResourceInstanceId resource;
+            ETestStreamPrograms mode;
+        };
+        using Data = Request;
+        using Response = AckResponse;
+        static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+    };
+
+    class StreamProgramStorage final
+    {
+    public:
+        using Descriptor = StreamProgramStorage;
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.effect.stream_programs"}, 0, 0, {}, "Raster stream program selection.",
+            EResourceDomain::VIEW, resourceCommandDescriptors(static_cast<std::tuple<SetStreamPrograms>*>(nullptr))
+        };
+
+        static ResourceRegistration factory() noexcept
+        {
+            static constexpr auto snapshot = StorageSnapshotOps::make<
+                StreamProgramStorage, ETestStreamPrograms,
+                &StreamProgramStorage::capture, &StreamProgramStorage::revision_
+            >();
+            static const StorageBindingOps bindings{.cpu_snapshot = &snapshot};
+            static const std::array commands{CommandBinding::declare<SetStreamPrograms, &set>()};
+            return makeResourceRegistration<Descriptor, StreamProgramStorage, &create>(nullptr, &bindings, commands);
+        }
+
+    private:
+        static RenderResult<std::unique_ptr<StreamProgramStorage>>
+        create(ResourceCreateContext&, ResourceInstanceId) noexcept
+        {
+            return std::make_unique<StreamProgramStorage>();
+        }
+
+        RenderResult<std::uint64_t> capture(ETestStreamPrograms& selected) const noexcept
+        {
+            selected = mode_;
+            return revision_;
+        }
+
+        static void
+        set(StreamProgramStorage& storage, const SetStreamPrograms::Request& request, AckResponse& out) noexcept
+        {
+            if (storage.mode_ != request.mode)
+            {
+                storage.mode_ = request.mode;
+                ++storage.revision_;
+            }
+            out = {};
+        }
+
+        ETestStreamPrograms mode_ = ETestStreamPrograms::INITIAL;
+        std::uint64_t revision_ = 1;
+    };
 
     rdesc::ShaderProgramArtifact streamShader(
         rdesc::EShaderTarget target, const rdesc::EmbeddedShader& fragment,
@@ -1797,6 +1858,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct Configuration final
         {
             GraphPassId pass;
+            GraphStorageSnapshotId programs;
             rdesc::EShaderTarget target;
             GraphResourceId indices, uniform, image, arguments, count;
             std::uint32_t sampler, comparison_sampler;
@@ -1805,6 +1867,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct LinkedData final
         {
             DrawStreamSlot stream;
+            StorageSnapshotSlot<ETestStreamPrograms> programs;
             rdesc::EShaderTarget target;
             RasterBufferSlot indices, uniform, arguments, count;
             RasterImageSlot image;
@@ -1814,6 +1877,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
+            auto programs = link.resolveStorageSnapshot<ETestStreamPrograms>(input.programs);
+            if (!programs) return lux::cxx::unexpected(programs.error());
             auto stream = link.resolveDrawStream(input.pass);
             auto index = link.resolveRasterBuffer(input.pass, input.indices);
             auto uniform = link.resolveRasterBuffer(input.pass, input.uniform);
@@ -1831,7 +1896,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (!stream || missing_buffer || missing_texture_binding || missing_argument)
                 return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return LinkedData{
-                *stream, input.target, *index, *uniform, *arguments, *count, *image, *sampler, *comparison,
+                *stream, *programs, input.target, *index, *uniform, *arguments, *count, *image, *sampler, *comparison,
                 *tint_argument, *tiles_argument, *sampler_argument
             };
         }
@@ -1841,12 +1906,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             std::optional<RasterProgramSlot> first_slot;
         };
 
-        static std::uint64_t rasterProgramRevision(const LinkedData&, const Workspace&) noexcept { return stream_program_revision.load(); }
-
         static RenderResult<void>
         selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace&) noexcept
         {
-            const auto mode = stream_programs.load();
+            const auto snapshot = selection.readStorage(linked.programs);
+            if (!snapshot) return lux::cxx::unexpected(snapshot.error());
+            const auto mode = snapshot->value.get();
             ParameterBinding parameters;
             parameters.setInlineConstant(ProducerConstants{0});
             auto uniform = streamShader(linked.target, kEffectStreamUniform);
@@ -1860,6 +1925,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 RuntimeRasterProgram{{0}, {}, std::move(parameters)},
                 RuntimeRasterProgram{{1}, {}, {}}
             };
+            if (mode == ETestStreamPrograms::BAD_GEOMETRY) programs[0].geometry_locations = {0};
             if (mode == ETestStreamPrograms::PENDING) programs[0].graphics.blend.enabled = true;
             if (mode == ETestStreamPrograms::REVERSED)
             {
@@ -1874,7 +1940,9 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         {
             const auto mode = stream_mode.exchange(ETestStreamMode::VALID);
             if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(linked.stream, {});
-            const bool reversed = stream_programs.load() == ETestStreamPrograms::REVERSED;
+            const auto snapshot = frame.readStorage(linked.programs);
+            if (!snapshot) return lux::cxx::unexpected(snapshot.error());
+            const bool reversed = snapshot->value.get() == ETestStreamPrograms::REVERSED;
             auto first_program = frame.rasterProgram(linked.stream, reversed ? 1 : 0);
             auto second_program = frame.rasterProgram(linked.stream, reversed ? 0 : 1);
             if (!first_program || !second_program) return lux::cxx::unexpected(RenderError{kFrameContract});
@@ -2093,12 +2161,17 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 256, layer_bytes, ImageCopyRegion{0, 0, 64, 32}
             }}}
         ));
+        const auto programs = context.importStorageSnapshot<ETestStreamPrograms>(
+            "stream_programs", {ResourceName{StreamProgramStorage::descriptor.type.name()}}
+        );
+        if (!programs) return lux::cxx::unexpected(programs.error());
         CHECK(context.addPreparation({
             ProducerFactory::make<TestRasterProducer>(),
             take(ConfigValue::make(TestRasterProducer::Configuration{
-                drawn.pass, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler, comparison_sampler
+                drawn.pass, *programs, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
+                comparison_sampler
             })),
-            {}, {}, {}, {drawn.pass}
+            {}, {}, {}, {drawn.pass}, {}, {*programs}, {*programs}
         }));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
@@ -2336,7 +2409,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     auto server = take(RenderServer::create(config, execution));
     take(server->registerResource<CaptureBuffer>());
     registerOutputNodes(*server);
-
+    take(server->registerResource<StreamProgramStorage>());
     take(server->registerResource<EffectCaptureBuffer>());
     constexpr std::string_view storage_schema = "test.render.effect.storage";
     CapabilityDefinition storage_capability;
@@ -2982,7 +3055,10 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto stream_data = make_resource(stream_view, EffectCaptureDescriptor::descriptor.type);
     const auto stream_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto stream_job = make_storage_job(stream_effect);
-    call<StartRenderJob>(*client, commands, {device, stream_job, stream_target, producer_binding(stream_data)});
+    const auto stream_source = make_resource(stream_view, StreamProgramStorage::descriptor.type);
+    auto stream_binding = producer_binding(stream_data);
+    stream_binding.resources.push_back({"stream_programs", stream_source, 0, EJobResourceUse::CPU_SNAPSHOT});
+    call<StartRenderJob>(*client, commands, {device, stream_job, stream_target, std::move(stream_binding)});
     stream_mode = ETestStreamMode::BAD_CONSTANTS;
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kFrameContract);
     stream_mode = ETestStreamMode::BAD_INDEX;
@@ -3011,13 +3087,20 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto empty_stream = call<RequestRenderJob>(*client, commands, {stream_job});
     const auto rendered_stream = call<RequestRenderJob>(*client, commands, {stream_job});
     const auto before_bad_program = call<QueryRenderStats>(*client, commands, {}).submissions;
-    stream_programs = ETestStreamPrograms::INVALID;
-    ++stream_program_revision;
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::INVALID});
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kDeviceUnsupported);
     CHECK(call<QueryRenderStats>(*client, commands, {}).submissions == before_bad_program);
 
-    stream_programs = ETestStreamPrograms::PENDING;
-    ++stream_program_revision;
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::BAD_GEOMETRY});
+    CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kGraphInvalidDescriptor);
+    const auto failed_selection = server->developmentStats();
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::BAD_GEOMETRY});
+    CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kGraphInvalidDescriptor);
+    if (failed_selection)
+        CHECK(server->developmentStats()->program_preparations == failed_selection->program_preparations);
+    CHECK(call<QueryRenderStats>(*client, commands, {}).submissions == before_bad_program);
+
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::PENDING});
     using PipelineGate = UniformUploadProbe::EPipelineGate;
     UniformUploadProbe::pipeline_gate = PipelineGate::ARMED;
     auto requester = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -3032,8 +3115,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         CHECK(Clock::now() < replacement_deadline);
         std::this_thread::yield();
     }
-    stream_programs = ETestStreamPrograms::REVERSED;
-    ++stream_program_revision;
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::REVERSED});
     UniformUploadProbe::pipeline_gate = PipelineGate::OPEN;
     UniformUploadProbe::pipeline_gate.notify_all();
     preparing.get();
@@ -3149,7 +3231,11 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto uncounted_data = make_resource(uncounted_view, EffectCaptureDescriptor::descriptor.type);
     const auto uncounted_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto uncounted_job = make_storage_job(stream_effect);
-    call<StartRenderJob>(*client, commands, {device, uncounted_job, uncounted_target, producer_binding(uncounted_data)});
+    const auto uncounted_source = make_resource(uncounted_view, StreamProgramStorage::descriptor.type);
+    auto uncounted_binding = producer_binding(uncounted_data);
+    uncounted_binding.resources.push_back({"stream_programs", uncounted_source, 0, EJobResourceUse::CPU_SNAPSHOT});
+    call<SetStreamPrograms>(*client, commands, {uncounted_source, ETestStreamPrograms::REVERSED});
+    call<StartRenderJob>(*client, commands, {device, uncounted_job, uncounted_target, std::move(uncounted_binding)});
     for (unsigned i = 0; i < config.frames_in_flight; ++i) call<RequestRenderJob>(*client, commands, {uncounted_job});
     UniformUploadProbe::reject_raster_pool = true;
     stream_mode = ETestStreamMode::MANY_DRAWS;
@@ -3730,20 +3816,21 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                 const auto* shader = selected->definition.find(rdesc::EMaterialPurpose::FORWARD);
                 CHECK(shader);
                 shaders.push_back(prependStreamVertex(shader->shader, kEffectStreamVertex));
+                shaders.push_back(streamShader(linked.target, kEffectRecordTable));
                 program.parameters.setInlineConstant(rdesc::MaterialGpuReference{});
+                std::array programs{program, program};
+                programs[1].shader = {1};
+                return selection.setPrograms(linked.stream, std::move(shaders), programs);
             }
-            else
-            {
-                shaders.push_back(streamShader(linked.target, kEffectStreamSharedTexture));
-                program.parameters.setInlineConstant(TestSharedTextureIndices{});
-            }
+            shaders.push_back(streamShader(linked.target, kEffectStreamSharedTexture));
+            program.parameters.setInlineConstant(TestSharedTextureIndices{});
             return selection.setPrograms(linked.stream, std::move(shaders), std::span{&program, 1});
         }
 
         static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
         {
             const auto index = selected_texture.load();
-            auto program = frame.rasterProgram(linked.stream, 0);
+            auto program = frame.rasterProgram(linked.stream, linked.materials ? index : 0);
             if (!program) return lux::cxx::unexpected(program.error());
             if (linked.materials)
             {
@@ -3824,10 +3911,13 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             auto source = context.importRasterMaterials("materials");
             if (!source) return lux::cxx::unexpected(source.error());
             stage.shared_materials = *source;
-            stage.inputs.push_back({
-                std::string{rdesc::kMaterialTableName}, rdesc::EDescriptorType::STORAGE_BUFFER,
-                EGraphUse::STORAGE_READ, 2
-            });
+            for (const auto name : {rdesc::kMaterialTableName, std::string_view{"surfacePages"}})
+            {
+                stage.inputs.push_back({
+                    .name = std::string{name}, .kind = rdesc::EDescriptorType::STORAGE_BUFFER,
+                    .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
+                });
+            }
         }
         const auto color = take(builder.declareResource({"shared texture output", GraphImageDesc{64, 64}}));
         RasterWork raster;
@@ -4176,6 +4266,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         std::puts("UPLOAD HANDOFF PASS: rejected Acquire, fence retirement, staging reuse and retry pixels");
     }
 #endif
+    if (use_materials) std::puts("RECORD TABLES PASS: uMats and surfacePages read their selected RGBA pixels");
     if (!use_materials) std::puts("TEXTURE CLONE PASS: pending source protection, stale ID and patched pixel");
     if (exercise_growth)
     {
@@ -4256,15 +4347,22 @@ static void meshRasterStream(bool d3d12)
             const auto& position = layout->attributes.front();
             GraphicsState graphics;
             graphics.vertex_bindings = {{0, layout->vertex_stride}};
-            graphics.vertex_attributes = {{position.location, 0, position.offset, position.format}};
-            ParameterBinding parameters;
-            parameters.setInlineConstant(ProducerConstants{});
             std::vector<rdesc::ShaderProgramArtifact> shaders;
             shaders.push_back(prependStreamVertex(fragment->shader, kEffectStreamMesh));
+            const auto& vertex_inputs = shaders.front().interface.vertex_inputs;
+            CHECK(vertex_inputs.size() == 1);
+            const auto& attribute = vertex_inputs.front();
+            if (fragment->shader.target == rdesc::EShaderTarget::DXIL)
+                CHECK(attribute.semantic == "POSITION" && attribute.semantic_index == 7);
+            else CHECK(attribute.location == 3);
+            graphics.vertex_attributes = {{attribute.location, 0, position.offset, position.format}};
+            ParameterBinding parameters;
+            parameters.setInlineConstant(ProducerConstants{});
             std::array programs{
                 RuntimeRasterProgram{{0}, graphics, parameters, material_program->source},
                 RuntimeRasterProgram{{0}, graphics, parameters, material_program->source}
             };
+            for (auto& candidate : programs) candidate.geometry_locations = {position.location};
             programs.back().graphics.vertex_attributes.front().offset += sizeof(float);
             workspace.program_selection_revision = snapshot->revision;
             ++program_selections;

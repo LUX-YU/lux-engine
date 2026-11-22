@@ -41,6 +41,8 @@ namespace lux::render
         GraphicsState graphics;
         ParameterBinding parameters;
         ResourceProgramSource source;
+        // In graphics.vertex_attributes order. Empty uses the shader locations directly.
+        std::vector<std::uint32_t> geometry_locations;
     };
 
     class RasterProgramSelection

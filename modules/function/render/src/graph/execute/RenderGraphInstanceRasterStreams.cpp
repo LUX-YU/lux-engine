@@ -651,7 +651,7 @@ namespace lux::render::detail
                 if (!used_material_programs[material.program]) continue;
                 const auto& program = selected_programs[material.program];
                 candidate.reads.push_back({
-                    material.buffer, material.range, EGraphUse::STORAGE_READ, program.material_stages
+                    material.buffer, material.range, EGraphUse::STORAGE_READ, program.record_stages
                 });
                 for (const auto texture :
                      std::span{input.material_images}.subspan(material.first_image, material.image_count))

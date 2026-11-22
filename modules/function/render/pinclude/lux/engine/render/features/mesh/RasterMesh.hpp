@@ -29,13 +29,24 @@ namespace lux::render::detail
     [[nodiscard]] RenderResult<rdesc::ShaderProgramArtifact>
     buildMeshShader(const rdesc::MaterialProgramSet&, rdesc::EMaterialPurpose, bool paged, bool reflected) noexcept;
 
-    [[nodiscard]] RenderResult<GraphicsState> meshGraphicsState(
-        std::uint32_t vertex_stride,
-        std::span<const MeshAttribute> attributes,
-        const rdesc::MaterialProgramSet&,
-        const rdesc::ShaderInfo&,
-        bool front_counter_clockwise,
-        bool reflected
+    struct MeshRasterWinding final
+    {
+        bool front_counter_clockwise;
+        bool reflected;
+    };
+
+    struct MeshRasterLayout final
+    {
+        GraphicsState graphics;
+        std::vector<std::uint32_t> geometry_locations;
+    };
+
+    [[nodiscard]] RenderResult<MeshRasterLayout>
+    meshRasterLayout(
+        const MeshDescription& mesh,
+        const rdesc::MaterialProgramSet& material,
+        const rdesc::ShaderInfo& shader,
+        MeshRasterWinding winding
     ) noexcept;
 
     // Shared geometric ports describe data, not material groups or pipeline counts.

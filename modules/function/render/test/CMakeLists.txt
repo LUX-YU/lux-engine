@@ -32,12 +32,18 @@ set(effect_stream_indirect "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamIndi
 set(effect_stream_shared_texture "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamSharedTexture.hpp")
 set(effect_stream_mesh "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamMesh.hpp")
 set(effect_stream_material "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamMaterial.hpp")
+set(effect_record_table "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectRecordTable.hpp")
 set(effect_mesh_imports "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectMeshImports.hpp")
 set(effect_mesh_imports_paged "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectMeshImportsPaged.hpp")
 
 lux_render_shader("${effect_stream_vertex}" "shaders/EffectStreamVertex.slang" vertex kEffectStreamVertex)
 lux_render_shader("${effect_stream_mesh}" "shaders/EffectStreamMesh.slang" vertex kEffectStreamMesh)
 lux_render_shader("${effect_stream_material}" "shaders/EffectStreamMaterial.slang" fragment kEffectStreamMaterial)
+lux_render_shader(
+    "${effect_record_table}" "shaders/EffectStreamMaterial.slang" fragment kEffectRecordTable
+    -DRECORD_TABLE=surfacePages
+)
+
 lux_render_shader("${effect_mesh_imports}" "shaders/EffectMeshImports.slang" compute kEffectMeshImports)
 lux_render_shader(
     "${effect_mesh_imports_paged}" "shaders/EffectMeshImports.slang" compute kEffectMeshImportsPaged
@@ -66,6 +72,7 @@ add_executable(render_output_test
     "${effect_stream_shared_texture}"
     "${effect_stream_mesh}"
     "${effect_stream_material}"
+    "${effect_record_table}"
     "${effect_mesh_imports}"
     "${effect_mesh_imports_paged}"
 )

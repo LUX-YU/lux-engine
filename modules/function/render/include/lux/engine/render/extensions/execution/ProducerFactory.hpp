@@ -20,12 +20,6 @@ namespace lux::render
         };
 
         template <class T>
-        concept RasterRevision = requires(const typename T::LinkedData& linked, const typename T::Workspace& workspace)
-        {
-            { T::rasterProgramRevision(linked, workspace) } noexcept -> std::same_as<std::uint64_t>;
-        };
-
-        template <class T>
         concept RasterSelection = requires(
             const typename T::LinkedData& linked, RasterProgramSelection& selection, typename T::Workspace& workspace
         )
@@ -45,7 +39,6 @@ namespace lux::render
         extension_detail::ProducerValue<typename T::Workspace> && std::is_nothrow_destructible_v<typename T::Workspace> &&
         (extension_detail::WorkspaceFactory<T> ||
             (!requires { &T::createWorkspace; } && std::default_initializable<typename T::Workspace>)) &&
-        (extension_detail::RasterRevision<T> || !requires { &T::rasterProgramRevision; }) &&
         (extension_detail::RasterSelection<T> || !requires { &T::selectRasterPrograms; }) &&
         (extension_detail::RasterSettlement<T> || !requires { &T::settleRasterPrograms; }) &&
         requires(
@@ -100,7 +93,7 @@ namespace lux::render
             if (!owned) return cxx::unexpected(owned.error());
             if (!*owned) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
 
-            static constexpr ProducerWorkspace::Ops ops{&prepare<T>, &revision<T>, &select<T>, &settle<T>};
+            static constexpr ProducerWorkspace::Ops ops{&prepare<T>, &select<T>, &settle<T>};
             ProducerWorkspace::Storage storage{owned->release(), [](void* value) noexcept {
                 delete static_cast<Workspace*>(value);
             }};
@@ -114,17 +107,6 @@ namespace lux::render
                 *static_cast<const typename T::LinkedData*>(linked), frame,
                 *static_cast<typename T::Workspace*>(workspace)
             );
-        }
-
-        template <class T>
-        static std::uint64_t revision(const void* linked, const void* workspace) noexcept
-        {
-            if constexpr (extension_detail::RasterRevision<T>)
-                return T::rasterProgramRevision(
-                    *static_cast<const typename T::LinkedData*>(linked),
-                    *static_cast<const typename T::Workspace*>(workspace)
-                );
-            else return 0;
         }
 
         template <class T>

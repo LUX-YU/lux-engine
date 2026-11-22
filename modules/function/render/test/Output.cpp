@@ -322,7 +322,7 @@ static void importedIdentityReuse(Validation& validation)
     };
     // A viewport can change sampled resources several times, then be detached and recreated
     // at the same allocator address. Local ++ used to collide with the next global identity.
-    const auto raster_slot = plan.assembly.source_pass_slots[pass.pass.index].index;
+    const auto raster_slot = plan.diagnostics.passSlot(pass.pass);
     CHECK(raster_slot < plan.executable.passes().size());
     const auto& raster_pass = plan.executable.passes()[raster_slot];
     for (std::uint64_t update = 0; update < 2 * creation_revisions; ++update)
@@ -1633,6 +1633,19 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         const auto copy = take(builder.addTransferPass(
             "read prepared values", TransferWork{{CopyBuffer{{produced.written.front()}, {*imported}}}}
         ));
+        struct BlockSource final
+        {
+            ProducerConstants constants;
+            TestSharedTextureIndices texture_indices;
+        };
+        if (args == "copy-type")
+            CHECK((context.copyInlineBlock<TestSharedTextureIndices, BlockSource, &BlockSource::texture_indices>(
+                produced.pass
+            )));
+        if (args == "copy-source" || args == "copy-and-producer")
+            CHECK((context.copyInlineBlock<ProducerConstants, BlockSource, &BlockSource::constants>(produced.pass)));
+        if (args == "copy-type" || args == "copy-source")
+            return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
 
         const auto seed = take(builder.declareResource({"companion seed", GraphBufferDesc{4}}));
         const auto scratch = take(builder.declareResource({"companion scratch", GraphBufferDesc{4}}));
@@ -2766,6 +2779,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         {"cycle", kGraphDependencyCycle},
         {"type", kGraphInvalidDescriptor},
         {"duplicate", kGraphAmbiguousProducer},
+        {"copy-type", kGraphInvalidDescriptor},
+        {"copy-source", kGraphInvalidDescriptor},
+        {"copy-and-producer", kGraphAmbiguousProducer},
         {"joint-closure", kGraphUndefinedRead}
     };
     for (const auto [mode, error] : invalid_preparations)

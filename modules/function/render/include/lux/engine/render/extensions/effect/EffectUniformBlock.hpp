@@ -37,6 +37,13 @@ namespace lux::render
             std::uint64_t revision;
         };
 
+        struct InlineBlockInput final
+        {
+            cxx::basic_type_info state_type;
+            ConstantBlockContract block;
+            std::span<const std::byte> (*bind)(const void*) noexcept;
+        };
+
         struct EffectUniformSource final
         {
             cxx::basic_type_info state_type;

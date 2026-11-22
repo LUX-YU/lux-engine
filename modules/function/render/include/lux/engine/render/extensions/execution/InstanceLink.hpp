@@ -61,11 +61,11 @@ namespace lux::render
 
         // Grants a value snapshot of this producer's owning EffectGraph node.
         template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<NodeStateSlot<T>> resolveNodeState() noexcept
+        [[nodiscard]] RenderResult<PreparedDataSlot<T>> resolveEffectInput() noexcept
         {
-            auto slot = claimNodeState(cxx::make_basic_type_info<T>(), sizeof(T));
+            auto slot = claimEffectInput(cxx::make_basic_type_info<T>(), sizeof(T));
             if (!slot) return cxx::unexpected(slot.error());
-            return NodeStateSlot<T>{*slot};
+            return PreparedDataSlot<T>{*slot};
         }
 
         template <ShaderConstantBlock T>
@@ -78,7 +78,7 @@ namespace lux::render
 
     private:
         [[nodiscard]] virtual RenderResult<std::uint32_t>
-        claimNodeState(cxx::basic_type_info, std::size_t) noexcept = 0;
+        claimEffectInput(cxx::basic_type_info, std::size_t) noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveCpuSlot(GraphCpuDataId, cxx::basic_type_info, std::size_t) const noexcept = 0;

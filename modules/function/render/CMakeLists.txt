@@ -38,7 +38,6 @@ set(render_sources
     src/effect/EffectGraphBuild.cpp
     src/effect/UniformBlockVersions.cpp
     src/effect/EffectGraph.cpp
-    src/effect/EffectPreparation.cpp
     src/effect/EffectValidation.cpp
     src/effect/Lighting.cpp
     src/effect/ToneMapping.cpp
@@ -62,7 +61,7 @@ set(render_sources
     src/resource/material/RasterMaterial.cpp
     src/graph/RenderGraphBuilder.cpp
     src/graph/PassNormalizer.cpp
-    src/graph/RenderGraphAnalysis.cpp
+    src/graph/compile/GraphAnalysis.cpp
     src/graph/Diagnostics.cpp
     src/features/mesh/RasterMesh.cpp
     src/features/lighting/ClusteredLightingWork.cpp
@@ -97,6 +96,7 @@ set(render_sources
     src/graph/PlanDiagnostics.cpp
     src/graph/compile/BuiltinPass.cpp
     src/graph/compile/GraphCompiler.cpp
+    src/graph/compile/EffectCompiler.cpp
     src/graph/compile/RecordingDependencies.cpp
     src/graph/compile/RenderingPlan.cpp
     src/graph/compile/ConditionalPlan.cpp

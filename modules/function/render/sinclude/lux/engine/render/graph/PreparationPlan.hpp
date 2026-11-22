@@ -2,10 +2,21 @@
 
 #include <lux/engine/render/extensions/execution/LinkedProducer.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <type_traits>
 #include <vector>
 
 namespace lux::render::detail
 {
+    struct InputSlot final
+    {
+        std::uint32_t index;
+    };
+
+    struct CompiledPassSlot final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+    };
+
     struct LinkedInlineBlock final
     {
         std::uint32_t pass;
@@ -21,8 +32,6 @@ namespace lux::render::detail
         std::vector<std::uint32_t> raster_streams;
         std::vector<std::uint32_t> buffers;
         std::vector<std::uint32_t> snapshots;
-        // The Effect execution borrow protects this owner-side source through every Job.
-        std::span<const std::byte> node_state;
         std::vector<std::uint32_t> program_snapshots;
     };
 
@@ -57,6 +66,23 @@ namespace lux::render::detail
             std::uint32_t binding;
         };
 
+        struct EffectInput final
+        {
+            std::uint32_t source;
+            InputSlot destination;
+            std::span<const std::byte> (*bind)(const void*) noexcept = nullptr;
+        };
+
+        struct ConstantCopy final
+        {
+            InputSlot input;
+            CompiledPassSlot pass;
+        };
+
+        static_assert(std::is_standard_layout_v<ConstantCopy> && std::is_trivially_copyable_v<ConstantCopy>);
+
+        std::vector<ConstantCopy> constant_copies;
+        std::vector<EffectInput> effect_inputs;
         std::vector<std::size_t> cpu_data_bytes;
         std::vector<Buffer> buffers;
         std::vector<Snapshot> snapshots;

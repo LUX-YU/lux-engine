@@ -86,6 +86,19 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<ResourceVersion>
         declareFrameBuffer(std::string_view name, std::uint64_t minimum_bytes, std::uint64_t maximum_bytes) noexcept = 0;
 
+        // Copy the complete typed member into this pass's inline range when the Job prepares a frame.
+        template <ShaderConstantBlock T, class State, T State::*Member>
+        [[nodiscard]] RenderResult<void> copyInlineBlock(GraphPassId pass) noexcept
+        {
+            return declareInlineCopy(pass, {
+                cxx::make_basic_type_info<State>(), kConstantBlockContract<T>,
+                [](const void* owner) noexcept
+                {
+                    return std::as_bytes(std::span{&(static_cast<const State*>(owner)->*Member), 1});
+                }
+            });
+        }
+
         // The returned version must be used as one fixed typed uniform descriptor.
         template <ShaderConstantBlock T, class State, EffectUniformBlock<T> State::*Member>
         [[nodiscard]] RenderResult<ResourceVersion> uniformBlock(std::string_view name) noexcept
@@ -124,6 +137,8 @@ namespace lux::render
         [[nodiscard]] virtual const ConfigValue* nodeConfiguration() const noexcept = 0;
         [[nodiscard]] virtual RenderResult<ResourceVersion>
         declareUniformBlock(std::string_view, extension_detail::EffectUniformSource) noexcept = 0;
+        [[nodiscard]] virtual RenderResult<void>
+        declareInlineCopy(GraphPassId, extension_detail::InlineBlockInput) noexcept = 0;
         [[nodiscard]] virtual RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info, std::size_t) noexcept = 0;
         [[nodiscard]] virtual RenderResult<GraphStorageSnapshotId>
         importStorageValue(std::string_view, const ResourceRequirement&, cxx::basic_type_info) noexcept = 0;

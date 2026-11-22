@@ -123,7 +123,7 @@ namespace lux::render
 
             struct LightingWriter final
             {
-                NodeStateSlot<LightingState> state;
+                PreparedDataSlot<LightingState> state;
                 InlineConstantWriter<detail::LightingConstants> writer;
             };
 
@@ -139,7 +139,7 @@ namespace lux::render
                 LinkedData inputs;
                 if (config.lighting)
                 {
-                    auto state = context.resolveNodeState<LightingState>();
+                    auto state = context.resolveEffectInput<LightingState>();
                     if (!state) return cxx::unexpected(state.error());
                     auto writer = context.resolveInlineConstants<detail::LightingConstants>(*config.lighting);
                     if (!writer) return cxx::unexpected(writer.error());
@@ -170,10 +170,10 @@ namespace lux::render
                     if (auto written = frame.write(linked.cluster->writer, constants); !written) return written;
                 }
                 if (!linked.lighting) return {};
-                const auto state = frame.readNodeState(linked.lighting->state);
+                const auto state = frame.read(linked.lighting->state);
                 if (!state) return cxx::unexpected(state.error());
                 return frame.write(linked.lighting->writer, {
-                    view.inverse_view_projection, view.position_near, view.viewport, view.background, state->environment
+                    view.inverse_view_projection, view.position_near, view.viewport, view.background, state->value.environment
                 });
             }
         };

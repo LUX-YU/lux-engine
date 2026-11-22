@@ -22,37 +22,42 @@ namespace lux::render::detail
         return binding_plan_->pass(binding_slot).uses;
     }
 
-    NativeProgramBindings::NativeProgramBindings(nri::Device& device, std::size_t slots) noexcept
-        : device_(&device), slots_(slots), streams_(slots)
+    std::uint32_t GraphCompileDiagnostics::passSlot(GraphPassId source) const noexcept
+    {
+        const auto found = std::ranges::find(source_passes, source);
+        if (found == source_passes.end()) return kGraphInvalidIndex;
+        return static_cast<std::uint32_t>(found - source_passes.begin());
+    }
+
+    NativeProgramBindings::NativeProgramBindings(DeviceSession& device, std::size_t slots) noexcept
+        : owner_(&device), slots_(slots), streams_(slots)
     {
     }
 
-    NativeProgramBindings::NativeProgramBindings(NativeProgramBindings&&) noexcept = default;
+    NativeProgramBindings::NativeProgramBindings(NativeProgramBindings&& other) noexcept
+        : owner_(std::exchange(other.owner_, nullptr)), slots_(std::move(other.slots_)),
+          samplers_(std::move(other.samplers_)), streams_(std::move(other.streams_))
+    {
+    }
 
-    NativeProgramBindings::~NativeProgramBindings() noexcept = default;
+    NativeProgramBindings::~NativeProgramBindings() noexcept
+    {
+        if (owner_) owner_->programs().releaseBindings(*this);
+    }
+
+    const nri::Device* NativeProgramBindings::device() const noexcept
+    {
+        return owner_ ? &owner_->device() : nullptr;
+    }
 
     PreparedRenderGraph::PreparedRenderGraph(DeviceSession& owner, RenderGraphExecutable plan) noexcept
-        : executable(std::move(plan)), programs(owner.device(), executable.passes().size()), owner_(&owner)
+        : executable(std::move(plan)), programs(owner, executable.passes().size())
     {
     }
 
-    PreparedRenderGraph::PreparedRenderGraph(PreparedRenderGraph&& other) noexcept
-        : executable(std::move(other.executable)), programs(std::move(other.programs)),
-          assembly(std::move(other.assembly)), diagnostics(std::move(other.diagnostics)),
-          owner_(std::exchange(other.owner_, nullptr))
-    {
-    }
+    PreparedRenderGraph::PreparedRenderGraph(PreparedRenderGraph&&) noexcept = default;
 
-    PreparedRenderGraph::~PreparedRenderGraph() noexcept
-    {
-        if (owner_) owner_->programs().releaseBindings(programs);
-    }
-
-    NativeProgramBindings PreparedRenderGraph::takePrograms() && noexcept
-    {
-        owner_ = nullptr;
-        return std::move(programs);
-    }
+    PreparedRenderGraph::~PreparedRenderGraph() noexcept = default;
 
     bool RenderGraphExecutable::compatible(const TargetDesc& target) const noexcept
     {

@@ -32,7 +32,7 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<RenderGraphExecutable> planStructure(nri::Device*, const EffectOutputDesc*) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>>
-        prepareOperations(PreparedRenderGraph&, execution::CpuScheduler) noexcept;
+        prepareOperations(DeviceSession&, PreparedRenderGraph&, execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<void> finishDevicePlan(PreparedRenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void> finishPlan(RenderGraphExecutable&) noexcept;
         [[nodiscard]] RenderResult<void>

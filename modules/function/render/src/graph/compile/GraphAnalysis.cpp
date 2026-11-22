@@ -1,3 +1,4 @@
+#include <lux/engine/render/effect/EffectPreparation.hpp>
 #include <lux/engine/render/graph/compile/GraphLiveness.hpp>
 
 #include <lux/engine/render/graph/Range.hpp>
@@ -631,3 +632,198 @@ namespace lux::render
         return result;
     }
 } // namespace lux::render
+
+namespace lux::render::runtime_detail
+{
+    bool
+    sameBlockContract(ConstantBlockContract left, ConstantBlockContract right, rdesc::EShaderTarget target) noexcept
+    {
+        const bool same_type = left.type == right.type && left.type.name() == right.type.name();
+        const bool same_storage = left.bytes == right.bytes && left.alignment == right.alignment;
+        if (!same_type || !same_storage || !left.layout || !right.layout)
+            return false;
+        if (left.layout == right.layout) return true;
+        const auto a = left.layout(target);
+        const auto b = right.layout(target);
+        const auto same_member = [](const ConstantMemberLayout& x, const ConstantMemberLayout& y) noexcept
+        {
+            return x.path == y.path && x.scalar == y.scalar && x.offset == y.offset && x.rows == y.rows &&
+                x.columns == y.columns && x.matrix_order == y.matrix_order && x.matrix_stride == y.matrix_stride &&
+                std::ranges::equal(x.array_dimensions, y.array_dimensions);
+        };
+        const bool same_extent = a.bytes == b.bytes && a.alignment == b.alignment;
+        return same_extent && std::ranges::equal(a.members, b.members, same_member);
+    }
+
+    RenderResult<RenderGraphAnalysis>
+    analyzePreparedGraph(
+        const RenderGraph& source, PreparationDefinition& definition, rdesc::EShaderTarget target
+    ) noexcept
+    {
+        for (const auto& pass : source.passes())
+        {
+            const auto* raster = std::get_if<RasterWork>(&pass.command);
+            const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
+            if (!stage) continue;
+            const bool invalid_textures = stage->shared_textures &&
+                stage->shared_textures->index >= definition.texture_sets.size();
+            const bool invalid_meshes = stage->mesh_geometry && stage->mesh_geometry->index >= definition.mesh_sets.size();
+            const bool invalid_materials = stage->shared_materials &&
+                stage->shared_materials->index >= definition.material_sets.size();
+            if (invalid_materials)
+                return cxx::unexpected(RenderError{kGraphUnknownResource,
+                    {kGraphInvalidIndex, stage->shared_materials->index}});
+            if (invalid_textures || invalid_meshes)
+            {
+                const auto index = invalid_textures ? stage->shared_textures->index : stage->mesh_geometry->index;
+                return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, index}});
+            }
+        }
+        const auto count = static_cast<std::uint32_t>(definition.producers.size());
+        if (!count && !definition.buffers.empty())
+            return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex}});
+        if (!count && definition.inline_copies.empty()) return analyzeRenderGraph(source);
+        std::vector<bool> inline_writers(source.passes().size());
+        for (const auto& copy : definition.inline_copies)
+        {
+            if (copy.pass.index >= inline_writers.size())
+                return cxx::unexpected(RenderError{kGraphUnknownPass, {copy.pass.index}});
+            const auto* parameters = source.passes()[copy.pass.index].bindings().parameters;
+            const auto& block = copy.input.block;
+            const bool matches_block = parameters && sameBlockContract(parameters->inline_constant, block, target);
+            if (!copy.input.bind || !matches_block)
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {copy.pass.index}});
+            if (inline_writers[copy.pass.index])
+                return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {copy.pass.index}});
+            inline_writers[copy.pass.index] = true;
+        }
+        if (!count) return analyzeRenderGraph(source);
+        detail::PreparationLiveness liveness;
+        liveness.producers.resize(count);
+        liveness.pass_producers.resize(source.passes().size());
+        std::vector<std::uint32_t> writers(definition.cpu_data.size(), kGraphInvalidIndex);
+        std::vector<std::uint32_t> buffer_writers(source.resources().size(), kGraphInvalidIndex);
+        std::vector<std::vector<std::uint32_t>> successors(count);
+        std::vector<std::uint32_t> indegree(count);
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            const auto& declaration = definition.producers[i].declaration;
+            auto& producer = liveness.producers[i];
+            producer.passes = declaration.passes;
+            for (auto input : declaration.storage_inputs)
+            {
+                if (input.index >= definition.snapshots.size())
+                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, input.index}});
+            }
+            for (auto input : declaration.program_storage_inputs)
+            {
+                if (std::ranges::find(declaration.storage_inputs, input) == declaration.storage_inputs.end())
+                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, input.index}});
+                if (std::ranges::count(declaration.program_storage_inputs, input) != 1)
+                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, input.index}});
+            }
+            for (auto output : declaration.outputs)
+            {
+                if (output.index >= writers.size())
+                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output.index}});
+                auto& writer = writers[output.index];
+                if (writer != kGraphInvalidIndex)
+                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, output.index}});
+                writer = i;
+            }
+            for (auto output : declaration.gpu_buffers)
+            {
+                const auto buffer = std::ranges::find(definition.buffers, output, &PreparationDefinition::Buffer::resource);
+                if (buffer == definition.buffers.end() || buffer->node != definition.producers[i].node)
+                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output.index}});
+                auto& writer = buffer_writers[output.index];
+                if (writer != kGraphInvalidIndex)
+                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, output.index}});
+                writer = i;
+            }
+            for (auto pass : declaration.inline_blocks)
+            {
+                if (pass.index >= inline_writers.size())
+                    return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
+                const auto* parameters = source.passes()[pass.index].bindings().parameters;
+                if (!parameters || !parameters->inline_constant.layout)
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
+                if (inline_writers[pass.index])
+                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {pass.index}});
+                inline_writers[pass.index] = true;
+                if (std::ranges::find(producer.passes, pass) == producer.passes.end())
+                    producer.passes.push_back(pass);
+            }
+            if (producer.passes.empty() && declaration.outputs.empty() && declaration.gpu_buffers.empty())
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {i}});
+            for (auto pass : producer.passes)
+            {
+                if (pass.index >= liveness.pass_producers.size())
+                    return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
+                liveness.pass_producers[pass.index].push_back(i);
+            }
+        }
+        for (const auto& buffer : definition.buffers)
+        {
+            if (buffer_writers[buffer.resource.index] == kGraphInvalidIndex)
+                return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, buffer.resource.index}});
+        }
+        for (std::uint32_t pass = 0; pass < source.passes().size(); ++pass)
+        {
+            auto& producers = liveness.pass_producers[pass];
+            for (const auto& access : source.passes()[pass].uses)
+            {
+                const bool frame_buffer_fallback = access.fallback &&
+                    source.resources()[access.fallback->resource.index].origin == EGraphOrigin::FRAME_BUFFER;
+                if (frame_buffer_fallback)
+                    return cxx::unexpected(RenderError{
+                        kGraphInvalidDescriptor, {pass, access.fallback->resource.index}
+                    });
+                const auto resource = access.version.resource.index;
+                const auto writer = buffer_writers[resource];
+                if (writer == kGraphInvalidIndex) continue;
+                const bool gpu_written = source.resources()[resource].origin == EGraphOrigin::FRAME_BUFFER;
+                const bool invalid_access = gpu_written ? !access.whole_resource : access.access != EGraphAccess::READ;
+                if (invalid_access || access.fallback)
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass, resource}});
+                if (std::ranges::find(producers, writer) == producers.end()) producers.push_back(writer);
+            }
+        }
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            const auto& inputs = definition.producers[i].declaration.inputs;
+            for (auto input : inputs)
+            {
+                if (input.index >= writers.size())
+                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, input.index}});
+                const auto writer = writers[input.index];
+                if (writer == kGraphInvalidIndex)
+                    return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, input.index}});
+                liveness.producers[i].inputs.push_back(writer);
+                successors[writer].push_back(i);
+                ++indegree[i];
+            }
+        }
+        std::vector<std::uint32_t> order;
+        order.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            if (indegree[i] == 0) order.push_back(i);
+        }
+        for (std::size_t i = 0; i < order.size(); ++i)
+        {
+            for (auto successor : successors[order[i]])
+            {
+                if (--indegree[successor] == 0) order.push_back(successor);
+            }
+        }
+        if (order.size() != count) return cxx::unexpected(RenderError{kGraphDependencyCycle});
+        auto analysis = detail::analyzeGraphWithPreparation(source, &liveness);
+        if (!analysis) return cxx::unexpected(analysis.error());
+        for (auto producer : order)
+        {
+            if (liveness.producers[producer].live) definition.live_order.push_back(producer);
+        }
+        return analysis;
+    }
+} // namespace lux::render::runtime_detail

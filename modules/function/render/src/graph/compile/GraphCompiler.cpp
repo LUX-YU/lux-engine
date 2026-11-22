@@ -825,9 +825,10 @@ namespace lux::render::detail
     }
 
     exec::task<RenderResult<void>>
-    GraphCompiler::Workspace::prepareOperations(PreparedRenderGraph& candidate, execution::CpuScheduler cpu) noexcept
+    GraphCompiler::Workspace::prepareOperations(
+        DeviceSession& session, PreparedRenderGraph& candidate, execution::CpuScheduler cpu
+    ) noexcept
     {
-        auto& session = *candidate.owner_;
         const auto& plan = candidate.executable;
         auto& native = candidate.programs;
         const auto& graph = source.graph;
@@ -1059,12 +1060,6 @@ namespace lux::render::detail
         {
             diagnostics.resource_keys.push_back(resource.key);
         }
-        auto& assembly = candidate.assembly;
-        assembly.source_pass_slots.resize(graph.passes().size());
-        for (std::uint32_t slot = 0; slot < analysis.execution_order.size(); ++slot)
-        {
-            assembly.source_pass_slots[analysis.execution_order[slot].index] = {slot};
-        }
         candidate.diagnostics = std::move(diagnostics);
         return {};
     }
@@ -1103,7 +1098,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(structure.error());
         }
         PreparedRenderGraph candidate(session, std::move(*structure));
-        auto prepared = co_await workspace->prepareOperations(candidate, cpu);
+        auto prepared = co_await workspace->prepareOperations(session, candidate, cpu);
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());

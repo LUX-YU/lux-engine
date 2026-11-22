@@ -351,6 +351,13 @@ namespace lux::render::runtime_detail
                 return ResourceVersion{*resource, 0};
             }
 
+            RenderResult<void>
+            declareInlineCopy(GraphPassId pass, extension_detail::InlineBlockInput input) noexcept override
+            {
+                workspace_.preparation.inline_copies.push_back({node_.source, pass, input});
+                return {};
+            }
+
             RenderResult<void> addPreparation(GraphPreparation recipe) noexcept override
             {
                 if (workspace_.preparation.producers.size() >= kGraphInvalidIndex)
@@ -606,7 +613,7 @@ namespace lux::render::runtime_detail
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p, resource.index}});
             }
         }
-        auto analysis = analyzePreparedGraph(*source, preparation);
+        auto analysis = analyzePreparedGraph(*source, preparation, contract.device.shader_target);
         if (!analysis) return cxx::unexpected(analysis.error());
         for (const auto pass : analysis->execution_order)
         {
@@ -620,9 +627,9 @@ namespace lux::render::runtime_detail
                     const bool typed = shader && std::ranges::any_of(shader->resources, [&](const auto& parameter)
                     {
                         return parameter.access.version.resource == resource &&
-                            parameter.uniform_constant.type == uniform->source.block.type &&
-                            parameter.uniform_constant.layout == uniform->source.block.layout &&
-                            parameter.uniform_constant.bytes == uniform->source.block.bytes;
+                            sameBlockContract(
+                                parameter.uniform_constant, uniform->source.block, contract.device.shader_target
+                            );
                     });
                     const auto* range = std::get_if<GraphBufferRange>(&use.range);
                     const bool valid_range = range && range->offset == 0 && range->size == uniform->source.block.bytes;

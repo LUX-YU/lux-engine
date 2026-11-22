@@ -2,9 +2,8 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/effect/UniformBlockVersions.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <memory>
 #include <vector>
@@ -29,16 +28,6 @@ namespace lux::render::runtime_detail
         cxx::SlotKey<detail::GraphReaderTag> reader{};
     };
 
-    struct JobGraphPlan final
-    {
-        detail::RenderGraphExecutable executable;
-        detail::NativeProgramBindings programs;
-        std::vector<GraphResourceId> target_imports;
-        std::vector<GraphResourceId> storage_imports;
-        detail::PreparationPlan preparation;
-        std::vector<detail::LinkedUniformBlock> uniforms{};
-    };
-
     struct JobExecution final
     {
         JobExecution(detail::DeviceEntry&, const detail::EffectDeviceVariant&, TargetId, detail::TargetOutput) noexcept;
@@ -52,7 +41,7 @@ namespace lux::render::runtime_detail
         DeviceSessionId device;
         detail::DeviceVariantId variant;
         TargetId target;
-        const JobGraphPlan* const graph_plan;
+        const compiled::RenderGraph& graph;
         const detail::RenderGraphExecutable& executable;
         detail::RenderGraphInstance instance;
         std::uint32_t pending_uses = 0;

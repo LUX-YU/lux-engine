@@ -31,7 +31,7 @@ namespace lux::render::detail
             void (*complete)(void*, EffectVariantResult) noexcept;
         };
         std::vector<Waiter> waiters;
-        std::unique_ptr<const runtime_detail::JobGraphPlan> plan;
+        std::unique_ptr<const compiled::RenderGraph> plan;
         RenderError failure;
         std::uint32_t readers = 1;
     };

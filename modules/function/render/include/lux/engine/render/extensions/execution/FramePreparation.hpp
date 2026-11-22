@@ -56,14 +56,6 @@ namespace lux::render
         std::uint32_t slot_;
     };
 
-    template <CpuPreparationValue T> class NodeStateSlot final
-    {
-        friend class FramePreparation;
-        friend class InstanceLinkContext;
-        explicit constexpr NodeStateSlot(std::uint32_t slot) noexcept : slot_(slot) {}
-        std::uint32_t slot_;
-    };
-
     template <ShaderConstantBlock T> class InlineConstantWriter final
     {
         friend class FramePreparation;
@@ -96,16 +88,6 @@ namespace lux::render
             auto selected = readStorageValue(slot.slot_, cxx::make_basic_type_info<T>());
             if (!selected) return cxx::unexpected(selected.error());
             return PreparedStorageSnapshot<T>{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
-        }
-
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<T> readNodeState(NodeStateSlot<T> slot) const noexcept
-        {
-            auto selected = readNodeStateBytes(slot.slot_, sizeof(T));
-            if (!selected) return cxx::unexpected(selected.error());
-            std::array<std::byte, sizeof(T)> bytes;
-            std::memcpy(bytes.data(), selected->data(), bytes.size());
-            return std::bit_cast<T>(bytes);
         }
 
         template <CpuPreparationValue T>
@@ -156,8 +138,6 @@ namespace lux::render
     private:
         [[nodiscard]] virtual RenderResult<extension_detail::SelectedStorageSnapshot>
         readStorageValue(std::uint32_t, cxx::basic_type_info) const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<std::span<const std::byte>>
-        readNodeStateBytes(std::uint32_t, std::size_t) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<SelectedBytes> readBytes(std::uint32_t, std::size_t) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept = 0;
         [[nodiscard]] virtual RenderResult<void>

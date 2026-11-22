@@ -179,11 +179,18 @@ Declare whole-buffer accesses and use the version produced by the GPU write for 
 Each writable frame keeps its own growable allocation. Descriptors and indirect draw ranges are checked against
 the selected logical size.
 
-A node can give its producer a typed snapshot by initializing its state with
-`EffectInitializationContext::initializeState` and resolving that type with
-`InstanceLinkContext::resolveNodeState<T>()`. `FramePreparation::readNodeState` returns a value selected on
-the Server owner before any producer runs. The linked slot belongs to the producer and follows the Effect's
-lifetime. Command dispatch updates the logical state, and recording consumes the prepared inline bytes.
+A node initializes its state with `EffectInitializationContext::initializeState`. Producers use
+`InstanceLinkContext::resolveEffectInput<T>()` to link a typed input slot and `FramePreparation::read(slot)`
+to read the selected value. The compiled graph contains input indices. Each Job binds those indices to its
+Effect and captures their bytes on the Server owner before invoking producers.
+Rebuild external producers against these installed headers. Calls to the former `resolveNodeState<T>()` and
+`readNodeState(slot)` become `resolveEffectInput<T>()` and `read(slot)`; the latter returns the value and its
+selection revision. A domain-specific revision stored inside the value remains available as part of that value.
+
+For a pass that consumes a complete constant member, declare the pass's typed inline range, then call
+`context.copyInlineBlock<Block, State, &State::member>(pass)`. The compiler checks the block's type, size,
+alignment and target layout and rejects a second writer. Frame preparation copies the selected block to the
+writable frame after the producers succeed. ToneMapping uses this declaration for exposure.
 
 Use `ToneMapping::definition()` to author the built-in HDR-to-display node. Choose the `linear` or `srgb`
 implementation, connect a `lux.color.linear-hdr` input to `hdr_color`, and consume the display value from
@@ -476,7 +483,9 @@ preserves its predecessor; it cannot manufacture initialized contents outside th
 
 EffectGraph validation checks node versions, semantic edge compatibility and output names. Lowering invokes
 the selected implementations in topological order. Only live nodes and demanded outputs produce GPU work.
-The RenderGraph compiler then resolves resource versions and liveness for GPU passes and CPU producers.
+The Effect compiler owns lowering, resource liveness, native program acquisition and linking of CPU inputs
+and output bindings. It publishes the immutable graph when these stages succeed. Native program bindings
+release their device-cache uses on destruction, including when a later link fails.
 
 Use `nextWriteVersion` and `addComputeSequence` to declare a read of a preceding dispatch within one logical
 Compute pass. The Builder commits the sequence as a unit and returns the final written version of each resource.

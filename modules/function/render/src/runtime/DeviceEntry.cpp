@@ -100,7 +100,6 @@ namespace lux::render::detail
         {
             const bool finished = variant->plan || variant->failure.type;
             if (!finished || !variant->waiters.empty()) std::terminate();
-            if (variant->plan) session().programs().releaseBindings(variant->plan->programs);
             variants_.erase(id);
         }
     }

@@ -52,11 +52,15 @@ namespace lux::render::detail
             RasterMaterialStorage* materials = nullptr;
         };
 
+        struct PreparationSources final
+        {
+            std::vector<SnapshotSource> snapshots;
+            std::vector<RasterOwners> raster_owners;
+            std::vector<std::span<const std::byte>> effect_values;
+        };
+
         [[nodiscard]] RenderResult<void>
-        createProducers(
-            const PreparationPlan&, const ResourceRegistry&, std::span<const SnapshotSource>,
-            std::vector<RasterOwners>
-        ) noexcept;
+        createProducers(const PreparationPlan&, const ResourceRegistry&, PreparationSources) noexcept;
         [[nodiscard]] RenderResult<void> prepareProducers(std::uint32_t frame_slot) noexcept;
         void bindPreparationOwner(RenderJobId job, std::uint64_t generation) noexcept
         {
@@ -338,7 +342,6 @@ namespace lux::render::detail
             ProducerWorkspace workspace;
             std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
-            std::vector<std::byte> node_state;
             std::vector<std::uint32_t> runtime_streams{};
             std::span<const std::uint32_t> program_snapshots{};
             std::vector<std::uint64_t> program_revisions{};
@@ -368,6 +371,7 @@ namespace lux::render::detail
         };
 
         const ResourceRegistry* snapshot_registry_ = nullptr;
+        std::vector<std::span<const std::byte>> effect_values_;
         std::vector<RasterOwners> raster_owners_;
         std::vector<StorageSnapshot> storage_snapshots_;
         std::vector<Producer> producers_;

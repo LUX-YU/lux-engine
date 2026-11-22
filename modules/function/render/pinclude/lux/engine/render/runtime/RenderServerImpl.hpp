@@ -146,8 +146,8 @@ namespace lux::render
         [[nodiscard]] std::vector<detail::JobRelationEntry> jobRelations() noexcept;
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
-
-        [[nodiscard]] RenderResult<void> assembleExecution(JobExecution&, const JobBinding&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        assembleExecution(JobExecution&, const JobBinding&, const RenderEffect&) noexcept;
 
         [[nodiscard]] RenderResult<std::vector<EffectTargetImport>>
         qualifyEffectTargetImports(std::span<const TargetImageInput>) const noexcept;
@@ -156,11 +156,7 @@ namespace lux::render
         qualifyEffectImports(const detail::DeviceEntry&, const JobBinding&) const noexcept;
 
         exec::task<detail::EffectVariantResult> acquireEffectVariant(
-            EffectId, RenderEffect&, detail::DeviceEntry&, EffectOutputDesc, const EffectImportContracts&
-        ) noexcept;
-
-        exec::task<RenderResult<std::unique_ptr<const JobGraphPlan>>> compileEffectVariant(
-            EffectId, RenderEffect&, detail::DeviceEntry&, const EffectOutputDesc&, const EffectImportContracts&
+            EffectId, detail::DeviceEntry&, EffectOutputDesc, const EffectImportContracts&
         ) noexcept;
 
         enum class EJobStartMode : std::uint8_t { START, REBIND };

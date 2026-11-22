@@ -445,10 +445,10 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
     auto instance = std::make_unique<RenderGraphInstance>(*session, 3, plan.executable, plan.programs);
-    const auto count_pass = plan.assembly.source_pass_slots[generated.pass.index].index;
+    const auto count_pass = plan.diagnostics.passSlot(generated.pass);
     CHECK(count_pass != kGraphInvalidIndex);
     CHECK(instance->initialize());
-    plan.assembly = {};
+    plan.diagnostics = {};
     IndirectCountConstants count_input{1};
     const auto bytes = std::as_bytes(std::span{&count_input, 1});
     const std::array instances{instance.get()};
@@ -1721,7 +1721,7 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     CHECK(take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{});
     instance.setViewport({0, 0, 0.5f, 1});
     CHECK((take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{0, 1}));
-    const auto stream_slot = plan.assembly.source_pass_slots[drawn.pass.index].index;
+    const auto stream_slot = plan.diagnostics.passSlot(drawn.pass);
     instance.rasterDraws(plan.executable.passes()[stream_slot], 0).parameters.resize(4);
     CHECK((take(instance.prepareFrame(0)) && instance.lastFrozenPatches(0) == Counts{0, 1}));
     core.GetTextureDesc = RecordTextureQueries::original;
@@ -1890,7 +1890,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     EndFailure::original = core.EndCommandBuffer;
     EndFailure::calls = 0;
     core.EndCommandBuffer = &EndFailure::end;
-    const auto changed = plan.assembly.source_pass_slots[fixture.graph.passes().size() - 1].index;
+    const auto changed = plan.diagnostics.passSlot({static_cast<std::uint32_t>(fixture.graph.passes().size() - 1)});
     const auto expected_batch = plan.executable.passes()[changed].submission;
     for (std::uint32_t batch = 0; batch < bounds.size(); ++batch)
     {

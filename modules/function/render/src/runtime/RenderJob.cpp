@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <exec/create.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/device/NativeResult.hpp>
+#include <lux/engine/render/graph/compile/EffectCompileRequest.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
@@ -365,105 +365,8 @@ namespace lux::render
         return imports;
     }
 
-    exec::task<RenderResult<std::unique_ptr<const JobGraphPlan>>> RenderServer::Impl::compileEffectVariant(
-        EffectId effect_id, RenderEffect& effect, detail::DeviceEntry& entry, const EffectOutputDesc& target,
-        const EffectImportContracts& imports
-    ) noexcept
-    {
-        const auto& session = entry.session();
-        const auto& features = session.enabledFeatures();
-        const auto& limits = session.description();
-        const auto& dispatch = limits.shaderStage.compute.dispatchMaxDim;
-        const EffectBuildDevice device{
-            features.shader_target, session.usesDeviceAddresses(), features.indirect_first_instance,
-            {dispatch[0], dispatch[1], dispatch[2]}, limits.memory.storageBufferMaxRange,
-            limits.dimensions.textureLayerMaxNum
-        };
-        const EffectRecipeView recipe{*effect.source, effect.node_configurations};
-        const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
-        auto built = co_await (
-            stdexec::schedule(cpu_scheduler_) |
-            stdexec::then([&]() noexcept
-            {
-                return lowerEffectGraph(
-                    recipe, effect_catalog_, {target, device, imports}, config_.diagnostics
-                );
-            }) |
-            stdexec::upon_stopped([]() noexcept -> RenderResult<EffectGraphBuild>
-            {
-                return cxx::unexpected(RenderError{kCpuStopped});
-            }) |
-            stdexec::continues_on(owner) |
-            stdexec::upon_error(detail::NativeDeliveryFailure<EffectGraphBuild>{})
-        );
-        if (!built) co_return cxx::unexpected(built.error());
-        if (stop_requested_.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
-
-        auto plan = co_await detail::GraphCompiler::compile(
-            entry.session(), cpu_scheduler_, {built->source, built->analysis}, {.target = built->output}
-        );
-        if (!plan) co_return cxx::unexpected(plan.error());
-        if (stop_requested_.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
-
-        for (auto& slot : built->target_imports)
-        {
-            if (slot.index == kGraphInvalidIndex) continue;
-            const auto& resource = plan->executable.resources()[slot.index];
-            if (!resource.memory_used) slot = {};
-            else if (!resource.sampled_target_input)
-                co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
-        }
-        for (auto& slot : built->storage_imports)
-        {
-            if (slot.index != kGraphInvalidIndex && !plan->executable.resources()[slot.index].memory_used) slot = {};
-        }
-        auto preparation = linkPreparation(*built, *plan, effect);
-        if (!preparation) co_return cxx::unexpected(preparation.error());
-        std::vector<detail::LinkedUniformBlock> uniforms;
-        std::vector<detail::UniformPoolId> created_pools;
-        cxx::scope_exit rollback_pools([&]() noexcept
-        {
-            for (const auto pool : created_pools) entry.eraseUniformPool(pool);
-        });
-        for (const auto& block : built->uniforms)
-        {
-            if (!plan->executable.resources()[block.resource.index].memory_used) continue;
-            if (!entry.uploader()) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
-            const auto state = std::ranges::find(effect.node_states, block.node, &RenderEffect::NodeState::node);
-            if (state == effect.node_states.end() || state->type != block.source.state_type)
-                co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            auto pool = entry.findUniformPool(effect_id, block.node, block.name);
-            if (!pool.isNull() && !entry.uniformPool(pool).versions.matches(block.source))
-                co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
-            if (pool.isNull())
-            {
-                pool = entry.createUniformPool(effect_id, block.node, block.name, block.source);
-                created_pools.push_back(pool);
-            }
-
-            auto& linked = uniforms.emplace_back(pool, block.resource, std::vector<std::uint32_t>{});
-            for (const auto& access : plan->executable.importedAccesses())
-            {
-                if (access.resource != block.resource) continue;
-                linked.batches.push_back(access.batch);
-                linked.batches.push_back(access.release_batch);
-            }
-            std::ranges::sort(linked.batches);
-            const auto duplicates = std::ranges::unique(linked.batches);
-            linked.batches.erase(duplicates.begin(), duplicates.end());
-        }
-        rollback_pools.release();
-        co_return std::make_unique<const JobGraphPlan>(JobGraphPlan{
-            std::move(plan->executable), std::move(*plan).takePrograms(),
-            std::move(built->target_imports), std::move(built->storage_imports), std::move(*preparation),
-            std::move(uniforms)
-        });
-    }
-
     exec::task<detail::EffectVariantResult> RenderServer::Impl::acquireEffectVariant(
-        EffectId id, RenderEffect& effect, detail::DeviceEntry& entry, EffectOutputDesc target,
+        EffectId id, detail::DeviceEntry& entry, EffectOutputDesc target,
         const EffectImportContracts& imports
     ) noexcept
     {
@@ -492,7 +395,13 @@ namespace lux::render
 
         auto& variant = entry.beginVariant(id, target, imports);
         const auto identity = variant.id;
-        auto compiled = co_await compileEffectVariant(id, effect, entry, target, imports);
+        const auto& effect = *runtime_->effects_.find(id);
+        detail::EffectCompileRequest request{id, {*effect.source, effect.node_configurations}, {}, target, imports};
+        request.inputs.reserve(effect.node_states.size());
+        for (const auto& state : effect.node_states) request.inputs.push_back({state.node, state.type, state.bytes});
+        auto compiled = co_await detail::GraphCompiler::compileEffect(
+            entry, std::move(request), {effect_catalog_, cpu_scheduler_, config_.diagnostics, stop_requested_}
+        );
         auto waiters = std::exchange(variant.waiters, {});
         const auto deliver = [&](const detail::EffectVariantResult& result) noexcept
         {
@@ -564,7 +473,7 @@ namespace lux::render
         std::ranges::sort(binding.resources, {}, &JobResourceInput::binding);
         auto imports = qualifyEffectImports(entry, binding);
         if (!imports) co_return AckResponse{imports.error()};
-        const auto variant = co_await acquireEffectVariant(effect_id, *effect, entry, output_contract, *imports);
+        const auto variant = co_await acquireEffectVariant(effect_id, entry, output_contract, *imports);
         cxx::scope_exit release_variant([&]() noexcept { if (variant) entry.releaseVariant(*variant); });
         if (stop_requested_.load()) co_return AckResponse{RenderError{kCommandCancelled}};
         if (!job.control.canPublishStart(reservation.start_serial))
@@ -591,7 +500,7 @@ namespace lux::render
         cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
         candidate->storage_start = reservation;
         candidate->view_parameters = view_parameters;
-        if (auto assembled = assembleExecution(*candidate, binding); !assembled)
+        if (auto assembled = assembleExecution(*candidate, binding, *effect); !assembled)
             co_return AckResponse{assembled.error()};
 
         if (view_parameters)

@@ -5,8 +5,16 @@
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 #include <optional>
 
+namespace lux::render::compiled
+{
+    struct RenderGraph;
+}
+
 namespace lux::render::detail
 {
+    class DeviceEntry;
+    struct EffectCompileRequest;
+    struct EffectCompileEnvironment;
     struct GraphQueuePolicy final
     {
         GraphQueueCosts costs;
@@ -37,6 +45,10 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC GraphCompiler final
     {
     public:
+        using EffectResult = RenderResult<std::unique_ptr<const compiled::RenderGraph>>;
+        [[nodiscard]] static exec::task<EffectResult>
+        compileEffect(DeviceEntry&, EffectCompileRequest, EffectCompileEnvironment) noexcept;
+
         // The graph and analysis live through task completion. Options are owned by the compile task.
         [[nodiscard]] static exec::task<RenderResult<PreparedRenderGraph>>
         compile(DeviceSession&, execution::CpuScheduler, AnalyzedGraph, GraphCompileOptions = {}) noexcept;

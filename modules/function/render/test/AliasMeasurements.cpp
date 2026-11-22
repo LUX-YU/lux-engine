@@ -412,7 +412,7 @@ namespace
         std::array<SubmissionQueue*, 2> queues;
         for (unsigned i = 0; i < queues.size(); ++i)
         {
-            const auto slot = plan.assembly.source_pass_slots[workload.dispatches[i].index].index;
+            const auto slot = plan.diagnostics.passSlot(workload.dispatches[i]);
             queues[i] = &device.queue(plan.executable.passes()[slot].queue);
         }
         const bool distinct = queues[0] != queues[1];

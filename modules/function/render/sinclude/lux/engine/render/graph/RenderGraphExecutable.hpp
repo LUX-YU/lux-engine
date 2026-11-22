@@ -12,7 +12,6 @@
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/PassValues.hpp>
-#include <lux/engine/render/graph/GraphAssemblyPlan.hpp>
 #include <lux/engine/render/graph/CommandPackets.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <memory>
@@ -499,7 +498,7 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] std::size_t size() const noexcept { return slots_.size(); }
-        [[nodiscard]] const nri::Device* device() const noexcept { return device_; }
+        [[nodiscard]] const nri::Device* device() const noexcept;
         [[nodiscard]] nri::Descriptor* sampler(std::uint32_t slot) const noexcept { return samplers_[slot]; }
         [[nodiscard]] const CompiledRasterStream* rasterStream(std::uint32_t pass) const noexcept
         {
@@ -510,9 +509,9 @@ namespace lux::render::detail
         friend class GraphCompiler;
         friend class CompiledPrograms;
         friend struct PreparedRenderGraph;
-        NativeProgramBindings(nri::Device& device, std::size_t slots) noexcept;
+        NativeProgramBindings(DeviceSession&, std::size_t slots) noexcept;
 
-        const nri::Device* device_;
+        DeviceSession* owner_;
         std::vector<NativeProgramSlot> slots_;
         std::vector<nri::Descriptor*> samplers_; // Borrowed from this device's DescriptorTable.
         std::vector<std::unique_ptr<CompiledRasterStream>> streams_;
@@ -528,6 +527,7 @@ namespace lux::render::detail
 
     struct GraphCompileDiagnostics final
     {
+        [[nodiscard]] LUX_RENDER_PUBLIC std::uint32_t passSlot(GraphPassId) const noexcept;
         std::vector<GraphPassId> source_passes;
         std::vector<std::string> resource_keys;
         std::vector<EResourceReuse> resource_reuse;
@@ -538,16 +538,13 @@ namespace lux::render::detail
     {
         PreparedRenderGraph(PreparedRenderGraph&&) noexcept;
         ~PreparedRenderGraph() noexcept;
-        [[nodiscard]] NativeProgramBindings takePrograms() && noexcept;
 
         RenderGraphExecutable executable;
         NativeProgramBindings programs;
-        GraphAssemblyPlan assembly;
         GraphCompileDiagnostics diagnostics;
 
     private:
         friend class GraphCompiler;
         PreparedRenderGraph(DeviceSession&, RenderGraphExecutable) noexcept;
-        DeviceSession* owner_;
     };
 } // namespace lux::render::detail

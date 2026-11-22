@@ -76,8 +76,6 @@ namespace lux::render::detail
         [[nodiscard]] static ProgramId identity(const Program&) noexcept;
         [[nodiscard]] static LayoutId identity(const Layout&) noexcept;
 
-        void releaseBindings(const NativeProgramBindings&) noexcept;
-
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
         void release(std::size_t count, cxx::function_ref<ProgramId(std::size_t) noexcept> get) noexcept;
 
@@ -85,6 +83,9 @@ namespace lux::render::detail
         void clear() noexcept;
 
     private:
+        friend class NativeProgramBindings;
+        void releaseBindings(const NativeProgramBindings&) noexcept;
+
         [[nodiscard]] Program* find(const RasterProgramKey*, const Lookup&, std::uint64_t after) noexcept;
         [[nodiscard]] Program* publish(RasterProgramKey*, const Lookup&, nri::Pipeline*) noexcept;
         [[nodiscard]] Program& resolve(ProgramId) noexcept;

@@ -41,7 +41,7 @@ if(WIN32)
     add_test(NAME installed.render.material_commands_d3d12 COMMAND installed_material_commands d3d12)
 endif()
 
-set(compute_source "${render_test_sources}/shaders/GraphFill.slang")
+set(compute_source "${CMAKE_CURRENT_LIST_DIR}/ComputeOutput.slang")
 set(compute_header "${CMAKE_CURRENT_BINARY_DIR}/GraphFill.hpp")
 add_custom_command(
     OUTPUT "${compute_header}"

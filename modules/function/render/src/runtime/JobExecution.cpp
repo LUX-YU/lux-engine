@@ -16,8 +16,8 @@ namespace lux::render::runtime_detail
         detail::TargetOutput physical
     ) noexcept
         : effect(selected.effect), device(entry.id), variant(selected.id), target(output),
-          graph_plan(selected.plan.get()), executable(graph_plan->executable),
-          instance(entry.session(), entry.frameProgress().frameCount(), executable, graph_plan->programs, physical)
+          graph(*selected.plan), executable(graph.executable),
+          instance(entry.session(), entry.frameProgress().frameCount(), executable, graph.programs, physical)
     {
     }
 
@@ -40,19 +40,22 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
-    RenderResult<void> RenderServer::Impl::assembleExecution(JobExecution& candidate, const JobBinding& binding) noexcept
+    RenderResult<void>
+    RenderServer::Impl::assembleExecution(
+        JobExecution& candidate, const JobBinding& binding, const RenderEffect& effect
+    ) noexcept
     {
         const auto& plan = candidate.executable;
         const auto target_images = std::span(binding.target_images);
         const auto& input = binding.inputs;
         auto& entry = *runtime_->device(candidate.device);
         candidate.target_images.reserve(target_images.size());
-        if (candidate.graph_plan->target_imports.size() != target_images.size())
+        if (candidate.graph.target_imports.size() != target_images.size())
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         for (std::size_t index = 0; index < target_images.size(); ++index)
         {
             const auto& input = target_images[index];
-            const auto id = candidate.graph_plan->target_imports[index];
+            const auto id = candidate.graph.target_imports[index];
             if (id.index == kGraphInvalidIndex) continue;
             const auto* source = runtime_->targets_.find(input.target);
             if (!source || !targetDescription(*source).sampled)
@@ -95,7 +98,7 @@ namespace lux::render
                 candidate.instance.bindImage(id, slot, *images.frames[slot].image);
             }
         }
-        const auto& slots = candidate.graph_plan->storage_imports;
+        const auto& slots = candidate.graph.storage_imports;
         if (slots.size() != binding.resources.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         candidate.storage_inputs.reserve(slots.size());
         auto& registry = runtime_->resources_;
@@ -115,8 +118,17 @@ namespace lux::render
             candidate.storage_inputs.push_back(link);
         }
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
-        const auto& preparation = candidate.graph_plan->preparation;
-        std::vector<detail::RenderGraphInstance::SnapshotSource> sources;
+        const auto& preparation = candidate.graph.preparation;
+        detail::RenderGraphInstance::PreparationSources inputs;
+        inputs.effect_values.reserve(preparation.effect_inputs.size());
+        for (auto input : preparation.effect_inputs)
+        {
+            const auto& state = effect.node_states[input.source];
+            const auto bytes = input.bind ? input.bind(state.value.get()) :
+                std::span{static_cast<const std::byte*>(state.value.get()), state.bytes};
+            inputs.effect_values.push_back(bytes);
+        }
+        auto& sources = inputs.snapshots;
         sources.reserve(preparation.snapshots.size());
         for (const auto& snapshot : preparation.snapshots)
         {
@@ -137,7 +149,7 @@ namespace lux::render
             owner = *storage;
             return {};
         };
-        std::vector<detail::RenderGraphInstance::RasterOwners> raster_owners;
+        auto& raster_owners = inputs.raster_owners;
         raster_owners.reserve(preparation.raster_bindings.size());
         for (const auto& bindings : preparation.raster_bindings)
         {
@@ -152,10 +164,9 @@ namespace lux::render
                     candidate.gpu_resources.push_back(id);
             }
         }
-        if (auto ready = candidate.instance.createProducers(
-                preparation, registry, sources, std::move(raster_owners)
-            ); !ready) return ready;
-        candidate.instance.linkUniformBlocks(candidate.graph_plan->uniforms);
+        if (auto ready = candidate.instance.createProducers(preparation, registry, std::move(inputs)); !ready)
+            return ready;
+        candidate.instance.linkUniformBlocks(candidate.graph.uniforms);
         if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;
         candidate.instance.setViewport(input.viewport);
         candidate.selectViewParameters();

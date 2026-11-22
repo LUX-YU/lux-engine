@@ -17,36 +17,6 @@ namespace lux::render
 {
     namespace
     {
-        class ToneMappingPreparation final
-        {
-        public:
-            using Configuration = GraphPassId;
-
-            struct LinkedData final
-            {
-                NodeStateSlot<detail::TonemapExposure> state;
-                InlineConstantWriter<detail::TonemapConstants> writer;
-            };
-
-            static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& link) noexcept
-            {
-                auto state = link.resolveNodeState<detail::TonemapExposure>();
-                if (!state) return cxx::unexpected(state.error());
-                auto writer = link.resolveInlineConstants<detail::TonemapConstants>(pass);
-                if (!writer) return cxx::unexpected(writer.error());
-                return LinkedData{*state, *writer};
-            }
-
-            struct Workspace final {};
-
-            static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
-            {
-                const auto state = frame.readNodeState(linked.state);
-                if (!state) return cxx::unexpected(state.error());
-                return frame.write(linked.writer, state->constants, state->revision);
-            }
-        };
-
         RenderResult<void>
         initializeToneMapping(EffectInitializationContext& context, std::string_view argument) noexcept
         {
@@ -89,12 +59,9 @@ namespace lux::render
             work->colors.push_back({{{*color, 0}}});
             auto pass = builder.addRasterPass(key, std::move(*work));
             if (!pass) return cxx::unexpected(pass.error());
-            auto configuration = ConfigValue::make(pass->pass);
-            if (!configuration) return cxx::unexpected(configuration.error());
-            if (auto added = context.addPreparation({
-                    ProducerFactory::make<ToneMappingPreparation>(), std::move(*configuration), {}, {}, {pass->pass}
-                }); !added)
-                return added;
+            auto copy = context.copyInlineBlock<detail::TonemapConstants, detail::TonemapExposure,
+                                                &detail::TonemapExposure::constants>(pass->pass);
+            if (!copy) return copy;
             return context.publish(ToneMapping::color, {{ToneMapping::color, pass->written.front()}});
         }
     }

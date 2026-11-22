@@ -305,14 +305,6 @@ namespace lux::render::detail
             return instance_.readStorageSnapshot(linked_.snapshots, slot, type);
         }
 
-        RenderResult<std::span<const std::byte>>
-        readNodeStateBytes(std::uint32_t slot, std::size_t bytes) const noexcept override
-        {
-            if (slot != producer_slot_ || bytes != producer_.node_state.size())
-                return cxx::unexpected(RenderError{kFrameContract, {slot}});
-            return std::span<const std::byte>{producer_.node_state};
-        }
-
         RenderResult<SelectedBytes> readBytes(std::uint32_t slot, std::size_t bytes) const noexcept override
         {
             if (std::ranges::find(linked_.inputs, slot) == linked_.inputs.end())
@@ -427,12 +419,21 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RenderGraphInstance::createProducers(
-        const PreparationPlan& plan, const ResourceRegistry& registry, std::span<const SnapshotSource> sources,
-        std::vector<RasterOwners> raster_owners
+        const PreparationPlan& plan, const ResourceRegistry& registry, PreparationSources inputs
     ) noexcept
     {
-        if (plan.producers.empty()) return {};
+        if (plan.producers.empty() && plan.constant_copies.empty()) return {};
         if (preparation_plan_) return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto& sources = inputs.snapshots;
+        auto& raster_owners = inputs.raster_owners;
+        if (inputs.effect_values.size() != plan.effect_inputs.size())
+            return cxx::unexpected(RenderError{kFrameContract});
+        for (std::size_t i = 0; i < plan.effect_inputs.size(); ++i)
+        {
+            const auto slot = plan.effect_inputs[i].destination.index;
+            if (slot >= plan.cpu_data_bytes.size() || inputs.effect_values[i].size() != plan.cpu_data_bytes[slot])
+                return cxx::unexpected(RenderError{kFrameContract, {slot}});
+        }
         if (sources.size() != plan.snapshots.size()) return cxx::unexpected(RenderError{kStorageContract});
         if (raster_owners.size() != plan.raster_bindings.size())
             return cxx::unexpected(RenderError{kStorageContract});
@@ -461,8 +462,7 @@ namespace lux::render::detail
             if (!data) return cxx::unexpected(data.error());
             auto& producer = producers.emplace_back(
                 std::move(*data), std::vector<PreparedInlineBlock>{},
-                std::vector<OwnedRasterStream>(linked.raster_streams.size()),
-                std::vector<std::byte>(linked.node_state.size())
+                std::vector<OwnedRasterStream>(linked.raster_streams.size())
             );
             for (auto pass : linked.raster_streams)
             {
@@ -497,6 +497,7 @@ namespace lux::render::detail
         if (!program_producers_.empty()) dynamic_raster_programs_.resize(plan_->passes().size());
         storage_snapshots_ = std::move(snapshots);
         raster_owners_ = std::move(raster_owners);
+        effect_values_ = std::move(inputs.effect_values);
         snapshot_registry_ = &registry;
         preparation_plan_ = &plan;
         return {};
@@ -640,9 +641,13 @@ namespace lux::render::detail
         for (auto& buffer : prepared_buffer_inputs_) buffer.source = PreparedBufferInput::ESource::MISSING;
 
         const auto& linked_producers = preparation_plan_->producers;
-        // This runs on the Server owner. Callbacks and recording consume the selected bytes.
-        for (std::size_t i = 0; i < linked_producers.size(); ++i)
-            std::ranges::copy(linked_producers[i].node_state, producers_[i].node_state.begin());
+        // Select each Effect-owned input once on the owner before invoking any producer.
+        for (std::size_t i = 0; i < effect_values_.size(); ++i)
+        {
+            auto& value = cpu_data_[preparation_plan_->effect_inputs[i].destination.index];
+            std::ranges::copy(effect_values_[i], value.bytes.begin());
+            value.written = true;
+        }
         for (std::size_t i = 0; i < linked_producers.size(); ++i)
         {
             const auto& linked = linked_producers[i];
@@ -704,6 +709,11 @@ namespace lux::render::detail
                 );
                 if (!written) return written;
             }
+        }
+        for (const auto& copy : preparation_plan_->constant_copies)
+        {
+            if (auto updated = writeInlineConstant(slot, copy.pass.index, cpu_data_[copy.input.index].bytes, 0); !updated)
+                return updated;
         }
         return {};
     }

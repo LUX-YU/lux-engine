@@ -1,18 +1,18 @@
 #pragma once
 
 #include <lux/engine/function/graph/GraphTypes.hpp>
+#include <lux/engine/render/extensions/effect/EffectUniformBlock.hpp>
 #include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
-
-namespace lux::render::detail
-{
-    struct PreparedRenderGraph;
-}
 
 namespace lux::render::runtime_detail
 {
-    struct RenderEffect;
+    struct EffectInputDefinition final
+    {
+        graph::NodeId node;
+        cxx::basic_type_info type;
+        std::size_t bytes;
+    };
     struct EffectGraphBuild;
 
     struct CpuDataDefinition final
@@ -43,6 +43,14 @@ namespace lux::render::runtime_detail
             graph::NodeId node;
         };
 
+        struct InlineCopy final
+        {
+            graph::NodeId node;
+            GraphPassId pass;
+            extension_detail::InlineBlockInput input;
+        };
+
+        std::vector<InlineCopy> inline_copies;
         std::vector<CpuDataDefinition>  cpu_data;
         std::vector<Buffer>             buffers;
         std::vector<Snapshot>           snapshots;
@@ -53,10 +61,8 @@ namespace lux::render::runtime_detail
         std::vector<std::uint32_t>      live_order;
     };
 
+    [[nodiscard]] bool sameBlockContract(ConstantBlockContract, ConstantBlockContract, rdesc::EShaderTarget) noexcept;
     [[nodiscard]] RenderResult<RenderGraphAnalysis>
-    analyzePreparedGraph(const RenderGraph&, PreparationDefinition&) noexcept;
+    analyzePreparedGraph(const RenderGraph&, PreparationDefinition&, rdesc::EShaderTarget) noexcept;
 
-    [[nodiscard]] RenderResult<detail::PreparationPlan> linkPreparation(
-        const EffectGraphBuild&, const detail::PreparedRenderGraph&, const RenderEffect&
-    ) noexcept;
 } // namespace lux::render::runtime_detail

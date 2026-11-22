@@ -3,13 +3,33 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/extensions/effect/EffectBuildContext.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <cstring>
 #include <future>
 
+struct OutputConstants final
+{
+    float red;
+};
+
+template <> struct lux::render::ConstantBlockTraits<OutputConstants> final
+{
+    static ConstantBlockLayout layout(rdesc::EShaderTarget target) noexcept
+    {
+        static constexpr std::array members{ConstantMemberLayout{"red", 0, rdesc::EDataScalar::FLOAT}};
+        return {sizeof(OutputConstants), target == rdesc::EShaderTarget::DXIL ? 16u : 4u, members};
+    }
+};
+
 namespace
 {
+    struct OutputState final
+    {
+        OutputConstants previous{0.75f}; // A wrong projection produces a different red channel.
+        OutputConstants constants{0.25f};
+    };
     namespace graph = lux::graph;
 
     // The deferred Editor consumer initializes the first slot positionally.
@@ -370,9 +390,12 @@ namespace
         const auto output = take(builder.declareResource({"compute output", image}));
         ComputeWork work;
         work.interface.program = take(builder.addProgram(GraphProgram{kGraphFill.load(context.shaderTarget())}));
+        work.interface.parameters.setInlineConstant(OutputConstants{0});
         work.interface.resources = {{"generated", {{generated, 0}, {}, EGraphAccess::WRITE}}};
         work.dispatch = ImageDispatchArguments{generated};
         const auto dispatch = take(builder.addComputePass("generate compute color", std::move(work)));
+        if (auto linked = context.copyInlineBlock<OutputConstants, OutputState, &OutputState::constants>(dispatch.pass);
+            !linked) return linked;
         const auto copied = take(builder.addTransferPass(
             "copy compute color", TransferWork{{CopyImage{{dispatch.written.front()}, {{output, 0}}}}}
         ));
@@ -404,23 +427,22 @@ namespace
         return context.publish(pixels, {{pixels, complete.written.front()}});
     }
 
-    void registerNode(
-        RenderServer& server, const CapabilityDefinition& capability, graph::PinSemanticId output,
-        EffectImplementation::Build build
-    )
+    template <EffectImplementation::Build Build>
+    void registerNode(RenderServer& server, const CapabilityDefinition& capability, graph::PinSemanticId output)
     {
         CHECK(server.registerEffectCapability(capability));
         EffectImplementation implementation;
         implementation.identity = {capability.identity.canonical_name, capability.identity.version};
         implementation.capability = capability.identity.id;
         implementation.supported_outputs = {output};
-        implementation.initialize = [](EffectInitializationContext&, std::string_view arguments) noexcept
+        implementation.initialize = [](EffectInitializationContext& context, std::string_view arguments) noexcept
             -> RenderResult<void>
         {
             if (!arguments.empty()) return lux::cxx::unexpected(RenderError{kInvalidConfig});
+            if constexpr (Build == buildCompute) return context.initializeState<OutputState>();
             return {};
         };
-        implementation.build = build;
+        implementation.build = Build;
         CHECK(server.registerEffectImplementation(std::move(implementation)));
     }
 }
@@ -436,8 +458,8 @@ int main(int argc, char** argv)
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, **execution));
-    registerNode(*server, computeDefinition(), color, buildCompute);
-    registerNode(*server, captureDefinition(), pixels, buildCapture);
+    registerNode<buildCompute>(*server, computeDefinition(), color);
+    registerNode<buildCapture>(*server, captureDefinition(), pixels);
     take(server->registerResource<ComputeCapture>());
     take(server->registerResource<MutableReplica>());
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);

@@ -31,7 +31,7 @@
 #include <lux/engine/render/resources/mesh/Binding.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityInputs.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <thread>
 #include <lux/engine/render/target/OffscreenTarget.hpp>

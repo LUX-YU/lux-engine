@@ -1,3 +1,5 @@
+#include <lux/engine/render/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <algorithm>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
@@ -223,4 +225,25 @@ namespace lux::render::detail
         return {};
     }
 
+} // namespace lux::render::detail
+
+namespace lux::render::detail
+{
+    NativeProgramBindings::NativeProgramBindings() noexcept = default;
+
+    NativeProgramBindings::NativeProgramBindings(NativeProgramBindings&& other) noexcept
+        : owner_(std::exchange(other.owner_, nullptr)), slots_(std::move(other.slots_)),
+          samplers_(std::move(other.samplers_)), streams_(std::move(other.streams_))
+    {
+    }
+
+    NativeProgramBindings::~NativeProgramBindings() noexcept
+    {
+        if (owner_) owner_->programs().releaseBindings(*this);
+    }
+
+    const nri::Device* NativeProgramBindings::device() const noexcept
+    {
+        return owner_ ? &owner_->device() : nullptr;
+    }
 } // namespace lux::render::detail

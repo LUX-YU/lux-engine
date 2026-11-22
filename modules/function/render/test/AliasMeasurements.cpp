@@ -379,7 +379,7 @@ namespace
         {
             FrameHarness retiring_frames(device, 1);
             JobGpuResources retiring_gpu(device, 1);
-            RenderGraphInstance retiring(retiring_gpu, plan.executable, plan.programs, retiring_target.output());
+            RenderGraphInstance retiring(retiring_gpu, plan.graph, retiring_target.output());
             CHECK(retiring.initialize());
             SampleContext pending{device, retiring_frames, retiring, retiring_gpu, capture, sample.queues};
             submitFrame(pending);
@@ -431,12 +431,12 @@ namespace
         for (unsigned i = 0; i < queues.size(); ++i)
         {
             const auto slot = plan.diagnostics.passSlot(workload.dispatches[i]);
-            queues[i] = &device.queue(plan.executable.passes()[slot].queue);
+            queues[i] = &device.queue(plan.graph.passes()[slot].queue);
         }
         const bool distinct = queues[0] != queues[1];
         std::printf("TOPOLOGY,%s,%s,%u,%zu,%zu,%zu\n", backend == EGraphicsBackend::VULKAN ? "Vulkan" : "D3D12",
                     device.description().adapterDesc.name, unsigned(multiple), device.queueIndex(*queues[0]),
-                    device.queueIndex(*queues[1]), plan.executable.submissions().size());
+                    device.queueIndex(*queues[1]), plan.graph.submissions().size());
         if (multiple && !distinct) return 77;
         CHECK(multiple == distinct);
         if (!queues[0]->properties().timestamp_bits || !queues[1]->properties().timestamp_bits) return 77;
@@ -449,7 +449,7 @@ namespace
         NativeCapture capture(device, !inflight);
         {
             JobGpuResources instance_gpu(device, 1);
-            RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs, initial.output());
+            RenderGraphInstance instance(instance_gpu, plan.graph, initial.output());
             CHECK(instance.initialize());
             std::string dump;
             CHECK(instance.dumpResources({&dump, [](void* p, std::string_view value) noexcept

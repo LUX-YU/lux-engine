@@ -9,7 +9,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 
 namespace lux::render::detail

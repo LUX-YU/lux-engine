@@ -4,7 +4,7 @@
 
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::detail
 {
@@ -14,7 +14,7 @@ namespace lux::render::detail
     [[nodiscard]] RenderResult<void>
     validatePassExtent(
         const DeviceSession& session,
-        const RenderGraphExecutable& plan,
+        const compiled::RenderGraph& plan,
         const CompiledPass& pass,
         Lookup binding
     ) noexcept

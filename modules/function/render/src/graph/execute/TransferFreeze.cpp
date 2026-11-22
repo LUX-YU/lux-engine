@@ -141,7 +141,7 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RenderGraphInstance::Pass::freezeCommands(
-        const RenderGraphExecutable& plan, std::span<const PassResourceInput> resources,
+        const compiled::RenderGraph& plan, std::span<const PassResourceInput> resources,
         const nri::DeviceDesc& device, PassNativeInput& native
     ) noexcept
     {

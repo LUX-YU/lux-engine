@@ -1,5 +1,8 @@
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <algorithm>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/execute/PassBindings.hpp>
@@ -47,16 +50,53 @@ namespace lux::render::detail
         }
     }
 
+    RenderResult<std::span<nri::CommandBuffer* const>>
+    FrameExecutor::recordBatch(
+        const FrozenRecordingFrame& frame, const DeviceSession& device, std::uint32_t batch
+    ) noexcept
+    {
+        const bool invalid_batch = batch >= frame.revisions.size() || batch >= frame.native_batches.size() ||
+            batch >= frame.input.plan.submissions().size();
+        if (invalid_batch) return cxx::unexpected(RenderError{kDeviceArgument});
+        auto& recording = frame.revisions[batch];
+        const auto& native = frame.native_batches[batch];
+        if (recording.recording.exchange(true, std::memory_order_acquire))
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        cxx::scope_exit release([&]() noexcept { recording.recording.store(false, std::memory_order_release); });
+        const auto& description = frame.input.plan.submissions()[batch];
+        const bool has_tail = description.output_begin != kGraphInvalidIndex;
+        const std::uint32_t first_part = has_tail && description.output_begin == description.first_pass ? 1u : 0u;
+        const std::uint32_t end_part = has_tail ? 2u : 1u;
+        for (auto part = first_part; part < end_part; ++part)
+        {
+            const bool reusable = part == 0 && description.reusable_recording;
+            if (reusable && recording.revision == recording.recorded_revision) continue;
+            if (part == 0) recording.recorded_revision = 0;
+            auto* command = native.commands[part];
+            auto result = device.resetCommandAllocator(*native.allocators[part]);
+            if (result == nri::Result::SUCCESS) result = device.beginCommandBuffer(*command, reusable);
+            if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
+            auto encoded = recordBatchPart(frame.input, device.nriCore(), *command, {batch, part == 1});
+            result = device.nriCore().EndCommandBuffer(*command);
+            if (!encoded) return cxx::unexpected(encoded.error());
+            if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
+            if (reusable) recording.recorded_revision = recording.revision;
+        }
+        return std::span<nri::CommandBuffer* const>{
+            native.commands.data() + first_part, end_part - first_part
+        };
+    }
+
     RenderResult<void>
     FrameExecutor::recordBatchPart(
         const FrameRecordInput& frame,
         const nri::CoreInterface& core,
         nri::CommandBuffer& command,
-        std::uint32_t batch_index,
-        bool output_tail,
-        BindingState& binding_state
+        BatchPart part
     ) noexcept
     {
+        const auto [batch_index, output_tail] = part;
+        BindingState binding_state;
         const auto& plan = frame.plan;
         const auto& batch = plan.submissions_[batch_index];
         // Logical vertex-resource indices are instance-local. Pipeline and descriptor state
@@ -108,7 +148,7 @@ namespace lux::render::detail
                 binding_state.descriptor_pool = frame.descriptor_pool;
                 binding_state.descriptors = {};
             }
-            const auto& program = frame.programs[compiled.binding_slot];
+            const auto& program = frame.plan.programs()[compiled.binding_slot];
             const auto* scope = plan.recordingProgram().rasterScope(compiled);
             const bool owns_draw_sections = scope && scope->exclusive;
             if (program.descriptors.layout && !pass.native.draws && !owns_draw_sections)

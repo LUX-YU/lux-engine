@@ -41,7 +41,7 @@ namespace lux::render::detail
 
     } // namespace
 
-    PhysicalResourcePlan GraphCompiler::Workspace::planPhysicalResources(const RenderGraphExecutable& plan) noexcept
+    PhysicalResourcePlan GraphCompiler::Workspace::planPhysicalResources(const compiled::RenderGraph& plan) noexcept
     {
         const auto& graph = source.graph;
         const auto source_order = std::span(source.analysis.execution_order);

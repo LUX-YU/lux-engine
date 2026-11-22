@@ -52,14 +52,14 @@ namespace foundation_test
 
         startGraphMeasurements();
         auto instance_gpu = std::make_unique<JobGpuResources>(session, 1);
-        auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, candidate.executable, candidate.programs);
+        auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, candidate.graph);
         const auto construction_allocations = stopGraphMeasurements();
         CHECK(construction_allocations > 0); // Prove the counter observes allocation inside the Render DLL.
         std::printf("construction_allocations=%zu\n", construction_allocations);
         CHECK(instance->initialize());
-        CHECK(candidate.executable.submissions().size() == 1);
-        CHECK(candidate.executable.submissions().front().queue == EQueueRole::GRAPHICS);
-        CHECK(candidate.executable.submissions().front().reusable_recording);
+        CHECK(candidate.graph.submissions().size() == 1);
+        CHECK(candidate.graph.submissions().front().queue == EQueueRole::GRAPHICS);
+        CHECK(candidate.graph.submissions().front().reusable_recording);
 
         const auto& core = session.nriCore();
         nri::QueryPool* queries = nullptr;

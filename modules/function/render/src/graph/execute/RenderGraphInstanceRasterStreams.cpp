@@ -90,9 +90,9 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         for (auto& image : frame.layered_images) image.requested_layers = 0;
 
-        for (const auto p : plan_->binding_plan_->recordings.producer_passes)
+        for (const auto p : graph_.binding_plan_->recordings.producer_passes)
         {
-            if (!programs_->rasterStream(p)) continue;
+            if (!graph_.programs().rasterStream(p)) continue;
             const auto& stream = frame.stream_inputs[p];
             if (!stream.written) return cxx::unexpected(RenderError{kFrameContract, {p}});
             const auto layer_count = static_cast<std::uint32_t>(stream.sections.size());
@@ -102,7 +102,7 @@ namespace lux::render::detail
             const auto matchesLayers = [&](const ResourceAccess& access) noexcept
             {
                 const auto resource = access.version.resource;
-                const auto& desc = std::get<GraphImageDesc>(plan_->resources()[resource.index].description);
+                const auto& desc = std::get<GraphImageDesc>(graph_.resources()[resource.index].description);
                 const auto& range = std::get<GraphImageRange>(access.range);
                 if (!desc.runtime_layers) return !layer_count || range.layer_count == layer_count;
                 if (!layer_count) return false;
@@ -118,7 +118,7 @@ namespace lux::render::detail
             {
                 return matchesLayers(attachment.access) && (!attachment.resolve || matchesLayers(*attachment.resolve));
             };
-            const auto& scope = *plan_->recordingProgram().rasterScope(*frame.passes[p].compiled_pass);
+            const auto& scope = *graph_.recordingProgram().rasterScope(*frame.passes[p].compiled_pass);
             if (scope.section_depth_bias && stream.sections.empty())
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p}});
             const bool compatible = std::ranges::all_of(scope.colors, validAttachment) &&
@@ -174,7 +174,7 @@ namespace lux::render::detail
         if (!candidate.has_explicit_sections) return {};
 
         const auto& pass = frame.passes[p];
-        const auto& scope = *plan_->recordingProgram().rasterScope(*pass.compiled_pass);
+        const auto& scope = *graph_.recordingProgram().rasterScope(*pass.compiled_pass);
         const auto& first = scope.colors.empty() ? *scope.depth : scope.colors.front();
         const auto& first_range = std::get<GraphImageRange>(first.access.range);
         const auto& core = session_->nriCore();
@@ -190,7 +190,7 @@ namespace lux::render::detail
         {
             if (!view) return cxx::unexpected(RenderError{kDeviceArgument, {p}});
             const auto resource = access.version.resource;
-            const auto& desc = std::get<GraphImageDesc>(plan_->resources()[resource.index].description);
+            const auto& desc = std::get<GraphImageDesc>(graph_.resources()[resource.index].description);
             if (desc.runtime_layers)
             {
                 const auto image = std::ranges::find(
@@ -318,16 +318,16 @@ namespace lux::render::detail
 
         auto& candidate = frame.stream_scratch;
         auto& inputs = frame.stream_binding_inputs;
-        for (const auto p : plan_->binding_plan_->recordings.producer_passes)
+        for (const auto p : graph_.binding_plan_->recordings.producer_passes)
         {
-            const auto* stream = programs_->rasterStream(p);
+            const auto* stream = graph_.programs().rasterStream(p);
             if (!stream) continue;
             auto& input = frame.stream_inputs[p];
             const auto* dynamic = stream->runtime ? dynamic_raster_programs_[p].get() : nullptr;
             const auto& selected_programs = dynamic ? dynamic->programs : stream->programs;
 
-            const auto& pass = plan_->passes()[p];
-            const auto& command = std::get<RasterListCommands>(plan_->rasterCommands(pass)->draw);
+            const auto& pass = graph_.passes()[p];
+            const auto& command = std::get<RasterListCommands>(graph_.rasterCommands(pass)->draw);
 
             candidate.vertices.clear();
             candidate.packets.clear();
@@ -391,7 +391,7 @@ namespace lux::render::detail
                     {
                         if (access.resource != source->image.index) return false;
                         auto envelope = access.range;
-                        const auto& desc = std::get<GraphImageDesc>(plan_->resources()[access.resource].description);
+                        const auto& desc = std::get<GraphImageDesc>(graph_.resources()[access.resource].description);
                         if (desc.runtime_layers)
                         {
                             const auto* image = frame.bindings[access.resource].image;
@@ -411,14 +411,14 @@ namespace lux::render::detail
                     if (ambiguous) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p, entry.argument}});
 
                     auto selected = allowed->resource;
-                    const auto history = plan_->resources()[selected].history;
+                    const auto history = graph_.resources()[selected].history;
                     const bool use_fallback = allowed->fallback != kGraphInvalidIndex &&
                         history != kGraphInvalidIndex && !frame.history_valid[history];
                     if (use_fallback) selected = allowed->fallback;
                     auto* image = frame.bindings[selected].image;
                     if (!image) return cxx::unexpected(RenderError{kDeviceArgument, {p, entry.argument}});
                     const auto& description = *frame.bindings[selected].image_description;
-                    const auto graph_format = std::get<GraphImageDesc>(plan_->resources()[selected].description).format;
+                    const auto graph_format = std::get<GraphImageDesc>(graph_.resources()[selected].description).format;
                     const auto format = imageFormat(graph_format).native;
                     const bool valid_mips = validInterval(range.first_mip, range.mip_count, description.mipNum);
                     const bool valid_layers = validInterval(range.first_layer, range.layer_count, description.layerNum);

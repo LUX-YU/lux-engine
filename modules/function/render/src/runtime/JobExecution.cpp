@@ -13,8 +13,7 @@ namespace lux::render::runtime_detail
         detail::TargetOutput physical
     ) noexcept
         : effect(installation.effect), device(installation.device), target(installation.target),
-          graph(selected), executable(graph.executable),
-          instance(gpu, executable, graph.programs, physical),
+          instance(gpu, selected, physical),
           binding_identity(installation.identity)
     {
     }
@@ -34,7 +33,7 @@ namespace lux::render
         const auto& input = binding.inputs;
         auto& entry = *runtime_->device(candidate.device);
         candidate.target_images.reserve(target_images.size());
-        const auto declared_targets = std::span{candidate.graph.target_imports};
+        const auto declared_targets = std::span{candidate.graph().targetImports()};
         if (std::ranges::adjacent_find(target_images, {}, &TargetImageInput::binding) != target_images.end())
             return cxx::unexpected(RenderError{kCommandContract});
         const bool matching_count = target_images.size() == declared_targets.size();
@@ -65,7 +64,7 @@ namespace lux::render
         }
         if (target_images.size() < declared_targets.size()) return cxx::unexpected(RenderError{kRuntimeIdentity});
         if (target_images.size() > declared_targets.size()) return cxx::unexpected(RenderError{kCommandContract});
-        const auto& slots = candidate.graph.storage_imports;
+        const auto& slots = candidate.graph().storageImports();
         if (slots.size() != columns.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         const auto same_binding = [&](const compiled::BindingComparison& comparison) noexcept
         {
@@ -79,8 +78,8 @@ namespace lux::render
                 a.publication == b.publication;
         };
         std::vector<std::uint8_t> selected;
-        selected.reserve(candidate.graph.binding_comparisons.size());
-        for (const auto& comparison : candidate.graph.binding_comparisons) selected.push_back(same_binding(comparison));
+        selected.reserve(candidate.graph().bindingComparisons().size());
+        for (const auto& comparison : candidate.graph().bindingComparisons()) selected.push_back(same_binding(comparison));
         candidate.storage_bindings.reserve(slots.size());
         auto& registry = runtime_->resources_;
         for (std::size_t i = 0; i < slots.size(); ++i)
@@ -94,13 +93,13 @@ namespace lux::render
             BoundStorageProjection link{
                 id, input.projection, compiled.resource, compiled.output_range, compiled.canonical_queue
             };
-            link.uses = std::span(candidate.graph.output_uses).subspan(compiled.first_use, compiled.use_count);
-            const auto exports = std::span{candidate.graph.buffer_exports};
+            link.uses = std::span(candidate.graph().outputUses()).subspan(compiled.first_use, compiled.use_count);
+            const auto exports = std::span{candidate.graph().bufferExports()};
             link.exports = exports.subspan(compiled.first_export, compiled.export_count);
             link.publication = input.publication;
             if (!link.publication && std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
-            const auto& recording = candidate.executable.recordingProgram();
+            const auto& recording = candidate.graph().recordingProgram();
             const bool may_access = !link.output_range || std::ranges::any_of(link.uses, [&](const auto& use)
             {
                 const auto region = recording.passes[use.pass].condition_region;
@@ -119,7 +118,7 @@ namespace lux::render
         candidate.product_count = static_cast<std::size_t>(ordinary.begin() - candidate.storage_bindings.begin());
         if (auto ready = candidate.instance.bindPredicates(std::move(selected)); !ready) return ready;
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
-        const auto& preparation = candidate.graph.preparation;
+        const auto& preparation = candidate.graph().preparation();
         detail::RenderGraphInstance::PreparationSources inputs;
         const auto buffers = entry.effectResources(candidate.effect);
         if (buffers.size() != preparation.constant_buffers.size()) std::terminate();

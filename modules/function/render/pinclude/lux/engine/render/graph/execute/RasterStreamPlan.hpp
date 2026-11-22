@@ -3,7 +3,7 @@
 #include <lux/engine/render/device/ProgramCompileInput.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::detail
 {

@@ -53,7 +53,7 @@ namespace lux::render::detail
         }
     } // namespace
 
-    RecordingDependencies GraphCompiler::Workspace::recordingDependencies(const RenderGraphExecutable& plan) const noexcept
+    RecordingDependencies GraphCompiler::Workspace::recordingDependencies(const compiled::RenderGraph& plan) const noexcept
     {
         RecordingDependencies result;
         const auto batches = plan.submissions();

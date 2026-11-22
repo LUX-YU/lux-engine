@@ -8,23 +8,26 @@
 
 namespace lux::render::detail
 {
-    class RenderGraphInstance;
+    class DeviceSession;
+    struct FrozenRecordingFrame;
     struct BindingState;
     struct FrameRecordInput;
 
-    // Encoding algorithms only. The instance owns exclusive allocators and Begin/End, outside Record.
+    // A worker records one native batch from a frozen frame. Each command buffer has independent binding state.
     class LUX_RENDER_PUBLIC FrameExecutor final
     {
-        friend class RenderGraphInstance;
+    public:
+        [[nodiscard]] static RenderResult<std::span<nri::CommandBuffer* const>>
+        recordBatch(const FrozenRecordingFrame&, const DeviceSession&, std::uint32_t batch) noexcept;
 
-        [[nodiscard]] static RenderResult<void>
-        recordBatchPart(
-            const FrameRecordInput&,
-            const nri::CoreInterface&,
-            nri::CommandBuffer&,
-            std::uint32_t batch,
-            bool output_tail,
-            BindingState&
+    private:
+        struct BatchPart final
+        {
+            std::uint32_t index;
+            bool output_tail;
+        };
+        [[nodiscard]] static RenderResult<void> recordBatchPart(
+            const FrameRecordInput&, const nri::CoreInterface&, nri::CommandBuffer&, BatchPart
         ) noexcept;
 
         static void

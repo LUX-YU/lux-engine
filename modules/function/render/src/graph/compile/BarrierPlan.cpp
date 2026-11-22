@@ -338,7 +338,7 @@ namespace lux::render::detail
 
     RenderResult<void>
     GraphCompiler::Workspace::planBarriers(
-        RenderGraphExecutable& plan, const PhysicalResourcePlan* physical
+        compiled::RenderGraph& plan, const PhysicalResourcePlan* physical
     ) const noexcept
     {
         const auto& graph = source.graph;

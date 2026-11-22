@@ -586,7 +586,11 @@ preserves its predecessor; it cannot manufacture initialized contents outside th
 EffectGraph validation checks node versions, semantic edge compatibility and output names. Lowering invokes
 the selected implementations in topological order. Only live nodes and demanded outputs produce GPU work.
 The Effect compiler owns lowering, resource liveness, native program acquisition and linking of CPU inputs
-and output bindings. It publishes the immutable graph when these stages succeed. Native program bindings
+and output bindings. It publishes one immutable `compiled::RenderGraph` per Effect and device after these stages succeed.
+The graph contains the native program uses, recording, resources, submissions, CPU preparation and linked imports.
+Jobs borrow this graph and keep their own mutable state. Before dispatching CPU recording, the control owner
+selects one frozen frame per Job. Workers receive the command inputs, batch revisions and device-owned native batch
+slots. Each command buffer begins with independent binding state and confirms its recorded revision after a successful End. Source diagnostics can be discarded separately. Native program bindings
 release their device-cache uses on destruction, including when a later link fails.
 
 Use `nextWriteVersion` and `addComputeSequence` to declare a read of a preceding dispatch within one logical
@@ -612,7 +616,7 @@ The compile worker captures the device limits before planning. Recording-only co
 facts to the same planner.
 
 `GraphCompiler::compile(session, cpu, {graph, analysis}, options)` prepares device-qualified programs, descriptor bindings,
-submissions and physical resource layout before publishing the `RenderGraphExecutable`. Shader reflection supplies
+submissions and physical resource layout before publishing the device graph. Shader reflection supplies
 layouts and descriptor writes on SPIR-V and DXIL. Fixed descriptor operands and initial parameter bytes are stored
 in contiguous tables indexed by pass ranges. Descriptor pool counts and instance parameter copies are computed
 during compilation. For fixed samplers the compiler validates ordinary/comparison use, assigns dense slots to live
@@ -640,7 +644,7 @@ The compiler links producers and constant writers to final slots. Job assembly b
 producer instances, writable frame bindings, transient resources and History.
 Standalone project GPU consumers can bind physical inputs directly.
 
-The `RenderGraphExecutable` contains a recording program with typed Raster, Compute and Transfer packet tables,
+The device graph contains a recording program with typed Raster, Compute and Transfer packet tables,
 range transitions and rendering groups. Each live pass stores one typed command slot. The Raster slot also
 selects the per-pass scope, including its viewport and depth bias. Merged groups carry the first load and
 last store across their member passes. Compute and Transfer allocate no raster scope.

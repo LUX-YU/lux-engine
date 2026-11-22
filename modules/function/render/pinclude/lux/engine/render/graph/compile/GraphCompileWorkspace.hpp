@@ -30,19 +30,19 @@ namespace lux::render::detail
         std::vector<std::uint32_t> pass_batches{};
         std::vector<AliasResourceUse> alias_uses{};
 
-        [[nodiscard]] RenderResult<RenderGraphExecutable> planStructure(nri::Device*, const EffectOutputDesc*) noexcept;
+        [[nodiscard]] RenderResult<compiled::RenderGraph> planStructure(const EffectOutputDesc*) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>>
         prepareOperations(DeviceSession&, PreparedRenderGraph&, execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<void> finishDevicePlan(PreparedRenderGraph&) noexcept;
-        [[nodiscard]] RenderResult<void> finishPlan(RenderGraphExecutable&) noexcept;
+        [[nodiscard]] RenderResult<void> finishPlan(compiled::RenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void>
-        planBarriers(RenderGraphExecutable&, const PhysicalResourcePlan* = nullptr) const noexcept;
-        [[nodiscard]] PhysicalResourcePlan planPhysicalResources(const RenderGraphExecutable&) noexcept;
-        [[nodiscard]] bool assignAsyncCompute(RenderGraphExecutable&, std::uint32_t surface_output) const noexcept;
-        [[nodiscard]] bool validRecordingTables(const RenderGraphExecutable&) const noexcept;
-        [[nodiscard]] RecordingDependencies recordingDependencies(const RenderGraphExecutable&) const noexcept;
-        void publishAliasFrontiers(RenderGraphExecutable&) const noexcept;
+        planBarriers(compiled::RenderGraph&, const PhysicalResourcePlan* = nullptr) const noexcept;
+        [[nodiscard]] PhysicalResourcePlan planPhysicalResources(const compiled::RenderGraph&) noexcept;
+        [[nodiscard]] bool assignAsyncCompute(compiled::RenderGraph&, std::uint32_t surface_output) const noexcept;
+        [[nodiscard]] bool validRecordingTables(const compiled::RenderGraph&) const noexcept;
+        [[nodiscard]] RecordingDependencies recordingDependencies(const compiled::RenderGraph&) const noexcept;
+        void publishAliasFrontiers(compiled::RenderGraph&) const noexcept;
         void collectUseStages() noexcept;
-        void planSubmissions(RenderGraphExecutable&) noexcept;
+        void planSubmissions(compiled::RenderGraph&) noexcept;
     };
 }

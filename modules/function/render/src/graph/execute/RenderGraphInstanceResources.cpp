@@ -42,13 +42,13 @@ namespace lux::render::detail
     void RenderGraphInstance::initializeRasterStreams(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
-        for (const auto& pass : plan_->passes())
+        for (const auto& pass : graph_.passes())
         {
-            const auto* raster = plan_->rasterCommands(pass);
+            const auto* raster = graph_.rasterCommands(pass);
             const auto* stream = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
             if (!stream) continue;
             if (stream->producer_stream && frame.stream_inputs.empty())
-                frame.stream_inputs.resize(plan_->passes().size());
+                frame.stream_inputs.resize(graph_.passes().size());
             frame.raster_draws.emplace_back();
         }
     }
@@ -70,12 +70,12 @@ namespace lux::render::detail
         }
         const auto& core = session_->nriCore();
         auto& binding = frame.bindings[resource.index];
-        const auto& compiled = plan_->resources()[resource.index];
+        const auto& compiled = graph_.resources()[resource.index];
         if (layers > 1)
         {
             for (const auto [pass, index] : compiled.descriptor_uses)
             {
-                const auto& program = plan_->binding_plan_->pass(pass);
+                const auto& program = graph_.binding_plan_->pass(pass);
                 if (!program.bindings[program.uses[index].field].image_arrayed)
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {resource.index, layers}});
             }
@@ -152,7 +152,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, index] : compiled.descriptor_uses)
             {
-                const auto& program = plan_->binding_plan_->pass(pass);
+                const auto& program = graph_.binding_plan_->pass(pass);
                 const auto& use = program.uses[index];
                 const bool arrayed = program.bindings[use.field].image_arrayed;
                 const auto kind = use.kind == EDescriptorKind::STORAGE_IMAGE
@@ -220,12 +220,12 @@ namespace lux::render::detail
             if (replacement.use.target == EImageViewTarget::DESCRIPTOR)
             {
                 const auto& use =
-                    plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[replacement.use.index];
+                    graph_.binding_plan_->pass(pass.compiled_pass->binding_slot).uses[replacement.use.index];
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, destination, 1};
                 core.UpdateDescriptorRanges(&update, 1);
                 pass.history_views[replacement.use.index] = nullptr;
-                const auto history = plan_->resources()[use.resource].history;
+                const auto history = graph_.resources()[use.resource].history;
                 if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
             }
             else
@@ -272,7 +272,7 @@ namespace lux::render::detail
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& plan = *plan_;
+        const auto& plan = graph_;
         auto& frame = frames_[slot];
         if (auto created = allocatePhysicalResources(frame); !created)
         {
@@ -336,13 +336,13 @@ namespace lux::render::detail
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& physical = plan_->physical_resources_;
+        const auto& physical = graph_.physical_resources_;
         const bool alias_memory = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
         std::vector<nri::MemoryDesc> requirements(alias_memory ? physical.slots.size() : 0);
         for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
         {
             const auto index = physical.slots[s].resource.index;
-            const auto& resource = plan_->resources()[index];
+            const auto& resource = graph_.resources()[index];
             auto& binding = frame.bindings[index];
             if (!alias_memory)
             {
@@ -412,7 +412,7 @@ namespace lux::render::detail
             description.vma.enable = !required.mustBeDedicated;
             description.vma.alignment = std::max(description.vma.alignment, required.alignment);
             const auto* image =
-                std::get_if<GraphImageDesc>(&plan_->resources()[physical.slots[s].resource.index].description);
+                std::get_if<GraphImageDesc>(&graph_.resources()[physical.slots[s].resource.index].description);
             description.allowMultisampleTextures |= image && image->samples > 1;
         }
         std::vector<MemoryGroupId> root_to_group(placements.size());
@@ -473,7 +473,7 @@ namespace lux::render::detail
     {
         if (frame.memory_bindings.empty()) return;
         const auto barriers = instantiateAliasBarriers(
-            plan_->physical_resources_, frame.memory_bindings, frame.passes.size()
+            graph_.physical_resources_, frame.memory_bindings, frame.passes.size()
         );
         for (std::size_t p = 0; p < barriers.size(); ++p) frame.passes[p].alias_barrier = barriers[p];
     }
@@ -558,7 +558,7 @@ namespace lux::render::detail
         GraphResourceId id, const nri::Texture& image, const TargetDesc& target
     ) const noexcept
     {
-        const auto& resource = plan_->resources()[id.index];
+        const auto& resource = graph_.resources()[id.index];
         const auto* expected = std::get_if<GraphImageDesc>(&resource.description);
         if (!expected) return cxx::unexpected(RenderError{kStorageMismatch});
         const auto& actual = session_->nriCore().GetTextureDesc(image);
@@ -593,7 +593,7 @@ namespace lux::render::detail
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& resource = plan_->resources()[index];
+        const auto& resource = graph_.resources()[index];
         if (std::holds_alternative<GraphImageDesc>(resource.description))
         {
             auto description = textureDescription(resource, target);
@@ -823,12 +823,12 @@ namespace lux::render::detail
             if (frozenForSubmission(current) && binding.queue_uses != value.queue_uses) frame.preserveUses(resource);
             binding.queue_uses = value.queue_uses;
             if ((changed_physical || changed_addresses) &&
-                plan_->resources()[resource].origin == EGraphOrigin::IMPORTED)
+                graph_.resources()[resource].origin == EGraphOrigin::IMPORTED)
             {
                 frame.invalidateImportedBindings();
             }
-            if (plan_->resources()[resource].memory_used &&
-                std::holds_alternative<GraphBufferDesc>(plan_->resources()[resource].description))
+            if (graph_.resources()[resource].memory_used &&
+                std::holds_alternative<GraphBufferDesc>(graph_.resources()[resource].description))
             {
                 if (!binding.buffer && value.buffer)
                 {

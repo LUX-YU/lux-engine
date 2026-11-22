@@ -201,7 +201,7 @@ static void graphOutput(Validation& validation)
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
     auto execution_gpu = std::make_unique<JobGpuResources>(*session, frames->frameCount());
     auto execution = std::make_unique<RenderGraphInstance>(
-        *execution_gpu, graph.executable, graph.programs, physical->output()
+        *execution_gpu, graph.graph, physical->output()
     );
     CHECK(execution->initialize());
     auto incompatible_output = physical->output();
@@ -309,13 +309,13 @@ static void importedIdentityReuse(Validation& validation)
     };
     std::optional<JobGpuResources> instance_gpu;
     std::optional<RenderGraphInstance> instance;
-    instance.emplace(instance_gpu.emplace(*session, 1), plan.executable, plan.programs);
+    instance.emplace(instance_gpu.emplace(*session, 1), plan.graph);
     CHECK(instance->initialize());
     const auto initial_revision = revision(*instance);
     std::uint64_t creation_revisions = 0;
     {
         JobGpuResources probe_gpu(*session, 1);
-        RenderGraphInstance probe{probe_gpu, plan.executable, plan.programs};
+        RenderGraphInstance probe{probe_gpu, plan.graph};
         CHECK(probe.initialize());
         creation_revisions = revision(probe) - initial_revision;
     }
@@ -335,8 +335,8 @@ static void importedIdentityReuse(Validation& validation)
     // A viewport can change sampled resources several times, then be detached and recreated
     // at the same allocator address. Local ++ used to collide with the next global identity.
     const auto raster_slot = plan.diagnostics.passSlot(pass.pass);
-    CHECK(raster_slot < plan.executable.passes().size());
-    const auto& raster_pass = plan.executable.passes()[raster_slot];
+    CHECK(raster_slot < plan.graph.passes().size());
+    const auto& raster_pass = plan.graph.passes()[raster_slot];
     for (std::uint64_t update = 0; update < 2 * creation_revisions; ++update)
     {
         auto& draws = instance->rasterDraws(raster_pass, 0);
@@ -349,7 +349,7 @@ static void importedIdentityReuse(Validation& validation)
     instance.reset();
     instance_gpu.reset();
     CHECK(session->drain());
-    instance.emplace(instance_gpu.emplace(*session, 1), plan.executable, plan.programs);
+    instance.emplace(instance_gpu.emplace(*session, 1), plan.graph);
     CHECK(&*instance == address);
     CHECK(instance->initialize());
     render();
@@ -460,7 +460,7 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources invalid_gpu(*session, 1);
-            RenderGraphInstance invalid{invalid_gpu, plan.executable, plan.programs};
+            RenderGraphInstance invalid{invalid_gpu, plan.graph};
             invalid.bindImage(source, 0, *images[0]);
             invalid.bindImage(destination, 0, *images[1]);
             const auto rejected = invalid.initialize();
@@ -468,7 +468,7 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources instance_gpu(*session, 1);
-            RenderGraphInstance instance{instance_gpu, plan.executable, plan.programs};
+            RenderGraphInstance instance{instance_gpu, plan.graph};
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
             CHECK(instance.initialize());

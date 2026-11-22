@@ -1,18 +1,12 @@
 #pragma once
 
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 #include <optional>
 
-namespace lux::render::compiled
-{
-    struct RenderGraph;
-}
-
 namespace lux::render::detail
 {
-    class DeviceEntry;
     struct EffectCompileRequest;
     struct EffectCompileEnvironment;
     struct GraphQueuePolicy final
@@ -48,13 +42,13 @@ namespace lux::render::detail
     public:
         using EffectResult = RenderResult<std::unique_ptr<const compiled::RenderGraph>>;
         [[nodiscard]] static exec::task<EffectResult>
-        compileEffect(DeviceEntry&, EffectCompileRequest, EffectCompileEnvironment) noexcept;
+        compileEffect(DeviceSession&, EffectCompileRequest, EffectCompileEnvironment) noexcept;
 
         // The graph and analysis live through task completion. Options are owned by the compile task.
         [[nodiscard]] static exec::task<RenderResult<PreparedRenderGraph>>
         compile(DeviceSession&, execution::CpuScheduler, AnalyzedGraph, GraphCompileOptions = {}) noexcept;
 
-        [[nodiscard]] static RenderResult<RenderGraphExecutable> compileForRecordingTest(
+        [[nodiscard]] static RenderResult<compiled::RenderGraph> compileForRecordingTest(
             GraphDeviceFacts, AnalyzedGraph, ETransientAllocation = ETransientAllocation::INDEPENDENT,
             GraphQueuePolicy = {}
         ) noexcept;
@@ -63,7 +57,7 @@ namespace lux::render::detail
         struct Workspace;
         [[nodiscard]] static RenderResult<void>
         lowerCommands(
-            RenderGraphExecutable&, const RenderGraph&, std::span<const GraphPassId>, const nri::DeviceDesc&
+            compiled::RenderGraph&, const RenderGraph&, std::span<const GraphPassId>, const nri::DeviceDesc&
         ) noexcept;
     };
 } // namespace lux::render::detail

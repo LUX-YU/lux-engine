@@ -57,9 +57,10 @@ namespace lux::render::runtime_detail
         std::vector<ResourceInstanceId> gpu_resources;
         DeviceSessionId device;
         TargetId target;
-        const compiled::RenderGraph& graph;
-        const detail::RenderGraphExecutable& executable;
         detail::RenderGraphInstance instance;
+        [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return instance.plan(); }
+        const compiled::RenderGraph& graph() const && = delete;
+
         RenderError failed_program;
         std::uint64_t failed_program_revision = 0;
 

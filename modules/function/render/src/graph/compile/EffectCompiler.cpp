@@ -4,7 +4,8 @@
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/EffectCompileRequest.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
-#include <lux/engine/render/runtime/DeviceEntry.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/commands/Error.hpp>
 
 namespace lux::render::detail
 {
@@ -32,7 +33,7 @@ namespace lux::render::detail
                   snapshot_slots(build.preparation.snapshots.size(), kGraphInvalidIndex),
                   effect_inputs(inputs), effect_slots(inputs.size(), kGraphInvalidIndex),
                   pass_slots(graph.source.passes().size()),
-                  claimed_streams(compiled.executable.passes().size())
+                  claimed_streams(compiled.graph.passes().size())
             {
                 const auto& order = graph.analysis.execution_order;
                 for (std::uint32_t slot = 0; slot < order.size(); ++slot) pass_slots[order[slot].index] = {slot};
@@ -81,7 +82,7 @@ namespace lux::render::detail
                         buffer_slots[output.index] = static_cast<std::uint32_t>(plan.buffers.size());
                         plan.buffers.push_back({
                             output.index, buffer->minimum_bytes, buffer->maximum_bytes, buffer->upload,
-                            compiled.executable.resources()[output.index].memory_used, dense
+                            compiled.graph.resources()[output.index].memory_used, dense
                         });
                     }
                 }
@@ -141,7 +142,7 @@ namespace lux::render::detail
                 const auto& builder = producer_.program_builder;
                 const bool dynamic = std::ranges::any_of(streams_, [&](auto pass) noexcept
                 {
-                    return workspace_.compiled.programs.rasterStream(pass)->runtime.has_value();
+                    return workspace_.compiled.graph.programs().rasterStream(pass)->runtime.has_value();
                 });
                 const bool invalid_builder = dynamic != bool(builder);
                 if (invalid_builder || (!dynamic && !producer_.program_storage_inputs.empty()))
@@ -226,7 +227,7 @@ namespace lux::render::detail
                 if (!workspace_.claimStream(*resolved))
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {pass.index}});
                 auto& ranges = workspace_.plan.draw_resource_ranges;
-                if (ranges.empty()) ranges.resize(workspace_.compiled.executable.passes().size());
+                if (ranges.empty()) ranges.resize(workspace_.compiled.graph.passes().size());
                 ranges[*resolved].producer = producer_slot_;
                 ranges[*resolved].local_stream = static_cast<std::uint32_t>(streams_.size());
                 streams_.push_back(*resolved);
@@ -276,7 +277,7 @@ namespace lux::render::detail
             {
                 auto resolved = streamPass(pass);
                 if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& buffers = workspace_.compiled.programs.rasterStream(*resolved)->buffers;
+                const auto& buffers = workspace_.compiled.graph.programs().rasterStream(*resolved)->buffers;
                 const auto use = std::ranges::find(buffers, source.index, &detail::CompiledRasterStream::BufferAccess::resource);
                 if (use == buffers.end())
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index, source.index}});
@@ -288,7 +289,7 @@ namespace lux::render::detail
             {
                 auto resolved = streamPass(pass);
                 if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& images = workspace_.compiled.programs.rasterStream(*resolved)->images;
+                const auto& images = workspace_.compiled.graph.programs().rasterStream(*resolved)->images;
                 const auto use = std::ranges::find(images, source.index, &detail::CompiledRasterStream::ImageAccess::resource);
                 if (use == images.end())
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index, source.index}});
@@ -325,8 +326,8 @@ namespace lux::render::detail
                 if (std::ranges::find(producer_.passes, pass) == producer_.passes.end())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
                 const auto slot = workspace_.pass_slots[pass.index].index;
-                const bool live_stream = slot < workspace_.compiled.executable.passes().size() &&
-                    workspace_.compiled.programs.rasterStream(slot);
+                const bool live_stream = slot < workspace_.compiled.graph.passes().size() &&
+                    workspace_.compiled.graph.programs().rasterStream(slot);
                 if (!live_stream)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
                 return slot;
@@ -356,9 +357,9 @@ namespace lux::render::detail
                 const auto slots = workspace_.destinations(id);
                 const auto slot = slots[0].index;
                 const auto* parameters = workspace_.build.source.passes()[id.index].bindings().parameters;
-                const bool valid_slot = slot < workspace_.compiled.executable.passes().size();
+                const bool valid_slot = slot < workspace_.compiled.graph.passes().size();
                 const bool compatible = valid_slot &&
-                    workspace_.compiled.executable.passes()[slot].parameter_size == bytes &&
+                    workspace_.compiled.graph.passes()[slot].parameter_size == bytes &&
                     parameters && parameters->inline_constant.type == type &&
                     parameters->inline_constant.type.name() == type.name();
                 if (!compatible) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index}});
@@ -406,7 +407,7 @@ namespace lux::render::detail
         {
             const auto& definition = build.preparation;
             const auto& source = build.source;
-            const auto& executable = compiled.executable;
+            const auto& executable = compiled.graph;
             PreparationLinkWorkspace workspace(build, compiled, inputs);
             auto& plan = workspace.plan;
             for (std::size_t p = 0; p < source.passes().size(); ++p)
@@ -475,7 +476,7 @@ namespace lux::render::detail
             }
             for (std::uint32_t p = 0; p < workspace.claimed_streams.size(); ++p)
             {
-                if (compiled.programs.rasterStream(p) && !workspace.claimed_streams[p])
+                if (compiled.graph.programs().rasterStream(p) && !workspace.claimed_streams[p])
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p}});
             }
             return std::move(workspace.plan);
@@ -487,7 +488,7 @@ namespace lux::render::detail
         };
 
         RenderResult<LinkedBufferOutputs> linkBufferOutputs(
-            EffectGraphBuild& build, const RenderGraphExecutable& executable, DeviceSession& session
+            EffectGraphBuild& build, const compiled::RenderGraph& executable, DeviceSession& session
         ) noexcept
         {
             auto& slots = build.storage_imports;
@@ -568,10 +569,15 @@ namespace lux::render::detail
 
     exec::task<GraphCompiler::EffectResult>
     GraphCompiler::compileEffect(
-        DeviceEntry& entry, EffectCompileRequest request, EffectCompileEnvironment env
+        DeviceSession& session, EffectCompileRequest request, EffectCompileEnvironment env
     ) noexcept
     {
-        const auto& session = entry.session();
+        // Evaluated on the control owner after child work rejoins.
+        const auto interrupted = [&]() noexcept -> RenderError
+        {
+            if (env.stopping.load()) return {kCommandCancelled};
+            return env.device_failure.type ? env.device_failure : session.terminalError();
+        };
         const auto& features = session.enabledFeatures();
         const auto& limits = session.description();
         const auto& dispatch = limits.shaderStage.compute.dispatchMaxDim;
@@ -598,8 +604,7 @@ namespace lux::render::detail
             stdexec::upon_error(detail::NativeDeliveryFailure<EffectGraphBuild>{})
         );
         if (!built) co_return cxx::unexpected(built.error());
-        if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
+        if (const auto failure = interrupted(); failure.type) co_return cxx::unexpected(failure);
 
         std::vector<GraphResourceId> concurrent_reads;
         for (std::size_t i = 0; i < built->storage_imports.size(); ++i)
@@ -610,11 +615,10 @@ namespace lux::render::detail
             if (storage && storage->concurrent_image_read) concurrent_reads.push_back(resource);
         }
         auto plan = co_await compile(
-            entry.session(), env.cpu, {built->source, built->analysis, concurrent_reads}, {.target = built->output}
+            session, env.cpu, {built->source, built->analysis, concurrent_reads}, {.target = built->output}
         );
         if (!plan) co_return cxx::unexpected(plan.error());
-        if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
+        if (const auto failure = interrupted(); failure.type) co_return cxx::unexpected(failure);
 
         std::vector<compiled::BindingComparison> comparisons;
         const auto resolve_operand = [&](GraphResourceId id) noexcept -> RenderResult<compiled::BindingOperand>
@@ -642,7 +646,7 @@ namespace lux::render::detail
         for (auto& input : built->target_imports)
         {
             auto& slot = input.resource;
-            const auto& resource = plan->executable.resources()[slot.index];
+            const auto& resource = plan->graph.resources()[slot.index];
             if (!resource.memory_used) slot = {};
             else if (!resource.sampled_target_input)
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {slot.index}});
@@ -651,30 +655,30 @@ namespace lux::render::detail
         {
             auto& slot = declaration.slot;
             const auto id = slot.resource.index;
-            if (id != kGraphInvalidIndex && !plan->executable.resources()[id].memory_used) slot = {};
+            if (id != kGraphInvalidIndex && !plan->graph.resources()[id].memory_used) slot = {};
         }
         auto preparation = linkPreparation(*built, *plan, request.inputs);
         if (!preparation) co_return cxx::unexpected(preparation.error());
         for (const auto& block : built->uniforms)
         {
-            if (!plan->executable.resources()[block.resource.index].memory_used) continue;
-            if (!entry.uploader()) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (!plan->graph.resources()[block.resource.index].memory_used) continue;
+            if (!request.uploads_available) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
             const auto state = std::ranges::find(request.inputs, block.node, &EffectInputDefinition::node);
             if (state == request.inputs.end() || state->type != block.source.state_type)
                 co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {block.node.value, block.resource.index}});
             const auto source = static_cast<std::uint32_t>(state - request.inputs.begin());
             preparation->constant_buffers.push_back({source, block.source.block.bytes, block.resource, block.source.bind});
         }
-        if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
-        auto outputs = linkBufferOutputs(*built, plan->executable, entry.session());
+        if (const auto failure = interrupted(); failure.type) co_return cxx::unexpected(failure);
+        auto outputs = linkBufferOutputs(*built, plan->graph, session);
         if (!outputs) co_return cxx::unexpected(outputs.error());
-        co_return std::make_unique<const compiled::RenderGraph>(compiled::RenderGraph{
-            std::move(plan->executable), std::move(plan->programs),
-            std::move(built->target_imports), std::move(built->storage_imports), std::move(outputs->uses),
-            std::move(outputs->exports),
-            std::move(comparisons),
-            std::move(*preparation)
-        });
+        auto& graph = plan->graph;
+        graph.target_imports_ = std::move(built->target_imports);
+        graph.storage_imports_ = std::move(built->storage_imports);
+        graph.output_uses_ = std::move(outputs->uses);
+        graph.buffer_exports_ = std::move(outputs->exports);
+        graph.binding_comparisons_ = std::move(comparisons);
+        graph.preparation_ = std::move(*preparation);
+        co_return std::make_unique<const compiled::RenderGraph>(std::move(graph));
     }
 } // namespace lux::render::detail

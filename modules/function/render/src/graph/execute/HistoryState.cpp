@@ -68,12 +68,12 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::createHistories() noexcept
     {
-        histories_.resize(plan_->histories_.size());
+        histories_.resize(graph_.histories_.size());
         gpu_.histories.resize(histories_.size());
         for (std::size_t index = 0; index < histories_.size(); ++index)
         {
             auto& history = histories_[index];
-            history.plan = &plan_->histories_[index];
+            history.plan = &graph_.histories_[index];
             const auto distance = history.plan->description.distance;
             if (frames_.size() > kGraphInvalidIndex - distance)
             {
@@ -137,7 +137,7 @@ namespace lux::render::detail
                             ? (depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT)
                             : (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
                                                                       : nri::TextureView::TEXTURE);
-                    const auto& program = plan_->binding_plan_->pass(pass);
+                    const auto& program = graph_.binding_plan_->pass(pass);
                     const bool arrayed =
                         target == Target::DESCRIPTOR && program.bindings[program.uses[index].field].image_arrayed;
                     const auto view_type =
@@ -161,7 +161,7 @@ namespace lux::render::detail
                 else
                 {
                     const auto& selected = std::get<GraphBufferRange>(range);
-                    const auto& plan = plan_->binding_plan_->pass(pass);
+                    const auto& plan = graph_.binding_plan_->pass(pass);
                     const auto& shader = plan.bindings[plan.uses[index].field];
                     const auto input = shader.bufferView(slot.buffer, selected.offset, selected.size);
                     result = createBufferView(input, view);
@@ -174,10 +174,10 @@ namespace lux::render::detail
             }
             return {};
         };
-        for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
+        for (std::uint32_t p = 0; p < graph_.passes().size(); ++p)
         {
-            const auto& pass = plan_->passes()[p];
-            const auto& uses = plan_->binding_plan_->pass(pass.binding_slot).uses;
+            const auto& pass = graph_.passes()[p];
+            const auto& uses = graph_.binding_plan_->pass(pass.binding_slot).uses;
             for (std::uint32_t i = 0; i < uses.size(); ++i)
             {
                 const auto& use = uses[i];
@@ -186,7 +186,7 @@ namespace lux::render::detail
                     return created;
                 }
             }
-            if (const auto* raster = plan_->recordingProgram().rasterScope(pass))
+            if (const auto* raster = graph_.recordingProgram().rasterScope(pass))
             {
                 const auto addAttachment = [&](const RasterAttachment& attachment, std::uint32_t i, bool depth
                                            ) -> RenderResult<void>
@@ -233,7 +233,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (const auto* transfer = plan_->transferCommands(pass))
+            if (const auto* transfer = graph_.transferCommands(pass))
             {
                 for (const auto& packet : transfer->operations)
                 {
@@ -266,7 +266,7 @@ namespace lux::render::detail
             const auto& image = core.GetTextureDesc(*slot.image);
             slot.image_description = &image;
             const auto& graph_image =
-                std::get<GraphImageDesc>(plan_->resources()[description.current.index].description);
+                std::get<GraphImageDesc>(graph_.resources()[description.current.index].description);
             const bool depth = rdesc::textureAspectMask(graph_image.format) != 1;
             for (nri::Dim_t mip = 0; mip < image.mipNum; ++mip)
             {
@@ -362,7 +362,7 @@ namespace lux::render::detail
                 case Target::DESCRIPTOR:
                 {
                     const auto& binding =
-                        plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[use.index];
+                        graph_.binding_plan_->pass(pass.compiled_pass->binding_slot).uses[use.index];
                     if (!frame.history_valid[h] && binding.fallback != kGraphInvalidIndex)
                     {
                         view = pass.private_views[use.index];
@@ -400,9 +400,9 @@ namespace lux::render::detail
         // Validate the whole request before changing any instance state.
         for (auto resource : previous)
         {
-            const bool valid = resource.index < plan_->resources().size() &&
-                               plan_->resources()[resource.index].origin == EGraphOrigin::HISTORY_PREVIOUS &&
-                               plan_->resources()[resource.index].history != kGraphInvalidIndex;
+            const bool valid = resource.index < graph_.resources().size() &&
+                               graph_.resources()[resource.index].origin == EGraphOrigin::HISTORY_PREVIOUS &&
+                               graph_.resources()[resource.index].history != kGraphInvalidIndex;
             if (!valid)
             {
                 return cxx::unexpected(RenderError{kGraphUnknownResource});
@@ -419,7 +419,7 @@ namespace lux::render::detail
         {
             for (auto resource : previous)
             {
-                histories_[plan_->resources()[resource.index].history].invalidate = true;
+                histories_[graph_.resources()[resource.index].history].invalidate = true;
             }
         }
         return {};
@@ -444,7 +444,7 @@ namespace lux::render::detail
     void RenderGraphInstance::acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept
     {
         gpu_.accepted.accept(point);
-        for (auto id : plan_->submissions_[batch].imported_resources)
+        for (auto id : graph_.submissions_[batch].imported_resources)
             if (auto* uses = frames_[slot].selectedUses(id.index).accepted) uses->accept(point);
         const auto mark = [&](JobHistoryResources::Slot& slot)
         {
@@ -465,9 +465,9 @@ namespace lux::render::detail
                 }
             }
         }
-        for (auto resource : plan_->submissions_[batch].histories)
+        for (auto resource : graph_.submissions_[batch].histories)
         {
-            const auto& compiled = plan_->resources_[resource.index];
+            const auto& compiled = graph_.resources_[resource.index];
             auto& history = histories_[compiled.history];
             mark(history.slots[compiled.origin == EGraphOrigin::HISTORY_PREVIOUS ? history.previous : history.current]);
         }

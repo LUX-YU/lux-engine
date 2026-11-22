@@ -12,7 +12,7 @@
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::detail
 {
@@ -22,6 +22,7 @@ namespace lux::render::detail
     class JobGpuResources;
     struct RasterBindingKey;
     struct RasterDescriptorInput;
+    struct FrozenRecordingFrame;
     struct DynamicRasterPrograms;
     struct RasterProgramUpdate;
 
@@ -29,7 +30,7 @@ namespace lux::render::detail
     {
     public:
         RenderGraphInstance(
-            JobGpuResources&, const RenderGraphExecutable&, const NativeProgramBindings&, TargetOutput = TargetOutput{}
+            JobGpuResources&, const compiled::RenderGraph&, TargetOutput = TargetOutput{}
         ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
         struct SnapshotSource final
@@ -113,15 +114,11 @@ namespace lux::render::detail
         RenderGraphInstance(const RenderGraphInstance&) = delete;
         RenderGraphInstance& operator=(const RenderGraphInstance&) = delete;
 
-        [[nodiscard]] nri::Device* device() const noexcept
+        [[nodiscard]] const compiled::RenderGraph& plan() const & noexcept
         {
-            return plan_->device();
+            return graph_;
         }
-
-        [[nodiscard]] const RenderGraphExecutable& plan() const noexcept
-        {
-            return *plan_;
-        }
+        const compiled::RenderGraph& plan() const && = delete;
 
         [[nodiscard]] const TargetDesc& target() const noexcept
         {
@@ -180,8 +177,7 @@ namespace lux::render::detail
         friend class FrameOperation;
         std::uint32_t frozen_slot_ = kGraphInvalidIndex;
         friend class SubmissionOperation;
-        [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
-        recordFrozenBatch(std::uint32_t, std::uint32_t) noexcept;
+        [[nodiscard]] RenderResult<FrozenRecordingFrame> recordingFrame(std::uint32_t frame_slot) noexcept;
         void submitted(std::uint32_t slot) noexcept;
         void acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept;
         void failedSubmission(RenderError error) noexcept;
@@ -289,7 +285,7 @@ namespace lux::render::detail
 
             [[nodiscard]] RenderResult<void>
             freezeCommands(
-                const RenderGraphExecutable&,
+                const compiled::RenderGraph&,
                 std::span<const PassResourceInput>,
                 const nri::DeviceDesc&,
                 PassNativeInput&
@@ -362,8 +358,7 @@ namespace lux::render::detail
         std::vector<BoundConstantBuffer> constant_buffers_;
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
-        const RenderGraphExecutable* plan_;
-        const NativeProgramBindings* programs_;
+        const compiled::RenderGraph& graph_;
         RasterViewport viewport_;
         TargetOutput output_;
 

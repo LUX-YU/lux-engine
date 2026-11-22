@@ -114,34 +114,6 @@ namespace lux::render::detail
         RasterDrawList stream_scratch;
         std::vector<std::uint8_t> stream_layers_seen;
         std::vector<RasterDescriptorInput> stream_binding_inputs;
-        // Each compiled batch owns its allocators, buffers and cache version in this FIF slice.
-        // A recording lease protects the whole batch; distinct batches never share an allocator.
-        struct CommandBatch final
-        {
-            std::uint64_t revision = 1, recorded_revision = 0;
-            std::atomic<bool> recording{false};
-
-            void invalidate() noexcept
-            {
-                if (revision != recorded_revision) return;
-                if (revision == UINT64_MAX) std::terminate();
-                ++revision;
-            }
-
-            CommandBatch() noexcept = default;
-            CommandBatch(const CommandBatch&) = delete;
-            CommandBatch& operator=(const CommandBatch&) = delete;
-            CommandBatch& operator=(CommandBatch&&) = delete;
-
-            CommandBatch(CommandBatch&& other) noexcept
-            {
-                // Only cold construction may relocate a batch. Published batches keep stable addresses.
-                if (other.recording.load(std::memory_order_acquire)) std::terminate();
-                revision = other.revision;
-                recorded_revision = other.recorded_revision;
-            }
-        };
-
         std::vector<CommandBatch> command_batches;
         DescriptorTable::Snapshot shared_descriptors;
         std::array<std::uint64_t, 3> shared_set_generations{};

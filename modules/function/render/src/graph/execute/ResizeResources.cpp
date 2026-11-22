@@ -45,7 +45,7 @@ namespace lux::render::detail
     ) noexcept
     {
         if (&execution.gpu_ != &gpu) return cxx::unexpected(RenderError{kFrameContract});
-        const auto& plan = *execution.plan_;
+        const auto& plan = execution.graph_;
         const bool has_output = !output.frames.empty();
         const bool needs_output = plan.output() != kGraphInvalidIndex ||
             std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept
@@ -114,7 +114,7 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto& core = session_->nriCore();
-        const auto& resources = plan_->resources();
+        const auto& resources = graph_.resources();
         // Only histories whose actual physical description changed acquire new banks.
         for (std::uint32_t h = 0; h < histories_.size(); ++h)
         {
@@ -167,8 +167,8 @@ namespace lux::render::detail
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& resources = plan_->resources();
-        const auto& physical = plan_->physical_resources_;
+        const auto& resources = graph_.resources();
+        const auto& physical = graph_.physical_resources_;
         const bool aliases = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
         const auto& frame = frames_[f];
         auto& candidate = result.frames[f];
@@ -368,8 +368,8 @@ namespace lux::render::detail
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& resources = plan_->resources();
-        const auto& physical = plan_->physical_resources_;
+        const auto& resources = graph_.resources();
+        const auto& physical = graph_.physical_resources_;
         const bool aliases = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
         const auto& frame = frames_[f];
         auto& candidate = result.frames[f];
@@ -381,7 +381,7 @@ namespace lux::render::detail
                 std::ranges::lower_bound(candidate.resources, index, {}, &ResizeResources::Resource::index);
             return found != candidate.resources.end() && found->index == index ? found->binding : frame.bindings[index];
         };
-        std::vector<std::uint8_t> affected_passes(plan_->passes().size());
+        std::vector<std::uint8_t> affected_passes(graph_.passes().size());
         for (const auto& replacement : candidate.resources)
         {
             const auto index = replacement.index;
@@ -397,7 +397,7 @@ namespace lux::render::detail
             for (const auto& use : resource.image_views)
             {
                 nri::Descriptor* descriptor = nullptr;
-                const bool owned = index != plan_->output();
+                const bool owned = index != graph_.output();
                 if (!owned)
                 {
                     descriptor = output.frames[f].view;
@@ -425,7 +425,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, use_index] : resource.descriptor_uses)
             {
-                const auto& program = plan_->binding_plan_->pass(pass);
+                const auto& program = graph_.binding_plan_->pass(pass);
                 const auto& use = program.uses[use_index];
                 nri::Descriptor* descriptor = nullptr;
                 nri::Result status;
@@ -476,7 +476,7 @@ namespace lux::render::detail
                 continue;
             }
             candidate.extent_passes.push_back(p);
-            auto prepared = validatePassExtent(session, *plan_, plan_->passes()[p], binding);
+            auto prepared = validatePassExtent(session, graph_, graph_.passes()[p], binding);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -484,7 +484,7 @@ namespace lux::render::detail
         }
         if (aliases)
         {
-            candidate.alias_barriers = instantiateAliasBarriers(physical, candidate.placements, plan_->passes().size());
+            candidate.alias_barriers = instantiateAliasBarriers(physical, candidate.placements, graph_.passes().size());
             candidate.physical.memories.reserve(candidate.physical.memories.size() + frame.native.memories.size());
         }
         return {};
@@ -515,7 +515,7 @@ namespace lux::render::detail
         if (result.owner_ != &gpu_ || result.frames.size() != frames_.size())
             return cxx::unexpected(RenderError{kFrameContract});
         result.prepared_ = false;
-        const auto& physical = plan_->physical_resources_;
+        const auto& physical = graph_.physical_resources_;
         for (std::uint32_t f = 0; f < frames_.size(); ++f)
         {
             auto& frame = frames_[f];
@@ -568,7 +568,7 @@ namespace lux::render::detail
             }
             for (const auto pass : candidate.extent_passes)
             {
-                auto ready = validatePassExtent(*session_, *plan_, plan_->passes()[pass], binding);
+                auto ready = validatePassExtent(*session_, graph_, graph_.passes()[pass], binding);
                 if (!ready)
                 {
                     return ready;
@@ -642,7 +642,7 @@ namespace lux::render::detail
                 binding.buffer_size = replacement.binding.buffer_size;
                 binding.dirty = false;
                 std::erase(frame.changed_resources, replacement.index);
-                const auto& resource = plan_->resources()[replacement.index];
+                const auto& resource = graph_.resources()[replacement.index];
                 for (const auto [p, index] : resource.barrier_uses)
                 {
                     if (binding.image)
@@ -680,12 +680,12 @@ namespace lux::render::detail
                 if (view.use.target == EImageViewTarget::DESCRIPTOR)
                 {
                     const auto& use =
-                        plan_->binding_plan_->pass(pass.compiled_pass->binding_slot).uses[view.use.index];
+                        graph_.binding_plan_->pass(pass.compiled_pass->binding_slot).uses[view.use.index];
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, use.binding, use.element, &destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);
                     pass.history_views[view.use.index] = nullptr;
-                    const auto history = plan_->resources()[use.resource].history;
+                    const auto history = graph_.resources()[use.resource].history;
                     if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
                 }
             }
@@ -722,8 +722,8 @@ namespace lux::render::detail
 
     void RenderGraphInstance::releaseOutputReferences() noexcept
     {
-        const auto resource = plan_->output();
-        const auto& uses = plan_->resources()[resource];
+        const auto resource = graph_.output();
+        const auto& uses = graph_.resources()[resource];
         std::vector<nri::Descriptor*> views;
         for (auto& frame : frames_)
         {

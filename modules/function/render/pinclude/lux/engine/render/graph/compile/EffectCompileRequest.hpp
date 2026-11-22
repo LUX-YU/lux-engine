@@ -11,6 +11,7 @@ namespace lux::render::detail
         runtime_detail::EffectRecipeView recipe;
         std::vector<runtime_detail::EffectInputDefinition> inputs;
         EffectOutputDesc output;
+        bool uploads_available;
     };
 
     struct EffectCompileEnvironment final
@@ -19,5 +20,6 @@ namespace lux::render::detail
         execution::CpuScheduler cpu;
         RenderErrorSink diagnostics;
         const std::atomic<bool>& stopping;
+        const RenderError& device_failure;
     };
 } // namespace lux::render::detail

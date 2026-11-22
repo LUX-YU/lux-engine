@@ -94,7 +94,7 @@ namespace lux::render::detail
 
     } // namespace
 
-    bool GraphCompiler::Workspace::validRecordingTables(const RenderGraphExecutable& plan) const noexcept
+    bool GraphCompiler::Workspace::validRecordingTables(const compiled::RenderGraph& plan) const noexcept
     {
         const auto& program = plan.recording_;
         const auto& batches = plan.submissions_;
@@ -185,8 +185,8 @@ namespace lux::render::detail
         return next_packet == packet_counts;
     }
 
-    RenderResult<RenderGraphExecutable>
-    GraphCompiler::Workspace::planStructure(nri::Device* native_device, const EffectOutputDesc* target) noexcept
+    RenderResult<compiled::RenderGraph>
+    GraphCompiler::Workspace::planStructure(const EffectOutputDesc* target) noexcept
     {
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;
@@ -208,7 +208,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        RenderGraphExecutable plan(native_device, target ? *target : EffectOutputDesc{});
+        compiled::RenderGraph plan(target ? *target : EffectOutputDesc{});
         plan.device_addresses_ = device_addresses;
         plan.condition_count_ = static_cast<std::uint32_t>(graph.conditions().size());
         plan.binding_predicate_count_ = static_cast<std::uint32_t>(graph.bindingPredicates().size());
@@ -399,7 +399,7 @@ namespace lux::render::detail
         return plan;
     }
 
-    RenderResult<void> GraphCompiler::Workspace::finishPlan(RenderGraphExecutable& plan) noexcept
+    RenderResult<void> GraphCompiler::Workspace::finishPlan(compiled::RenderGraph& plan) noexcept
     {
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;
@@ -641,12 +641,12 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<RenderGraphExecutable> GraphCompiler::compileForRecordingTest(
+    RenderResult<compiled::RenderGraph> GraphCompiler::compileForRecordingTest(
         GraphDeviceFacts device, AnalyzedGraph source, ETransientAllocation allocation, GraphQueuePolicy policy
     ) noexcept
     {
         Workspace workspace{source, device, allocation, policy};
-        auto plan = workspace.planStructure(nullptr, nullptr);
+        auto plan = workspace.planStructure(nullptr);
         if (!plan) return cxx::unexpected(plan.error());
         auto finished = workspace.finishPlan(*plan);
         if (!finished)
@@ -757,8 +757,11 @@ namespace lux::render::detail
         DeviceSession& session, PreparedRenderGraph& candidate, execution::CpuScheduler cpu
     ) noexcept
     {
-        const auto& plan = candidate.executable;
-        auto& native = candidate.programs;
+        const auto& plan = candidate.graph;
+        auto& native = candidate.graph.programs_;
+        native.slots_.resize(plan.passes().size());
+        native.streams_.resize(plan.passes().size());
+        native.owner_ = &session;
         const auto& graph = source.graph;
         const auto order = std::span(source.analysis.execution_order);
         auto& layouts = bindings;
@@ -901,7 +904,7 @@ namespace lux::render::detail
 
     RenderResult<void>
     GraphCompiler::lowerCommands(
-        RenderGraphExecutable& plan, const RenderGraph& graph, std::span<const GraphPassId> order,
+        compiled::RenderGraph& plan, const RenderGraph& graph, std::span<const GraphPassId> order,
         const nri::DeviceDesc& limits
     ) noexcept
     {
@@ -983,7 +986,7 @@ namespace lux::render::detail
 
     RenderResult<void> GraphCompiler::Workspace::finishDevicePlan(PreparedRenderGraph& candidate) noexcept
     {
-        if (auto result = finishPlan(candidate.executable); !result) return result;
+        if (auto result = finishPlan(candidate.graph); !result) return result;
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;
         diagnostics.source_passes = analysis.execution_order;
@@ -1017,19 +1020,19 @@ namespace lux::render::detail
                         source, GraphDeviceFacts{session.description(), queues, session.usesDeviceAddresses()},
                         options.allocation, GraphQueuePolicy{session.graphQueueCosts(), options.exercise_async}
                     );
-                    return workspace->planStructure(&session.device(), options.target ? &*options.target : nullptr);
+                    return workspace->planStructure(options.target ? &*options.target : nullptr);
                 }
             ) |
             stdexec::upon_stopped(
-                []() noexcept -> RenderResult<RenderGraphExecutable> { return cxx::unexpected(RenderError{kCpuStopped}); }
+                []() noexcept -> RenderResult<compiled::RenderGraph> { return cxx::unexpected(RenderError{kCpuStopped}); }
             ) |
-            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<RenderGraphExecutable>{})
+            stdexec::continues_on(owner) | stdexec::upon_error(NativeDeliveryFailure<compiled::RenderGraph>{})
         );
         if (!structure)
         {
             co_return cxx::unexpected(structure.error());
         }
-        PreparedRenderGraph candidate(session, std::move(*structure));
+        PreparedRenderGraph candidate{std::move(*structure), {}};
         auto prepared = co_await workspace->prepareOperations(session, candidate, cpu);
         if (!prepared)
         {
@@ -1055,3 +1058,21 @@ namespace lux::render::detail
         co_return candidate;
     }
 } // namespace lux::render::detail
+
+namespace lux::render::compiled
+{
+    RenderGraph::RenderGraph(EffectOutputDesc output) noexcept
+        : output_description_(output)
+    {
+    }
+
+    RenderGraph::~RenderGraph() noexcept = default;
+
+    RenderGraph::RenderGraph(RenderGraph&&) noexcept = default;
+
+    std::span<const detail::DescriptorAccess> RenderGraph::descriptorUses(std::uint32_t binding_slot) const & noexcept
+    {
+        return binding_plan_->pass(binding_slot).uses;
+    }
+
+} // namespace lux::render::compiled

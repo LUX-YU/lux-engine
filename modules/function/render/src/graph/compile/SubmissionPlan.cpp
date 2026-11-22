@@ -84,7 +84,7 @@ namespace lux::render::detail
 
     bool
     GraphCompiler::Workspace::assignAsyncCompute(
-        RenderGraphExecutable& plan, std::uint32_t surface_output
+        compiled::RenderGraph& plan, std::uint32_t surface_output
     ) const noexcept
     {
         auto& recording = plan.recording_;
@@ -200,7 +200,7 @@ namespace lux::render::detail
         return true;
     }
 
-    void GraphCompiler::Workspace::planSubmissions(RenderGraphExecutable& plan) noexcept
+    void GraphCompiler::Workspace::planSubmissions(compiled::RenderGraph& plan) noexcept
     {
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;

@@ -5,7 +5,7 @@
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
+
 #include <lux/cxx/core/function_ref.hpp>
 
 #include <lux/engine/core/execution/Scheduler.hpp>
@@ -61,6 +63,10 @@ namespace lux::render::detail
 
         struct Slot final
         {
+            Slot() noexcept = default;
+            Slot(const Slot&) = delete;
+            Slot& operator=(const Slot&) = delete;
+
             std::uint32_t submitted_batches = 0;
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
@@ -76,7 +82,9 @@ namespace lux::render::detail
             {
                 std::span<nri::CommandBuffer* const> commands;
                 RenderError error;
+                std::uint32_t frame, batch;
             };
+            std::vector<FrozenRecordingFrame> recording_frames;
             std::vector<Recording> recordings;
             std::vector<nri::CommandBuffer*> recording_commands;
             std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;
@@ -105,6 +113,8 @@ namespace lux::render::detail
         {
         public:
             Workspace(std::uint32_t slots, std::size_t queues) noexcept;
+            Workspace(const Workspace&) = delete;
+            Workspace& operator=(const Workspace&) = delete;
             [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
             [[nodiscard]] InstanceSubmissionResult acceptedFrameUse(
                 std::uint32_t, const RenderGraphInstance&, SubmissionFrontiers&

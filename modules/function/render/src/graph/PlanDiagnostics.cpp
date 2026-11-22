@@ -5,6 +5,13 @@
 
 namespace lux::render::detail
 {
+    std::uint32_t GraphCompileDiagnostics::passSlot(GraphPassId source) const noexcept
+    {
+        const auto found = std::ranges::find(source_passes, source);
+        if (found == source_passes.end()) return kGraphInvalidIndex;
+        return static_cast<std::uint32_t>(found - source_passes.begin());
+    }
+
     namespace
     {
         std::string transitionBoundary(ETransitionBoundary boundary)
@@ -74,7 +81,7 @@ namespace lux::render::detail
             return false;
         }
         std::string output;
-        const auto& plan = graph.executable;
+        const auto& plan = graph.graph;
         const auto& program = plan.recording_;
         const auto sourcePass = [&](const auto& transition)
         {
@@ -90,7 +97,7 @@ namespace lux::render::detail
         };
         if (format == EGraphDumpFormat::DOT)
         {
-            output = "digraph RenderGraphExecutable {\nlabel=\"Solid: recording order; dashed: compiled barriers\";\n";
+            output = "digraph compiled::RenderGraph {\nlabel=\"Solid: recording order; dashed: compiled barriers\";\n";
             for (std::size_t i = 0; i < program.passes.size(); ++i)
             {
                 output += "p" + std::to_string(i) + " [label=\"pass " + std::to_string(i) + " / group " +
@@ -138,7 +145,7 @@ namespace lux::render::detail
             {
                 dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw);
             }
-            const auto& native = graph.programs[pass.binding_slot];
+            const auto& native = plan.programs()[pass.binding_slot];
             if (native.pipeline) pipelines.insert(native.pipeline);
             if (auto* layout = native.descriptors.layout)
             {

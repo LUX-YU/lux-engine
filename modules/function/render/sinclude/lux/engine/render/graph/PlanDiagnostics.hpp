@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/extensions/graph/Diagnostics.hpp>
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::detail
 {

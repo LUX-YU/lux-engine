@@ -1,4 +1,4 @@
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/PassBindings.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/extensions/device/CopyEncoding.hpp>

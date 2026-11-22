@@ -223,7 +223,7 @@ namespace lux::render
             return cxx::unexpected(RenderError{kJobBusy});
         if (frameUsesTarget(target_id)) return cxx::unexpected(RenderError{kJobBusy});
         if (!targetAvailable(*target)) return cxx::unexpected(RenderError{kRuntimeState});
-        const bool writes_target = graph.executable.output() != kGraphInvalidIndex;
+        const bool writes_target = graph.output() != kGraphInvalidIndex;
         if (std::holds_alternative<detail::SwapchainTarget>(*target) && !writes_target)
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         if (auto valid = request.binding.inputs.viewport.validate(); !valid) return valid;
@@ -286,10 +286,10 @@ namespace lux::render
         if (self != binding.target_images.end())
             return AckResponse{RenderError{kCommandContract}};
         auto& target = *runtime_->targets_.find(target_id);
-        if (!selected->executable.compatible(targetDescription(target)))
+        if (!selected->compatible(targetDescription(target)))
             return AckResponse{RenderError{kDeviceArgument}};
         auto resources = bindEffectResources(
-            *entry, {job.content.scene, job.content.view}, selected->storage_imports, binding.resources
+            *entry, {job.content.scene, job.content.view}, selected->storageImports(), binding.resources
         );
         if (!resources) return AckResponse{resources.error()};
         const JobExecution::Installation installation{device, effect_id, target_id, {id, *generation}};

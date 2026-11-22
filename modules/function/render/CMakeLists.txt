@@ -94,7 +94,7 @@ set(render_sources
     src/graph/execute/RenderGraphInstanceRecording.cpp
     src/graph/execute/FrameExecutor.cpp
     src/graph/execute/NriRecordCommands.cpp
-    src/graph/compile/RenderGraphExecutable.cpp
+    src/graph/GraphOutput.cpp
     src/device/CompiledPrograms.cpp
     src/device/RasterProgramUpdate.cpp
     src/resource/ProgramInputRevision.cpp

@@ -47,7 +47,7 @@ namespace lux::render::detail
         }
     } // namespace
 
-    void GraphCompiler::Workspace::publishAliasFrontiers(RenderGraphExecutable& plan) const noexcept
+    void GraphCompiler::Workspace::publishAliasFrontiers(compiled::RenderGraph& plan) const noexcept
     {
         auto& physical = plan.physical_resources_;
         const auto& recording = plan.recording_;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/graph/RenderGraphExecutable.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render::detail

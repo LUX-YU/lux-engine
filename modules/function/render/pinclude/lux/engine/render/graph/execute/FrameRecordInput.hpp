@@ -1,14 +1,16 @@
 #pragma once
 
 #include <NRI.h>
+#include <atomic>
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <optional>
 #include <span>
 
+namespace lux::render::compiled { class RenderGraph; }
+
 namespace lux::render::detail
 {
-    class RenderGraphExecutable;
-    class NativeProgramBindings;
     struct RasterDrawList;
 
     struct RecordPass final
@@ -36,8 +38,7 @@ namespace lux::render::detail
     // Parameters and draw bytes already reside in FIF storage, not the client's mutable vectors.
     struct FrameRecordInput final
     {
-        const RenderGraphExecutable& plan;
-        const NativeProgramBindings& programs;
+        const compiled::RenderGraph& plan;
         std::span<const PassResourceInput> resources;
         std::span<const RecordPass> passes;
         std::span<const RecordHistoryInitialization> history_initializations;
@@ -46,5 +47,40 @@ namespace lux::render::detail
         std::span<const nri::BufferBarrierDesc> final_buffers;
         nri::DescriptorPool* descriptor_pool = nullptr;
         std::array<nri::DescriptorSet*, 3> shared_descriptors{};
+    };
+
+    // CPU cache state for one native recording batch in a FIF slot. Its allocator and CB are device-owned.
+    struct CommandBatch final
+    {
+        std::uint64_t revision = 1, recorded_revision = 0;
+        std::atomic<bool> recording{false};
+
+        void invalidate() noexcept
+        {
+            if (revision != recorded_revision) return;
+            if (revision == UINT64_MAX) std::terminate();
+            ++revision;
+        }
+
+        CommandBatch() noexcept = default;
+        CommandBatch(const CommandBatch&) = delete;
+        CommandBatch& operator=(const CommandBatch&) = delete;
+        CommandBatch& operator=(CommandBatch&&) = delete;
+
+        CommandBatch(CommandBatch&& other) noexcept
+        {
+            // Only cold construction may relocate a batch. Published batches keep stable addresses.
+            if (other.recording.load(std::memory_order_acquire)) std::terminate();
+            revision = other.revision;
+            recorded_revision = other.recorded_revision;
+        }
+    };
+
+    // The owner freezes a frame once. Workers borrow its command inputs and only their batch's mutable state.
+    struct FrozenRecordingFrame final
+    {
+        FrameRecordInput input;
+        std::span<CommandBatch> revisions;
+        std::span<const JobFrameResources::NativeBatch> native_batches;
     };
 } // namespace lux::render::detail

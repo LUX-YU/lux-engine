@@ -113,7 +113,7 @@ namespace lux::render::detail
         {
             const auto grant = streamRange(slot.index);
             if (!grant) return cxx::unexpected(grant.error());
-            if (!instance_.programs_->rasterStream(slot.index)->runtime)
+            if (!instance_.graph_.programs().rasterStream(slot.index)->runtime)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
             const auto& selected = instance_.dynamic_raster_programs_[slot.index];
             if (!selected || selection_index >= selected->programs.size())
@@ -132,7 +132,7 @@ namespace lux::render::detail
             if (!bound.storage) return cxx::unexpected(RenderError{kStorageIdentity, {pass, source}});
             constexpr auto records = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
             if (!(bound.capabilities & records)) return cxx::unexpected(RenderError{kStorageMismatch, {pass, source}});
-            const auto& compiled = *instance_.programs_->rasterStream(pass);
+            const auto& compiled = *instance_.graph_.programs().rasterStream(pass);
             const auto* dynamic = compiled.runtime ? instance_.dynamic_raster_programs_[pass].get() : nullptr;
             const auto& programs = dynamic ? dynamic->programs : compiled.programs;
             const auto revision = dynamic ? dynamic->revision : 0;
@@ -475,7 +475,7 @@ namespace lux::render::detail
             }
             for (auto pass : linked.raster_streams)
             {
-                if (programs_->rasterStream(pass)->runtime) producer.runtime_streams.push_back(pass);
+                if (graph_.programs().rasterStream(pass)->runtime) producer.runtime_streams.push_back(pass);
             }
             if (!linked.program_snapshots.empty() && producer.runtime_streams.empty())
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {producers.size() - 1}});
@@ -519,7 +519,7 @@ namespace lux::render::detail
         if (!program_producers_.empty())
         {
             program_input_revision_ = 1;
-            dynamic_raster_programs_.resize(plan_->passes().size());
+            dynamic_raster_programs_.resize(graph_.passes().size());
         }
         // Build the Resource-to-kernel links while the execution is private. Publication only attaches rows.
         for (auto index : program_producers_)
@@ -629,7 +629,7 @@ namespace lux::render::detail
                 continue;
             }
             if (!entry.programs) return cxx::unexpected(RenderError{kFrameContract, {entry.pass}});
-            const auto& contract = *programs_->rasterStream(entry.pass)->runtime;
+            const auto& contract = *graph_.programs().rasterStream(entry.pass)->runtime;
             auto& stream = update.streams.emplace_back();
             stream.pass = entry.pass;
             stream.candidate = std::make_unique<DynamicRasterPrograms>();
@@ -812,7 +812,7 @@ namespace lux::render::detail
             if (size > replica.capacity)
             {
                 const auto capacity = std::min(std::bit_ceil(size), contract.maximum_bytes);
-                const auto description = bufferDescription(plan_->resources()[contract.resource], capacity);
+                const auto description = bufferDescription(graph_.resources()[contract.resource], capacity);
                 if (!description) return cxx::unexpected(description.error());
                 nri::Buffer* candidate = nullptr;
                 const auto result =

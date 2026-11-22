@@ -53,7 +53,7 @@ namespace lux::render::detail
 
     const PassBindings& RenderGraphInstance::rasterBindings(RasterBindingKey key) const noexcept
     {
-        const auto* stream = programs_->rasterStream(key.pass);
+        const auto* stream = graph_.programs().rasterStream(key.pass);
         const auto* dynamic = stream->runtime ? dynamic_raster_programs_[key.pass].get() : nullptr;
         const auto generation = dynamic ? dynamic->revision : 0;
         const auto& selected = dynamic ? dynamic->programs : stream->programs;
@@ -66,9 +66,9 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         frame.stream_descriptor_rows.resize(frame.stream_inputs.size());
         nri::DescriptorPoolDesc additional{};
-        for (const auto p : plan_->binding_plan_->recordings.producer_passes)
+        for (const auto p : graph_.binding_plan_->recordings.producer_passes)
         {
-            const auto* stream = programs_->rasterStream(p);
+            const auto* stream = graph_.programs().rasterStream(p);
             if (!stream) continue;
             const auto* dynamic = stream->runtime ? dynamic_raster_programs_[p].get() : nullptr;
             if (stream->runtime && !dynamic) return cxx::unexpected(RenderError{kFrameContract, {p}});
@@ -193,7 +193,7 @@ namespace lux::render::detail
     {
         auto& frame = frames_[slot];
         const auto& core = session_->nriCore();
-        auto required = plan_->binding_plan_->private_pool;
+        auto required = graph_.binding_plan_->private_pool;
         if (auto counted = session_->descriptors().addSnapshotDescriptors(required); !counted) return counted;
         for (const auto& item : frame.native.raster_bindings)
         {
@@ -238,14 +238,14 @@ namespace lux::render::detail
         };
         for (auto& pass : frame.passes)
         {
-            const auto& program = plan_->binding_plan_->pass(pass.compiled_pass->binding_slot);
+            const auto& program = graph_.binding_plan_->pass(pass.compiled_pass->binding_slot);
             if (!program.has_private_set) continue;
-            const auto& native = (*programs_)[pass.compiled_pass->binding_slot];
+            const auto& native = graph_.programs()[pass.compiled_pass->binding_slot];
             auto ready = allocate(program.uses, native.descriptors, pass.private_descriptors,
                 [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
             {
                 if (!program.bindings[use.field].private_binding) return nullptr;
-                if (use.sampler != kGraphInvalidIndex) return programs_->sampler(use.sampler);
+                if (use.sampler != kGraphInvalidIndex) return graph_.programs().sampler(use.sampler);
                 // Feature preparation precedes Instance::rebind. Dirty resources already
                 // name the new allocation; the old cached view is not a valid replay source.
                 if (frame.bindings[use.resource].dirty) return static_cast<nri::Descriptor*>(nullptr);
@@ -329,7 +329,7 @@ namespace lux::render::detail
     {
         auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& plan = *plan_;
+        const auto& plan = graph_;
         auto& frame = frames_[slot];
         for (const auto& transition : plan.recording_.after.images)
         {
@@ -445,7 +445,7 @@ namespace lux::render::detail
                 }
                 pass.buffers.push_back(native);
             }
-            if (const auto* raster = plan_->recordingProgram().rasterScope(compiled_pass))
+            if (const auto* raster = graph_.recordingProgram().rasterScope(compiled_pass))
             {
                 const auto& group = plan.recording_.groups[compiled_pass.rendering_group];
                 pass.colors.resize(group.colors.size());
@@ -466,7 +466,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (const auto* transfer = plan_->transferCommands(compiled_pass))
+            if (const auto* transfer = graph_.transferCommands(compiled_pass))
             {
                 pass.frozen_transfers.reserve(transfer->operations.size());
                 pass.clear_views.resize(transfer->clear_view_count);
@@ -497,7 +497,7 @@ namespace lux::render::detail
         // fields, without allocating descriptors or searching author names during recording.
         for (auto& pass : frame.passes)
         {
-            if (const auto* raster = plan_->recordingProgram().rasterScope(*pass.compiled_pass))
+            if (const auto* raster = graph_.recordingProgram().rasterScope(*pass.compiled_pass))
             {
                 for (std::size_t i = 0; i < raster->colors.size(); ++i)
                 {
@@ -512,7 +512,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            else if (const auto* transfer = plan_->transferCommands(*pass.compiled_pass))
+            else if (const auto* transfer = graph_.transferCommands(*pass.compiled_pass))
             {
                 for (const auto& operation : transfer->operations)
                 {
@@ -529,7 +529,7 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::prepareDescriptors() noexcept
     {
-        const auto& layout = *plan_->binding_plan_;
+        const auto& layout = *graph_.binding_plan_;
         auto pool = layout.private_pool;
         if (auto counted = session_->descriptors().addSnapshotDescriptors(pool); !counted) return counted;
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
@@ -538,7 +538,7 @@ namespace lux::render::detail
             if (pool.descriptorSetMaxNum)
             {
                 const auto status =
-                    session_->nriCore().CreateDescriptorPool(*device(), pool, frame.native.descriptor_pool);
+                    session_->nriCore().CreateDescriptorPool(session_->device(), pool, frame.native.descriptor_pool);
                 if (status != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(status));
@@ -563,7 +563,7 @@ namespace lux::render::detail
                 pass.history_views.resize(program.uses.size());
                 if (program.has_private_set)
                 {
-                    const auto& native = (*programs_)[pass.compiled_pass->binding_slot].descriptors;
+                    const auto& native = graph_.programs()[pass.compiled_pass->binding_slot].descriptors;
                     const auto status = session_->nriCore().AllocateDescriptorSets(
                         *frame.native.descriptor_pool,
                         *native.layout,
@@ -582,7 +582,7 @@ namespace lux::render::detail
                         {
                             continue;
                         }
-                        auto* sampler = programs_->sampler(use.sampler);
+                        auto* sampler = graph_.programs().sampler(use.sampler);
                         const nri::UpdateDescriptorRangeDesc
                             update{pass.private_descriptors, use.binding, use.element, &sampler, 1};
                         session_->nriCore().UpdateDescriptorRanges(&update, 1);
@@ -609,12 +609,12 @@ namespace lux::render::detail
     RenderResult<void> RenderGraphInstance::rebind(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
-        const auto& layout = *plan_->binding_plan_;
+        const auto& layout = *graph_.binding_plan_;
         const auto& core = session_->nriCore();
         for (auto resource : frame.changed_resources)
         {
             auto& source = frame.bindings[resource];
-            const auto& uses = plan_->resources()[resource];
+            const auto& uses = graph_.resources()[resource];
             const bool image = std::holds_alternative<GraphImageDesc>(uses.description);
             if (!source.dirty)
             {
@@ -716,7 +716,7 @@ namespace lux::render::detail
                     update{pass.private_descriptors, use.binding, use.element, &candidate, 1};
                 core.UpdateDescriptorRanges(&update, 1);
                 pass.history_views[index] = nullptr;
-                const auto history = plan_->resources()[use.resource].history;
+                const auto history = graph_.resources()[use.resource].history;
                 if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
                 invalidateRecording(slot, p);
             }

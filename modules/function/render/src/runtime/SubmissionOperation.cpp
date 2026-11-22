@@ -1,3 +1,4 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -7,6 +8,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
+#include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/graph/Range.hpp>
@@ -85,22 +87,32 @@ namespace lux::render::detail
     {
         const auto& instance = *slot_.instances[batch.instance].instance;
         return instance.output_.description.kind == ETargetKind::SURFACE &&
-            (batch.local_batch == instance.plan_->output_first_batch_ ||
-             batch.local_batch + 1 == instance.plan_->submissions().size());
+            (batch.local_batch == instance.graph_.output_first_batch_ ||
+             batch.local_batch + 1 == instance.graph_.submissions().size());
     }
 
     exec::task<RenderResult<void>> SubmissionOperation::record(execution::CpuScheduler cpu, bool parallel) noexcept
     {
         if (slot_.batches.empty()) co_return RenderResult<void>{};
         const auto caller = co_await stdexec::read_env(stdexec::get_scheduler);
-        const auto frame = slotIndex();
-        slot_.recordings.assign(slot_.batches.size(), {});
-        const auto record_batch = [this, frame](std::size_t i) noexcept
+        auto& frames = slot_.recording_frames;
+        cxx::scope_exit release_inputs([&]() noexcept { frames.clear(); });
+        frames.reserve(slot_.instances.size());
+        for (const auto& execution : slot_.instances)
         {
-            const auto& batch = slot_.batches[i];
-            auto result = slot_.instances[batch.instance].instance->recordFrozenBatch(frame, batch.local_batch);
-            if (result) slot_.recordings[i].commands = *result;
-            else slot_.recordings[i].error = result.error();
+            auto input = execution.instance->recordingFrame(slotIndex());
+            if (!input) co_return cxx::unexpected(input.error());
+            frames.push_back(std::move(*input));
+        }
+        const auto record_batch = [
+            inputs = std::span<const FrozenRecordingFrame>{frames}, results = std::span{slot_.recordings},
+            &device = std::as_const(device_)
+        ](std::size_t i) noexcept
+        {
+            auto& result = results[i];
+            auto recorded = FrameExecutor::recordBatch(inputs[result.frame], device, result.batch);
+            result.error = recorded ? RenderError{} : recorded.error();
+            result.commands = recorded ? *recorded : std::span<nri::CommandBuffer* const>{};
         };
         const auto deliver = [caller](auto sender) noexcept
         {
@@ -173,7 +185,7 @@ namespace lux::render::detail
             batch.waits.clear();
             std::ranges::fill(batch.stages, nri::StageBits::NONE);
             const auto& instance = *frame.instances[batch.instance].instance;
-            for (auto id : instance.plan_->submissions_[batch.local_batch].imported_resources)
+            for (auto id : instance.graph_.submissions_[batch.local_batch].imported_resources)
             {
                 const auto* prepared = instance.frames_[slotIndex()].selectedUses(id.index).preparation;
                 if (!prepared) continue;
@@ -204,6 +216,7 @@ namespace lux::render::detail
         frame.instances.resize(instances.size());
         frame.order.assign(order.begin(), order.end());
         frame.batches.clear();
+        frame.recordings.clear();
         frame.dependencies.clear();
         for (std::uint32_t i = 0; i < instances.size(); ++i)
         {
@@ -217,6 +230,7 @@ namespace lux::render::detail
                 auto& batch = frame.batches.emplace_back();
                 batch.instance = i;
                 batch.local_batch = b;
+                frame.recordings.push_back({{}, {}, batch.instance, b});
                 batch.queue = static_cast<std::uint32_t>(device_.queueIndex(device_.queue(batches[b].queue)));
                 batch.waits = device_.makeFrontiers();
                 batch.stages.resize(device_.queueCount());
@@ -345,9 +359,9 @@ namespace lux::render::detail
         {
             const auto& bindings = instances[i]->frames_[slotIndex()].bindings;
             const auto base = frame.instances[i].first_batch;
-            for (const auto& use : instances[i]->plan_->imported_accesses_)
+            for (const auto& use : instances[i]->graph_.imported_accesses_)
             {
-                const bool presentation_output = use.resource.index == instances[i]->plan_->output() &&
+                const bool presentation_output = use.resource.index == instances[i]->graph_.output() &&
                                                  instances[i]->output_.description.kind == ETargetKind::SURFACE;
                 if (presentation_output)
                 {
@@ -369,7 +383,7 @@ namespace lux::render::detail
                 {
                     frame.imported_uses.push_back(
                         {physical, range, i, base + use.batch, base + use.release_batch, use.write,
-                         use.resource.index == instances[i]->plan_->output(), use.resource}
+                         use.resource.index == instances[i]->graph_.output(), use.resource}
                     );
                 }
                 for (auto* buffer : binding.addressed_buffers)
@@ -390,9 +404,9 @@ namespace lux::render::detail
             const auto& instance = *instances[i];
             const auto& physical = instance.frames_[slotIndex()];
             const auto base = frame.instances[i].first_batch;
-            for (std::uint32_t batch = 0; batch < instance.plan_->submissions_.size(); ++batch)
+            for (std::uint32_t batch = 0; batch < instance.graph_.submissions_.size(); ++batch)
             {
-                const auto& submission = instance.plan_->submissions_[batch];
+                const auto& submission = instance.graph_.submissions_[batch];
                 for (auto source : submission.shared_draw_reads)
                 {
                     const auto& list = physical.raster_draws[source];
@@ -512,7 +526,7 @@ namespace lux::render::detail
         auto& instance = *execution.instance;
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto& lists = instance.frames_[slotIndex()].raster_draws;
-        const auto& plan = instance.plan_->submissions_[batch.local_batch];
+        const auto& plan = instance.graph_.submissions_[batch.local_batch];
         for (auto source : plan.shared_draw_reads)
         {
             for (const auto& read : lists[source].reads)
@@ -544,13 +558,13 @@ namespace lux::render::detail
             if (output.accepted_uses) output.accepted_uses->accept(point);
             if (auto* presentation = output.presentation)
             {
-                if (batch.local_batch == instance.plan_->output_first_batch_)
+                if (batch.local_batch == instance.graph_.output_first_batch_)
                 {
                     if (presentation->phase != EPresentationPhase::READY) std::terminate();
                     *presentation->acquire_use = point;
                     presentation->phase = EPresentationPhase::WAIT_ACCEPTED;
                 }
-                if (batch.local_batch + 1 == instance.plan_->submissions_.size())
+                if (batch.local_batch + 1 == instance.graph_.submissions_.size())
                 {
                     presentation->phase = EPresentationPhase::SUBMITTED;
                 }
@@ -658,11 +672,11 @@ namespace lux::render::detail
                 {
                     continue;
                 }
-                if (batch.local_batch == instance.plan_->output_first_batch_ && presentation->phase == EPresentationPhase::READY)
+                if (batch.local_batch == instance.graph_.output_first_batch_ && presentation->phase == EPresentationPhase::READY)
                 {
-                    frame.wait_fences.push_back({presentation->acquired, 0, instance.plan_->output_wait_stages_});
+                    frame.wait_fences.push_back({presentation->acquired, 0, instance.graph_.output_wait_stages_});
                 }
-                if (batch.local_batch + 1 == instance.plan_->submissions_.size())
+                if (batch.local_batch + 1 == instance.graph_.submissions_.size())
                 {
                     frame.signal_fences.push_back({presentation->rendered, 0, nri::StageBits::ALL});
                 }

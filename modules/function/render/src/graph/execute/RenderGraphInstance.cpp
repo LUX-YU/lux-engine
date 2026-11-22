@@ -10,11 +10,10 @@ namespace lux::render::detail
 {
     RenderGraphInstance::RenderGraphInstance(
         JobGpuResources& gpu,
-        const RenderGraphExecutable& plan,
-        const NativeProgramBindings& programs,
+        const compiled::RenderGraph& plan,
         TargetOutput output
     ) noexcept
-        : session_(&gpu.session), gpu_(gpu), plan_(&plan), programs_(&programs), output_(output)
+        : session_(&gpu.session), gpu_(gpu), graph_(plan), output_(output)
     {
         condition_values_.resize(plan.condition_count_);
         const auto parameter_bytes = plan.passes().empty() ? 0 :
@@ -84,9 +83,9 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::initialize() noexcept
     {
-        if (binding_values_.size() != plan_->binding_predicate_count_) return cxx::unexpected(RenderError{kDeviceArgument});
+        if (binding_values_.size() != graph_.binding_predicate_count_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& session = *session_;
-        const auto& plan = *plan_;
+        const auto& plan = graph_;
         const bool wrong_device = plan.device() != &session.device();
         const bool wrong_target =
             !output_.frames.empty() &&
@@ -94,11 +93,11 @@ namespace lux::render::detail
         const bool needs_target = plan.output() != kGraphInvalidIndex ||
             std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept { return resource.target_sized; });
         const bool missing_target = needs_target && output_.frames.empty();
-        const bool invalid_programs = programs_->device() != &session.device() || programs_->size() != plan.passes().size();
+        const bool invalid_programs = plan.programs().size() != plan.passes().size();
         const bool missing_programs = invalid_programs || std::ranges::any_of(plan.passes(), [&](const auto& pass)
         {
             const auto& bindings = plan.binding_plan_->pass(pass.binding_slot);
-            const auto& native = (*programs_)[pass.binding_slot];
+            const auto& native = graph_.programs()[pass.binding_slot];
             if (bindings.has_private_set && !native.descriptors.layout) return true;
             if (const auto* raster = plan.rasterCommands(pass))
                 return !std::holds_alternative<RasterListCommands>(raster->draw) && !native.pipeline;
@@ -161,7 +160,7 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::bindPredicates(std::vector<std::uint8_t> selected) noexcept
     {
-        if (selected.size() != plan_->binding_predicate_count_ || !binding_values_.empty())
+        if (selected.size() != graph_.binding_predicate_count_ || !binding_values_.empty())
             return cxx::unexpected(RenderError{kDeviceArgument});
         binding_values_ = std::move(selected);
         return {};
@@ -186,14 +185,14 @@ namespace lux::render::detail
             return cxx::unexpected(submission_error_);
         }
         auto& frame = frames_[slot];
-        if (plan_->output() != kGraphInvalidIndex)
+        if (graph_.output() != kGraphInvalidIndex)
         {
             const auto& output = output_.frames[slot];
-            auto& binding = frame.bindings[plan_->output()];
+            auto& binding = frame.bindings[graph_.output()];
             if (binding.image != output.image)
             {
                 retireRasterViews(frame, nullptr, binding.image);
-                invalidateResourceRecordings(slot, plan_->output());
+                invalidateResourceRecordings(slot, graph_.output());
                 binding.select(nullptr, output.image, session_->nriCore());
                 // A presentation image has one writer and cannot be sampled by another instance.
                 // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
@@ -204,7 +203,7 @@ namespace lux::render::detail
                 if (!binding.dirty)
                 {
                     binding.dirty = true;
-                    frame.changed_resources.push_back(plan_->output());
+                    frame.changed_resources.push_back(graph_.output());
                 }
                 for (auto* view : frame.output_views)
                 {
@@ -230,9 +229,9 @@ namespace lux::render::detail
             frame.publish_history[i] = enabled && produced;
         }
         frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
-        for (std::size_t r = 0; r < plan_->recording_.conditions.size(); ++r)
+        for (std::size_t r = 0; r < graph_.recording_.conditions.size(); ++r)
         {
-            const auto& region = plan_->recording_.conditions[r];
+            const auto& region = graph_.recording_.conditions[r];
             const bool enabled = conditionEnabled(frame, {region.source, region.input_slot, region.expected});
             if ((frame.enabled_regions[r] != 0) != enabled)
             {
@@ -255,7 +254,7 @@ namespace lux::render::detail
         updateHistoryViews(slot);
         if (frame.viewport != viewport_)
         {
-            for (const auto p : plan_->binding_plan_->recordings.viewport_passes) invalidateRecording(slot, p);
+            for (const auto p : graph_.binding_plan_->recordings.viewport_passes) invalidateRecording(slot, p);
             frame.viewport = viewport_;
         }
         const auto& shared = session_->descriptors();
@@ -278,7 +277,7 @@ namespace lux::render::detail
             constexpr std::array kinds{
                 nri::DescriptorType::TEXTURE, nri::DescriptorType::SAMPLER, nri::DescriptorType::STRUCTURED_BUFFER
             };
-            const auto& dependencies = plan_->binding_plan_->recordings;
+            const auto& dependencies = graph_.binding_plan_->recordings;
             for (std::size_t kind = 0; kind < kinds.size(); ++kind)
             {
                 const auto generation = shared.nativeSetGeneration(kinds[kind]);

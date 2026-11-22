@@ -2,13 +2,11 @@
 #include "FrameHarness.hpp"
 #include "GraphAliasLoad.hpp"
 #include "NativeDevice.hpp"
+#include "RetirementFence.hpp"
 #include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/target/OffscreenTarget.hpp>
-#define NOMINMAX
-#include <d3d12.h>
-#undef interface
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -204,11 +202,12 @@ namespace
 
         SubmitCounts counts() const noexcept { return {submissions_.load(), waits_.load()}; }
 
-        void describeMemory(const char* phase)
+        std::uint64_t describeMemory(const char* phase)
         {
             const std::lock_guard lock(memory_mutex_);
             std::printf("MEMORY,%s,%zu,%llu,%llu\n", phase, bytes_.size(),
                         static_cast<unsigned long long>(live_), static_cast<unsigned long long>(peak_));
+            return live_;
         }
 
     private:
@@ -283,9 +282,23 @@ namespace
         std::array<SubmissionQueue*, 2> queues;
     };
 
-    void measureExtent(SampleContext& context, unsigned width)
+    void submitFrame(SampleContext& context)
     {
         const auto instances = std::array{&context.instance};
+        auto submitted = take(runTask(context.frames.render(instances, {})));
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (context.frames.submitting())
+        {
+            CHECK(std::chrono::steady_clock::now() < deadline);
+            CHECK(context.device.progressCompletions());
+            submitted += take(runTask(context.frames.render({}, {})));
+            if (context.frames.submitting()) take(context.frames.waitForProgress(1'000'000));
+        }
+        CHECK(submitted);
+    }
+
+    void measureExtent(SampleContext& context, unsigned width)
+    {
         for (unsigned i = 0; i < warmup + samples; ++i)
         {
             auto& device = context.device;
@@ -294,16 +307,8 @@ namespace
             auto clocks = std::array{queueClock(device, *context.queues[0]), queueClock(device, *context.queues[1])};
             if (context.queues[0] == context.queues[1]) clocks[1] = clocks[0];
             const auto before = capture.counts();
-            auto submitted = take(runTask(context.frames.render(instances, {})));
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-            while (context.frames.submitting())
-            {
-                CHECK(std::chrono::steady_clock::now() < deadline);
-                CHECK(device.progressCompletions());
-                submitted += take(runTask(context.frames.render({}, {})));
-                if (context.frames.submitting()) take(context.frames.waitForProgress(1'000'000));
-            }
-            CHECK(submitted && device.drain());
+            submitFrame(context);
+            CHECK(device.drain());
             const auto after = capture.counts();
             const std::array ticks{capture.read(0), capture.read(1)};
             if (device.description().graphicsAPI == nri::GraphicsAPI::VK)
@@ -342,7 +347,56 @@ namespace
         }
     }
 
-    int run(DeviceSession& device, EGraphicsBackend backend, bool multiple)
+    void measureInFlightResize(SampleContext& sample, const Workload& workload, TargetOutput final_target)
+    {
+        auto& device = sample.device;
+        auto& graph = sample.instance;
+        auto& capture = sample.capture;
+        auto& queue = device.queue();
+        auto middle_desc = final_target.description;
+        middle_desc.width = middle_desc.height = 384;
+        auto middle = take(OffscreenTarget::create(device, middle_desc, 1));
+        RetirementFence gate(device);
+        const nri::FenceSubmitDesc wait{gate.fence, 1, nri::StageBits::ALL};
+        std::uint64_t gate_serial = 0;
+        std::uint64_t before_retirement = 0;
+        {
+            // The 256 frame is complete. An unrelated accepted wait keeps the baseline's
+            // session-wide deferred-release frontier open after the first resize is adopted.
+            auto first = take(graph.prepareResize(middle.output()));
+            CHECK(graph.prepareResizeAdoption(first));
+            graph.commitResize(std::move(first));
+            gate_serial = take(runTask(queue.submit({}, std::span{&wait, 1})));
+            before_retirement = capture.describeMemory("384-adopted-with-old-256");
+        }
+        capture.resetQueries();
+        submitFrame(sample);
+        const auto accepted = queue.submitted();
+        CHECK(accepted > gate_serial && queue.poll() && queue.completed() < gate_serial);
+        CHECK(capture.describeMemory("384-accepted-with-retiring-256") == before_retirement);
+        {
+            auto second = take(graph.prepareResize(final_target));
+            const auto peak = capture.describeMemory("384-live-512-candidate-256-retiring");
+            CHECK(peak > before_retirement);
+            CHECK(device.progressCompletions() && queue.completed() < gate_serial);
+            CHECK(capture.describeMemory("before-host-signal") == peak);
+            std::printf("FRONTIER,held,%llu,%llu,%llu\n",
+                        static_cast<unsigned long long>(gate_serial), static_cast<unsigned long long>(accepted),
+                        static_cast<unsigned long long>(queue.completed()));
+            gate.signal();
+            CHECK(take(queue.wait(accepted, 5'000'000'000)) && device.drain());
+            std::printf("FRONTIER,released,%llu,%llu,%llu\n",
+                        static_cast<unsigned long long>(gate_serial), static_cast<unsigned long long>(accepted),
+                        static_cast<unsigned long long>(queue.completed()));
+            CHECK(capture.describeMemory("384-live-512-candidate") < peak);
+            checkOutputs(device, graph, workload);
+            CHECK(graph.prepareResizeAdoption(second));
+            graph.commitResize(std::move(second));
+        }
+        CHECK(device.drain());
+    }
+
+    int run(DeviceSession& device, EGraphicsBackend backend, bool multiple, bool inflight)
     {
         using namespace lux::render;
         const auto workload = buildWorkload(backend);
@@ -388,8 +442,16 @@ namespace
             std::printf("PLACEMENT,%s\n", dump.c_str());
             capture.describeMemory("initial");
             SampleContext sample{device, frames, instance, capture, queues};
-            measureExtent(sample, target.width);
+            if (inflight)
+            {
+                capture.resetQueries();
+                submitFrame(sample);
+                CHECK(device.drain());
+            }
+            else measureExtent(sample, target.width);
             checkOutputs(device, instance, workload);
+            if (inflight) measureInFlightResize(sample, workload, replacement.output());
+            else
             {
                 auto resized = take(instance.prepareResize(replacement.output()));
                 capture.describeMemory("candidate");
@@ -399,11 +461,17 @@ namespace
             }
             CHECK(device.drain());
             capture.describeMemory("resized");
-            measureExtent(sample, larger.width);
+            if (inflight)
+            {
+                capture.resetQueries();
+                submitFrame(sample);
+                CHECK(device.drain());
+            }
+            else measureExtent(sample, larger.width);
             checkOutputs(device, instance, workload);
         }
         CHECK(device.drain());
-        capture.describeMemory("drained");
+        CHECK(capture.describeMemory("drained") == 0);
         return 0;
     }
 }
@@ -411,7 +479,8 @@ namespace
 int main(int argc, char** argv)
 {
     using namespace foundation_test;
-    if (argc != 3) return 2;
+    const bool inflight = argc == 4 && std::string_view{argv[3]} == "inflight-resize";
+    if (argc != 3 && !inflight) return 2;
     const std::string_view api{argv[1]}, topology{argv[2]};
     if ((api != "d3d12" && api != "vulkan") || (topology != "single" && topology != "multi")) return 2;
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
@@ -421,7 +490,7 @@ int main(int argc, char** argv)
     options.backend = api == "d3d12" ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
     options.multiple_queues = topology == "multi";
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-    const auto status = run(*session, options.backend, options.multiple_queues);
+    const auto status = run(*session, options.backend, options.multiple_queues, inflight);
     session.reset();
     CHECK(validation.errors == 0);
     return status;

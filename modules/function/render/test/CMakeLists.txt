@@ -273,7 +273,7 @@ if(WIN32 AND LUX_RENDER_GRAPH_ALLOCATION_PROBE)
         "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
     )
 
-    target_link_libraries(render_alias_overlap PRIVATE render_native_probe_host NRI)
+    target_link_libraries(render_alias_overlap PRIVATE render_native_probe_host NRI Vulkan::Headers)
 endif()
 
 foreach(probe IN ITEMS render_output_test render_graph_chain render_deferred_scene)

@@ -544,6 +544,10 @@ pairs around two independent compute dispatches in their production command buff
 native waits and explicit graph allocation bytes across resize. Each extent has eight warmup frames and 32 measured
 frames with one frame in flight. Both compute outputs and the pixels from the aliased images undergo GPU readback.
 The multi-queue run exercises an eligible asynchronous schedule. Exit code 77 indicates unavailable topology or timers.
+Add `inflight-resize` to measure live, candidate and retiring allocations together. A host-signaled queue fence
+keeps the first resize's old allocation alive while a frame using the intermediate extent is pending and a second
+resize prepares its candidate. The probe records accepted and completed serials before and after the host signal,
+checks the intermediate frame, then adopts the candidate and verifies the final frame.
 
 `RenderGraphInstance::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
 `FrameExecutor` only encodes through the supplied NRI core and a const view of prepared instance data. Shared

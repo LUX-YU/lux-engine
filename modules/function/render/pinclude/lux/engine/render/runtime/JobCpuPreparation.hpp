@@ -1,7 +1,9 @@
 #pragma once
 
 #include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
+#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
+#include <lux/engine/render/resource/ConstantBufferStorage.hpp>
+#include <lux/engine/render/runtime/RasterProgramInputs.hpp>
 #include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 
 namespace lux::render::compiled { class RenderGraph; }
@@ -9,7 +11,6 @@ namespace lux::render::compiled { class RenderGraph; }
 namespace lux::render::detail
 {
     class JobGpuResources;
-    class RasterProgramInputs;
     struct FrameResources;
 
     // CPU inputs and reusable workspaces for the linked call sequence of one installed Job.
@@ -42,7 +43,7 @@ namespace lux::render::detail
         class ProducerFrame;
         struct PreparedBytes final
         {
-            std::vector<std::byte> bytes;
+            std::span<std::byte> bytes;
             bool written = false;
         };
 
@@ -66,6 +67,7 @@ namespace lux::render::detail
         std::vector<StorageSnapshot> storage_snapshots_;
         std::vector<std::uint32_t> snapshot_sources_;
         std::vector<extension_detail::AlgorithmWorkspace> workspaces_;
+        std::vector<std::byte> selected_bytes_;
         std::vector<PreparedInlineBlock> constants_;
         std::vector<OwnedRasterStream> streams_;
         std::vector<PreparedBytes> cpu_data_;

@@ -3,7 +3,6 @@
 #include <lux/engine/render/resource/ConstantBufferStorage.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <utility>
 
 namespace lux::render::detail

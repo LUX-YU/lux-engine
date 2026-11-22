@@ -443,7 +443,9 @@ During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The 
 address the selected value directly. A linked Storage snapshot identifies its frame operand and, when declared for the
 cold Program build, its program operand. Link qualifies its complete type and Job installation resolves the final
 Resource selection. Frame preparation and cold Program readers can each access only their declared operands.
-All declared outputs must be written before the frame can be recorded.
+The device graph stores each live CPU call's output ranges and the byte offsets of CPU values and inline blocks.
+Each Job binds these byte ranges to a single staging allocation. All declared outputs must be written before
+the selection is published to the writable FIF.
 
 The Job owns each workspace, its CPU binding rows and their revisions. Each DeviceEntry owns the Job's native
 buffers, images, memory allocations, descriptor pools, views, command buffers and History backing. The device indexes

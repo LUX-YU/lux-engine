@@ -1,4 +1,4 @@
-#include <lux/engine/render/effect/EffectPreparation.hpp>
+#include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/graph/compile/GraphLiveness.hpp>
 
 #include <lux/engine/render/graph/Range.hpp>
@@ -776,10 +776,9 @@ namespace lux::render::runtime_detail
     }
 
     RenderResult<RenderGraphAnalysis>
-    analyzePreparedGraph(
-        const RenderGraph& source, PreparationDefinition& definition, rdesc::EShaderTarget target
-    ) noexcept
+    analyzePreparedGraph(EffectGraphBuild& definition, rdesc::EShaderTarget target) noexcept
     {
+        const auto& source = definition.source;
         const auto count = static_cast<std::uint32_t>(definition.producers.size());
         if (!count && !definition.buffers.empty())
             return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex}});
@@ -834,7 +833,7 @@ namespace lux::render::runtime_detail
             }
             for (auto output : declaration.gpu_buffers)
             {
-                const auto buffer = std::ranges::find(definition.buffers, output, &PreparationDefinition::Buffer::resource);
+                const auto buffer = std::ranges::find(definition.buffers, output, &EffectGraphBuild::Buffer::resource);
                 if (buffer == definition.buffers.end() || buffer->node != definition.producers[i].node)
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output.index}});
                 auto& writer = buffer_writers[output.index];

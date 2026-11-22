@@ -6,7 +6,7 @@
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
-#include <lux/engine/render/effect/EffectPreparation.hpp>
+#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
 #include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
@@ -34,16 +34,63 @@ namespace lux::render::runtime_detail
         extension_detail::ConstantBufferField source;
     };
 
+    struct EffectInputDefinition final
+    {
+        graph::NodeId node;
+        cxx::basic_type_info type;
+        std::size_t bytes;
+    };
+
+    struct CpuDataDefinition final
+    {
+        cxx::basic_type_info type;
+        std::size_t bytes;
+    };
+
     struct EffectGraphBuild final
     {
+        struct Buffer final
+        {
+            GraphResourceId resource;
+            graph::NodeId node;
+            std::uint64_t minimum_bytes, maximum_bytes;
+            bool upload;
+        };
+
+        struct Snapshot final
+        {
+            cxx::basic_type_info type;
+            std::uint32_t binding;
+        };
+
+        struct Producer final
+        {
+            GraphPreparation declaration;
+            graph::NodeId node;
+        };
+
+        struct InlineCopy final
+        {
+            graph::NodeId node;
+            GraphPassId pass;
+            extension_detail::InlineBlockInput input;
+        };
+
         RenderGraph source;
         RenderGraphAnalysis analysis;
-        EffectOutputDesc output;
         std::vector<detail::TargetImageSlot> target_imports;
         std::vector<EffectStorageImport> storage_imports;
-        PreparationDefinition preparation;
+        std::vector<InlineCopy> inline_copies;
+        std::vector<CpuDataDefinition> cpu_data;
+        std::vector<Buffer> buffers;
+        std::vector<Snapshot> snapshots;
+        std::vector<Producer> producers;
+        std::vector<std::uint32_t> live_order;
         std::vector<ConstantBufferDeclaration> uniforms;
     };
+
+    [[nodiscard]] bool sameBlockContract(ConstantBlockContract, ConstantBlockContract, rdesc::EShaderTarget) noexcept;
+    [[nodiscard]] RenderResult<RenderGraphAnalysis> analyzePreparedGraph(EffectGraphBuild&, rdesc::EShaderTarget) noexcept;
 
     struct EffectInitialization final
     {

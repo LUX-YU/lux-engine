@@ -3671,28 +3671,35 @@ static void preparedBuffers(bool d3d12)
     public:
         struct Configuration final
         {
-            GraphResourceId destination;
+            GraphResourceId destination, scratch;
             GraphStorageSnapshotId lights;
         };
 
         struct LinkedData final
         {
             PreparedBufferWriter writer;
+            FrameBufferSizer scratch;
             StorageSnapshotSlot<ShadowLightSnapshot> lights;
         };
 
         static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
         {
+            // Resolve the second declared slot first. A rejected second claim must preserve both grants.
+            auto scratch = link.resolveFrameBuffer(source.scratch);
+            if (!scratch) return lux::cxx::unexpected(scratch.error());
+            const auto duplicate = link.resolveFrameBuffer(source.scratch);
+            CHECK(!duplicate && duplicate.error().type == kGraphAmbiguousProducer);
             auto writer = link.resolvePreparedBuffer(source.destination);
             if (!writer) return lux::cxx::unexpected(writer.error());
             auto lights = link.resolveStorageSnapshot<ShadowLightSnapshot>(source.lights);
             if (!lights) return lux::cxx::unexpected(lights.error());
-            return LinkedData{*writer, *lights};
+            return LinkedData{*writer, *scratch, *lights};
         }
 
         static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
         {
             const auto selected = phase.load();
+            if (auto sized = frame.sizeBuffer(linked.scratch, 16); !sized) return sized;
             if (selected == EPhase::OMIT) return {};
             const auto lights = frame.readStorage(linked.lights);
             if (!lights) return lux::cxx::unexpected(lights.error());
@@ -3762,6 +3769,8 @@ static void preparedBuffers(bool d3d12)
         ++graph_builds;
         auto selected = context.declarePreparedBuffer("selection", 16, 1024);
         if (!selected) return lux::cxx::unexpected(selected.error());
+        const auto scratch = context.declareFrameBuffer("scratch", 16, 16);
+        if (!scratch) return lux::cxx::unexpected(scratch.error());
         const ResourceRequirement light_owner{ResourceName{kLightResourceName.name()}};
         auto lights = mode == "wrong-type" ? context.importStorageSnapshot<std::uint32_t>("lights", light_owner) :
             context.importStorageSnapshot<ShadowLightSnapshot>("lights", light_owner);
@@ -3770,9 +3779,9 @@ static void preparedBuffers(bool d3d12)
         {
             return context.addPreparation({
                 PreparationAlgorithm::stateless<Producer>(), take(ConfigValue::make(Producer::Configuration{
-                    selected->resource, *lights
+                    selected->resource, scratch->resource, *lights
                 })),
-                {}, {}, {}, {}, {selected->resource}, {*lights}
+                {}, {}, {}, {}, {selected->resource, scratch->resource}, {*lights}
             });
         };
         if (mode != "missing") CHECK(add_producer());

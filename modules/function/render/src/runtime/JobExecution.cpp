@@ -143,7 +143,7 @@ namespace lux::render
         candidate.product_count = static_cast<std::size_t>(ordinary.begin() - candidate.storage_bindings.begin());
         if (auto ready = candidate.bindPredicates(std::move(selected)); !ready) return ready;
         if (auto ready = candidate.initialize(); !ready) return ready;
-        const auto& preparation = candidate.graph().preparation();
+        const auto& preparation = candidate.graph().cpuProgram();
         detail::JobCpuPreparation::PreparationSources inputs;
         const auto buffers = entry.effectResources(candidate.effect);
         if (buffers.size() != preparation.constant_buffers.size()) std::terminate();
@@ -192,7 +192,7 @@ namespace lux::render
             if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
         }
-        if (auto linked = candidate.programs.bind(preparation, registry, inputs.snapshots, inputs.draw_resources); !linked)
+        if (auto linked = candidate.programs.bind(registry, inputs.snapshots, inputs.draw_resources); !linked)
             return linked;
         if (auto ready = candidate.preparation.bind(registry, std::move(inputs), candidate.targetDescription()); !ready)
             return ready;

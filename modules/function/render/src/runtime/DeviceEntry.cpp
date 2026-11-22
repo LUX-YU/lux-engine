@@ -115,13 +115,13 @@ namespace lux::render::detail
         return retired;
     }
 
-    void DeviceEntry::installEffectResources(EffectId effect, const PreparationPlan& plan) noexcept
+    void DeviceEntry::installEffectResources(EffectId effect, std::span<const ConstantBufferInput> constants) noexcept
     {
-        if (plan.constant_buffers.empty()) return;
+        if (constants.empty()) return;
         EffectBuffers buffers;
-        buffers.reserve(plan.constant_buffers.size());
+        buffers.reserve(constants.size());
         const auto frame_count = frame_progress_.frameCount();
-        for (const auto& input : plan.constant_buffers)
+        for (const auto& input : constants)
         {
             buffers.push_back(std::make_unique<ConstantBufferStorage>(session(), input.bytes, frame_count));
         }

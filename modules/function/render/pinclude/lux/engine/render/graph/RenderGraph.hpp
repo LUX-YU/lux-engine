@@ -16,13 +16,158 @@
 #include <memory>
 
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
+#include <lux/engine/render/extensions/execution/GraphPreparation.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 
 namespace lux::render::compiled { class RenderGraph; }
 
 namespace lux::render::detail
 {
+    struct ConstantBufferInput final
+    {
+        std::uint32_t state, bytes;
+        GraphResourceId resource;
+        extension_detail::BoundConstantValue (*bind)(const void*) noexcept;
+    };
+
+    struct InputSlot final
+    {
+        std::uint32_t index;
+    };
+
+    struct CompiledPassSlot final
+    {
+        std::uint32_t index = kGraphInvalidIndex;
+    };
+
+    struct CpuByteRange final
+    {
+        std::size_t size, offset = 0;
+
+        [[nodiscard]] std::span<std::byte> slice(std::span<std::byte> storage) const noexcept
+        {
+            return storage.subspan(offset, size);
+        }
+    };
+
+    struct LinkedInlineBlock final
+    {
+        std::uint32_t pass;
+        CpuByteRange bytes;
+        std::uint32_t alternate = kGraphInvalidIndex;
+    };
+
+    struct PreparationRange final
+    {
+        std::uint32_t first = 0, count = 0;
+
+        [[nodiscard]] bool contains(std::uint32_t slot) const noexcept
+        {
+            return slot >= first && slot - first < count;
+        }
+    };
+
+    struct LinkedRasterStream final
+    {
+        std::uint32_t pass, list;
+    };
+
+    struct LinkedRasterBuild final
+    {
+        std::uint32_t input_owner;
+        RasterProgramBuilder::Build build = nullptr;
+        PreparationRange snapshots;
+
+        [[nodiscard]] bool link(const RasterProgramBuilder& builder, const extension_detail::PreparationCall& call) noexcept
+        {
+            build = builder.link(call.inputs.type(), call.methods->mapping_type);
+            return build != nullptr;
+        }
+    };
+
+    struct CpuCall final
+    {
+        extension_detail::PreparationCall call;
+        std::uint32_t workspace_slot = kGraphInvalidIndex;
+        std::uint32_t program_slot = kGraphInvalidIndex;
+        PreparationRange inputs, outputs, inline_blocks, streams, buffers, snapshots;
+    };
+
+    struct CpuProgram final
+    {
+        struct Buffer final
+        {
+            std::uint32_t resource;
+            std::uint64_t minimum_bytes, maximum_bytes;
+            bool upload;
+            bool used;
+        };
+
+        struct Snapshot final
+        {
+            cxx::basic_type_info type;
+            std::uint32_t binding;
+        };
+
+        struct EffectInput final
+        {
+            std::uint32_t source;
+            InputSlot destination;
+            std::span<const std::byte> (*bind)(const void*) noexcept = nullptr;
+        };
+
+        struct ConstantCopy final
+        {
+            InputSlot input;
+            CompiledPassSlot pass;
+        };
+
+        static_assert(std::is_standard_layout_v<ConstantCopy> && std::is_trivially_copyable_v<ConstantCopy>);
+
+        std::vector<ConstantBufferInput> constant_buffers;
+        std::vector<ConstantCopy> constant_copies;
+        std::vector<EffectInput> effect_inputs;
+        std::vector<CpuByteRange> cpu_values;
+        std::size_t byte_count = 0;
+        std::vector<InputSlot> cpu_reads;
+        std::vector<LinkedInlineBlock> inline_blocks;
+        std::vector<Buffer> buffers;
+        struct SnapshotRead final
+        {
+            std::uint32_t source, program;
+            const cxx::basic_type_info* type;
+        };
+
+        std::vector<Snapshot> snapshots;
+        std::vector<SnapshotRead> snapshot_reads;
+        struct DrawSourceRange final
+        {
+            std::uint32_t first = 0, count = 0;
+            std::uint32_t producer = kGraphInvalidIndex, list = kGraphInvalidIndex;
+        };
+
+        std::vector<DrawSourceRange> draw_resource_ranges;
+        struct DrawBinding final
+        {
+            std::uint32_t binding;
+            std::uint32_t capabilities;
+            bool indexed_geometry;
+        };
+
+        std::vector<DrawBinding> draw_resource_bindings;
+        std::vector<LinkedRasterBuild> raster_builds;
+        std::vector<std::uint32_t> program_reads;
+        std::uint32_t workspace_count = 0;
+        std::vector<CpuCall> calls;
+        std::vector<LinkedRasterStream> streams;
+
+        [[nodiscard]] std::span<const LinkedRasterStream> streamsFor(const CpuCall& call) const & noexcept
+        {
+            return std::span{streams}.subspan(call.streams.first, call.streams.count);
+        }
+    };
+
     struct GraphBindingPlan;
     struct RecordingDependencies;
     struct DescriptorAccess;
@@ -570,8 +715,8 @@ namespace lux::render::compiled
         [[nodiscard]] const detail::NativeProgramBindings& programs() const & noexcept { return programs_; }
         const detail::NativeProgramBindings& programs() const && = delete;
 
-        [[nodiscard]] const detail::PreparationPlan& preparation() const & noexcept { return preparation_; }
-        const detail::PreparationPlan& preparation() const && = delete;
+        [[nodiscard]] const detail::CpuProgram& cpuProgram() const & noexcept { return cpu_program_; }
+        const detail::CpuProgram& cpuProgram() const && = delete;
 
         [[nodiscard]] std::span<const detail::TargetImageSlot> targetImports() const & noexcept
         {
@@ -614,7 +759,7 @@ namespace lux::render::compiled
         std::vector<detail::FinalBufferUse> output_uses_;
         std::vector<detail::FinalBufferExport> buffer_exports_;
         std::vector<BindingComparison> binding_comparisons_;
-        detail::PreparationPlan preparation_;
+        detail::CpuProgram cpu_program_;
 
         bool device_addresses_ = false;
         EffectOutputDesc output_description_;

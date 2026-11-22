@@ -85,7 +85,7 @@ namespace lux::render::detail
         ProducerFrame(
             JobCpuPreparation& job, std::uint32_t producer_slot, std::uint32_t frame_slot, const TargetDesc& target
         ) noexcept
-            : job_(job), linked_(job.graph_.preparation().producers[producer_slot]), producer_slot_(producer_slot),
+            : job_(job), linked_(job.graph_.cpuProgram().calls[producer_slot]), producer_slot_(producer_slot),
               frame_slot_(frame_slot), target_(target)
         {
         }
@@ -163,7 +163,7 @@ namespace lux::render::detail
                 desc.structureStride == stride && input.range.offset % stride == 0 && input.range.size == stride &&
                 validInterval(input.range.offset, input.range.size, desc.size);
             if (!valid_buffer) return cxx::unexpected(RenderError{kGraphInvalidRange, {pass, source}});
-            auto& stream = job_.streams_[job_.graph_.preparation().draw_resource_ranges[pass].list];
+            auto& stream = job_.streams_[job_.graph_.cpuProgram().draw_resource_ranges[pass].list];
             const auto first = stream.record_images.size();
             if (input.images.size() > kGraphInvalidIndex - first)
                 return cxx::unexpected(RenderError{kDeviceCapacity, {pass}});
@@ -187,16 +187,16 @@ namespace lux::render::detail
             return {};
         }
 
-        RenderResult<const PreparationPlan::DrawSourceRange*>
+        RenderResult<const CpuProgram::DrawSourceRange*>
         streamRange(std::uint32_t pass) const noexcept
         {
-            const auto& ranges = job_.graph_.preparation().draw_resource_ranges;
+            const auto& ranges = job_.graph_.cpuProgram().draw_resource_ranges;
             if (pass >= ranges.size() || ranges[pass].producer != producer_slot_)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {pass}});
             return &ranges[pass];
         }
 
-        RenderResult<const PreparationPlan::DrawSourceRange*>
+        RenderResult<const CpuProgram::DrawSourceRange*>
         drawSourceRange(DrawSourceAddress address) const noexcept
         {
             const auto [pass, source] = address;
@@ -253,7 +253,7 @@ namespace lux::render::detail
             };
         }
 
-        RenderResult<const PreparationPlan::DrawSourceRange*>
+        RenderResult<const CpuProgram::DrawSourceRange*>
         sampledImageSource(DrawSourceAddress address) const noexcept
         {
             const auto grant = drawSourceRange(address);
@@ -309,9 +309,9 @@ namespace lux::render::detail
         {
             if (!linked_.snapshots.contains(operand.frame))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, operand.frame}});
-            const auto& read = job_.graph_.preparation().snapshot_reads[operand.frame];
+            const auto& read = job_.graph_.cpuProgram().snapshot_reads[operand.frame];
             if (read.type != operand.type) return cxx::unexpected(RenderError{kStorageMismatch, {operand.frame}});
-            const auto& selection = job_.storage_snapshots_[job_.snapshot_sources_[operand.frame]];
+            const auto& selection = job_.storage_snapshots_[job_.snapshot_sources_[read.source]];
             return extension_detail::SelectedStorageSnapshot{selection.value.get(), selection.revision};
         }
 
@@ -319,7 +319,7 @@ namespace lux::render::detail
         {
             if (!linked_.inputs.contains(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-            const auto input = job_.graph_.preparation().cpu_reads[slot].index;
+            const auto input = job_.graph_.cpuProgram().cpu_reads[slot].index;
             const auto& selection = job_.cpu_data_[input];
             if (!selection.written)
                 return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, input}});
@@ -351,9 +351,9 @@ namespace lux::render::detail
             std::uint32_t slot, std::span<const std::byte> bytes, std::uint64_t revision
         ) noexcept override
         {
-            if (!ownsBuffer(slot))
+            if (!linked_.buffers.contains(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-            const auto& contract = job_.graph_.preparation().buffers[slot];
+            const auto& contract = job_.graph_.cpuProgram().buffers[slot];
             auto& selected = job_.prepared_buffer_inputs_[slot];
             const bool invalid_extent =
                 bytes.size() < contract.minimum_bytes || bytes.size() > contract.maximum_bytes || bytes.size() % 4;
@@ -379,9 +379,9 @@ namespace lux::render::detail
 
         RenderResult<void> sizeGpuBuffer(std::uint32_t slot, std::uint64_t size) noexcept override
         {
-            if (!ownsBuffer(slot))
+            if (!linked_.buffers.contains(slot))
                 return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-            const auto& contract = job_.graph_.preparation().buffers[slot];
+            const auto& contract = job_.graph_.cpuProgram().buffers[slot];
             auto& selected = job_.prepared_buffer_inputs_[slot];
             const bool invalid_extent = size < contract.minimum_bytes || size > contract.maximum_bytes || size % 4;
             const bool already_written = selected.source != PreparedBufferInput::ESource::MISSING;
@@ -390,12 +390,6 @@ namespace lux::render::detail
             selected.source = PreparedBufferInput::ESource::SIZE_ONLY;
             selected.size = size;
             return {};
-        }
-
-        [[nodiscard]] bool ownsBuffer(std::uint32_t slot) const noexcept
-        {
-            const auto& buffers = job_.graph_.preparation().buffers;
-            return slot < buffers.size() && buffers[slot].producer == producer_slot_;
         }
 
         static RenderResult<void>
@@ -409,7 +403,7 @@ namespace lux::render::detail
         }
 
         JobCpuPreparation& job_;
-        const LinkedPreparationProducer& linked_;
+        const CpuCall& linked_;
         std::uint32_t producer_slot_;
         std::uint32_t frame_slot_;
         const TargetDesc& target_;
@@ -418,10 +412,10 @@ namespace lux::render::detail
     RenderResult<void>
     JobCpuPreparation::bind(const ResourceRegistry& registry, PreparationSources inputs, const TargetDesc& target) noexcept
     {
-        const auto& plan = graph_.preparation();
+        const auto& plan = graph_.cpuProgram();
         if (inputs.constant_buffers.size() != plan.constant_buffers.size())
             return cxx::unexpected(RenderError{kFrameContract});
-        if (plan.producers.empty() && plan.constant_copies.empty() && plan.constant_buffers.empty()) return {};
+        if (plan.calls.empty() && plan.constant_copies.empty() && plan.constant_buffers.empty()) return {};
         if (snapshot_registry_) return cxx::unexpected(RenderError{kDeviceArgument});
         const auto& sources = inputs.snapshots;
         if (inputs.effect_values.size() != plan.effect_inputs.size())
@@ -429,7 +423,7 @@ namespace lux::render::detail
         for (std::size_t i = 0; i < plan.effect_inputs.size(); ++i)
         {
             const auto slot = plan.effect_inputs[i].destination.index;
-            if (slot >= plan.cpu_data_bytes.size() || inputs.effect_values[i].size() != plan.cpu_data_bytes[slot])
+            if (slot >= plan.cpu_values.size() || inputs.effect_values[i].size() != plan.cpu_values[slot].size)
                 return cxx::unexpected(RenderError{kFrameContract, {slot}});
         }
         if (sources.size() != plan.snapshots.size()) return cxx::unexpected(RenderError{kStorageContract});
@@ -465,7 +459,7 @@ namespace lux::render::detail
         }
         std::vector<extension_detail::AlgorithmWorkspace> workspaces;
         workspaces.reserve(plan.workspace_count);
-        for (const auto& linked : plan.producers)
+        for (const auto& linked : plan.calls)
         {
             if (const auto create = linked.call.methods->create_workspace)
             {
@@ -474,20 +468,19 @@ namespace lux::render::detail
                 workspaces.push_back(std::move(*workspace));
             }
         }
+        selected_bytes_.resize(plan.byte_count);
         constants_.reserve(plan.inline_blocks.size());
         for (const auto& block : plan.inline_blocks)
-            constants_.push_back({{std::vector<std::byte>(block.bytes)}});
+            constants_.push_back({{block.bytes.slice(selected_bytes_)}});
         const auto& recording = graph_.recordingDependencies();
         if (!recording.producer_passes.empty()) streams_.resize(recording.raster_list_count);
-        cpu_data_.reserve(plan.cpu_data_bytes.size());
-        for (auto bytes : plan.cpu_data_bytes) cpu_data_.push_back({std::vector<std::byte>(bytes)});
+        cpu_data_.reserve(plan.cpu_values.size());
+        for (const auto& value : plan.cpu_values) cpu_data_.push_back({value.slice(selected_bytes_)});
         prepared_buffer_inputs_.resize(plan.buffers.size());
         for (auto& frame : gpu_.frames) frame.prepared_buffers.resize(plan.buffers.size());
         workspaces_ = std::move(workspaces);
         storage_snapshots_ = std::move(snapshots);
-        snapshot_sources_.resize(plan.snapshot_reads.size());
-        for (std::size_t i = 0; i < plan.snapshot_reads.size(); ++i)
-            snapshot_sources_[i] = source_slots[plan.snapshot_reads[i].source];
+        snapshot_sources_ = std::move(source_slots);
         draw_resources_ = std::move(inputs.draw_resources);
         constant_buffers_ = std::move(inputs.constant_buffers);
         effect_values_ = std::move(inputs.effect_values);
@@ -523,11 +516,11 @@ namespace lux::render::detail
             buffer.staged_bytes = 0;
         }
 
-        const auto& linked_producers = graph_.preparation().producers;
+        const auto& linked_producers = graph_.cpuProgram().calls;
         // Select each Effect-owned input once on the owner before invoking any producer.
         for (std::size_t i = 0; i < effect_values_.size(); ++i)
         {
-            auto& value = cpu_data_[graph_.preparation().effect_inputs[i].destination.index];
+            auto& value = cpu_data_[graph_.cpuProgram().effect_inputs[i].destination.index];
             std::ranges::copy(effect_values_[i], value.bytes.begin());
             value.written = true;
         }
@@ -536,7 +529,8 @@ namespace lux::render::detail
             const auto& linked = linked_producers[i];
             for (auto& block : std::span{constants_}.subspan(linked.inline_blocks.first, linked.inline_blocks.count))
                 block.payload.written = false;
-            for (const auto& output : linked.raster_streams)
+            const auto streams = graph_.cpuProgram().streamsFor(linked);
+            for (const auto& output : streams)
             {
                 auto& stream = streams_[output.list];
                 stream.written = false;
@@ -561,29 +555,30 @@ namespace lux::render::detail
                 if (!cpu_data_[output].written)
                     return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, output}});
             }
-            for (auto output : linked.buffers)
+            for (std::uint32_t b = 0; b < linked.buffers.count; ++b)
             {
+                const auto output = linked.buffers.first + b;
                 if (prepared_buffer_inputs_[output].source == PreparedBufferInput::ESource::MISSING)
                     return cxx::unexpected(RenderError{
-                        kGraphUndefinedRead, {kGraphInvalidIndex, graph_.preparation().buffers[output].resource}
+                        kGraphUndefinedRead, {kGraphInvalidIndex, graph_.cpuProgram().buffers[output].resource}
                     });
             }
             for (std::size_t b = 0; b < linked.inline_blocks.count; ++b)
             {
                 if (!constants_[linked.inline_blocks.first + b].payload.written)
                 {
-                    const auto pass = graph_.preparation().inline_blocks[linked.inline_blocks.first + b].pass;
+                    const auto pass = graph_.cpuProgram().inline_blocks[linked.inline_blocks.first + b].pass;
                     return cxx::unexpected(RenderError{kFrameContract, {pass}});
                 }
             }
-            for (const auto& stream : linked.raster_streams)
+            for (const auto& stream : streams)
                 if (!streams_[stream.list].written) return cxx::unexpected(RenderError{kFrameContract, {stream.pass}});
         }
 
         if (program_inputs_.pending()) return cxx::unexpected(RenderError{kDeviceBusy});
         // Commit the complete selection only after every preparation callback has succeeded.
         destination.stream_inputs.swap(streams_);
-        const auto& blocks = graph_.preparation().inline_blocks;
+        const auto& blocks = graph_.cpuProgram().inline_blocks;
         for (std::size_t i = 0; i < blocks.size(); ++i)
         {
             const auto& block = blocks[i];
@@ -600,7 +595,7 @@ namespace lux::render::detail
                 if (!other) return other;
             }
         }
-        for (const auto& copy : graph_.preparation().constant_copies)
+        for (const auto& copy : graph_.cpuProgram().constant_copies)
         {
             auto updated = destination.writeInlineConstant(graph_, copy.pass.index, cpu_data_[copy.input.index].bytes, 0);
             if (!updated) return updated;

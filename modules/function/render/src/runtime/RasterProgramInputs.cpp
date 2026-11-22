@@ -6,6 +6,7 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <algorithm>
 
 namespace lux::render::detail
@@ -18,10 +19,11 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RasterProgramInputs::bind(
-        const PreparationPlan& plan, const ResourceRegistry& registry,
+        const ResourceRegistry& registry,
         std::span<const SnapshotSource> snapshots, std::span<const BoundDrawResource> draw_resources
     ) noexcept
     {
+        const auto& plan = graph_.cpuProgram();
         const bool wrong_inputs = snapshots.size() != plan.snapshots.size() ||
             draw_resources.size() != plan.draw_resource_bindings.size();
         if (registry_ || wrong_inputs)
@@ -34,16 +36,16 @@ namespace lux::render::detail
             const auto slot = static_cast<std::uint32_t>(builds_.size());
             auto& build = builds_.emplace_back();
             build.compile = recipe.build;
-            build.inputs = plan.producers[recipe.input_owner].call.inputs.data();
-            for (const auto& stream : recipe.streams)
+            build.inputs = plan.calls[recipe.input_owner].call.inputs.data();
+            for (const auto& stream : plan.streamsFor(plan.calls[recipe.input_owner]))
             {
+                if (!graph_.programs().rasterStream(stream.pass)->runtime) continue;
                 auto& selected = build.streams.emplace_back(stream.pass, stream.list);
-                if (plan.draw_resource_ranges.empty()) continue;
                 const auto range = plan.draw_resource_ranges[stream.pass];
                 for (const auto& grant : draw_resources.subspan(range.first, range.count))
                     selected.grants.push_back(grant.id);
             }
-            for (const auto operand : recipe.snapshots)
+            for (const auto operand : std::span{plan.program_reads}.subspan(recipe.snapshots.first, recipe.snapshots.count))
             {
                 const auto& read = plan.snapshot_reads[operand];
                 const auto& binding = snapshots[read.source];

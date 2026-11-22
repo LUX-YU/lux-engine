@@ -50,7 +50,7 @@ namespace lux::render
         if (!compiled) co_return AckResponse{compiled.error()};
         if (stop_requested_.load()) co_return AckResponse{RenderError{kCommandCancelled}};
         if (const auto error = device->admissionError(); error.type) co_return AckResponse{error};
-        device->installEffectResources(input.effect, (*compiled)->preparation());
+        device->installEffectResources(input.effect, (*compiled)->cpuProgram().constant_buffers);
         effect->device_graphs.push_back({input.device, std::move(*compiled)});
         compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
         co_return AckResponse{};

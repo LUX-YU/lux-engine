@@ -45,7 +45,7 @@ namespace lux::render::detail
         installJobResources(RenderJobId, std::unique_ptr<JobGpuResources>) noexcept;
         [[nodiscard]] JobGpuResources& jobResources(ExecutionBindingId) & noexcept;
         [[nodiscard]] std::unique_ptr<JobGpuResources> takeJobResources(ExecutionBindingId) noexcept;
-        void installEffectResources(EffectId, const PreparationPlan&) noexcept;
+        void installEffectResources(EffectId, std::span<const ConstantBufferInput>) noexcept;
         [[nodiscard]] std::span<const std::unique_ptr<ConstantBufferStorage>> effectResources(EffectId) const & noexcept;
         std::span<const std::unique_ptr<ConstantBufferStorage>> effectResources(EffectId) const && = delete;
         void removeEffectResources(EffectId) noexcept;

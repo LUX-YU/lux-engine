@@ -4,7 +4,6 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/resource/ConstantBufferStorage.hpp>
 
 using namespace foundation_test;

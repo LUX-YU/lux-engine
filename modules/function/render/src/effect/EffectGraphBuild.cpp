@@ -87,13 +87,6 @@ namespace lux::render::runtime_detail
             bool has_configuration_ = false;
         };
 
-        struct ImportSlots final
-        {
-            std::vector<detail::TargetImageSlot> targets;
-            std::vector<EffectStorageImport> storages;
-            std::vector<GraphStorageSnapshotId> snapshots;
-        };
-
         struct NodePinView final
         {
             std::span<const effect_detail::ValidatedEffectPin> declarations;
@@ -107,9 +100,8 @@ namespace lux::render::runtime_detail
             RenderGraphBuilder builder;
             std::vector<EffectResourceBundle> bundles;
             std::vector<std::vector<EffectResourceBundle>> node_inputs;
-            ImportSlots slots;
-            PreparationDefinition preparation;
-            std::vector<ConstantBufferDeclaration> uniforms;
+            EffectGraphBuild draft;
+            std::vector<GraphStorageSnapshotId> snapshot_slots;
 
             EffectLoweringWorkspace(EffectBuildContract contract, std::size_t pin_count) noexcept
                 : contract(contract), bundles(pin_count)
@@ -120,7 +112,7 @@ namespace lux::render::runtime_detail
             {
                 if (declaration.binding.empty() || !declaration.type.isValid())
                     return cxx::unexpected(RenderError{kStorageContract});
-                auto& declarations = slots.storages;
+                auto& declarations = draft.storage_imports;
                 auto found = std::ranges::find(declarations, declaration.binding, &EffectStorageImport::binding);
                 if (found != declarations.end())
                 {
@@ -141,7 +133,7 @@ namespace lux::render::runtime_detail
                 if (declarations.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
                 const auto index = static_cast<std::uint32_t>(declarations.size());
                 declarations.push_back(std::move(declaration));
-                slots.snapshots.emplace_back();
+                snapshot_slots.emplace_back();
                 return index;
             }
 
@@ -149,8 +141,8 @@ namespace lux::render::runtime_detail
             targetImage(std::string_view name, rdesc::ETextureFormat format, std::uint32_t samples) noexcept
             {
                 if (name.empty()) return cxx::unexpected(RenderError{kCommandContract});
-                const auto found = std::ranges::find(slots.targets, name, &detail::TargetImageSlot::binding);
-                if (found != slots.targets.end())
+                const auto found = std::ranges::find(draft.target_imports, name, &detail::TargetImageSlot::binding);
+                if (found != draft.target_imports.end())
                 {
                     if (found->format != format || found->samples != samples)
                         return cxx::unexpected(RenderError{kDeviceArgument});
@@ -163,14 +155,14 @@ namespace lux::render::runtime_detail
                     {GraphImageRange{}}, EGraphUse::SAMPLED
                 });
                 if (!declared) return cxx::unexpected(declared.error());
-                slots.targets.push_back({std::string{name}, format, samples, *declared});
+                draft.target_imports.push_back({std::string{name}, format, samples, *declared});
                 return ResourceVersion{*declared, 0};
             }
 
             RenderResult<ResourceVersion> importStorageResource(std::size_t index, GraphResource declaration) noexcept
             {
-                const auto& storages = slots.storages;
-                auto& slot = slots.storages[index].slot;
+                const auto& storages = draft.storage_imports;
+                auto& slot = draft.storage_imports[index].slot;
                 if (slot.resource.index == kGraphInvalidIndex)
                 {
                     const auto range = declaration.output_range;
@@ -186,21 +178,21 @@ namespace lux::render::runtime_detail
 
             GraphStorageSnapshotId storageSnapshot(std::uint32_t index, cxx::basic_type_info type) noexcept
             {
-                auto& slot = slots.snapshots[index];
+                auto& slot = snapshot_slots[index];
                 if (slot.index == kGraphInvalidIndex)
                 {
-                    slot.index = static_cast<std::uint32_t>(preparation.snapshots.size());
-                    preparation.snapshots.push_back({type, index});
+                    slot.index = static_cast<std::uint32_t>(draft.snapshots.size());
+                    draft.snapshots.push_back({type, index});
                 }
                 return slot;
             }
 
             void orderStorageBindings() noexcept
             {
-                const auto count = slots.storages.size();
+                const auto count = draft.storage_imports.size();
                 std::vector<std::uint32_t> order(count), remap(count);
                 std::iota(order.begin(), order.end(), 0u);
-                auto& declarations = slots.storages;
+                auto& declarations = draft.storage_imports;
                 const auto name = [&](auto index) -> std::string_view { return declarations[index].binding; };
                 std::ranges::sort(order, {}, name);
                 std::vector<EffectStorageImport> ordered;
@@ -211,7 +203,7 @@ namespace lux::render::runtime_detail
                     ordered.push_back(std::move(declarations[index]));
                 }
                 declarations = std::move(ordered);
-                for (auto& snapshot : preparation.snapshots) snapshot.binding = remap[snapshot.binding];
+                for (auto& snapshot : draft.snapshots) snapshot.binding = remap[snapshot.binding];
             }
 
             RenderResult<EffectGraphBuild> finish(const ValidatedEffectGraph&) && noexcept;
@@ -331,22 +323,22 @@ namespace lux::render::runtime_detail
                     std::move(initialized), initial
                 });
                 if (!resource) return cxx::unexpected(resource.error());
-                workspace_.preparation.buffers.push_back({*resource, node_.source, minimum, maximum, upload});
+                workspace_.draft.buffers.push_back({*resource, node_.source, minimum, maximum, upload});
                 return ResourceVersion{*resource, 0};
             }
 
             RenderResult<void>
             declareInlineCopy(GraphPassId pass, extension_detail::InlineBlockInput input) noexcept override
             {
-                workspace_.preparation.inline_copies.push_back({node_.source, pass, input});
+                workspace_.draft.inline_copies.push_back({node_.source, pass, input});
                 return {};
             }
 
             RenderResult<void> addPreparation(GraphPreparation recipe) noexcept override
             {
-                if (workspace_.preparation.producers.size() >= kGraphInvalidIndex)
+                if (workspace_.draft.producers.size() >= kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
-                workspace_.preparation.producers.push_back({std::move(recipe), node_.source});
+                workspace_.draft.producers.push_back({std::move(recipe), node_.source});
                 return {};
             }
 
@@ -396,27 +388,27 @@ namespace lux::render::runtime_detail
             RenderResult<ResourceVersion>
             declareConstantBuffer(extension_detail::ConstantBufferField source) noexcept override
             {
-                const auto existing = std::ranges::find_if(workspace_.uniforms, [&](const auto& old) noexcept
+                const auto existing = std::ranges::find_if(workspace_.draft.uniforms, [&](const auto& old) noexcept
                 {
                     return old.node == node_.source && old.source.bind == source.bind;
                 });
-                if (existing != workspace_.uniforms.end()) return ResourceVersion{existing->resource, 0};
+                if (existing != workspace_.draft.uniforms.end()) return ResourceVersion{existing->resource, 0};
                 const auto bytes = source.block.bytes;
                 auto resource = workspace_.builder.declareResource({
-                    "constant buffer/" + std::to_string(workspace_.uniforms.size()),
+                    "constant buffer/" + std::to_string(workspace_.draft.uniforms.size()),
                     GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, bytes}}, EGraphUse::UNIFORM_READ
                 });
                 if (!resource) return cxx::unexpected(resource.error());
-                workspace_.uniforms.push_back({node_.source, *resource, source});
+                workspace_.draft.uniforms.push_back({node_.source, *resource, source});
                 return ResourceVersion{*resource, 0};
             }
 
             RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info type, std::size_t bytes) noexcept override
             {
-                if (workspace_.preparation.cpu_data.size() >= kGraphInvalidIndex)
+                if (workspace_.draft.cpu_data.size() >= kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
-                const GraphCpuDataId id{static_cast<std::uint32_t>(workspace_.preparation.cpu_data.size())};
-                workspace_.preparation.cpu_data.push_back({type, bytes});
+                const GraphCpuDataId id{static_cast<std::uint32_t>(workspace_.draft.cpu_data.size())};
+                workspace_.draft.cpu_data.push_back({type, bytes});
                 return id;
             }
 
@@ -526,19 +518,19 @@ namespace lux::render::runtime_detail
             {
                 const auto resource = member.version.resource;
                 const bool is_uniform =
-                    std::ranges::find(uniforms, resource, &ConstantBufferDeclaration::resource) != uniforms.end();
+                    std::ranges::find(draft.uniforms, resource, &ConstantBufferDeclaration::resource) != draft.uniforms.end();
                 const bool is_prepared =
-                    std::ranges::find(preparation.buffers, resource, &PreparationDefinition::Buffer::resource) !=
-                    preparation.buffers.end();
+                    std::ranges::find(draft.buffers, resource, &EffectGraphBuild::Buffer::resource) !=
+                    draft.buffers.end();
                 if (is_uniform || is_prepared)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 GraphExport exported{member.version, {}, {}, {}};
                 if (output.target)
                 {
-                    const bool imported_target = std::ranges::find(slots.targets, member.version.resource, &detail::TargetImageSlot::resource) != slots.targets.end();
+                    const bool imported_target = std::ranges::find(draft.target_imports, member.version.resource, &detail::TargetImageSlot::resource) != draft.target_imports.end();
                     const bool imported_storage = std::ranges::find(
-                        slots.storages, member.version.resource, [](const auto& input) { return input.slot.resource; }
-                    ) != slots.storages.end();
+                        draft.storage_imports, member.version.resource, [](const auto& input) { return input.slot.resource; }
+                    ) != draft.storage_imports.end();
                     if (imported_target || imported_storage)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                     exported.target = GraphOutputRequirements{contract.target.format, contract.target.samples};
@@ -549,7 +541,8 @@ namespace lux::render::runtime_detail
         }
         auto source = std::move(builder).finish();
         if (!source) return cxx::unexpected(source.error());
-        for (const auto& pass : source->passes())
+        draft.source = std::move(*source);
+        for (const auto& pass : draft.source.passes())
         {
             const auto* raster = std::get_if<RasterWork>(&pass.command);
             const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
@@ -564,26 +557,19 @@ namespace lux::render::runtime_detail
                 if (!slot) return cxx::unexpected(slot.error());
             }
         }
-        std::ranges::sort(slots.targets, {}, &detail::TargetImageSlot::binding);
-        std::vector<bool> linked_targets(source->resources().size());
-        std::vector<EffectStorageImport*> linked_storages(source->resources().size());
-        std::vector<bool> linked_buffers(source->resources().size());
-        std::vector<const ConstantBufferDeclaration*> linked_uniforms(source->resources().size());
-        for (const auto& uniform : uniforms) linked_uniforms[uniform.resource.index] = &uniform;
-        for (const auto& buffer : preparation.buffers) linked_buffers[buffer.resource.index] = true;
-        for (const auto& slot : slots.targets) linked_targets[slot.resource.index] = true;
-        std::vector<std::optional<EGraphUse>> storage_read_uses(source->resources().size());
-        for (std::size_t i = 0; i < slots.storages.size(); ++i)
+        std::ranges::sort(draft.target_imports, {}, &detail::TargetImageSlot::binding);
+        std::vector<bool> linked_targets(draft.source.resources().size());
+        std::vector<EffectStorageImport*> linked_storages(draft.source.resources().size());
+        std::vector<bool> linked_buffers(draft.source.resources().size());
+        std::vector<const ConstantBufferDeclaration*> linked_uniforms(draft.source.resources().size());
+        for (const auto& uniform : draft.uniforms) linked_uniforms[uniform.resource.index] = &uniform;
+        for (const auto& buffer : draft.buffers) linked_buffers[buffer.resource.index] = true;
+        for (const auto& slot : draft.target_imports) linked_targets[slot.resource.index] = true;
+        for (auto& storage : draft.storage_imports)
+            if (storage.slot.resource.index != kGraphInvalidIndex) linked_storages[storage.slot.resource.index] = &storage;
+        for (std::size_t index = 0; index < draft.source.resources().size(); ++index)
         {
-            const auto slot = slots.storages[i].slot.resource;
-            if (slot.index == kGraphInvalidIndex) continue;
-            linked_storages[slot.index] = &slots.storages[i];
-            const auto& import = std::get<detail::StorageGraphImport>(slots.storages[i].contract);
-            storage_read_uses[slot.index] = import.read_use;
-        }
-        for (std::size_t index = 0; index < source->resources().size(); ++index)
-        {
-            const auto origin = source->resources()[index].origin;
+            const auto origin = draft.source.resources()[index].origin;
             const bool linked = linked_targets[index] || linked_storages[index] ||
                 linked_uniforms[index] || linked_buffers[index];
             const bool unbound_import = origin == EGraphOrigin::IMPORTED && !linked;
@@ -591,18 +577,19 @@ namespace lux::render::runtime_detail
             if (unbound_import || unbound_frame_buffer)
                 return cxx::unexpected(RenderError{kRuntimeUnsupported, {index}});
         }
-        for (std::size_t p = 0; p < source->passes().size(); ++p)
+        for (std::size_t p = 0; p < draft.source.passes().size(); ++p)
         {
-            for (const auto& use : source->passes()[p].uses)
+            for (const auto& use : draft.source.passes()[p].uses)
             {
                 const auto valid = [&](GraphResourceId resource) noexcept
                 {
                     if (static_cast<unsigned>(use.usage) > static_cast<unsigned>(EGraphUse::UNIFORM_READ)) return false;
-                    if (auto* declaration = linked_storages[resource.index])
-                        declaration->graph_uses |= 1u << static_cast<unsigned>(use.usage);
-                    if (linked_storages[resource.index] && use.access != EGraphAccess::READ &&
-                        !source->resources()[resource.index].output_range) return false;
-                    const auto required = storage_read_uses[resource.index];
+                    auto* declaration = linked_storages[resource.index];
+                    if (!declaration) return true;
+                    declaration->graph_uses |= 1u << static_cast<unsigned>(use.usage);
+                    if (use.access != EGraphAccess::READ && !draft.source.resources()[resource.index].output_range)
+                        return false;
+                    const auto required = std::get<detail::StorageGraphImport>(declaration->contract).read_use;
                     return !required || (use.access == EGraphAccess::READ && use.usage == *required);
                 };
                 const auto resource = use.version.resource;
@@ -610,11 +597,11 @@ namespace lux::render::runtime_detail
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p, resource.index}});
             }
         }
-        auto analysis = analyzePreparedGraph(*source, preparation, contract.device.shader_target);
+        auto analysis = analyzePreparedGraph(draft, contract.device.shader_target);
         if (!analysis) return cxx::unexpected(analysis.error());
         for (const auto pass : analysis->execution_order)
         {
-            const auto& graph_pass = source->passes()[pass.index];
+            const auto& graph_pass = draft.source.passes()[pass.index];
             for (const auto& use : graph_pass.uses)
             {
                 const auto resource = use.version.resource;
@@ -641,10 +628,7 @@ namespace lux::render::runtime_detail
             }
         }
         orderStorageBindings();
-        return EffectGraphBuild{
-            std::move(*source), std::move(*analysis), contract.target,
-            std::move(slots.targets), std::move(slots.storages),
-            std::move(preparation), std::move(uniforms)
-        };
+        draft.analysis = std::move(*analysis);
+        return std::move(draft);
     }
 }

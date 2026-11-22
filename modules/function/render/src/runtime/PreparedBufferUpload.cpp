@@ -37,7 +37,7 @@ namespace lux::render::detail
         if (inputs.size() != replicas.size()) return cxx::unexpected(RenderError{kFrameContract});
         for (std::size_t i = 0; i < replicas.size(); ++i)
         {
-            const auto& contract = graph.preparation().buffers[i];
+            const auto& contract = graph.cpuProgram().buffers[i];
             if (!contract.used) continue;
             if (contract.upload && !uploader_) return cxx::unexpected(RenderError{kDeviceUnsupported});
             auto& replica = replicas[i];

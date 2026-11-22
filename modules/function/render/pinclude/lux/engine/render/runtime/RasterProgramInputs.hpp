@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/graph/PreparationPlan.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
+#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/ProgramInputRevision.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 
@@ -20,6 +21,22 @@ namespace lux::render::compiled { class RenderGraph; }
 
 namespace lux::render::detail
 {
+    struct SnapshotSource final
+    {
+        ResourceInstanceId id;
+        void* storage;
+        const StorageSnapshotOps* ops;
+    };
+
+    struct BoundDrawResource final
+    {
+        ResourceInstanceId id;
+        const void* storage = nullptr;
+        cxx::basic_type_info implementation;
+        std::uint32_t capabilities = 0;
+        bool indexed_geometry = false;
+    };
+
     struct FrameResources;
     class JobGpuResources;
     class DeviceEntry;
@@ -36,7 +53,7 @@ namespace lux::render::detail
         RasterProgramInputs& operator=(const RasterProgramInputs&) = delete;
 
         [[nodiscard]] RenderResult<void> bind(
-            const PreparationPlan&, const ResourceRegistry&,
+            const ResourceRegistry&,
             std::span<const SnapshotSource>, std::span<const BoundDrawResource>
         ) noexcept;
         void install(DeviceEntry&, ExecutionBindingId) noexcept;

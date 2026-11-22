@@ -3,6 +3,8 @@
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <optional>
 #include <vector>
 
@@ -60,7 +62,12 @@ namespace lux::render::detail
         std::vector<Version> versions_;
     };
 
-    struct BoundConstantBuffer;
+    struct BoundConstantBuffer final
+    {
+        GraphResourceId resource;
+        ConstantBufferStorage* storage;
+        extension_detail::BoundConstantValue value;
+    };
 
     // Entries live from the first source read until the device round settles its accepted batches.
     class ConstantBufferSelections final

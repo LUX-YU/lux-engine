@@ -84,9 +84,10 @@ namespace lux::render::detail
 
     bool
     GraphCompiler::Workspace::assignAsyncCompute(
-        RecordingProgram& recording, std::uint32_t surface_output
+        RenderGraphExecutable& plan, std::uint32_t surface_output
     ) const noexcept
     {
+        auto& recording = plan.recording_;
         const auto& graph = source.graph;
         const auto order = std::span(source.analysis.execution_order);
         const auto& queues = device.queues;
@@ -99,7 +100,8 @@ namespace lux::render::detail
             const auto& resource = graph.resources()[id.index];
             const bool imported_image = resource.origin == EGraphOrigin::IMPORTED &&
                 std::holds_alternative<GraphImageDesc>(resource.description);
-            return imported_image || id.index == surface_output;
+            const bool restricted = imported_image && !plan.resources_[id.index].concurrent_image_read;
+            return restricted || id.index == surface_output;
         };
         const auto eligible = [&](const GraphPass& pass) noexcept
         {
@@ -200,7 +202,8 @@ namespace lux::render::detail
 
     void GraphCompiler::Workspace::planSubmissions(RenderGraphExecutable& plan) noexcept
     {
-        const auto& [graph, analysis] = source;
+        const auto& graph = source.graph;
+        const auto& analysis = source.analysis;
         const auto& resources = plan.resources_;
         auto& recording = plan.recording_;
         const auto& queues = device.queues;
@@ -425,6 +428,18 @@ namespace lux::render::detail
                 access.write |= std::ranges::any_of(recording.after.images, changesLayout);
             }
         }
+        const auto retain_image = [&](std::uint32_t batch, GraphResourceId resource)
+        {
+            const auto& slot = resources[resource.index];
+            if (slot.origin != EGraphOrigin::IMPORTED || !std::holds_alternative<GraphImageDesc>(slot.description))
+                return;
+            auto& images = batches[batch].imported_images;
+            if (std::ranges::find(images, resource) == images.end()) images.push_back(resource);
+        };
+        for (const auto& access : imports) retain_image(access.batch, access.resource);
+        for (const auto& pass : recording.passes)
+            for (const auto& transition : pass.before.images) retain_image(pass.submission, {transition.resource});
+        for (const auto& transition : recording.after.images) retain_image(last, {transition.resource});
         for (auto& batch : batches)
         {
             std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);

@@ -190,7 +190,8 @@ namespace lux::render::detail
     RenderResult<RenderGraphExecutable>
     GraphCompiler::Workspace::planStructure(nri::Device* native_device, const EffectOutputDesc* target) noexcept
     {
-        const auto& [graph, analysis] = source;
+        const auto& graph = source.graph;
+        const auto& analysis = source.analysis;
         const auto& [limits, queues, device_addresses] = device;
         if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
         {
@@ -263,6 +264,15 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 }
             }
+        }
+        for (const auto id : source.concurrent_image_reads)
+        {
+            if (id.index >= plan.resources_.size()) return cxx::unexpected(RenderError{kGraphUnknownResource});
+            auto& imported = plan.resources_[id.index];
+            const bool image = std::holds_alternative<GraphImageDesc>(imported.description);
+            if (imported.origin != EGraphOrigin::IMPORTED || !image)
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            imported.concurrent_image_read = true;
         }
         for (std::uint32_t index = 0; index < plan.resources_.size(); ++index)
         {
@@ -393,7 +403,8 @@ namespace lux::render::detail
 
     RenderResult<void> GraphCompiler::Workspace::finishPlan(RenderGraphExecutable& plan) noexcept
     {
-        const auto& [graph, analysis] = source;
+        const auto& graph = source.graph;
+        const auto& analysis = source.analysis;
         const auto& queues = device.queues;
         auto& resource_reuse = diagnostics.resource_reuse;
         for (const auto& placement : bindings.passes)
@@ -427,7 +438,7 @@ namespace lux::render::detail
         };
         if (policy.exercise_async)
         {
-            (void)assignAsyncCompute(plan.recording_, surface_output);
+            (void)assignAsyncCompute(plan, surface_output);
         }
         if (auto baseline = lowerSchedule(); !baseline)
         {
@@ -441,7 +452,7 @@ namespace lux::render::detail
             return graph.passes()[id.index].estimated_gpu_ns != 0;
         });
         const bool compares_async = !policy.exercise_async && has_durations && queues[0] != queues[1];
-        if (compares_async && assignAsyncCompute(plan.recording_, surface_output))
+        if (compares_async && assignAsyncCompute(plan, surface_output))
         {
             const auto baseline_ns = estimateScheduleNs(graph, order, plan.submissions_, costs);
             auto baseline_storage = std::move(plan.physical_resources_);
@@ -1053,7 +1064,8 @@ namespace lux::render::detail
     RenderResult<void> GraphCompiler::Workspace::finishDevicePlan(PreparedRenderGraph& candidate) noexcept
     {
         if (auto result = finishPlan(candidate.executable); !result) return result;
-        const auto& [graph, analysis] = source;
+        const auto& graph = source.graph;
+        const auto& analysis = source.analysis;
         diagnostics.source_passes = analysis.execution_order;
         diagnostics.resource_keys.reserve(graph.resources().size());
         for (const auto& resource : graph.resources())

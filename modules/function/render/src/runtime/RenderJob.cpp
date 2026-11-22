@@ -349,7 +349,12 @@ namespace lux::render
             // The Storage retains this boundary state through uploads and any replacement.
             const bool invalid_writer = contract->final_buffer_output &&
                 (contract->read_use || !std::holds_alternative<GraphBufferDesc>(contract->description));
-            if (invalid_writer || contract->initial_use == EGraphUse::UNSPECIFIED)
+            const bool read_layout = contract->initial_use == EGraphUse::SAMPLED ||
+                contract->initial_use == EGraphUse::TRANSFER_SOURCE;
+            const bool invalid_concurrent_read = contract->concurrent_image_read &&
+                (!std::holds_alternative<GraphImageDesc>(contract->description) ||
+                    contract->read_use != contract->initial_use || !read_layout);
+            if (invalid_writer || invalid_concurrent_read || contract->initial_use == EGraphUse::UNSPECIFIED)
                 return cxx::unexpected(RenderError{kStorageContract, {i}});
             imports.storages.push_back({
                 input.binding, name, std::move(*contract), kGraphInvalidIndex, input.projection

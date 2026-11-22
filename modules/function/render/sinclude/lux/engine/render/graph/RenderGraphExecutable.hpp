@@ -53,6 +53,7 @@ namespace lux::render::detail
         bool used = false;
         bool memory_used = false;
         bool target_sized = false;
+        bool concurrent_image_read = false;
         bool shared_table = false;
         bool sampled_target_input = false;
         std::uint32_t history = kGraphInvalidIndex;
@@ -285,6 +286,7 @@ namespace lux::render::detail
         std::vector<SubmissionDependency> dependencies;
         std::vector<SubmissionSuccessor> successors;
         std::vector<GraphResourceId> histories;
+        std::vector<GraphResourceId> imported_images;
         std::uint32_t output_begin = kGraphInvalidIndex;
         bool reusable_recording = true;
         std::vector<std::uint32_t> shared_draw_reads;

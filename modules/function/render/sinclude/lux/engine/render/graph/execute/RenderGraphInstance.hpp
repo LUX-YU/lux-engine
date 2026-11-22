@@ -125,6 +125,11 @@ namespace lux::render::detail
         // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
         void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
 
+        [[nodiscard]] RenderResult<void>
+        qualifyImportedImage(GraphResourceId, const nri::Texture&, const TargetDesc&) const noexcept;
+
+        [[nodiscard]] bool frozenForSubmission(std::uint32_t slot) const noexcept { return frozen_slot_ == slot; }
+
         ~RenderGraphInstance() noexcept;
         RenderGraphInstance(const RenderGraphInstance&) = delete;
         RenderGraphInstance& operator=(const RenderGraphInstance&) = delete;
@@ -195,11 +200,12 @@ namespace lux::render::detail
 
     private:
         friend class FrameOperation;
+        std::uint32_t frozen_slot_ = kGraphInvalidIndex;
         friend class SubmissionOperation;
         [[nodiscard]] RenderResult<std::span<nri::CommandBuffer* const>>
         recordFrozenBatch(std::uint32_t, std::uint32_t) noexcept;
         void submitted(std::uint32_t slot) noexcept;
-        void acceptedBatch(std::uint32_t batch, SubmissionPoint point) noexcept;
+        void acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept;
         void failedSubmission(RenderError error) noexcept;
         [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<void> growRasterDescriptorPool(std::uint32_t slot) noexcept;
@@ -240,6 +246,7 @@ namespace lux::render::detail
             std::uint64_t buffer_offset = 0, buffer_size = 0;
             std::span<nri::Buffer* const> addressed_buffers;
             std::uint64_t addressed_revision = 0;
+            ImageQueueUses image_uses{};
             bool dirty = false;
         };
 

@@ -90,27 +90,8 @@ namespace lux::render::detail
             }
             for (const auto& input : inputs)
             {
-                const auto& expected = std::get<GraphImageDesc>(plan_->resources()[input.resource.index].description);
-                const auto& actual = session.nriCore().GetTextureDesc(*input.frames[f].image);
-                auto width = expected.width, height = expected.height;
-                const auto& resource = plan_->resources()[input.resource.index];
-                if (resource.target_sized)
-                {
-                    auto resolved = textureDescription(resource, target);
-                    if (!resolved) return cxx::unexpected(resolved.error());
-                    width = resolved->width;
-                    height = resolved->height;
-                }
-                const bool extent_mismatch = expected.extent.source != EImageExtentSource::IMPORTED &&
-                                             (actual.width != width || actual.height != height);
-                const bool description_mismatch =
-                    extent_mismatch || actual.format != imageFormat(expected.format).native ||
-                    actual.mipNum != expected.mips || actual.layerNum != expected.layers ||
-                    actual.sampleNum != expected.samples;
-                if (description_mismatch)
-                {
-                    return cxx::unexpected(RenderError{kDeviceArgument});
-                }
+                if (auto valid = qualifyImportedImage(input.resource, *input.frames[f].image, target); !valid)
+                    return cxx::unexpected(valid.error());
                 Binding binding;
                 binding.image = input.frames[f].image;
                 candidate.resources.push_back({input.resource.index, binding});

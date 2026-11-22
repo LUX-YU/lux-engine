@@ -44,6 +44,7 @@ namespace lux::render::detail
             Workspace(std::uint32_t slots, std::size_t queues, std::size_t preparation_capacity) noexcept;
 
             SubmissionOperation::Workspace submissions;
+            std::vector<RenderGraphInstance*> frozen_instances;
             std::vector<std::vector<PreparedStorage>> replicas;
             std::vector<ResourceParticipant> resource_participants;
             std::vector<ProducerParticipant> producer_participants;
@@ -130,7 +131,6 @@ namespace lux::render::detail
         EPhase phase_ = EPhase::UNIFORMS;
         std::optional<SubmissionOperation> submission_;
         std::optional<RenderError> cancellation_;
-        std::size_t prepared_instances_ = 0;
         bool worker_pending_ = false;
         bool settling_ = false;
         bool copies_flushed_ = false;

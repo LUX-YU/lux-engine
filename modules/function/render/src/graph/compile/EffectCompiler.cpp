@@ -491,8 +491,16 @@ namespace lux::render::detail
         if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
 
+        std::vector<GraphResourceId> concurrent_reads;
+        for (std::size_t i = 0; i < built->storage_imports.size(); ++i)
+        {
+            const auto resource = built->storage_imports[i].resource;
+            if (resource.index == kGraphInvalidIndex) continue;
+            const auto* storage = std::get_if<StorageGraphImport>(&request.imports.storages[i].contract);
+            if (storage && storage->concurrent_image_read) concurrent_reads.push_back(resource);
+        }
         auto plan = co_await compile(
-            entry.session(), env.cpu, {built->source, built->analysis}, {.target = built->output}
+            entry.session(), env.cpu, {built->source, built->analysis, concurrent_reads}, {.target = built->output}
         );
         if (!plan) co_return cxx::unexpected(plan.error());
         if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});

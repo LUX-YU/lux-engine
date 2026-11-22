@@ -23,7 +23,8 @@ namespace lux::render::detail
             input.buffer_size,
             input.image,
             input.addressed_buffers,
-            input.addressed_revision
+            input.addressed_revision,
+            input.image_uses
         };
     }
 
@@ -350,31 +351,14 @@ namespace lux::render::detail
             if (resource.origin == EGraphOrigin::FRAME_BUFFER) continue;
             if (resource.origin == EGraphOrigin::IMPORTED)
             {
-                if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
+                if (std::holds_alternative<GraphImageDesc>(resource.description))
                 {
                     if (!binding.image)
                     {
                         return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     binding.select(binding.buffer, binding.image, core);
-                    const auto& actual = *binding.image_description;
-                    auto width = image->width, height = image->height;
-                    if (resource.target_sized)
-                    {
-                        auto resolved = textureDescription(resource);
-                        if (!resolved) return cxx::unexpected(resolved.error());
-                        width = resolved->width;
-                        height = resolved->height;
-                    }
-                    const bool extent_mismatch = image->extent.source != EImageExtentSource::IMPORTED &&
-                                                 (actual.width != width || actual.height != height);
-                    const bool mismatch = extent_mismatch || actual.mipNum != image->mips ||
-                                          actual.layerNum != image->layers || actual.sampleNum != image->samples ||
-                                          actual.format != imageFormat(image->format).native;
-                    if (mismatch)
-                    {
-                        return cxx::unexpected(RenderError{kDeviceArgument});
-                    }
+                    if (auto valid = qualifyImportedImage({i}, *binding.image, target()); !valid) return valid;
                 }
                 continue;
             }
@@ -622,6 +606,35 @@ namespace lux::render::detail
         return description;
     }
 
+    RenderResult<void> RenderGraphInstance::qualifyImportedImage(
+        GraphResourceId id, const nri::Texture& image, const TargetDesc& target
+    ) const noexcept
+    {
+        const auto& resource = plan_->resources()[id.index];
+        const auto* expected = std::get_if<GraphImageDesc>(&resource.description);
+        if (!expected) return cxx::unexpected(RenderError{kStorageMismatch});
+        const auto& actual = session_->nriCore().GetTextureDesc(image);
+        auto width = expected->width, height = expected->height;
+        if (resource.target_sized)
+        {
+            const auto resolved = textureDescription(resource, target);
+            if (!resolved) return cxx::unexpected(resolved.error());
+            width = resolved->width;
+            height = resolved->height;
+        }
+        const bool wrong_extent = expected->extent.source != EImageExtentSource::IMPORTED &&
+            (actual.width != width || actual.height != height);
+        const bool wrong_shape = actual.type != nri::TextureType::TEXTURE_2D || actual.depth != 1 ||
+            actual.mipNum != expected->mips || actual.layerNum != expected->layers ||
+            actual.sampleNum != expected->samples;
+        const bool wrong_format = actual.format != imageFormat(expected->format).native;
+        const bool wrong_sharing = resource.concurrent_image_read && actual.sharingMode != nri::SharingMode::CONCURRENT;
+        const bool missing_usage = (actual.usage & resource.image_usage) != static_cast<unsigned>(resource.image_usage);
+        if (wrong_extent || wrong_shape || wrong_format || missing_usage || wrong_sharing)
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        return {};
+    }
+
     RenderResult<void> RenderGraphInstance::createResource(std::uint32_t index, Binding& binding) noexcept
     {
         return createResource(index, binding, output_.description);
@@ -859,6 +872,7 @@ namespace lux::render::detail
                                            binding.addressed_buffers.size() != value.addressed_buffers.size();
             binding.addressed_buffers = value.addressed_buffers;
             binding.addressed_revision = value.addressed_revision;
+            binding.image_uses = value.image_uses;
             if ((changed_physical || changed_addresses) &&
                 plan_->resources()[resource].origin == EGraphOrigin::IMPORTED)
             {

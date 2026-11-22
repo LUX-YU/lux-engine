@@ -173,6 +173,19 @@ namespace lux::render::detail
             batch.serial = 0;
             batch.waits.clear();
             std::ranges::fill(batch.stages, nri::StageBits::NONE);
+            const auto& instance = *frame.instances[batch.instance].instance;
+            for (auto id : instance.plan_->submissions_[batch.local_batch].imported_images)
+            {
+                const auto* prepared = instance.frames_[slotIndex()].bindings[id.index].image_uses.preparation;
+                if (!prepared) continue;
+                for (std::uint32_t q = 0; q < prepared->size(); ++q)
+                {
+                    const auto serial = prepared->serials()[q];
+                    if (q == batch.queue || !serial) continue;
+                    batch.waits.accept(device_.submissionPoint(q, serial));
+                    batch.stages[q] = nri::StageBits::ALL;
+                }
+            }
             batch.pending_predecessors = batch.predecessor_count;
             if (batch.pending_predecessors == 0)
             {
@@ -544,7 +557,7 @@ namespace lux::render::detail
                 }
             }
         }
-        instance.acceptedBatch(batch.local_batch, point);
+        instance.acceptedBatch(slotIndex(), batch.local_batch, point);
         if (accepted) (*accepted)(instance, batch.local_batch, point);
         if (--execution.remaining_batches == 0)
         {

@@ -67,6 +67,20 @@ The Resource publishes a replacement through `ResourceRegistry::publishGraphInpu
 Pass a FIF index to update one slice or `UINT32_MAX` to update all slices. The return value counts the updated
 bindings. A shared input may be withdrawn. A replacement for an installed output must cover its claimed bytes.
 
+For shared images that need different native layouts, give each use its own physical image and projection. For
+example, describe the sampled projection with `initial_use` and `read_use` set to `SAMPLED`, and the copy projection
+with both set to `TRANSFER_SOURCE`. An owner can opt a projection into cross-queue reads through
+`StorageGraphImport::concurrent_image_read`. Its native texture must use concurrent sharing. Supply stable,
+device-bound preparation and reader frontiers in `ResourceInput::image_uses` for each physical image.
+
+Prepare each new image with `ResourceUploader::writeImage`. Its optional `ImageUploadBoundary` selects the sampled
+or copy-source layout and collects the actual Copy/Acquire receipts, including an accepted prefix on failure.
+Publish the complete set through `ResourceRegistry::publishGraphImages` on the device owner. Each entry selects one
+projection and one FIF or the whole family. A failed candidate preserves all installed bindings. An affected slot
+with an unconfirmed native submission or active recording returns `kDeviceBusy` and can be retried. After successful
+publication, defer destruction of each replaced texture through its own combined preparation and read frontiers.
+The compiler only considers asynchronous compute for an imported image with a qualified read-only contract.
+
 Use `importFinalBuffer` for a writable Buffer projection. Its owner grants this capability in
 `StorageGraphImport::final_buffer_output`. The graph may narrow its claim with `GraphResource::output_range`.
 A default claim covers the declared Buffer. Each write is checked against the claim, and exporting the written

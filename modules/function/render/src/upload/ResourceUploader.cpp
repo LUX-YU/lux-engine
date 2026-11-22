@@ -52,12 +52,8 @@ namespace lux::render::detail
             nri::Texture& target;
             std::span<const std::byte> source;
             std::vector<ImageTransferRegion> regions;
-        };
-
-        struct CloneUpload final
-        {
-            ImageUpload patch;
-            const nri::Texture& original;
+            ImageUploadBoundary boundary;
+            const nri::Texture* original = nullptr;
         };
 
         struct BufferChunk final
@@ -110,6 +106,7 @@ namespace lux::render::detail
             std::size_t row_bytes;
             std::uint32_t rows, row_pitch;
             bool first, final;
+            EImageUploadUse use;
 
             void prepare(std::span<std::byte> output) const noexcept
             {
@@ -217,7 +214,7 @@ namespace lux::render::detail
                     &upload->target, first ? clone : nullptr, region,
                     upload->source.data() + input.source_offset + row * input.source_row_pitch, input.source_row_pitch,
                     blockRowBytes(input), rows, static_cast<std::uint32_t>(range.unit), first,
-                    complete_region && index + 1 == upload->regions.size()
+                    complete_region && index + 1 == upload->regions.size(), upload->boundary.use
                 };
                 row += rows;
                 if (complete_region)
@@ -281,11 +278,17 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] RenderResult<UploadPlan> normalizeImageUpload(
-            const ImageUpload& upload, const nri::Texture* clone, SubmissionQueue& queue, DeviceSession& device,
-            const TransferOptions& options
+            const ImageUpload& upload, SubmissionQueue& queue, DeviceSession& device, const TransferOptions& options
         ) noexcept
         {
             const auto& description = device.nriCore().GetTextureDesc(upload.target);
+            if (upload.boundary.accepted && !upload.boundary.accepted->belongsTo(&device, device.queueCount()))
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            const auto use = upload.boundary.use;
+            const bool sampled = use == EImageUploadUse::SAMPLED;
+            if (!sampled && use != EImageUploadUse::COPY_SOURCE) return cxx::unexpected(RenderError{kDeviceArgument});
+            if (sampled && (description.usage & nri::TextureUsageBits::SHADER_RESOURCE) == 0)
+                return cxx::unexpected(RenderError{kDeviceArgument});
             if (upload.source.empty() || upload.regions.empty() || description.sampleNum != 1)
                 return cxx::unexpected(RenderError{kDeviceArgument});
             const auto alignment = device.description().memoryAlignment.uploadBufferTextureRow;
@@ -296,14 +299,14 @@ namespace lux::render::detail
                 if (alignedRowBytes(blockRowBytes(region), alignment) > options.chunk_bytes)
                     return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            return UploadPlan{ImageCursor{&upload, clone, alignment}, upload.source.size(), upload.regions.size(),
-                &queue, {}, nullptr};
+            return UploadPlan{ImageCursor{&upload, upload.original, alignment}, upload.source.size(),
+                upload.regions.size(), &queue, {}, nullptr};
         }
     } // namespace
 
     struct ResourceUploader::UploadRequest final
     {
-        std::variant<BufferUpload, ImageUpload, CloneUpload> value;
+        std::variant<BufferUpload, ImageUpload> value;
     };
 
     struct ResourceUploader::Measurement final
@@ -624,19 +627,20 @@ namespace lux::render::detail
         nri::GraphicsAPI backend;
         std::uint32_t slice_alignment;
         bool acquiring;
+        void recordImage(
+            const nri::CoreInterface&, nri::CommandBuffer&, const StagingRange&, const ImageChunk&
+        ) const noexcept;
     };
 
-    static void recordImage(
+    void ImageHandoff::recordImage(
         const nri::CoreInterface& nri_core, nri::CommandBuffer& command, const StagingRange& range,
-        const ImageChunk& chunk, const ImageHandoff& handoff
-    ) noexcept
+        const ImageChunk& chunk
+    ) const noexcept
     {
         auto& target = *chunk.target;
-        auto& copy = handoff.source;
-        auto& graphics = handoff.graphics;
-        const bool acquiring = handoff.acquiring;
+        auto& copy = source;
         const bool distinct = &copy != &graphics;
-        const bool common_handoff = distinct && handoff.backend == nri::GraphicsAPI::D3D12 &&
+        const bool common_handoff = distinct && backend == nri::GraphicsAPI::D3D12 &&
             copy.properties().type == nri::QueueType::COPY;
         const auto& description = nri_core.GetTextureDesc(target);
         const bool cross_family = description.sharingMode == nri::SharingMode::EXCLUSIVE &&
@@ -681,7 +685,7 @@ namespace lux::render::detail
                     emit(barrier); // Clone writes precede region patch writes.
                 }
             }
-            const auto slice_unit = std::lcm(chunk.row_pitch, handoff.slice_alignment);
+            const auto slice_unit = std::lcm(chunk.row_pitch, slice_alignment);
             const auto slice_pitch = ((chunk.row_pitch * chunk.rows + slice_unit - 1) / slice_unit) * slice_unit;
             const nri::TextureDataLayoutDesc layout{range.offset, chunk.row_pitch, slice_pitch};
             recordUpload(nri_core, command, {target, chunk.region, *range.buffer, layout});
@@ -689,17 +693,21 @@ namespace lux::render::detail
         if (chunk.final)
         {
             // D3D12 COPY lists remain in COMMON (NRI GENERAL). The existing fence dependency
-            // orders the Graphics acquire, which alone transitions to SHADER_RESOURCE.
+            // orders the Graphics acquire into the owner's published boundary.
+            const bool sampled = chunk.use == EImageUploadUse::SAMPLED;
+            const auto layout = sampled ? nri::Layout::SHADER_RESOURCE : nri::Layout::COPY_SOURCE;
+            const auto access = sampled ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::COPY_SOURCE;
+            const auto stages = sampled ? nri::StageBits::ALL : nri::StageBits::COPY;
             barrier.before = {
                 acquiring ? nri::AccessBits::NONE : nri::AccessBits::COPY_DESTINATION,
                 acquiring && common_handoff ? nri::Layout::GENERAL
-                    : acquiring && !cross_family ? nri::Layout::SHADER_RESOURCE : nri::Layout::COPY_DESTINATION,
+                    : acquiring && !cross_family ? layout : nri::Layout::COPY_DESTINATION,
                 acquiring ? nri::StageBits::NONE : nri::StageBits::COPY
             };
             barrier.after = {
-                !distinct || acquiring ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::NONE,
-                common_handoff && !acquiring ? nri::Layout::GENERAL : nri::Layout::SHADER_RESOURCE,
-                !distinct || acquiring ? nri::StageBits::ALL : nri::StageBits::NONE
+                !distinct || acquiring ? access : nri::AccessBits::NONE,
+                common_handoff && !acquiring ? nri::Layout::GENERAL : layout,
+                !distinct || acquiring ? stages : nri::StageBits::NONE
             };
             if (cross_family)
             {
@@ -1123,7 +1131,7 @@ namespace lux::render::detail
                             if (const auto* image = std::get_if<ImageChunk>(&copy.chunk))
                             {
                                 if (!acquiring || image->final)
-                                    recordImage(nri_core, command, copy.staging, *image, handoff);
+                                    handoff.recordImage(nri_core, command, copy.staging, *image);
                             }
                             else
                             {
@@ -1366,10 +1374,11 @@ namespace lux::render::detail
     }
 
     ResourceUploader::Task ResourceUploader::writeImage(
-        nri::Texture& target, std::span<const std::byte> source, std::vector<ImageTransferRegion> regions
+        nri::Texture& target, std::span<const std::byte> source, std::vector<ImageTransferRegion> regions,
+        ImageUploadBoundary boundary
     ) noexcept
     {
-        return write({ImageUpload{target, source, std::move(regions)}});
+        return write({ImageUpload{target, source, std::move(regions), boundary}});
     }
 
     ResourceUploader::Task ResourceUploader::cloneImage(
@@ -1377,7 +1386,7 @@ namespace lux::render::detail
         std::vector<ImageTransferRegion> regions
     ) noexcept
     {
-        return write({CloneUpload{{target, source, std::move(regions)}, original}});
+        return write({ImageUpload{target, source, std::move(regions), {}, &original}});
     }
 
     ResourceUploader::Task ResourceUploader::write(UploadRequest request) noexcept
@@ -1388,11 +1397,11 @@ namespace lux::render::detail
             using Input = std::remove_cvref_t<decltype(input)>;
             if constexpr (std::is_same_v<Input, BufferUpload>) return normalizeUpload(input, device_, options_);
             if constexpr (std::is_same_v<Input, ImageUpload>)
-                return normalizeImageUpload(input, nullptr, *copy_queue_, device_, options_);
-            if constexpr (std::is_same_v<Input, CloneUpload>)
-                return normalizeImageUpload(input.patch, &input.original, device_.queue(), device_, options_);
+                return normalizeImageUpload(input, input.original ? device_.queue() : *copy_queue_, device_, options_);
         }, request.value);
         if (!plan) co_return cxx::unexpected(plan.error());
+        const auto* image = std::get_if<ImageUpload>(&request.value);
+        auto* image_uses = image ? image->boundary.accepted : nullptr;
         const auto source_bytes = plan->source_bytes;
         if (!reserveSourceBytes(source_bytes)) co_return cxx::unexpected(RenderError{kDeviceCapacity});
         cxx::scope_exit budget([&]() noexcept { releaseSourceBytes(source_bytes); });
@@ -1492,6 +1501,11 @@ namespace lux::render::detail
             if (stop.stop_requested()) co_return failure(RenderError{kUploadStopped});
             const auto fills = accepted_any ? std::span<const BufferZero>{} : plan->fills;
             const auto submitted = co_await WindowSender{*this, *plan->queue, {copies, fills, plan->progress}};
+            if (image_uses)
+            {
+                if (submitted.copy.serial) image_uses->accept(submitted.copy);
+                if (submitted.acquire.serial) image_uses->accept(submitted.acquire);
+            }
             if (!submitted.result)
             {
                 // A rejected Acquire still leaves the accepted Copy in its physical queue's frontier.

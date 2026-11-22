@@ -38,7 +38,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         planBarriers(RenderGraphExecutable&, const PhysicalResourcePlan* = nullptr) const noexcept;
         [[nodiscard]] PhysicalResourcePlan planPhysicalResources(const RenderGraphExecutable&) noexcept;
-        [[nodiscard]] bool assignAsyncCompute(RecordingProgram&, std::uint32_t surface_output) const noexcept;
+        [[nodiscard]] bool assignAsyncCompute(RenderGraphExecutable&, std::uint32_t surface_output) const noexcept;
         [[nodiscard]] bool validRecordingTables(const RenderGraphExecutable&) const noexcept;
         [[nodiscard]] RecordingDependencies recordingDependencies(const RenderGraphExecutable&) const noexcept;
         void publishAliasFrontiers(RenderGraphExecutable&) const noexcept;

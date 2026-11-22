@@ -341,7 +341,8 @@ namespace lux::render::detail
         RenderGraphExecutable& plan, const PhysicalResourcePlan* physical
     ) const noexcept
     {
-        const auto& [graph, analysis] = source;
+        const auto& graph = source.graph;
+        const auto& analysis = source.analysis;
         const auto& layouts = bindings;
         auto& resources = plan.resources_;
         auto& recording = plan.recording_;

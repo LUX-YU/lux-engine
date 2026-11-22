@@ -30,6 +30,14 @@ namespace lux::render
     }
     namespace runtime_detail { struct BoundStorageProjection; }
 
+    struct GraphImagePublication final
+    {
+        std::uint32_t projection;
+        std::uint32_t frame; // UINT32_MAX addresses the installed projection's complete FIF family.
+        nri::Texture* image;
+        detail::ImageQueueUses uses{};
+    };
+
     class LUX_RENDER_PUBLIC ResourceRegistry final
     {
     public:
@@ -40,6 +48,10 @@ namespace lux::render
             std::uint32_t frame,
             const detail::ResourceInput& value
         ) noexcept;
+
+        // Device-owner transaction. All installed projections change together after every reader qualifies.
+        [[nodiscard]] RenderResult<std::size_t>
+        publishGraphImages(ResourceInstanceId storage, std::span<const GraphImagePublication> updates) noexcept;
 
         ResourceRegistry() noexcept = default;
         ~ResourceRegistry() noexcept;
@@ -210,6 +222,8 @@ namespace lux::render
         struct ProjectionBindings final
         {
             std::array<ProjectionBuffer, 3> buffers{};
+            std::array<nri::Texture*, 3> images{};
+            std::array<detail::ImageQueueUses, 3> image_uses{};
             cxx::SlotMap<GraphBindingUse, detail::GraphBindingTag> users;
         };
 

@@ -77,11 +77,13 @@ namespace
         static inline std::atomic_uint countdown{}, accepted_prefix{};
         static inline std::atomic<nri::Result> failure{nri::Result::INVALID_ARGUMENT};
         DeviceSession& device;
+        ResourceRegistry& registry;
+        ResourceInstanceId id;
         std::vector<nri::Buffer*> buffers;
         nri::Fence* gate = nullptr;
 
-        explicit ProductBuffer(ResourceCreateContext& context) noexcept
-            : device(context.device), buffers(context.frame_count)
+        ProductBuffer(ResourceCreateContext& context, ResourceInstanceId identity) noexcept
+            : device(context.device), registry(context.resources), id(identity), buffers(context.frame_count)
         {
             const auto& core = device.nriCore();
             const nri::BufferDesc desc{bytes, 0, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
@@ -132,9 +134,9 @@ namespace
         }
 
         static RenderResult<std::unique_ptr<ProductBuffer>>
-        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        create(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         {
-            return std::make_unique<ProductBuffer>(context);
+            return std::make_unique<ProductBuffer>(context, id);
         }
 
         static ResourceRegistration factory() noexcept
@@ -150,12 +152,17 @@ namespace
                     void* value, std::uint32_t, const VGraphResourceDesc&, std::span<ResourceInput> out
                 ) noexcept -> RenderResult<void>
                 {
-                    const auto& buffers = static_cast<ProductBuffer*>(value)->buffers;
+                    auto& owner = *static_cast<ProductBuffer*>(value);
+                    const auto& buffers = owner.buffers;
                     CHECK(out.size() == buffers.size());
                     for (std::size_t i = 0; i < out.size(); ++i) out[i] = {buffers[i], 0, bytes};
                     if (swap_candidate_slots.exchange(false))
                     {
                         CHECK(out.size() == 2);
+                        // A dormant Buffer receipt still identifies the projection's resource kind.
+                        const GraphImagePublication invalid{0, UINT32_MAX, nullptr};
+                        auto withdrawn = owner.registry.publishGraphImages(owner.id, {&invalid, 1});
+                        CHECK(!withdrawn && withdrawn.error().type == kStorageMismatch);
                         std::swap(out[0], out[1]);
                     }
                     return {};

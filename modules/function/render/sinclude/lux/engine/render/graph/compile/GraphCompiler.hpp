@@ -26,6 +26,7 @@ namespace lux::render::detail
     {
         const RenderGraph& graph;
         const RenderGraphAnalysis& analysis;
+        std::span<const GraphResourceId> concurrent_image_reads{};
     };
 
     struct GraphDeviceFacts final

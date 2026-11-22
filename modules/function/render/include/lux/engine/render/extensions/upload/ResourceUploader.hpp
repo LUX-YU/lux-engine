@@ -44,6 +44,19 @@ namespace lux::render::detail
         nri::TextureRegionDesc texture{};
     };
 
+    enum class EImageUploadUse : std::uint8_t
+    {
+        SAMPLED,
+        COPY_SOURCE
+    };
+
+    struct ImageUploadBoundary final
+    {
+        EImageUploadUse use = EImageUploadUse::SAMPLED;
+        // Operation-owned until terminal delivery. Includes the known prefix on failure.
+        SubmissionFrontiers* accepted = nullptr;
+    };
+
     struct BufferWrite final
     {
         nri::Buffer* target = nullptr;
@@ -121,7 +134,8 @@ namespace lux::render::detail
         [[nodiscard]] Task writeImage(
             nri::Texture& target,
             std::span<const std::byte> source,
-            std::vector<ImageTransferRegion> regions
+            std::vector<ImageTransferRegion> regions,
+            ImageUploadBoundary boundary = ImageUploadBoundary{}
         ) noexcept;
         [[nodiscard]] Task cloneImage(
             nri::Texture& target,

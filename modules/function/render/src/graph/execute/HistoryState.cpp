@@ -454,9 +454,11 @@ namespace lux::render::detail
         }
     }
 
-    void RenderGraphInstance::acceptedBatch(std::uint32_t batch, SubmissionPoint point) noexcept
+    void RenderGraphInstance::acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept
     {
         uses_.accept(point);
+        for (auto id : plan_->submissions_[batch].imported_images)
+            if (auto* reads = frames_[slot].bindings[id.index].image_uses.reads) reads->accept(point);
         const auto mark = [&](HistoryState::HistorySlot& slot)
         {
             slot.last_use.accept(point);

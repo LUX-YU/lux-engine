@@ -47,7 +47,6 @@ namespace lux::render::detail
         if (!*opened) return false;
         selection_ = **opened;
         phase_ = EPhase::UNIFORMS;
-        prepared_instances_ = 0;
         waiting_for_gpu_ = false;
         submission_.emplace(device_, progress_, *selection_, workspace_.submissions);
         if (uploads_) uploads_->reservePreparationStaging(true);
@@ -71,6 +70,8 @@ namespace lux::render::detail
 
     void FrameOperation::finish() noexcept
     {
+        for (auto* instance : workspace_.frozen_instances) instance->frozen_slot_ = kGraphInvalidIndex;
+        workspace_.frozen_instances.clear();
         const bool unknown = cancellation_ && cancellation_->type == kOutcomeUnknown;
         for (const auto& selected : workspace_.uniforms)
         {
@@ -436,9 +437,11 @@ namespace lux::render::detail
     RenderResult<FrameOperation::EPreparationStatus>
     FrameOperation::prepareInstances(std::span<RenderGraphInstance* const> instances) noexcept
     {
-        while (prepared_instances_ < instances.size())
+        auto& frozen = workspace_.frozen_instances;
+        while (frozen.size() < instances.size())
         {
-            const auto prepared = instances[prepared_instances_]->prepareFrame(slot());
+            auto& instance = *instances[frozen.size()];
+            const auto prepared = instance.prepareFrame(slot());
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -461,7 +464,8 @@ namespace lux::render::detail
                     selections.push_back(selected);
                 }
             }
-            ++prepared_instances_;
+            instance.frozen_slot_ = slot();
+            frozen.push_back(&instance);
         }
         return EPreparationStatus::READY;
     }

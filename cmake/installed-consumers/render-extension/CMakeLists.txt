@@ -53,6 +53,29 @@ add_custom_command(
 
 add_executable(compute_output ComputeOutput.cpp "${compute_header}")
 
+set(image_read_shader "${CMAKE_CURRENT_SOURCE_DIR}/SharedImageRead.slang")
+set(image_read_header "${CMAKE_CURRENT_BINARY_DIR}/SharedImageRead.hpp")
+
+add_custom_command(
+    OUTPUT "${image_read_header}"
+    COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${image_read_shader}" main compute bundle "${image_read_header}"
+        --symbol=kSharedImageRead
+    DEPENDS "${image_read_shader}" "${LUX_PROBE_SHADER_COMPILER}"
+    VERBATIM
+)
+
+add_executable(shared_images SharedImages.cpp "${image_read_header}")
+
+target_include_directories(shared_images PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${render_test_sources}")
+
+target_link_libraries(shared_images PRIVATE lux::engine::function::render_extensions)
+
+target_compile_features(shared_images PRIVATE cxx_std_20)
+
+if(MSVC)
+    target_compile_options(shared_images PRIVATE /utf-8 /permissive- /Zc:__cplusplus /GR-)
+endif()
+
 target_include_directories(compute_output PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${render_test_sources}")
 
 target_link_libraries(compute_output PRIVATE lux::engine::function::render_extensions)
@@ -70,6 +93,10 @@ if(WIN32)
 endif()
 
 foreach(backend IN LISTS receipt_backends)
+    add_test(NAME installed.render.shared_images_${backend} COMMAND shared_images ${backend})
+
+    set_tests_properties(installed.render.shared_images_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
+
     foreach(mode IN ITEMS receipts receipt-partial receipt-unknown)
         add_test(NAME installed.render.buffer_${mode}_${backend} COMMAND compute_output ${backend} ${mode})
 
@@ -97,8 +124,9 @@ foreach(header IN ITEMS
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
     extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
     extensions/execution/ProducerFactory extensions/execution/LinkedProducer extensions/execution/RasterStream
-    extensions/execution/PreparedCpuValue
+    extensions/execution/PreparedCpuValue extensions/execution/ResourceInput
     extensions/resource/ReplicaMutation extensions/resource/ResourceCreateContext
+    extensions/resource/ResourceRegistry extensions/resource/StorageBinding extensions/upload/ResourceUploader
 )
     get_filename_component(name "${header}" NAME)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${name}Header.cpp")

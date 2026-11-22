@@ -31,6 +31,8 @@ namespace lux::render::detail
         std::optional<EGraphUse> read_use{};
         // The owner can grant an exclusive writer for bytes within this Buffer projection.
         bool final_buffer_output = false;
+        // The owner supplies concurrent native images in their declared read layout and physical queue frontiers.
+        bool concurrent_image_read = false;
         [[nodiscard]] static StorageGraphImport bufferOutput(std::uint64_t bytes, EGraphUse boundary) noexcept
         {
             return {GraphBufferDesc{bytes}, {}, boundary, {}, true};

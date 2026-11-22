@@ -143,7 +143,8 @@ namespace lux::render
         [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
         [[nodiscard]] bool preparationUsesTarget(TargetId) const noexcept;
         [[nodiscard]] bool resourcesAvailable(std::span<const ResourceInstanceId>) const noexcept;
-        [[nodiscard]] std::vector<detail::JobRelationEntry> jobRelations() noexcept;
+        [[nodiscard]] std::vector<detail::JobRelationEntry>
+        jobRelations(const JobExecution* candidate = nullptr) noexcept;
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
         [[nodiscard]] RenderResult<void>
@@ -179,8 +180,6 @@ namespace lux::render
         [[nodiscard]] RenderResult<ResizeCandidates>
         prepareTargetResize(TargetId, detail::TargetOutput, std::span<const RenderJobId>) noexcept;
 
-        [[nodiscard]] bool
-        targetDependencyCycle(TargetId, std::span<const TargetImageInput>, RenderJobId) const noexcept;
 
         void rebuildFrameInputs(detail::DeviceEntry&) noexcept;
         [[nodiscard]] RenderError selectFrameInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;

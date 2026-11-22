@@ -16,6 +16,7 @@ namespace lux::render::runtime_detail
         {
             std::uint32_t consumer;
             TargetId sampled_target; // Null for an explicit Job relation.
+            bool prior_publication = false;
         };
 
         struct TargetRead final
@@ -138,7 +139,8 @@ namespace lux::render::runtime_detail
         std::chrono::steady_clock::time_point opened_at;
 #endif
 
-        [[nodiscard]] std::uint32_t slot() const noexcept { return operation->context().slot_index; }
+        detail::FrameContext frame{};
+        [[nodiscard]] std::uint32_t slot() const noexcept { return frame.slot_index; }
     };
 
 } // namespace lux::render::runtime_detail

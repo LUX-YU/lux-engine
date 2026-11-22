@@ -75,7 +75,8 @@ namespace lux::render
         const auto& inputs = round.inputs;
         const bool structure_changed = inputs.revision != job_structure_revision_;
         if (structure_changed) rebuildFrameInputs(entry);
-        if (const auto selection = selectFrameInputs(entry, progress.nextSlot()); selection.type)
+        const auto proposed_slot = progress.nextSlot();
+        if (const auto selection = selectFrameInputs(entry, proposed_slot); selection.type)
         {
             for (const auto& job : inputs.jobs)
             {
@@ -85,13 +86,27 @@ namespace lux::render
             }
             return false;
         }
-        if (round.outputs.empty() || !progress.canBegin(entry.session())) return false;
+        if (round.outputs.empty()) return false;
+        const auto release_pins = [&]
+        {
+            for (const auto& output : round.outputs)
+            {
+                const auto& execution = *runtime_->jobs_.find(output.job)->execution;
+                runtime_->resources_.unpinBufferUses(execution.productUses(), proposed_slot);
+            }
+        };
+        if (!progress.canBegin(entry.session()))
+        {
+            release_pins();
+            return false;
+        }
 
         round.operation.emplace(entry, cpu_scheduler_);
         auto opened = round.operation->tryBegin();
         if (!opened || !*opened)
         {
             round.operation.reset();
+            release_pins();
             if (!opened)
             {
                 for (const auto& output : round.outputs)
@@ -100,6 +115,7 @@ namespace lux::render
             return false;
         }
         const auto context = round.operation->context();
+        round.frame = context;
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         round.opened_at = std::chrono::steady_clock::now();
         rounds_opened_.fetch_add(1, std::memory_order_relaxed);
@@ -123,6 +139,7 @@ namespace lux::render
     void RenderServer::Impl::finishFrame(detail::DeviceEntry& entry, RenderError error) noexcept
     {
         auto& round = entry.round;
+        const auto slot = round.slot();
         if (round.operation->active())
         {
             round.operation->cancel(error);
@@ -147,6 +164,7 @@ namespace lux::render
         for (auto& output : std::span{round.outputs}.first(completed))
         {
             auto& job = *runtime_->jobs_.find(output.job);
+            runtime_->resources_.unpinBufferUses(job.execution->productUses(), slot);
             job.last_run_error = output.submitted ? RenderError{} : failure;
             output.completion = job.control.finishRun(
                 output.execution_generation, output.submitted ? RenderResult<void>{} : cxx::unexpected(failure)

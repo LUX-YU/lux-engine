@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/FinalBufferVersion.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
@@ -28,6 +29,9 @@ namespace lux::render::runtime_detail
         std::optional<GraphBufferRange> output_range;
         std::uint32_t canonical_queue = kGraphInvalidIndex;
         cxx::SlotKey<detail::GraphBindingTag> subscription{};
+        std::optional<FinalBufferVersion> publication;
+        std::span<const detail::FinalBufferUse> uses;
+        std::span<const detail::FinalBufferExport> exports;
     };
 
     struct JobExecution final
@@ -97,6 +101,12 @@ namespace lux::render::runtime_detail
 
         detail::TargetReservation storage_start;
         std::vector<BoundStorageProjection> storage_bindings;
+        std::size_t product_count = 0;
+        [[nodiscard]] std::span<const BoundStorageProjection> productUses() const & noexcept
+        {
+            return std::span{storage_bindings}.first(product_count);
+        }
+        std::span<const BoundStorageProjection> productUses() const && = delete;
 
         struct TargetImage final
         {

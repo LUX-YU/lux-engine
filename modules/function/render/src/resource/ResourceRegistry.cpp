@@ -96,9 +96,19 @@ namespace lux::render
             buffers[i] = {output[i].buffer, {output[i].offset, output[i].size}};
         if (auto valid = qualifyGraphBinding(*entry, link.projection, buffers, user); !valid)
             return cxx::unexpected(valid.error());
-        auto& binding = entry->graph_bindings[link.projection];
-        if (!binding.users.empty() && binding.buffers != buffers)
+        const auto old = entry->graph_bindings.find(link.projection);
+        if (old != entry->graph_bindings.end() && old->second.buffers != buffers)
             return cxx::unexpected(RenderError{kStorageMismatch});
+        // Only an owner publication may replace a backing that is still visible through an issued receipt.
+        for (const auto& product : entry->products)
+        {
+            if (product.projection != link.projection) continue;
+            for (std::size_t i = 0; i < output.size(); ++i)
+                if (buffers[i].part(product.range) != product.samples[i].backing)
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        prepareProductBanks(link, buffers);
+        auto& binding = entry->graph_bindings[link.projection];
         binding.buffers = buffers;
         const auto subscription = binding.users.emplace(user);
         for (std::uint32_t slot = 0; slot < output.size(); ++slot)
@@ -119,6 +129,7 @@ namespace lux::render
         if (!matches_start || reader->resource != link.resource) std::terminate();
         users.erase(link.subscription);
         if (users.empty()) projections.erase(found);
+        if (link.output_range) pruneBufferProducts(link.storage);
     }
 
     RenderResult<std::size_t> ResourceRegistry::publishGraphInput(
@@ -128,7 +139,20 @@ namespace lux::render
         auto* entry = entries_.find(storage);
         if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
         const auto found = entry->graph_bindings.find(projection);
-        if (found == entry->graph_bindings.end()) return 0;
+        if (value.size > UINT64_MAX - value.offset) return cxx::unexpected(RenderError{kGraphInvalidRange});
+        if (found == entry->graph_bindings.end())
+        {
+            if (entry->products.empty()) return 0;
+            std::array<ProjectionBuffer, 3> replacement;
+            replacement.fill({value.buffer, {value.offset, value.size}});
+            if (frame != UINT32_MAX && frame >= replacement.size()) return cxx::unexpected(RenderError{kFrameContract});
+            const auto first = frame == UINT32_MAX ? 0u : frame;
+            auto slices = std::span{replacement}.first(frame == UINT32_MAX ? replacement.size() : 1);
+            if (auto valid = replaceProductBacking(storage, projection, first, slices); !valid)
+                return cxx::unexpected(valid.error());
+            pruneBufferProducts(storage);
+            return 0;
+        }
         auto& binding = found->second;
         const auto& users = binding.users;
         // Each storage belongs to one device with a single configured FIF count.
@@ -141,7 +165,6 @@ namespace lux::render
         for (auto i = first; i < end; ++i) candidate[i] = {value.buffer, {value.offset, value.size}};
         if (candidate != binding.buffers)
         {
-            if (value.size > UINT64_MAX - value.offset) return cxx::unexpected(RenderError{kGraphInvalidRange});
             const bool has_writer = std::ranges::any_of(entry->graph_bindings, [](const auto& current)
             {
                 return std::ranges::any_of(current.second.users, [](const auto& use)
@@ -155,7 +178,11 @@ namespace lux::render
                     if (auto valid = qualifyGraphBinding(*entry, projection, candidate, user); !valid)
                         return cxx::unexpected(valid.error());
             }
+            const auto slices = std::span{candidate}.subspan(first, end - first);
+            if (auto valid = replaceProductBacking(storage, projection, first, slices); !valid)
+                return cxx::unexpected(valid.error());
             binding.buffers = candidate;
+            if (!entry->product_buffers.empty()) pruneBufferProducts(storage);
         }
         for (const auto& user : users) user.instance->setResource(user.resource.index, frame, value);
         return users.size();

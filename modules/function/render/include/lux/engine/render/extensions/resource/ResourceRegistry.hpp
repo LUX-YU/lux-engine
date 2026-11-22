@@ -9,6 +9,8 @@
 #include <lux/engine/render/extensions/resource/StorageMeta.hpp>
 #include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <lux/engine/render/core/FinalBufferVersion.hpp>
+#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <array>
 #include <deque>
 #include <map>
@@ -178,6 +180,31 @@ namespace lux::render
             nri::Buffer* buffer = nullptr;
             GraphBufferRange bytes{};
             bool operator==(const ProjectionBuffer&) const noexcept = default;
+            [[nodiscard]] ProjectionBuffer part(GraphBufferRange range) const noexcept;
+            [[nodiscard]] bool overlaps(ProjectionBuffer other) const noexcept;
+        };
+
+        struct ProductSample final
+        {
+            ProjectionBuffer backing;
+            RenderJobId writer;
+            std::uint64_t frame_index = 0;
+        };
+
+        struct ProductBufferUse final
+        {
+            nri::Buffer* buffer;
+            detail::SubmissionFrontiers writes, reads;
+            std::uint32_t prepared_readers = 0, prepared_writers = 0;
+            std::uint32_t read_queue = kGraphInvalidIndex;
+            std::uint32_t read_projection = kGraphInvalidIndex;
+        };
+
+        struct BufferProduct final
+        {
+            std::uint32_t projection;
+            GraphBufferRange range;
+            std::array<ProductSample, 3> samples;
         };
 
         struct ProjectionBindings final
@@ -250,7 +277,32 @@ namespace lux::render
             std::uint32_t dependent_storages = 0;
             std::vector<ResourceInstanceId> dependencies{};
             std::map<std::uint32_t, ProjectionBindings> graph_bindings{};
+            std::vector<BufferProduct> products{};
+            std::vector<ProductBufferUse> product_buffers{};
         };
+
+        RenderResult<detail::ResourceInput>
+        selectProduct(ResourceInstanceId, std::uint32_t projection, FinalBufferVersion) const noexcept;
+        RenderResult<bool> pinBufferUse(const runtime_detail::BoundStorageProjection&, std::uint32_t slot) noexcept;
+        void unpinBufferUse(const runtime_detail::BoundStorageProjection&, std::uint32_t slot) noexcept;
+        RenderResult<bool>
+        pinBufferUses(std::span<const runtime_detail::BoundStorageProjection>, std::uint32_t slot) noexcept;
+        void unpinBufferUses(std::span<const runtime_detail::BoundStorageProjection>, std::uint32_t) noexcept;
+        void acceptProductUse(
+            const runtime_detail::BoundStorageProjection&, std::uint32_t slot, const detail::SubmissionFrontiers&
+        ) noexcept;
+        void invalidateProduct(
+            const runtime_detail::BoundStorageProjection&, std::uint32_t slot, GraphBufferRange
+        ) noexcept;
+        void publishProduct(const runtime_detail::BoundStorageProjection&, FinalBufferVersion) noexcept;
+        void prepareProductBanks(
+            const runtime_detail::BoundStorageProjection&, const std::array<ProjectionBuffer, 3>&
+        ) noexcept;
+        void reserveProductBuffer(ResourceInstanceId, nri::Buffer*) noexcept;
+        void pruneBufferProducts(ResourceInstanceId) noexcept;
+        RenderResult<void> replaceProductBacking(
+            ResourceInstanceId, std::uint32_t projection, std::uint32_t first, std::span<const ProjectionBuffer>
+        ) noexcept;
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;
         static RenderResult<void> qualifyGraphBinding(

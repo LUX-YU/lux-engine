@@ -2,6 +2,7 @@
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
+#include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/EffectCompileRequest.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
@@ -370,30 +371,40 @@ namespace lux::render::detail
             }
             return std::move(workspace.plan);
         }
-        std::vector<std::uint32_t> linkOutputPasses(
+        struct LinkedBufferOutputs final
+        {
+            std::vector<FinalBufferUse> uses;
+            std::vector<FinalBufferExport> exports;
+        };
+
+        RenderResult<LinkedBufferOutputs> linkBufferOutputs(
             EffectGraphBuild& build, const RenderGraphExecutable& executable, DeviceSession& session
         ) noexcept
         {
             auto& slots = build.storage_imports;
-            if (std::ranges::none_of(slots, [](const auto& slot) { return slot.output_range.has_value(); })) return {};
+            LinkedBufferOutputs result;
+            if (slots.empty()) return result;
             std::vector<std::uint32_t> owner(build.source.resources().size(), kGraphInvalidIndex);
             for (std::uint32_t i = 0; i < slots.size(); ++i)
             {
                 const auto resource = slots[i].resource.index;
-                if (slots[i].output_range && resource != kGraphInvalidIndex) owner[resource] = i;
+                if (resource == kGraphInvalidIndex) continue;
+                if (std::holds_alternative<GraphBufferDesc>(build.source.resources()[resource].description))
+                    owner[resource] = i;
             }
-            std::vector<std::pair<std::uint32_t, std::uint32_t>> uses;
+            std::vector<std::vector<FinalBufferUse>> uses(slots.size());
             std::vector<bool> preserves_boundary(slots.size(), true);
-            const auto observe = [&](GraphResourceId id, std::uint32_t pass, EGraphUse use)
+            const auto observe = [&](GraphResourceId id, std::uint32_t pass, const ResourceAccess& use, bool write)
             {
                 const auto binding = owner[id.index];
                 if (binding == kGraphInvalidIndex) return;
-                uses.emplace_back(binding, pass);
+                if (slots[binding].output_range)
+                    uses[binding].push_back({pass, std::get<GraphBufferRange>(use.range), write});
                 if (!preserves_boundary[binding]) return;
                 auto& queue = slots[binding].canonical_queue;
                 const auto physical = session.queueIndex(session.queue(executable.passes()[pass].queue));
                 const bool same_queue = queue == kGraphInvalidIndex || queue == physical;
-                preserves_boundary[binding] = same_queue && use == build.source.resources()[id.index].initial_use;
+                preserves_boundary[binding] = same_queue && use.usage == build.source.resources()[id.index].initial_use;
                 queue = preserves_boundary[binding] ? static_cast<std::uint32_t>(physical) : kGraphInvalidIndex;
             };
             const auto& order = build.analysis.execution_order;
@@ -401,23 +412,48 @@ namespace lux::render::detail
             {
                 for (const auto& use : build.source.passes()[order[p].index].uses)
                 {
-                    observe(use.version.resource, p, use.usage);
-                    if (use.fallback) observe(use.fallback->resource, p, use.usage);
+                    observe(use.version.resource, p, use, writes(use.access));
+                    if (use.fallback) observe(use.fallback->resource, p, use, false);
                 }
             }
-            std::ranges::sort(uses);
-            const auto unique = std::ranges::unique(uses);
-            uses.erase(unique.begin(), unique.end());
-            std::vector<std::uint32_t> passes;
-            passes.reserve(uses.size());
-            for (const auto& [slot, pass] : uses)
+            std::vector<std::vector<FinalBufferExport>> exports(slots.size());
+            for (const auto& output : build.source.outputs())
             {
-                auto& binding = slots[slot];
-                if (!binding.use_count) binding.first_use = static_cast<std::uint32_t>(passes.size());
-                ++binding.use_count;
-                passes.push_back(pass);
+                std::optional<PassCondition> guard;
+                if (output.alternate)
+                {
+                    guard = output.alternate->primary_when;
+                    if (guard->source == EConditionSource::HISTORY_VALID)
+                    {
+                        guard->input = executable.resources()[guard->input].history;
+                        if (guard->input == kGraphInvalidIndex)
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                }
+                const auto append = [&](ResourceVersion version)
+                {
+                    const auto binding = owner[version.resource.index];
+                    if (binding != kGraphInvalidIndex && slots[binding].output_range)
+                        exports[binding].push_back({std::get<GraphBufferRange>(output.range), guard});
+                };
+                append(output.version);
+                if (output.alternate)
+                {
+                    guard->expected = !guard->expected;
+                    append(output.alternate->value);
+                }
             }
-            return passes;
+            for (std::size_t i = 0; i < slots.size(); ++i)
+            {
+                auto& binding = slots[i];
+                binding.first_use = static_cast<std::uint32_t>(result.uses.size());
+                binding.use_count = static_cast<std::uint32_t>(uses[i].size());
+                result.uses.insert(result.uses.end(), uses[i].begin(), uses[i].end());
+                binding.first_export = static_cast<std::uint32_t>(result.exports.size());
+                binding.export_count = static_cast<std::uint32_t>(exports[i].size());
+                result.exports.insert(result.exports.end(), exports[i].begin(), exports[i].end());
+            }
+            return result;
         }
     } // namespace
 
@@ -535,11 +571,13 @@ namespace lux::render::detail
         }
         if (env.stopping.load()) co_return cxx::unexpected(RenderError{kCommandCancelled});
         if (const auto failure = entry.admissionError(); failure.type) co_return cxx::unexpected(failure);
-        auto output_passes = linkOutputPasses(*built, plan->executable, entry.session());
+        auto outputs = linkBufferOutputs(*built, plan->executable, entry.session());
+        if (!outputs) co_return cxx::unexpected(outputs.error());
         rollback_pools.release();
         co_return std::make_unique<const compiled::RenderGraph>(compiled::RenderGraph{
             std::move(plan->executable), std::move(plan->programs),
-            std::move(built->target_imports), std::move(built->storage_imports), std::move(output_passes),
+            std::move(built->target_imports), std::move(built->storage_imports), std::move(outputs->uses),
+            std::move(outputs->exports),
             std::move(comparisons),
             std::move(*preparation),
             std::move(uniforms)

@@ -711,6 +711,7 @@ namespace lux::render::detail
         if (execution == frame.instances.end()) return result;
         const auto& plan = instance.plan();
         const auto batches = std::span(frame.batches).subspan(execution->first_batch, plan.submissions().size());
+        result.first_batch = execution->first_batch;
         result.completed = !batches.empty();
         const auto& conditions = instance.frames_[slot].enabled_regions;
         for (const auto& batch : batches)
@@ -730,6 +731,17 @@ namespace lux::render::detail
             });
         }
         return result;
+    }
+
+    bool SubmissionOperation::Workspace::acceptedPass(
+        std::uint32_t slot, const RenderGraphInstance& instance, InstanceSubmissionResult receipt, std::uint32_t pass
+    ) const noexcept
+    {
+        if (receipt.first_batch == kGraphInvalidIndex) return false;
+        const auto& command = instance.plan().passes()[pass];
+        const auto& batch = slots_[slot].batches[receipt.first_batch + command.submission];
+        return batch.serial && (command.condition_region == kGraphInvalidIndex ||
+            instance.frames_[slot].enabled_regions[command.condition_region]);
     }
 
     SubmissionFrontiers SubmissionOperation::Workspace::acceptedUses(

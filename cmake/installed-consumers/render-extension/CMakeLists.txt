@@ -63,6 +63,20 @@ endif()
 
 add_test(NAME installed.render.compute_output_vulkan COMMAND compute_output)
 
+set(receipt_backends vulkan)
+
+if(WIN32)
+    list(APPEND receipt_backends d3d12)
+endif()
+
+foreach(backend IN LISTS receipt_backends)
+    foreach(mode IN ITEMS receipts receipt-partial receipt-unknown)
+        add_test(NAME installed.render.buffer_${mode}_${backend} COMMAND compute_output ${backend} ${mode})
+
+        set_tests_properties(installed.render.buffer_${mode}_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
+    endforeach()
+endforeach()
+
 add_test(NAME installed.render.replica_unknown_vulkan COMMAND compute_output vulkan unknown)
 
 set_tests_properties(installed.render.compute_output_vulkan installed.render.replica_unknown_vulkan PROPERTIES TIMEOUT 45)
@@ -76,7 +90,7 @@ if(WIN32)
 endif()
 
 foreach(header IN ITEMS
-    core/ConfigValue core/RenderErrorSink
+    core/ConfigValue core/FinalBufferVersion core/RenderErrorSink
     effect/CapabilityDefinition effect/EffectBundles effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
     extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
     extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock

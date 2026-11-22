@@ -86,44 +86,6 @@ namespace lux::render
         }
     }
 
-    bool RenderServer::Impl::targetDependencyCycle(
-        TargetId destination,
-        std::span<const TargetImageInput> inputs,
-        RenderJobId replaced
-    ) const noexcept
-    {
-        std::vector<TargetId> pending, visited;
-        for (const auto& input : inputs)
-        {
-            pending.push_back(input.target);
-        }
-        while (!pending.empty())
-        {
-            const auto id = pending.back();
-            pending.pop_back();
-            if (id == destination)
-            {
-                return true;
-            }
-            if (std::ranges::find(visited, id) != visited.end())
-            {
-                continue;
-            }
-            visited.push_back(id);
-            const auto* target = runtime_->targets_.find(id);
-            const auto writer = target ? targetState(*target).writer : RenderJobId{};
-            const auto* job = writer != replaced ? runtime_->jobs_.find(writer) : nullptr;
-            if (job)
-            {
-                for (const auto& input : job->execution->target_images)
-                {
-                    pending.push_back(input.target);
-                }
-            }
-        }
-        return false;
-    }
-
     void RenderServer::Impl::createTarget(const CreateTarget::Request& input, CreateTarget::Response& response) noexcept
     {
         auto* entry = runtime_->device(input.device);
@@ -649,6 +611,35 @@ namespace lux::render
             if (output.submitted) continue;
             const auto receipt = submissions.acceptedFrameUse(slot, *round.instances[i], round.target_uses);
             output.submitted = receipt.completed;
+            const auto& execution = *runtime_->jobs_.find(output.job)->execution;
+            const auto active_write = [&](const detail::FinalBufferUse& use) noexcept
+            {
+                return use.write && submissions.acceptedPass(slot, execution.instance, receipt, use.pass);
+            };
+            auto& registry = runtime_->resources_;
+            for (const auto& link : execution.productUses())
+            {
+                registry.acceptProductUse(link, slot, round.target_uses);
+                for (const auto& use : link.uses)
+                    if (active_write(use)) registry.invalidateProduct(link, slot, use.bytes);
+            }
+            if (receipt.completed)
+            {
+                for (const auto& link : execution.productUses())
+                    for (const auto& exported : link.exports)
+                    {
+                        if (exported.when && !execution.instance.frozenCondition(slot, *exported.when)) continue;
+                        const bool produced = std::ranges::any_of(link.uses, [&](const auto& use)
+                        {
+                            const bool overlaps = use.bytes.offset < exported.bytes.offset + exported.bytes.size &&
+                                exported.bytes.offset < use.bytes.offset + use.bytes.size;
+                            return overlaps && active_write(use);
+                        });
+                        if (produced) registry.publishProduct(link, {
+                            output.job, round.frame.frame_index, slot, exported.bytes
+                        });
+                    }
+            }
             for (const auto source_slot : round.inputs.readsFor(round.inputs.jobs[output.input_job]))
             {
                 const auto& selected = round.reads[source_slot.index].publication;

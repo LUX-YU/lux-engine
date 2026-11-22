@@ -176,6 +176,7 @@ namespace lux::render::detail
         // Trusted compiled resource index and Session slot, not a business resource lookup.
         void linkUniformBlocks(std::span<const LinkedUniformBlock>) noexcept;
         void setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput&) noexcept;
+        [[nodiscard]] bool frozenCondition(std::uint32_t slot, PassCondition) const noexcept;
         [[nodiscard]] ResourceInput resourceInput(GraphResourceId, std::uint32_t slot) const noexcept;
         // Cold diagnostics: sum actual NRI allocation requirements for this instance's owned resources.
         [[nodiscard]] bool dumpResources(DumpSink) const noexcept;

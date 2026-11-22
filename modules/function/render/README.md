@@ -75,6 +75,20 @@ A competing writer of [4, 12) receives `kJobBusy`. A copy extending beyond its o
 validation. GPU binding names keep distinct graph slots when several names refer to one owner. Use `sameBinding`
 to select prepared work according to their logical identities.
 
+To consume a particular publication, take a successful writer response and set
+`JobResourceInput::publication = submitted.bufferVersion({8, 8})` on the reader's binding for that Resource and
+projection. The offset is relative to the writer's projection. The reader imports an initialized eight-byte Buffer
+whose offset zero addresses the first selected byte. Start or Rebind validates the writer, frame, physical slot and
+exported range. An out-of-range selection returns `kGraphInvalidRange`. A superseded receipt returns
+`kRuntimeIdentity`. The Resource can serve an intact version after the writer stops.
+
+The selected path publishes a new version when its exported range has a recorded write and all required batches of
+the Job have been accepted. A known rejection before the first write preserves the old version. A partially accepted
+write invalidates overlapping versions. A partial Job must be replaced before rendering again. An uncertain submit
+uses the device's UNKNOWN retirement protocol. Prepared readers and the accepted physical queue frontiers protect
+the backing even after the reading Job stops. Explicit Job ordering and final-product dependencies are checked
+together for cycles when the Job bindings or ordering change.
+
 The Resource registry owns subscriptions and writer claims. It checks the named projection and overlapping FIF
 slices in the same Resource, validates replacement slices before notifying subscribers, and removes the candidate's
 subscriptions on failure. Two output names can address overlapping bytes in the same Job when both use the same

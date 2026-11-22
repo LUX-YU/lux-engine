@@ -27,7 +27,8 @@ namespace lux::render::compiled
         detail::NativeProgramBindings programs;
         std::vector<detail::TargetImageSlot> target_imports;
         std::vector<detail::StorageBindingSlot> storage_imports;
-        std::vector<std::uint32_t> output_passes;
+        std::vector<detail::FinalBufferUse> output_uses;
+        std::vector<detail::FinalBufferExport> buffer_exports;
         std::vector<BindingComparison> binding_comparisons;
         detail::PreparationPlan preparation;
         std::vector<detail::LinkedUniformBlock> uniforms;

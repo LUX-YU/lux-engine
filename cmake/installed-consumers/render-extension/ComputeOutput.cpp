@@ -56,6 +56,115 @@ namespace
         };
     };
 
+    struct ProductDescriptor final
+    {
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.sdk.final_product"}, 0, 0, {}, "Versioned final Buffer.", EResourceDomain::VIEW
+        };
+    };
+
+    struct ProductBuffer final
+    {
+        using Descriptor = ProductDescriptor;
+        static constexpr std::uint32_t bytes = 32;
+        static inline ProductBuffer* live = nullptr;
+        static inline std::atomic_bool gate_next_reader{};
+        static inline std::atomic_bool swap_candidate_slots{};
+        using Submit = decltype(nri::CoreInterface::QueueSubmit);
+        static inline Submit submit = nullptr;
+        static inline std::atomic_uint countdown{}, accepted_prefix{};
+        static inline std::atomic<nri::Result> failure{nri::Result::INVALID_ARGUMENT};
+        DeviceSession& device;
+        std::vector<nri::Buffer*> buffers;
+        nri::Fence* gate = nullptr;
+
+        explicit ProductBuffer(ResourceCreateContext& context) noexcept
+            : device(context.device), buffers(context.frame_count)
+        {
+            const auto& core = device.nriCore();
+            const nri::BufferDesc desc{bytes, 0, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
+            for (auto& buffer : buffers)
+                CHECK(core.CreatePlacedBuffer(device.device(), NriDeviceHeap, desc, buffer) == nri::Result::SUCCESS);
+            CHECK(core.CreateFence(device.device(), {}, gate) == nri::Result::SUCCESS);
+            live = this;
+            auto& hooks = const_cast<nri::CoreInterface&>(core);
+            submit = hooks.QueueSubmit;
+            hooks.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& desc) noexcept
+            {
+                auto n = countdown.load();
+                while (n && !countdown.compare_exchange_weak(n, n - 1)) {}
+                if (n == 1) return failure.load();
+                const auto result = submit(queue, desc);
+                if (n && result == nri::Result::SUCCESS) ++accepted_prefix;
+                return result;
+            };
+        }
+
+        ~ProductBuffer() noexcept
+        {
+            live = nullptr;
+            const_cast<nri::CoreInterface&>(device.nriCore()).QueueSubmit = submit;
+            device.deferRelease([core = &device.nriCore(), owned = std::move(buffers), fence = gate]() noexcept
+            {
+                for (auto* buffer : owned) core->DestroyBuffer(buffer);
+                core->DestroyFence(fence);
+            });
+        }
+
+        bool canDelayRead() const noexcept { return &device.queue() != &device.queue(EQueueRole::COMPUTE); }
+
+        void delayRead() const noexcept
+        {
+            const nri::FenceSubmitDesc wait{gate, 1, nri::StageBits::ALL};
+            const nri::QueueSubmitDesc submit{.waitFences = &wait, .waitFenceNum = 1};
+            CHECK(device.nriCore().QueueSubmit(device.queue().native(), submit) == nri::Result::SUCCESS);
+        }
+
+        void releaseRead() const noexcept
+        {
+            // All graph work in this fixture is Graphics. Compute is a distinct idle queue dedicated to this signal.
+            const nri::FenceSubmitDesc signal{gate, 1, nri::StageBits::ALL};
+            const nri::QueueSubmitDesc submit{.signalFences = &signal, .signalFenceNum = 1};
+            auto& queue = device.queue(EQueueRole::COMPUTE);
+            CHECK(device.nriCore().QueueSubmit(queue.native(), submit) == nri::Result::SUCCESS);
+        }
+
+        static RenderResult<std::unique_ptr<ProductBuffer>>
+        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        {
+            return std::make_unique<ProductBuffer>(context);
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            static const StorageBindingOps ops{
+                .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
+                    -> RenderResult<StorageGraphImport>
+                {
+                    if (projection) return lux::cxx::unexpected(RenderError{kStorageContract});
+                    return StorageGraphImport::bufferOutput(bytes, EGraphUse::TRANSFER_SOURCE);
+                },
+                .resolveGraphImport = [](
+                    void* value, std::uint32_t, const VGraphResourceDesc&, std::span<ResourceInput> out
+                ) noexcept -> RenderResult<void>
+                {
+                    const auto& buffers = static_cast<ProductBuffer*>(value)->buffers;
+                    CHECK(out.size() == buffers.size());
+                    for (std::size_t i = 0; i < out.size(); ++i) out[i] = {buffers[i], 0, bytes};
+                    if (swap_candidate_slots.exchange(false))
+                    {
+                        CHECK(out.size() == 2);
+                        std::swap(out[0], out[1]);
+                    }
+                    return {};
+                }
+            };
+            return makeResourceRegistration<Descriptor, ProductBuffer, &create>(nullptr, &ops);
+        }
+    };
+
     struct ComputeCapture final
     {
         using Descriptor = ComputeCaptureDescriptor;
@@ -80,7 +189,8 @@ namespace
                     -> RenderResult<bool>
                 {
                     auto& storage = *static_cast<ComputeCapture*>(owner);
-                    CHECK(frame.slot == 0 && frame.epoch && storage.epoch == 0);
+                    CHECK(frame.epoch && storage.epoch == 0);
+                    if (ProductBuffer::gate_next_reader.exchange(false)) ProductBuffer::live->delayRead();
                     storage.epoch = frame.epoch;
                     return true;
                 },
@@ -439,6 +549,45 @@ namespace
 
     RenderResult<void> buildCapture(EffectBuildContext& context, std::string_view mode) noexcept
     {
+        auto& builder = context.builder();
+        if (mode == "publish-7" || mode == "publish-11")
+        {
+            constexpr GraphBufferRange range{8, 8};
+            const auto dest = take(context.importFinalBuffer(
+                "product", {ResourceName{ProductDescriptor::descriptor.type.name()}},
+                {
+                    "", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {},
+                    EGraphUse::TRANSFER_SOURCE, range
+                }
+            ));
+            const auto tmp = take(builder.declareResource({"sample", GraphBufferDesc{range.size}}));
+            const auto word = mode == "publish-7" ? 7u : 11u;
+            const auto fill = take(builder.addTransferPass("sample", TransferWork{{
+                FillBuffer{{{tmp, 0}, GraphBufferRange{0, 4}}, word},
+                FillBuffer{{{tmp, 0}, GraphBufferRange{4, 4}}, word + 1}
+            }}));
+            const auto copy = take(builder.addTransferPass(
+                "publish", TransferWork{{CopyBuffer{{fill.written.front()}, {dest, range}}}}
+            ));
+            return context.publish(pixels, {{pixels, copy.written.front()}});
+        }
+        if (mode == "consume-version" || mode == "consume-word")
+        {
+            const GraphBufferRange bytes{0, mode == "consume-word" ? 4u : 8u};
+            const auto source = context.importResource(
+                "version", {ResourceName{ProductDescriptor::descriptor.type.name()}},
+                {"", GraphBufferDesc{bytes.size}, EGraphOrigin::IMPORTED, {bytes}, EGraphUse::TRANSFER_SOURCE}
+            );
+            if (!source) return lux::cxx::unexpected(source.error());
+            const auto dest = take(context.importFinalBuffer(
+                "capture", {ResourceName{ComputeCaptureDescriptor::descriptor.type.name()}},
+                {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, bytes}
+            ));
+            const auto copy = take(builder.addTransferPass(
+                "read version", TransferWork{{CopyBuffer{{*source}, {dest, bytes}}}}
+            ));
+            return context.publish(pixels, {{pixels, copy.written.front()}});
+        }
         if (!mode.empty()) return buildCaptureRange(context, mode);
         const auto input = context.inputs(color);
         CHECK(input.size() == 1 && input.front().size() == 1 && input.front().front().member == color);
@@ -463,6 +612,92 @@ namespace
         return context.publish(pixels, {{pixels, complete.written.front()}});
     }
 
+    constexpr std::string_view fault_node = "test.sdk.partial_output";
+
+    JobSubmitted reuseAfterReader(ipc::IpcRequester& client, const CommandList& commands, RenderJobId writer)
+    {
+        auto& product = *ProductBuffer::live;
+        if (!product.canDelayRead()) return call<RequestRenderJob>(client, commands, {writer});
+        const auto command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
+        CHECK(command != commands.commands.end());
+        const auto request = nextSceneRequest();
+        ipc::IpcMessage message;
+        message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{writer});
+        CHECK(client.trySend(commandTag(command->id), request, message));
+        // The same IPC requester orders admission. The first request owns the credit while the GPU reader waits.
+        CHECK(call<RequestRenderJob>(client, commands, {writer}, false).error.type == kJobBusy);
+        auto& notifications = ipc::IpcCore::instance();
+        const auto held_until = Clock::now() + 150ms;
+        while (Clock::now() < held_until)
+        {
+            const auto observed = notifications.workEpoch();
+            std::uint64_t correlation = 0;
+            const auto status = client.tryReceive(correlation, message);
+            CHECK(status != ipc::EIpcReceive::RECEIVED && status != ipc::EIpcReceive::CLOSED);
+            notifications.waitUntil(observed, held_until);
+        }
+        CHECK(product.device.nriCore().GetFenceValue(*product.gate) == 0);
+        product.releaseRead();
+        const auto deadline = Clock::now() + 30s;
+        for (;;)
+        {
+            const auto observed = notifications.workEpoch();
+            std::uint64_t correlation = 0;
+            const auto status = client.tryReceive(correlation, message);
+            if (status == ipc::EIpcReceive::RECEIVED)
+            {
+                CHECK(correlation == request);
+                const auto result = message.get<JobSubmitted>();
+                CHECK(!result.error.type);
+                return result;
+            }
+            CHECK(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
+            notifications.waitUntil(observed, deadline);
+        }
+    }
+
+    CapabilityDefinition faultDefinition() noexcept
+    {
+        return {
+            .identity = {graph::nodeTypeId(fault_node), std::string{fault_node}, 1},
+            .ports = {
+                {color, "color", {"test.sdk.compute_rgba8", 1}, graph::EPinDirection::OUTPUT},
+                {pixels, "pixels", {"test.sdk.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
+            }
+        };
+    }
+
+    RenderResult<void> buildPartialOutput(EffectBuildContext& context, std::string_view) noexcept
+    {
+        auto& builder = context.builder();
+        constexpr GraphBufferRange range{8, 8};
+        const auto dest = take(context.importFinalBuffer(
+            "product", {ResourceName{ProductDescriptor::descriptor.type.name()}},
+            {"", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_SOURCE, range}
+        ));
+        const auto write = take(builder.addTransferPass(
+            "write product", TransferWork{{FillBuffer{{dest, range}, 11}}}, {.estimated_gpu_ns = 1000}
+        ));
+        const auto image = take(builder.declareResource({"async result", GraphImageDesc{width, height}}));
+        ComputeWork work;
+        work.allow_async_compute = true;
+        work.interface.program = take(builder.addProgram(GraphProgram{kGraphFill.load(context.shaderTarget())}));
+        work.interface.parameters.setInlineConstant(OutputConstants{0.25f});
+        work.interface.resources = {{"generated", {{image, 0}, {}, EGraphAccess::WRITE}}};
+        work.dispatch = ImageDispatchArguments{image};
+        const auto async = take(builder.addComputePass(
+            "async work", std::move(work), {.side_effect = true, .estimated_gpu_ns = 100000}
+        ));
+        const auto output = take(builder.declareResource({"graphics color", GraphImageDesc{width, height}}));
+        const auto graphics = take(builder.addTransferPass(
+            "graphics work", TransferWork{{ClearImage{{{output, 0}}}}}, {.estimated_gpu_ns = 100000}
+        ));
+        CHECK(builder.dependsOn(write.pass, async.pass));
+        CHECK(builder.dependsOn(write.pass, graphics.pass));
+        if (auto published = context.publish(color, {{color, graphics.written.front()}}); !published) return published;
+        return context.publish(pixels, {{pixels, write.written.front()}});
+    }
+
     template <EffectImplementation::Build Build>
     void registerNode(RenderServer& server, const CapabilityDefinition& capability, graph::PinSemanticId output)
     {
@@ -471,6 +706,7 @@ namespace
         implementation.identity = {capability.identity.canonical_name, capability.identity.version};
         implementation.capability = capability.identity.id;
         implementation.supported_outputs = {output};
+        if constexpr (Build == buildPartialOutput) implementation.supported_outputs.push_back(color);
         implementation.initialize = [](EffectInitializationContext& context, std::string_view arguments) noexcept
             -> RenderResult<void>
         {
@@ -480,7 +716,9 @@ namespace
                 return context.initializeState<OutputState>();
             }
             const bool known = arguments.empty() || arguments == "lower" || arguments == "upper" ||
-                arguments == "overlap" || arguments == "spill" || arguments == "unauthorized";
+                arguments == "overlap" || arguments == "spill" || arguments == "unauthorized" ||
+                arguments == "publish-7" || arguments == "publish-11" ||
+                arguments == "consume-version" || arguments == "consume-word";
             if (!known) return lux::cxx::unexpected(RenderError{kInvalidConfig});
             return {};
         };
@@ -495,15 +733,22 @@ int main(int argc, char** argv)
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     RenderServerConfig config{"lux.render.sdk.compute_output", nativeValidationEnabled()};
-    config.frames_in_flight = 1;
+    const auto mode = argc > 2 ? std::string_view{argv[2]} : std::string_view{};
+    const bool receipts = mode == "receipts";
+    const bool product_fault = mode == "receipt-partial" || mode == "receipt-unknown";
+    config.frames_in_flight = receipts ? 2 : 1;
     config.uploads.emplace();
     DeviceOptions options;
+    options.multiple_queues = receipts || product_fault;
+    if (product_fault) options.graph_queue_costs = {100, 100, 100};
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, **execution));
     registerNode<buildCompute>(*server, computeDefinition(), color);
     registerNode<buildCapture>(*server, captureDefinition(), pixels);
     take(server->registerResource<ComputeCapture>());
     take(server->registerResource<MutableReplica>());
+    if (receipts || product_fault) take(server->registerResource<ProductBuffer>());
+    if (product_fault) registerNode<buildPartialOutput>(*server, faultDefinition(), pixels);
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     RenderResult<void> ran;
@@ -516,9 +761,6 @@ int main(int argc, char** argv)
     const auto target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
     const auto readback = call<GetOrCreateResource>(
         *client, commands, {session, ViewRequest{scene, view}, ComputeCaptureDescriptor::descriptor.type}
-    ).resource_id;
-    const auto mutable_resource = call<GetOrCreateResource>(
-        *client, commands, {session, ViewRequest{scene, view}, MutableReplicaDescriptor::descriptor.type}
     ).resource_id;
     const auto create_capture = [&](std::string mode)
     {
@@ -534,6 +776,164 @@ int main(int argc, char** argv)
         CHECK(edit.commit());
         return call<CreateEffect>(*client, commands, std::move(effect)).effect;
     };
+    if (receipts || product_fault)
+    {
+        const auto product = call<GetOrCreateResource>(
+            *client, commands, {session, ViewRequest{scene, view}, ProductDescriptor::descriptor.type}
+        ).resource_id;
+        JobBinding writer_binding;
+        writer_binding.resources = {{"product", product}};
+        const auto writer = startRenderJob(
+            *client, commands, session, scene, view, target, create_capture("publish-7"), writer_binding
+        );
+        const auto first = call<RequestRenderJob>(*client, commands, {writer});
+        const auto consumer_effect = create_capture("consume-version");
+        const auto reader_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
+        JobBinding reader_binding;
+        reader_binding.resources = {{"capture", readback}, {"version", product}};
+        reader_binding.resources.back().publication = first.bufferVersion({8, 8});
+        const auto reader = startRenderJob(
+            *client, commands, session, scene, view, reader_target, consumer_effect, reader_binding
+        );
+        auto outside = reader_binding;
+        outside.resources.back().publication = first.bufferVersion({4, 8});
+        CHECK(call<RebindRenderJobEffect>(
+            *client, commands, {session, reader, consumer_effect, reader_target, outside}, false
+        ).error.type == kGraphInvalidRange);
+        if (product_fault)
+        {
+            if (!ProductBuffer::live->canDelayRead())
+            {
+                server->stop();
+                worker.join();
+                return 77;
+            }
+            CreateEffectRequest request;
+            request.graph = std::make_unique<EffectGraph>();
+            EffectGraphEdit edit{*request.graph};
+            const auto node = take(edit.addNode(faultDefinition(), {std::string{fault_node}, 1}));
+            CHECK(edit.setOutput("color", edit.pinId(node, color), true));
+            CHECK(edit.setOutput("pixels", edit.pinId(node, pixels)));
+            CHECK(edit.commit());
+            const auto fault_effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+            call<RebindRenderJobEffect>(*client, commands, {session, writer, fault_effect, target, writer_binding});
+
+            ProductBuffer::countdown = 1;
+            const auto rejected = call<RequestRenderJob>(*client, commands, {writer}, false);
+            CHECK(rejected.error.type == kDeviceFailure && ProductBuffer::accepted_prefix == 0);
+            const auto old_read = call<RequestRenderJob>(*client, commands, {reader});
+
+            const bool unknown = mode == "receipt-unknown";
+            ProductBuffer::failure = unknown ? nri::Result::FAILURE : nri::Result::INVALID_ARGUMENT;
+            ProductBuffer::countdown = 2;
+            const auto partial = call<RequestRenderJob>(*client, commands, {writer}, false);
+            std::fprintf(stderr, "partial request error=%llu accepted=%u countdown=%u\n",
+                static_cast<unsigned long long>(partial.error.type), ProductBuffer::accepted_prefix.load(),
+                ProductBuffer::countdown.load());
+            CHECK(partial.error.type == (unknown ? kOutcomeUnknown : kDeviceFailure));
+            CHECK(ProductBuffer::accepted_prefix == 1 && partial.bufferVersion({8, 8}).writer.isNull());
+            if (!unknown)
+            {
+                const auto stale = call<RequestRenderJob>(*client, commands, {reader}, false);
+                CHECK(stale.error.type == kRuntimeIdentity);
+                CHECK(call<RequestRenderJob>(*client, commands, {writer}, false).error.type == kDeviceFailure);
+                call<RebindRenderJobEffect>(
+                    *client, commands, {session, writer, create_capture("publish-11"), target, writer_binding}
+                );
+                const auto recovered = call<RequestRenderJob>(*client, commands, {writer});
+                const auto next_view = call<CreateView>(*client, commands, {scene}).view;
+                const auto capture_type = ComputeCaptureDescriptor::descriptor.type;
+                reader_binding.resources.front().resource = call<GetOrCreateResource>(
+                    *client, commands, {session, ViewRequest{scene, next_view}, capture_type}
+                ).resource_id;
+                reader_binding.resources.back().publication = recovered.bufferVersion({8, 8});
+                call<RebindRenderJobEffect>(
+                    *client, commands, {session, reader, consumer_effect, reader_target, reader_binding}
+                );
+                call<RequestRenderJob>(*client, commands, {reader});
+                server->stop();
+            }
+            worker.join();
+            CHECK(unknown ? !ran && ran.error().type == kOutcomeUnknown : bool(ran));
+            CHECK(server->stats().validation_errors == 0);
+            server.reset();
+            for (unsigned i = 0; i < (unknown ? 1u : 2u); ++i)
+            {
+                std::array<std::uint32_t, 2> words{};
+                const auto& captured = ComputeCapture::results[i];
+                CHECK(captured.ready == 1 && captured.frames.size() == 1 && old_read.slot_index == 0);
+                std::memcpy(words.data(), captured.frames.front().data(), sizeof(words));
+                CHECK(words[0] == (i ? 11u : 7u) && words[1] == words[0] + 1);
+            }
+            std::printf("BUFFER RECEIPT: zero-prefix old=7, accepted-prefix=1, %s\n",
+                unknown ? "UNKNOWN retired" : "stale rejected, recovered=11");
+            return 0;
+        }
+        CHECK(call<SetRenderJobDependencies>(
+            *client, commands, {writer, {reader}, {}}, false
+        ).error.type == kJobCycle);
+        call<RebindRenderJobEffect>(
+            *client, commands, {session, writer, create_capture("publish-11"), target, writer_binding}
+        );
+        const bool delay = ProductBuffer::live->canDelayRead();
+        ProductBuffer::gate_next_reader = delay;
+        const auto read = call<RequestRenderJob>(*client, commands, {reader});
+        CHECK(first.slot_index != read.slot_index);
+        stopAndRemoveJob(*client, commands, reader);
+        const auto second = reuseAfterReader(*client, commands, writer);
+        CHECK(second.slot_index == first.slot_index && second.frame_index > first.frame_index);
+        stopAndRemoveJob(*client, commands, writer);
+        const auto candidate = call<CreateRenderJob>(
+            *client, commands, {scene, view, create_capture("publish-7"), EJobCadence::REQUESTED}
+        ).job;
+        ProductBuffer::swap_candidate_slots = true;
+        CHECK(call<StartRenderJob>(
+            *client, commands, {session, candidate, target, writer_binding}, false
+        ).error.type == kStorageMismatch);
+        call<RemoveRenderJob>(*client, commands, candidate);
+        const auto another = call<CreateRenderJob>(
+            *client, commands, {scene, view, consumer_effect, EJobCadence::REQUESTED}
+        ).job;
+        CHECK(call<StartRenderJob>(
+            *client, commands, {session, another, reader_target, reader_binding}, false
+        ).error.type == kRuntimeIdentity);
+        const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
+        reader_binding.resources.front().resource = call<GetOrCreateResource>(
+            *client, commands, {session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type}
+        ).resource_id;
+        reader_binding.resources.back().publication = second.bufferVersion({8, 8});
+        call<StartRenderJob>(*client, commands, {session, another, reader_target, reader_binding});
+        const auto last = call<RequestRenderJob>(*client, commands, {another});
+        reader_binding.resources.back().publication = second.bufferVersion({12, 4});
+        call<RebindRenderJobEffect>(
+            *client, commands, {session, another, create_capture("consume-word"), reader_target, reader_binding}
+        );
+        const auto subrange = call<RequestRenderJob>(*client, commands, {another});
+        CHECK(subrange.slot_index != last.slot_index);
+        stopAndRemoveJob(*client, commands, another);
+        server->stop();
+        worker.join();
+        CHECK(ran && server->stats().validation_errors == 0);
+        for (std::size_t i = 0; i < 2; ++i)
+        {
+            const auto& result = ComputeCapture::results[i];
+            CHECK(result.ready == 1 && result.frames.size() == 2);
+            std::array<std::uint32_t, 2> words{};
+            std::memcpy(words.data(), result.frames[i ? last.slot_index : read.slot_index].data(), sizeof(words));
+            CHECK(words[0] == (i ? 11u : 7u) && words[1] == words[0] + 1);
+        }
+        std::uint32_t last_word = 0;
+        std::memcpy(&last_word, ComputeCapture::results[1].frames[subrange.slot_index].data(), sizeof(last_word));
+        CHECK(last_word == 12);
+        std::printf(
+            "FINAL BUFFER VERSION: slot=%u old=7 next=11 subrange=12 stale-rejected, delayed-reader=%u\n",
+            first.slot_index, unsigned(delay)
+        );
+        return delay ? 0 : 77;
+    }
+    const auto mutable_resource = call<GetOrCreateResource>(
+        *client, commands, {session, ViewRequest{scene, view}, MutableReplicaDescriptor::descriptor.type}
+    ).resource_id;
     const auto created = create_capture({});
     JobBinding binding;
     constexpr std::uint32_t marker = 0x4d340123;

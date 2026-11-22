@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/core/Execution.hpp>
+#include <lux/engine/render/core/FinalBufferVersion.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <optional>
@@ -36,6 +37,11 @@ namespace lux::render
         RenderJobId job{};
         std::uint64_t frame_index = 0;
         std::uint32_t slot_index = 0;
+
+        [[nodiscard]] FinalBufferVersion bufferVersion(GraphBufferRange range) const noexcept
+        {
+            return {error.type ? RenderJobId{} : job, frame_index, slot_index, range};
+        }
     };
 
     struct TargetImageInput final
@@ -59,6 +65,7 @@ namespace lux::render
         ResourceInstanceId resource;
         std::uint32_t projection = 0; // Index in the Resource's graph binding contract.
         EJobResourceUse use = EJobResourceUse::GPU_BINDING;
+        std::optional<FinalBufferVersion> publication;
     };
 
     struct JobInputs final

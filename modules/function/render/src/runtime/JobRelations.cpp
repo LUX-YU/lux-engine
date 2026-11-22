@@ -82,6 +82,7 @@ namespace lux::render::detail
         // Tie-breaking prefers the old running order, then the stable table view.
         std::vector<std::size_t> remaining(jobs.size()), priority(jobs.size());
         std::vector<bool> emitted(jobs.size(), false);
+        std::vector<std::vector<std::size_t>> product_consumers(jobs.size());
         for (std::size_t i = 0; i < jobs.size(); ++i)
         {
             if (auto valid = qualify(jobs, i, jobs[i].relations->predecessors); !valid)
@@ -93,6 +94,14 @@ namespace lux::render::detail
                 return cxx::unexpected(valid.error());
             }
             remaining[i] = jobs[i].relations->predecessors.size();
+            for (auto producer : jobs[i].products)
+            {
+                if (contains(jobs[i].relations->predecessors, producer)) continue;
+                const auto p = find(jobs, producer);
+                if (p == missing) return cxx::unexpected(RenderError{kJobIdentity});
+                product_consumers[p].push_back(i);
+                ++remaining[i];
+            }
             priority[i] = running.size() + i;
             for (const auto pred : jobs[i].relations->predecessors)
             {
@@ -142,6 +151,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kJobCycle});
             }
             emitted[picked] = true;
+            for (auto consumer : product_consumers[picked]) --remaining[consumer];
             if (contains(running, jobs[picked].id))
             {
                 result.push_back(jobs[picked].id);
@@ -200,12 +210,11 @@ namespace lux::render::detail
     RenderResult<void>
     setJobDependencies(
         std::span<const JobRelationEntry> jobs,
-        RenderJobId changed,
-        std::span<const RenderJobId> in,
-        std::span<const RenderJobId> out,
+        const SetRenderJobDependencies::Request& request,
         std::vector<RenderJobId>& running
     ) noexcept
     {
+        const auto& [changed, in, out] = request;
         if (auto valid = validateEntries(jobs); !valid)
         {
             return valid;
@@ -245,7 +254,7 @@ namespace lux::render::detail
         view.reserve(jobs.size());
         for (std::size_t i = 0; i < jobs.size(); ++i)
         {
-            view.push_back({jobs[i].id, jobs[i].device, &candidate[i]});
+            view.push_back({jobs[i].id, jobs[i].device, &candidate[i], jobs[i].products});
         }
         if (auto valid = validateJobDevices(view); !valid) return valid;
         auto sorted = orderRunningJobs(view, running);

@@ -42,6 +42,7 @@ namespace lux::render::detail
             frame.pending_history_views.initialize(plan.histories_.size());
             frame.enabled_regions.resize(plan.recording_.conditions.size(), 1);
             frame.history_valid.resize(plan.histories_.size(), 0);
+            frame.conditions.resize(plan.condition_count_);
             frame.publish_history.resize(plan.histories_.size());
             frame.history_clears.resize(plan.histories_.size());
             frame.changed_resources.reserve(plan.resources().size());
@@ -159,9 +160,14 @@ namespace lux::render::detail
         {
         case EConditionSource::HISTORY_VALID: return bool(frame.history_valid[condition.input]) == condition.expected;
         case EConditionSource::SAME_BINDING: return bool(binding_values_[condition.input]) == condition.expected;
-        case EConditionSource::INPUT: return bool(condition_values_[condition.input]) == condition.expected;
+        case EConditionSource::INPUT: return bool(frame.conditions[condition.input]) == condition.expected;
         }
         std::terminate();
+    }
+
+    bool RenderGraphInstance::frozenCondition(std::uint32_t slot, PassCondition condition) const noexcept
+    {
+        return conditionEnabled(frames_[slot], condition);
     }
 
     RenderResult<void> RenderGraphInstance::bindPredicates(std::vector<std::uint8_t> selected) noexcept
@@ -226,6 +232,7 @@ namespace lux::render::detail
             return false;
         }
         bindHistory(slot);
+        std::ranges::copy(condition_values_, frame.conditions.begin());
         for (std::size_t i = 0; i < histories_.size(); ++i)
         {
             const auto& sample = histories_[i].plan->description;

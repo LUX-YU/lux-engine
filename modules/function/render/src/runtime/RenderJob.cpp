@@ -34,18 +34,36 @@ namespace lux::render
         reply = {{}, id};
     }
 
-    std::vector<detail::JobRelationEntry> RenderServer::Impl::jobRelations() noexcept
+    std::vector<detail::JobRelationEntry> RenderServer::Impl::jobRelations(const JobExecution* candidate) noexcept
     {
         std::vector<detail::JobRelationEntry> entries;
         entries.reserve(runtime_->jobs_.size());
         for (auto& job : runtime_->jobs_)
         {
-            auto device = job.execution ? job.execution->device : DeviceSessionId{};
+            const auto id = job.control.id();
+            const auto* execution = candidate && candidate->storage_start.job == id ? candidate : job.execution.get();
+            auto device = execution ? execution->device : DeviceSessionId{};
             if (const auto* start = job.control.pendingStart(); start && device.isNull())
             {
                 if (const auto* output = runtime_->targets_.find(start->target)) device = targetState(*output).device;
             }
-            entries.push_back({job.control.id(), device, &job.relations});
+            auto& entry = entries.emplace_back(detail::JobRelationEntry{id, device, &job.relations, {}});
+            if (!execution || (execution != candidate && !job.control.running())) continue;
+            const auto add_source = [&](RenderJobId writer)
+            {
+                if (runtime_->jobs_.find(writer) && std::ranges::find(entry.products, writer) == entry.products.end())
+                    entry.products.push_back(writer);
+            };
+            for (const auto& image : execution->target_images)
+            {
+                const auto* target = runtime_->targets_.find(image.target);
+                auto writer = target ? targetState(*target).writer : RenderJobId{};
+                if (candidate && candidate->target == image.target) writer = candidate->storage_start.job;
+                else if (candidate && writer == candidate->storage_start.job) writer = {};
+                add_source(writer);
+            }
+            for (const auto& link : execution->storage_bindings)
+                if (link.publication) add_source(link.publication->writer);
         }
         return entries;
     }
@@ -54,9 +72,7 @@ namespace lux::render
         noexcept
     {
         const auto entries = jobRelations();
-        const auto changed = detail::setJobDependencies(
-            entries, input.job, input.predecessors, input.successors, running_jobs_
-        );
+        const auto changed = detail::setJobDependencies(entries, input, running_jobs_);
         if (changed) ++job_structure_revision_;
         reply.error = changed ? RenderError{} : changed.error();
     }
@@ -99,7 +115,7 @@ namespace lux::render
         const auto variant = execution->variant;
         auto resources = std::move(execution->resource_ids);
         for (const auto& link : execution->storage_bindings)
-            runtime_->resources_.unbindGraphProjection(link, execution->storage_start);
+            if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->storage_start);
         execution.reset();
         for (const auto id : resources) runtime_->resources_.releaseExecution(id);
         runtime_->device(device)->releaseVariant(variant);
@@ -259,6 +275,8 @@ namespace lux::render
         for (std::uint32_t i = 0; i < inputs.size(); ++i)
         {
             const auto& input = inputs[i];
+            if (input.publication && input.use != EJobResourceUse::GPU_BINDING)
+                return cxx::unexpected(RenderError{kStorageContract, {i}});
             const bool is_duplicate = i != 0 && inputs[i - 1].binding == input.binding;
             if (input.binding.empty() || is_duplicate)
                 return cxx::unexpected(RenderError{kCommandContract, {i}});
@@ -273,7 +291,7 @@ namespace lux::render
             const auto same_binding = std::ranges::find_if(inputs.first(i), [&](const JobResourceInput& earlier) noexcept
             {
                 return earlier.resource == input.resource && earlier.projection == input.projection &&
-                    earlier.use == input.use;
+                    earlier.use == input.use && earlier.publication == input.publication;
             });
             const auto canonical = static_cast<std::uint32_t>(same_binding - inputs.begin());
             const auto name = ResourceName{factory->descriptor->type.name()};
@@ -312,12 +330,22 @@ namespace lux::render
             const bool invalid_binding = input.use != EJobResourceUse::GPU_BINDING || !ops ||
                 !ops->resolveGraphImport || !ops->describeGraphImport;
             if (invalid_binding) return cxx::unexpected(RenderError{kStorageContract, {i}});
-            auto contract = canonical == i ?
+            auto contract = canonical == i || input.publication ?
                 ops->describeGraphImport(registry.resourceInstance(input.resource), input.projection) :
                 RenderResult<detail::StorageGraphImport>{
                     std::get<detail::StorageGraphImport>(imports.storages[canonical].contract)
                 };
             if (!contract) return cxx::unexpected(contract.error());
+            if (input.publication)
+            {
+                if (!contract->final_buffer_output) return cxx::unexpected(RenderError{kStorageContract, {i}});
+                auto selected = registry.selectProduct(input.resource, input.projection, *input.publication);
+                if (!selected) return cxx::unexpected(selected.error());
+                const auto bytes = selected->size;
+                contract->description = GraphBufferDesc{bytes};
+                contract->initial_ranges = {GraphBufferRange{0, bytes}};
+                contract->final_buffer_output = false;
+            }
             // The Storage retains this boundary state through uploads and any replacement.
             const bool invalid_writer = contract->final_buffer_output &&
                 (contract->read_use || !std::holds_alternative<GraphBufferDesc>(contract->description));
@@ -452,7 +480,8 @@ namespace lux::render
             if (!current) co_return AckResponse{current.error()};
             if (*current != *imports) co_return AckResponse{RenderError{kDeviceArgument}};
         }
-        if (targetDependencyCycle(target_id, binding.target_images, job.control.id()))
+        const auto self = std::ranges::find(binding.target_images, target_id, &TargetImageInput::target);
+        if (self != binding.target_images.end())
             co_return AckResponse{RenderError{kCommandContract}};
         const auto qualified_view = qualify_view();
         if (!qualified_view) co_return AckResponse{qualified_view.error()};
@@ -477,6 +506,10 @@ namespace lux::render
         }
         if (auto layout = buildJobInputLayout(job, *candidate); !layout) co_return AckResponse{layout.error()};
 
+        auto running = running_jobs_;
+        if (!rebind) running.push_back(id);
+        auto ordered = detail::orderRunningJobs(jobRelations(candidate.get()), running);
+        if (!ordered) co_return AckResponse{ordered.error()};
         auto* previous = job.execution.get();
         if (auto published = job.control.publishStart(reservation.start_serial); !published)
             co_return AckResponse{published.error()};
@@ -491,13 +524,7 @@ namespace lux::render
         job.content.effect = effect_id;
         job.binding = std::move(binding);
         job.last_run_error = {};
-        if (!rebind)
-        {
-            running_jobs_.push_back(id);
-            auto ordered = detail::orderRunningJobs(jobRelations(), running_jobs_);
-            if (!ordered) std::terminate(); // The logical relations were validated before publication.
-            running_jobs_ = std::move(*ordered);
-        }
+        running_jobs_ = std::move(*ordered);
         ++job_structure_revision_;
         co_return AckResponse{};
     }

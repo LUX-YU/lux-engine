@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/commands/JobCommands.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <span>
 #include <vector>
@@ -18,6 +19,7 @@ namespace lux::render::detail
         RenderJobId id;
         DeviceSessionId device;
         JobRelations* relations;
+        std::vector<RenderJobId> products;
     };
 
     [[nodiscard]] RenderResult<void> validateJobDevices(std::span<const JobRelationEntry>) noexcept;
@@ -28,9 +30,7 @@ namespace lux::render::detail
     [[nodiscard]] RenderResult<void>
     setJobDependencies(
         std::span<const JobRelationEntry> jobs,
-        RenderJobId changed,
-        std::span<const RenderJobId> predecessors,
-        std::span<const RenderJobId> successors,
+        const SetRenderJobDependencies::Request&,
         std::vector<RenderJobId>& running_order
     ) noexcept;
 } // namespace lux::render::detail

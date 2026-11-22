@@ -93,6 +93,7 @@ namespace lux::render::detail
         {
             bool wrote_output = false;
             bool completed = false;
+            std::uint32_t first_batch = kGraphInvalidIndex;
         };
 
         struct RasterReads final
@@ -108,6 +109,9 @@ namespace lux::render::detail
             [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
             [[nodiscard]] InstanceSubmissionResult acceptedFrameUse(
                 std::uint32_t, const RenderGraphInstance&, SubmissionFrontiers&
+            ) const noexcept;
+            [[nodiscard]] bool acceptedPass(
+                std::uint32_t slot, const RenderGraphInstance&, InstanceSubmissionResult, std::uint32_t pass
             ) const noexcept;
             [[nodiscard]] SubmissionFrontiers acceptedUses(
                 const DeviceSession&, const FrameProgress&, std::span<RenderGraphInstance* const>

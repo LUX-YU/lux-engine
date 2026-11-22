@@ -102,6 +102,15 @@ namespace lux::render
                 const auto& source = inputs.sources[slot.index];
                 if (source.writer != no_job) inputs.jobs[source.writer].successors.push_back({consumer, source.target});
             }
+            for (const auto& link : job.execution->storage_bindings)
+            {
+                if (!link.publication) continue;
+                const auto producer = denseIndex(running, link.publication->writer);
+                if (producer == no_job) continue;
+                auto& edges = inputs.jobs[producer].successors;
+                if (std::ranges::find(edges, consumer, &FrameInputs::Edge::consumer) == edges.end())
+                    edges.push_back({consumer, {}, true});
+            }
             for (auto storage : storage_ids[consumer])
             {
                 const auto found = std::ranges::lower_bound(inputs.storages, storageOrder(storage), {}, storageOrder);
@@ -305,6 +314,7 @@ namespace lux::render
         };
         const auto block_successor = [&](std::uint32_t producer, const FrameInputs::Edge& edge) noexcept
         {
+            if (edge.prior_publication) return;
             if (!edge.sampled_target.isNull())
             {
                 const auto history = publishedOutputSlot(edge.sampled_target);
@@ -358,6 +368,23 @@ namespace lux::render
                     if (edge_available(edge)) block_successor(index, edge);
             }
             acyclic = order_jobs(false);
+        }
+        if (acyclic)
+        {
+            for (auto index : inputs.ordered)
+            {
+                if (inputs.selection[index].ready())
+                {
+                    const auto& execution = *runtime_->jobs_.find(inputs.jobs[index].id)->execution;
+                    auto pinned = runtime_->resources_.pinBufferUses(execution.productUses(), slot);
+                    if (!pinned || !*pinned) block(index, pinned ? RenderError{} : pinned.error());
+                }
+                if (!inputs.selection[index].ready())
+                {
+                    for (const auto& edge : inputs.jobs[index].successors)
+                        if (edge_available(edge)) block_successor(index, edge);
+                }
+            }
         }
         for (std::uint32_t i = 0; i < count; ++i)
         {

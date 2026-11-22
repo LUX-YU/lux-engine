@@ -55,6 +55,7 @@ set(render_sources
     src/resource/ResourceDefinition.cpp
     src/resource/StorageMeta.cpp
     src/resource/ResourceRegistry.cpp
+    src/resource/FinalBufferVersions.cpp
     src/resource/ResourceSet.cpp
     src/resource/mesh/MeshPacking.cpp
     src/resource/mesh/IndexedTriangleMesh.cpp

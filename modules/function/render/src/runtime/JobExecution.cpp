@@ -90,7 +90,8 @@ namespace lux::render
                 return target_images[left.slot].target == target_images[right.slot].target;
             const auto& a = binding.resources[left.slot];
             const auto& b = binding.resources[right.slot];
-            return a.resource == b.resource && a.projection == b.projection && a.use == b.use;
+            return a.resource == b.resource && a.projection == b.projection && a.use == b.use &&
+                a.publication == b.publication;
         };
         std::vector<std::uint8_t> selected;
         selected.reserve(candidate.graph.binding_comparisons.size());
@@ -104,16 +105,27 @@ namespace lux::render
             const auto& input = binding.resources[i];
             const auto id = input.resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
-            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
-                candidate.gpu_resources.push_back(id);
             BoundStorageProjection link{
                 id, input.projection, slots[i].resource, slots[i].output_range, slots[i].canonical_queue
             };
-            const auto uses = std::span(candidate.graph.output_passes).subspan(slots[i].first_use, slots[i].use_count);
-            const auto& recording = candidate.executable.recordingProgram();
-            const bool may_access = !link.output_range || std::ranges::any_of(uses, [&](auto pass)
+            link.uses = std::span(candidate.graph.output_uses).subspan(slots[i].first_use, slots[i].use_count);
+            const auto exports = std::span{candidate.graph.buffer_exports};
+            link.exports = exports.subspan(slots[i].first_export, slots[i].export_count);
+            link.publication = input.publication;
+            if (link.publication)
             {
-                const auto region = recording.passes[pass].condition_region;
+                auto value = registry.selectProduct(id, input.projection, *link.publication);
+                if (!value) return cxx::unexpected(value.error());
+                candidate.instance.setResource(slot, UINT32_MAX, *value);
+                candidate.storage_bindings.push_back(link);
+                continue;
+            }
+            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
+                candidate.gpu_resources.push_back(id);
+            const auto& recording = candidate.executable.recordingProgram();
+            const bool may_access = !link.output_range || std::ranges::any_of(link.uses, [&](const auto& use)
+            {
+                const auto region = recording.passes[use.pass].condition_region;
                 if (region == kGraphInvalidIndex) return true;
                 const auto& guard = recording.conditions[region];
                 return guard.source != EConditionSource::SAME_BINDING ||
@@ -124,6 +136,11 @@ namespace lux::render
             link.subscription = *bound;
             candidate.storage_bindings.push_back(link);
         }
+        const auto ordinary = std::ranges::partition(candidate.storage_bindings, [](const auto& link)
+        {
+            return link.output_range || link.publication;
+        });
+        candidate.product_count = static_cast<std::size_t>(ordinary.begin() - candidate.storage_bindings.begin());
         if (auto ready = candidate.instance.bindPredicates(std::move(selected)); !ready) return ready;
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph.preparation;

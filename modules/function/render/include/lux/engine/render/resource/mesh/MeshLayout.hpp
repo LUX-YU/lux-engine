@@ -6,9 +6,9 @@
 
 namespace lux::render
 {
-    class RasterProgramSelection;
+    class RasterProgramBuildContext;
     struct DrawStreamSlot;
 
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<MeshDescription>
-    readMeshLayout(const RasterProgramSelection&, DrawStreamSlot, MeshId) noexcept;
+    readMeshLayout(const RasterProgramBuildContext&, DrawStreamSlot, MeshId) noexcept;
 } // namespace lux::render

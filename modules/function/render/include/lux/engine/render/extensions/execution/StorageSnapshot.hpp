@@ -8,7 +8,7 @@ namespace lux::render
     template <class T> class StorageSnapshotSlot final
     {
         friend class FramePreparation;
-        friend class RasterProgramSelection;
+        friend class RasterProgramBuildContext;
         friend class InstanceLinkContext;
         explicit constexpr StorageSnapshotSlot(std::uint32_t slot) noexcept : slot_(slot) {}
         std::uint32_t slot_;

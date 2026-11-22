@@ -6,7 +6,7 @@
 
 namespace lux::render
 {
-    class RasterProgramSelection;
+    class RasterProgramBuildContext;
     struct DrawStreamSlot;
 
     struct SelectedMaterialProgram final
@@ -17,7 +17,7 @@ namespace lux::render
 
     // The definition is borrowed only during selection. The source is a generational publication address.
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<SelectedMaterialProgram>
-    readMaterialProgram(const RasterProgramSelection&, DrawStreamSlot, MaterialProgramId) noexcept;
+    readMaterialProgram(const RasterProgramBuildContext&, DrawStreamSlot, MaterialProgramId) noexcept;
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<SelectedMaterialProgram>
-    readMaterialProgram(const RasterProgramSelection&, DrawStreamSlot, MaterialId) noexcept;
+    readMaterialProgram(const RasterProgramBuildContext&, DrawStreamSlot, MaterialId) noexcept;
 } // namespace lux::render

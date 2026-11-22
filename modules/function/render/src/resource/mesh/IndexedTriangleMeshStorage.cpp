@@ -1,5 +1,5 @@
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
-#include <lux/engine/render/extensions/execution/RasterStream.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -335,7 +335,7 @@ namespace lux::render::detail
 namespace lux::render
 {
     RenderResult<MeshDescription>
-    readMeshLayout(const RasterProgramSelection& selection, DrawStreamSlot slot, MeshId id) noexcept
+    readMeshLayout(const RasterProgramBuildContext& selection, DrawStreamSlot slot, MeshId id) noexcept
     {
         const auto resource = extension_detail::ResourceIdentity::parent(id);
         auto storage = selection.readResource<detail::IndexedTriangleMeshStorage>(slot, resource);

@@ -33,7 +33,7 @@ namespace lux::render::detail
         return std::ranges::any_of(program_producers_, [&](auto index) noexcept
         {
             const auto& producer = producers_[index];
-            return !producer.program_revisions || !rasterProgramMatches(producer, *producer.program_revisions);
+            return !producer.ready_programs || !rasterProgramMatches(producer, producer.ready_programs->revisions);
         });
     }
 

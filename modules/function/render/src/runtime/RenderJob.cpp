@@ -122,10 +122,7 @@ namespace lux::render
         }
         auto& device = *runtime_->device(execution->device);
         if (device.preparingProgramsFor(execution->binding_identity))
-        {
             device.program_update->stop.request_stop();
-            execution->instance.settleProgramUpdate(*device.program_update, false);
-        }
         for (const auto& link : execution->storage_bindings)
             if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->binding_identity);
         releaseExecutionResources(std::move(execution), std::move(physical));

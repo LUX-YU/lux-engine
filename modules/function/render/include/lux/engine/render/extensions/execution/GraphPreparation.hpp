@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/extensions/execution/ProducerFactory.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <vector>
 
 namespace lux::render
@@ -19,5 +20,6 @@ namespace lux::render
         std::vector<GraphStorageSnapshotId> storage_inputs{};
         // Subset of storage_inputs that drives the runtime Raster program selection.
         std::vector<GraphStorageSnapshotId> program_storage_inputs{};
+        RasterProgramBuilder program_builder{};
     };
 } // namespace lux::render

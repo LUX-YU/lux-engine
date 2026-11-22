@@ -134,7 +134,7 @@ namespace lux::render
             };
 
             static RenderResult<std::unique_ptr<Workspace>>
-            createWorkspace(const LinkedData& inputs, InstanceInstantiationContext&) noexcept
+            createWorkspace(const LinkedData& inputs, const TargetDesc&) noexcept
             {
                 auto workspace = std::make_unique<Workspace>();
                 if (inputs.surface) workspace->surface.emplace(*inputs.surface);
@@ -142,22 +142,29 @@ namespace lux::render
                 return workspace;
             }
 
-            static void settleRasterPrograms(const LinkedData&, bool adopted, Workspace& workspace) noexcept
-            {
-                if (workspace.surface) workspace.surface->settlePrograms(adopted);
-            }
+            using Surface = detail::MeshSurfaceStream;
+            using DrawMapping = Surface::DrawMapping;
 
-            static RenderResult<void>
-            selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace& workspace) noexcept
+            static RenderResult<std::unique_ptr<DrawMapping>>
+            buildPrograms(
+                const LinkedData& linked,
+                RasterProgramBuildContext& selection,
+                const DrawMapping* previous
+            ) noexcept
             {
-                if (!workspace.surface) return cxx::unexpected(RenderError{kFrameContract});
+                if (!linked.surface) return cxx::unexpected(RenderError{kFrameContract});
                 const auto instances = selection.readStorage(linked.instances);
                 if (!instances) return cxx::unexpected(instances.error());
-                return workspace.surface->selectPrograms(selection, instances->value.get());
+                return Surface::buildPrograms(*linked.surface, selection, instances->value.get(), previous);
             }
 
             static RenderResult<void>
-            prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
+            prepare(
+                const LinkedData& linked,
+                FramePreparation& frame,
+                Workspace& workspace,
+                const DrawMapping* mapping
+            ) noexcept
             {
                 const auto view = frame.viewParameters();
                 if (!view) return cxx::unexpected(view.error());
@@ -212,12 +219,14 @@ namespace lux::render
                     linked.commands, workspace.grouping.indirectStreamCount() * sizeof(nri::DrawIndexedDesc)
                 );
                 if (!commands) return commands;
-                if (workspace.shadow && workspace.surface)
+                if (!workspace.surface) return {};
+                if (!mapping) return cxx::unexpected(RenderError{kFrameContract});
+                const detail::MeshSurfaceStream::DrawInputs inputs{frame, workspace.grouping.source(), *mapping};
+                if (workspace.shadow)
                     return workspace.surface->prepareShadow(
-                        frame, workspace.grouping.source(), workspace.shadow->views(), workspace.shadow->rasterStates()
+                        inputs, workspace.shadow->views(), workspace.shadow->rasterStates()
                     );
-                if (workspace.surface) return workspace.surface->prepare(frame, workspace.grouping.source(), view->value);
-                return {};
+                return workspace.surface->prepare(inputs, view->value);
             }
 
         private:
@@ -536,12 +545,15 @@ namespace lux::render
                 prepared_buffers.insert(prepared_buffers.end(), shadow->uploads.begin(), shadow->uploads.end());
                 storage_inputs.push_back(shadow->lights);
             }
+            using Kernel = PrepareMeshVisibility;
+            constexpr auto build = RasterProgramBuilder::make<Kernel, &Kernel::buildPrograms>();
+            const auto program_builder = config.surface ? build : RasterProgramBuilder{};
             auto value = ConfigValue::make(config);
             if (!value) return cxx::unexpected(value.error());
             if (auto prepared = context.addPreparation({
                 ProducerFactory::make<PrepareMeshVisibility>(), std::move(*value), {}, {}, std::move(inline_blocks),
                 std::move(producer_passes), std::move(prepared_buffers), std::move(storage_inputs),
-                std::move(program_inputs)
+                std::move(program_inputs), program_builder
             }); !prepared)
                 return prepared;
             if constexpr (Effect == EMeshEffect::VISIBILITY || Effect == EMeshEffect::GBUFFER || Effect == EMeshEffect::SHADOW)

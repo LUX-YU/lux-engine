@@ -160,7 +160,7 @@ through a GPU binding as well.
 
 List any snapshot that controls runtime Raster programs in both `storage_inputs` and `program_storage_inputs`.
 Its Storage must register a monotonic owner-side revision starting at one and return that revision from capture.
-Read the value during `selectRasterPrograms()` with `RasterProgramSelection::readStorage()`.
+Read the value during the declared cold program build with `RasterProgramBuildContext::readStorage()`.
 The renderer compares the producer and Storage revisions before compiling, after asynchronous preparation
 and before preparing a frame.
 Changes discard stale candidates and trigger another selection. Mesh producers can resolve a snapshot's
@@ -263,14 +263,19 @@ binding once and writes sets by program and draw ordinal. The producer publishes
 program identity, constant size, geometry, buffer bounds, image subresources and sampler comparison mode before
 materializing native draw packets.
 
-Set `RasterPassTemplate::runtime_stream_programs` for a stream whose programs are selected by its producer.
+Draw and section data are declared in `lux/engine/render/graph/DrawList.hpp`. For cold program builds, include
+`lux/engine/render/resource/RasterProgramBuild.hpp` and set `RasterPassTemplate::runtime_stream_programs`.
 Declare the Resource snapshots that select its programs in the preparation’s program inputs. A Resource publishes
 a new revision when those inputs change. A stream with no mutable sources selects its programs once per installation.
-In `selectRasterPrograms()`,
-transfer the shader artifacts and provide the complete ordered set with `setPrograms()`. Each program
-names a `ShaderCandidateSlot` in that artifact list. Several programs can use one candidate.
-Use `reusePrograms()` for a stream whose complete program keys and binding order still match. Producers
-can adopt their associated records in `settleRasterPrograms()` after the complete selection succeeds.
+Assign `RasterProgramBuilder::make<Kernel, &build>()` to the preparation’s `program_builder`. The build reads
+immutable linked inputs and the declared Resource snapshots on the owner. Transfer the shader artifacts
+and provide the complete ordered set with `setPrograms()`. Each program names a `ShaderCandidateSlot` in that artifact list. Several programs can use one candidate.
+Use `reusePrograms()` for a stream whose complete program keys and binding order still match.
+For draws that need a CPU mapping, define `Kernel::DrawMapping`. The builder takes a third argument pointing to the preceding published mapping (null on
+first use) and returns a uniquely owned candidate. Frame preparation takes a fourth argument pointing to the
+current immutable mapping. It is null for a pure CPU configuration of the same kernel. The device operation owns
+the candidate during native work. After identity and revision checks, the owner adopts the mapping together with
+the program table, including when existing PSOs are reused. Failed and discarded operations destroy their candidates.
 A failed or obsolete selection leaves the previous set resident, and requests for a failed revision
 complete with the preparation error.
 Use `readMeshLayout()` for an owned vertex layout. `readMaterialProgram()` accepts a material instance or code asset.
@@ -399,7 +404,7 @@ The Job owns each workspace, its CPU binding rows and their revisions. Each Devi
 buffers, images, memory allocations, descriptor pools, views, command buffers and History backing. The device indexes
 the stable allocation by JobId and checks the execution generation at cold binding and retirement boundaries.
 A kernel may supply a fallible
-`createWorkspace` when construction depends on linked inputs or the target. Cold assembly
+`createWorkspace(const LinkedData&, const TargetDesc&)` when construction depends on linked inputs or the target. Cold assembly
 resolves Resource borrows once; instance preparation uses those borrows and contributes copies to `Preparation`.
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
 Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces while

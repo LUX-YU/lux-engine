@@ -1,14 +1,9 @@
 #pragma once
 
-#include <optional>
-#include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
-#include <vector>
-#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
 #include <lux/engine/render/extensions/graph/Draw.hpp>
-#include <lux/engine/render/extensions/graph/ParameterBinding.hpp>
-#include <lux/engine/description/ShaderProgramArtifact.hpp>
+#include <optional>
+#include <span>
 
 namespace lux::render
 {
@@ -30,59 +25,6 @@ namespace lux::render
     struct RasterSamplerSlot final
     {
         std::uint32_t stream = kGraphInvalidIndex, index = kGraphInvalidIndex;
-    };
-
-    // Index into the shader artifacts submitted for this stream and selection.
-    struct ShaderCandidateSlot final { std::uint32_t index = kGraphInvalidIndex; };
-
-    struct RuntimeRasterProgram final
-    {
-        ShaderCandidateSlot shader;
-        GraphicsState graphics;
-        ParameterBinding parameters;
-        ResourceProgramSource source;
-        // In graphics.vertex_attributes order. Empty uses the shader locations directly.
-        std::vector<std::uint32_t> geometry_locations;
-    };
-
-    class RasterProgramSelection
-    {
-    public:
-        virtual ~RasterProgramSelection() noexcept = default;
-        // Only declared Resource inputs are visible during synchronous program selection.
-        template <class Storage>
-        [[nodiscard]] RenderResult<const Storage*>
-        readResource(DrawStreamSlot stream, ResourceInstanceId id) const noexcept
-        {
-            auto result = readResourceValue(stream, id, cxx::make_basic_type_info<Storage>());
-            if (!result) return cxx::unexpected(result.error());
-            return static_cast<const Storage*>(*result);
-        }
-
-        // Select every program for this revision. The renderer owns the selected inputs across scheduler hops.
-        [[nodiscard]] virtual RenderResult<void>
-        setPrograms(
-            DrawStreamSlot stream, std::vector<rdesc::ShaderProgramArtifact> shaders,
-            std::span<const RuntimeRasterProgram> programs
-        ) noexcept = 0;
-
-        // Use the existing ordered bindings when the producer's complete program key set is unchanged.
-        [[nodiscard]] virtual RenderResult<void> reusePrograms(DrawStreamSlot stream) noexcept = 0;
-
-        // The selected value is valid for the duration of selectRasterPrograms().
-        template <class T>
-        [[nodiscard]] RenderResult<PreparedStorageSnapshot<T>> readStorage(StorageSnapshotSlot<T> slot) const noexcept
-        {
-            auto selected = readStorageValue(slot.slot_, cxx::make_basic_type_info<T>());
-            if (!selected) return cxx::unexpected(selected.error());
-            return PreparedStorageSnapshot<T>{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
-        }
-
-    private:
-        [[nodiscard]] virtual RenderResult<const void*>
-        readResourceValue(DrawStreamSlot, ResourceInstanceId, cxx::basic_type_info) const noexcept = 0;
-        [[nodiscard]] virtual RenderResult<extension_detail::SelectedStorageSnapshot>
-        readStorageValue(std::uint32_t, cxx::basic_type_info) const noexcept = 0;
     };
 
     struct RasterBufferSlice final

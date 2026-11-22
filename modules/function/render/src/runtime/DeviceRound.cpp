@@ -287,7 +287,7 @@ namespace lux::render
         if (execution && executionTargetsResizing(*execution)) return false;
         if (execution)
         {
-            execution->instance.settleProgramUpdate(*op, !discarded && !op->returned->type);
+            if (!discarded && !op->returned->type) execution->instance.adoptProgramUpdate(*op);
             if (!discarded && op->returned->type)
             {
                 execution->failed_program = *op->returned;

@@ -1542,7 +1542,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         };
 
         static RenderResult<std::unique_ptr<Workspace>>
-        createWorkspace(const LinkedData& linked, InstanceInstantiationContext&) noexcept
+        createWorkspace(const LinkedData& linked, const TargetDesc&) noexcept
         {
             const auto* previous = source_linked_inputs.exchange(&linked);
             CHECK(!previous || previous == &linked);
@@ -1601,7 +1601,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         };
 
         static RenderResult<std::unique_ptr<Workspace>>
-        createWorkspace(const LinkedData&, InstanceInstantiationContext&) noexcept
+        createWorkspace(const LinkedData&, const TargetDesc&) noexcept
         {
             if (reject_sink_workspace.exchange(false)) return lux::cxx::unexpected(RenderError{kDeviceCapacity});
             return std::make_unique<Workspace>();
@@ -1778,7 +1778,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         BAD_INDIRECT_STRIDE, SHORT_INDIRECT_ARGS, BAD_COUNT, WRONG_INDIRECT_USE, NO_COUNT, OLD_PROGRAM_SLOT
     };
     std::atomic<ETestStreamMode> stream_mode{ETestStreamMode::VALID};
-    enum class ETestStreamPrograms : std::uint8_t { INITIAL, INVALID, BAD_GEOMETRY, PENDING, REVERSED };
+    enum class ETestStreamPrograms : std::uint8_t
+    {
+        INITIAL, INVALID, BAD_GEOMETRY, PENDING, REVERSED, REUSED, EQUIVALENT
+    };
     struct SetStreamPrograms final
     {
         static constexpr std::string_view name = "test.effect.set_stream_programs";
@@ -1852,6 +1855,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     constexpr GraphBufferRange stream_count_word{8, 4};
     constexpr std::uint32_t stream_indexed_stride = 24;
 
+    std::array<std::atomic_uint, 7> retired_draw_mappings{};
+
     class TestRasterProducer final
     {
     public:
@@ -1904,14 +1909,36 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct Workspace final
         {
             std::optional<RasterProgramSlot> first_slot;
+            std::uint64_t reversed_revision = 0;
         };
 
-        static RenderResult<void>
-        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace&) noexcept
+        struct DrawMapping final
+        {
+            ETestStreamPrograms mode;
+            std::uint64_t revision;
+            ~DrawMapping() noexcept { ++retired_draw_mappings[static_cast<std::size_t>(mode)]; }
+        };
+
+        static RenderResult<std::unique_ptr<DrawMapping>>
+        buildPrograms(
+            const LinkedData& linked,
+            RasterProgramBuildContext& selection,
+            const DrawMapping* previous
+        ) noexcept
         {
             const auto snapshot = selection.readStorage(linked.programs);
             if (!snapshot) return lux::cxx::unexpected(snapshot.error());
             const auto mode = snapshot->value.get();
+            if (mode == ETestStreamPrograms::REUSED)
+            {
+                CHECK(previous && previous->mode == ETestStreamPrograms::REVERSED);
+                auto reused = selection.reusePrograms(linked.stream);
+                if (!reused) return lux::cxx::unexpected(reused.error());
+                return std::make_unique<DrawMapping>(mode, snapshot->revision);
+            }
+            if (mode == ETestStreamPrograms::EQUIVALENT)
+                CHECK(previous && previous->mode == ETestStreamPrograms::REUSED);
+            else if (previous) CHECK(previous->mode == ETestStreamPrograms::INITIAL);
             ParameterBinding parameters;
             parameters.setInlineConstant(ProducerConstants{0});
             auto uniform = streamShader(linked.target, kEffectStreamUniform);
@@ -1927,25 +1954,36 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             };
             if (mode == ETestStreamPrograms::BAD_GEOMETRY) programs[0].geometry_locations = {0};
             if (mode == ETestStreamPrograms::PENDING) programs[0].graphics.blend.enabled = true;
-            if (mode == ETestStreamPrograms::REVERSED)
+            if (mode == ETestStreamPrograms::REVERSED || mode == ETestStreamPrograms::EQUIVALENT)
             {
                 for (auto& program : programs) program.graphics.front_counter_clockwise = false;
                 std::swap(programs[0], programs[1]);
             }
-            return selection.setPrograms(linked.stream, std::move(shaders), programs);
+            auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
+            if (!built) return lux::cxx::unexpected(built.error());
+            return std::make_unique<DrawMapping>(mode, snapshot->revision);
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
+        prepare(
+            const LinkedData& linked,
+            FramePreparation& frame,
+            Workspace& workspace,
+            const DrawMapping* mapping
+        ) noexcept
         {
             const auto mode = stream_mode.exchange(ETestStreamMode::VALID);
             if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(linked.stream, {});
             const auto snapshot = frame.readStorage(linked.programs);
             if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            const bool reversed = snapshot->value.get() == ETestStreamPrograms::REVERSED;
+            CHECK(mapping && mapping->revision == snapshot->revision && mapping->mode == snapshot->value.get());
+            const bool reversed = mapping->mode != ETestStreamPrograms::INITIAL;
             auto first_program = frame.rasterProgram(linked.stream, reversed ? 1 : 0);
             auto second_program = frame.rasterProgram(linked.stream, reversed ? 0 : 1);
             if (!first_program || !second_program) return lux::cxx::unexpected(RenderError{kFrameContract});
+            if (mapping->mode == ETestStreamPrograms::REVERSED) workspace.reversed_revision = first_program->revision;
+            if (mapping->mode == ETestStreamPrograms::REUSED || mapping->mode == ETestStreamPrograms::EQUIVALENT)
+                CHECK(first_program->revision == workspace.reversed_revision);
             if (!workspace.first_slot) workspace.first_slot = *first_program;
             if (mode == ETestStreamMode::OLD_PROGRAM_SLOT) first_program = *workspace.first_slot;
             const std::array values{ProducerConstants{241}, ProducerConstants{83}};
@@ -2171,7 +2209,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 drawn.pass, *programs, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
                 comparison_sampler
             })),
-            {}, {}, {}, {drawn.pass}, {}, {*programs}, {*programs}
+            {}, {}, {}, {drawn.pass}, {}, {*programs}, {*programs},
+            RasterProgramBuilder::make<TestRasterProducer, &TestRasterProducer::buildPrograms>()
         }));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
@@ -3121,8 +3160,10 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     preparing.get();
     CHECK(call<QueryRenderStats>(*client, commands, {}).submissions == before_bad_program + 1);
 
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::REUSED});
     stream_mode = ETestStreamMode::OLD_PROGRAM_SLOT;
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kFrameContract);
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::EQUIVALENT});
     auto stream_resize = peer_desc;
     stream_resize.width *= 2;
     const auto stream_resized = call<ResizeTarget>(*client, commands, {stream_target, stream_resize});
@@ -3131,6 +3172,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto swapped_stream = call<RequestRenderJob>(*client, commands, {stream_job});
     stopAndRemoveJob(*client, commands, stream_job);
     call<RemoveView>(*client, commands, {scene, stream_view});
+    for (const auto& retired : retired_draw_mappings) CHECK(retired.load() == 1);
+    std::puts("DRAW MAPPING PASS: failed and stale candidates isolated; "
+              "reuse and equal PSOs adopted new mappings; seven retired");
     const auto stream_deadline = Clock::now() + 10s;
     const auto& stream_capture = EffectCaptureBuffer::pixels[4];
     while (!stream_capture.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < stream_deadline);
@@ -3804,7 +3848,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         struct Workspace final {};
 
         static RenderResult<void>
-        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace&) noexcept
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection) noexcept
         {
             RuntimeRasterProgram program{{0}};
             std::vector<rdesc::ShaderProgramArtifact> shaders;
@@ -3925,7 +3969,10 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(builder.addRasterPass("sample a shared texture", std::move(raster)));
         auto producer = take(ConfigValue::make(Producer::Configuration{drawn.pass, context.shaderTarget(), material}));
-        CHECK(context.addPreparation({ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}}));
+        CHECK(context.addPreparation({
+            ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}, {}, {}, {},
+            RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
+        }));
         const auto captured = take(builder.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
@@ -4327,11 +4374,12 @@ static void meshRasterStream(bool d3d12)
         struct Workspace final
         {
             std::optional<RasterMeshGeometry> original;
-            std::uint64_t program_selection_revision = 0;
         };
 
-        static RenderResult<void>
-        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace& workspace) noexcept
+        using DrawMapping = std::uint64_t;
+
+        static RenderResult<std::unique_ptr<DrawMapping>>
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const DrawMapping*) noexcept
         {
             const auto snapshot = selection.readStorage(linked.instances);
             if (!snapshot) return lux::cxx::unexpected(snapshot.error());
@@ -4364,17 +4412,23 @@ static void meshRasterStream(bool d3d12)
             };
             for (auto& candidate : programs) candidate.geometry_locations = {position.location};
             programs.back().graphics.vertex_attributes.front().offset += sizeof(float);
-            workspace.program_selection_revision = snapshot->revision;
             ++program_selections;
-            return selection.setPrograms(linked.stream, std::move(shaders), programs);
+            auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
+            if (!built) return lux::cxx::unexpected(built.error());
+            return std::make_unique<DrawMapping>(snapshot->revision);
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, FramePreparation& frame, Workspace& workspace) noexcept
+        prepare(
+            const LinkedData& linked,
+            FramePreparation& frame,
+            Workspace& workspace,
+            const DrawMapping* mapping
+        ) noexcept
         {
             auto snapshot = frame.readStorage(linked.instances);
             if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            CHECK(snapshot->revision == workspace.program_selection_revision);
+            CHECK(mapping && snapshot->revision == *mapping);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
             auto sized = frame.sizeBuffer(linked.argument_sizer, bytes);
@@ -4506,7 +4560,8 @@ static void meshRasterStream(bool d3d12)
         }));
         CHECK(context.addPreparation({
             ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass},
-            {arguments.resource, arena.resource}, {instances}, {instances}
+            {arguments.resource, arena.resource}, {instances}, {instances},
+            RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
         }));
         const auto captured = take(builder.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}

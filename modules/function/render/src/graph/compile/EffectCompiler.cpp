@@ -114,12 +114,23 @@ namespace lux::render::detail
                 if (missing_constants || missing_buffers)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
 
+                const auto& builder = producer_.program_builder;
+                const bool dynamic = std::ranges::any_of(streams_, [&](auto pass) noexcept
+                {
+                    return workspace_.compiled.programs.rasterStream(pass)->runtime.has_value();
+                });
+                const bool invalid_builder = dynamic != bool(builder);
+                if (invalid_builder || (!dynamic && !producer_.program_storage_inputs.empty()))
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
+
                 detail::LinkedPreparationProducer linked{
                     .prototype = std::move(*prototype),
                     .inline_blocks = std::move(constants_),
                     .raster_streams = std::move(streams_),
                     .buffers = std::move(buffers_)
                 };
+                if (!linked.linkPrograms(builder))
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
                 for (auto id : producer_.inputs) linked.inputs.push_back(workspace_.data_slots[id.index]);
                 if (selected_input_ != kGraphInvalidIndex) linked.inputs.push_back(selected_input_);
                 for (auto id : producer_.outputs) linked.outputs.push_back(workspace_.data_slots[id.index]);

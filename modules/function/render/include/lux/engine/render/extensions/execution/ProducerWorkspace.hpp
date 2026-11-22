@@ -6,46 +6,31 @@
 
 namespace lux::render
 {
+    namespace detail { class RenderGraphInstance; }
+
     class FramePreparation;
-    class RasterProgramSelection;
     class ProducerFactory;
 
     // One Job owns the workspace. The selected device variant outlives the Job and owns its linked inputs.
     class ProducerWorkspace final
     {
-    public:
-        [[nodiscard]] RenderResult<void> prepare(FramePreparation& frame) noexcept
-        {
-            return ops_->prepare(linked_, frame, workspace_.get());
-        }
-
-        [[nodiscard]] RenderResult<void> selectRasterPrograms(RasterProgramSelection& selection) noexcept
-        {
-            return ops_->select(linked_, selection, workspace_.get());
-        }
-
-        void settleRasterPrograms(bool adopted) noexcept
-        {
-            ops_->settle(linked_, adopted, workspace_.get());
-        }
-
-    private:
+        friend class detail::RenderGraphInstance;
         friend class ProducerFactory;
-        struct Ops final
-        {
-            RenderResult<void> (*prepare)(const void*, FramePreparation&, void*) noexcept;
-            RenderResult<void> (*select)(const void*, RasterProgramSelection&, void*) noexcept;
-            void (*settle)(const void*, bool, void*) noexcept;
-        };
 
+        [[nodiscard]] RenderResult<void> prepare(FramePreparation& frame, const void* draw_mapping) noexcept
+        {
+            return prepare_(linked_, frame, workspace_.get(), draw_mapping);
+        }
+
+        using Prepare = RenderResult<void> (*)(const void*, FramePreparation&, void*, const void*) noexcept;
         using Storage = std::unique_ptr<void, void (*)(void*) noexcept>;
-        ProducerWorkspace(const void* linked, const Ops& ops, Storage workspace) noexcept
-            : linked_(linked), ops_(&ops), workspace_(std::move(workspace))
+        ProducerWorkspace(const void* linked, Prepare prepare, Storage workspace) noexcept
+            : linked_(linked), prepare_(prepare), workspace_(std::move(workspace))
         {
         }
 
         const void* linked_;
-        const Ops* ops_;
+        Prepare prepare_;
         Storage workspace_;
     };
 }

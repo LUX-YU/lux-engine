@@ -570,9 +570,15 @@ namespace
         auto configuration = take(ConfigValue::make(ProgramDraws::Configuration{
             draw.pass, alias, context.shaderTarget(), mode == "stale-code"
         }));
+        auto program_builder = RasterProgramBuilder::make<ProgramDraws, &ProgramDraws::buildPrograms>();
+        if (mode == "no-build") program_builder = {};
+        if (mode == "wrong-inputs")
+            program_builder = RasterProgramBuilder::make<WrongProgramInputs, &WrongProgramInputs::build>();
+        if (mode == "missing-map")
+            program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
         auto added = context.addPreparation({
             ProducerFactory::make<ProgramDraws>(), std::move(configuration), {}, {}, {},
-            {draw.pass}, {}, {code, alias}, {alias}
+            {draw.pass}, {}, {code, alias}, {alias}, program_builder
         });
         if (!added) return added;
         return context.publish(color, {{color, draw.written.front()}});
@@ -781,7 +787,9 @@ namespace
             }
             if constexpr (Build == buildResidentRaster)
             {
-                if (arguments.empty() || arguments == "stale-code") return {};
+                const bool valid = arguments.empty() || arguments == "stale-code" || arguments == "no-build" ||
+                    arguments == "wrong-inputs" || arguments == "missing-map";
+                if (valid) return {};
                 return lux::cxx::unexpected(RenderError{kInvalidConfig});
             }
             const bool known = arguments.empty() || arguments == "lower" || arguments == "upper" ||
@@ -848,7 +856,7 @@ int main(int argc, char** argv)
         effect.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*effect.graph};
         std::string source_mode;
-        if (mode == "stale-code") source_mode = std::exchange(mode, "raster-pixels");
+        if (resident_programs && mode != "raster-pixels") source_mode = std::exchange(mode, "raster-pixels");
         const auto compute = take(edit.addNode(
             computeDefinition(), {std::string{compute_node}, 1}, std::move(source_mode)
         ));
@@ -874,6 +882,14 @@ int main(int argc, char** argv)
             {"capture", readback}, {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
             {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT}
         };
+        for (auto mode : {"no-build", "wrong-inputs", "missing-map"})
+        {
+            const auto effect = call<CreateEffect>(*client, commands, capture_request(mode)).effect;
+            const auto rejected = call<PrepareEffect>(*client, commands, {effect, session}, false);
+            CHECK(rejected.error.type == kGraphInvalidDescriptor);
+            call<RemoveEffect>(*client, commands, {effect});
+        }
+        std::puts("SDK COLD LINK: missing builder, wrong linked inputs and wrong draw mapping rejected at Prepare");
         const auto invalid = create_capture("stale-code");
         const auto stale = startRenderJob(*client, commands, session, scene, view, target, invalid, binding);
         CHECK(call<RequestRenderJob>(*client, commands, {stale}, false).error.type == kStorageIdentity);

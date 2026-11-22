@@ -14,23 +14,23 @@ namespace lux::render
         using WorkspaceResult = RenderResult<std::unique_ptr<typename T::Workspace>>;
 
         template <class T>
-        concept WorkspaceFactory = requires(const typename T::LinkedData& linked, InstanceInstantiationContext& context)
+        concept WorkspaceFactory = requires(const typename T::LinkedData& linked, const TargetDesc& target)
         {
-            { T::createWorkspace(linked, context) } noexcept -> std::same_as<WorkspaceResult<T>>;
+            { T::createWorkspace(linked, target) } noexcept -> std::same_as<WorkspaceResult<T>>;
         };
 
         template <class T>
-        concept RasterSelection = requires(
-            const typename T::LinkedData& linked, RasterProgramSelection& selection, typename T::Workspace& workspace
-        )
+        concept FrameKernel = requires(const typename T::LinkedData& linked, FramePreparation& frame,
+                                       typename T::Workspace& workspace)
         {
-            { T::selectRasterPrograms(linked, selection, workspace) } noexcept -> std::same_as<RenderResult<void>>;
+            { T::prepare(linked, frame, workspace) } noexcept -> std::same_as<RenderResult<void>>;
         };
 
         template <class T>
-        concept RasterSettlement = requires(const typename T::LinkedData& linked, typename T::Workspace& workspace)
+        concept MappedFrameKernel = requires(const typename T::LinkedData& linked, FramePreparation& frame,
+                                             typename T::Workspace& workspace, const typename T::DrawMapping* map)
         {
-            { T::settleRasterPrograms(linked, true, workspace) } noexcept -> std::same_as<void>;
+            { T::prepare(linked, frame, workspace, map) } noexcept -> std::same_as<RenderResult<void>>;
         };
     }
 
@@ -39,16 +39,12 @@ namespace lux::render
         extension_detail::ProducerValue<typename T::Workspace> && std::is_nothrow_destructible_v<typename T::Workspace> &&
         (extension_detail::WorkspaceFactory<T> ||
             (!requires { &T::createWorkspace; } && std::default_initializable<typename T::Workspace>)) &&
-        (extension_detail::RasterSelection<T> || !requires { &T::selectRasterPrograms; }) &&
-        (extension_detail::RasterSettlement<T> || !requires { &T::settleRasterPrograms; }) &&
-        requires(
-            const typename T::Configuration& config, typename T::LinkedData& linked, typename T::Workspace& workspace,
-            InstanceLinkContext& link, FramePreparation& frame
-        )
+        (extension_detail::MappedFrameKernel<T> ||
+            (!requires { typename T::DrawMapping; } && extension_detail::FrameKernel<T>)) &&
+        requires(const typename T::Configuration& config, typename T::LinkedData& linked, InstanceLinkContext& link)
         {
             { T::resolve(config, link) } noexcept -> std::same_as<RenderResult<typename T::LinkedData>>;
             { ConfigValue::make(std::move(linked)) } noexcept -> std::same_as<RenderResult<ConfigValue>>;
-            { T::prepare(std::as_const(linked), frame, workspace) } noexcept -> std::same_as<RenderResult<void>>;
         };
 
     class ProducerFactory final
@@ -66,7 +62,13 @@ namespace lux::render
                 if (!resolved) return cxx::unexpected(resolved.error());
                 auto inputs = ConfigValue::make(std::move(*resolved));
                 if (!inputs) return cxx::unexpected(inputs.error());
-                return LinkedProducer{std::move(*inputs), &instantiate<T>};
+                const cxx::basic_type_info* mapping = nullptr;
+                if constexpr (extension_detail::MappedFrameKernel<T>)
+                {
+                    static constexpr auto type = cxx::make_basic_type_info<typename T::DrawMapping>();
+                    mapping = &type;
+                }
+                return LinkedProducer{std::move(*inputs), &instantiate<T>, mapping};
             }};
         }
 
@@ -79,7 +81,7 @@ namespace lux::render
     private:
         template <PreparationKernel T>
         [[nodiscard]] static RenderResult<ProducerWorkspace>
-        instantiate(const void* data, InstanceInstantiationContext& context) noexcept
+        instantiate(const void* data, const TargetDesc& target) noexcept
         {
             using Linked = typename T::LinkedData;
             using Workspace = typename T::Workspace;
@@ -87,47 +89,27 @@ namespace lux::render
             auto owned = [&]() noexcept -> Result
             {
                 if constexpr (extension_detail::WorkspaceFactory<T>)
-                    return T::createWorkspace(*static_cast<const Linked*>(data), context);
+                    return T::createWorkspace(*static_cast<const Linked*>(data), target);
                 else return std::make_unique<Workspace>();
             }();
             if (!owned) return cxx::unexpected(owned.error());
             if (!*owned) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
 
-            static constexpr ProducerWorkspace::Ops ops{&prepare<T>, &select<T>, &settle<T>};
             ProducerWorkspace::Storage storage{owned->release(), [](void* value) noexcept {
                 delete static_cast<Workspace*>(value);
             }};
-            return ProducerWorkspace{data, ops, std::move(storage)};
+            return ProducerWorkspace{data, &prepare<T>, std::move(storage)};
         }
 
         template <class T>
-        static RenderResult<void> prepare(const void* linked, FramePreparation& frame, void* workspace) noexcept
+        static RenderResult<void>
+        prepare(const void* linked, FramePreparation& frame, void* workspace, const void* mapping) noexcept
         {
-            return T::prepare(
-                *static_cast<const typename T::LinkedData*>(linked), frame,
-                *static_cast<typename T::Workspace*>(workspace)
-            );
-        }
-
-        template <class T>
-        static RenderResult<void> select(const void* linked, RasterProgramSelection& selection, void* workspace) noexcept
-        {
-            if constexpr (extension_detail::RasterSelection<T>)
-                return T::selectRasterPrograms(
-                    *static_cast<const typename T::LinkedData*>(linked), selection,
-                    *static_cast<typename T::Workspace*>(workspace)
-                );
-            else return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-        }
-
-        template <class T>
-        static void settle(const void* linked, bool adopted, void* workspace) noexcept
-        {
-            if constexpr (extension_detail::RasterSettlement<T>)
-                T::settleRasterPrograms(
-                    *static_cast<const typename T::LinkedData*>(linked), adopted,
-                    *static_cast<typename T::Workspace*>(workspace)
-                );
+            const auto& inputs = *static_cast<const typename T::LinkedData*>(linked);
+            auto& state = *static_cast<typename T::Workspace*>(workspace);
+            if constexpr (extension_detail::MappedFrameKernel<T>)
+                return T::prepare(inputs, frame, state, static_cast<const typename T::DrawMapping*>(mapping));
+            else return T::prepare(inputs, frame, state);
         }
 
         using Link = RenderResult<LinkedProducer> (*)(const ConfigValue&, InstanceLinkContext&) noexcept;

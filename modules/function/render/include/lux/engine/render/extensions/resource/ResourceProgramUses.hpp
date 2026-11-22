@@ -15,7 +15,6 @@ namespace lux::render
     namespace detail
     {
         class DeviceSession;
-        class RenderGraphInstance;
         struct RasterProgramUpdate;
     }
 
@@ -69,7 +68,7 @@ namespace lux::render
         [[nodiscard]] ResourceInstanceId resource() const noexcept { return resource_; }
 
     private:
-        friend class detail::RenderGraphInstance;
+        friend class RasterProgramBuildContext;
         friend struct detail::RasterProgramUpdate;
 
         [[nodiscard]] bool available(const ResourceRegistry&, const detail::DeviceSession&) const noexcept;

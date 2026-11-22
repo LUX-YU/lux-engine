@@ -149,7 +149,7 @@ foreach(header IN ITEMS
     extensions/effect/EffectBuildContext extensions/effect/EffectUniformBlock
     extensions/graph/RenderGraphBuilder extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
     extensions/execution/GraphPreparation extensions/execution/ProducerWorkspace
-    extensions/execution/ProducerFactory extensions/execution/LinkedProducer extensions/execution/RasterStream
+    extensions/execution/ProducerFactory extensions/execution/LinkedProducer graph/DrawList resource/RasterProgramBuild
     extensions/execution/PreparedCpuValue extensions/execution/ResourceInput
     device/NativeProgramId resource/material/ProgramSource resource/mesh/MeshLayout
     extensions/resource/ResourceProgramUses extensions/resource/ReplicaMutation

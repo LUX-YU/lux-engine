@@ -1,5 +1,5 @@
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
-#include <lux/engine/render/extensions/execution/RasterStream.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
 #include <lux/engine/render/extensions/FrameDataCall.hpp>
 #include <algorithm>
@@ -962,7 +962,7 @@ namespace lux::render::detail
 namespace lux::render
 {
     RenderResult<SelectedMaterialProgram>
-    readMaterialProgram(const RasterProgramSelection& selection, DrawStreamSlot slot, MaterialProgramId id) noexcept
+    readMaterialProgram(const RasterProgramBuildContext& selection, DrawStreamSlot slot, MaterialProgramId id) noexcept
     {
         using Storage = detail::RasterMaterialStorage;
         auto storage = selection.readResource<Storage>(slot, extension_detail::ResourceIdentity::parent(id));
@@ -971,7 +971,7 @@ namespace lux::render
     }
 
     RenderResult<SelectedMaterialProgram>
-    readMaterialProgram(const RasterProgramSelection& selection, DrawStreamSlot slot, MaterialId id) noexcept
+    readMaterialProgram(const RasterProgramBuildContext& selection, DrawStreamSlot slot, MaterialId id) noexcept
     {
         const auto resource = extension_detail::ResourceIdentity::parent(id);
         auto storage = selection.readResource<detail::RasterMaterialStorage>(slot, resource);

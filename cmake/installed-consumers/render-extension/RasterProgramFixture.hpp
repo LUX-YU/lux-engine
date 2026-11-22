@@ -162,8 +162,10 @@ namespace sdk_programs
             return LinkedData{*stream, *code, input.target, input.stale};
         }
 
-        static RenderResult<void>
-        selectRasterPrograms(const LinkedData& linked, RasterProgramSelection& selection, Workspace&) noexcept
+        using DrawMapping = std::array<std::uint32_t, 2>;
+
+        static RenderResult<std::unique_ptr<DrawMapping>>
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const DrawMapping*) noexcept
         {
             auto code = selection.readStorage(linked.code);
             if (!code) return lux::cxx::unexpected(code.error());
@@ -191,23 +193,52 @@ namespace sdk_programs
             std::array<RuntimeRasterProgram, 2> programs{};
             for (std::uint32_t i = 0; i < programs.size(); ++i)
             {
-                programs[i].shader = {i};
+                programs[i].shader = {1 - i};
                 programs[i].graphics.cull_mode = ECullMode::NONE;
                 programs[i].source = ResourceProgramSource::from<CodeStorage, &CodeStorage::lookup>(item);
             }
-            return selection.setPrograms(linked.stream, std::move(shaders), programs);
+            auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
+            if (!built) return lux::cxx::unexpected(built.error());
+            return std::make_unique<DrawMapping>(DrawMapping{1, 0});
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame, Workspace&) noexcept
+        static RenderResult<void>
+        prepare(const LinkedData& linked, FramePreparation& frame, Workspace&, const DrawMapping* mapping) noexcept
         {
+            CHECK(mapping);
             std::array<RasterStreamDraw, 2> draws{};
             for (std::uint32_t i = 0; i < draws.size(); ++i)
             {
-                auto program = frame.rasterProgram(linked.stream, i);
+                auto program = frame.rasterProgram(linked.stream, (*mapping)[i]);
                 if (!program) return lux::cxx::unexpected(program.error());
                 draws[i] = {*program, {}, {}, {}, DrawVertices{3}};
             }
             return frame.setRasterStream(linked.stream, {draws, {}, {}, {}});
+        }
+    };
+
+    // These builders have valid signatures but cannot produce the values required by ProgramDraws.
+    struct WrongProgramInputs final
+    {
+        using LinkedData = std::uint32_t;
+        using DrawMapping = ProgramDraws::DrawMapping;
+
+        static RenderResult<std::unique_ptr<DrawMapping>>
+        build(const LinkedData&, RasterProgramBuildContext&, const DrawMapping*) noexcept
+        {
+            CHECK(false);
+            return lux::cxx::unexpected(RenderError{kFrameContract});
+        }
+    };
+
+    struct MissingDrawMapping final
+    {
+        using LinkedData = ProgramDraws::LinkedData;
+
+        static RenderResult<void> build(const LinkedData&, RasterProgramBuildContext&) noexcept
+        {
+            CHECK(false);
+            return lux::cxx::unexpected(RenderError{kFrameContract});
         }
     };
 } // namespace sdk_programs

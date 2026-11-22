@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/extensions/execution/LinkedProducer.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <type_traits>
 #include <vector>
@@ -27,6 +28,7 @@ namespace lux::render::detail
     struct LinkedPreparationProducer final
     {
         LinkedProducer prototype;
+        RasterProgramBuilder::Build build_programs = nullptr;
         std::vector<std::uint32_t> inputs;
         std::vector<std::uint32_t> outputs;
         std::vector<LinkedInlineBlock> inline_blocks;
@@ -34,6 +36,12 @@ namespace lux::render::detail
         std::vector<std::uint32_t> buffers;
         std::vector<std::uint32_t> snapshots;
         std::vector<std::uint32_t> program_snapshots;
+
+        [[nodiscard]] bool linkPrograms(const RasterProgramBuilder& builder) noexcept
+        {
+            build_programs = builder.link(prototype.inputs().type(), prototype.mappingType());
+            return !builder || build_programs;
+        }
     };
 
     struct PreparedBufferCopy final

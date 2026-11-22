@@ -1,12 +1,42 @@
 #pragma once
 
-#include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/runtime/ExecutionBindingId.hpp>
 #include <chrono>
 
 namespace lux::render::detail
 {
+    // The build call borrows only its granted inputs. The returned native recipe owns its bytes.
+    struct RasterProgramBuildData final
+    {
+        struct Stream final
+        {
+            std::uint32_t pass;
+            std::array<ResourceInstanceId, 3> sources{};
+            std::optional<std::vector<RuntimeRasterProgram>> programs{};
+            std::vector<rdesc::ShaderProgramArtifact> shaders;
+            bool ready = false;
+            bool reuse = false;
+        };
+
+        struct Snapshot final
+        {
+            std::uint32_t slot;
+            ResourceInstanceId owner;
+            cxx::basic_type_info type;
+            extension_detail::SelectedStorageSnapshot selection;
+        };
+
+        const ResourceRegistry& registry;
+        const DeviceSession& device;
+        std::vector<Stream> streams;
+        std::vector<Snapshot> snapshots;
+
+        [[nodiscard]] Stream* find(DrawStreamSlot) noexcept;
+        [[nodiscard]] bool canRead(const Stream&, ResourceInstanceId) const noexcept;
+    };
+
     // The device owns the selected inputs and every unpublished native use through driver return.
     struct RasterProgramUpdate final
     {
@@ -35,6 +65,7 @@ namespace lux::render::detail
         {
             std::uint32_t producer;
             std::size_t first_revision, count;
+            RasterProgramBuilder::Mapping draw_mapping;
         };
 
         [[nodiscard]] exec::task<RenderResult<void>> compile(execution::CpuScheduler) noexcept;

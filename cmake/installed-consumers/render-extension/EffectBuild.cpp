@@ -375,10 +375,14 @@ static_assert(!PreparationKernel<WorkspaceProbe<const int>>);
 
 struct InvalidSelection : WorkspaceProbe<int>
 {
-    static void selectRasterPrograms(const LinkedData&, RasterProgramSelection&, Workspace&) noexcept;
+    static void invalidBuild(const LinkedData&, RasterProgramBuildContext&) noexcept;
 };
 
-static_assert(!PreparationKernel<InvalidSelection>);
+template <class T>
+concept AcceptsInvalidBuild = requires { RasterProgramBuilder::make<T, &T::invalidBuild>(); };
+
+static_assert(PreparationKernel<InvalidSelection>);
+static_assert(!AcceptsInvalidBuild<InvalidSelection>);
 
 static constexpr std::string_view clear_node = "test.effect.clear";
 static constexpr std::string_view clear_resource = "scene_state";

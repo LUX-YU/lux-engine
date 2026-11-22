@@ -4,7 +4,7 @@
 #include <lux/engine/render/resources/instance/Data.hpp>
 #include <map>
 
-namespace lux::render { struct MeshVisibilityView; struct RasterState; }
+namespace lux::render { class RasterProgramBuildContext; struct MeshVisibilityView; struct RasterState; }
 
 namespace lux::render::detail
 {
@@ -54,26 +54,43 @@ namespace lux::render::detail
             rdesc::EMaterialPurpose purpose;
         };
 
-        [[nodiscard]] static RenderResult<Inputs> resolve(const Configuration&, InstanceLinkContext&) noexcept;
-        explicit MeshSurfaceStream(const Inputs& inputs) noexcept : inputs_(inputs) {}
-        MeshSurfaceStream(const Inputs&&) = delete;
-        [[nodiscard]] RenderResult<void> selectPrograms(RasterProgramSelection&, const MeshInstanceSnapshot&) noexcept;
-        void settlePrograms(bool adopted) noexcept;
-        [[nodiscard]] RenderResult<void> prepare(
-            FramePreparation&, const MeshDrawGroupSource&, const ViewGpuParameters&
-        ) noexcept;
-        [[nodiscard]] RenderResult<void> prepareShadow(
-            FramePreparation&, const MeshDrawGroupSource&, std::span<const MeshVisibilityView>,
-            std::span<const RasterState>
-        ) noexcept;
-
-    private:
         struct ProgramBinding final
         {
             std::uint32_t first;
             bool reads_material;
         };
 
+        using GroupKey = std::pair<MeshId, MaterialProgramId>;
+        struct DrawMapping final
+        {
+            std::map<GroupKey, ProgramBinding> groups;
+            std::vector<std::pair<std::uint32_t, MaterialId>> materials;
+            std::size_t program_count = 0;
+        };
+
+        struct DrawInputs final
+        {
+            FramePreparation& frame;
+            const MeshDrawGroupSource& groups;
+            const DrawMapping& mapping;
+        };
+
+        [[nodiscard]] static RenderResult<Inputs> resolve(const Configuration&, InstanceLinkContext&) noexcept;
+        explicit MeshSurfaceStream(const Inputs& inputs) noexcept : inputs_(inputs) {}
+        MeshSurfaceStream(const Inputs&&) = delete;
+        [[nodiscard]] static RenderResult<std::unique_ptr<DrawMapping>>
+        buildPrograms(
+            const Inputs&,
+            RasterProgramBuildContext&,
+            const MeshInstanceSnapshot&,
+            const DrawMapping*
+        ) noexcept;
+
+        [[nodiscard]] RenderResult<void> prepare(DrawInputs, const ViewGpuParameters&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        prepareShadow(DrawInputs, std::span<const MeshVisibilityView>, std::span<const RasterState>) noexcept;
+
+    private:
         struct GroupLayout final
         {
             MeshId mesh;
@@ -104,23 +121,13 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] RenderResult<void>
-        prepareSections(FramePreparation&, const MeshDrawGroupSource&, SectionInputs) noexcept;
+        prepareSections(DrawInputs, SectionInputs) noexcept;
         [[nodiscard]] RenderResult<void> buildLayout(FramePreparation&, std::uint32_t view_count) noexcept;
 
         std::optional<LayoutVersion> layout_version_;
         std::vector<GroupLayout> layout_groups_;
 
-        using GroupKey = std::pair<MeshId, MaterialProgramId>;
-        struct ProgramSelectionState final
-        {
-            std::map<GroupKey, ProgramBinding> groups;
-            std::vector<std::pair<std::uint32_t, MaterialId>> materials;
-            std::size_t program_count = 0;
-        };
-
         const Inputs&                           inputs_;
-        std::optional<ProgramSelectionState>    selected_programs_;
-        std::optional<ProgramSelectionState>    pending_programs_;
         std::vector<RasterStreamDraw>           draws_;
         std::vector<RasterStreamBinding>        bindings_;
         std::vector<RasterStreamVertex>         vertices_;

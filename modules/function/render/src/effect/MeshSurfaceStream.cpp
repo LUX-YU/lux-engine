@@ -5,6 +5,7 @@
 #include <lux/engine/render/features/mesh/RasterMesh.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <NRI.h>
 #include <algorithm>
 #include <tuple>
@@ -33,46 +34,50 @@ namespace lux::render::detail
         return resolved;
     }
 
-    RenderResult<void>
-    MeshSurfaceStream::selectPrograms(RasterProgramSelection& selection, const MeshInstanceSnapshot& instances) noexcept
+    RenderResult<std::unique_ptr<MeshSurfaceStream::DrawMapping>>
+    MeshSurfaceStream::buildPrograms(
+        const Inputs& inputs,
+        RasterProgramBuildContext& selection,
+        const MeshInstanceSnapshot& instances,
+        const DrawMapping* previous
+    ) noexcept
     {
-        ProgramSelectionState next;
-        const auto stage = [&](RenderResult<void> declared) noexcept
+        auto next = std::make_unique<DrawMapping>();
+        const auto finish = [&](RenderResult<void> declared) noexcept -> RenderResult<std::unique_ptr<DrawMapping>>
         {
-            if (!declared) return declared;
-            std::ranges::sort(next.materials);
-            const auto duplicates = std::ranges::unique(next.materials);
-            next.materials.erase(duplicates.begin(), duplicates.end());
-            pending_programs_.emplace(std::move(next));
-            return declared;
+            if (!declared) return cxx::unexpected(declared.error());
+            std::ranges::sort(next->materials);
+            const auto duplicates = std::ranges::unique(next->materials);
+            next->materials.erase(duplicates.begin(), duplicates.end());
+            return std::move(next);
         };
-        if (selected_programs_)
+        if (previous)
         {
-            const auto& previous = *selected_programs_;
             std::vector<std::uint32_t> used;
             bool has_new_group = false;
             for (const auto& instance : instances.instances)
             {
                 if (!instance.render_enabled) continue;
                 const GroupKey key{instance.mesh, instance.program};
-                const auto group = previous.groups.find(key);
-                if (group == previous.groups.end())
+                const auto group = previous->groups.find(key);
+                if (group == previous->groups.end())
                 {
                     has_new_group = true;
                     break;
                 }
-                if (next.groups.emplace(key, group->second).second) used.push_back(group->second.first);
-                if (group->second.reads_material) next.materials.emplace_back(group->second.first, instance.material);
+                if (next->groups.emplace(key, group->second).second) used.push_back(group->second.first);
+                if (group->second.reads_material) next->materials.emplace_back(group->second.first, instance.material);
             }
             if (!has_new_group)
             {
                 std::ranges::sort(used);
                 const auto slots = std::ranges::unique(used).begin() - used.begin();
-                next.program_count = static_cast<std::size_t>(slots) * kMeshWindingCount;
-                if (next.program_count == previous.program_count)
-                    return stage(selection.reusePrograms(inputs_.stream));
+                next->program_count = static_cast<std::size_t>(slots) * kMeshWindingCount;
+                if (next->program_count == previous->program_count)
+                    return finish(selection.reusePrograms(inputs.stream));
             }
-            next = {};
+            next->groups.clear();
+            next->materials.clear();
         }
 
         struct MaterialShaders final
@@ -107,14 +112,14 @@ namespace lux::render::detail
         for (const auto& instance : instances.instances)
         {
             if (!instance.render_enabled) continue;
-            const auto [group, new_group] = next.groups.try_emplace({instance.mesh, instance.program});
+            const auto [group, new_group] = next->groups.try_emplace({instance.mesh, instance.program});
             if (new_group)
             {
                 const auto [material, new_material] = materials.try_emplace(instance.program);
                 auto& shaders = material->second;
                 if (new_material)
                 {
-                    auto program = readMaterialProgram(selection, inputs_.stream, instance.program);
+                    auto program = readMaterialProgram(selection, inputs.stream, instance.program);
                     if (!program) return cxx::unexpected(program.error());
                     shaders.program = &program->definition;
                     shaders.source = program->source;
@@ -123,7 +128,7 @@ namespace lux::render::detail
                     for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                     {
                         auto shader = buildMeshShader(
-                            *shaders.program, inputs_.purpose, inputs_.paged, winding != 0
+                            *shaders.program, inputs.purpose, inputs.paged, winding != 0
                         );
                         if (!shader) return cxx::unexpected(shader.error());
                         for (const auto& set : shader->interface.sets)
@@ -140,7 +145,7 @@ namespace lux::render::detail
                 const auto [mesh, new_mesh] = geometry.try_emplace(instance.mesh);
                 if (new_mesh)
                 {
-                    auto selected = readMeshLayout(selection, inputs_.stream, instance.mesh);
+                    auto selected = readMeshLayout(selection, inputs.stream, instance.mesh);
                     if (!selected) return cxx::unexpected(selected.error());
                     mesh->second = std::move(*selected);
                 }
@@ -158,7 +163,7 @@ namespace lux::render::detail
                         const auto shader = shaders.shaders[winding];
                         auto state = meshRasterLayout(
                             layout, *shaders.program, artifacts[shader.index].interface,
-                            {inputs_.front_counter_clockwise, winding != 0}
+                            {inputs.front_counter_clockwise, winding != 0}
                         );
                         if (!state) return cxx::unexpected(state.error());
                         auto& program = candidates.emplace_back(shader, std::move(state->graphics), ParameterBinding{});
@@ -169,50 +174,38 @@ namespace lux::render::detail
                 }
                 group->second = {use->second, shaders.reads_material};
             }
-            if (group->second.reads_material) next.materials.emplace_back(group->second.first, instance.material);
+            if (group->second.reads_material) next->materials.emplace_back(group->second.first, instance.material);
         }
-        next.program_count = candidates.size();
-        return stage(selection.setPrograms(inputs_.stream, std::move(artifacts), candidates));
+        next->program_count = candidates.size();
+        return finish(selection.setPrograms(inputs.stream, std::move(artifacts), candidates));
     }
 
-    void MeshSurfaceStream::settlePrograms(bool adopted) noexcept
-    {
-        if (!pending_programs_) return;
-        if (adopted) selected_programs_ = std::move(pending_programs_);
-        pending_programs_.reset();
-    }
-
-    RenderResult<void> MeshSurfaceStream::prepare(
-        FramePreparation& frame, const MeshDrawGroupSource& source, const ViewGpuParameters& view
-    ) noexcept
+    RenderResult<void> MeshSurfaceStream::prepare(DrawInputs inputs, const ViewGpuParameters& view) noexcept
     {
         const VisibilityViewConstants constants{view.view, view.projection};
         const RasterState state{{view.viewport[0], view.viewport[1], view.viewport[2], view.viewport[3]}};
-        return prepareSections(frame, source, {std::span{&constants, 1}, std::span{&state, 1}, false});
+        return prepareSections(inputs, {std::span{&constants, 1}, std::span{&state, 1}, false});
     }
 
     RenderResult<void> MeshSurfaceStream::prepareShadow(
-        FramePreparation& frame, const MeshDrawGroupSource& source, std::span<const MeshVisibilityView> views,
-        std::span<const RasterState> states
+        DrawInputs inputs, std::span<const MeshVisibilityView> views, std::span<const RasterState> states
     ) noexcept
     {
         shadow_constants_.clear();
         shadow_constants_.reserve(views.size());
         for (const auto& view : views) shadow_constants_.push_back({kIdentityTransform, view.world_to_clip});
-        return prepareSections(frame, source, {shadow_constants_, states, true});
+        return prepareSections(inputs, {shadow_constants_, states, true});
     }
 
     RenderResult<void>
-    MeshSurfaceStream::prepareSections(
-        FramePreparation& frame, const MeshDrawGroupSource& source, SectionInputs input
-    ) noexcept
+    MeshSurfaceStream::prepareSections(DrawInputs inputs, SectionInputs input) noexcept
     {
+        const auto& [frame, source, mapping] = inputs;
         vertices_.clear();
         groups_.clear();
         const bool invalid_views = input.constants.size() != source.view_count || input.states.size() != source.view_count;
         if (invalid_views) return cxx::unexpected(RenderError{kFrameContract});
-        if (!selected_programs_) return cxx::unexpected(RenderError{kFrameContract});
-        for (const auto& [index, material] : selected_programs_->materials)
+        for (const auto& [index, material] : mapping.materials)
         {
             for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
             {
@@ -225,8 +218,8 @@ namespace lux::render::detail
         for (const auto& group : source.groups)
         {
             if (group.gpu_index == kGraphInvalidIndex) continue;
-            const auto selected = selected_programs_->groups.find({group.mesh, group.program});
-            if (selected == selected_programs_->groups.end()) return cxx::unexpected(RenderError{kFrameContract});
+            const auto selected = mapping.groups.find({group.mesh, group.program});
+            if (selected == mapping.groups.end()) return cxx::unexpected(RenderError{kFrameContract});
             auto mesh = frame.selectMesh(inputs_.stream, group.mesh);
             if (!mesh) return cxx::unexpected(mesh.error());
             vertices_.push_back({0, mesh->vertices});

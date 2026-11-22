@@ -79,7 +79,7 @@ namespace lux::render::detail
         void captureProgramRevisions(std::vector<std::uint64_t>&) const noexcept;
         [[nodiscard]] bool matchesProgramRevisions(std::span<const std::uint64_t>) const noexcept;
         [[nodiscard]] RenderResult<void> selectProgramUpdate(RasterProgramUpdate&) noexcept;
-        void settleProgramUpdate(RasterProgramUpdate&, bool adopt) noexcept;
+        void adoptProgramUpdate(RasterProgramUpdate&) noexcept;
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void>
@@ -317,9 +317,8 @@ namespace lux::render::detail
         JobGpuResources& gpu_;
 
         class ProducerFrame;
-        class ProgramSelection;
         [[nodiscard]] RenderResult<void>
-        selectRasterPrograms(std::uint32_t, std::size_t first_revision, RasterProgramUpdate&) noexcept;
+        buildRasterPrograms(std::uint32_t, std::size_t first_revision, RasterProgramUpdate&) noexcept;
         void releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept;
         struct PreparedBytes final
         {
@@ -333,6 +332,12 @@ namespace lux::render::detail
             std::uint64_t source_revision = 0;
         };
 
+        struct ReadyRasterInputs final
+        {
+            std::vector<std::uint64_t> revisions;
+            RasterProgramBuilder::Mapping draw_mapping{nullptr, nullptr};
+        };
+
         struct Producer final
         {
             ProducerWorkspace workspace;
@@ -340,7 +345,7 @@ namespace lux::render::detail
             std::vector<OwnedRasterStream> streams;
             std::vector<std::uint32_t> runtime_streams{};
             std::vector<std::uint32_t> program_sources;
-            std::optional<std::vector<std::uint64_t>> program_revisions{};
+            std::optional<ReadyRasterInputs> ready_programs{};
         };
 
         [[nodiscard]] bool

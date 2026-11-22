@@ -1,5 +1,6 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
+#include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
@@ -43,10 +44,11 @@ namespace lux::render
 {
     RenderResult<void>
     RenderServer::Impl::assembleExecution(
-        JobExecution& candidate, const JobBinding& binding, const RenderEffect& effect,
+        ResourceRegistry::GraphInstallation& installation, const JobBinding& binding, const RenderEffect& effect,
         std::span<const std::uint32_t> columns
     ) noexcept
     {
+        auto& candidate = installation.execution();
         const auto target_images = std::span(binding.target_images);
         const auto& input = binding.inputs;
         auto& entry = *runtime_->device(candidate.device);
@@ -115,15 +117,7 @@ namespace lux::render
             const auto exports = std::span{candidate.graph.buffer_exports};
             link.exports = exports.subspan(compiled.first_export, compiled.export_count);
             link.publication = input.publication;
-            if (link.publication)
-            {
-                auto value = registry.selectProduct(id, input.projection, *link.publication);
-                if (!value) return cxx::unexpected(value.error());
-                candidate.instance.setResource(slot, UINT32_MAX, *value);
-                candidate.storage_bindings.push_back(link);
-                continue;
-            }
-            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
+            if (!link.publication && std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
             const auto& recording = candidate.executable.recordingProgram();
             const bool may_access = !link.output_range || std::ranges::any_of(link.uses, [&](const auto& use)
@@ -134,9 +128,7 @@ namespace lux::render
                 return guard.source != EConditionSource::SAME_BINDING ||
                     bool(selected[guard.input_slot]) == guard.expected;
             });
-            auto bound = registry.bindGraphProjection(link, candidate.binding_identity, candidate.instance, may_access);
-            if (!bound) return cxx::unexpected(bound.error());
-            link.subscription = *bound;
+            if (auto bound = installation.resolve(link, may_access); !bound) return bound;
             candidate.storage_bindings.push_back(link);
         }
         const auto ordinary = std::ranges::partition(candidate.storage_bindings, [](const auto& link)

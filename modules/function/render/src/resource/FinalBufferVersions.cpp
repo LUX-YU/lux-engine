@@ -29,29 +29,6 @@ namespace lux::render
         buffers.push_back({buffer, device->makeFrontiers(), device->makeFrontiers()});
     }
 
-    void ResourceRegistry::prepareProductBanks(
-        const BoundStorageProjection& link, const std::array<ProjectionBuffer, 3>& buffers
-    ) noexcept
-    {
-        if (!link.output_range) return;
-        auto& products = entries_.find(link.storage)->products;
-        for (const auto& slice : buffers) reserveProductBuffer(link.storage, slice.buffer);
-        for (const auto& exported : link.exports)
-        {
-            const auto matches = [&](const BufferProduct& product)
-            {
-                return product.projection == link.projection && product.range == exported.bytes;
-            };
-            if (std::ranges::any_of(products, matches)) continue;
-            auto& product = products.emplace_back(BufferProduct{link.projection, exported.bytes, {}});
-            for (std::size_t i = 0; i < product.samples.size(); ++i)
-            {
-                auto& sample = product.samples[i];
-                sample.backing = buffers[i].part(product.range);
-            }
-        }
-    }
-
     RenderResult<void> ResourceRegistry::replaceProductBacking(
         ResourceInstanceId id, std::uint32_t projection, std::uint32_t first, std::span<const ProjectionBuffer> slices
     ) noexcept
@@ -72,7 +49,7 @@ namespace lux::render
         if (has_writer)
             for (std::size_t i = 0; i < slices.size(); ++i)
             {
-                const auto& old = binding->second.buffers[first + i];
+                const auto& old = binding->second.backing.buffers[first + i];
                 if (old != slices[i] && !replaceable(old.buffer)) return cxx::unexpected(RenderError{kDeviceBusy});
             }
         for (const auto& product : products)
@@ -128,7 +105,7 @@ namespace lux::render
                 for (const auto& sample : product.samples)
                     if (sample.backing.buffer == use.buffer) return false;
             for (const auto& [projection, bindings] : entry.graph_bindings)
-                for (const auto& slice : bindings.buffers)
+                for (const auto& slice : bindings.backing.buffers)
                     if (slice.buffer == use.buffer) return false;
             return true;
         });
@@ -177,7 +154,7 @@ namespace lux::render
         }
         else if (link.output_range)
         {
-            const auto buffer = entry.graph_bindings.find(link.projection)->second.buffers[slot].buffer;
+            const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
             auto& use = *std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer);
             if (use.prepared_readers || !device->reached(use.reads) || !device->reached(use.writes)) return false;
             if (use.prepared_writers == UINT32_MAX) std::terminate();
@@ -199,7 +176,7 @@ namespace lux::render
         }
         else if (link.output_range)
         {
-            const auto buffer = entry.graph_bindings.find(link.projection)->second.buffers[slot].buffer;
+            const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
             auto& use = *std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer);
             if (!use.prepared_writers) std::terminate();
             --use.prepared_writers;
@@ -247,7 +224,7 @@ namespace lux::render
             std::ranges::find(entry.product_buffers, selected->buffer, &ProductBufferUse::buffer)->reads.merge(uses);
             return;
         }
-        const auto buffer = entry.graph_bindings.find(link.projection)->second.buffers[slot].buffer;
+        const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
         std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer)->writes.merge(uses);
     }
 
@@ -256,7 +233,7 @@ namespace lux::render
     ) noexcept
     {
         auto& entry = *entries_.find(link.storage);
-        const auto dest = entry.graph_bindings.find(link.projection)->second.buffers[slot].part(range);
+        const auto dest = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].part(range);
         for (auto& product : entry.products)
             for (auto& sample : product.samples)
                 if (dest.overlaps(sample.backing)) sample.writer = {};

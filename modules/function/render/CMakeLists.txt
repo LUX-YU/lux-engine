@@ -54,6 +54,7 @@ set(render_sources
     src/commands/Command.cpp
     src/resource/ResourceDefinition.cpp
     src/resource/StorageMeta.cpp
+    src/resource/GraphInstallation.cpp
     src/resource/ResourceRegistry.cpp
     src/resource/FinalBufferVersions.cpp
     src/resource/ResourceSet.cpp

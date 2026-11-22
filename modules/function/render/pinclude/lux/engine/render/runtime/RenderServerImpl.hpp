@@ -135,6 +135,7 @@ namespace lux::render
         auto requestJob(RequestRenderJob::Request&&) noexcept;
         void stopJob(RenderJob&) noexcept;
         void retireStoppedExecution(RenderJob&) noexcept;
+        void releaseExecutionResources(std::unique_ptr<JobExecution>) noexcept;
         void destroyExecution(std::unique_ptr<JobExecution>) noexcept;
         [[nodiscard]] RenderResult<void> retainExecutionResource(JobExecution&, ResourceInstanceId) noexcept;
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
@@ -148,7 +149,7 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<void>
         assembleExecution(
-            JobExecution&, const JobBinding&, const RenderEffect&, std::span<const std::uint32_t>
+            ResourceRegistry::GraphInstallation&, const JobBinding&, const RenderEffect&, std::span<const std::uint32_t>
         ) noexcept;
 
         [[nodiscard]] RenderResult<std::vector<std::uint32_t>>

@@ -573,7 +573,10 @@ Call PrepareEffect with the Effect and DeviceSession before starting or rebindin
 immutable graph per prepared device. Repeating Prepare on a ready device succeeds immediately. A second cold
 Prepare on the same Effect returns Busy while compilation is in flight. A failed Prepare can be retried.
 Start and running Rebind synchronously validate the actual Target, imports and output ownership before installing
-the candidate. A failed Rebind leaves the installed execution usable. Stopping every Job retains the prepared graph.
+the candidate. Resolving an import holds its Storage backing until the binding transaction settles.
+A reentrant publication to that Storage returns Busy. Other owners can still publish to their installed users.
+Candidate subscribers and final Buffer version records become visible together after layout, writer and DAG checks.
+A failed Rebind leaves the installed execution usable. Stopping every Job retains the prepared graph.
 ListEffectJobs includes stopped Jobs until removal or a successful Rebind changes their logical Effect.
 Removing a device releases its graphs. Uniform buffers remain in the device's Effect pool until Effect or device removal.
 The compiler links producers and constant writers to final slots. Job assembly borrows the plan and creates its own

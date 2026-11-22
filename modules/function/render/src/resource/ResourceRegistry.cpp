@@ -1,7 +1,8 @@
 #include <algorithm>
-#include <lux/engine/render/runtime/JobExecution.hpp>
+#include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
 #include <exception>
+#include <limits>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
@@ -59,8 +60,8 @@ namespace lux::render
         }
     }
 
-    RenderResult<void> ResourceRegistry::qualifyGraphBinding(
-        const Entry& entry,
+    RenderResult<void> ResourceRegistry::qualifyBufferUses(
+        const ProjectionMap& projections,
         std::uint32_t projection,
         const std::array<ProjectionBuffer, 3>& buffers,
         const GraphBindingUse& user
@@ -84,10 +85,10 @@ namespace lux::render
             if (!slice.buffer || claim.offset > slice.bytes.size || claim.size > slice.bytes.size - claim.offset)
                 return cxx::unexpected(RenderError{kGraphInvalidRange});
         }
-        for (const auto& [other_projection, binding] : entry.graph_bindings)
+        for (const auto& [other_projection, binding] : projections)
         {
             const bool same_projection = projection == other_projection;
-            const auto& previous = same_projection ? buffers : binding.buffers;
+            const auto& previous = same_projection ? buffers : binding.backing.buffers;
             for (const auto& bound : binding.users)
             {
                 if (!bound.writer && !user.writer) continue;
@@ -114,22 +115,38 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<cxx::SlotKey<detail::GraphBindingTag>> ResourceRegistry::bindGraphProjection(
-        const runtime_detail::BoundStorageProjection& link,
-        const detail::ExecutionBindingId& identity,
-        detail::RenderGraphInstance& instance,
-        bool may_access
+    RenderResult<void> ResourceRegistry::qualifyGraphImport(
+        const ProjectionMap& projections,
+        std::uint32_t projection,
+        const ProjectionFamily& backing,
+        const GraphBindingUse& user
     ) noexcept
     {
+        if (std::ranges::any_of(backing.images, [](const auto* image) { return image != nullptr; }))
+        {
+            for (const auto& [other, row] : projections)
+                if (other != projection && sharesImage(backing.images, row.backing.images))
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        if (auto valid = qualifyBufferUses(projections, projection, backing.buffers, user); !valid) return valid;
+        const auto existing = projections.find(projection);
+        if (existing != projections.end() && existing->second.backing != backing)
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        return {};
+    }
+
+    RenderResult<ResourceRegistry::ProjectionFamily>
+    ResourceRegistry::resolveGraphBacking(
+        const runtime_detail::BoundStorageProjection& link, const GraphBindingUse& user
+    ) noexcept
+    {
+        auto& instance = *user.instance;
         auto* entry = entries_.find(link.storage);
         if (!entry || !entry->execution_uses) return cxx::unexpected(RenderError{kStorageIdentity});
-        const GraphBindingUse user{
-            identity.job, identity.generation, link.resource, &instance, link.output_range, may_access, link.canonical_queue
-        };
         const auto installed = entry->graph_bindings.find(link.projection);
         if (installed != entry->graph_bindings.end())
         {
-            if (auto valid = qualifyGraphBinding(*entry, link.projection, installed->second.buffers, user); !valid)
+            if (auto valid = qualifyBufferUses(entry->graph_bindings, link.projection, installed->second.backing.buffers, user); !valid)
                 return cxx::unexpected(valid.error());
         }
         const auto& ops = *types_.find(entry->type)->factory.storage()->bindings();
@@ -141,9 +158,10 @@ namespace lux::render
 
         // An extension may have created other resources during resolution. Reacquire the row by identity.
         entry = entries_.find(link.storage);
-        std::array<ProjectionBuffer, 3> buffers{};
-        ImageFamily images{};
-        std::array<detail::ImageQueueUses, 3> image_uses{};
+        ProjectionFamily candidate;
+        auto& buffers = candidate.buffers;
+        auto& images = candidate.images;
+        auto& image_uses = candidate.image_uses;
         const bool is_image = std::holds_alternative<GraphImageDesc>(description);
         for (std::size_t i = 0; i < output.size(); ++i)
         {
@@ -163,16 +181,8 @@ namespace lux::render
             }
             buffers[i] = {output[i].buffer, {output[i].offset, output[i].size}};
         }
-        if (is_image)
-            for (const auto& [other, installed] : entry->graph_bindings)
-                if (other != link.projection && sharesImage(images, installed.images))
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-        if (auto valid = qualifyGraphBinding(*entry, link.projection, buffers, user); !valid)
+        if (auto valid = qualifyGraphImport(entry->graph_bindings, link.projection, candidate, user); !valid)
             return cxx::unexpected(valid.error());
-        const auto old = entry->graph_bindings.find(link.projection);
-        if (old != entry->graph_bindings.end() && (old->second.buffers != buffers || old->second.images != images ||
-            old->second.image_uses != image_uses))
-            return cxx::unexpected(RenderError{kStorageMismatch});
         // Only an owner publication may replace a backing that is still visible through an issued receipt.
         for (const auto& product : entry->products)
         {
@@ -181,15 +191,9 @@ namespace lux::render
                 if (buffers[i].part(product.range) != product.samples[i].backing)
                     return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        prepareProductBanks(link, buffers);
-        auto& binding = entry->graph_bindings[link.projection];
-        binding.buffers = buffers;
-        binding.images = images;
-        binding.image_uses = image_uses;
-        const auto subscription = binding.users.emplace(user);
         for (std::uint32_t slot = 0; slot < output.size(); ++slot)
             instance.setResource(link.resource.index, slot, output[slot]);
-        return subscription;
+        return candidate;
     }
 
     void ResourceRegistry::unbindGraphProjection(
@@ -201,8 +205,10 @@ namespace lux::render
         if (found == projections.end()) std::terminate();
         auto& users = found->second.users;
         const auto* reader = users.find(link.subscription);
-        const bool matches_generation = reader && reader->job == identity.job && reader->generation == identity.generation;
-        if (!matches_generation || reader->resource != link.resource) std::terminate();
+        const bool current = reader && reader->job == identity.job && reader->generation == identity.generation;
+        if (!current || reader->resource != link.resource) std::terminate();
+        if (link.subscription.gen == std::numeric_limits<decltype(link.subscription.gen)>::max() - 1)
+            ++found->second.retired_slots;
         users.erase(link.subscription);
         if (users.empty()) projections.erase(found);
         if (link.output_range) pruneBufferProducts(link.storage);
@@ -214,6 +220,8 @@ namespace lux::render
     {
         auto* entry = entries_.find(storage);
         if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
+        // One Storage can expose the same backing through multiple projections.
+        if (installation_ && installation_->holds(storage)) return cxx::unexpected(RenderError{kDeviceBusy});
         const auto found = entry->graph_bindings.find(projection);
         const auto publish_image = [&]() -> RenderResult<std::size_t>
         {
@@ -248,11 +256,11 @@ namespace lux::render
         const auto count = users.begin()->instance->frameCount();
         if (frame != UINT32_MAX && frame >= count)
             return cxx::unexpected(RenderError{kFrameContract});
-        auto candidate = binding.buffers;
+        auto candidate = binding.backing.buffers;
         const auto first = frame == UINT32_MAX ? 0u : frame;
         const auto end = frame == UINT32_MAX ? count : frame + 1;
         for (auto i = first; i < end; ++i) candidate[i] = {value.buffer, {value.offset, value.size}};
-        if (candidate != binding.buffers)
+        if (candidate != binding.backing.buffers)
         {
             const bool has_writer = std::ranges::any_of(entry->graph_bindings, [](const auto& current)
             {
@@ -264,13 +272,13 @@ namespace lux::render
             if (has_writer)
             {
                 for (const auto& user : users)
-                    if (auto valid = qualifyGraphBinding(*entry, projection, candidate, user); !valid)
+                    if (auto valid = qualifyBufferUses(entry->graph_bindings, projection, candidate, user); !valid)
                         return cxx::unexpected(valid.error());
             }
             const auto slices = std::span{candidate}.subspan(first, end - first);
             if (auto valid = replaceProductBacking(storage, projection, first, slices); !valid)
                 return cxx::unexpected(valid.error());
-            binding.buffers = candidate;
+            binding.backing.buffers = candidate;
             if (!entry->product_buffers.empty()) pruneBufferProducts(storage);
         }
         for (const auto& user : users) user.instance->setResource(user.resource.index, frame, value);
@@ -284,6 +292,8 @@ namespace lux::render
     {
         auto* entry = entries_.find(storage);
         if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (!updates.empty() && installation_ && installation_->holds(storage))
+            return cxx::unexpected(RenderError{kDeviceBusy});
         auto& bindings = entry->graph_bindings;
         for (std::size_t i = 0; i < updates.size(); ++i)
         {
@@ -317,7 +327,7 @@ namespace lux::render
                 for (std::uint32_t f = 0; f < count; ++f)
                 {
                     if (!includesFrame(update, f)) continue;
-                    if (family.images[f] == update.image && family.image_uses[f] == update.uses) continue;
+                    if (family.backing.images[f] == update.image && family.backing.image_uses[f] == update.uses) continue;
                     if (user.instance->frozenForSubmission(f)) return cxx::unexpected(RenderError{kDeviceBusy});
                 }
                 if (update.image)
@@ -333,7 +343,7 @@ namespace lux::render
             for (const auto& [projection, other] : bindings)
             {
                 if (projection == update.projection) continue;
-                const auto final = selectedImages(other.images, projection, updates, count);
+                const auto final = selectedImages(other.backing.images, projection, updates, count);
                 if (std::ranges::find(final, update.image) != final.end())
                     return cxx::unexpected(RenderError{kStorageMismatch});
             }
@@ -348,9 +358,9 @@ namespace lux::render
             for (std::uint32_t f = 0; f < count; ++f)
             {
                 if (!includesFrame(update, f)) continue;
-                if (family.images[f] == update.image && family.image_uses[f] == update.uses) continue;
-                family.images[f] = update.image;
-                family.image_uses[f] = update.uses;
+                if (family.backing.images[f] == update.image && family.backing.image_uses[f] == update.uses) continue;
+                family.backing.images[f] = update.image;
+                family.backing.image_uses[f] = update.uses;
                 const detail::ResourceInput input{.image = update.image, .image_uses = update.uses};
                 for (const auto& user : family.users) user.instance->setResource(user.resource.index, f, input);
             }

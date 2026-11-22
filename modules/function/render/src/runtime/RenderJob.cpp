@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <exec/create.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
@@ -97,14 +98,19 @@ namespace lux::render
         return {};
     }
 
+    void RenderServer::Impl::releaseExecutionResources(std::unique_ptr<JobExecution> execution) noexcept
+    {
+        auto resources = std::move(execution->resource_ids);
+        execution.reset();
+        for (const auto id : resources) runtime_->resources_.releaseExecution(id);
+    }
+
     void RenderServer::Impl::destroyExecution(std::unique_ptr<JobExecution> execution) noexcept
     {
         if (!execution) return;
-        auto resources = std::move(execution->resource_ids);
         for (const auto& link : execution->storage_bindings)
             if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->binding_identity);
-        execution.reset();
-        for (const auto id : resources) runtime_->resources_.releaseExecution(id);
+        releaseExecutionResources(std::move(execution));
     }
 
     void RenderServer::Impl::retireStoppedExecution(RenderJob& job) noexcept
@@ -282,9 +288,10 @@ namespace lux::render
         if (!resources) return AckResponse{resources.error()};
         const JobExecution::Installation installation{effect_id, target_id, {id, *generation}};
         auto candidate = std::make_unique<JobExecution>(*entry, *selected, installation, targetOutput(target));
-        cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
+        ResourceRegistry::GraphInstallation subscriptions{runtime_->resources_, *candidate};
+        cxx::scope_exit rollback([&]() noexcept { releaseExecutionResources(std::move(candidate)); });
         candidate->view_parameters = view_parameters;
-        if (auto assembled = assembleExecution(*candidate, binding, *effect, *resources); !assembled)
+        if (auto assembled = assembleExecution(subscriptions, binding, *effect, *resources); !assembled)
             return AckResponse{assembled.error()};
 
         if (view_parameters)
@@ -298,7 +305,10 @@ namespace lux::render
         if (!rebind) running.push_back(id);
         auto ordered = detail::orderRunningJobs(jobRelations(candidate.get()), running);
         if (!ordered) return AckResponse{ordered.error()};
+        if (auto capacity = subscriptions.reservePublication(); !capacity) return AckResponse{capacity.error()};
+
         auto* previous = job.execution.get();
+        subscriptions.publish();
         job.control.publishGeneration(*generation);
         candidate->instance.bindPreparationOwner(id, job.control.executionGeneration());
         targetState(target).writer = id;

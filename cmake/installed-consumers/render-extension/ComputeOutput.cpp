@@ -172,6 +172,10 @@ namespace
         }
     };
 
+    struct MutableReplica;
+    MutableReplica* selected_replica = nullptr;
+    void checkSelectedBacking(ResourceInstanceId other, const ResourceInput& backing) noexcept;
+
     struct ComputeCapture final
     {
         using Descriptor = ComputeCaptureDescriptor;
@@ -185,8 +189,10 @@ namespace
         std::uint32_t capacity;
         std::uint64_t epoch = 0;
 
-        ComputeCapture(ResourceCreateContext& context, CapturedPixels& pixels) noexcept
-            : buffer(context), result(pixels), capacity(capture_bytes + (&pixels == &results[1] ? 16384u : 0u))
+        ResourceInstanceId identity;
+
+        ComputeCapture(ResourceCreateContext& context, CapturedPixels& pixels, ResourceInstanceId id) noexcept
+            : buffer(context), result(pixels), capacity(capture_bytes + (&pixels == &results[1] ? 16384u : 0u)), identity(id)
         {
         }
 
@@ -217,11 +223,15 @@ namespace
                     std::span<ResourceInput> output
                 ) noexcept
                 {
-                    if (reject_resolve.exchange(false))
-                        return RenderResult<void>{lux::cxx::unexpected(RenderError{kStorageMismatch})};
                     auto& capture = *static_cast<ComputeCapture*>(storage);
                     const CaptureConfig config{.result = &capture.result, .bytes = capture.capacity};
-                    return CaptureBuffer::resolve(&capture.buffer, description, &config, output);
+                    auto resolved = CaptureBuffer::resolve(&capture.buffer, description, &config, output);
+                    if (resolved && reject_resolve.exchange(false))
+                    {
+                        checkSelectedBacking(capture.identity, output.front());
+                        return RenderResult<void>{lux::cxx::unexpected(RenderError{kStorageMismatch})};
+                    }
+                    return resolved;
                 },
                 .settleFrame = [](void* owner, const ReplicaSettlement& receipt) noexcept
                 {
@@ -237,10 +247,10 @@ namespace
         }
 
         static RenderResult<std::unique_ptr<ComputeCapture>>
-        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
+        create(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         {
             CHECK(created < results.size());
-            return std::make_unique<ComputeCapture>(context, results[created++]);
+            return std::make_unique<ComputeCapture>(context, results[created++], id);
         }
     };
 
@@ -462,7 +472,8 @@ namespace
                 ) noexcept -> RenderResult<void>
                 {
                     ++resolutions;
-                    const auto* resource = static_cast<MutableReplica*>(owner);
+                    auto* resource = static_cast<MutableReplica*>(owner);
+                    if (ComputeCapture::reject_resolve) selected_replica = resource;
                     for (auto& value : output) value = {resource->buffer, 0, replica_bytes};
                     return {};
                 },
@@ -476,6 +487,17 @@ namespace
             return makeResourceRegistration<Descriptor, MutableReplica, &create>(nullptr, &bindings, commands);
         }
     };
+
+    void checkSelectedBacking(ResourceInstanceId other, const ResourceInput& backing) noexcept
+    {
+        auto* selected = std::exchange(selected_replica, nullptr);
+        CHECK(selected);
+        const auto rejected = selected->registry.publishGraphInput(selected->identity, 0, UINT32_MAX, {});
+        CHECK(!rejected && rejected.error().type == kDeviceBusy);
+        // This owner has one previously installed reader and its backing has not yet been selected by the candidate.
+        auto unchanged = selected->registry.publishGraphInput(other, 0, 0, backing);
+        CHECK(unchanged && *unchanged == 1);
+    }
 
     struct NonExclusiveReplicaCommand final
     {
@@ -1024,6 +1046,12 @@ int main(int argc, char** argv)
     replace(marker + 2, 2);
     call<RebindRenderJobEffect>(*client, commands, {session, job, created, target, binding});
     replace(marker + 3, 2);
+    auto late_failure = binding;
+    late_failure.inputs.conditions.push_back(1);
+    const auto invalid = call<RebindRenderJobEffect>(
+        *client, commands, {session, job, created, target, std::move(late_failure)}, false
+    );
+    CHECK(invalid.error.type == kDeviceArgument);
     replace(marker + 4, 2);
     constexpr std::uint32_t expected_replica = 0x12345678;
     call<SetReplicaValue>(*client, commands, {mutable_resource, expected_replica, true});
@@ -1099,6 +1127,8 @@ int main(int argc, char** argv)
     std::uint32_t observed_marker = 0;
     std::memcpy(&observed_marker, data.data() + readback_bytes + sizeof(std::uint32_t), sizeof(observed_marker));
     CHECK(observed_marker == marker + 4);
+    std::printf("SDK REBIND ROLLBACK: two installed readers after early and late failures, marker=%08x\n",
+        observed_marker);
     std::uint32_t replica = 0;
     std::memcpy(&replica, data.data() + readback_bytes, sizeof(replica));
     CHECK(replica == expected_replica);

@@ -166,12 +166,8 @@ namespace lux::render
         friend class RenderServer;
         friend void runtime_detail::finishResourceCommand(ResourceRegistry&, ResourceInstanceId) noexcept;
 
-        [[nodiscard]] RenderResult<cxx::SlotKey<detail::GraphBindingTag>> bindGraphProjection(
-            const runtime_detail::BoundStorageProjection&,
-            const detail::ExecutionBindingId&,
-            detail::RenderGraphInstance&,
-            bool may_access
-        ) noexcept;
+        class GraphInstallation;
+        const GraphInstallation* installation_ = nullptr;
         void unbindGraphProjection(
             const runtime_detail::BoundStorageProjection&, const detail::ExecutionBindingId&
         ) noexcept;
@@ -219,13 +215,22 @@ namespace lux::render
             std::array<ProductSample, 3> samples;
         };
 
-        struct ProjectionBindings final
+        struct ProjectionFamily final
         {
             std::array<ProjectionBuffer, 3> buffers{};
             std::array<nri::Texture*, 3> images{};
             std::array<detail::ImageQueueUses, 3> image_uses{};
-            cxx::SlotMap<GraphBindingUse, detail::GraphBindingTag> users;
+            bool operator==(const ProjectionFamily&) const noexcept = default;
         };
+
+        struct ProjectionBindings final
+        {
+            ProjectionFamily backing;
+            cxx::SlotMap<GraphBindingUse, detail::GraphBindingTag> users;
+            std::size_t retired_slots = 0; // SlotMap permanently retires an index when its generation is exhausted.
+        };
+
+        using ProjectionMap = std::map<std::uint32_t, ProjectionBindings>;
 
         struct ResolvedCommand final
         {
@@ -290,7 +295,7 @@ namespace lux::render
             bool exclusive_command = false;
             std::uint32_t dependent_storages = 0;
             std::vector<ResourceInstanceId> dependencies{};
-            std::map<std::uint32_t, ProjectionBindings> graph_bindings{};
+            ProjectionMap graph_bindings{};
             std::vector<BufferProduct> products{};
             std::vector<ProductBufferUse> product_buffers{};
         };
@@ -309,9 +314,6 @@ namespace lux::render
             const runtime_detail::BoundStorageProjection&, std::uint32_t slot, GraphBufferRange
         ) noexcept;
         void publishProduct(const runtime_detail::BoundStorageProjection&, FinalBufferVersion) noexcept;
-        void prepareProductBanks(
-            const runtime_detail::BoundStorageProjection&, const std::array<ProjectionBuffer, 3>&
-        ) noexcept;
         void reserveProductBuffer(ResourceInstanceId, nri::Buffer*) noexcept;
         void pruneBufferProducts(ResourceInstanceId) noexcept;
         RenderResult<void> replaceProductBacking(
@@ -319,8 +321,12 @@ namespace lux::render
         ) noexcept;
 
         cxx::StableSlotMap<Type, ResourceTypeTag> types_;
-        static RenderResult<void> qualifyGraphBinding(
-            const Entry&, std::uint32_t projection, const std::array<ProjectionBuffer, 3>&, const GraphBindingUse&
+        RenderResult<ProjectionFamily>
+        resolveGraphBacking(const runtime_detail::BoundStorageProjection&, const GraphBindingUse&) noexcept;
+        static RenderResult<void>
+        qualifyGraphImport(const ProjectionMap&, std::uint32_t, const ProjectionFamily&, const GraphBindingUse&) noexcept;
+        static RenderResult<void> qualifyBufferUses(
+            const ProjectionMap&, std::uint32_t projection, const std::array<ProjectionBuffer, 3>&, const GraphBindingUse&
         ) noexcept;
         cxx::SlotMap<Entry, ResourceInstanceTag> entries_;
         std::map<std::string, ResourceTypeId, std::less<>> types_by_name_;

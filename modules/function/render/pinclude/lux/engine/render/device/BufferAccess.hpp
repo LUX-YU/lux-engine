@@ -4,6 +4,10 @@
 
 namespace lux::render::detail
 {
+    class DeviceSession;
+
+    [[nodiscard]] nri::Result createGraphBufferView(DeviceSession&, nri::BufferViewDesc, nri::Descriptor*&) noexcept;
+
     inline nri::StageBits zeroBufferStages(nri::GraphicsAPI backend) noexcept
     {
         // NRI uses CopyBufferRegion on D3D12 and vkCmdFillBuffer on Vulkan.

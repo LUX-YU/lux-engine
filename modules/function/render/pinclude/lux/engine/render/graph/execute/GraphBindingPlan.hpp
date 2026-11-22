@@ -95,6 +95,7 @@ namespace lux::render::detail
         std::vector<OperandPatch> operand_fields;
         std::vector<std::uint32_t> pass_field_offsets;
         std::vector<std::uint32_t> viewport_passes, producer_passes;
+        std::uint32_t raster_list_count = 0;
         std::array<std::vector<std::uint32_t>, 3> shared_batches;
         std::vector<RasterList> raster_lists;
     };

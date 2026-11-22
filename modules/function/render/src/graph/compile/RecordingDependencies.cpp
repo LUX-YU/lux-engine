@@ -102,7 +102,11 @@ namespace lux::render::detail
             if (scope && !scope->viewport) result.viewport_passes.push_back(p);
             const auto* raster = recording.rasterCommands(pass);
             const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
-            if (list && list->producer_stream) result.producer_passes.push_back(p);
+            if (list)
+            {
+                result.raster_list_count = std::max(result.raster_list_count, list->data_index + 1);
+                if (list->producer_stream) result.producer_passes.push_back(p);
+            }
             const auto batch = pass.submission;
             if (!batches[batch].reusable_recording || p >= batches[batch].output_begin) continue;
             const auto& sets = bindings.passes[pass.binding_slot].shared_sets;

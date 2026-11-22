@@ -5,6 +5,7 @@
 #include <lux/engine/render/visibility.h>
 #include <NRI.h>
 #include <array>
+#include <memory>
 #include <cstdint>
 #include <vector>
 
@@ -12,6 +13,9 @@ namespace lux::render::detail
 {
     class DeviceSession;
     struct SubmissionBatch;
+    struct CompiledRasterStream;
+    struct DynamicRasterPrograms;
+    struct RasterProgramSelection;
     struct PhysicalFrameContract;
     struct PhysicalFrameChanges;
 
@@ -45,6 +49,7 @@ namespace lux::render::detail
         {
             nri::DescriptorSet* set = nullptr;
             RasterBindingKey program;
+            std::uint32_t list = 0, ordinal = 0;
             std::vector<nri::Descriptor*> views;
             std::vector<RasterDescriptorInput> inputs;
         };
@@ -98,6 +103,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<PhysicalFrameChanges>
         preparePhysical(DeviceSession&, const PhysicalFrameContract&) noexcept;
         [[nodiscard]] RenderResult<void> createBatches(DeviceSession&, std::span<const SubmissionBatch>) noexcept;
+        void collectRasterViews(nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;
         void release(const nri::CoreInterface&) noexcept;
     };
 
@@ -134,10 +140,19 @@ namespace lux::render::detail
         JobGpuResources(const JobGpuResources&) = delete;
         JobGpuResources& operator=(const JobGpuResources&) = delete;
 
+        [[nodiscard]] const DynamicRasterPrograms* dynamicRasterPrograms(std::uint32_t list) const noexcept;
+        [[nodiscard]] RenderResult<RasterProgramSelection>
+        selectRasterPrograms(std::uint32_t pass, const CompiledRasterStream&) const noexcept;
+        void adoptRasterPrograms(std::uint32_t list, std::unique_ptr<DynamicRasterPrograms>) noexcept;
+
         DeviceSession& session;
         const std::uint64_t generation;
         SubmissionFrontiers accepted;
         std::vector<JobFrameResources> frames;
         std::vector<JobHistoryResources> histories;
+
+    private:
+        std::vector<std::unique_ptr<DynamicRasterPrograms>> raster_programs_;
+        void releaseRasterPrograms(const DynamicRasterPrograms&) noexcept;
     };
 }

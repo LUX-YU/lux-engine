@@ -87,7 +87,9 @@ set(render_sources
     src/target/SwapchainTarget.cpp
     src/graph/execute/RenderGraphInstance.cpp
     src/graph/execute/RenderGraphInstanceProducers.cpp
-    src/graph/execute/RenderGraphInstanceRasterStreams.cpp
+    src/graph/execute/RasterFramePreparation.cpp
+    src/graph/execute/RasterFrameAttachments.cpp
+    src/graph/execute/RasterFrameDescriptors.cpp
     src/graph/execute/RenderGraphInstanceResources.cpp
     src/graph/execute/RenderGraphInstanceDescriptors.cpp
     src/graph/execute/FrameExecutor.cpp

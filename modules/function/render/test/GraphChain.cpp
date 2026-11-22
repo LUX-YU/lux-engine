@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
@@ -1796,6 +1797,59 @@ compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool ali
     return take(GraphCompiler::compileForRecordingTest(
         {capabilities, queues}, {graph, take(analyzeRenderGraph(graph))}, ETransientAllocation::INDEPENDENT, policy
     ));
+}
+
+static void cpuRasterBindingReplacement()
+{
+    JobFrameResources native;
+    FrameResources frame(native);
+    frame.stream_descriptor_rows.resize(3);
+    for (auto& stream : frame.stream_descriptor_rows) stream.programs.resize(2);
+    std::array<std::uint32_t, 9> tokens{};
+    const auto view = [&](std::size_t i) { return reinterpret_cast<nri::Descriptor*>(&tokens[i]); };
+    const auto append = [&](RasterBindingKey key, std::size_t token)
+    {
+        auto& ids = frame.stream_descriptor_rows[key.pass - 7].programs[key.program].records;
+        const auto index = static_cast<std::uint32_t>(native.raster_bindings.size());
+        auto& record = native.raster_bindings.emplace_back();
+        record.program = key;
+        record.list = key.pass - 7;
+        record.ordinal = static_cast<std::uint32_t>(ids.size());
+        record.views.push_back(view(token));
+        ids.push_back(index);
+    };
+    append({7, 0, 1}, 0);
+    append({8, 1, 3}, 1);
+    append({7, 1, 1}, 2);
+    append({9, 0, 0}, 3);
+    append({8, 1, 3}, 4);
+    append({7, 0, 1}, 5);
+    append({8, 0, 3}, 6);
+    append({7, 1, 1}, 7);
+    std::vector<nri::Descriptor*> retired;
+    frame.releaseRasterBindings(0, retired);
+    CHECK(retired.size() == 4 && native.raster_bindings.size() == 4);
+    for (const auto token : {0, 2, 5, 7}) CHECK(std::ranges::count(retired, view(token)) == 1);
+    const auto verify = [&](std::uint32_t pass, std::uint32_t program, std::span<const unsigned> expected)
+    {
+        const auto& ids = frame.stream_descriptor_rows[pass].programs[program].records;
+        CHECK(ids.size() == expected.size());
+        for (std::size_t i = 0; i < ids.size(); ++i)
+        {
+            const auto& row = native.raster_bindings[ids[i]];
+            CHECK(row.ordinal == i && row.program.pass == 7 + pass && row.program.program == program);
+            CHECK(row.views.size() == 1 && row.views.front() == view(expected[i]));
+        }
+    };
+    verify(1, 1, std::array{1u, 4u});
+    verify(1, 0, std::array{6u});
+    verify(2, 0, std::array{3u});
+    frame.stream_descriptor_rows[0].programs.resize(1);
+    append({7, 0, 2}, 8);
+    frame.releaseRasterBindings(1, retired);
+    CHECK(retired.size() == 7 && native.raster_bindings.size() == 2);
+    verify(0, 0, std::array{8u});
+    verify(2, 0, std::array{3u});
 }
 
 static void cpuAliasWaitScopes()
@@ -3994,6 +4048,7 @@ int main(int argc, char** argv)
         cpuQueueCandidates();
         cpuAliasBufferRanges();
         cpuAliasWaitScopes();
+        cpuRasterBindingReplacement();
         detachedDirtyRanges();
         std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;

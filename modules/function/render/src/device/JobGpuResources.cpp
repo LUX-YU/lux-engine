@@ -1,5 +1,9 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/device/BufferAccess.hpp>
+#include <lux/engine/render/device/CompiledPrograms.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
@@ -12,6 +16,30 @@
 
 namespace lux::render::detail
 {
+    nri::Result createGraphBufferView(DeviceSession& session, nri::BufferViewDesc view, nri::Descriptor*& descriptor) noexcept
+    {
+        const auto& core = session.nriCore();
+        const auto& limits = session.description();
+        if (view.type == nri::BufferView::CONSTANT_BUFFER)
+        {
+            const auto alignment = limits.memoryAlignment.constantBufferOffset;
+            const auto max_range = limits.memory.constantBufferMaxRange;
+            const bool invalid_offset = alignment == 0 || view.offset % alignment != 0;
+            const bool invalid_size = view.size == 0 || view.size > max_range;
+            if (invalid_offset || invalid_size) return nri::Result::INVALID_ARGUMENT;
+            if (limits.graphicsAPI == nri::GraphicsAPI::D3D12)
+            {
+                const auto padding = (alignment - view.size % alignment) % alignment;
+                if (padding > max_range - view.size) return nri::Result::INVALID_ARGUMENT;
+                view.size += padding;
+            }
+            const auto capacity = core.GetBufferDesc(*view.buffer).size;
+            const bool outside_buffer = view.offset > capacity || view.size > capacity - view.offset;
+            if (outside_buffer) return nri::Result::INVALID_ARGUMENT;
+        }
+        return core.CreateBufferView(view, descriptor);
+    }
+
     RenderResult<nri::BufferDesc>
     graphBufferDescription(DeviceSession& session, const CompiledResource& resource, std::uint64_t bytes) noexcept
     {
@@ -318,8 +346,38 @@ namespace lux::render::detail
     {
     }
 
+    const DynamicRasterPrograms* JobGpuResources::dynamicRasterPrograms(std::uint32_t list) const noexcept
+    {
+        return list < raster_programs_.size() ? raster_programs_[list].get() : nullptr;
+    }
+
+    RenderResult<RasterProgramSelection>
+    JobGpuResources::selectRasterPrograms(std::uint32_t pass, const CompiledRasterStream& stream) const noexcept
+    {
+        if (!stream.runtime) return RasterProgramSelection{stream.programs, 0};
+        const auto* dynamic = dynamicRasterPrograms(stream.list);
+        if (!dynamic) return cxx::unexpected(RenderError{kFrameContract, {pass}});
+        return RasterProgramSelection{dynamic->programs, dynamic->revision};
+    }
+
+    void JobGpuResources::releaseRasterPrograms(const DynamicRasterPrograms& selected) noexcept
+    {
+        const auto id = [&](std::size_t i) noexcept { return selected.programs[i].cache_id; };
+        session.programs().release(selected.programs.size(), id, accepted);
+    }
+
+    void JobGpuResources::adoptRasterPrograms(std::uint32_t list, std::unique_ptr<DynamicRasterPrograms> candidate) noexcept
+    {
+        if (list >= raster_programs_.size()) raster_programs_.resize(std::size_t(list) + 1);
+        auto& previous = raster_programs_[list];
+        if (previous) releaseRasterPrograms(*previous);
+        previous = std::move(candidate);
+    }
+
     JobGpuResources::~JobGpuResources() noexcept
     {
+        for (const auto& selected : raster_programs_)
+            if (selected) releaseRasterPrograms(*selected);
         auto release = [frames = std::move(frames), histories = std::move(histories),
                         core = &session.nriCore()]() mutable noexcept
         {
@@ -350,6 +408,33 @@ namespace lux::render::detail
     {
         for (auto* command : commands) if (command) core.DestroyCommandBuffer(command);
         for (auto* allocator : allocators) if (allocator) core.DestroyCommandAllocator(allocator);
+    }
+
+    void JobFrameResources::collectRasterViews(
+        nri::Buffer* buffer, nri::Texture* image, std::vector<nri::Descriptor*>& views
+    ) noexcept
+    {
+        if (!buffer && !image) return;
+        if (image)
+        {
+            std::erase_if(raster_attachment_views, [&](const auto& attachment) noexcept
+            {
+                if (attachment.image != image) return false;
+                views.push_back(attachment.view);
+                return true;
+            });
+        }
+        for (auto& record : raster_bindings)
+        {
+            for (std::size_t i = 0; i < record.inputs.size(); ++i)
+            {
+                const auto& input = record.inputs[i];
+                const bool matches = (buffer && input.buffer == buffer) || (image && input.image == image);
+                if (!matches) continue;
+                if (auto* view = std::exchange(record.views[i], nullptr)) views.push_back(view);
+                record.inputs[i] = {};
+            }
+        }
     }
 
     void JobFrameResources::release(const nri::CoreInterface& nri_core) noexcept

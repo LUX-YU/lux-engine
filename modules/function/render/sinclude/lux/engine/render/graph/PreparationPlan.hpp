@@ -67,7 +67,11 @@ namespace lux::render::detail
         std::uint32_t workspace_slot = kGraphInvalidIndex;
         RasterProgramBuilder::Build build_programs = nullptr;
         PreparationRange inputs, outputs, inline_blocks;
-        std::vector<std::uint32_t> raster_streams;
+        struct RasterStream final
+        {
+            std::uint32_t pass, list;
+        };
+        std::vector<RasterStream> raster_streams;
         std::vector<std::uint32_t> buffers;
         PreparationRange snapshots;
         std::vector<std::uint32_t> program_snapshots;

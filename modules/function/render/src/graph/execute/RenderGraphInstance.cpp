@@ -7,6 +7,7 @@
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
+#include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
 
 namespace lux::render::detail
 {
@@ -82,8 +83,6 @@ namespace lux::render::detail
         if (preparation_generation_)
             for (auto& use : program_input_uses_) use.source->detach(use);
         while (!producers_.empty()) producers_.pop_back();
-        for (std::uint32_t pass = 0; pass < dynamic_raster_programs_.size(); ++pass)
-            releaseDynamicRasterPrograms(pass, false);
     }
 
     RenderResult<void> RenderGraphInstance::initialize() noexcept
@@ -119,7 +118,7 @@ namespace lux::render::detail
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
-            initializeRasterStreams(slot);
+            frames_[slot].initializeRasterStreams(graph_.recordingDependencies());
             if (auto resources = createFrameResources(slot); !resources)
             {
                 return resources;
@@ -279,9 +278,10 @@ namespace lux::render::detail
         const bool is_d3d12 = session_->description().graphicsAPI == nri::GraphicsAPI::D3D12;
         const bool shared_changed = frame.shared_descriptors.generation != shared_generation;
         const bool resize_pool = shared_changed && frame.shared_descriptors.capacities != shared.snapshotCounts();
+        RasterFramePreparation raster(graph_, frame, gpu_);
         if (resize_pool || !frame.stream_inputs.empty())
         {
-            if (auto capacity = prepareRasterDescriptorCapacity(slot, resize_pool); !capacity)
+            if (auto capacity = raster.prepareDescriptorCapacity(resize_pool); !capacity)
                 return cxx::unexpected(capacity.error());
         }
         if (is_d3d12 && frame.native.descriptor_pool)
@@ -316,8 +316,8 @@ namespace lux::render::detail
         }
         if (!frame.stream_inputs.empty())
         {
-            if (auto sections = prepareRasterSections(slot); !sections) return cxx::unexpected(sections.error());
-            if (auto streams = materializeRasterStreams(slot); !streams) return cxx::unexpected(streams.error());
+            if (auto sections = raster.prepareSections(); !sections) return cxx::unexpected(sections.error());
+            if (auto streams = raster.materializeStreams(); !streams) return cxx::unexpected(streams.error());
         }
         auto frozen = frame.freeze(histories_, session_->description());
         if (!frozen) return cxx::unexpected(frozen.error());

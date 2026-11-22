@@ -76,6 +76,14 @@ namespace lux::render::detail
         return found == replaced_projections.end() ? bindings[resource].queue_uses : found->uses;
     }
 
+    void FrameResources::initializeRasterStreams(const RecordingDependencies& recording) noexcept
+    {
+        raster_draws.resize(recording.raster_list_count);
+        if (recording.producer_passes.empty()) return;
+        stream_inputs.resize(recording.raster_list_count);
+        stream_descriptor_rows.resize(recording.raster_list_count);
+    }
+
     void FrameResources::preserveUses(std::uint32_t resource) noexcept
     {
         if (std::ranges::find(replaced_projections, resource, &FrozenProjection::resource) == replaced_projections.end())

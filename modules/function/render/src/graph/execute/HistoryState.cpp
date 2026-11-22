@@ -125,7 +125,7 @@ namespace lux::render::detail
                 {
                     auto native = std::get<nri::BufferViewDesc>(use.description);
                     native.buffer = slot.buffer;
-                    result = createBufferView(native, view);
+                    result = createGraphBufferView(*session_, native, view);
                 }
                 if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
                 slot.views.push_back(view);

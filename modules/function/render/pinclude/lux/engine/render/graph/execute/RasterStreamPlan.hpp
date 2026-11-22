@@ -94,12 +94,19 @@ namespace lux::render::detail
             RasterStreamTarget target;
         };
 
+        std::uint32_t list;
         std::vector<Program> programs;
         std::vector<BufferAccess> buffers;
         std::vector<ImageAccess> images;
         std::vector<Sampler> samplers;
         std::vector<EGraphUse> argument_uses;
         std::optional<RuntimeContract> runtime;
+    };
+
+    struct RasterProgramSelection final
+    {
+        std::span<const CompiledRasterStream::Program> programs;
+        std::uint64_t revision;
     };
 
     struct DynamicRasterPrograms final

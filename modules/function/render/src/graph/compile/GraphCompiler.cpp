@@ -976,6 +976,7 @@ namespace lux::render::detail
             {
                 auto& stream = native.streams_[pass.binding_slot];
                 stream = std::make_unique<CompiledRasterStream>();
+                stream->list = std::get<RasterListCommands>(plan.rasterCommands(pass)->draw).data_index;
                 for (const auto& resource : description->resources)
                 {
                     if (const auto* range = std::get_if<GraphBufferRange>(&resource.range))
@@ -993,6 +994,8 @@ namespace lux::render::detail
                     const auto fallback = resource.fallback ? resource.fallback->resource.index : kGraphInvalidIndex;
                     stream->images.push_back({id, std::get<GraphImageRange>(resource.range), fallback});
                 }
+                std::ranges::stable_sort(stream->buffers, {}, &CompiledRasterStream::BufferAccess::resource);
+                std::ranges::stable_sort(stream->images, {}, &CompiledRasterStream::ImageAccess::resource);
                 for (const auto sampler : description->stream_samplers)
                 {
                     const auto& authored = graph.samplers()[sampler];

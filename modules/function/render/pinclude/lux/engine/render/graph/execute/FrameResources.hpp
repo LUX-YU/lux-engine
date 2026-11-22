@@ -83,6 +83,8 @@ namespace lux::render::detail
         [[nodiscard]] ResourceQueueUses selectedUses(std::uint32_t resource) const noexcept;
         void preserveUses(std::uint32_t resource) noexcept;
 
+        void initializeRasterStreams(const RecordingDependencies&) noexcept;
+
         struct StreamDescriptorRows final
         {
             struct Program final
@@ -103,6 +105,7 @@ namespace lux::render::detail
         };
 
         std::vector<StreamDescriptorRows> stream_descriptor_rows;
+        void releaseRasterBindings(std::uint32_t list, std::vector<nri::Descriptor*>& views) noexcept;
         nri::DescriptorPoolDesc descriptor_capacity{}, descriptor_reserved{};
 
         std::vector<PassResourceInput> record_resources;
@@ -199,5 +202,33 @@ namespace lux::render::detail
         std::vector<nri::TextureBarrierDesc> final_images;
         std::vector<nri::BufferBarrierDesc> final_buffers;
     };
+
+    inline void FrameResources::releaseRasterBindings(std::uint32_t list, std::vector<nri::Descriptor*>& views) noexcept
+    {
+        if (list >= stream_descriptor_rows.size()) return;
+        auto& rows = stream_descriptor_rows[list];
+        auto& bindings = native.raster_bindings;
+        for (auto& program : rows.programs)
+        {
+            while (!program.records.empty())
+            {
+                const auto index = program.records.back();
+                auto& removed = bindings[index];
+                for (auto* view : removed.views)
+                    if (view) views.push_back(view);
+                if (index != bindings.size() - 1)
+                {
+                    removed = std::move(bindings.back());
+                    auto& moved = stream_descriptor_rows[removed.list].programs[removed.program.program];
+                    moved.records[removed.ordinal] = index;
+                }
+                bindings.pop_back();
+                program.records.pop_back();
+            }
+        }
+        rows.programs.clear();
+        rows.writes.clear();
+        rows.input_count = 0;
+    }
 
 } // namespace lux::render::detail

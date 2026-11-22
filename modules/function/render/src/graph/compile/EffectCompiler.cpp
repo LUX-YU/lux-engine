@@ -140,9 +140,9 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
 
                 const auto& builder = producer_.program_builder;
-                const bool dynamic = std::ranges::any_of(streams_, [&](auto pass) noexcept
+                const bool dynamic = std::ranges::any_of(streams_, [&](const auto& stream) noexcept
                 {
-                    return workspace_.compiled.graph.programs().rasterStream(pass)->runtime.has_value();
+                    return workspace_.compiled.graph.programs().rasterStream(stream.pass)->runtime.has_value();
                 });
                 const bool invalid_builder = dynamic != bool(builder);
                 if (invalid_builder || (!dynamic && !producer_.program_storage_inputs.empty()))
@@ -230,7 +230,7 @@ namespace lux::render::detail
                 if (ranges.empty()) ranges.resize(workspace_.compiled.graph.passes().size());
                 ranges[*resolved].producer = producer_slot_;
                 ranges[*resolved].local_stream = static_cast<std::uint32_t>(streams_.size());
-                streams_.push_back(*resolved);
+                streams_.push_back({*resolved, workspace_.compiled.graph.programs().rasterStream(*resolved)->list});
                 return DrawStreamSlot{*resolved};
             }
 
@@ -393,7 +393,8 @@ namespace lux::render::detail
             PreparationLinkWorkspace& workspace_;
             const GraphPreparation& producer_;
             detail::PreparationRange inputs_, constants_, snapshots_;
-            std::vector<std::uint32_t> buffers_, streams_;
+            std::vector<std::uint32_t> buffers_;
+            std::vector<detail::LinkedPreparationProducer::RasterStream> streams_;
             std::uint32_t source_input_, selected_input_ = kGraphInvalidIndex;
             std::uint32_t producer_slot_;
         };

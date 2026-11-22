@@ -20,17 +20,12 @@ namespace lux::render::detail
 {
     struct FrozenPatchCounts;
     struct FrozenOperandPatches;
-    struct FrameResourceBinding;
     struct FrameResources;
     struct HistoryState;
     class DeviceSession;
     struct RasterDrawList;
-    struct RasterDescriptorLayout;
     class JobGpuResources;
-    struct RasterBindingKey;
-    struct RasterDescriptorInput;
     struct FrozenRecordingFrame;
-    struct DynamicRasterPrograms;
     struct RasterProgramUpdate;
 
     class LUX_RENDER_PUBLIC RenderGraphInstance final
@@ -102,10 +97,6 @@ namespace lux::render::detail
         // prepareFrame seals attachments and barriers; no list is mutated during recording.
         [[nodiscard]] RasterDrawList&
         rasterDraws(const CompiledPass&, std::uint32_t slot, bool recording_changed = true) noexcept;
-        // Prepare one owned dynamic array in the already-acquired FIF slot. Views are created
-        // before publication; failure preserves the prior image and no CPU/GPU wait is introduced.
-        [[nodiscard]] RenderResult<std::span<nri::Descriptor* const>>
-        prepareImageLayers(GraphResourceId, std::uint32_t slot, std::uint32_t layers) noexcept;
         // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
         void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
 
@@ -192,7 +183,6 @@ namespace lux::render::detail
         void acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept;
         void failedSubmission(RenderError error) noexcept;
         [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
-        [[nodiscard]] RenderResult<void> growRasterDescriptorPool(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
@@ -201,22 +191,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> prepareResizeHistories(ResizeResources&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> prepareResizeBindings(ResizeResources&, std::uint32_t) noexcept;
 
-        [[nodiscard]] RenderResult<void> prepareRasterDescriptorCapacity(std::uint32_t slot, bool resize_pool) noexcept;
-        [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
-            std::uint32_t slot, const RasterDescriptorLayout&, std::uint32_t record,
-            std::span<const RasterDescriptorInput>
-        ) noexcept;
-        [[nodiscard]] const RasterDescriptorLayout& rasterBindings(RasterBindingKey) const noexcept;
-        void releaseRasterBindings(std::uint32_t pass, std::uint64_t generation) noexcept;
-        static void
-        collectRasterViews(FrameResources&, nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;
         void retireRasterViews(FrameResources&, nri::Buffer*, nri::Texture*) noexcept;
-        [[nodiscard]] nri::Result createBufferView(nri::BufferViewDesc, nri::Descriptor*&) const noexcept;
-        void initializeRasterStreams(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> materializeRasterStreams(std::uint32_t slot) noexcept;
-        RenderResult<void> prepareRasterSections(std::uint32_t slot) noexcept;
-        RenderResult<void>
-        materializeRasterSections(std::uint32_t slot, std::uint32_t pass, const OwnedRasterStream&) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
@@ -230,7 +205,6 @@ namespace lux::render::detail
         class ProducerFrame;
         [[nodiscard]] RenderResult<void>
         buildRasterPrograms(std::uint32_t, RasterProgramUpdate&) noexcept;
-        void releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept;
         struct PreparedBytes final
         {
             std::vector<std::byte> bytes;
@@ -281,7 +255,6 @@ namespace lux::render::detail
         std::vector<std::uint32_t> program_producers_;
         std::vector<ProgramInputRevision::Use> program_input_uses_;
         std::uint64_t program_input_revision_ = 0, applied_program_revision_ = 0;
-        std::vector<std::unique_ptr<DynamicRasterPrograms>> dynamic_raster_programs_;
         std::vector<PreparedBytes> cpu_data_;
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;
         RenderJobId preparation_job_;

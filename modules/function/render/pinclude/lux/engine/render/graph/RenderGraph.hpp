@@ -576,6 +576,9 @@ namespace lux::render::compiled
         }
         std::span<const detail::ImportedAccess> importedAccesses() const && = delete;
 
+        [[nodiscard]] const detail::GraphBindingPlan& bindingPlan() const & noexcept { return *binding_plan_; }
+        const detail::GraphBindingPlan& bindingPlan() const && = delete;
+
         [[nodiscard]] const detail::PhysicalResourcePlan& physicalResources() const & noexcept
         {
             return physical_resources_;

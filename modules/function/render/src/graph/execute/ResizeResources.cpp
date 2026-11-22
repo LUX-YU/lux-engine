@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 
@@ -258,7 +259,7 @@ namespace lux::render::detail
                     const auto description = program.bindings[use.field].bufferView(
                         source.buffer, source.buffer_offset + range.offset, size
                     );
-                    status = createBufferView(description, descriptor);
+                    status = createGraphBufferView(*session_, description, descriptor);
                 }
                 if (status != nri::Result::SUCCESS)
                 {
@@ -431,8 +432,7 @@ namespace lux::render::detail
             {
                 frame.invalidateResource(graph_.recordingDependencies(), replacement.index);
                 auto& binding = frame.bindings[replacement.index];
-                collectRasterViews(
-                    frame,
+                frame.native.collectRasterViews(
                     binding.buffer != replacement.binding.buffer ? binding.buffer : nullptr,
                     binding.image != replacement.binding.image ? binding.image : nullptr,
                     candidate.physical.views
@@ -501,7 +501,7 @@ namespace lux::render::detail
             {
                 for (const auto& old : histories_[index].slots)
                 {
-                    collectRasterViews(frames_[f], old.buffer, old.image, result.frames[f].physical.views);
+                    frames_[f].native.collectRasterViews(old.buffer, old.image, result.frames[f].physical.views);
                 }
                 frames_[f].pending_history_clears.mark(index);
                 frames_[f].pending_history_views.mark(index);
@@ -528,7 +528,7 @@ namespace lux::render::detail
         std::vector<nri::Descriptor*> views;
         for (auto& frame : frames_)
         {
-            collectRasterViews(frame, nullptr, frame.bindings[resource].image, views);
+            frame.native.collectRasterViews(nullptr, frame.bindings[resource].image, views);
             frame.bindings[resource].select(nullptr, nullptr, session_->nriCore());
             for (auto* output : frame.output_views)
             {

@@ -7,6 +7,11 @@ namespace lux::render::detail
 {
     struct FrameResourceBinding final
     {
+        [[nodiscard]] ResourceInput input() const noexcept
+        {
+            return {buffer, buffer_offset, buffer_size, image, addressed_buffers, addressed_revision, queue_uses};
+        }
+
         // NRI returns descriptions owned by the selected native objects.
         void select(nri::Buffer* next_buffer, nri::Texture* next_image, const nri::CoreInterface& core) noexcept
         {

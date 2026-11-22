@@ -116,9 +116,10 @@ namespace lux::render::detail
         {
             const auto grant = streamRange(slot.index);
             if (!grant) return cxx::unexpected(grant.error());
-            if (!instance_.graph_.programs().rasterStream(slot.index)->runtime)
+            const auto& stream = *instance_.graph_.programs().rasterStream(slot.index);
+            if (!stream.runtime)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            const auto& selected = instance_.dynamic_raster_programs_[slot.index];
+            const auto* selected = instance_.gpu_.dynamicRasterPrograms(stream.list);
             if (!selected || selection_index >= selected->programs.size())
                 return cxx::unexpected(RenderError{kFrameContract, {slot.index, selection_index}});
             return RasterProgramSlot{slot.index, selection_index, selected->revision};
@@ -136,9 +137,10 @@ namespace lux::render::detail
             constexpr auto records = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
             if (!(bound.capabilities & records)) return cxx::unexpected(RenderError{kStorageMismatch, {pass, source}});
             const auto& compiled = *instance_.graph_.programs().rasterStream(pass);
-            const auto* dynamic = compiled.runtime ? instance_.dynamic_raster_programs_[pass].get() : nullptr;
-            const auto& programs = dynamic ? dynamic->programs : compiled.programs;
-            const auto revision = dynamic ? dynamic->revision : 0;
+            auto selection = instance_.gpu_.selectRasterPrograms(pass, compiled);
+            if (!selection) return cxx::unexpected(selection.error());
+            const auto programs = selection->programs;
+            const auto revision = selection->revision;
             const bool valid_program = program.stream == pass && program.index < programs.size() &&
                 program.revision == revision && programs[program.index].record_stages;
             if (!valid_program) return cxx::unexpected(RenderError{kFrameContract, {pass, program.index}});
@@ -476,9 +478,9 @@ namespace lux::render::detail
                 if (!workspace) return cxx::unexpected(workspace.error());
                 workspaces.push_back(std::move(*workspace));
             }
-            for (auto pass : linked.raster_streams)
+            for (const auto& stream : linked.raster_streams)
             {
-                if (graph_.programs().rasterStream(pass)->runtime) producer.runtime_streams.push_back(pass);
+                if (graph_.programs().rasterStream(stream.pass)->runtime) producer.runtime_streams.push_back(stream.pass);
             }
             if (!linked.program_snapshots.empty() && producer.runtime_streams.empty())
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {producers.size() - 1}});
@@ -519,11 +521,7 @@ namespace lux::render::detail
         workspaces_ = std::move(workspaces);
         producers_ = std::move(producers);
         program_producers_ = std::move(program_producers);
-        if (!program_producers_.empty())
-        {
-            program_input_revision_ = 1;
-            dynamic_raster_programs_.resize(graph_.passes().size());
-        }
+        if (!program_producers_.empty()) program_input_revision_ = 1;
         // Build the Resource-to-kernel links while the execution is private. Publication only attaches rows.
         for (auto index : program_producers_)
         {
@@ -549,16 +547,6 @@ namespace lux::render::detail
         snapshot_registry_ = &registry;
         preparation_plan_ = &plan;
         return {};
-    }
-
-    void RenderGraphInstance::releaseDynamicRasterPrograms(std::uint32_t pass, bool replacing) noexcept
-    {
-        auto& selected = dynamic_raster_programs_[pass];
-        if (!selected) return;
-        if (replacing && !selected->programs.empty()) releaseRasterBindings(pass, selected->revision);
-        const auto get = [&](std::size_t i) noexcept { return selected->programs[i].cache_id; };
-        session_->programs().release(selected->programs.size(), get, gpu_.accepted);
-        selected.reset();
     }
 
     bool RenderGraphInstance::hasExclusiveProgramInput() const noexcept
@@ -607,7 +595,7 @@ namespace lux::render::detail
         for (auto pass : producer.runtime_streams)
         {
             auto& stream = data.streams.emplace_back(pass);
-            stream.ready = bool(dynamic_raster_programs_[pass]);
+            stream.ready = gpu_.dynamicRasterPrograms(graph_.programs().rasterStream(pass)->list) != nullptr;
             if (preparation_plan_->draw_resource_ranges.empty()) continue;
             const auto range = preparation_plan_->draw_resource_ranges[pass];
             stream.sources = std::span{draw_resources_}.subspan(range.first, range.count);
@@ -632,11 +620,12 @@ namespace lux::render::detail
                 continue;
             }
             if (!entry.programs) return cxx::unexpected(RenderError{kFrameContract, {entry.pass}});
-            const auto& contract = *graph_.programs().rasterStream(entry.pass)->runtime;
+            const auto& compiled = *graph_.programs().rasterStream(entry.pass);
+            const auto& contract = *compiled.runtime;
             auto& stream = update.streams.emplace_back();
             stream.pass = entry.pass;
             stream.candidate = std::make_unique<DynamicRasterPrograms>();
-            const auto& previous = dynamic_raster_programs_[entry.pass];
+            const auto* previous = gpu_.dynamicRasterPrograms(compiled.list);
             if (previous && previous->revision == UINT64_MAX)
                 return cxx::unexpected(RenderError{kDeviceCapacity});
             stream.candidate->revision = previous ? previous->revision + 1 : 1;
@@ -659,10 +648,25 @@ namespace lux::render::detail
     {
         for (auto& stream : update.streams)
         {
-            auto& previous = dynamic_raster_programs_[stream.pass];
+            const auto list = graph_.programs().rasterStream(stream.pass)->list;
+            const auto* previous = gpu_.dynamicRasterPrograms(list);
             if (previous && previous->programs == stream.candidate->programs) continue;
-            releaseDynamicRasterPrograms(stream.pass, true);
-            previous = std::move(stream.candidate);
+            if (previous && !previous->programs.empty())
+            {
+                std::vector<nri::Descriptor*> views;
+                for (auto& frame : frames_)
+                {
+                    frame.invalidatePass(graph_, stream.pass);
+                    frame.releaseRasterBindings(list, views);
+                }
+                if (!views.empty()) session_->deferRelease(gpu_.accepted,
+                    [core = &session_->nriCore(), views = std::move(views)]() noexcept
+                    {
+                        for (auto* view : views) core->DestroyDescriptor(view);
+                    }
+                );
+            }
+            gpu_.adoptRasterPrograms(list, std::move(stream.candidate));
         }
         for (auto& selection : update.selections)
         {
@@ -752,7 +756,7 @@ namespace lux::render::detail
             for (std::size_t s = 0; s < linked.raster_streams.size(); ++s)
             {
                 if (!producer.streams[s].written)
-                    return cxx::unexpected(RenderError{kFrameContract, {linked.raster_streams[s]}});
+                    return cxx::unexpected(RenderError{kFrameContract, {linked.raster_streams[s].pass}});
             }
         }
 
@@ -764,7 +768,8 @@ namespace lux::render::detail
             const auto& linked = linked_producers[i];
             for (std::size_t s = 0; s < linked.raster_streams.size(); ++s)
             {
-                std::swap(frames_[slot].stream_inputs[linked.raster_streams[s]], producers_[i].streams[s]);
+                const auto list = linked.raster_streams[s].list;
+                std::swap(frames_[slot].stream_inputs[list], producers_[i].streams[s]);
             }
             const auto blocks = std::span{preparation_plan_->inline_blocks}.subspan(
                 linked.inline_blocks.first, linked.inline_blocks.count

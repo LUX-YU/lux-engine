@@ -17,6 +17,7 @@
 
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
 #include <lux/engine/render/effect/CpuCall.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 
@@ -135,10 +136,12 @@ namespace lux::render::detail
         std::vector<Buffer> buffers;
         struct SnapshotRead final
         {
-            std::uint32_t source, program;
+            std::uint32_t source;
             const cxx::basic_type_info* type;
         };
 
+        // Frame-selected sources are the leading range; program-only sources are bound for cold builds.
+        std::uint32_t frame_snapshot_count = 0;
         std::vector<Snapshot> snapshots;
         std::vector<SnapshotRead> snapshot_reads;
         struct DrawSourceRange final

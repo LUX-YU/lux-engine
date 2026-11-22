@@ -420,10 +420,10 @@ namespace lux::render::detail
         if (inputs.draw_resources.size() != plan.draw_resource_bindings.size())
             return cxx::unexpected(RenderError{kStorageContract});
         std::vector<StorageSnapshot> snapshots;
-        snapshots.reserve(sources.size());
+        snapshots.reserve(plan.frame_snapshot_count);
         std::vector<std::uint32_t> source_slots;
-        source_slots.reserve(sources.size());
-        for (std::size_t i = 0; i < sources.size(); ++i)
+        source_slots.reserve(plan.frame_snapshot_count);
+        for (std::size_t i = 0; i < plan.frame_snapshot_count; ++i)
         {
             const auto& source = sources[i];
             const auto expected = plan.snapshots[i].type;

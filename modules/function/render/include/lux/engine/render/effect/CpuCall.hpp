@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/extensions/execution/InstanceLink.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <vector>
 
 namespace lux::render
@@ -133,8 +132,5 @@ namespace lux::render
         // Each listed buffer is published once, through its linked writer or sizer.
         std::vector<GraphResourceId> gpu_buffers{};
         std::vector<GraphStorageSnapshotId> storage_inputs{};
-        // Subset of storage_inputs that drives the runtime Raster program selection.
-        std::vector<GraphStorageSnapshotId> program_storage_inputs{};
-        RasterProgramBuilder program_builder{};
     };
 } // namespace lux::render

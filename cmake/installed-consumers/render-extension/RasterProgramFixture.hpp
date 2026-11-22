@@ -421,23 +421,21 @@ namespace sdk_programs
 
     struct ClearBackground final
     {
-        struct Configuration final { GraphPassId pass; GraphStorageSnapshotId settings; };
-        struct LinkedData final { DrawStreamSlot stream; StorageSnapshotSlot<std::uint32_t> settings; };
+        using Configuration = GraphPassId;
+        struct LinkedData final { DrawStreamSlot stream; };
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
-            auto stream = link.resolveDrawStream(input.pass);
+            auto stream = link.resolveDrawStream(input);
             if (!stream) return lux::cxx::unexpected(stream.error());
-            auto settings = link.resolveStorageSnapshot<std::uint32_t>(input.settings);
-            if (!settings) return lux::cxx::unexpected(settings.error());
-            return LinkedData{*stream, *settings};
+            return LinkedData{*stream};
         }
 
-        static RenderResult<void> buildPrograms(const LinkedData& linked, RasterProgramBuildContext& build) noexcept
+        static RenderResult<void> buildPrograms(
+            const LinkedData& linked, RasterProgramBuildContext& build, const RasterProgramSnapshots<std::uint32_t>& sources
+        ) noexcept
         {
             ++CodeStorage::clear_builds;
-            auto input = build.readStorage(linked.settings);
-            if (!input) return lux::cxx::unexpected(input.error());
-            if (input->value.get() == 2) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if (std::get<0>(sources).value.get() == 2) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return build.setPrograms(linked.stream, {}, {});
         }
 
@@ -452,7 +450,7 @@ namespace sdk_programs
         struct Configuration final
         {
             GraphPassId pass;
-            GraphStorageSnapshotId code, camera;
+            GraphStorageSnapshotId camera;
             lux::rdesc::EShaderTarget target;
             bool stale, reads_records;
         };
@@ -460,7 +458,6 @@ namespace sdk_programs
         struct LinkedData final
         {
             DrawStreamSlot stream;
-            StorageSnapshotSlot<CodeSnapshot> code;
             StorageSnapshotSlot<ViewGpuParameters> camera;
             DrawResourceSlot<DrawMask> mask;
             DrawResourceSlot<TriangleGeometry> geometry;
@@ -479,8 +476,6 @@ namespace sdk_programs
         {
             auto stream = link.resolveDrawStream(input.pass);
             if (!stream) return lux::cxx::unexpected(stream.error());
-            auto code = link.resolveStorageSnapshot<CodeSnapshot>(input.code);
-            if (!code) return lux::cxx::unexpected(code.error());
             const auto camera = link.resolveStorageSnapshot<ViewGpuParameters>(input.camera);
             if (!camera) return lux::cxx::unexpected(camera.error());
             const auto undeclared = link.resolveDrawResource<DrawMask>(input.pass, "absent");
@@ -491,7 +486,7 @@ namespace sdk_programs
             if (!mask) return lux::cxx::unexpected(mask.error());
             const auto geometry = link.resolveDrawResource<TriangleGeometry>(input.pass, "triangle");
             if (!geometry) return lux::cxx::unexpected(geometry.error());
-            LinkedData linked{*stream, *code, *camera, *mask, *geometry, {}, input.target, input.stale};
+            LinkedData linked{*stream, *camera, *mask, *geometry, {}, input.target, input.stale};
             if (input.reads_records)
             {
                 const auto records = link.resolveDrawResource<ColorPage>(input.pass, "colors");
@@ -507,15 +502,14 @@ namespace sdk_programs
         buildPrograms(
             const LinkedData& linked,
             RasterProgramBuildContext& selection,
+            const RasterProgramSnapshots<CodeSnapshot, CodeSnapshot>& sources,
             const DrawMapping* previous
         ) noexcept
         {
-            const auto frame_only = selection.readStorage(linked.camera);
-            CHECK(!frame_only && frame_only.error().type == kGraphUnknownResource);
-            auto code = selection.readStorage(linked.code);
-            if (!code) return lux::cxx::unexpected(code.error());
+            const auto& [code, alias] = sources;
+            CHECK(&code.value.get() == &alias.value.get() && code.revision == alias.revision);
             ++CodeStorage::builds;
-            const auto& snapshot = code->value.get();
+            const auto& snapshot = alias.value.get();
             const auto mapping = snapshot.swapped ? DrawMapping{0, 1} : DrawMapping{1, 0};
             if (previous)
             {
@@ -649,7 +643,10 @@ namespace sdk_programs
         using DrawMapping = ProgramDraws::DrawMapping;
 
         static RenderResult<std::unique_ptr<DrawMapping>>
-        build(const LinkedData&, RasterProgramBuildContext&, const DrawMapping*) noexcept
+        build(
+            const LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<CodeSnapshot, CodeSnapshot>&,
+            const DrawMapping*
+        ) noexcept
         {
             CHECK(false);
             return lux::cxx::unexpected(RenderError{kFrameContract});
@@ -660,7 +657,8 @@ namespace sdk_programs
     {
         using LinkedData = ProgramDraws::LinkedData;
 
-        static RenderResult<void> build(const LinkedData&, RasterProgramBuildContext&) noexcept
+        static RenderResult<void>
+        build(const LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<CodeSnapshot, CodeSnapshot>&) noexcept
         {
             CHECK(false);
             return lux::cxx::unexpected(RenderError{kFrameContract});

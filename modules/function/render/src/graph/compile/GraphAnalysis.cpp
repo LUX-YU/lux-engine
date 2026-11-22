@@ -815,13 +815,6 @@ namespace lux::render::runtime_detail
                 if (input.index >= definition.snapshots.size())
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, input.index}});
             }
-            for (auto input : declaration.program_storage_inputs)
-            {
-                if (std::ranges::find(declaration.storage_inputs, input) == declaration.storage_inputs.end())
-                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, input.index}});
-                if (std::ranges::count(declaration.program_storage_inputs, input) != 1)
-                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, input.index}});
-            }
             for (auto output : declaration.outputs)
             {
                 if (output.index >= writers.size())

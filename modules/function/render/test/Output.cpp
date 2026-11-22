@@ -1987,19 +1987,18 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<std::unique_ptr<DrawMapping>>
         buildPrograms(
             const LinkedData& linked,
-            RasterProgramBuildContext& selection,
+            RasterProgramBuildContext& selection, const RasterProgramSnapshots<ETestStreamPrograms>& sources,
             const DrawMapping* previous
         ) noexcept
         {
-            const auto snapshot = selection.readStorage(linked.programs);
-            if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            const auto mode = snapshot->value.get();
+            const auto& snapshot = std::get<0>(sources);
+            const auto mode = snapshot.value.get();
             if (mode == ETestStreamPrograms::REUSED)
             {
                 CHECK(previous && previous->mode == ETestStreamPrograms::REVERSED);
                 auto reused = selection.reusePrograms(linked.stream);
                 if (!reused) return lux::cxx::unexpected(reused.error());
-                return std::make_unique<DrawMapping>(mode, snapshot->revision);
+                return std::make_unique<DrawMapping>(mode, snapshot.revision);
             }
             if (mode == ETestStreamPrograms::EQUIVALENT)
                 CHECK(previous && previous->mode == ETestStreamPrograms::REUSED);
@@ -2026,7 +2025,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             }
             auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
             if (!built) return lux::cxx::unexpected(built.error());
-            return std::make_unique<DrawMapping>(mode, snapshot->revision);
+            return std::make_unique<DrawMapping>(mode, snapshot.revision);
         }
 
         static RenderResult<void>
@@ -2242,7 +2241,13 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             {.version = mipped.written.front(), .range = second_tile, .usage = EGraphUse::SAMPLED}
         };
         stage.stream_samplers = {sampler, comparison_sampler};
-        stage.runtime_stream_programs = true;
+        const auto programs = context.importStorageSnapshot<ETestStreamPrograms>(
+            "stream_programs", {ResourceName{StreamProgramStorage::descriptor.type.name()}}
+        );
+        if (!programs) return lux::cxx::unexpected(programs.error());
+        stage.programs = RasterProgramSource{
+            RasterProgramBuilder::make<TestRasterProducer, &TestRasterProducer::buildPrograms>(), {*programs}
+        };
         RasterWork raster;
         raster.colors.push_back({{{color, 0}}});
         raster.program = std::move(stage);
@@ -2263,16 +2268,11 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 256, layer_bytes, ImageCopyRegion{0, 0, 64, 32}
             }}}
         ));
-        const auto programs = context.importStorageSnapshot<ETestStreamPrograms>(
-            "stream_programs", {ResourceName{StreamProgramStorage::descriptor.type.name()}}
-        );
-        if (!programs) return lux::cxx::unexpected(programs.error());
         CHECK(context.addCpuCall<TestRasterProducer>({
             drawn.pass, *programs, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
             comparison_sampler
         }, {
-            .passes = {drawn.pass}, .storage_inputs = {*programs}, .program_storage_inputs = {*programs},
-            .program_builder = RasterProgramBuilder::make<TestRasterProducer, &TestRasterProducer::buildPrograms>()
+            .passes = {drawn.pass}, .storage_inputs = {*programs}
         }));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
@@ -2365,7 +2365,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             parameters.setInlineConstant(ProducerConstants{0});
             GraphicsState state;
             state.depth_test = state.depth_write = true;
-            stage.stream_programs = {{graphics, std::move(state), std::move(parameters)}};
+            stage.programs = std::vector{RasterPassTemplate::StreamProgram{graphics, std::move(state), std::move(parameters)}};
             stage.section_depth_bias = !preserve;
             RasterWork work;
             const auto load = preserve ? EAttachmentLoad::LOAD : EAttachmentLoad::CLEAR;
@@ -3998,7 +3998,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         struct Workspace final { MaterialRecordReader records; };
 
         static RenderResult<void>
-        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection) noexcept
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const RasterProgramSnapshots<>&) noexcept
         {
             RuntimeRasterProgram program{{0}};
             std::vector<rdesc::ShaderProgramArtifact> shaders;
@@ -4120,7 +4120,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         ));
         RasterPassTemplate stage;
         stage.purpose = "shared-texture";
-        stage.runtime_stream_programs = true;
+        stage.programs = RasterProgramSource{RasterProgramBuilder::make<Producer, &Producer::buildPrograms>(), {}};
         if (mode != "undeclared")
         {
             stage.draw_resources.push_back({
@@ -4156,7 +4156,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             drawn.pass, context.shaderTarget(), material, mode != "undeclared"
         };
         CHECK(context.addCpuCall<Producer>(std::move(producer), {
-            .passes = {drawn.pass}, .program_builder = RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
+            .passes = {drawn.pass}
         }));
         const auto captured = take(context.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
@@ -4593,11 +4593,10 @@ static void meshRasterStream(bool d3d12)
         using DrawMapping = std::uint64_t;
 
         static RenderResult<std::unique_ptr<DrawMapping>>
-        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const DrawMapping*) noexcept
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const RasterProgramSnapshots<MeshInstanceSnapshot>& sources, const DrawMapping*) noexcept
         {
-            const auto snapshot = selection.readStorage(linked.instances);
-            if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            const auto& instances = snapshot->value.get().instances;
+            const auto& snapshot = std::get<0>(sources);
+            const auto& instances = snapshot.value.get().instances;
             CHECK(instances.size() == 1);
             const auto& selected = instances.front();
             auto layout = readMeshLayout(selection, linked.stream, selected.mesh);
@@ -4629,7 +4628,7 @@ static void meshRasterStream(bool d3d12)
             ++program_selections;
             auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
             if (!built) return lux::cxx::unexpected(built.error());
-            return std::make_unique<DrawMapping>(snapshot->revision);
+            return std::make_unique<DrawMapping>(snapshot.revision);
         }
 
         static RenderResult<void>
@@ -4764,7 +4763,9 @@ static void meshRasterStream(bool d3d12)
             {.binding = "meshes", .source = MeshResource::drawResourceType(), .indexed_geometry = true},
             {"materials", MaterialResource::drawResourceType()}
         };
-        stage.runtime_stream_programs = true;
+        stage.programs = RasterProgramSource{
+            RasterProgramBuilder::make<Producer, &Producer::buildPrograms>(), {instances}
+        };
         stage.resources = {
             {.version = generated.written.front(), .usage = EGraphUse::INDIRECT},
             {.version = arena, .usage = EGraphUse::INDIRECT}
@@ -4779,8 +4780,7 @@ static void meshRasterStream(bool d3d12)
         };
         CHECK(context.addCpuCall<Producer>(std::move(producer), {
             .passes = {drawn.pass}, .gpu_buffers = {arguments.resource, arena.resource},
-            .storage_inputs = {instances}, .program_storage_inputs = {instances},
-            .program_builder = RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
+            .storage_inputs = {instances}
         }));
         const auto captured = take(context.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}

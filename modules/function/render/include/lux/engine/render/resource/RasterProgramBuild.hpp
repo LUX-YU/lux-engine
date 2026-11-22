@@ -6,7 +6,9 @@
 #include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
+#include <array>
 #include <memory>
+#include <tuple>
 
 namespace lux::render
 {
@@ -29,6 +31,9 @@ namespace lux::render
         // In graphics.vertex_attributes order. Empty uses the shader locations directly.
         std::vector<std::uint32_t> geometry_locations;
     };
+
+    template <class... T>
+    using RasterProgramSnapshots = std::tuple<RevisionedValue<std::reference_wrapper<const T>>...>;
 
     class LUX_RENDER_PUBLIC RasterProgramBuildContext final
     {
@@ -56,25 +61,27 @@ namespace lux::render
         // Use the existing ordered bindings when the producer's complete program key set is unchanged.
         [[nodiscard]] RenderResult<void> reusePrograms(DrawStreamSlot stream) noexcept;
 
-        // The selected value is valid for the duration of the cold build.
-        template <class T>
-        [[nodiscard]] RenderResult<RevisionedValue<std::reference_wrapper<const T>>>
-        readStorage(StorageSnapshotSlot<T> slot) const noexcept
-        {
-            auto selected = readStorageValue(slot.operand_);
-            if (!selected) return cxx::unexpected(selected.error());
-            return RevisionedValue{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
-        }
-
     private:
+        friend class RasterProgramBuilder;
         friend class detail::RasterProgramInputs;
         explicit RasterProgramBuildContext(detail::RasterProgramBuildData& data) noexcept : data_(data) {}
 
         detail::RasterProgramBuildData& data_;
         [[nodiscard]] RenderResult<const void*>
         readResourceValue(DrawStreamSlot, ResourceInstanceId, cxx::basic_type_info) const noexcept;
-        [[nodiscard]] RenderResult<RevisionedValue<const void*>>
-        readStorageValue(extension_detail::SnapshotOperand) const noexcept;
+        [[nodiscard]] RevisionedValue<const void*> snapshot(std::size_t input) const noexcept;
+
+        template <class T> [[nodiscard]] auto snapshotValue(std::size_t input) const noexcept
+        {
+            auto selected = snapshot(input);
+            return RevisionedValue{std::cref(*static_cast<const T*>(selected.value)), selected.revision};
+        }
+
+        template <class... T, std::size_t... I>
+        [[nodiscard]] RasterProgramSnapshots<T...> values(std::index_sequence<I...>) const noexcept
+        {
+            return {snapshotValue<T>(I)...};
+        }
     };
 
     // A cold build reads the linked inputs and the last published draw mapping on the owner.
@@ -86,42 +93,52 @@ namespace lux::render
         using Build = RenderResult<Mapping> (*)(const void*, RasterProgramBuildContext&, const void*) noexcept;
 
         constexpr RasterProgramBuilder() noexcept = default;
+        bool operator==(const RasterProgramBuilder&) const noexcept = default;
 
-        template <class Kernel, RenderResult<void> (*Method)(
-            const typename Kernel::LinkedData&, RasterProgramBuildContext&
-        ) noexcept>
-            requires (Method != nullptr)
-        [[nodiscard]] static constexpr RasterProgramBuilder make() noexcept
+    private:
+        template <class K, auto Method, class... T>
+        static constexpr RasterProgramBuilder bind(RenderResult<void> (*)(
+            const typename K::LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<T...>&
+        ) noexcept) noexcept
         {
-            using Inputs = typename Kernel::LinkedData;
-            return RasterProgramBuilder{registration<Inputs, void, &build<Inputs, Method>>};
+            using Inputs = typename K::LinkedData;
+            return RasterProgramBuilder{registration<Inputs, void, &build<Inputs, Method, T...>, T...>};
         }
 
-        template <class Kernel, RenderResult<std::unique_ptr<typename Kernel::DrawMapping>> (*Method)(
-            const typename Kernel::LinkedData&, RasterProgramBuildContext&, const typename Kernel::DrawMapping*
-        ) noexcept>
-            requires (Method != nullptr) && std::is_nothrow_destructible_v<typename Kernel::DrawMapping>
-        [[nodiscard]] static constexpr RasterProgramBuilder make() noexcept
+        template <class K, auto Method, class... T>
+        static constexpr RasterProgramBuilder bind(RenderResult<std::unique_ptr<typename K::DrawMapping>> (*)(
+            const typename K::LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<T...>&,
+            const typename K::DrawMapping*
+        ) noexcept) noexcept requires std::is_nothrow_destructible_v<typename K::DrawMapping>
         {
-            using Inputs = typename Kernel::LinkedData;
-            using Map = typename Kernel::DrawMapping;
-            return RasterProgramBuilder{registration<Inputs, Map, &buildMapped<Inputs, Map, Method>>};
+            using Inputs = typename K::LinkedData;
+            using Map = typename K::DrawMapping;
+            return RasterProgramBuilder{registration<Inputs, Map, &buildMapped<Inputs, Map, Method, T...>, T...>};
         }
+
+    public:
+        template <class K, auto Method> requires (Method != nullptr) && requires { bind<K, Method>(Method); }
+        [[nodiscard]] static constexpr RasterProgramBuilder make() noexcept { return bind<K, Method>(Method); }
 
         [[nodiscard]] constexpr explicit operator bool() const noexcept { return registration_ != nullptr; }
 
     private:
         friend struct detail::LinkedRasterBuild;
+        friend class EffectCompileContext;
 
         struct Registration final
         {
             cxx::basic_type_info inputs, mapping;
             Build build;
+            std::span<const cxx::basic_type_info> snapshots;
         };
 
-        template <class Inputs, class Map, Build Method>
+        template <class... T>
+        static constexpr std::array<cxx::basic_type_info, sizeof...(T)> snapshot_types{cxx::make_basic_type_info<T>()...};
+
+        template <class Inputs, class Map, Build Method, class... T>
         static constexpr Registration registration{
-            cxx::make_basic_type_info<Inputs>(), cxx::make_basic_type_info<Map>(), Method
+            cxx::make_basic_type_info<Inputs>(), cxx::make_basic_type_info<Map>(), Method, snapshot_types<T...>
         };
 
         explicit constexpr RasterProgramBuilder(const Registration& entry) noexcept : registration_(&entry) {}
@@ -137,26 +154,38 @@ namespace lux::render
             return compatible ? registration_->build : nullptr;
         }
 
-        template <class Inputs, auto Method>
+        template <class Inputs, auto Method, class... T>
         static RenderResult<Mapping>
         build(const void* linked, RasterProgramBuildContext& selection, const void*) noexcept
         {
-            auto built = Method(*static_cast<const Inputs*>(linked), selection);
+            auto built = Method(
+                *static_cast<const Inputs*>(linked), selection, selection.values<T...>(std::index_sequence_for<T...>{})
+            );
             if (!built) return cxx::unexpected(built.error());
             return Mapping{nullptr, nullptr};
         }
 
-        template <class Inputs, class Map, auto Method>
+        template <class Inputs, class Map, auto Method, class... T>
         static RenderResult<Mapping>
         buildMapped(const void* linked, RasterProgramBuildContext& selection, const void* previous) noexcept
         {
-            auto built = Method(*static_cast<const Inputs*>(linked), selection, static_cast<const Map*>(previous));
+            auto built = Method(
+                *static_cast<const Inputs*>(linked), selection, selection.values<T...>(std::index_sequence_for<T...>{}),
+                static_cast<const Map*>(previous)
+            );
             if (!built) return cxx::unexpected(built.error());
             if (!*built) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return Mapping{built->release(), [](const void* value) noexcept { delete static_cast<const Map*>(value); }};
         }
 
         const Registration* registration_ = nullptr;
+    };
+
+    struct RasterProgramSource final
+    {
+        RasterProgramBuilder builder;
+        std::vector<GraphStorageSnapshotId> snapshots;
+        bool operator==(const RasterProgramSource&) const noexcept = default;
     };
 
 } // namespace lux::render

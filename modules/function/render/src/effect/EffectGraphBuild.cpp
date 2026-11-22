@@ -491,6 +491,25 @@ namespace lux::render
     RenderResult<PassResult>
     EffectCompileContext::addRasterPass(std::string key, RasterWork work, GraphPassOptions options) noexcept
     {
+        const auto* raster = std::get_if<RasterPassTemplate>(&work.program);
+        const auto* source = raster ? std::get_if<RasterProgramSource>(&raster->programs) : nullptr;
+        if (source)
+        {
+            if (!source->builder) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            const auto types = source->builder.registration_->snapshots;
+            if (types.size() != source->snapshots.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            for (std::size_t i = 0; i < types.size(); ++i)
+            {
+                const auto id = source->snapshots[i];
+                if (id.index >= workspace_.draft.snapshots.size())
+                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, id.index}});
+                const auto declared = workspace_.draft.snapshots[id.index].type;
+                if (declared != types[i] || declared.name() != types[i].name())
+                    return cxx::unexpected(RenderError{kStorageMismatch, {id.index, i}});
+                if (std::ranges::count(source->snapshots, id) != 1)
+                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, id.index}});
+            }
+        }
         return workspace_.builder.addRasterPass(std::move(key), std::move(work), options);
     }
 

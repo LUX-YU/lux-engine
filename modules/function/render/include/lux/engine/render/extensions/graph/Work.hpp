@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <lux/engine/render/graph/DrawResource.hpp>
+#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/extensions/graph/PassValues.hpp>
@@ -88,13 +89,13 @@ namespace lux::render
             std::vector<std::uint32_t> geometry_locations;
         };
 
-        std::vector<StreamProgram> stream_programs{};
+        // Fixed programs and a mutable program source are mutually exclusive for a stream.
+        using VStreamPrograms = std::variant<std::vector<StreamProgram>, RasterProgramSource>;
+        VStreamPrograms programs;
         // Source sampler IDs granted to this stream at link time.
         std::vector<std::uint32_t> stream_samplers{};
         // Requires a depth attachment and an explicit depth bias for every submitted section.
         bool section_depth_bias = false;
-        // Select the complete program set before admitting a frame.
-        bool runtime_stream_programs = false;
         std::vector<DrawResourceInput> draw_resources;
 
         [[nodiscard]] bool requiresCapability(EStorageCapability capability) const noexcept
@@ -105,9 +106,17 @@ namespace lux::render
             });
         }
 
+        [[nodiscard]] std::span<const StreamProgram> fixedPrograms() const & noexcept
+        {
+            const auto* fixed = std::get_if<std::vector<StreamProgram>>(&programs);
+            return fixed ? std::span<const StreamProgram>{*fixed} : std::span<const StreamProgram>{};
+        }
+
+        std::span<const StreamProgram> fixedPrograms() const && = delete;
+
         [[nodiscard]] bool usesStreamProducer() const noexcept
         {
-            return runtime_stream_programs || !stream_programs.empty();
+            return std::holds_alternative<RasterProgramSource>(programs) || !fixedPrograms().empty();
         }
     };
 

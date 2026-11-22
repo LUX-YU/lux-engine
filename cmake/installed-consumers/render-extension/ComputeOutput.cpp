@@ -477,18 +477,17 @@ namespace
         auto image = take(context.declareResource({"raster output", GraphImageDesc{width, height}}));
         RasterPassTemplate background_stage;
         background_stage.purpose = "independent clear";
-        background_stage.runtime_stream_programs = true;
+        const auto settings = take(context.importStorageSnapshot<std::uint32_t>(
+            "background", {ResourceName{BackgroundSettings::descriptor.type.name()}}
+        ));
+        background_stage.programs = RasterProgramSource{
+            RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>(), {settings}
+        };
         RasterWork background;
         background.program = std::move(background_stage);
         background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
         const auto base = take(context.addRasterPass("clear background", std::move(background)));
-        const auto settings = take(context.importStorageSnapshot<std::uint32_t>(
-            "background", {ResourceName{BackgroundSettings::descriptor.type.name()}}
-        ));
-        auto clear = context.addCpuCall<ClearBackground>(ClearBackground::Configuration{base.pass, settings}, {
-            .passes = {base.pass}, .storage_inputs = {settings}, .program_storage_inputs = {settings},
-            .program_builder = RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
-        });
+        auto clear = context.addCpuCall<ClearBackground>(base.pass, {.passes = {base.pass}});
         if (!clear) return clear;
         RasterPassTemplate stage;
         stage.purpose = "installed programs";
@@ -515,29 +514,35 @@ namespace
                 .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
             });
         }
-        stage.runtime_stream_programs = true;
-        RasterWork raster;
-        raster.program = std::move(stage);
-        const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
-            ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
-            ESnapshotScope::JOB_LOCAL
-        ));
-        raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
-        auto draw = take(context.addRasterPass("two programs", std::move(raster)));
-        auto configuration = ProgramDraws::Configuration{
-            draw.pass, alias, camera, context.shaderTarget(), mode == "stale-code", reads_records
-        };
         auto program_builder = RasterProgramBuilder::make<ProgramDraws, &ProgramDraws::buildPrograms>();
         if (mode == "no-build") program_builder = {};
         if (mode == "wrong-inputs")
             program_builder = RasterProgramBuilder::make<WrongProgramInputs, &WrongProgramInputs::build>();
         if (mode == "missing-map")
             program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
+        const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
+            ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
+            ESnapshotScope::JOB_LOCAL
+        ));
+        RasterProgramSource source{program_builder, {code, alias}};
+        if (mode == "duplicate-program-input") source.snapshots.back() = code;
+        if (mode == "unknown-program-input") source.snapshots.back() = GraphStorageSnapshotId{};
+        if (mode == "wrong-program-input") source.snapshots.back() = camera;
+        if (mode == "short-program-input") source.snapshots.pop_back();
+        stage.programs = std::move(source);
+        RasterWork raster;
+        raster.program = std::move(stage);
+        raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
+        auto draw = context.addRasterPass("two programs", std::move(raster));
+        if (!draw) return lux::cxx::unexpected(draw.error());
+        auto configuration = ProgramDraws::Configuration{
+            draw->pass, camera, context.shaderTarget(), mode == "stale-code", reads_records
+        };
         auto added = context.addCpuCall<ProgramDraws>(std::move(configuration), {
-            {}, {}, {}, {draw.pass}, {}, {code, alias, camera}, {code, alias}, program_builder
+            .passes = {draw->pass}, .storage_inputs = {camera}
         });
         if (!added) return added;
-        return context.publish(color, {{color, draw.written.front()}});
+        return context.publish(color, {{color, draw->written.front()}});
     }
 
     RenderResult<void> buildCaptureRange(EffectCompileContext& context, std::string_view mode) noexcept
@@ -699,7 +704,9 @@ namespace
             if constexpr (Build == buildResidentRaster)
             {
                 const bool valid = arguments.empty() || arguments == "stale-code" || arguments == "no-build" ||
-                    arguments == "wrong-inputs" || arguments == "missing-map";
+                    arguments == "wrong-inputs" || arguments == "missing-map" || arguments == "duplicate-program-input" ||
+                    arguments == "unknown-program-input" || arguments == "wrong-program-input" ||
+                    arguments == "short-program-input";
                 if (valid) return {};
                 return lux::cxx::unexpected(RenderError{kInvalidConfig});
             }
@@ -834,14 +841,19 @@ int main(int argc, char** argv)
             CHECK(!page.error.type);
             binding.resources.push_back({"colors", page.resource_id, 0, EJobResourceUse::DRAW_RESOURCE});
         }
-        for (auto mode : {"no-build", "wrong-inputs", "missing-map"})
+        for (const auto& [mode, error] : std::array{
+            std::pair{"no-build", kGraphInvalidDescriptor}, std::pair{"wrong-inputs", kGraphInvalidDescriptor},
+            std::pair{"missing-map", kGraphInvalidDescriptor}, std::pair{"duplicate-program-input", kGraphAmbiguousProducer},
+            std::pair{"unknown-program-input", kGraphUnknownResource}, std::pair{"wrong-program-input", kStorageMismatch},
+            std::pair{"short-program-input", kGraphInvalidDescriptor}
+        })
         {
             const auto effect = call<CreateEffect>(*client, commands, capture_request(mode)).effect;
             const auto rejected = call<PrepareEffect>(*client, commands, {effect, session}, false);
-            CHECK(rejected.error.type == kGraphInvalidDescriptor);
+            CHECK(rejected.error.type == error);
             call<RemoveEffect>(*client, commands, {effect});
         }
-        std::puts("SDK COLD LINK: missing builder, wrong linked inputs and wrong draw mapping rejected at Prepare");
+        std::puts("SDK COLD LINK: builder, mapping and snapshot declaration errors rejected at Prepare");
         using Store = sdk_programs::CodeStorage;
         using Gate = sdk_programs::EDriverGate;
         auto frames = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -968,7 +980,7 @@ int main(int argc, char** argv)
             renderFrame(*client, commands, restarted);
             renderFrame(*client, commands, peer);
         }
-        CHECK(Store::captures == stable_captures + 16 && Store::builds == stable_builds);
+        CHECK(Store::captures == stable_captures && Store::builds == stable_builds);
         CHECK(Store::source_links == stable_links && Store::created == 2);
 
         const auto schema = call<QueryRenderJobInputLayout>(*client, commands, restarted).layout;
@@ -1029,7 +1041,7 @@ int main(int argc, char** argv)
         std::puts("SDK INDEXED GEOMETRY: 16-bit native indices, nonzero buffer offsets, copied vertex layout");
         std::puts("DRAW RESOURCE: optional SDK mask clips half the peer image; invalid type and foreign name rejected");
         std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, two resident PSOs");
-        std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, 16 frame captures, zero relinks or builds; "
+        std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, zero program-input captures, relinks or builds; "
                   "partial FrameData rebuilt both readers, after Stop only one, "
                   "zero independent clear rebuilds, 4096 RGBA pixels");
         return 0;

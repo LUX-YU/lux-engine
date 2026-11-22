@@ -49,12 +49,6 @@ namespace lux::render
         bool operator==(const GraphCpuDataId&) const noexcept = default;
     };
 
-    struct GraphStorageSnapshotId final
-    {
-        std::uint32_t index = kGraphInvalidIndex;
-        bool operator==(const GraphStorageSnapshotId&) const noexcept = default;
-    };
-
     template <CpuPreparationValue T> class CpuInputSlot final
     {
         friend class CpuCallFrame;

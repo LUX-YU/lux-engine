@@ -1006,9 +1006,9 @@ namespace lux::render::detail
                     description->requiresCapability(EStorageCapability::SAMPLED_IMAGE_ARRAY),
                     description->requiresCapability(EStorageCapability::STORAGE_BUFFER_ARRAY)
                 };
-                if (description->runtime_stream_programs)
+                if (std::holds_alternative<RasterProgramSource>(description->programs))
                     stream->runtime = CompiledRasterStream::RuntimeContract{description->inputs, target};
-                for (const auto& authored : description->stream_programs)
+                for (const auto& authored : description->fixedPrograms())
                 {
                     const auto* artifact = graph.programs()[authored.program].find(
                         session.enabledFeatures().shader_target, plan.device_addresses_

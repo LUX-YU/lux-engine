@@ -45,14 +45,13 @@ namespace lux::render::detail
                 for (const auto& grant : draw_resources.subspan(range.first, range.count))
                     selected.grants.push_back(grant.id);
             }
-            for (const auto operand : std::span{plan.program_reads}.subspan(recipe.snapshots.first, recipe.snapshots.count))
+            for (const auto source_slot : std::span{plan.program_reads}.subspan(recipe.snapshots.first, recipe.snapshots.count))
             {
-                const auto& read = plan.snapshot_reads[operand];
-                const auto& binding = snapshots[read.source];
-                const auto expected = plan.snapshots[read.source].type;
+                const auto& binding = snapshots[source_slot];
+                const auto expected = plan.snapshots[source_slot].type;
                 const bool invalid = !binding.storage || !binding.ops || !binding.ops->program_input;
                 if (invalid || binding.ops->type != expected || binding.ops->type.name() != expected.name())
-                    return cxx::unexpected(RenderError{kStorageMismatch, {operand}});
+                    return cxx::unexpected(RenderError{kStorageMismatch, {source_slot}});
                 const auto existing = std::ranges::find_if(sources_, [&](const auto& entry)
                 {
                     return entry.binding.id == binding.id;
@@ -61,10 +60,10 @@ namespace lux::render::detail
                 if (existing == sources_.end())
                     sources_.push_back({binding, &binding.ops->program_input(binding.storage)});
                 else if (existing->binding.ops != binding.ops || existing->binding.storage != binding.storage)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {operand}});
+                    return cxx::unexpected(RenderError{kStorageMismatch, {source_slot}});
                 const auto found = std::ranges::find(build.sources, source);
                 const auto local = static_cast<std::uint32_t>(found - build.sources.begin());
-                build.reads.push_back({operand, local, read.type});
+                build.reads.push_back(local);
                 if (found != build.sources.end()) continue;
                 build.sources.push_back(source);
 
@@ -175,11 +174,11 @@ namespace lux::render::detail
             if (*revision != source.revision->value()) return cxx::unexpected(RenderError{kStorageContract, {slot}});
             captures.push_back({std::move(value), *revision});
         }
-        for (const auto& read : build.reads)
+        for (const auto local : build.reads)
         {
-            const auto& source = sources_[build.sources[read.local]];
-            const auto& capture = captures[read.local];
-            data.snapshots.push_back({read.operand, source.binding.id, read.type, {capture.value.get(), capture.revision}});
+            const auto& source = sources_[build.sources[local]];
+            const auto& capture = captures[local];
+            data.snapshots.push_back({source.binding.id, {capture.value.get(), capture.revision}});
         }
         RasterProgramBuildContext context{data};
         auto mapping = build.compile(build.inputs, context, build.mapping.get());

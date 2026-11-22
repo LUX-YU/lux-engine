@@ -86,16 +86,11 @@ namespace lux::render::detail
                 std::uint32_t pass, list;
                 std::vector<ResourceInstanceId> grants;
             };
-            struct Read final
-            {
-                std::uint32_t operand, local;
-                const cxx::basic_type_info* type;
-            };
             RasterProgramBuilder::Build compile;
             const void* inputs;
             std::vector<Stream> streams;
             std::vector<std::uint32_t> sources;
-            std::vector<Read> reads;
+            std::vector<std::uint32_t> reads;
             RasterProgramBuilder::Mapping mapping{nullptr, nullptr};
             std::uint64_t revision = 1;
             EState state = EState::DIRTY;

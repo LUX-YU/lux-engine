@@ -22,9 +22,7 @@ namespace lux::render::detail
 
         struct Snapshot final
         {
-            std::uint32_t slot;
             ResourceInstanceId owner;
-            const cxx::basic_type_info* type;
             RevisionedValue<const void*> selection;
         };
 

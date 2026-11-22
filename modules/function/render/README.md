@@ -177,14 +177,16 @@ The default permits a named input to share a Resource on the same device.
 CPU snapshot inputs create no graph Buffer, GPU view, or barrier. Declare any GPU access to the same owner
 through a GPU binding as well.
 
-List any snapshot that controls runtime Raster programs in both `storage_inputs` and `program_storage_inputs`.
+List the snapshots for a cold Raster build in declaration order on its Raster pass. Declare a snapshot on the CPU
+call as well when the frame reads it.
 Store a `ProgramInputRevision` member in the Resource and register its member pointer with `StorageSnapshotOps::make`.
 On the device owner, call `advance()` when the program input changes and return `value()` from snapshot capture.
 Start and Rebind attach the installed execution once per physical source, including when several names resolve to it.
 Each runtime Raster builder has its own revision, ready mapping and cached failure. Advancing a source invalidates
 the builders that read it. The device schedules pending builds by installed Job and generation. An unrelated input
 can change while the driver compiles a program, and the original build can still publish its result.
-A builder reads its declared snapshots through `RasterProgramBuildContext::readStorage()`. Its native operation
+Compiler checks the count, order and types of the pass’s inputs against the build function’s `RasterProgramSnapshots<T...>` parameter.
+The builder receives the selected values and revisions directly. Its native operation
 owns the shader bytes, linked recipes and candidate draw mapping across suspension. Frame preparation captures
 its own values and reads the published mapping after all required builds are ready.
 
@@ -290,11 +292,10 @@ program identity, constant size, geometry, buffer bounds, image subresources and
 materializing native draw packets.
 
 Draw and section data are declared in `lux/engine/render/graph/DrawList.hpp`. For cold program builds, include
-`lux/engine/render/resource/RasterProgramBuild.hpp` and set `RasterPassTemplate::runtime_stream_programs`.
-Declare the Resource snapshots that select its programs in the preparation’s program inputs. A Resource publishes
-a new revision when those inputs change. A stream with no mutable sources selects its programs once per installation.
-Assign `RasterProgramBuilder::make<Kernel, &build>()` to the preparation’s `program_builder`. The build reads
-immutable linked inputs and the declared Resource snapshots on the owner. Transfer the shader artifacts
+`lux/engine/render/resource/RasterProgramBuild.hpp` and assign a RasterProgramSource with the builder and its ordered snapshot inputs to the pass template’s programs.
+A Resource advances its revision when its program inputs change. A stream with no mutable sources selects its programs
+once per installation. Streams sharing one preparation’s draw mapping use the same builder and snapshot order.
+The build reads immutable linked inputs and the declared Resource snapshots on the owner. Transfer the shader artifacts
 and provide the complete ordered set with `setPrograms()`. Each program names a `ShaderCandidateSlot` in that artifact list. Several programs can use one candidate.
 Use `reusePrograms()` for a stream whose complete program keys and binding order still match.
 For draws that need a CPU mapping, define `Kernel::DrawMapping`. The builder takes a third argument pointing to the preceding published mapping (null on
@@ -452,9 +453,7 @@ Algorithms with a cold draw mapping receive that mapping as their final prepare 
 Declare the CPU dependency in `CpuCallDependencies::inputs` or `outputs`. At link time resolve a reader with
 `resolveCpuInput<T>` or a writer with `resolveCpuOutput<T>`. Effect state uses `resolveEffectInput<T>`.
 During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The compiled read table and output intervals
-address the selected value directly. A linked Storage snapshot identifies its frame operand and, when declared for the
-cold Program build, its program operand. Link qualifies its complete type and Job installation resolves the final
-Resource selection. Frame preparation and cold Program readers can each access only their declared operands.
+address the selected value directly. CPU calls read their linked snapshot operands. Cold Raster builds receive their pass’s declared snapshots in a typed tuple. Job installation binds both to concrete Resources; only frame sources are captured per frame.
 The device graph stores each live CPU call's output ranges and the byte offsets of CPU values and inline blocks.
 Each Job binds these byte ranges to a single staging allocation. All declared outputs must be written before
 the selection is published to the writable FIF.

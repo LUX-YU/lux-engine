@@ -120,14 +120,8 @@ namespace lux::render
         return *storage;
     }
 
-    RenderResult<RevisionedValue<const void*>>
-    RasterProgramBuildContext::readStorageValue(extension_detail::SnapshotOperand operand) const noexcept
+    RevisionedValue<const void*> RasterProgramBuildContext::snapshot(std::size_t input) const noexcept
     {
-        const auto& snapshots = data_.snapshots;
-        if (operand.program >= snapshots.size() || snapshots[operand.program].slot != operand.frame)
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, operand.frame}});
-        const auto& source = snapshots[operand.program];
-        if (source.type != operand.type) return cxx::unexpected(RenderError{kStorageMismatch, {operand.frame}});
-        return source.selection;
+        return data_.snapshots[input].selection;
     }
 } // namespace lux::render

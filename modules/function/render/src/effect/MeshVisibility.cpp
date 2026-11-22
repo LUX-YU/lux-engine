@@ -157,13 +157,12 @@ namespace lux::render
             buildPrograms(
                 const LinkedData& linked,
                 RasterProgramBuildContext& selection,
+                const RasterProgramSnapshots<MeshInstanceSnapshot>& sources,
                 const DrawMapping* previous
             ) noexcept
             {
                 if (!linked.surface) return cxx::unexpected(RenderError{kFrameContract});
-                const auto instances = selection.readStorage(linked.instances);
-                if (!instances) return cxx::unexpected(instances.error());
-                return Surface::buildPrograms(*linked.surface, selection, instances->value.get(), previous);
+                return Surface::buildPrograms(*linked.surface, selection, std::get<0>(sources).value.get(), previous);
             }
 
             static RenderResult<void>
@@ -445,7 +444,6 @@ namespace lux::render
             };
             EffectResourceBundle bundle;
             std::vector<GraphPassId> producer_passes;
-            std::vector<GraphStorageSnapshotId> program_inputs;
             constexpr auto output = Effect == EMeshEffect::VISIBILITY ? MeshVisibility::draws :
                 Effect == EMeshEffect::GBUFFER ? GBuffer::surface :
                 Effect == EMeshEffect::FORWARD ? MeshRaster::color :
@@ -465,7 +463,9 @@ namespace lux::render
                 RasterPassTemplate stage;
                 stage.purpose = "indexed-mesh";
                 stage.inputs = detail::meshRasterInputs(device.record_table);
-                stage.runtime_stream_programs = true;
+                stage.programs = RasterProgramSource{
+                    RasterProgramBuilder::make<PrepareMeshVisibility, &PrepareMeshVisibility::buildPrograms>(), {*instances}
+                };
                 stage.section_depth_bias = Effect == EMeshEffect::SHADOW;
                 const auto record_table = device.record_table ?
                     static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY) : 0u;
@@ -552,7 +552,6 @@ namespace lux::render
                     paged, device.indirect_first_instance, CounterClockwise, device.texture_descriptors, purpose
                 };
                 producer_passes.push_back(drawn->pass);
-                program_inputs.push_back(*instances);
             }
             std::vector<GraphResourceId> prepared_buffers{
                 groups->resource, candidates->resource, chunks->resource, dispatch->resource,
@@ -565,13 +564,10 @@ namespace lux::render
                 storage_inputs.push_back(shadow->lights);
             }
             using Kernel = PrepareMeshVisibility;
-            constexpr auto build = RasterProgramBuilder::make<Kernel, &Kernel::buildPrograms>();
-            const auto program_builder = config.surface ? build : RasterProgramBuilder{};
             if (auto prepared = context.addCpuCall<Kernel, &Kernel::createWorkspace>(
                 std::move(config), {
                     .inline_blocks = std::move(inline_blocks), .passes = std::move(producer_passes),
-                    .gpu_buffers = std::move(prepared_buffers), .storage_inputs = std::move(storage_inputs),
-                    .program_storage_inputs = std::move(program_inputs), .program_builder = program_builder
+                    .gpu_buffers = std::move(prepared_buffers), .storage_inputs = std::move(storage_inputs)
                 }
             ); !prepared)
                 return prepared;

@@ -369,7 +369,6 @@ namespace lux::render
         {
             const bool no_bias_source = !dynamic.usesStreamProducer() || !has_depth;
             const bool invalid_bias = dynamic.section_depth_bias && no_bias_source;
-            const bool mixed_program_sources = dynamic.runtime_stream_programs && !dynamic.stream_programs.empty();
             const bool invalid_owners = !dynamic.draw_resources.empty() && !dynamic.usesStreamProducer();
             for (const auto& input : dynamic.draw_resources)
             {
@@ -380,15 +379,16 @@ namespace lux::render
                     !input.source.type.isValid() || !input.source.implementation.isValid();
                 if (invalid_source) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
             }
-            if (dynamic.purpose.empty() || invalid_bias || mixed_program_sources || invalid_owners)
+            if (dynamic.purpose.empty() || invalid_bias || invalid_owners)
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor));
             }
-            for (const auto& program : dynamic.stream_programs)
+            const auto programs = dynamic.fixedPrograms();
+            for (const auto& program : programs)
             {
                 const bool unknown = program.program >= builder_.candidate_.programs().size();
                 const bool duplicate =
-                    std::ranges::count(dynamic.stream_programs, program.program,
+                    std::ranges::count(programs, program.program,
                         &RasterPassTemplate::StreamProgram::program) != 1;
                 if (unknown || duplicate)
                 {

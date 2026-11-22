@@ -5492,6 +5492,7 @@ struct DeviceRetirementProbe final
     static inline decltype(nri::CoreInterface::QueueWaitIdle) wait_idle = nullptr;
     static inline RetirementFence* gate = nullptr;
     static inline std::atomic<bool> arm = false, held = false;
+    static inline std::atomic<std::int64_t>* accepted_ns = nullptr;
     static inline std::atomic<bool> hold_queue_idle = false, queue_idle_entered = false;
     std::size_t index;
     std::optional<RetirementFence> fence;
@@ -5518,7 +5519,16 @@ struct DeviceRetirementProbe final
         };
         core.QueueSubmit = [](nri::Queue& queue, const nri::QueueSubmitDesc& input) noexcept
         {
-            if (!arm.exchange(false)) return submit(queue, input);
+            if (!arm.exchange(false))
+            {
+                const auto result = submit(queue, input);
+                if (accepted_ns && result == nri::Result::SUCCESS && input.commandBufferNum)
+                {
+                    const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch());
+                    accepted_ns->store(now.count(), std::memory_order_release);
+                }
+                return result;
+            }
             CHECK(input.waitFenceNum == 0);
             const nri::FenceSubmitDesc wait{gate->fence, 1, nri::StageBits::ALL};
             auto waiting = input;
@@ -5560,6 +5570,154 @@ struct DeviceRetirementProbe final
         return makeResourceRegistration<Descriptor, DeviceRetirementProbe, &create>(nullptr);
     }
 };
+
+namespace
+{
+    std::int64_t clockNs() noexcept
+    {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
+    }
+
+    template <class Command>
+    std::uint64_t sendTimed(ipc::IpcRequester& client, CommandId command, typename Command::Request request)
+    {
+        ipc::IpcMessage message;
+        message.emplace<typename Command::Request>(std::move(request));
+        const auto correlation = nextSceneRequest();
+        CHECK(client.trySend(commandTag(command), correlation, message));
+        return correlation;
+    }
+
+    struct StartPair final
+    {
+        std::int64_t start_send, peer_send, start_reply = 0, peer_reply = 0;
+    };
+
+    struct FairnessReplay final
+    {
+        ipc::IpcRequester& client;
+        const CommandList& commands;
+        DeviceSessionId primary;
+        RenderJobId peer;
+        const std::atomic<std::int64_t>& peer_accepted;
+        CommandId start_command, frame_command;
+
+        void measure(RenderJobId job, TargetId target, unsigned round, bool cold)
+        {
+            renderFrame(client, commands, peer);
+            const auto previous_accept = peer_accepted.load();
+            StartPair timestamps{clockNs(), 0};
+            const auto start = sendTimed<StartRenderJob>(client, start_command, {primary, job, target});
+            timestamps.peer_send = clockNs();
+            const auto frame = sendTimed<RequestRenderJob>(client, frame_command, {peer});
+            auto& notifications = ipc::IpcCore::instance();
+            const auto deadline = Clock::now() + 10s;
+            while (!timestamps.start_reply || !timestamps.peer_reply)
+            {
+                const auto epoch = notifications.workEpoch();
+                ipc::IpcMessage message;
+                std::uint64_t id = 0;
+                const auto status = client.tryReceive(id, message);
+                CHECK(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
+                if (status != ipc::EIpcReceive::RECEIVED)
+                {
+                    notifications.waitUntil(epoch, deadline);
+                    continue;
+                }
+                const auto received = clockNs();
+                if (id == start)
+                {
+                    CHECK(!timestamps.start_reply && !message.get<AckResponse>().error.type);
+                    timestamps.start_reply = received;
+                }
+                else
+                {
+                    const auto& reply = message.get<JobSubmitted>();
+                    CHECK(id == frame && !timestamps.peer_reply && !reply.error.type && reply.job == peer);
+                    timestamps.peer_reply = received;
+                }
+            }
+            const auto accepted = peer_accepted.load();
+            CHECK(previous_accept && previous_accept < timestamps.start_send && timestamps.peer_send <= accepted);
+            CHECK(accepted <= timestamps.peer_reply);
+            std::printf("PAIR,%u,%s,%lld,%lld,%lld,%lld,%lld,%lld\n", round, cold ? "cold" : "reuse",
+                        previous_accept, timestamps.start_send, timestamps.peer_send, accepted,
+                        timestamps.peer_reply, timestamps.start_reply);
+        }
+    };
+}
+
+static int startFairness(bool d3d12, bool reverse_adapters)
+{
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    RenderServerConfig config{"lux.render.test.start_fairness", nativeValidationEnabled()};
+    config.frames_in_flight = 1;
+    auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
+    registerOutputNodes(*server);
+    take(server->registerResource<DeviceRetirementProbe>());
+    auto requester = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(requester);
+    auto& client = *requester;
+    std::atomic<std::int64_t> accepted{0};
+    DeviceRetirementProbe::accepted_ns = &accepted;
+    std::thread render([&] { CHECK(server->run()); });
+    lux::cxx::scope_exit stop([&]() noexcept
+    {
+        server->stop();
+        render.join();
+        DeviceRetirementProbe::accepted_ns = nullptr;
+    });
+    const auto commands = queryCommands(client);
+    DeviceOptions options;
+    options.backend = d3d12 ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
+    options.physical_device_index = reverse_adapters ? 1 : 0;
+    const auto a = call<CreateDeviceSession>(client, commands, options).device;
+    options.physical_device_index = reverse_adapters ? 0 : 1;
+    const auto second = call<CreateDeviceSession>(client, commands, options, false);
+    if (second.error.type) return 77;
+    const auto b = second.device;
+    const auto type = DeviceRetirementProbe::Descriptor::descriptor.type;
+    for (const auto device : {a, b}) call<GetOrCreateResource>(client, commands, {device, DeviceScope{}, type});
+    const auto& adapters = DeviceRetirementProbe::adapters;
+    if (adapters[0].uid.high == adapters[1].uid.high && adapters[0].uid.low == adapters[1].uid.low) return 77;
+    std::printf("ADAPTERS,%s,%s,%llx/%llx,%s,%llx/%llx\n", d3d12 ? "d3d12" : "vulkan", adapters[0].name,
+                adapters[0].uid.high, adapters[0].uid.low, adapters[1].name, adapters[1].uid.high, adapters[1].uid.low);
+    const auto scene = call<CreateScene>(client, commands, {}).scene;
+    const auto view = call<CreateView>(client, commands, {scene}).view;
+    const TargetDesc desc{96, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
+    const auto output_a = call<CreateTarget>(client, commands, {a, desc}).target;
+    const auto reuse_a = call<CreateTarget>(client, commands, {a, desc}).target;
+    const auto output_b = call<CreateTarget>(client, commands, {b, desc}).target;
+    const auto effect_b = call<CreateEffect>(client, commands, clearOutputRequest()).effect;
+    const auto peer = startRenderJob(client, commands, b, scene, view, output_b, effect_b);
+    const auto command = [&](std::string_view name)
+    {
+        const auto found = std::ranges::find(commands.commands, name, &CommandInfo::name);
+        CHECK(found != commands.commands.end());
+        return found->id;
+    };
+    FairnessReplay replay{client, commands, a, peer, accepted,
+                          command(StartRenderJob::name), command(RequestRenderJob::name)};
+    for (unsigned round = 0; round < 108; ++round)
+    {
+        const auto effect = call<CreateEffect>(client, commands, clearOutputRequest()).effect;
+        const CreateRenderJob::Request recipe{scene, view, effect, EJobCadence::REQUESTED};
+        const auto first = call<CreateRenderJob>(client, commands, recipe).job;
+        const auto second_job = call<CreateRenderJob>(client, commands, recipe).job;
+        const auto before = server->stats().compiled_graphs;
+        replay.measure(first, output_a, round, true);
+        CHECK(server->stats().compiled_graphs == before + 1);
+        // The 6b baseline removes the compiled variant when its last Job releases it.
+        replay.measure(second_job, reuse_a, round, false);
+        CHECK(server->stats().compiled_graphs == before + 1);
+        stopAndRemoveJob(client, commands, second_job);
+        stopAndRemoveJob(client, commands, first);
+        call<RemoveEffect>(client, commands, {effect});
+    }
+    stopAndRemoveJob(client, commands, peer);
+    CHECK(server->stats().validation_errors == 0);
+    return 0;
+}
 
 static bool physicalDeviceLifecycle(bool d3d12)
 {
@@ -5879,6 +6037,13 @@ int main(int argc, char** argv)
     }
     if (argc > 1 && std::string_view{argv[1]} == "--dual-device-lifecycle")
         return physicalDeviceLifecycle(argc > 2 && std::string_view{argv[2]} == "d3d12") ? 0 : 77;
+    if (argc >= 3 && std::string_view{argv[1]} == "--start-fairness")
+    {
+        const std::string_view api{argv[2]};
+        const bool reverse = argc == 4 && std::string_view{argv[3]} == "reverse";
+        if ((argc != 3 && !reverse) || (api != "vulkan" && api != "d3d12")) return 2;
+        return startFairness(api == "d3d12", reverse);
+    }
 #endif
     Validation validation;
     if (argc > 1 && std::string_view{argv[1]} == "--device-lost")

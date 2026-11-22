@@ -549,6 +549,13 @@ keeps the first resize's old allocation alive while a frame using the intermedia
 resize prepares its candidate. The probe records accepted and completed serials before and after the host signal,
 checks the intermediate frame, then adopts the candidate and verifies the final frame.
 
+On Windows, `render_output_test --start-fairness <vulkan|d3d12> [reverse]` pairs a Start request on adapter 0
+with an exact frame request on adapter 1. The optional argument swaps the adapters. Each round creates a fresh
+Effect, starts the first Job, then starts a second Job with the first reader still alive and an equivalent target.
+The probe checks the compile count after each Start. Each `PAIR` row reports the round, variant state, previous peer
+submission acceptance, Start send, peer send, peer native acceptance, peer reply receipt and Start reply receipt.
+Times use the same monotonic clock in nanoseconds. The first eight of 108 rounds warm up both conditions.
+
 `RenderGraphInstance::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
 `FrameExecutor` only encodes through the supplied NRI core and a const view of prepared instance data. Shared
 descriptor handles are resolved during preparation, including Vulkan table replacement and D3D12 frame-local

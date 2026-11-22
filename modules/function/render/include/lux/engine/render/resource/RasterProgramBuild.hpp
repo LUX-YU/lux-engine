@@ -12,9 +12,9 @@ namespace lux::render
 {
     namespace detail
     {
-        class RenderGraphInstance;
+        class RasterProgramInputs;
         struct RasterProgramBuildData;
-        struct LinkedPreparationProducer;
+        struct LinkedRasterBuild;
     }
 
     // Index into the shader artifacts submitted for this stream and selection.
@@ -66,7 +66,7 @@ namespace lux::render
         }
 
     private:
-        friend class detail::RenderGraphInstance;
+        friend class detail::RasterProgramInputs;
         explicit RasterProgramBuildContext(detail::RasterProgramBuildData& data) noexcept : data_(data) {}
 
         detail::RasterProgramBuildData& data_;
@@ -110,7 +110,7 @@ namespace lux::render
         [[nodiscard]] constexpr explicit operator bool() const noexcept { return registration_ != nullptr; }
 
     private:
-        friend struct detail::LinkedPreparationProducer;
+        friend struct detail::LinkedRasterBuild;
 
         struct Registration final
         {

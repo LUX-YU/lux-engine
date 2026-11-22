@@ -68,6 +68,7 @@ namespace lux::render::detail
         FrameOperation::Workspace frame_workspace_;
         ResourceSet resources_;
         cxx::SlotKeySparseSet<RenderJobId, std::unique_ptr<JobGpuResources>> job_resources_;
+        std::vector<ExecutionBindingId> pending_program_bindings_;
         using EffectBuffers = std::vector<std::unique_ptr<ConstantBufferStorage>>;
         cxx::SlotKeySparseSet<EffectId, EffectBuffers> effect_buffers_;
         using ScopeKey = std::pair<std::uint32_t, std::uint32_t>;
@@ -93,6 +94,14 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] bool hasBorrows() const noexcept;
+
+        [[nodiscard]] std::span<const ExecutionBindingId> pendingProgramBindings() const & noexcept
+        {
+            return pending_program_bindings_;
+        }
+        std::span<const ExecutionBindingId> pendingProgramBindings() const && = delete;
+        void activateProgramBinding(ExecutionBindingId id) noexcept;
+        void retireProgramBinding(ExecutionBindingId id) noexcept;
 
         std::unique_ptr<RasterProgramUpdate> program_update;
         [[nodiscard]] bool preparingProgramsFor(ExecutionBindingId) const noexcept;

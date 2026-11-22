@@ -154,17 +154,26 @@ namespace lux::render::detail
                     .inline_blocks = constants_,
                     .raster_streams = std::move(streams_),
                     .buffers = std::move(buffers_),
-                    .snapshots = snapshots_,
-                    .program_snapshots = std::move(program_snapshots)
+                    .snapshots = snapshots_
                 };
+                if (dynamic)
+                {
+                    if (plan.raster_builds.size() == kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
+                    linked.program_slot = static_cast<std::uint32_t>(plan.raster_builds.size());
+                    auto& recipe = plan.raster_builds.emplace_back(static_cast<std::uint32_t>(plan.producers.size()));
+                    if (!recipe.link(builder, linked.call))
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
+                    recipe.snapshots = std::move(program_snapshots);
+                    for (const auto& stream : linked.raster_streams)
+                        if (workspace_.compiled.graph.programs().rasterStream(stream.pass)->runtime)
+                            recipe.streams.push_back(stream);
+                }
                 if (linked.call.methods->create_workspace)
                 {
                     if (plan.workspace_count == kGraphInvalidIndex)
                         return cxx::unexpected(RenderError{kRuntimeCapacity});
                     linked.workspace_slot = plan.workspace_count++;
                 }
-                if (!linked.linkPrograms(builder))
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
                 if (!producer_.outputs.empty())
                 {
                     // assignSlots lays out all outputs of one live call consecutively.
@@ -394,7 +403,7 @@ namespace lux::render::detail
             const GraphPreparation& producer_;
             detail::PreparationRange inputs_, constants_, snapshots_;
             std::vector<std::uint32_t> buffers_;
-            std::vector<detail::LinkedPreparationProducer::RasterStream> streams_;
+            std::vector<detail::LinkedRasterStream> streams_;
             std::uint32_t source_input_, selected_input_ = kGraphInvalidIndex;
             std::uint32_t producer_slot_;
         };

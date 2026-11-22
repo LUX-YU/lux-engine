@@ -11,6 +11,7 @@
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
+#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
 #include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 
@@ -18,6 +19,7 @@ namespace lux::render::runtime_detail { struct JobExecution; }
 
 namespace lux::render::detail
 {
+    class RasterProgramInputs;
     struct FrozenPatchCounts;
     struct FrozenOperandPatches;
     struct FrameResources;
@@ -32,13 +34,6 @@ namespace lux::render::detail
     {
     public:
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
-        struct SnapshotSource final
-        {
-            ResourceInstanceId id;
-            void* storage;
-            const StorageSnapshotOps* ops;
-        };
-
         struct PreparationSources final
         {
             std::vector<BoundConstantBuffer> constant_buffers;
@@ -50,21 +45,11 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         createProducers(const PreparationPlan&, const ResourceRegistry&, PreparationSources) noexcept;
         [[nodiscard]] RenderResult<void> prepareProducers(std::uint32_t frame_slot) noexcept;
-        void installPreparation(RenderJobId job, std::uint64_t generation) noexcept;
 
         [[nodiscard]] RenderResult<bool> stagePreparedBuffers(
             std::uint32_t frame, ResourceUploader*, std::vector<PreparedBufferCopy>&
         ) noexcept;
         void settlePreparedBuffer(std::uint32_t, const PreparedBufferCopy&, SubmissionPoint, RenderError) noexcept;
-        [[nodiscard]] bool hasExclusiveProgramInput() const noexcept;
-        [[nodiscard]] std::uint64_t programInputRevision() const noexcept { return program_input_revision_; }
-        [[nodiscard]] bool needsProgramBuild() const noexcept
-        {
-            return applied_program_revision_ != program_input_revision_;
-        }
-        [[nodiscard]] RenderResult<void> selectProgramUpdate(RasterProgramUpdate&) noexcept;
-        void adoptProgramUpdate(RasterProgramUpdate&) noexcept;
-
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void>
         writeInlineConstant(
@@ -170,6 +155,8 @@ namespace lux::render::detail
         {
             std::span<FrameResources> frames;
             std::span<HistoryState> histories;
+            const RasterProgramInputs& programs;
+            ExecutionBindingId binding;
         };
 
         RenderGraphInstance(JobGpuResources&, const compiled::RenderGraph&, FrameStorage, TargetOutput) noexcept;
@@ -203,8 +190,6 @@ namespace lux::render::detail
         JobGpuResources& gpu_;
 
         class ProducerFrame;
-        [[nodiscard]] RenderResult<void>
-        buildRasterPrograms(std::uint32_t, RasterProgramUpdate&) noexcept;
         struct PreparedBytes final
         {
             std::vector<std::byte> bytes;
@@ -221,10 +206,7 @@ namespace lux::render::detail
         {
             std::vector<PreparedInlineBlock> constants;
             std::vector<OwnedRasterStream> streams;
-            std::vector<std::uint32_t> runtime_streams{};
-            std::vector<std::uint32_t> program_sources;
-            RasterProgramBuilder::Mapping draw_mapping{nullptr, nullptr};
-            bool programs_dirty = false;
+
         };
 
         struct PreparedBufferInput final
@@ -242,7 +224,7 @@ namespace lux::render::detail
             SnapshotSource source;
             StorageSnapshotOps::Selection value;
             std::uint64_t revision = 0;
-            ProgramInputRevision* program_input = nullptr;
+            const ProgramInputRevision* program_input = nullptr;
         };
 
         const ResourceRegistry* snapshot_registry_ = nullptr;
@@ -252,9 +234,7 @@ namespace lux::render::detail
         std::vector<std::uint32_t> snapshot_sources_;
         std::vector<extension_detail::AlgorithmWorkspace> workspaces_;
         std::vector<Producer> producers_;
-        std::vector<std::uint32_t> program_producers_;
-        std::vector<ProgramInputRevision::Use> program_input_uses_;
-        std::uint64_t program_input_revision_ = 0, applied_program_revision_ = 0;
+        const RasterProgramInputs& program_inputs_;
         std::vector<PreparedBytes> cpu_data_;
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;
         RenderJobId preparation_job_;

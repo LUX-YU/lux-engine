@@ -478,10 +478,13 @@ namespace
         background.program = std::move(background_stage);
         background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
         const auto base = take(builder.addRasterPass("clear background", std::move(background)));
+        const auto settings = take(context.importStorageSnapshot<std::uint32_t>(
+            "background", {ResourceName{BackgroundSettings::descriptor.type.name()}}
+        ));
         auto clear = context.addPreparation({
-            PreparationAlgorithm::stateless<ClearBackground>(), take(ConfigValue::make(base.pass)),
+            PreparationAlgorithm::stateless<ClearBackground>(), take(ConfigValue::make(ClearBackground::Configuration{base.pass, settings})),
             {}, {}, {}, {base.pass},
-            {}, {}, {}, RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
+            {}, {settings}, {settings}, RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>()
         });
         if (!clear) return clear;
         RasterPassTemplate stage;
@@ -737,6 +740,7 @@ int main(int argc, char** argv)
         options.texture_descriptors = records;
         if (records) take(server->registerResource<sdk_programs::ColorPage>());
         take(server->registerResource<sdk_programs::CodeStorage>());
+        take(server->registerResource<sdk_programs::BackgroundSettings>());
         take(server->registerResource<sdk_programs::DrawMask>());
         take(server->registerResource<sdk_programs::TriangleGeometry>());
         const std::array commands{
@@ -805,10 +809,14 @@ int main(int argc, char** argv)
         const auto triangle = call<GetOrCreateResource>(*client, commands, {
             session, DeviceScope{}, sdk_programs::TriangleGeometry::descriptor.type
         }).resource_id;
+        const auto background = call<GetOrCreateResource>(*client, commands, {
+            session, DeviceScope{}, sdk_programs::BackgroundSettings::descriptor.type
+        }).resource_id;
         const auto camera_resource = camera_for(view, 1);
         JobBinding binding;
         binding.resources = {
-            {"capture", readback}, {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {"capture", readback}, {"background", background, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
             {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT},
             {"triangle", triangle, 0, EJobResourceUse::DRAW_RESOURCE},
             {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT}
@@ -877,6 +885,9 @@ int main(int argc, char** argv)
             return call<RequestRenderJob>(*frames, commands, {job});
         });
         wait([] { return Store::gate == Gate::HELD; });
+        const auto held_draw_builds = Store::builds.load();
+        const auto held_clear_builds = Store::clear_builds.load();
+        call<sdk_programs::SetBackground>(*client, commands, {background, 1});
         auto holding = std::async(std::launch::async, [&]
         {
             return call<sdk_programs::HoldCode>(*mutations, commands, code);
@@ -894,6 +905,18 @@ int main(int argc, char** argv)
         CHECK(requested.wait_for(20ms) == std::future_status::timeout);
         call<sdk_programs::ReleaseCode>(*client, commands, {});
         CHECK(!holding.get().error.type && !requested.get().error.type);
+        CHECK(Store::builds == held_draw_builds && Store::clear_builds == held_clear_builds + 1);
+        call<sdk_programs::SetBackground>(*client, commands, {background, 2});
+        CHECK(call<RequestRenderJob>(*client, commands, {job}, false).error.type == kGraphInvalidDescriptor);
+        const auto failed_backgrounds = Store::clear_builds.load();
+        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {1}});
+        CHECK(call<RequestRenderJob>(*client, commands, {job}, false).error.type == kGraphInvalidDescriptor);
+        CHECK(Store::clear_builds == failed_backgrounds && Store::builds == held_draw_builds + 1);
+        call<sdk_programs::SetBackground>(*client, commands, {background, 0});
+        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
+        renderFrame(*client, commands, job);
+        CHECK(Store::clear_builds == failed_backgrounds + 1 && Store::builds == held_draw_builds + 2);
+        std::puts("SDK INDEPENDENT BUILDS: held draw candidate adopted; failed background cached across draw update; both recovered");
         stopAndRemoveJob(*client, commands, job);
         const auto restarted = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
         renderFrame(*client, commands, restarted);

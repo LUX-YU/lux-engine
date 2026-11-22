@@ -62,7 +62,23 @@ namespace lux::render::detail
 
     DeviceEntry::~DeviceEntry() noexcept
     {
-        if (!job_resources_.empty()) std::terminate();
+        if (!job_resources_.empty() || !pending_program_bindings_.empty()) std::terminate();
+    }
+
+    void DeviceEntry::activateProgramBinding(ExecutionBindingId id) noexcept
+    {
+        pending_program_bindings_.push_back(id);
+    }
+
+    void DeviceEntry::retireProgramBinding(ExecutionBindingId id) noexcept
+    {
+        const auto found = std::ranges::find(pending_program_bindings_, id);
+        if (found == pending_program_bindings_.end()) std::terminate();
+        const auto removed = static_cast<std::size_t>(found - pending_program_bindings_.begin());
+        pending_program_bindings_.erase(found);
+        auto& cursor = round.preparation_cursor;
+        if (removed < cursor) --cursor;
+        if (cursor >= pending_program_bindings_.size()) cursor = 0;
     }
 
     std::unique_ptr<JobGpuResources> DeviceEntry::prepareJobResources(ExecutionBindingId identity) noexcept

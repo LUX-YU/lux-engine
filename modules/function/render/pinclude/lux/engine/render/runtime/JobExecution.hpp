@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/runtime/ExecutionBindingId.hpp>
+#include <lux/engine/render/runtime/RasterProgramInputs.hpp>
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/FinalBufferVersion.hpp>
@@ -63,19 +64,12 @@ namespace lux::render::runtime_detail
         std::vector<detail::HistoryState> histories_;
 
     public:
+        detail::RasterProgramInputs programs;
         detail::RenderGraphInstance instance;
         [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return instance.plan(); }
         const compiled::RenderGraph& graph() const && = delete;
 
-        RenderError failed_program;
-        std::uint64_t failed_program_revision = 0;
-
-        [[nodiscard]] RenderError programError() const noexcept
-        {
-            if (failed_program.type && instance.programInputRevision() == failed_program_revision)
-                return failed_program;
-            return {};
-        }
+        void settlePrograms(detail::RasterProgramUpdate& update) noexcept;
 
         FrameLayout input_layout;
         // Qualified once at assembly. These identities also define which exclusive commands

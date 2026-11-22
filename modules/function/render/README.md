@@ -167,9 +167,12 @@ List any snapshot that controls runtime Raster programs in both `storage_inputs`
 Store a `ProgramInputRevision` member in the Resource and register its member pointer with `StorageSnapshotOps::make`.
 On the device owner, call `advance()` when the program input changes and return `value()` from snapshot capture.
 Start and Rebind attach the installed execution once per physical source, including when several names resolve to it.
-An advance marks only the dependent kernels and changes the installed execution’s input revision. The scheduler
-compares that revision to the last adoption, pending build, or cached failure. A cold build reads its declared
-snapshots with `RasterProgramBuildContext::readStorage()`. Frame preparation continues to capture the values it uses.
+Each runtime Raster builder has its own revision, ready mapping and cached failure. Advancing a source invalidates
+the builders that read it. The device schedules pending builds by installed Job and generation. An unrelated input
+can change while the driver compiles a program, and the original build can still publish its result.
+A builder reads its declared snapshots through `RasterProgramBuildContext::readStorage()`. Its native operation
+owns the shader bytes, linked recipes and candidate draw mapping across suspension. Frame preparation captures
+its own values and reads the published mapping after all required builds are ready.
 
 For Mesh preparation, bind the scene's `InstanceResource` as a `MeshInstanceSnapshot` to read instance,
 mesh, material and submesh identities as well as render permission. The snapshot revision advances when membership,

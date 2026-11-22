@@ -17,6 +17,11 @@ namespace lux::render::runtime_detail
         }
     }
 
+    void JobExecution::settlePrograms(detail::RasterProgramUpdate& update) noexcept
+    {
+        programs.settle(update, frames_);
+    }
+
     JobExecution::~JobExecution() noexcept = default;
 
     JobExecution::JobExecution(
@@ -27,7 +32,8 @@ namespace lux::render::runtime_detail
     ) noexcept
         : effect(installation.effect), device(installation.device), target(installation.target),
           frames_(createFrames(gpu.frames)), histories_(selected.historyCount()),
-          instance(gpu, selected, {frames_, histories_}, physical),
+          programs(selected, gpu),
+          instance(gpu, selected, {frames_, histories_, programs, installation.identity}, physical),
           binding_identity(installation.identity)
     {
     }
@@ -181,6 +187,8 @@ namespace lux::render
             if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
                 candidate.gpu_resources.push_back(id);
         }
+        if (auto linked = candidate.programs.bind(preparation, registry, inputs.snapshots, inputs.draw_resources); !linked)
+            return linked;
         if (auto ready = candidate.instance.createProducers(preparation, registry, std::move(inputs)); !ready)
             return ready;
         if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;

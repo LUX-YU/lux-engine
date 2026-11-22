@@ -1,4 +1,5 @@
 #include <lux/engine/render/resource/ProgramInputRevision.hpp>
+#include <lux/engine/render/runtime/RasterProgramInputs.hpp>
 #include <exception>
 
 namespace lux::render
@@ -13,11 +14,7 @@ namespace lux::render
         if (value_ == UINT64_MAX) std::terminate();
         ++value_;
         for (const auto* use = first_; use; use = use->next)
-        {
-            if (*use->execution_revision == UINT64_MAX) std::terminate();
-            ++*use->execution_revision;
-            for (auto* dirty : use->dirty_programs) *dirty = true;
-        }
+            use->owner->invalidate(use->builds);
     }
 
     void ProgramInputRevision::attach(Use& use) noexcept

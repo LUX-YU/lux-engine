@@ -194,7 +194,7 @@ namespace lux::render
         [[nodiscard]] bool progressFrame(detail::DeviceEntry&) noexcept;
 
         [[nodiscard]] bool progressProgramPreparations(detail::DeviceEntry&) noexcept;
-        void startProgramPreparation(detail::DeviceEntry&, JobExecution&) noexcept;
+        void startProgramPreparation(detail::DeviceEntry&, JobExecution&, std::uint32_t build) noexcept;
         [[nodiscard]] bool settleProgramCompilation(detail::DeviceEntry&) noexcept;
         void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
         void updateFrameData(const UpdateFrameData::Request&, AckResponse&) noexcept;

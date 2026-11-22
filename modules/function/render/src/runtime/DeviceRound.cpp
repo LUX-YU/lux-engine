@@ -186,51 +186,55 @@ namespace lux::render
         auto& round = entry.round;
         if (round.operation || stop_requested_.load() || entry.admissionError().type) return false;
 
+        if (entry.pendingProgramBindings().empty()) return false;
         bool progressed = false;
-        for (auto id : running_jobs_)
+        for (const auto binding : entry.pendingProgramBindings())
         {
-            auto& job = *runtime_->jobs_.find(id);
-            if (!job.control.eligible() || !job.control.hasRequest()) continue;
-            auto& execution = *job.execution;
-            if (execution.device != entry.id) continue;
-
-            const auto error = execution.programError();
-            if (error.type && !execution.instance.hasExclusiveProgramInput())
+            auto* job = runtime_->jobs_.find(binding.job);
+            if (!job || !job->execution || job->execution->binding_identity != binding) continue;
+            if (!job->control.eligible() || !job->control.hasRequest()) continue;
+            auto& programs = job->execution->programs;
+            const auto error = programs.reportableError();
+            if (error.type && programs.nextBuild() == kGraphInvalidIndex)
             {
-                job.control.rejectUnadmitted(error);
+                job->control.rejectUnadmitted(error);
                 progressed = true;
+                break;
             }
         }
         if (entry.program_update) return progressed;
-        const auto count = running_jobs_.size();
-        for (std::size_t offset = 0; offset < count; ++offset)
+        const auto pending = entry.pendingProgramBindings();
+        for (std::size_t offset = 0; offset < pending.size(); ++offset)
         {
-            const auto index = (round.preparation_cursor + offset) % count;
-            auto& job = *runtime_->jobs_.find(running_jobs_[index]);
-            if (!job.readyToRun() || !jobTargetReady(job)) continue;
-            auto& execution = *job.execution;
-            if (execution.device != entry.id) continue;
-            if (!execution.instance.needsProgramBuild() || execution.programError().type) continue;
-            if (executionTargetsResizing(execution) || !resourcesAvailable(execution.retainedResources())) continue;
-            round.preparation_cursor = (index + 1) % count;
-            startProgramPreparation(entry, execution);
+            const auto index = (round.preparation_cursor + offset) % pending.size();
+            const auto binding = pending[index];
+            auto* job = runtime_->jobs_.find(binding.job);
+            if (!job || !job->execution || job->execution->binding_identity != binding) continue;
+            if (!job->readyToRun() || !jobTargetReady(*job)) continue;
+            auto& execution = *job->execution;
+            const auto build = execution.programs.nextBuild();
+            if (build == kGraphInvalidIndex) continue;
+            round.preparation_cursor = (index + 1) % pending.size();
+            startProgramPreparation(entry, execution, build);
             return true;
         }
         return progressed;
     }
 
-    void RenderServer::Impl::startProgramPreparation(detail::DeviceEntry& entry, JobExecution& execution) noexcept
+    void RenderServer::Impl::startProgramPreparation(
+        detail::DeviceEntry& entry, JobExecution& execution, std::uint32_t build
+    ) noexcept
     {
         entry.program_update = std::make_unique<detail::RasterProgramUpdate>(
             entry.session(), runtime_->resources_, execution.binding_identity
         );
         auto& update = *entry.program_update;
-        execution.failed_program = {};
+        update.build = build;
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         program_preparations_.fetch_add(1, std::memory_order_relaxed);
 #endif
         // All user callbacks, snapshots and graph linkage finish on the owner before the operation leaves it.
-        if (auto selected = execution.instance.selectProgramUpdate(update); !selected)
+        if (auto selected = execution.programs.select(update); !selected)
         {
             update.returned = selected.error();
             return;
@@ -278,21 +282,14 @@ namespace lux::render
             job->execution->binding_identity == op->binding;
         auto* execution = installed ? job->execution.get() : nullptr;
         const bool running = installed && job->control.running();
-        const bool stale = running && execution->instance.programInputRevision() != op->input_revision;
+        const bool stale = running && !execution->programs.current(*op);
         if (!running || stale || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
         if (!op->returned || !op->publishReturnedUses()) return false;
         const bool discarded = op->stop.stop_requested();
-        if (running && !discarded && !resourcesAvailable(execution->retainedResources())) return false;
-        if (execution && executionTargetsResizing(*execution)) return false;
-        if (execution)
-        {
-            if (!discarded && !op->returned->type) execution->instance.adoptProgramUpdate(*op);
-            if (!discarded && op->returned->type)
-            {
-                execution->failed_program = *op->returned;
-                execution->failed_program_revision = op->input_revision;
-            }
-        }
+        if (running && !discarded && execution->programs.inputsBusy(op->build)) return false;
+        const bool installs_bindings = running && !discarded && !op->returned->type;
+        if (installs_bindings && executionTargetsResizing(*execution)) return false;
+        if (execution && !discarded) execution->settlePrograms(*op);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - op->started

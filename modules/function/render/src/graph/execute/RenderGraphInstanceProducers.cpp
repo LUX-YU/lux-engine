@@ -8,7 +8,8 @@
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
-#include <lux/engine/render/device/RasterProgramUpdate.hpp>
+#include <lux/engine/render/runtime/RasterProgramInputs.hpp>
+#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <algorithm>
@@ -461,12 +462,11 @@ namespace lux::render::detail
             }
             auto value = source.ops->create();
             if (!value) return cxx::unexpected(RenderError{kStorageContract, {i}});
-            snapshots.emplace_back(source, std::move(value));
+            snapshots.emplace_back(source, std::move(value), 0, program_inputs_.revisionSource(source.id));
         }
         std::vector<extension_detail::AlgorithmWorkspace> workspaces;
         workspaces.reserve(plan.workspace_count);
         std::vector<Producer> producers;
-        std::vector<std::uint32_t> program_producers;
         producers.reserve(plan.producers.size());
         for (const auto& linked : plan.producers)
         {
@@ -477,30 +477,6 @@ namespace lux::render::detail
                 auto workspace = create(linked.call.inputs.data(), target());
                 if (!workspace) return cxx::unexpected(workspace.error());
                 workspaces.push_back(std::move(*workspace));
-            }
-            for (const auto& stream : linked.raster_streams)
-            {
-                if (graph_.programs().rasterStream(stream.pass)->runtime) producer.runtime_streams.push_back(stream.pass);
-            }
-            if (!linked.program_snapshots.empty() && producer.runtime_streams.empty())
-                return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {producers.size() - 1}});
-            for (auto slot : linked.program_snapshots)
-            {
-                const auto source = source_slots[plan.snapshot_reads[slot].source];
-                auto& snapshot = snapshots[source];
-                if (!snapshot.program_input)
-                {
-                    if (!snapshot.source.ops->program_input)
-                        return cxx::unexpected(RenderError{kStorageMismatch, {slot}});
-                    snapshot.program_input = &snapshot.source.ops->program_input(snapshot.source.storage);
-                }
-                auto& selected = producer.program_sources;
-                if (std::ranges::find(selected, source) == selected.end()) selected.push_back(source);
-            }
-            if (!producer.runtime_streams.empty())
-            {
-                producer.programs_dirty = true;
-                program_producers.push_back(static_cast<std::uint32_t>(producers.size() - 1));
             }
             producer.constants.reserve(linked.inline_blocks.count);
             const auto blocks = std::span{plan.inline_blocks}.subspan(
@@ -520,23 +496,6 @@ namespace lux::render::detail
         }
         workspaces_ = std::move(workspaces);
         producers_ = std::move(producers);
-        program_producers_ = std::move(program_producers);
-        if (!program_producers_.empty()) program_input_revision_ = 1;
-        // Build the Resource-to-kernel links while the execution is private. Publication only attaches rows.
-        for (auto index : program_producers_)
-        {
-            auto& producer = producers_[index];
-            for (auto slot : producer.program_sources)
-            {
-                auto* source = snapshots[slot].program_input;
-                auto use = std::ranges::find(program_input_uses_, source, &ProgramInputRevision::Use::source);
-                if (use == program_input_uses_.end())
-                {
-                    program_input_uses_.push_back({source, &program_input_revision_, {&producer.programs_dirty}});
-                }
-                else use->dirty_programs.push_back(&producer.programs_dirty);
-            }
-        }
         storage_snapshots_ = std::move(snapshots);
         snapshot_sources_.resize(plan.snapshot_reads.size());
         for (std::size_t i = 0; i < plan.snapshot_reads.size(); ++i)
@@ -549,138 +508,10 @@ namespace lux::render::detail
         return {};
     }
 
-    bool RenderGraphInstance::hasExclusiveProgramInput() const noexcept
-    {
-        return std::ranges::any_of(storage_snapshots_, [&](const auto& snapshot) noexcept
-        {
-            return snapshot.program_input && snapshot_registry_->hasExclusiveCommand(snapshot.source.id);
-        });
-    }
-
-    void RenderGraphInstance::installPreparation(RenderJobId job, std::uint64_t generation) noexcept
-    {
-        if (!generation || preparation_generation_) std::terminate();
-        preparation_job_ = job;
-        preparation_generation_ = generation;
-        for (auto& use : program_input_uses_) use.source->attach(use);
-    }
-
-    RenderResult<void> RenderGraphInstance::selectProgramUpdate(RasterProgramUpdate& update) noexcept
-    {
-        update.input_revision = program_input_revision_;
-        for (auto index : program_producers_)
-        {
-            if (!producers_[index].programs_dirty) continue;
-            if (auto selected = buildRasterPrograms(index, update); !selected) return selected;
-        }
-        return {};
-    }
-
-    RenderResult<void>
-    RenderGraphInstance::buildRasterPrograms(std::uint32_t index, RasterProgramUpdate& update) noexcept
-    {
-        auto& producer = producers_[index];
-        for (auto slot : producer.program_sources)
-        {
-            auto& snapshot = storage_snapshots_[slot];
-            auto captured = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
-            if (!captured) return cxx::unexpected(captured.error());
-            if (*captured != snapshot.program_input->value())
-                return cxx::unexpected(RenderError{kStorageContract, {slot}});
-            snapshot.revision = *captured;
-        }
-        const auto& linked = preparation_plan_->producers[index];
-        RasterProgramBuildData data{*snapshot_registry_, *session_};
-        data.streams.reserve(producer.runtime_streams.size());
-        for (auto pass : producer.runtime_streams)
-        {
-            auto& stream = data.streams.emplace_back(pass);
-            stream.ready = gpu_.dynamicRasterPrograms(graph_.programs().rasterStream(pass)->list) != nullptr;
-            if (preparation_plan_->draw_resource_ranges.empty()) continue;
-            const auto range = preparation_plan_->draw_resource_ranges[pass];
-            stream.sources = std::span{draw_resources_}.subspan(range.first, range.count);
-        }
-        data.snapshots.reserve(linked.program_snapshots.size());
-        for (auto slot : linked.program_snapshots)
-        {
-            const auto& snapshot = storage_snapshots_[snapshot_sources_[slot]];
-            data.snapshots.push_back({
-                slot, snapshot.source.id, preparation_plan_->snapshot_reads[slot].type,
-                {snapshot.value.get(), snapshot.revision}
-            });
-        }
-        RasterProgramBuildContext context{data};
-        auto mapping = linked.build_programs(linked.call.inputs.data(), context, producer.draw_mapping.get());
-        if (!mapping) return cxx::unexpected(mapping.error());
-        update.selections.push_back({index, std::move(*mapping)});
-        for (const auto& entry : data.streams)
-        {
-            if (entry.reuse)
-            {
-                continue;
-            }
-            if (!entry.programs) return cxx::unexpected(RenderError{kFrameContract, {entry.pass}});
-            const auto& compiled = *graph_.programs().rasterStream(entry.pass);
-            const auto& contract = *compiled.runtime;
-            auto& stream = update.streams.emplace_back();
-            stream.pass = entry.pass;
-            stream.candidate = std::make_unique<DynamicRasterPrograms>();
-            const auto* previous = gpu_.dynamicRasterPrograms(compiled.list);
-            if (previous && previous->revision == UINT64_MAX)
-                return cxx::unexpected(RenderError{kDeviceCapacity});
-            stream.candidate->revision = previous ? previous->revision + 1 : 1;
-            stream.candidate->programs.reserve(entry.programs->size());
-            stream.programs.reserve(entry.programs->size());
-            for (const auto& program : *entry.programs)
-            {
-                auto link = linkRasterStreamProgram(
-                    *session_, {contract.arguments, program.parameters, contract.target,
-                                entry.shaders[program.shader.index], program.graphics, program.geometry_locations}
-                );
-                if (!link) return cxx::unexpected(link.error());
-                stream.programs.push_back({std::move(*link), program.source});
-            }
-        }
-        return {};
-    }
-
-    void RenderGraphInstance::adoptProgramUpdate(RasterProgramUpdate& update) noexcept
-    {
-        for (auto& stream : update.streams)
-        {
-            const auto list = graph_.programs().rasterStream(stream.pass)->list;
-            const auto* previous = gpu_.dynamicRasterPrograms(list);
-            if (previous && previous->programs == stream.candidate->programs) continue;
-            if (previous && !previous->programs.empty())
-            {
-                std::vector<nri::Descriptor*> views;
-                for (auto& frame : frames_)
-                {
-                    frame.invalidatePass(graph_, stream.pass);
-                    frame.releaseRasterBindings(list, views);
-                }
-                if (!views.empty()) session_->deferRelease(gpu_.accepted,
-                    [core = &session_->nriCore(), views = std::move(views)]() noexcept
-                    {
-                        for (auto* view : views) core->DestroyDescriptor(view);
-                    }
-                );
-            }
-            gpu_.adoptRasterPrograms(list, std::move(stream.candidate));
-        }
-        for (auto& selection : update.selections)
-        {
-            auto& producer = producers_[selection.producer];
-            producer.draw_mapping.swap(selection.draw_mapping);
-            producer.programs_dirty = false;
-        }
-        applied_program_revision_ = update.input_revision;
-    }
-
     RenderResult<void> RenderGraphInstance::prepareProducers(std::uint32_t slot) noexcept
     {
         if (!preparation_plan_) return {};
-        if (needsProgramBuild()) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (program_inputs_.pending()) return cxx::unexpected(RenderError{kDeviceBusy});
         if (slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
         if (preparation_revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
         for (const auto& snapshot : storage_snapshots_)
@@ -692,8 +523,8 @@ namespace lux::render::detail
         {
             auto revision = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
             if (!revision) return cxx::unexpected(revision.error());
-            if (snapshot.program_input && *revision != snapshot.revision)
-                return cxx::unexpected(RenderError{needsProgramBuild() ? kDeviceBusy : kStorageContract});
+            if (snapshot.program_input && *revision != snapshot.program_input->value())
+                return cxx::unexpected(RenderError{program_inputs_.pending() ? kDeviceBusy : kStorageContract});
             snapshot.revision = *revision;
         }
         ++preparation_revision_;
@@ -712,7 +543,6 @@ namespace lux::render::detail
         {
             const auto& linked = linked_producers[i];
             auto& producer = producers_[i];
-            if (producer.programs_dirty) return cxx::unexpected(RenderError{kDeviceBusy});
             for (auto& block : producer.constants) block.payload.written = false;
             for (auto& stream : producer.streams)
             {
@@ -728,7 +558,7 @@ namespace lux::render::detail
             auto* workspace = linked.workspace_slot == kGraphInvalidIndex ?
                 nullptr : workspaces_[linked.workspace_slot].get();
             auto prepared = linked.call.methods->prepare(
-                linked.call.inputs.data(), frame, workspace, producer.draw_mapping.get()
+                linked.call.inputs.data(), frame, workspace, program_inputs_.mapping(linked.program_slot)
             );
             if (!prepared) return prepared;
 
@@ -760,7 +590,7 @@ namespace lux::render::detail
             }
         }
 
-        if (needsProgramBuild()) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (program_inputs_.pending()) return cxx::unexpected(RenderError{kDeviceBusy});
         // Commit the complete selection only after every preparation callback has succeeded.
         for (auto& replica : frames_[slot].native.prepared_buffers) replica.staged_bytes = 0;
         for (std::size_t i = 0; i < linked_producers.size(); ++i)

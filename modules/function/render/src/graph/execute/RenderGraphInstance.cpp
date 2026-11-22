@@ -17,7 +17,8 @@ namespace lux::render::detail
         FrameStorage storage,
         TargetOutput output
     ) noexcept
-        : session_(&gpu.session), gpu_(gpu), frames_(storage.frames), histories_(storage.histories),
+        : program_inputs_(storage.programs), preparation_job_(storage.binding.job), preparation_generation_(storage.binding.generation),
+          session_(&gpu.session), gpu_(gpu), frames_(storage.frames), histories_(storage.histories),
           graph_(plan), output_(output)
     {
         condition_values_.resize(plan.condition_count_);
@@ -80,8 +81,6 @@ namespace lux::render::detail
         for (const auto& frame : frames_)
             for (const auto& batch : frame.command_batches)
                 if (batch.recording.load(std::memory_order_acquire)) std::terminate();
-        if (preparation_generation_)
-            for (auto& use : program_input_uses_) use.source->detach(use);
         while (!producers_.empty()) producers_.pop_back();
     }
 

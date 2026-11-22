@@ -315,7 +315,7 @@ namespace lux::render
         auto retired_resources = entry->installJobResources(id, std::move(physical));
         subscriptions.publish();
         job.control.publishGeneration(*generation);
-        candidate->instance.installPreparation(id, job.control.executionGeneration());
+        candidate->programs.install(*entry, candidate->binding_identity);
         targetState(target).writer = id;
         if (previous && previous->target != target_id)
         {

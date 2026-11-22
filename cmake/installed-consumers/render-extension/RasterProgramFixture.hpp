@@ -368,25 +368,82 @@ namespace sdk_programs
     static_assert(ProgramLookup<&CodeStorage::lookup>);
     static_assert(!ProgramLookup<&CodeStorage::capture>);
 
-    // A separate runtime stream with no mutable inputs clears the column outside the draw viewport.
+    struct SetBackground final
+    {
+        static constexpr std::string_view name = "test.sdk.background.set";
+        struct Request final { ResourceInstanceId resource; std::uint32_t value; };
+        using Data = Request;
+        using Response = AckResponse;
+        static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+    };
+
+    struct BackgroundSettings final
+    {
+        using Descriptor = BackgroundSettings;
+        using Config = void;
+        using Ops = void;
+        using Commands = std::tuple<SetBackground>;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.sdk.background"}, 0, 0, {}, "Background program input.", EResourceDomain::DEVICE,
+            resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+        };
+
+        static RenderResult<std::unique_ptr<BackgroundSettings>> create(ResourceCreateContext&, ResourceInstanceId) noexcept
+        {
+            return std::make_unique<BackgroundSettings>();
+        }
+
+        static void set(BackgroundSettings& state, const SetBackground::Request& input, AckResponse& reply) noexcept
+        {
+            state.value = input.value;
+            state.revision.advance();
+            reply = {};
+        }
+
+        RenderResult<std::uint64_t> capture(std::uint32_t& output) const noexcept
+        {
+            output = value;
+            return revision.value();
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            static constexpr auto snapshot =
+                detail::StorageSnapshotOps::make<BackgroundSettings, std::uint32_t, &BackgroundSettings::capture, &BackgroundSettings::revision>();
+            static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
+            static const std::array commands{CommandBinding::declare<SetBackground, &set>()};
+            return makeResourceRegistration<Descriptor, BackgroundSettings, &create>(nullptr, &binding, commands);
+        }
+
+        std::uint32_t value = 0;
+        ProgramInputRevision revision;
+    };
+
     struct ClearBackground final
     {
-        using Configuration = GraphPassId;
-        using LinkedData = DrawStreamSlot;
-        static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& link) noexcept
+        struct Configuration final { GraphPassId pass; GraphStorageSnapshotId settings; };
+        struct LinkedData final { DrawStreamSlot stream; StorageSnapshotSlot<std::uint32_t> settings; };
+        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
-            return link.resolveDrawStream(pass);
+            auto stream = link.resolveDrawStream(input.pass);
+            if (!stream) return lux::cxx::unexpected(stream.error());
+            auto settings = link.resolveStorageSnapshot<std::uint32_t>(input.settings);
+            if (!settings) return lux::cxx::unexpected(settings.error());
+            return LinkedData{*stream, *settings};
         }
 
-        static RenderResult<void> buildPrograms(const LinkedData& stream, RasterProgramBuildContext& build) noexcept
+        static RenderResult<void> buildPrograms(const LinkedData& linked, RasterProgramBuildContext& build) noexcept
         {
             ++CodeStorage::clear_builds;
-            return build.setPrograms(stream, {}, {});
+            auto input = build.readStorage(linked.settings);
+            if (!input) return lux::cxx::unexpected(input.error());
+            if (input->value.get() == 2) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            return build.setPrograms(linked.stream, {}, {});
         }
 
-        static RenderResult<void> prepare(const LinkedData& stream, FramePreparation& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, FramePreparation& frame) noexcept
         {
-            return frame.setRasterStream(stream, {});
+            return frame.setRasterStream(linked.stream, {});
         }
     };
 

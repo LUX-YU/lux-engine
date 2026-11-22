@@ -658,10 +658,9 @@ namespace lux::render
             output_response.error = {kJobStopped};
             return;
         }
-        const auto program_error = job->execution->programError();
-        const auto& instance = job->execution->instance;
-        const bool report_program = program_error.type && !instance.hasExclusiveProgramInput();
-        output_response = {{}, instance.progress(), report_program ? program_error : job->last_run_error};
+        const auto program_error = job->execution->programs.reportableError();
+        const auto error = program_error.type ? program_error : job->last_run_error;
+        output_response = {{}, job->execution->instance.progress(), error};
     }
 
     void RenderServer::Impl::queryRenderStats(

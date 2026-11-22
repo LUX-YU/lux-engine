@@ -61,26 +61,41 @@ namespace lux::render::detail
         }
     };
 
+    struct SnapshotSource final
+    {
+        ResourceInstanceId id;
+        void* storage;
+        const StorageSnapshotOps* ops;
+    };
+
+    struct LinkedRasterStream final
+    {
+        std::uint32_t pass, list;
+    };
+
+    struct LinkedRasterBuild final
+    {
+        std::uint32_t input_owner;
+        RasterProgramBuilder::Build build = nullptr;
+        std::vector<LinkedRasterStream> streams;
+        std::vector<std::uint32_t> snapshots;
+
+        [[nodiscard]] bool link(const RasterProgramBuilder& builder, const extension_detail::PreparationCall& call) noexcept
+        {
+            build = builder.link(call.inputs.type(), call.methods->mapping_type);
+            return build != nullptr;
+        }
+    };
+
     struct LinkedPreparationProducer final
     {
         extension_detail::PreparationCall call;
         std::uint32_t workspace_slot = kGraphInvalidIndex;
-        RasterProgramBuilder::Build build_programs = nullptr;
+        std::uint32_t program_slot = kGraphInvalidIndex;
         PreparationRange inputs, outputs, inline_blocks;
-        struct RasterStream final
-        {
-            std::uint32_t pass, list;
-        };
-        std::vector<RasterStream> raster_streams;
+        std::vector<LinkedRasterStream> raster_streams;
         std::vector<std::uint32_t> buffers;
         PreparationRange snapshots;
-        std::vector<std::uint32_t> program_snapshots;
-
-        [[nodiscard]] bool linkPrograms(const RasterProgramBuilder& builder) noexcept
-        {
-            build_programs = builder.link(call.inputs.type(), call.methods->mapping_type);
-            return !builder || build_programs;
-        }
     };
 
     struct PreparedBufferCopy final
@@ -153,6 +168,7 @@ namespace lux::render::detail
         };
 
         std::vector<DrawBinding> draw_resource_bindings;
+        std::vector<LinkedRasterBuild> raster_builds;
         std::uint32_t workspace_count = 0;
         std::vector<LinkedPreparationProducer> producers;
     };

@@ -7,15 +7,13 @@
 
 namespace lux::render::detail
 {
-    struct BoundDrawResource;
-
     // The build call borrows only its granted inputs. The returned native recipe owns its bytes.
     struct RasterProgramBuildData final
     {
         struct Stream final
         {
             std::uint32_t pass;
-            std::span<const BoundDrawResource> sources{};
+            std::span<const ResourceInstanceId> sources{};
             std::optional<std::vector<RuntimeRasterProgram>> programs{};
             std::vector<rdesc::ShaderProgramArtifact> shaders;
             bool ready = false;
@@ -63,12 +61,6 @@ namespace lux::render::detail
             std::unique_ptr<DynamicRasterPrograms> candidate;
         };
 
-        struct Selection final
-        {
-            std::uint32_t producer;
-            RasterProgramBuilder::Mapping draw_mapping;
-        };
-
         [[nodiscard]] exec::task<RenderResult<void>> compile(execution::CpuScheduler) noexcept;
         [[nodiscard]] bool publishReturnedUses() noexcept;
 
@@ -83,7 +75,8 @@ namespace lux::render::detail
         };
 
         std::vector<Publication> pending_publications;
-        std::vector<Selection> selections;
+        std::uint32_t build = kGraphInvalidIndex;
+        RasterProgramBuilder::Mapping mapping{nullptr, nullptr};
         std::vector<Stream> streams;
         stdexec::inplace_stop_source stop;
         std::optional<RenderError> returned;

@@ -432,7 +432,7 @@ int main(int argc, char** argv)
     for (std::uint32_t i = 0; i < jobs.size(); ++i)
     {
         const auto view = call<CreateView>(client, commands, {scene}).view;
-        const auto effect = call<CreateEffect>(client, commands, readerEffect(i == 0)).effect;
+        const auto effect = createPreparedEffect(client, commands, device, readerEffect(i == 0));
         const auto target = call<CreateTarget>(
             client, commands, {device, {extent, extent, rdesc::ETextureFormat::RGBA8_UNORM}}
         ).target;

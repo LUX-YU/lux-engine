@@ -1,18 +1,16 @@
 #pragma once
 
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <algorithm>
 #include <memory>
-#include <optional>
 #include <tuple>
 #include <vector>
 
-
 namespace lux::render::runtime_detail
 {
-
     struct RenderEffect final
     {
         std::unique_ptr<const EffectGraph> source;
@@ -44,12 +42,20 @@ namespace lux::render::runtime_detail
             return route != command_routes.end() && route->key() == key ? &route->call : nullptr;
         }
 
-        // The Server registers pending Starts and adopted executions against this owner.
-        [[nodiscard]] RenderResult<void> retainExecution() noexcept;
-        void releaseExecution() noexcept;
-        [[nodiscard]] bool hasExecutions() const noexcept { return execution_count_ != 0; }
+        EffectOutputDesc output;
+        DeviceSessionId preparing_device{};
+        struct DeviceGraph final
+        {
+            DeviceSessionId device;
+            std::unique_ptr<const compiled::RenderGraph> graph;
+        };
+        std::vector<DeviceGraph> device_graphs;
 
-    private:
-        std::uint32_t execution_count_ = 0;
+        [[nodiscard]] const compiled::RenderGraph* graphForDevice(DeviceSessionId device) const & noexcept
+        {
+            const auto found = std::ranges::find(device_graphs, device, &DeviceGraph::device);
+            return found == device_graphs.end() ? nullptr : found->graph.get();
+        }
+        const compiled::RenderGraph* graphForDevice(DeviceSessionId) const && = delete;
     };
 } // namespace lux::render::runtime_detail

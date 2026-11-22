@@ -1274,7 +1274,7 @@ int main(int argc, char** argv)
         }
         CHECK(edit.setOutput("bytes", edit.pinId(capture, gbuffer_bytes)));
         CHECK(edit.commit());
-        const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        const auto effect = createPreparedEffect(*client, commands, session, std::move(request));
         const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
         call<StartRenderJob>(*client, commands, {session, job, target, binding});
         if (profile_frames)
@@ -1437,7 +1437,7 @@ int main(int argc, char** argv)
         CHECK(edit.setOutput("pixels", edit.pinId(color_capture, ColorCapture::pixels)));
         CHECK(edit.setOutput("commands", edit.pinId(command_capture, DeferredCommandCapture::pixels)));
         CHECK(edit.commit());
-        const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        const auto effect = createPreparedEffect(*client, commands, session, std::move(request));
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         const ViewRequest view_scope{scene, view};
@@ -2272,7 +2272,7 @@ int main(int argc, char** argv)
     EffectGraphEdit invalid_edit{*invalid_effect_request.graph};
     const auto invalid_nodes = addDeferredNodes(invalid_edit, true, "");
     CHECK(invalid_edit.commit());
-    const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid_effect_request)).effect;
+    const auto invalid_effect = createPreparedEffect(*client, commands, session, std::move(invalid_effect_request));
     auto invalid_binding = mesh_binding();
     for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
         invalid_binding.resources.push_back({std::string{Lighting::light_bindings[i]}, light_storage, i});
@@ -2335,7 +2335,7 @@ int main(int argc, char** argv)
         CHECK(edit.connect(edit.pinId(raster, MeshRaster::depth), edit.pinId(capture, MeshRaster::depth)));
         CHECK(edit.setOutput("depth", edit.pinId(capture, DepthCoverageCapture::pixels)));
         CHECK(edit.commit());
-        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        auto effect = createPreparedEffect(*client, commands, session, std::move(request));
         auto view = call<CreateView>(*client, commands, {scene}).view;
         auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         auto binding = mesh_binding();

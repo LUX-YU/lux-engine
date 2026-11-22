@@ -58,50 +58,7 @@ namespace lux::render::detail
         return entry;
     }
 
-    DeviceEntry::~DeviceEntry() noexcept
-    {
-        if (!variants_.empty()) std::terminate();
-    }
-
-    EffectDeviceVariant* DeviceEntry::findVariant(
-        EffectId effect, const EffectOutputDesc& target
-    ) noexcept
-    {
-        const auto found = std::ranges::find_if(variants_, [&](const auto& variant) noexcept
-        {
-            return !variant.failure.type && variant.effect == effect && variant.target == target;
-        });
-        return found != variants_.end() ? &*found : nullptr;
-    }
-
-    EffectDeviceVariant& DeviceEntry::beginVariant(
-        EffectId effect, const EffectOutputDesc& target
-    ) noexcept
-    {
-        const auto id = variants_.emplace(EffectDeviceVariant{.effect = effect, .target = target});
-        auto& variant = *variants_.find(id);
-        variant.id = id;
-        return variant;
-    }
-
-    const EffectDeviceVariant& DeviceEntry::readyVariant(DeviceVariantId id) const noexcept
-    {
-        const auto* variant = variants_.find(id);
-        if (!variant || !variant->plan) std::terminate();
-        return *variant;
-    }
-
-    void DeviceEntry::releaseVariant(DeviceVariantId id) noexcept
-    {
-        auto* variant = variants_.find(id);
-        if (!variant || !variant->readers) std::terminate();
-        if (--variant->readers == 0)
-        {
-            const bool finished = variant->plan || variant->failure.type;
-            if (!finished || !variant->waiters.empty()) std::terminate();
-            variants_.erase(id);
-        }
-    }
+    DeviceEntry::~DeviceEntry() noexcept = default;
 
     DeviceEntry::UniformPoolRecord::UniformPoolRecord(
         EffectId owner, graph::NodeId source_node, std::string_view block_name, DeviceSession& device,
@@ -146,7 +103,6 @@ namespace lux::render::detail
 
     void DeviceEntry::clearUniformPools() noexcept
     {
-        if (!variants_.empty()) std::terminate();
         uniform_pools_.clear();
     }
 
@@ -208,7 +164,7 @@ namespace lux::render::detail
     bool DeviceEntry::hasBorrows() const noexcept
     {
         const bool has_uploads = upload_pending || (uploader_ && uploader_->hasPendingTransfers());
-        return pending_starts || has_uploads || resources_.hasBorrows() || scopedResourceBorrows() ||
+        return has_uploads || resources_.hasBorrows() || scopedResourceBorrows() ||
             round.operation || !nativeIdle();
     }
 } // namespace lux::render::detail

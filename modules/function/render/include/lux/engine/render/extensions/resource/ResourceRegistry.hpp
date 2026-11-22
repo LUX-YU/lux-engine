@@ -25,7 +25,7 @@ namespace lux::render
     {
         class RasterMeshInstanceStorage;
         class RenderGraphInstance;
-        struct TargetReservation;
+        struct ExecutionBindingId;
         struct GraphBindingTag;
     }
     namespace runtime_detail { struct BoundStorageProjection; }
@@ -168,18 +168,18 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<cxx::SlotKey<detail::GraphBindingTag>> bindGraphProjection(
             const runtime_detail::BoundStorageProjection&,
-            const detail::TargetReservation&,
+            const detail::ExecutionBindingId&,
             detail::RenderGraphInstance&,
             bool may_access
         ) noexcept;
         void unbindGraphProjection(
-            const runtime_detail::BoundStorageProjection&, const detail::TargetReservation&
+            const runtime_detail::BoundStorageProjection&, const detail::ExecutionBindingId&
         ) noexcept;
 
         struct GraphBindingUse final
         {
             RenderJobId job;
-            std::uint64_t start_serial;
+            std::uint64_t generation;
             GraphResourceId resource;
             detail::RenderGraphInstance* instance;
             std::optional<GraphBufferRange> writer;

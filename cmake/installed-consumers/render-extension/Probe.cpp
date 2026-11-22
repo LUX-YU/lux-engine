@@ -955,6 +955,8 @@ int main(int argc, char** argv)
     );
     CHECK(!target.error.type && !alternate.error.type && !job.error.type);
     const auto start = command_id(StartRenderJob::name);
+    CHECK(call<StartRenderJob>(client, start, {session, job.job, target.target}).error.type == kJobState);
+    CHECK(!call<PrepareEffect>(client, command_id(PrepareEffect::name), {effect.effect, session}).error.type);
     CHECK(call<StartRenderJob>(client, start, {session, job.job, target.target}).error.type == kStorageIdentity);
     JobBinding binding;
     binding.resources = {{std::string{readback_binding}, resources.front()}};
@@ -962,7 +964,7 @@ int main(int argc, char** argv)
     CHECK(wrong_owner.error.type == kStorageMismatch);
     binding.resources.front().resource = readback.resource_id;
     CHECK(call<StartRenderJob>(client, start, {session, job.job, alternate.target, binding}).error.type ==
-        kRuntimeUnsupported);
+        kDeviceArgument);
     CHECK(!call<StartRenderJob>(client, start, {session, job.job, target.target, binding}).error.type);
     const auto render = command_id(RequestRenderJob::name);
     std::array<std::uint32_t, readback_frames> slots;

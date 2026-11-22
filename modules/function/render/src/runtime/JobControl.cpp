@@ -47,49 +47,30 @@ namespace lux::render::detail
 
     JobControl::~JobControl() noexcept
     {
-        const bool has_live_operations = starting_ || admitted_ || requested_;
+        const bool has_live_operations = admitted_ || requested_;
         if (has_live_operations)
         {
             std::terminate();
         }
     }
 
-    RenderResult<std::uint64_t> JobControl::beginStart(TargetId target, bool rebind) noexcept
+    RenderResult<std::uint64_t> JobControl::reserveGeneration(bool rebind) noexcept
     {
-        if (target.isNull()) return cxx::unexpected(RenderError{kJobState});
-        if (starting_ || admitted_) return cxx::unexpected(RenderError{kJobBusy});
+        if (admitted_ || requested_) return cxx::unexpected(RenderError{kJobBusy});
         if (running_ != rebind) return cxx::unexpected(RenderError{kJobState});
-        if (start_serial_ == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        starting_.emplace(target, ++start_serial_);
-        return start_serial_;
+        if (last_generation_ == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        return ++last_generation_;
     }
 
-    bool JobControl::canPublishStart(std::uint64_t serial) const noexcept
+    void JobControl::publishGeneration(std::uint64_t generation) noexcept
     {
-        return starting_ && starting_->serial == serial && !starting_->cancelled;
-    }
-
-    RenderResult<void> JobControl::publishStart(std::uint64_t serial) noexcept
-    {
-        if (!canPublishStart(serial)) return cxx::unexpected(RenderError{kJobStopped});
-        starting_.reset();
-        execution_generation_ = serial;
+        if (generation != last_generation_ || generation <= execution_generation_) std::terminate();
+        execution_generation_ = generation;
         running_ = true;
-        return {};
     }
-
-    void JobControl::finishStart(std::uint64_t serial) noexcept
-    {
-        if (starting_ && starting_->serial == serial) starting_.reset();
-    }
-
 
     void JobControl::stop() noexcept
     {
-        if (starting_)
-        {
-            starting_->cancelled = true;
-        }
         running_ = false;
         rejectUnadmitted(RenderError{kJobStopped});
     }
@@ -141,7 +122,7 @@ namespace lux::render::detail
 
     bool JobControl::canRemove() const noexcept
     {
-        return !running_ && !starting_ && !admitted_ && !requested_;
+        return !running_ && !admitted_ && !requested_;
     }
 
     std::optional<JobControl::Completion>

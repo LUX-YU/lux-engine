@@ -580,9 +580,10 @@ static void verifyTonemapOutput(
     CreateEffectRequest request;
     request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit edit{*request.graph};
+    request.output = output;
     const auto tone = addOutputTone(edit, false, encoding, "2");
     CHECK(edit.commit());
-    const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+    const auto effect = createPreparedEffect(client, commands, session, std::move(request));
     const auto view = call<CreateView>(client, commands, {scene}).view;
     const auto target = call<CreateTarget>(client, commands, {session, {64, 64, output.format}}).target;
     const auto attached = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
@@ -604,7 +605,7 @@ static void verifyTonemapOutput(
     const auto other_attachment =
         startRenderJob(client, commands, session, other_scene, other_view, other_target, effect, binding);
     CHECK(resource != other_resource);
-    CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kRuntimeState);
+    CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kDeviceBusy);
     const auto compiled = call<QueryRenderStats>(client, commands, {}).compiled_graphs;
     const auto pipeline_layouts = call_capture_counts[1].load();
     const auto pipelines = call_capture_counts[2].load();
@@ -620,7 +621,7 @@ static void verifyTonemapOutput(
     CHECK(call<QueryRenderStats>(client, commands, {}).compiled_graphs == compiled);
     CHECK(call_capture_counts[1].load() == pipeline_layouts && call_capture_counts[2].load() == pipelines);
     stopAndRemoveJob(client, commands, attached);
-    CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kRuntimeState);
+    CHECK(call<RemoveEffect>(client, commands, {effect}, false).error.type == kDeviceBusy);
     stopAndRemoveJob(client, commands, other_attachment);
     call<RemoveEffect>(client, commands, {effect});
     const auto readback_type = GraphCaptureDescriptor::descriptor.type;
@@ -686,7 +687,11 @@ static void verifyTargetInput(
     const auto target = call<CreateTarget>(client, commands, {session, {64, 64, ldr_format}}).target;
     auto producer = existing_effect;
     if (producer.isNull())
-        producer = call<CreateEffect>(client, commands, clearOutputRequest(true)).effect;
+    {
+        auto request = clearOutputRequest(true);
+        request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
+        producer = createPreparedEffect(client, commands, session, std::move(request));
+    }
 
     CapturedPixels pixels;
     CreateEffectRequest consume;
@@ -694,7 +699,7 @@ static void verifyTargetInput(
     EffectGraphEdit edit{*consume.graph};
     addOutputTone(edit, true, EColorEncoding::LINEAR, "0");
     CHECK(edit.commit());
-    const auto consumer = call<CreateEffect>(client, commands, std::move(consume)).effect;
+    const auto consumer = createPreparedEffect(client, commands, session, std::move(consume));
     const auto writer =
         call<CreateRenderJob>(client, commands, {scene, producer_view, producer, EJobCadence::REQUESTED}).job;
     call<StartRenderJob>(client, commands, {session, writer, source, std::move(writer_binding)});
@@ -2479,6 +2484,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         }
         return std::pair{paired_before, std::move(paired)};
     };
+    request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
+    tone_request.output.sampled = true;
     const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
     const auto tone_effect = call<CreateEffect>(*client, commands, std::move(tone_request)).effect;
     call<SetToneMappingExposure>(*client, commands, {tone_effect, tone_left_node, -2.F});
@@ -2505,85 +2512,66 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto peer_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto first = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     const auto peer = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    const auto start_command = std::ranges::find(commands.commands, StartRenderJob::name, &CommandInfo::name);
-    CHECK(start_command != commands.commands.end());
-    const auto send_start = [&](RenderJobId job, TargetId output)
+    auto prepare_client = ipc::IpcCore::instance().createRequester(config.channel_name);
+    CHECK(prepare_client);
+    const auto begin_prepare = [&](EffectId preparing, DeviceSessionId selected_device)
     {
-        ipc::IpcMessage message;
-        message.emplace<StartRenderJob::Request>(StartRenderJob::Request{device, job, output});
-        const auto request_id = nextSceneRequest();
-        CHECK(client->trySend(commandTag(start_command->id), request_id, message));
-        return request_id;
-    };
-    const auto start_pair = [&](RenderJobId start_first, RenderJobId start_peer, unsigned expected_builds)
-    {
+        const auto before = node_builds.load();
         node_build_gate.store(ENodeBuildGate::PAUSE);
-        const auto first_request = send_start(start_first, target);
+        auto response = std::async(std::launch::async, [&, preparing, selected_device]
+        {
+            return call<PrepareEffect>(*prepare_client, commands, {preparing, selected_device}, false);
+        });
         const auto deadline = Clock::now() + 10s;
-        while (node_builds.load() == expected_builds)
+        while (node_builds.load() == before)
         {
             CHECK(Clock::now() < deadline);
             std::this_thread::yield();
         }
-        const auto peer_request = send_start(start_peer, peer_target);
-        // A no-op resize reports Busy once the second Start reserves the target.
-        for (;;)
-        {
-            const auto probe = call<ResizeTarget>(*client, commands, {peer_target, peer_desc}, false);
-            if (probe.error.type == kDeviceBusy) break;
-            CHECK(!probe.error.type && Clock::now() < deadline);
-        }
-        return std::array{first_request, peer_request};
+        CHECK(call<PrepareEffect>(*client, commands, {preparing, selected_device}, false).error.type == kDeviceBusy);
+        return response;
     };
-    const auto finish_pair = [&](const std::array<std::uint64_t, 2>& requests, ENodeBuildGate outcome)
+    const auto release_prepare = [](ENodeBuildGate outcome)
     {
         node_build_gate.store(outcome, std::memory_order_release);
         node_build_gate.notify_all();
-        std::array<std::optional<RenderError>, 2> results;
-        auto& notifications = ipc::IpcCore::instance();
-        const auto deadline = Clock::now() + 10s;
-        while (!results[0] || !results[1])
-        {
-            const auto epoch = notifications.workEpoch();
-            ipc::IpcMessage message;
-            std::uint64_t correlation = 0;
-            const auto status = client->tryReceive(correlation, message);
-            CHECK(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
-            if (status != ipc::EIpcReceive::RECEIVED)
-            {
-                notifications.waitUntil(epoch, deadline);
-                continue;
-            }
-            const auto found = std::ranges::find(requests, correlation);
-            CHECK(found != requests.end());
-            auto& result = results[found - requests.begin()];
-            CHECK(!result);
-            result = message.get<AckResponse>().error;
-        }
-        return std::array{*results[0], *results[1]};
     };
-
-    const auto failed = finish_pair(start_pair(first, peer, 0), ENodeBuildGate::FAIL);
-    CHECK(failed[0].type == kFrameContract && failed[1] == failed[0]);
-    CHECK(node_builds.load() == 1);
-
-    const auto retry = start_pair(first, peer, 1);
+    CHECK(call<StartRenderJob>(*client, commands, {device, first, target}, false).error.type == kJobState);
+    auto failed = begin_prepare(effect, device);
+    call<ResizeTarget>(*client, commands, {peer_target, peer_desc});
+    release_prepare(ENodeBuildGate::FAIL);
+    CHECK(failed.get().error.type == kFrameContract && node_builds.load() == 1);
+    auto retry = begin_prepare(effect, device);
     call<StopRenderJob>(*client, commands, first);
-    const auto started = finish_pair(retry, ENodeBuildGate::PASS);
-    CHECK(started[0].type == kJobStopped && !started[1].type);
-    CHECK(node_builds.load() == 3);
+    release_prepare(ENodeBuildGate::PASS);
+    CHECK(!retry.get().error.type && node_builds.load() == 3);
+    call<PrepareEffect>(*client, commands, {effect, device});
     call<StartRenderJob>(*client, commands, {device, first, target});
+    call<StartRenderJob>(*client, commands, {device, peer, peer_target});
     renderFrame(*client, commands, first);
     renderFrame(*client, commands, peer);
     verifyTargetInput(*client, commands, device, scene, {}, effect);
     CHECK(node_builds.load() == 3);
+    const auto other_device = call<CreateDeviceSession>(*client, commands, options).device;
+    auto other_prepare = begin_prepare(effect, other_device);
+    call<PrepareEffect>(*client, commands, {effect, device});
+    CHECK(call<RemoveDeviceSession>(*client, commands, other_device, false).error.type == kDeviceBusy);
+    renderFrame(*client, commands, first);
+    release_prepare(ENodeBuildGate::FAIL);
+    CHECK(other_prepare.get().error.type == kFrameContract);
+    node_build_gate.store(ENodeBuildGate::PASS);
+    call<PrepareEffect>(*client, commands, {effect, other_device});
+    call<RemoveDeviceSession>(*client, commands, other_device);
+    renderFrame(*client, commands, peer);
+
     CreateEffectRequest imported_request;
     imported_request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit imported_edit{*imported_request.graph};
     const auto imported_node = take(imported_edit.addNode(capability, imported_selection, "producer"));
     CHECK(imported_edit.setOutput("display", imported_edit.pinId(imported_node, node_color), true));
     CHECK(imported_edit.commit());
-    const auto imported_effect = call<CreateEffect>(*client, commands, std::move(imported_request)).effect;
+    imported_request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
+    const auto imported_effect = createPreparedEffect(*client, commands, device, std::move(imported_request));
     const auto imported_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto imported_job =
         call<CreateRenderJob>(*client, commands, {scene, view, imported_effect, EJobCadence::REQUESTED}).job;
@@ -2617,7 +2605,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     ).error.type == kCommandContract);
     call<StartRenderJob>(*client, commands, {device, imported_job, imported_target, bound(target, target)});
     const auto imported_builds = target_graph_builds.load();
-    CHECK(call<RemoveTarget>(*client, commands, target, false).error.type == kRuntimeState);
+    CHECK(call<RemoveTarget>(*client, commands, target, false).error.type == kDeviceBusy);
     const TargetDesc resized_desc{128, 64, hdr, 1, ETargetKind::OFFSCREEN, true};
     const auto resized = call<ResizeTarget>(*client, commands, {target, resized_desc});
     call<SetTargetActive>(*client, commands, {target, true, resized.epoch});
@@ -2628,7 +2616,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     EffectGraphEdit fanout_edit{*fanout_request.graph};
     addOutputTone(fanout_edit, true, EColorEncoding::LINEAR, "0");
     CHECK(fanout_edit.commit());
-    const auto fanout_effect = call<CreateEffect>(*client, commands, std::move(fanout_request)).effect;
+    const auto fanout_effect = createPreparedEffect(*client, commands, device, std::move(fanout_request));
     const auto fanout_view = call<CreateView>(*client, commands, {scene}).view;
     const auto fanout_target = call<CreateTarget>(*client, commands, {
         device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
@@ -2680,7 +2668,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto dim_node = take(dim_edit.addNode(capability, selected, "dim"));
     CHECK(dim_edit.setOutput("display", dim_edit.pinId(dim_node, node_color), true));
     CHECK(dim_edit.commit());
-    const auto dim_effect = call<CreateEffect>(*client, commands, std::move(dim_request)).effect;
+    dim_request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
+    const auto dim_effect = createPreparedEffect(*client, commands, device, std::move(dim_request));
     const auto dim_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto dim_job = startRenderJob(*client, commands, device, scene, view, dim_target, dim_effect);
     renderFrame(*client, commands, dim_job);
@@ -2704,6 +2693,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         CreateEffectRequest request;
         request.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*request.graph};
+        request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
         const auto node = take(edit.addNode(storage_capability, selection, std::string{arguments}));
         CHECK(edit.setOutput("readback", edit.pinId(node, node_bytes), false));
         CHECK(edit.commit());
@@ -2712,6 +2702,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto storage_effect = make_storage_effect(storage_selection, "");
     const auto wrong_shape_effect = make_storage_effect(storage_selection, "wrong-shape");
     const auto wrong_type_effect = make_storage_effect(storage_selection, "wrong-type");
+    for (auto selected : {storage_effect, wrong_shape_effect, wrong_type_effect})
+        call<PrepareEffect>(*client, commands, {selected, device});
     const auto make_storage_job = [&](EffectId selected_effect)
     {
         return call<CreateRenderJob>(*client, commands, {scene, view, selected_effect, EJobCadence::REQUESTED}).job;
@@ -2763,7 +2755,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<StartRenderJob>(
         *client, commands, {device, other_storage_job, other_storage_output, storage_binding(other_owner, other_owner)}
     );
-    CHECK(storage_node_builds.load() == before_valid_storage + 1);
+    CHECK(storage_node_builds.load() == before_valid_storage);
     CHECK(call<RemoveView>(*client, commands, {scene, owner_view}, false).error.type == kDeviceBusy);
     const auto storage_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
     const auto other_receipt = call<RequestRenderJob>(*client, commands, {other_storage_job});
@@ -2771,19 +2763,16 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<RebindRenderJobEffect>(
         *client, commands, {device, storage_job, storage_effect, storage_output, storage_binding(owner, other_owner)}
     );
-    CHECK(storage_node_builds.load() == before_valid_storage + 1);
+    CHECK(storage_node_builds.load() == before_valid_storage);
     const auto distinct_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
     stopAndRemoveJob(*client, commands, storage_job);
     const auto shared_write = make_storage_effect(storage_selection, "shared-write");
-    const auto shared_write_job = make_storage_job(shared_write);
-    CHECK(call<StartRenderJob>(
-        *client, commands, {device, shared_write_job, storage_output, storage_binding(owner, other_owner)}, false
-    ).error.type == kGraphInvalidDescriptor);
-    call<RemoveRenderJob>(*client, commands, {shared_write_job});
+    CHECK(call<PrepareEffect>(*client, commands, {shared_write, device}, false).error.type == kGraphInvalidDescriptor);
     call<RemoveEffect>(*client, commands, {shared_write});
     for (const auto mode : {"ambiguous-write", "mixed-boundary"})
     {
         const auto ambiguous = make_storage_effect(storage_selection, mode);
+        call<PrepareEffect>(*client, commands, {ambiguous, device});
         const auto ambiguous_job = make_storage_job(ambiguous);
         CHECK(call<StartRenderJob>(
             *client, commands, {device, ambiguous_job, storage_output, storage_binding(owner, owner)}, false
@@ -2847,12 +2836,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     for (const auto [mode, error] : invalid_preparations)
     {
         const auto invalid = make_storage_effect(producer_selection, mode);
-        const auto invalid_job = make_storage_job(invalid);
-        const auto response = call<StartRenderJob>(
-            *client, commands, {device, invalid_job, producer_target, producer_binding(first_data)}, false
-        );
-        CHECK(response.error.type == error);
-        call<RemoveRenderJob>(*client, commands, {invalid_job});
+        CHECK(call<PrepareEffect>(*client, commands, {invalid, device}, false).error.type == error);
         call<RemoveEffect>(*client, commands, {invalid});
     }
     const auto source_before = source_links.load();
@@ -2867,10 +2851,6 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto peer_view_data = make_resource(producer_peer_view, kViewParameterResourceName);
     auto first_binding = producer_binding(first_data);
     first_binding.view_parameters = peer_view_data;
-    const auto mismatched = call<StartRenderJob>(
-        *client, commands, {device, prepared_job, producer_target, first_binding}, false
-    );
-    CHECK(mismatched.error.type == kStorageMismatch);
     first_binding.view_parameters = first_view_data;
     auto peer_binding = producer_binding(peer_data);
     peer_binding.view_parameters = peer_view_data;
@@ -2880,12 +2860,17 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<ViewParameterCommands::Update>(*client, commands, {first_view_data, std::span{&first_view_parameters, 1}});
     call<ViewParameterCommands::Update>(*client, commands, {peer_view_data, std::span{&peer_view_parameters, 1}});
     reject_sink_after_link = true;
-    const auto failed_link = call<StartRenderJob>(
-        *client, commands, {device, prepared_job, producer_target, first_binding}, false
-    );
+    const auto failed_link = call<PrepareEffect>(*client, commands, {producer_effect, device}, false);
     CHECK(failed_link.error.type == kGraphInvalidDescriptor && !reject_sink_after_link.load());
     CHECK(source_links.load() == source_before + 1 && sink_links.load() == sink_before + 1);
     CHECK(!source_instances.load() && producer_source_lifetime.expired());
+    call<PrepareEffect>(*client, commands, {producer_effect, device});
+    first_binding.view_parameters = peer_view_data;
+    const auto mismatched = call<StartRenderJob>(
+        *client, commands, {device, prepared_job, producer_target, first_binding}, false
+    );
+    CHECK(mismatched.error.type == kStorageMismatch);
+    first_binding.view_parameters = first_view_data;
     call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, first_binding});
     reject_sink_workspace = true;
     const auto rejected_workspace = call<StartRenderJob>(
@@ -2944,6 +2929,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     std::puts("PRODUCER PASS: joint liveness, shared prototype, failure propagation, and native View parameter readback");
 
     const auto stream_effect = make_storage_effect(stream_selection, "");
+    call<PrepareEffect>(*client, commands, {stream_effect, device});
     const auto stream_view = call<CreateView>(*client, commands, {scene}).view;
     const auto stream_data = make_resource(stream_view, EffectCaptureDescriptor::descriptor.type);
     const auto stream_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
@@ -3057,6 +3043,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     std::puts("RASTER STREAM PASS: dynamic program ABI, stale revision, replaced slots, resize and native pixels");
 
     const auto layer_effect = make_storage_effect(runtime_selection, "");
+    call<PrepareEffect>(*client, commands, {layer_effect, device});
     const auto layer_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto check_runtime_layers = [&](std::uint32_t count, std::size_t capture)
     {
@@ -3167,6 +3154,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto tone_view_b = call<CreateView>(*client, commands, {scene}).view;
     const auto tone_bytes_a = make_resource(tone_view_a, EffectCaptureDescriptor::descriptor.type);
     const auto tone_bytes_b = make_resource(tone_view_b, EffectCaptureDescriptor::descriptor.type);
+    call<PrepareEffect>(*client, commands, {tone_effect, device});
     const auto tone_job_a = make_storage_job(tone_effect);
     const auto tone_job_b = make_storage_job(tone_effect);
     call<StartRenderJob>(*client, commands, {device, tone_job_a, tone_target_a, producer_binding(tone_bytes_a)});
@@ -3221,7 +3209,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     ));
     CHECK(uniform_edit.setOutput("readback", uniform_edit.pinId(uniform_node, node_bytes), false));
     CHECK(uniform_edit.commit());
-    const auto uniform_effect = call<CreateEffect>(*client, commands, std::move(uniform_request)).effect;
+    uniform_request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
+    const auto uniform_effect = createPreparedEffect(*client, commands, device, std::move(uniform_request));
     call<SetTestUniformBlock>(*client, commands, {uniform_effect, uniform_node, 0x41414141});
     const auto uniform_view_a = call<CreateView>(*client, commands, {scene}).view;
     const auto uniform_view_b = call<CreateView>(*client, commands, {scene}).view;
@@ -3229,7 +3218,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto uniform_bytes_b = make_resource(uniform_view_b, EffectCaptureDescriptor::descriptor.type);
     const auto uniform_target_a = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     auto distinct_target = peer_desc;
-    distinct_target.format = rdesc::ETextureFormat::RGBA8_UNORM;
+    distinct_target.width *= 2;
     const auto uniform_target_b = call<CreateTarget>(*client, commands, {device, distinct_target}).target;
     const auto uniform_job_a = make_storage_job(uniform_effect);
     const auto uniform_job_b = make_storage_job(uniform_effect);
@@ -3377,18 +3366,14 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(shutdown_edit.setOutput("display", shutdown_edit.pinId(shutdown_node, node_color), true));
     CHECK(shutdown_edit.commit());
     const auto shutdown_effect = call<CreateEffect>(*client, commands, std::move(shutdown_request)).effect;
-    const auto shutdown_first =
-        call<CreateRenderJob>(*client, commands, {scene, view, shutdown_effect, EJobCadence::REQUESTED}).job;
-    const auto shutdown_peer =
-        call<CreateRenderJob>(*client, commands, {scene, view, shutdown_effect, EJobCadence::REQUESTED}).job;
-    const auto shutdown = start_pair(shutdown_first, shutdown_peer, node_builds.load());
+    auto shutdown = begin_prepare(shutdown_effect, device);
     server->stop();
-    const auto cancelled = finish_pair(shutdown, ENodeBuildGate::PASS);
-    CHECK(cancelled[0].type == kCommandCancelled && cancelled[1].type == kCommandCancelled);
+    release_prepare(ENodeBuildGate::PASS);
+    CHECK(shutdown.get().error.type == kCommandCancelled);
     render.join();
     CHECK(server_result);
     CHECK(server->stats().validation_errors == 0);
-    std::printf("EFFECT GRAPH PASS backend=%s pending compile sharing, stopped leader, retry, shutdown and pixel readback\n",
+    std::printf("EFFECT GRAPH PASS backend=%s explicit prepare, concurrent rejection, retry, shutdown and pixel readback\n",
         d3d12 ? "D3D12" : "Vulkan");
 }
 
@@ -3558,19 +3543,18 @@ static void preparedBuffers(bool d3d12)
     {
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     };
-    const auto missing = start(make_effect("missing"));
-    const auto duplicate = start(make_effect("duplicate"));
-    const auto wrong_type = start(make_effect("wrong-type"));
-    CHECK(call<StartRenderJob>(*client, commands, {device, missing, target, binding}, false).error.type ==
-          kGraphUndefinedRead);
-    CHECK(call<StartRenderJob>(*client, commands, {device, duplicate, target, binding}, false).error.type ==
-          kGraphAmbiguousProducer);
-    CHECK(call<StartRenderJob>(*client, commands, {device, wrong_type, target, binding}, false).error.type ==
-          kStorageMismatch);
-    call<RemoveRenderJob>(*client, commands, missing);
-    call<RemoveRenderJob>(*client, commands, duplicate);
-    call<RemoveRenderJob>(*client, commands, wrong_type);
+    for (auto [mode, error] : {std::pair{"missing", kGraphUndefinedRead},
+                               std::pair{"duplicate", kGraphAmbiguousProducer}})
+    {
+        const auto invalid = make_effect(mode);
+        CHECK(call<PrepareEffect>(*client, commands, {invalid, device}, false).error.type == error);
+        call<RemoveEffect>(*client, commands, {invalid});
+    }
+    const auto wrong_effect = make_effect("wrong-type");
+    CHECK(call<PrepareEffect>(*client, commands, {wrong_effect, device}, false).error.type == kStorageMismatch);
+    call<RemoveEffect>(*client, commands, {wrong_effect});
     const auto effect = make_effect("");
+    call<PrepareEffect>(*client, commands, {effect, device});
     const auto job = start(effect);
     call<StartRenderJob>(*client, commands, {device, job, target, binding});
     const auto published_builds = graph_builds.load();
@@ -3948,7 +3932,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         const auto node = take(edit.addNode(definition, selection, std::move(mode)));
         CHECK(edit.setOutput("bytes", edit.pinId(node, node_bytes)));
         CHECK(edit.commit());
-        const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        const auto effect = createPreparedEffect(*client, commands, device, std::move(request));
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     };
     JobBinding binding;
@@ -4441,7 +4425,7 @@ static void meshRasterStream(bool d3d12)
     const auto node = take(edit.addNode(definition, implementation_id));
     CHECK(edit.setOutput("bytes", edit.pinId(node, node_bytes)));
     CHECK(edit.commit());
-    const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+    const auto effect = createPreparedEffect(*client, commands, device, std::move(request));
     const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     JobBinding binding;
     binding.resources = {
@@ -4770,7 +4754,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         instances, {expected_mesh, material, 0, transform, true, false}
     }).instance;
 
-    const auto create_job = [&](std::string mode)
+    const auto create_effect = [&](std::string mode)
     {
         CreateEffectRequest request;
         request.graph = std::make_unique<EffectGraph>();
@@ -4789,7 +4773,12 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         }
         CHECK(edit.setOutput("bytes", edit.pinId(node, node_bytes)));
         CHECK(edit.commit());
-        const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        return call<CreateEffect>(*client, commands, std::move(request)).effect;
+    };
+    const auto create_job = [&](std::string mode)
+    {
+        const auto effect = create_effect(std::move(mode));
+        call<PrepareEffect>(*client, commands, {effect, device});
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     };
     const auto transform_role = paged ? ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
@@ -4860,10 +4849,9 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         {"properties", instances, static_cast<std::uint32_t>(properties_role)}
     };
     if (!paged) binding.resources.push_back({"alive", instances, static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)});
-    const auto bad = create_job(paged ? "paged-write" : "write");
-    CHECK(call<StartRenderJob>(*client, commands, {device, bad, target, binding}, false).error.type ==
-        kGraphInvalidDescriptor);
-    call<RemoveRenderJob>(*client, commands, {bad});
+    const auto bad = create_effect(paged ? "paged-write" : "write");
+    CHECK(call<PrepareEffect>(*client, commands, {bad, device}, false).error.type == kGraphInvalidDescriptor);
+    call<RemoveEffect>(*client, commands, {bad});
     const auto job = create_job(paged ? "paged" : "");
     auto wrong = binding;
     wrong.resources[3].projection = static_cast<std::uint32_t>(
@@ -5095,6 +5083,8 @@ static void lightingGraphOutput(bool d3d12)
     CHECK(invalid_depth.error.args[1] != 0 && invalid_depth.error.args[2] == 0);
     call<SetLightingEnvironment>(*client, commands, {effect, lighting, {}});
     const auto device = call<CreateDeviceSession>(*client, commands, options).device;
+    for (auto selected : {effect, shadow_effect, clustered_shadow, clustered, overflow})
+        call<PrepareEffect>(*client, commands, {selected, device});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const TargetDesc output{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
@@ -5309,6 +5299,7 @@ static void basicFeatureOutputs(bool d3d12)
     const auto history = call<CreateEffect>(*client, commands, request(true, "4")).effect;
     const auto current_only = call<CreateEffect>(*client, commands, request(false, "4")).effect;
     const auto session = call<CreateDeviceSession>(*client, commands, options).device;
+    for (auto selected : {history, current_only}) call<PrepareEffect>(*client, commands, {selected, session});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const TargetDesc target_desc{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
@@ -5472,7 +5463,9 @@ static void windowOutput(bool d3d12)
     const TargetDesc description{width, height, rdesc::ETextureFormat::BGRA8_UNORM, 1, ETargetKind::SURFACE};
     auto target = call<CreateTarget>(*client, commands, {session, description, SurfaceDescription{Win32Surface{window}}});
     CHECK(target.output_available && target.description.width == width && target.description.height == height);
-    const auto effect = call<CreateEffect>(*client, commands, clearOutputRequest()).effect;
+    auto surface_request = clearOutputRequest();
+    surface_request.output = target.description.outputContract();
+    const auto effect = createPreparedEffect(*client, commands, session, std::move(surface_request));
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const auto first = startRenderJob(*client, commands, session, scene, view, target.target, effect);
@@ -5526,6 +5519,8 @@ static void windowOutput(bool d3d12)
     CHECK(call<RequestRenderJob>(*client, commands, {second, &stale}, false).error.type == kFrameContract);
     CHECK(server->stats().submissions == submitted);
     stale.release();
+    CHECK(call<RemoveTarget>(*client, commands, target.target, false).error.type == kDeviceBusy);
+    call<StopRenderJob>(*client, commands, second);
     call<RemoveTarget>(*client, commands, target.target);
     // Reusing the same HWND proves Remove returned the native window association.
     target = call<CreateTarget>(*client, commands, {session, requested, SurfaceDescription{Win32Surface{window}}});
@@ -5664,31 +5659,31 @@ namespace
         return correlation;
     }
 
-    struct StartPair final
+    struct PairedRequestTimes final
     {
-        std::int64_t start_send, peer_send, start_reply = 0, peer_reply = 0;
+        std::int64_t operation_send, peer_send, operation_reply = 0, peer_reply = 0;
     };
 
     struct FairnessReplay final
     {
         ipc::IpcRequester& client;
         const CommandList& commands;
-        DeviceSessionId primary;
         RenderJobId peer;
         const std::atomic<std::int64_t>& peer_accepted;
-        CommandId start_command, frame_command;
+        CommandId frame_command;
 
-        void measure(RenderJobId job, TargetId target, unsigned round, bool cold)
+        template<class Command>
+        void measure(CommandId command, typename Command::Request request, unsigned round, const char* phase)
         {
             renderFrame(client, commands, peer);
             const auto previous_accept = peer_accepted.load();
-            StartPair timestamps{clockNs(), 0};
-            const auto start = sendTimed<StartRenderJob>(client, start_command, {primary, job, target});
+            PairedRequestTimes timestamps{clockNs(), 0};
+            const auto operation = sendTimed<Command>(client, command, std::move(request));
             timestamps.peer_send = clockNs();
             const auto frame = sendTimed<RequestRenderJob>(client, frame_command, {peer});
             auto& notifications = ipc::IpcCore::instance();
             const auto deadline = Clock::now() + 10s;
-            while (!timestamps.start_reply || !timestamps.peer_reply)
+            while (!timestamps.operation_reply || !timestamps.peer_reply)
             {
                 const auto epoch = notifications.workEpoch();
                 ipc::IpcMessage message;
@@ -5701,10 +5696,10 @@ namespace
                     continue;
                 }
                 const auto received = clockNs();
-                if (id == start)
+                if (id == operation)
                 {
-                    CHECK(!timestamps.start_reply && !message.get<AckResponse>().error.type);
-                    timestamps.start_reply = received;
+                    CHECK(!timestamps.operation_reply && !message.get<AckResponse>().error.type);
+                    timestamps.operation_reply = received;
                 }
                 else
                 {
@@ -5714,11 +5709,11 @@ namespace
                 }
             }
             const auto accepted = peer_accepted.load();
-            CHECK(previous_accept && previous_accept < timestamps.start_send && timestamps.peer_send <= accepted);
+            CHECK(previous_accept && previous_accept < timestamps.operation_send && timestamps.peer_send <= accepted);
             CHECK(accepted <= timestamps.peer_reply);
-            std::printf("PAIR,%u,%s,%lld,%lld,%lld,%lld,%lld,%lld\n", round, cold ? "cold" : "reuse",
-                        previous_accept, timestamps.start_send, timestamps.peer_send, accepted,
-                        timestamps.peer_reply, timestamps.start_reply);
+            std::printf("PAIR,%u,%s,%lld,%lld,%lld,%lld,%lld,%lld\n", round, phase,
+                        previous_accept, timestamps.operation_send, timestamps.peer_send, accepted,
+                        timestamps.peer_reply, timestamps.operation_reply);
         }
     };
 }
@@ -5764,7 +5759,7 @@ static int startFairness(bool d3d12, bool reverse_adapters)
     const auto output_a = call<CreateTarget>(client, commands, {a, desc}).target;
     const auto reuse_a = call<CreateTarget>(client, commands, {a, desc}).target;
     const auto output_b = call<CreateTarget>(client, commands, {b, desc}).target;
-    const auto effect_b = call<CreateEffect>(client, commands, clearOutputRequest()).effect;
+    const auto effect_b = createPreparedEffect(client, commands, b, clearOutputRequest());
     const auto peer = startRenderJob(client, commands, b, scene, view, output_b, effect_b);
     const auto command = [&](std::string_view name)
     {
@@ -5772,8 +5767,9 @@ static int startFairness(bool d3d12, bool reverse_adapters)
         CHECK(found != commands.commands.end());
         return found->id;
     };
-    FairnessReplay replay{client, commands, a, peer, accepted,
-                          command(StartRenderJob::name), command(RequestRenderJob::name)};
+    const auto prepare = command(PrepareEffect::name);
+    const auto start = command(StartRenderJob::name);
+    FairnessReplay replay{client, commands, peer, accepted, command(RequestRenderJob::name)};
     for (unsigned round = 0; round < 108; ++round)
     {
         const auto effect = call<CreateEffect>(client, commands, clearOutputRequest()).effect;
@@ -5781,10 +5777,12 @@ static int startFairness(bool d3d12, bool reverse_adapters)
         const auto first = call<CreateRenderJob>(client, commands, recipe).job;
         const auto second_job = call<CreateRenderJob>(client, commands, recipe).job;
         const auto before = server->stats().compiled_graphs;
-        replay.measure(first, output_a, round, true);
+        replay.measure<PrepareEffect>(prepare, {effect, a}, round, "prepare");
         CHECK(server->stats().compiled_graphs == before + 1);
-        // The 6b baseline removes the compiled variant when its last Job releases it.
-        replay.measure(second_job, reuse_a, round, false);
+        replay.measure<StartRenderJob>(start, {a, first, output_a}, round, "cold");
+        CHECK(server->stats().compiled_graphs == before + 1);
+        // Both measurements start synchronously against the same prepared graph.
+        replay.measure<StartRenderJob>(start, {a, second_job, reuse_a}, round, "reuse");
         CHECK(server->stats().compiled_graphs == before + 1);
         stopAndRemoveJob(client, commands, second_job);
         stopAndRemoveJob(client, commands, first);
@@ -5889,7 +5887,16 @@ static bool physicalDeviceLifecycle(bool d3d12)
         std::printf("VULKAN WSI RETIREMENT A=%s B=%s\n",
             DeviceRetirementProbe::present_retirement[0] ? "present-fence" : "queue-idle",
             DeviceRetirementProbe::present_retirement[1] ? "present-fence" : "queue-idle");
-    const auto surface_effect = call<CreateEffect>(client, commands, clearOutputRequest()).effect;
+    const auto prepare_surface = [&](const TargetCreated& target, DeviceSessionId device)
+    {
+        auto request = clearOutputRequest();
+        request.output = target.description.outputContract();
+        return createPreparedEffect(client, commands, device, std::move(request));
+    };
+    const auto surface_effect = prepare_surface(surface_a, a);
+    const auto compatible = surface_a.description.outputContract() == surface_b.description.outputContract();
+    const auto peer_effect = compatible ? surface_effect : prepare_surface(surface_b, b);
+    if (compatible) call<PrepareEffect>(client, commands, {peer_effect, b});
     const auto job_a = startRenderJob(client, commands, a, scene, view, surface_a.target, surface_effect);
     const auto present = [&](RenderJobId job)
     {
@@ -5924,7 +5931,7 @@ static bool physicalDeviceLifecycle(bool d3d12)
     present(job_a);
     CHECK(SetWindowPos(windows[0], nullptr, 0, 0, 360, 260, SWP_NOMOVE | SWP_NOZORDER));
     resize(surface_a, new_window_extent(surface_a, windows[0]));
-    const auto job_b = startRenderJob(client, commands, b, scene, view, surface_b.target, surface_effect);
+    const auto job_b = startRenderJob(client, commands, b, scene, view, surface_b.target, peer_effect);
     present(job_b);
     CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
     CHECK(SetWindowPos(windows[1], nullptr, 0, 0, 370, 270, SWP_NOMOVE | SWP_NOZORDER));
@@ -5964,8 +5971,10 @@ static bool physicalDeviceLifecycle(bool d3d12)
     const TargetDesc offscreen{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     const auto off_a = call<CreateTarget>(client, commands, {a, offscreen});
     const auto off_b = call<CreateTarget>(client, commands, {b, offscreen});
-    const auto off_job_a = startRenderJob(client, commands, a, scene, view, off_a.target, surface_effect);
-    const auto off_job_b = startRenderJob(client, commands, b, scene, view, off_b.target, surface_effect);
+    const auto off_effect = createPreparedEffect(client, commands, a, clearOutputRequest());
+    call<PrepareEffect>(client, commands, {off_effect, b});
+    const auto off_job_a = startRenderJob(client, commands, a, scene, view, off_a.target, off_effect);
+    const auto off_job_b = startRenderJob(client, commands, b, scene, view, off_b.target, off_effect);
     CHECK(call<RemoveDeviceSession>(client, commands, b, false).error.type == kDeviceBusy);
     auto larger_offscreen = offscreen;
     larger_offscreen.width = 48;
@@ -6018,8 +6027,11 @@ static bool physicalDeviceLifecycle(bool d3d12)
         );
     };
     const auto unused_target = reopen_b();
+    const auto same_output = unused_target.description.outputContract() == surface_b.description.outputContract();
+    const auto reopened_effect = same_output ? peer_effect : prepare_surface(unused_target, replacement);
+    if (same_output) call<PrepareEffect>(client, commands, {reopened_effect, replacement});
     const auto unused_job = startRenderJob(
-        client, commands, replacement, scene, view, unused_target.target, surface_effect
+        client, commands, replacement, scene, view, unused_target.target, reopened_effect
     );
     const auto layout = call<QueryRenderJobInputLayout>(client, commands, unused_job).layout;
     auto other_layout = take(FrameLayout::create(layout.channels(), layout.revision()));
@@ -6028,12 +6040,13 @@ static bool physicalDeviceLifecycle(bool d3d12)
     // The frame rejects the stale layout after Acquire and before submitting its acquire wait.
     CHECK(call<RequestRenderJob>(client, commands, {unused_job, &stale}, false).error.type == kFrameContract);
     stale.release();
+    call<StopRenderJob>(client, commands, unused_job);
     call<RemoveTarget>(client, commands, unused_target.target);
     call<RemoveRenderJob>(client, commands, unused_job);
     std::puts("WSI ACQUIRE PASS: removed and reopened the window after an unconsumed Acquire");
 
     const auto recreated = reopen_b();
-    const auto final_job = startRenderJob(client, commands, replacement, scene, view, recreated.target, surface_effect);
+    const auto final_job = startRenderJob(client, commands, replacement, scene, view, recreated.target, reopened_effect);
     present(final_job);
     call<Stop>(client, commands, {});
     render.join();

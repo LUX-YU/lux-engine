@@ -862,6 +862,15 @@ static void renderFrame(ipc::IpcRequester& client, const CommandList& commands, 
     CHECK(call<RequestRenderJob>(client, commands, {job}).job == job);
 }
 
+static EffectId createPreparedEffect(
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device, CreateEffectRequest request
+)
+{
+    const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+    call<PrepareEffect>(client, commands, {effect, device});
+    return effect;
+}
+
 static RenderJobId startRenderJob(
     ipc::IpcRequester& client,
     const CommandList& commands,

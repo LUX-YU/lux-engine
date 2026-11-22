@@ -2,6 +2,7 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectDiagnostic.hpp>
 #include <lux/engine/render/effect/GBuffer.hpp>
@@ -102,6 +103,7 @@ struct Monitor final
     static inline DestroyTexture destroy_texture = nullptr;
     static inline std::atomic<unsigned> queries = 0;
     static inline std::atomic<bool> deny = false, hold = false, entered = false, destroyed = false;
+    static inline std::atomic<bool> hold_lowering = false;
     static inline std::atomic<bool> hold_submit = false, submitted = false;
     static inline std::atomic<unsigned> accepted_submits = 0;
     static inline std::atomic<unsigned> retired_textures = 0;
@@ -401,6 +403,11 @@ static void registerClearNode(RenderServer& server)
     };
     implementation.build = [](EffectBuildContext& context, std::string_view args) noexcept -> RenderResult<void>
     {
+        if (args == "hold-lowering")
+        {
+            Monitor::entered.store(true);
+            Monitor::hold_lowering.wait(true);
+        }
         const auto* color = context.configuration<std::array<float, 4>>();
         if (!color) return cxx::unexpected(RenderError{kInvalidConfig});
         const auto state = take(context.importStorageSnapshot<bool>(
@@ -475,6 +482,16 @@ static CreateEffectRequest deferredEffect(bool shadows, bool clustered)
     CHECK(edit.commit());
     return request;
 }
+
+struct PrepareReceiver final
+{
+    using receiver_concept = stdexec::receiver_t;
+    stdexec::inplace_stop_token stop;
+    std::optional<AckResponse>& result;
+
+    auto get_env() const noexcept { return stdexec::prop{stdexec::get_stop_token, stop}; }
+    void set_value(AckResponse response) && noexcept { result = response; }
+};
 
 static std::uint64_t correlation = 0;
 
@@ -780,6 +797,7 @@ static void verifySnapshotBindings(
 )
 {
     const auto effect = call<CreateEffect>(client, clearEffect("named-snapshots")).effect;
+    CHECK(!call<PrepareEffect>(client, {effect, device}).error.type);
     const auto target = call<CreateTarget>(client, {device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
     const auto job = call<CreateRenderJob>(client, {scope.scene, scope.view, effect, EJobCadence::REQUESTED}).job;
     auto binding = clearBinding(owners[0]);
@@ -828,6 +846,7 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     CHECK(call<GetOrCreateResource>(client, {session, DeviceScope{}, MonitorResource::descriptor.type}).error.type == 0);
     const auto effect = call<CreateEffect>(client, clearEffect());
     CHECK(!effect.error.type);
+    CHECK(!call<PrepareEffect>(client, {effect.effect, session}).error.type);
     if (profile_jobs)
     {
         profileJobRounds(*server, client, config.channel_name, session, effect.effect, profile_jobs);
@@ -905,6 +924,8 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     CHECK(call<QueryExecutionProgress>(client, job.job).progress.count(EExecutionOutcome::EXECUTED) == 2);
     CHECK(call<QueryExecutionProgress>(client, other_job).progress.count(EExecutionOutcome::EXECUTED) == 3);
     const auto retired_before = Monitor::retired_textures.load();
+    CHECK(call<RemoveTarget>(client, other_target).error.type == kDeviceBusy);
+    CHECK(!call<StopRenderJob>(client, other_job).error.type);
     CHECK(call<RemoveTarget>(client, other_target).error.type == 0);
     // Retirement must complete even with no further IPC and the first Resource command still pending.
     const auto retired_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -1151,6 +1172,7 @@ static void verifyDeviceOwnership(
         CHECK(!created.error.type);
         return created.job;
     };
+    CHECK(!call<PrepareEffect>(client, {effect, second.device}).error.type);
     const auto job_a = make_job();
     const auto job_b = make_job();
     const auto dormant = make_job();
@@ -1309,6 +1331,7 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     CHECK(!effect.error.type);
     const auto scene = call<CreateScene>(client, {}).scene;
     const auto view = call<CreateView>(client, {scene}).view;
+    for (auto device : {a.device, b.device}) CHECK(!call<PrepareEffect>(client, {effect.effect, device}).error.type);
     const auto scoped_b = call<GetOrCreateResource>(client, {b.device, scene, ColdResource::descriptor.type});
     CHECK(!scoped_b.error.type);
     ColdResource::entered.store(false);
@@ -1353,6 +1376,17 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     const auto accepted_b = receive<RequestRenderJob>(pending_b, b_pending);
     CHECK(!accepted_b.error.type && accepted_b.frame_index == 0 && accepted_b.slot_index == 0);
 
+    const auto interrupted = call<CreateEffect>(client, clearEffect("hold-lowering"));
+    CHECK(!interrupted.error.type);
+    Monitor::entered.store(false);
+    Monitor::hold_lowering.store(true);
+    const auto building = send<PrepareEffect>(pending_b, {interrupted.effect, b.device});
+    const auto build_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!Monitor::entered.load())
+    {
+        CHECK(std::chrono::steady_clock::now() < build_deadline);
+        std::this_thread::yield();
+    }
     Monitor::injected.store(nri::Result::FAILURE);
     Monitor::reject_after.store(1);
     CHECK(call<RequestRenderJob>(client, {job_b}).error.type == kOutcomeUnknown);
@@ -1360,6 +1394,12 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     const auto healthy = call<QueryRenderDevice>(client, a.device);
     CHECK(!failed.error.type && failed.execution_error.type == kOutcomeUnknown);
     CHECK(!healthy.error.type && !healthy.execution_error.type);
+    CHECK(call<PrepareEffect>(client, {effect.effect, b.device}).error.type == kOutcomeUnknown);
+    CHECK(!call<PrepareEffect>(client, {effect.effect, a.device}).error.type);
+    Monitor::hold_lowering.store(false);
+    Monitor::hold_lowering.notify_all();
+    CHECK(receive<PrepareEffect>(pending_b, building).error.type == kOutcomeUnknown);
+    CHECK(!call<RemoveEffect>(client, {interrupted.effect}).error.type);
     CHECK(call<CreateTarget>(client, {b.device, desc}).error.type == kOutcomeUnknown);
     CHECK(call<UpdateJobInputs>(client, {job_b}).error.type == kOutcomeUnknown);
     CHECK(call<SetRenderJobCadence>(client, {job_b, EJobCadence::CONTINUOUS}).error.type == kOutcomeUnknown);
@@ -1507,12 +1547,25 @@ int main(int argc, char** argv)
     CHECK(call<QueryResource>(client, resource_request).error.type == kStorageIdentity);
     const auto resource = getSceneState(client, session, scene);
     const auto binding = clearBinding(resource);
+    CHECK(call<StartRenderJob>(client, {session, current, target, binding}).error.type == kJobState);
+    const auto users = call<ListEffectJobs>(client, {effect.effect});
+    CHECK(!users.error.type && users.jobs == std::vector<RenderJobId>{current});
+    CHECK(call<ListEffectJobs>(client, {}).error.type == kRuntimeIdentity);
+    const auto stopped_effect = create();
+    CHECK(!stopped_effect.error.type);
+    CHECK(!call<RebindRenderJobEffect>(client, {{}, current, stopped_effect.effect}).error.type);
+    CHECK(call<ListEffectJobs>(client, {effect.effect}).jobs.empty());
+    CHECK(call<RemoveEffect>(client, {stopped_effect.effect}).error.type == kDeviceBusy);
+    CHECK(!call<RebindRenderJobEffect>(client, {{}, current, effect.effect}).error.type);
+    CHECK(!call<RemoveEffect>(client, {stopped_effect.effect}).error.type);
     Monitor::deny.store(true);
-    CHECK(call<StartRenderJob>(client, {session, current, target, binding}).error.type == kDeviceUnsupported);
+    CHECK(call<PrepareEffect>(client, {effect.effect, session}).error.type == kDeviceUnsupported);
+    CHECK(!call<PrepareEffect>(client, {effect.effect, session}).error.type);
     const auto retained = call<QueryResource>(client, resource_request);
     CHECK(retained.error.type == 0 && retained.resource_id == resource);
     CHECK(call<StartRenderJob>(client, {session, current, target, binding}).error.type == 0);
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
+    CHECK(call<ListEffectJobs>(client, {effect.effect}).jobs == std::vector<RenderJobId>{current});
     CHECK(server->stats().submissions == 0);
 
     const auto before = Monitor::queries.load();
@@ -1521,10 +1574,12 @@ int main(int argc, char** argv)
     const auto rival = call<CreateRenderJob>(client, {scene, view, replacement.effect, EJobCadence::REQUESTED}).job;
     CHECK(call<SetRenderJobDependencies>(client, {rival, {current}, {}}).error.type == 0);
     CHECK(call<SetRenderJobDependencies>(client, {current, {rival}, {rival}}).error.type == kJobCycle);
-    CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == kTargetInUse);
     const auto old_schema = call<QueryRenderJobInputLayout>(client, current).layout;
     Monitor::deny.store(true);
-    CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == kDeviceUnsupported);
+    CHECK(call<PrepareEffect>(client, {replacement.effect, session}).error.type == kDeviceUnsupported);
+    CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == kJobState);
+    CHECK(!call<PrepareEffect>(client, {replacement.effect, session}).error.type);
+    CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == kTargetInUse);
     CHECK(call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     CHECK(call<UpdateJobInputs>(client, {current}).error.type == 0);
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == 0);
@@ -1535,6 +1590,10 @@ int main(int argc, char** argv)
     CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == 0);
     CHECK(server->stats().compiled_graphs == warm_compiles);
     CHECK(call<StopRenderJob>(client, rival).error.type == 0);
+    const auto references = call<ListEffectJobs>(client, {replacement.effect});
+    CHECK(!references.error.type && references.jobs.size() == 2);
+    CHECK(std::ranges::find(references.jobs, rival) != references.jobs.end());
+    CHECK(std::ranges::find(references.jobs, current) != references.jobs.end());
 
     auto asynchronous = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const auto await = [](const auto& ready)
@@ -1594,6 +1653,7 @@ int main(int argc, char** argv)
         peer_client, {peer_session.device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}
     );
     const auto peer_effect = call<CreateEffect>(peer_client, clearEffect());
+    CHECK(!call<PrepareEffect>(peer_client, {peer_effect.effect, peer_session.device}).error.type);
     const auto peer_scene = call<CreateScene>(peer_client, {}).scene;
     const auto peer_view = call<CreateView>(peer_client, {peer_scene}).view;
     const auto peer_job = call<CreateRenderJob>(
@@ -1613,9 +1673,30 @@ int main(int argc, char** argv)
 
     const auto cold_effect = create();
     CHECK(!cold_effect.error.type);
+    auto typed = take(RenderClient::create(take(ipc::IpcCore::instance().createRequester(config.channel_name))));
+    PrepareEffect::Request prepare_request{cold_effect.effect, session};
+    stdexec::inplace_stop_source prior_stop;
+    prior_stop.request_stop();
+    std::optional<AckResponse> cancelled;
+    auto unpublished = stdexec::connect(
+        typed->request<PrepareEffect>(prepare_request), PrepareReceiver{prior_stop.get_token(), cancelled}
+    );
+    stdexec::start(unpublished);
+    CHECK(cancelled && cancelled->error.type == kCommandCancelled);
+
     Monitor::hold.store(true);
-    const auto pending = send<RebindRenderJobEffect>(asynchronous, {session, rival, cold_effect.effect});
+    stdexec::inplace_stop_source after_send;
+    std::optional<AckResponse> prepared;
+    auto pending = stdexec::connect(
+        typed->request<PrepareEffect>(prepare_request), PrepareReceiver{after_send.get_token(), prepared}
+    );
+    stdexec::start(pending);
     await(Monitor::entered);
+    after_send.request_stop();
+    CHECK(!prepared);
+    CHECK(call<PrepareEffect>(client, {cold_effect.effect, session}).error.type == kDeviceBusy);
+    CHECK(call<RemoveEffect>(client, {cold_effect.effect}).error.type == kDeviceBusy);
+    CHECK(!call<PrepareEffect>(client, {replacement.effect, session}).error.type);
     CHECK(peer_target.error.type == 0 && !peer_target.target.isNull());
     CHECK(call<RemoveTarget>(peer_client, peer_target.target).error.type == 0);
     std::puts("DEVICE ISOLATION PASS: a second DeviceEntry served IPC and native allocation during a held compile");
@@ -1623,20 +1704,27 @@ int main(int argc, char** argv)
     peer_render.join();
     peer_client.reset();
     peer.reset();
-    CHECK(call<StopRenderJob>(client, rival).error.type == 0);
-    CHECK(call<RemoveRenderJob>(client, rival).error.type == kJobBusy);
-    // Keep the new writer independent of the deliberately parked compilation of the first Effect.
-    const auto next_effect = create();
-    CHECK(!next_effect.error.type);
-    const auto next = call<CreateRenderJob>(client, {scene, view, next_effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {session, next, moved_target, binding}).error.type == 0);
+    CHECK(!call<StopRenderJob>(client, rival).error.type);
+    CHECK(!call<RemoveRenderJob>(client, rival).error.type);
+    const auto next = call<CreateRenderJob>(client, {scene, view, replacement.effect, EJobCadence::REQUESTED}).job;
+    const auto reused = server->stats().compiled_graphs;
+    CHECK(!call<StartRenderJob>(client, {session, next, moved_target, binding}).error.type);
+    CHECK(server->stats().compiled_graphs == reused);
     Monitor::hold.store(false);
     Monitor::hold.notify_all();
-    CHECK(receive<RebindRenderJobEffect>(asynchronous, pending).error.type == kJobStopped);
-    CHECK(call<RemoveRenderJob>(client, rival).error.type == 0);
+    const auto prepare_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (!prepared)
+    {
+        auto& notifications = ipc::IpcCore::instance();
+        const auto epoch = notifications.workEpoch();
+        CHECK(typed->dispatchResponses(8));
+        CHECK(std::chrono::steady_clock::now() < prepare_deadline);
+        if (!prepared) notifications.waitUntil(epoch, prepare_deadline);
+    }
+    CHECK(!prepared->error.type);
     CHECK(call<RequestRenderJob>(client, {next}).job == next);
     CHECK(call<QueryResource>(client, resource_request).resource_id == retained.resource_id);
-    std::puts("JOB REBIND PASS: newer writer rendered after the cancelled candidate returned");
+    std::puts("EFFECT PREPARE PASS: an independent writer reused its graph while preparation was pending");
 
     verifyDeviceOwnership(client, session, device, effect.effect);
 
@@ -1644,13 +1732,13 @@ int main(int argc, char** argv)
     CHECK(!shutdown_effect.error.type);
     Monitor::entered.store(false);
     Monitor::hold.store(true);
-    const auto final_rebind = send<RebindRenderJobEffect>(asynchronous, {session, next, shutdown_effect.effect});
+    const auto final_prepare = send<PrepareEffect>(asynchronous, {shutdown_effect.effect, session});
     await(Monitor::entered);
     server->stop();
     CHECK(!Monitor::destroyed);
     Monitor::hold.store(false);
     Monitor::hold.notify_all();
-    CHECK(receive<RebindRenderJobEffect>(asynchronous, final_rebind).error.type == kCommandCancelled);
+    CHECK(receive<PrepareEffect>(asynchronous, final_prepare).error.type == kCommandCancelled);
     asynchronous.reset();
     render.join();
     CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);

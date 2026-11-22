@@ -374,6 +374,7 @@ static CreateEffectRequest inspectionEffect(const ClusterGrid* grid = nullptr)
     const bool scene = grid != nullptr;
     const auto name = scene ? cluster_inspection : scan_inspection;
     CreateEffectRequest request;
+    request.output.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
     request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit edit{*request.graph};
     const auto inspection = take(edit.addNode(inspectionDefinition(name, scene), {std::string{name}, 1}));
@@ -558,7 +559,7 @@ int main(int argc, char** argv)
             {.result = &differences, .bytes = difference_bytes},
             {.result = &lists, .bytes = std::accumulate(lengths.begin(), lengths.end(), 0u)}
         }};
-        const auto effect = call<CreateEffect>(*client, commands, inspectionEffect(&grid)).effect;
+        const auto effect = createPreparedEffect(*client, commands, session, inspectionEffect(&grid));
         std::array<RenderJobId, 2> attachments;
         for (unsigned i = 0; i < 2; ++i)
         {
@@ -644,7 +645,7 @@ int main(int argc, char** argv)
         {.result = &offsets, .bytes = scan_offset_bytes},
         {.result = &status, .bytes = scan_status_bytes}
     }};
-    auto scan_effect = call<CreateEffect>(*client, commands, inspectionEffect()).effect;
+    auto scan_effect = createPreparedEffect(*client, commands, session, inspectionEffect());
     auto scan_scene = call<CreateScene>(*client, commands, {}).scene;
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
     auto scan_target = call<CreateTarget>(*client, commands, {session, target}).target;

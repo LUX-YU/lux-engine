@@ -379,14 +379,14 @@ state by reference and acknowledges CPU updates. Graph preparation and GPU param
 Stateful Handlers retain constructor-injected dependencies. All forms use the existing request operation,
 Resource borrow and ResponseOutbox; an async request's source bytes remain borrowed until its real response.
 
-`JobExecution` owns CPU input bindings and Resource subscriptions. The device variant owns each producer's immutable linked inputs.
+`JobExecution` owns CPU input bindings and Resource subscriptions. The Effect's device graph owns each producer's immutable linked inputs.
 Register a kernel with `ProducerFactory::make<Kernel>()`. Its static `resolve` links configuration once,
 and `prepare(const LinkedData&, FramePreparation&, Workspace&)` receives the current Job's workspace.
 The instance owns each workspace and the per-FIF GPU bindings. A kernel may supply a fallible
 `createWorkspace` when construction depends on linked inputs or the target. Cold assembly
 resolves Resource borrows once; instance preparation uses those borrows and contributes copies to `Preparation`.
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
-Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces before releasing the device variant. Physical cleanup uses the Session scope.
+Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces while the Effect still owns the prepared graph. Physical cleanup uses the Session scope.
 
 Each FIF freezes its physical resource rows and their dependent pass operands before recording.
 The physical bindings borrow immutable NRI descriptions for the selected buffer or texture. Draw sections and
@@ -566,10 +566,16 @@ leases alongside the executable. The executable's recording tables carry slots a
 bindings for the recording workers. Barrier predecessors and History predicates use compiled slots. The diagnostic
 sidecar carries source Pass IDs, resource names and reuse reasons.
 
-The Effect owns its logical graph. Each DeviceEntry owns the compiled variants for its device, keyed by Effect,
-Target contract and qualified imports. A matching Start joins an in-flight compilation or reuses the ready plan.
-The device removes a variant when its final Start or Job reader returns. Shared uniform buffers stay in the device's
-Effect pool until the Effect or device retires.
+CreateEffect fixes the logical graph and its output format, sample count, Target kind and sampling capability.
+For a window, use `TargetCreated::description.outputContract()` to obtain the actual swapchain format selected by
+the backend. Offscreen callers can derive the same contract from their declared TargetDesc.
+Call PrepareEffect with the Effect and DeviceSession before starting or rebinding a Job. The Effect owns one
+immutable graph per prepared device. Repeating Prepare on a ready device succeeds immediately. A second cold
+Prepare on the same Effect returns Busy while compilation is in flight. A failed Prepare can be retried.
+Start and running Rebind synchronously validate the actual Target, imports and output ownership before installing
+the candidate. A failed Rebind leaves the installed execution usable. Stopping every Job retains the prepared graph.
+ListEffectJobs includes stopped Jobs until removal or a successful Rebind changes their logical Effect.
+Removing a device releases its graphs. Uniform buffers remain in the device's Effect pool until Effect or device removal.
 The compiler links producers and constant writers to final slots. Job assembly borrows the plan and creates its own
 producer instances, writable frame bindings, transient resources and History.
 Standalone project GPU consumers can bind physical inputs directly.
@@ -607,10 +613,11 @@ checks the intermediate frame, then adopts the candidate and verifies the final 
 
 On Windows, `render_output_test --start-fairness <vulkan|d3d12> [reverse]` pairs a Start request on adapter 0
 with an exact frame request on adapter 1. The optional argument swaps the adapters. Each round creates a fresh
-Effect, starts the first Job, then starts a second Job with the first reader still alive and an equivalent target.
-The probe checks the compile count after each Start. Each `PAIR` row reports the round, variant state, previous peer
-submission acceptance, Start send, peer send, peer native acceptance, peer reply receipt and Start reply receipt.
-Times use the same monotonic clock in nanoseconds. The first eight of 108 rounds warm up both conditions.
+Effect, explicitly prepares its device graph, starts the first Job, then binds a second Job to an equivalent target.
+The probe pairs each operation with a peer frame and checks that Prepare compiled once and both Starts reused it.
+Each `PAIR` row reports the round, operation (prepare, first binding or repeat binding), previous peer submission
+acceptance, operation send, peer send, peer native acceptance, peer reply receipt and operation reply receipt.
+Times use the same monotonic clock in nanoseconds. The first eight of 108 rounds warm up all three conditions.
 
 On D3D12 devices using legacy barriers, the compiler returns an unsampled offscreen target with no requested
 final use to COMMON at the end of the graph. This matches the initial state of the next submission for that target
@@ -907,12 +914,13 @@ Resize on the same Target identity.
 `JobCommands.hpp` exposes creation, start, stop, removal, dependency and cadence changes, exact execution
 requests and Effect rebinding. `RenderServer` routes these commands to the Job and its current execution.
 
-The private `JobControl` leaf borrows stable Start, Run and Request nodes owned by connected operations.
-Stop closes admission and cancels an unadmitted request, while an admitted Run retains its exact request until
-its real submission result is adopted. A cancelled Start remains a deletion-blocking borrow until its candidate
-returns. Writer reservation ownership transfers from successful Start to the control; each release clears that
-owner's pointer, so repeated Stop or late candidate cleanup cannot release a later writer. The Target reservation
-flag must remain stable through this borrow; native image/flight retirement is a separate responsibility.
+Start and running Rebind reserve a fresh execution generation before constructing their candidate. A failed candidate
+consumes its generation and leaves the published Job, writer and dependency order intact. When the candidate is ready,
+the owner installs the new generation, bindings and writer together. Stop closes admission, releases the writer and
+cancels an unadmitted request. An admitted Run keeps its request until the actual submission result arrives. CPU
+recording, program preparation and host submission drain before the execution and its bindings are destroyed.
+RemoveTarget returns Busy for an installed output or sampled input, including a stopped Job that is still draining.
+A stopped Job keeps its logical Effect until the caller rebinds or removes the Job.
 
 Only one exact request is pending per Job; a second receives Busy. A request arriving during an earlier continuous
 Run belongs to the next Run. The terminal callback executes after the operation detaches all Job bookkeeping and

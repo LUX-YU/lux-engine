@@ -27,8 +27,7 @@ namespace lux::render::detail
     FrameOperation::FrameOperation(
         DeviceSession& device, FrameProgress& progress, Workspace& workspace, execution::CpuScheduler cpu
     ) noexcept
-        : device_(device), uploads_(nullptr), progress_(progress), workspace_(workspace), cpu_(cpu),
-          parallel_recording_(true), owner_(nullptr)
+        : device_(device), uploads_(nullptr), progress_(progress), workspace_(workspace), cpu_(cpu), owner_(nullptr)
     {
     }
 
@@ -327,7 +326,13 @@ namespace lux::render::detail
         if (auto prepared = submission_->prepare(instances, order); !prepared)
             co_return cxx::unexpected(track(prepared).error());
         phase_ = EPhase::RECORDING;
-        auto recorded = co_await submission_->record(cpu_, parallel_recording_);
+        RenderResult<void> recorded;
+        if (!workers_)
+            recorded = co_await submission_->record(cpu_, true);
+        else if (workers_->compilations_)
+            recorded = co_await submission_->record(workers_->independent_, false);
+        else
+            recorded = co_await workers_->recordings_.nest(submission_->record(cpu_, true));
         if (!recorded) co_return cxx::unexpected(track(recorded).error());
         phase_ = EPhase::SUBMITTING;
         auto accepted = co_await submission_->submit(cancellation_, batch_receipt());

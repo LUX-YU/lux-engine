@@ -477,13 +477,10 @@ namespace lux::render::runtime_detail
         };
     }
 
-    RenderResult<void> initializeEffectGraph(
-        RenderEffect& candidate, std::unique_ptr<EffectGraph> graph, const EffectCatalog& catalog,
-        const CommandRegistry& registry,
-        std::size_t max_config_bytes,
-        const RenderErrorSink& sink
-    ) noexcept
+    RenderResult<void>
+    initializeEffectGraph(RenderEffect& candidate, std::unique_ptr<EffectGraph> graph, EffectInitialization input) noexcept
     {
+        auto& [catalog, registry, max_config_bytes, sink] = input;
         for (const auto& [id, node] : graph->nodes())
         {
             if (node.arguments.size() > max_config_bytes)

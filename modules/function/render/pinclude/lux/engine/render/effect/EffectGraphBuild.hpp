@@ -46,10 +46,16 @@ namespace lux::render::runtime_detail
         std::vector<UniformBlockDeclaration> uniforms;
     };
 
-    [[nodiscard]] RenderResult<void> initializeEffectGraph(
-        RenderEffect&, std::unique_ptr<EffectGraph>, const EffectCatalog&, const CommandRegistry&,
-        std::size_t max_config_bytes, const RenderErrorSink&
-    ) noexcept;
+    struct EffectInitialization final
+    {
+        const EffectCatalog& catalog;
+        const CommandRegistry& registry;
+        std::size_t config_budget;
+        const RenderErrorSink& diagnostics;
+    };
+
+    [[nodiscard]] RenderResult<void>
+    initializeEffectGraph(RenderEffect&, std::unique_ptr<EffectGraph>, EffectInitialization) noexcept;
 
     // The immutable author inputs borrowed for one lowering call on the compile worker.
     struct EffectRecipeView final

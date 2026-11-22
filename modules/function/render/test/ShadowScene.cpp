@@ -131,7 +131,7 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     CHECK(edit.setOutput("color", color, true));
     CHECK(edit.setOutput("pixels", edit.pinId(capture, ColorCapture::pixels)));
     CHECK(edit.commit());
-    const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+    const auto effect = createPreparedEffect(*client, commands, session, std::move(request));
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
@@ -148,7 +148,7 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
         const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid)).effect;
         const auto invalid_job = call<CreateRenderJob>(*client, commands, {scene, view, invalid_effect}).job;
         const auto before = server.stats().compiled_graphs;
-        const auto rejected = call<StartRenderJob>(*client, commands, {session, invalid_job, output}, false);
+        const auto rejected = call<PrepareEffect>(*client, commands, {invalid_effect, session}, false);
         CHECK(rejected.error.type == kGraphInvalidDescriptor && server.stats().compiled_graphs == before);
         call<RemoveRenderJob>(*client, commands, invalid_job);
         call<RemoveEffect>(*client, commands, {invalid_effect});
@@ -428,7 +428,7 @@ static void runPresets(
             CHECK(edit.setOutput("pixels", edit.pinId(capture, ColorCapture::pixels)));
         }
         CHECK(edit.commit());
-        const auto effect = call<CreateEffect>(client, commands, std::move(request)).effect;
+        const auto effect = createPreparedEffect(client, commands, session, std::move(request));
         const auto view = call<CreateView>(client, commands, {scene}).view;
         const auto image = call<CreateTarget>(client, commands, {session, target}).target;
         const ViewRequest view_scope{scene, view};
@@ -450,7 +450,7 @@ static void runPresets(
             unsupported.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
             const auto wrong_format = call<CreateTarget>(client, commands, {session, unsupported}).target;
             CHECK(call<StartRenderJob>(client, commands, {session, attached, wrong_format, binding}, false).error.type ==
-                kCapabilityDeclaration);
+                kDeviceArgument);
             call<RemoveTarget>(client, commands, wrong_format);
         }
         call<StartRenderJob>(client, commands, {session, attached, image, std::move(binding)});
@@ -838,7 +838,7 @@ int main(int argc, char** argv)
         CHECK(edit.setOutput("pixels", edit.pinId(color_capture, ColorCapture::pixels)));
         CHECK(edit.setOutput("diagnostics", edit.pinId(diagnostic, ShadowReadback::readback)));
         CHECK(edit.commit());
-        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        auto effect = createPreparedEffect(*client, commands, session, std::move(request));
         const auto make_binding = [&](ViewId view, const ViewGpuParameters& input)
         {
             const ViewRequest scope{scene, view};

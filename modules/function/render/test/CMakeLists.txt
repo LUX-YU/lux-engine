@@ -1,4 +1,7 @@
-add_executable(render_effect_graph_test EffectGraph.cpp)
+add_executable(render_effect_graph_test
+    EffectGraph.cpp
+    ../src/runtime/JobControl.cpp
+)
 
 target_include_directories(render_effect_graph_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude")
 

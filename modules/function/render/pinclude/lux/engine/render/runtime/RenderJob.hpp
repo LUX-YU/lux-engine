@@ -29,10 +29,5 @@ namespace lux::render::runtime_detail
         {
             return control.eligible() && (!last_run_error.type || control.hasRequest());
         }
-
-        [[nodiscard]] bool hasExecutionBorrows() const noexcept
-        {
-            return control.hasRun() || (execution && (execution->pending_uses != 0 || execution->programs.stop));
-        }
     };
 } // namespace lux::render::runtime_detail

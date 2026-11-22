@@ -1,4 +1,5 @@
 #include <lux/engine/render/effect/EffectValidation.hpp>
+#include <lux/engine/render/runtime/JobControl.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
 #include <lux/engine/render/resources/instance/Data.hpp>
@@ -147,8 +148,33 @@ static void validateTransformSlotRetirement()
     for (std::uint32_t i = 0; i < free.size(); ++i) check(free[i] == i);
 }
 
+static void verifyInstallationGenerations()
+{
+    lux::render::detail::JobControl job{EJobCadence::CONTINUOUS};
+    const auto abandoned_start = job.reserveGeneration(false);
+    const auto installed = job.reserveGeneration(false);
+    check(abandoned_start && installed && *installed > *abandoned_start);
+    check(!job.running() && job.executionGeneration() == 0);
+
+    job.publishGeneration(*installed);
+    const auto failed_rebind = job.reserveGeneration(true);
+    check(failed_rebind && job.executionGeneration() == *installed);
+    check(job.tryAdmit(0, 0));
+    const auto busy = job.reserveGeneration(true);
+    check(!busy && busy.error().type == kJobBusy);
+    check(!job.finishRun(*installed, {}));
+
+    const auto retry = job.reserveGeneration(true);
+    check(retry && *retry > *failed_rebind);
+    job.publishGeneration(*retry);
+    job.stop();
+    const auto restart = job.reserveGeneration(false);
+    check(restart && *restart > *retry && job.executionGeneration() == *retry);
+}
+
 int main()
 {
+    verifyInstallationGenerations();
     validateTransformSlotRetirement();
     constexpr auto input = graph::EPinDirection::INPUT;
     constexpr auto output = graph::EPinDirection::OUTPUT;

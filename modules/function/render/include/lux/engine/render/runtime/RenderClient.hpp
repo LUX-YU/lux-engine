@@ -39,6 +39,8 @@ namespace lux::render
             RemoveTarget,
             SetTargetActive,
             CreateEffect,
+            PrepareEffect,
+            ListEffectJobs,
             SetToneMappingExposure,
             RemoveEffect,
             CreateRenderJob,

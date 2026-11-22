@@ -38,6 +38,11 @@ namespace lux::render
         ETargetKind             kind{ETargetKind::OFFSCREEN};
         bool                    sampled = false; // Allows graph consumers to borrow the execution layer's published output.
 
+        [[nodiscard]] EffectOutputDesc outputContract() const noexcept
+        {
+            return {format, samples, kind, sampled};
+        }
+
         [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validate() const noexcept;
         bool                    operator==(const TargetDesc&) const noexcept = default;
     };

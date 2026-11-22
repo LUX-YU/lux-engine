@@ -58,6 +58,7 @@ namespace lux::render
         RenderServerConfig config_;
         execution::CpuScheduler cpu_scheduler_; // Borrowed from the application's ExecutionRuntime.
         execution::CpuScheduler program_scheduler_, recording_scheduler_;
+        detail::RecordingWorkers recording_workers_;
         ipc::IpcResponder responder_;
         EffectCatalog effect_catalog_;
         std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
@@ -89,8 +90,6 @@ namespace lux::render
         cxx::execution::ManualContext server_context_;
         // One dynamic program preparation may be away from the owner at a time.
         JobExecution* preparing_execution_ = nullptr;
-        bool program_waiting_for_recording_ = false;
-        std::vector<TargetId> preparation_targets_;
         std::size_t next_device_ = 0;
         std::uint64_t job_structure_revision_ = 1;
         RenderError execution_error_;
@@ -127,8 +126,8 @@ namespace lux::render
 
         void bindJobCommands() noexcept;
         void createJob(const CreateRenderJob::Request&, JobCreated&) noexcept;
-        exec::task<AckResponse> startJob(StartRenderJob::Request&&) noexcept;
-        exec::task<AckResponse> rebindJob(RebindRenderJobEffect::Request&&) noexcept;
+        AckResponse startJob(StartRenderJob::Request&&) noexcept;
+        AckResponse rebindJob(RebindRenderJobEffect::Request&&) noexcept;
         void handleStopJob(const RenderJobId&, AckResponse&) noexcept;
         void removeJob(const RenderJobId&, AckResponse&) noexcept;
         void setJobCadence(const SetRenderJobCadence::Request&, AckResponse&) noexcept;
@@ -141,7 +140,7 @@ namespace lux::render
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
         [[nodiscard]] bool frameUsesResource(const detail::DeviceEntry&, ResourceInstanceId) const noexcept;
         [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
-        [[nodiscard]] bool preparationUsesTarget(TargetId) const noexcept;
+        [[nodiscard]] bool executionTargetsResizing(const JobExecution&) const noexcept;
         [[nodiscard]] bool resourcesAvailable(std::span<const ResourceInstanceId>) const noexcept;
         [[nodiscard]] std::vector<detail::JobRelationEntry>
         jobRelations(const JobExecution* candidate = nullptr) noexcept;
@@ -157,10 +156,6 @@ namespace lux::render
             const detail::DeviceEntry&, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
         ) const noexcept;
 
-        exec::task<detail::EffectVariantResult> acquireEffectVariant(
-            EffectId, detail::DeviceEntry&, EffectOutputDesc
-        ) noexcept;
-
         enum class EJobStartMode : std::uint8_t { START, REBIND };
         struct JobStartRequest final
         {
@@ -172,13 +167,11 @@ namespace lux::render
             EJobStartMode mode;
         };
 
-        exec::task<AckResponse> buildJobExecution(JobStartRequest) noexcept;
+        AckResponse buildJobExecution(JobStartRequest) noexcept;
         [[nodiscard]] RenderResult<void> buildJobInputLayout(const RenderJob&, JobExecution&) noexcept;
 
-        [[nodiscard]] RenderResult<void> validateJobBinding(
-            DeviceSessionId,
-            const RenderJob&, const RenderEffect&, TargetId, const JobBinding&, detail::TargetReservation
-        ) const noexcept;
+        [[nodiscard]] RenderResult<void>
+        validateJobBinding(const JobStartRequest&, const RenderJob&, const compiled::RenderGraph&) const noexcept;
 
         using ResizeCandidates = std::vector<std::pair<RenderJobId, detail::RenderGraphInstance::ResizeResources>>;
         [[nodiscard]] RenderResult<ResizeCandidates>
@@ -190,7 +183,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> selectGraphInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> acquireFrameOutputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
         void progressTargetFlights(detail::DeviceEntry&) noexcept;
-        [[nodiscard]] std::vector<RenderJobId> jobsSamplingTarget(TargetId) const noexcept;
+        [[nodiscard]] std::vector<RenderJobId> jobsBindingTarget(TargetId) const noexcept;
         [[nodiscard]] std::uint32_t publishedOutputSlot(TargetId) const noexcept;
         [[nodiscard]] bool publishedOutputReadable(TargetId, std::uint32_t slot) const noexcept;
         exec::task<RenderResult<void>> submitCurrentFrame(detail::DeviceEntry&) noexcept;
@@ -233,8 +226,10 @@ namespace lux::render
         exec::task<AckResponse> removeTarget(RemoveTarget::Request&&) noexcept;
         void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
-        auto createEffect(CreateEffect::Request&&) noexcept;
-        void bindCreateEffectCommand() noexcept;
+        exec::task<AckResponse> prepareEffect(PrepareEffect::Request&&) noexcept;
+        void listEffectJobs(const EffectRequest&, ListEffectJobs::Response&) noexcept;
+        EffectCreated createEffect(CreateEffect::Request&&) noexcept;
+        void bindEffectGraphCommands() noexcept;
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;

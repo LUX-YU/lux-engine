@@ -1,9 +1,6 @@
 #include <algorithm>
 #include <exec/create.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/graph/compile/EffectCompileRequest.hpp>
-#include <lux/engine/render/effect/EffectGraphBuild.hpp>
-#include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
@@ -38,12 +35,8 @@ namespace lux::render
         for (auto& job : runtime_->jobs_)
         {
             const auto id = job.control.id();
-            const auto* execution = candidate && candidate->storage_start.job == id ? candidate : job.execution.get();
-            auto device = execution ? execution->device : DeviceSessionId{};
-            if (const auto* start = job.control.pendingStart(); start && device.isNull())
-            {
-                if (const auto* output = runtime_->targets_.find(start->target)) device = targetState(*output).device;
-            }
+            const auto* execution = candidate && candidate->binding_identity.job == id ? candidate : job.execution.get();
+            const auto device = execution ? execution->device : DeviceSessionId{};
             auto& entry = entries.emplace_back(detail::JobRelationEntry{id, device, &job.relations, {}});
             if (!execution || (execution != candidate && !job.control.running())) continue;
             const auto add_source = [&](RenderJobId writer)
@@ -55,8 +48,8 @@ namespace lux::render
             {
                 const auto* target = runtime_->targets_.find(image.target);
                 auto writer = target ? targetState(*target).writer : RenderJobId{};
-                if (candidate && candidate->target == image.target) writer = candidate->storage_start.job;
-                else if (candidate && writer == candidate->storage_start.job) writer = {};
+                if (candidate && candidate->target == image.target) writer = candidate->binding_identity.job;
+                else if (candidate && writer == candidate->binding_identity.job) writer = {};
                 add_source(writer);
             }
             for (const auto& link : execution->storage_bindings)
@@ -107,37 +100,25 @@ namespace lux::render
     void RenderServer::Impl::destroyExecution(std::unique_ptr<JobExecution> execution) noexcept
     {
         if (!execution) return;
-        const auto effect = execution->effect;
-        const auto device = execution->device;
-        const auto variant = execution->variant;
         auto resources = std::move(execution->resource_ids);
         for (const auto& link : execution->storage_bindings)
-            if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->storage_start);
+            if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->binding_identity);
         execution.reset();
         for (const auto id : resources) runtime_->resources_.releaseExecution(id);
-        runtime_->device(device)->releaseVariant(variant);
-        runtime_->effects_.find(effect)->releaseExecution();
     }
 
     void RenderServer::Impl::retireStoppedExecution(RenderJob& job) noexcept
     {
-        if (!job.control.running() && !job.hasExecutionBorrows())
+        if (!job.control.running() && canChangeExecution(job))
         {
             destroyExecution(std::move(job.execution));
+            job.binding = {};
         }
     }
 
     void RenderServer::Impl::stopJob(RenderJob& job) noexcept
     {
         const auto id = job.control.id();
-        if (const auto* starting = job.control.pendingStart())
-        {
-            if (auto* target = runtime_->targets_.find(starting->target))
-            {
-                auto& state = targetState(*target);
-                if (state.reservation == detail::TargetReservation{id, starting->serial}) state.reservation = {};
-            }
-        }
         if (job.execution)
         {
             if (auto& stop = job.execution->programs.stop) stop->request_stop();
@@ -160,7 +141,7 @@ namespace lux::render
     {
         auto* job = runtime_->jobs_.find(id);
         if (!job) { reply.error = {kJobIdentity}; return; }
-        if (!job->control.canRemove() || job->hasExecutionBorrows())
+        if (!job->control.canRemove() || !canChangeExecution(*job))
         {
             reply.error = {kJobBusy};
             return;
@@ -183,148 +164,92 @@ namespace lux::render
 
     bool RenderServer::Impl::canChangeExecution(const RenderJob& job) const noexcept
     {
-        if (job.hasExecutionBorrows() || job.control.hasRequest())
-        {
-            return false;
-        }
-        if (!job.execution)
-        {
-            return true;
-        }
-        auto& execution = *job.execution;
-        const bool output_resizing = targetState(*runtime_->targets_.find(execution.target)).resizing;
-        const bool input_resizing = std::ranges::any_of(execution.target_images, [&](const auto& input)
+        if (job.control.hasRun() || job.control.hasRequest()) return false;
+        if (!job.execution) return true;
+        const auto& execution = *job.execution;
+        const bool borrowed = execution.pending_uses || execution.programs.stop;
+        return !borrowed && !executionTargetsResizing(execution);
+    }
+
+    bool RenderServer::Impl::executionTargetsResizing(const JobExecution& execution) const noexcept
+    {
+        if (targetState(*runtime_->targets_.find(execution.target)).resizing) return true;
+        return std::ranges::any_of(execution.target_images, [&](const auto& input)
         {
             return targetState(*runtime_->targets_.find(input.target)).resizing;
         });
-        return !output_resizing && !input_resizing;
     }
 
     RenderResult<void> RenderServer::Impl::validateJobBinding(
-        DeviceSessionId device,
-        const RenderJob& job,
-        const RenderEffect& effect,
-        TargetId target_id,
-        const JobBinding& binding,
-        detail::TargetReservation reservation
+        const JobStartRequest& request, const RenderJob& job, const compiled::RenderGraph& graph
     ) const noexcept
     {
+        const auto device = request.device;
+        const auto target_id = request.target;
         const auto* target = runtime_->targets_.find(target_id);
         if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        const auto* owner = runtime_->device(device);
-        if (!owner) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (const auto failure = owner->admissionError(); failure.type) return cxx::unexpected(failure);
         const bool wrong_device = targetState(*target).device != device ||
             (job.execution && job.execution->device != device);
         if (wrong_device) return cxx::unexpected(RenderError{kJobState});
         const auto& state = targetState(*target);
         if (!state.writer.isNull() && state.writer != job.control.id())
             return cxx::unexpected(RenderError{kTargetInUse});
-        if (state.resizing || state.reservation != reservation || !canChangeExecution(job))
+        if (state.resizing || !canChangeExecution(job))
             return cxx::unexpected(RenderError{kJobBusy});
         if (frameUsesTarget(target_id)) return cxx::unexpected(RenderError{kJobBusy});
         if (!targetAvailable(*target)) return cxx::unexpected(RenderError{kRuntimeState});
-        const bool writes_target = std::ranges::any_of(effect.source->outputs(), &EffectOutput::target);
+        const bool writes_target = graph.executable.output() != kGraphInvalidIndex;
         if (std::holds_alternative<detail::SwapchainTarget>(*target) && !writes_target)
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        if (auto valid = binding.inputs.viewport.validate(); !valid) return valid;
+        if (auto valid = request.binding.inputs.viewport.validate(); !valid) return valid;
         return {};
     }
 
-    exec::task<AckResponse> RenderServer::Impl::startJob(StartRenderJob::Request&& request) noexcept
+    AckResponse RenderServer::Impl::startJob(StartRenderJob::Request&& request) noexcept
     {
         const auto* job = runtime_->jobs_.find(request.job);
-        if (!job) co_return AckResponse{RenderError{kJobIdentity}};
-        co_return co_await buildJobExecution({
+        if (!job) return AckResponse{RenderError{kJobIdentity}};
+        return buildJobExecution({
             request.device, request.job, job->content.effect, request.target, std::move(request.binding),
             EJobStartMode::START
         });
     }
 
-    exec::task<AckResponse> RenderServer::Impl::rebindJob(RebindRenderJobEffect::Request&& request) noexcept
+    AckResponse RenderServer::Impl::rebindJob(RebindRenderJobEffect::Request&& request) noexcept
     {
         auto* job = runtime_->jobs_.find(request.job);
-        if (!job || !runtime_->effects_.find(request.effect)) co_return AckResponse{RenderError{kJobIdentity}};
+        if (!job || !runtime_->effects_.find(request.effect)) return AckResponse{RenderError{kJobIdentity}};
         if (!job->control.running())
         {
-            if (!job->control.canRemove() || job->hasExecutionBorrows())
-                co_return AckResponse{RenderError{kJobBusy}};
+            if (!job->control.canRemove() || !canChangeExecution(*job))
+                return AckResponse{RenderError{kJobBusy}};
             if (!request.device.isNull() || !request.target.isNull() || request.binding)
-                co_return AckResponse{RenderError{kJobState}};
+                return AckResponse{RenderError{kJobState}};
             job->content.effect = request.effect;
-            co_return AckResponse{};
+            return AckResponse{};
         }
         const auto target = request.target.isNull() ? job->execution->target : request.target;
         auto binding = request.binding ? std::move(*request.binding) : job->binding;
-        co_return co_await buildJobExecution({
+        return buildJobExecution({
             request.device, request.job, request.effect, target, std::move(binding), EJobStartMode::REBIND
         });
     }
 
-    exec::task<detail::EffectVariantResult> RenderServer::Impl::acquireEffectVariant(
-        EffectId id, detail::DeviceEntry& entry, EffectOutputDesc target
-    ) noexcept
-    {
-        if (auto* variant = entry.findVariant(id, target))
-        {
-            if (variant->readers == UINT32_MAX) co_return cxx::unexpected(RenderError{kRuntimeCapacity});
-            const auto identity = variant->id;
-            ++variant->readers;
-            if (variant->plan) co_return identity;
-            auto result = co_await exec::create<stdexec::set_value_t(detail::EffectVariantResult)>(
-                [variant](auto& context) noexcept
-                {
-                    variant->waiters.push_back({
-                        &context,
-                        [](void* receiver, detail::EffectVariantResult result) noexcept
-                        {
-                            auto& operation = *static_cast<std::remove_reference_t<decltype(context)>*>(receiver);
-                            stdexec::set_value(std::move(operation.receiver), std::move(result));
-                        }
-                    });
-                }
-            );
-            if (!result) entry.releaseVariant(identity);
-            co_return result;
-        }
-
-        auto& variant = entry.beginVariant(id, target);
-        const auto identity = variant.id;
-        const auto& effect = *runtime_->effects_.find(id);
-        detail::EffectCompileRequest request{id, {*effect.source, effect.node_configurations}, {}, target};
-        request.inputs.reserve(effect.node_states.size());
-        for (const auto& state : effect.node_states) request.inputs.push_back({state.node, state.type, state.bytes});
-        auto compiled = co_await detail::GraphCompiler::compileEffect(
-            entry, std::move(request), {effect_catalog_, cpu_scheduler_, config_.diagnostics, stop_requested_}
-        );
-        auto waiters = std::exchange(variant.waiters, {});
-        const auto deliver = [&](const detail::EffectVariantResult& result) noexcept
-        {
-            // Keep the compiling reader through all completion callbacks, including reentrant Starts.
-            for (const auto& waiter : waiters) waiter.complete(waiter.receiver, result);
-        };
-        if (!compiled)
-        {
-            variant.failure = compiled.error();
-            deliver(cxx::unexpected(variant.failure));
-            entry.releaseVariant(identity);
-            co_return cxx::unexpected(compiled.error());
-        }
-        variant.plan = std::move(*compiled);
-        compiled_graphs_.fetch_add(1, std::memory_order_relaxed);
-        deliver(identity);
-        co_return identity;
-    }
-
-    exec::task<AckResponse> RenderServer::Impl::buildJobExecution(JobStartRequest request) noexcept
+    AckResponse RenderServer::Impl::buildJobExecution(JobStartRequest request) noexcept
     {
         auto& [device, id, effect_id, target_id, binding, mode] = request;
         const bool rebind = mode == EJobStartMode::REBIND;
         auto& job = *runtime_->jobs_.find(id);
         auto* effect = runtime_->effects_.find(effect_id);
-        if (!effect) co_return AckResponse{RenderError{kJobIdentity}};
-        if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, {}); !valid)
-            co_return AckResponse{valid.error()};
+        if (!effect) return AckResponse{RenderError{kJobIdentity}};
+        auto* entry = runtime_->device(device);
+        if (!entry) return AckResponse{RenderError{kRuntimeIdentity}};
+        if (const auto failure = entry->admissionError(); failure.type) return AckResponse{failure};
+        if (stop_requested_.load()) return AckResponse{RenderError{kCommandCancelled}};
+        const auto* selected = effect->graphForDevice(device);
+        if (!selected) return AckResponse{RenderError{kJobState}};
+        if (auto valid = validateJobBinding(request, job, *selected); !valid)
+            return AckResponse{valid.error()};
         const auto qualify_view = [&]() noexcept -> RenderResult<detail::ViewParameterStorage*>
         {
             if (binding.view_parameters.isNull()) return nullptr;
@@ -337,92 +262,59 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kDeviceBusy});
             return runtime_->resources_.borrow<detail::ViewParameterStorage>(owner.resource_id);
         };
-        if (auto qualified = qualify_view(); !qualified) co_return AckResponse{qualified.error()};
         auto relations = jobRelations();
         std::ranges::find(relations, id, &detail::JobRelationEntry::id)->device = device;
-        if (auto valid = detail::validateJobDevices(relations); !valid) co_return AckResponse{valid.error()};
-        const auto begun = job.control.beginStart(target_id, rebind);
-        if (!begun) co_return AckResponse{begun.error()};
-        const detail::TargetReservation reservation{id, *begun};
-        targetState(*runtime_->targets_.find(target_id)).reservation = reservation;
-        cxx::scope_exit finish_start([&]() noexcept
-        {
-            if (auto* target = runtime_->targets_.find(target_id))
-            {
-                auto& state = targetState(*target);
-                if (state.reservation == reservation) state.reservation = {};
-            }
-            if (auto* current = runtime_->jobs_.find(id)) current->control.finishStart(reservation.start_serial);
-        });
-        if (auto retained = effect->retainExecution(); !retained) co_return AckResponse{retained.error()};
-        cxx::scope_exit release_effect([effect]() noexcept { effect->releaseExecution(); });
-        auto& entry = *runtime_->device(device);
-        if (entry.pending_starts == UINT32_MAX) co_return AckResponse{RenderError{kRuntimeCapacity}};
-        ++entry.pending_starts;
-        cxx::scope_exit release_device([&entry]() noexcept { --entry.pending_starts; });
-        const auto target_desc = targetDescription(*runtime_->targets_.find(target_id));
-        const EffectOutputDesc output_contract{
-            target_desc.format, target_desc.samples, target_desc.kind, target_desc.sampled
-        };
+        if (auto valid = detail::validateJobDevices(relations); !valid) return AckResponse{valid.error()};
+        const auto generation = job.control.reserveGeneration(rebind);
+        if (!generation) return AckResponse{generation.error()};
         std::ranges::sort(binding.target_images, {}, &TargetImageInput::binding);
         std::ranges::sort(binding.resources, {}, &JobResourceInput::binding);
-        const auto variant = co_await acquireEffectVariant(effect_id, entry, output_contract);
-        cxx::scope_exit release_variant([&]() noexcept { if (variant) entry.releaseVariant(*variant); });
-        if (stop_requested_.load()) co_return AckResponse{RenderError{kCommandCancelled}};
-        if (!job.control.canPublishStart(reservation.start_serial))
-            co_return AckResponse{RenderError{kJobStopped}};
-        if (!variant) co_return AckResponse{variant.error()};
-        if (auto valid = validateJobBinding(device, job, *effect, target_id, binding, reservation); !valid)
-            co_return AckResponse{valid.error()};
         const auto self = std::ranges::find(binding.target_images, target_id, &TargetImageInput::target);
         if (self != binding.target_images.end())
-            co_return AckResponse{RenderError{kCommandContract}};
+            return AckResponse{RenderError{kCommandContract}};
         const auto qualified_view = qualify_view();
-        if (!qualified_view) co_return AckResponse{qualified_view.error()};
+        if (!qualified_view) return AckResponse{qualified_view.error()};
         auto* view_parameters = *qualified_view;
         auto& target = *runtime_->targets_.find(target_id);
-        const auto& selected = entry.readyVariant(*variant);
-        if (!selected.plan->executable.compatible(targetDescription(target)))
-            co_return AckResponse{RenderError{kDeviceArgument}};
-        auto resources = bindEffectResources(entry, selected.plan->storage_imports, binding.resources);
-        if (!resources) co_return AckResponse{resources.error()};
-        auto candidate = std::make_unique<JobExecution>(entry, selected, target_id, targetOutput(target));
-        release_variant.release();
-        release_effect.release();
+        if (!selected->executable.compatible(targetDescription(target)))
+            return AckResponse{RenderError{kDeviceArgument}};
+        auto resources = bindEffectResources(*entry, selected->storage_imports, binding.resources);
+        if (!resources) return AckResponse{resources.error()};
+        const JobExecution::Installation installation{effect_id, target_id, {id, *generation}};
+        auto candidate = std::make_unique<JobExecution>(*entry, *selected, installation, targetOutput(target));
         cxx::scope_exit rollback([&]() noexcept { destroyExecution(std::move(candidate)); });
-        candidate->storage_start = reservation;
         candidate->view_parameters = view_parameters;
         if (auto assembled = assembleExecution(*candidate, binding, *effect, *resources); !assembled)
-            co_return AckResponse{assembled.error()};
+            return AckResponse{assembled.error()};
 
         if (view_parameters)
         {
             if (auto retained = retainExecutionResource(*candidate, binding.view_parameters); !retained)
-                co_return AckResponse{retained.error()};
+                return AckResponse{retained.error()};
         }
-        if (auto layout = buildJobInputLayout(job, *candidate); !layout) co_return AckResponse{layout.error()};
+        if (auto layout = buildJobInputLayout(job, *candidate); !layout) return AckResponse{layout.error()};
 
         auto running = running_jobs_;
         if (!rebind) running.push_back(id);
         auto ordered = detail::orderRunningJobs(jobRelations(candidate.get()), running);
-        if (!ordered) co_return AckResponse{ordered.error()};
+        if (!ordered) return AckResponse{ordered.error()};
         auto* previous = job.execution.get();
-        if (auto published = job.control.publishStart(reservation.start_serial); !published)
-            co_return AckResponse{published.error()};
+        job.control.publishGeneration(*generation);
         candidate->instance.bindPreparationOwner(id, job.control.executionGeneration());
         targetState(target).writer = id;
         if (previous && previous->target != target_id)
         {
             targetState(*runtime_->targets_.find(previous->target)).releaseWriter(id);
         }
-        destroyExecution(std::exchange(job.execution, std::move(candidate)));
+        auto retired = std::exchange(job.execution, std::move(candidate));
         rollback.release();
         job.content.effect = effect_id;
         job.binding = std::move(binding);
         job.last_run_error = {};
         running_jobs_ = std::move(*ordered);
         ++job_structure_revision_;
-        co_return AckResponse{};
+        destroyExecution(std::move(retired));
+        return AckResponse{};
     }
 
     RenderResult<void> RenderServer::Impl::buildJobInputLayout(const RenderJob& job, JobExecution& candidate) noexcept
@@ -513,7 +405,7 @@ namespace lux::render
             reply.error = failure;
             return;
         }
-        if (job->control.pendingStart() || !canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
+        if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
         if (auto valid = input.inputs.viewport.validate(); !valid) { reply.error = valid.error(); return; }
         auto& execution = *job->execution;
         if (auto applied = execution.instance.setConditions(input.inputs.conditions); !applied)
@@ -547,7 +439,8 @@ namespace lux::render
     {
         const auto& target = *runtime_->targets_.find(job.execution->target);
         const auto& state = targetState(target);
-        return state.enabled && !state.resizing && state.writer == job.control.id() && targetAvailable(target);
+        return state.enabled && state.writer == job.control.id() && targetAvailable(target) &&
+            !executionTargetsResizing(*job.execution);
     }
 
     auto RenderServer::Impl::requestJob(RequestRenderJob::Request&& input) noexcept

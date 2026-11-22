@@ -61,10 +61,7 @@ namespace lux::render::detail
 
     bool RenderGraphExecutable::compatible(const TargetDesc& target) const noexcept
     {
-        const bool same_type = target.kind == output_description_.kind && target.format == output_description_.format &&
-                               target.samples == output_description_.samples &&
-                               target.sampled == output_description_.sampled;
-        if (!same_type)
+        if (target.outputContract() != output_description_)
         {
             return false;
         }

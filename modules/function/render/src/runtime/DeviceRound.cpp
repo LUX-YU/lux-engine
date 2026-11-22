@@ -102,6 +102,7 @@ namespace lux::render
         }
 
         round.operation.emplace(entry, cpu_scheduler_);
+        round.operation->useRecordingWorkers(recording_workers_);
         auto opened = round.operation->tryBegin();
         if (!opened || !*opened)
         {
@@ -211,21 +212,11 @@ namespace lux::render
         {
             const auto index = (round.preparation_cursor + offset) % count;
             auto& job = *runtime_->jobs_.find(running_jobs_[index]);
-            if (!job.readyToRun() || job.control.pendingStart() || !jobTargetReady(job)) continue;
+            if (!job.readyToRun() || !jobTargetReady(job)) continue;
             auto& execution = *job.execution;
             if (execution.device != entry.id) continue;
             if (execution.programsReady() || execution.programError().type) continue;
             if (execution.pending_uses || !resourcesAvailable(execution.retainedResources())) continue;
-            const bool parallel_recording = std::ranges::any_of(runtime_->devices_, [](const auto& device) noexcept
-            {
-                const auto& operation = device->round.operation;
-                return operation && operation->parallelRecordingPending();
-            });
-            if (parallel_recording)
-            {
-                program_waiting_for_recording_ = true;
-                return progressed;
-            }
             round.preparation_cursor = (index + 1) % count;
             startProgramPreparation(job, execution);
             return true;
@@ -240,9 +231,6 @@ namespace lux::render
         programs.failure = {};
         programs.stop.emplace();
         preparing_execution_ = &execution;
-        preparation_targets_.clear();
-        preparation_targets_.push_back(execution.target);
-        for (const auto& input : execution.target_images) preparation_targets_.push_back(input.target);
         const auto stop = programs.stop->get_token();
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         program_preparation_started_at_ = std::chrono::steady_clock::now();
@@ -250,7 +238,11 @@ namespace lux::render
 #endif
         const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
         auto prepared =
-            execution.instance.prepareProducerPrograms(program_scheduler_, programs.revisions, stop) |
+            recording_workers_.beginCompilation() |
+            stdexec::let_value([this, &execution, stop]() noexcept
+            {
+                return execution.instance.prepareProducerPrograms(program_scheduler_, execution.programs.revisions, stop);
+            }) |
             stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<bool> { std::terminate(); }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<bool> { return false; }) |
             stdexec::continues_on(scheduler) |
@@ -279,8 +271,8 @@ namespace lux::render
                         else if (!*result || execution.instance.requiresProducerPrograms()) programs.failure = {kFrameContract};
                     }
                     programs.stop.reset();
+                    recording_workers_.endCompilation();
                     preparing_execution_ = nullptr;
-                    preparation_targets_.clear();
                     retireStoppedExecution(*job);
                 }
             );

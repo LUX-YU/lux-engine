@@ -488,6 +488,7 @@ namespace
     CreateEffectRequest hdrEffect()
     {
         CreateEffectRequest request;
+        request.output = {ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
         request.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*request.graph};
         const auto node = take(edit.addNode(hdrDefinition(), {std::string{clear_hdr}, 1}));
@@ -620,7 +621,7 @@ namespace
     {
         CapturedPixels pixels;
         const auto format = purpose == EMaterialPurpose::SHADOW ? ETextureFormat::D32_SFLOAT : kTarget.format;
-        const auto effect = call<CreateEffect>(ipc, commands, rasterEffect(purpose)).effect;
+        const auto effect = createPreparedEffect(ipc, commands, session, rasterEffect(purpose));
         const auto view = call<CreateView>(ipc, commands, {scene}).view;
         const auto output = call<CreateTarget>(ipc, commands, {session, kTarget}).target;
         const MaterialReadback::Configuration capture{{{&pixels, format}, {}}};
@@ -954,7 +955,7 @@ namespace
         {
             constexpr auto hdr = ETextureFormat::RGBA16_SFLOAT;
             source = call<CreateTarget>(client, commands, {session, {64, 64, hdr, 1, ETargetKind::OFFSCREEN, true}}).target;
-            const auto effect = call<CreateEffect>(client, commands, hdrEffect()).effect;
+            const auto effect = createPreparedEffect(client, commands, session, hdrEffect());
             const auto view = call<CreateView>(client, commands, {scenes[0]}).view;
             const auto writer = startRenderJob(client, commands, session, scenes[0], view, source, effect);
             renderFrame(client, commands, writer);
@@ -975,7 +976,7 @@ namespace
             input.render_enabled = true;
             job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
             const bool samples_hdr = i == 1 && expect_progress;
-            job.effect = call<CreateEffect>(client, commands, rasterEffect(purposes[0], samples_hdr)).effect;
+            job.effect = createPreparedEffect(client, commands, session, rasterEffect(purposes[0], samples_hdr));
             job.view = call<CreateView>(client, commands, {scenes[i]}).view;
             job.target = call<CreateTarget>(client, commands, {session, kTarget}).target;
             const MaterialReadback::Configuration capture{{

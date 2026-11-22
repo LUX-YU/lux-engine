@@ -91,7 +91,7 @@ namespace lux::render
             for (const auto& bound : binding.users)
             {
                 if (!bound.writer && !user.writer) continue;
-                const bool replacing = bound.job == user.job && bound.start_serial != user.start_serial;
+                const bool replacing = bound.job == user.job && bound.generation != user.generation;
                 const bool same_use = bound.job == user.job && bound.resource == user.resource;
                 // Disabled command bodies still record their planned barriers.
                 const bool compatible_barriers = same_projection && bound.canonical_queue != kGraphInvalidIndex &&
@@ -116,7 +116,7 @@ namespace lux::render
 
     RenderResult<cxx::SlotKey<detail::GraphBindingTag>> ResourceRegistry::bindGraphProjection(
         const runtime_detail::BoundStorageProjection& link,
-        const detail::TargetReservation& start,
+        const detail::ExecutionBindingId& identity,
         detail::RenderGraphInstance& instance,
         bool may_access
     ) noexcept
@@ -124,7 +124,7 @@ namespace lux::render
         auto* entry = entries_.find(link.storage);
         if (!entry || !entry->execution_uses) return cxx::unexpected(RenderError{kStorageIdentity});
         const GraphBindingUse user{
-            start.job, start.start_serial, link.resource, &instance, link.output_range, may_access, link.canonical_queue
+            identity.job, identity.generation, link.resource, &instance, link.output_range, may_access, link.canonical_queue
         };
         const auto installed = entry->graph_bindings.find(link.projection);
         if (installed != entry->graph_bindings.end())
@@ -193,7 +193,7 @@ namespace lux::render
     }
 
     void ResourceRegistry::unbindGraphProjection(
-        const runtime_detail::BoundStorageProjection& link, const detail::TargetReservation& start
+        const runtime_detail::BoundStorageProjection& link, const detail::ExecutionBindingId& identity
     ) noexcept
     {
         auto& projections = entries_.find(link.storage)->graph_bindings;
@@ -201,8 +201,8 @@ namespace lux::render
         if (found == projections.end()) std::terminate();
         auto& users = found->second.users;
         const auto* reader = users.find(link.subscription);
-        const bool matches_start = reader && reader->job == start.job && reader->start_serial == start.start_serial;
-        if (!matches_start || reader->resource != link.resource) std::terminate();
+        const bool matches_generation = reader && reader->job == identity.job && reader->generation == identity.generation;
+        if (!matches_generation || reader->resource != link.resource) std::terminate();
         users.erase(link.subscription);
         if (users.empty()) projections.erase(found);
         if (link.output_range) pruneBufferProducts(link.storage);

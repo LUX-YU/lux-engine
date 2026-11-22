@@ -14,28 +14,7 @@ namespace lux::render::detail
 {
     class NativeExecution;
 
-    using EffectVariantResult = RenderResult<DeviceVariantId>;
-
-    struct EffectDeviceVariant final
-    {
-        // Effect identity includes the immutable recipe. Device qualification and queue policy
-        // are fixed for this DeviceEntry. Target extent and native identity belong to each Job.
-        DeviceVariantId id;
-        EffectId effect;
-        EffectOutputDesc target;
-        struct Waiter final
-        {
-            void* receiver;
-            void (*complete)(void*, EffectVariantResult) noexcept;
-        };
-        std::vector<Waiter> waiters;
-        std::unique_ptr<const compiled::RenderGraph> plan;
-        RenderError failure;
-        std::uint32_t readers = 1;
-    };
-
-    // One actual device. Server settles accepted operations and GPU work before releasing
-    // its child domains and this entry. The native worker outlives Session cleanup.
+    // The session and its workers outlive all native uses on this device.
     class DeviceEntry final
     {
     public:
@@ -58,11 +37,6 @@ namespace lux::render::detail
         [[nodiscard]] FrameOperation::Workspace& frameWorkspace() noexcept { return frame_workspace_; }
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;
-        [[nodiscard]] EffectDeviceVariant* findVariant(EffectId, const EffectOutputDesc&) noexcept;
-        [[nodiscard]] EffectDeviceVariant& beginVariant(EffectId, const EffectOutputDesc&) noexcept;
-        [[nodiscard]] const EffectDeviceVariant& readyVariant(DeviceVariantId) const noexcept;
-        void releaseVariant(DeviceVariantId) noexcept;
-
         struct UniformPoolRecord final
         {
             UniformPoolId id;
@@ -103,7 +77,6 @@ namespace lux::render::detail
         FrameProgress frame_progress_;
         FrameOperation::Workspace frame_workspace_;
         ResourceSet resources_;
-        cxx::StableSlotMap<EffectDeviceVariant, DeviceVariantTag> variants_;
         cxx::StableSlotMap<UniformPoolRecord, UniformPoolTag> uniform_pools_;
         using ScopeKey = std::pair<std::uint32_t, std::uint32_t>;
         struct SceneResources final
@@ -131,6 +104,5 @@ namespace lux::render::detail
 
         bool retiring = false;
         bool upload_pending = false;
-        std::uint32_t pending_starts = 0;
     };
 } // namespace lux::render::detail

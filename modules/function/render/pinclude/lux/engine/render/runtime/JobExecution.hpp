@@ -6,17 +6,21 @@
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <algorithm>
 #include <memory>
 #include <vector>
 
 namespace lux::render::detail
 {
+    struct ExecutionBindingId final
+    {
+        RenderJobId job;
+        std::uint64_t generation;
+    };
+
     class DeviceEntry;
-    struct EffectDeviceVariant;
     struct GraphBindingTag;
     class ViewParameterStorage;
-    struct DeviceVariantTag;
-    using DeviceVariantId = cxx::SlotKey<DeviceVariantTag>;
 }
 
 namespace lux::render::runtime_detail
@@ -36,7 +40,13 @@ namespace lux::render::runtime_detail
 
     struct JobExecution final
     {
-        JobExecution(detail::DeviceEntry&, const detail::EffectDeviceVariant&, TargetId, detail::TargetOutput) noexcept;
+        struct Installation final
+        {
+            EffectId effect;
+            TargetId target;
+            detail::ExecutionBindingId identity;
+        };
+        JobExecution(detail::DeviceEntry&, const compiled::RenderGraph&, Installation, detail::TargetOutput) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;
@@ -45,11 +55,11 @@ namespace lux::render::runtime_detail
         std::vector<ResourceInstanceId> resource_ids;
         std::vector<ResourceInstanceId> gpu_resources;
         DeviceSessionId device;
-        detail::DeviceVariantId variant;
         TargetId target;
         const compiled::RenderGraph& graph;
         const detail::RenderGraphExecutable& executable;
         detail::RenderGraphInstance instance;
+        // Resize holds this execution until the existing Job-local program preparation path is retired.
         std::uint32_t pending_uses = 0;
         struct ProgramPreparation final
         {
@@ -99,7 +109,7 @@ namespace lux::render::runtime_detail
         }
         std::span<const std::uint32_t> columnsFor(const Input&) const && = delete;
 
-        detail::TargetReservation storage_start;
+        const detail::ExecutionBindingId binding_identity;
         std::vector<BoundStorageProjection> storage_bindings;
         std::size_t product_count = 0;
         [[nodiscard]] std::span<const BoundStorageProjection> productUses() const & noexcept
@@ -115,6 +125,11 @@ namespace lux::render::runtime_detail
         };
 
         std::vector<TargetImage> target_images;
+
+        [[nodiscard]] bool bindsTarget(TargetId id) const noexcept
+        {
+            return target == id || std::ranges::find(target_images, id, &TargetImage::target) != target_images.end();
+        }
         void selectViewParameters() noexcept;
         const detail::ViewParameterStorage* view_parameters = nullptr;
         std::uint64_t view_revision = 0;

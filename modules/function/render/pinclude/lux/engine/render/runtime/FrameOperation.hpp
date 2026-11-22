@@ -1,5 +1,6 @@
 #pragma once
 
+#include <exec/async_scope.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/effect/UniformBlockVersions.hpp>
@@ -11,6 +12,31 @@
 namespace lux::render::detail
 {
     class DeviceEntry;
+
+    // The owner admits compiler work after recordings already using the entire pool have joined.
+    class RecordingWorkers final
+    {
+    public:
+        explicit RecordingWorkers(execution::CpuScheduler independent) noexcept : independent_(independent) {}
+
+        [[nodiscard]] auto beginCompilation() noexcept
+        {
+            ++compilations_;
+            return recordings_.on_empty();
+        }
+
+        void endCompilation() noexcept
+        {
+            if (compilations_ == 0) std::terminate();
+            --compilations_;
+        }
+
+    private:
+        friend class FrameOperation;
+        execution::CpuScheduler independent_;
+        exec::async_scope recordings_;
+        std::size_t compilations_ = 0;
+    };
 
     // One accepted device round. All CPU and native submissions return before the round releases its slot.
     class LUX_RENDER_PUBLIC FrameOperation final
@@ -81,16 +107,7 @@ namespace lux::render::detail
             std::span<RenderGraphInstance* const>, std::span<const ResourceInstanceId>,
             std::span<const SubmissionOrder> order = {}, std::optional<UniformStateLookup> uniform_state = {}
         ) noexcept;
-        void setRecordingPolicy(execution::CpuScheduler cpu, bool parallel) noexcept
-        {
-            cpu_ = cpu;
-            parallel_recording_ = parallel;
-        }
-
-        [[nodiscard]] bool parallelRecordingPending() const noexcept
-        {
-            return parallel_recording_ && worker_pending_ && phase_ == EPhase::RECORDING;
-        }
+        void useRecordingWorkers(RecordingWorkers& workers) noexcept { workers_ = &workers; }
 
         void cancel(RenderError) noexcept;
 
@@ -125,7 +142,7 @@ namespace lux::render::detail
         FrameProgress& progress_;
         Workspace& workspace_;
         execution::CpuScheduler cpu_;
-        bool parallel_recording_;
+        RecordingWorkers* workers_ = nullptr;
         DeviceEntry* owner_;
         std::optional<FrameProgress::SlotSelection> selection_;
         EPhase phase_ = EPhase::UNIFORMS;

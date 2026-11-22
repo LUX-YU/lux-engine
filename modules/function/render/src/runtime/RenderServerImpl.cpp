@@ -19,7 +19,7 @@ namespace lux::render
         : config_(std::move(value)), cpu_scheduler_(execution.cpuScheduler()),
           program_scheduler_(execution.cpuSchedulerOnWorker(0)),
           recording_scheduler_(execution.cpuSchedulerOnWorker(execution.cpuConcurrency() > 1 ? 1 : 0)),
-          responder_(std::move(input)), instance_id_(instance_id),
+          recording_workers_(recording_scheduler_), responder_(std::move(input)), instance_id_(instance_id),
           server_context_(
               cxx::execution::default_manual_context_config(),
               {nullptr, [](void*) noexcept { ipc::IpcCore::instance().notifyWork(); }}
@@ -39,7 +39,7 @@ namespace lux::render
         bindFrameworkCommand<ResizeTarget, &Impl::resizeTarget>();
         bindFrameworkCommand<RemoveTarget, &Impl::removeTarget>();
         bindFrameworkCommand<SetTargetActive, &Impl::setTargetActive>();
-        bindCreateEffectCommand();
+        bindEffectGraphCommands();
         bindFrameworkCommand<RemoveEffect, &Impl::removeEffect>();
         bindJobCommands();
         bindFrameworkCommand<Stop, &Impl::stopCommand>();
@@ -171,19 +171,14 @@ namespace lux::render
         return candidates;
     }
 
-    std::vector<RenderJobId> RenderServer::Impl::jobsSamplingTarget(TargetId source) const noexcept
+    std::vector<RenderJobId> RenderServer::Impl::jobsBindingTarget(TargetId source) const noexcept
     {
         std::vector<RenderJobId> result;
         for (const auto& job : runtime_->jobs_)
         {
             const auto* execution = job.execution.get();
             if (!execution) continue;
-            const bool binds_source = std::ranges::find(
-                execution->target_images, source, &JobExecution::TargetImage::target
-            ) != execution->target_images.end();
-            const auto* target = runtime_->targets_.find(source);
-            if (!target || targetState(*target).device != execution->device) continue;
-            if (binds_source)
+            if (execution->bindsTarget(source))
                 result.push_back(job.control.id());
         }
         return result;
@@ -201,23 +196,26 @@ namespace lux::render
         if (auto valid = input.description.validate(); !valid) co_return response(valid.error());
 
         auto& state = targetState(*target);
-        const bool busy_target = state.resizing || state.reservation ||
-            frameUsesTarget(input.target) || preparationUsesTarget(input.target);
+        const bool preparing_target = preparing_execution_ && preparing_execution_->bindsTarget(input.target);
+        const bool busy_target = state.resizing || frameUsesTarget(input.target) || preparing_target;
         if (busy_target) co_return response(RenderError{kDeviceBusy});
-        auto affected = jobsSamplingTarget(input.target);
+        auto affected = jobsBindingTarget(input.target);
         const bool different_kind = input.description.kind != targetDescription(*target).kind;
         auto& device = *runtime_->device(state.device);
         if (const auto failure = device.admissionError(); failure.type) co_return response(failure);
         const auto maximum = device.session().description().dimensions.attachmentMaxDim;
         const bool oversized = input.description.width > maximum || input.description.height > maximum;
-        const bool removes_sampling = !input.description.sampled && !affected.empty();
+        const bool removes_sampling = targetDescription(*target).sampled && !input.description.sampled &&
+            std::ranges::any_of(affected, [&](auto job)
+            {
+                return runtime_->jobs_.find(job)->execution->target != input.target;
+            });
         if (different_kind || oversized || removes_sampling) co_return response(RenderError{kCommandContract});
         auto* swapchain = std::get_if<detail::SwapchainTarget>(target);
         const bool healthy = !swapchain || !swapchain->needsRecreation();
         if (input.description == targetDescription(*target) && healthy) co_return response();
         if (!state.writer.isNull())
         {
-            affected.push_back(state.writer);
             if (!runtime_->jobs_.find(state.writer)->execution->executable.compatible(input.description))
                 co_return response(RenderError{kDeviceArgument});
         }
@@ -312,15 +310,9 @@ namespace lux::render
         auto* target = runtime_->targets_.find(input);
         if (!target) co_return AckResponse{RenderError{kRuntimeIdentity}};
         auto& state = targetState(*target);
-        const bool busy_target = state.resizing || state.reservation ||
-            frameUsesTarget(input) || preparationUsesTarget(input);
+        const bool busy_target = state.resizing || frameUsesTarget(input);
         if (busy_target) co_return AckResponse{RenderError{kDeviceBusy}};
-        if (!jobsSamplingTarget(input).empty()) co_return AckResponse{RenderError{kRuntimeState}};
-        if (!state.writer.isNull())
-        {
-            if (!canChangeExecution(*runtime_->jobs_.find(state.writer))) co_return AckResponse{RenderError{kDeviceBusy}};
-            stopJob(*runtime_->jobs_.find(state.writer));
-        }
+        if (!jobsBindingTarget(input).empty()) co_return AckResponse{RenderError{kDeviceBusy}};
         state.resizing = true;
         auto& device = *runtime_->device(state.device);
         RenderError retired;
@@ -502,14 +494,6 @@ namespace lux::render
         });
     }
 
-    bool RenderServer::Impl::preparationUsesTarget(TargetId id) const noexcept
-    {
-        const auto* target = runtime_->targets_.find(id);
-        if (!target || !preparing_execution_) return false;
-        return targetState(*target).device == preparing_execution_->device &&
-            std::ranges::find(preparation_targets_, id) != preparation_targets_.end();
-    }
-
     RenderResult<bool> RenderServer::Impl::acquireFrameOutputs(detail::DeviceEntry& device, std::uint32_t slot) noexcept
     {
         const auto& round = device.round;
@@ -587,10 +571,6 @@ namespace lux::render
         const auto slot = round.slot();
         const auto& submissions = device.frameWorkspace().submissions;
         const auto submitted_before = submissions.submittedBatches(slot);
-        // A parallel bulk joins every worker. A driver compile can hold one worker while another device records.
-        const bool use_parallel_recording = !preparing_execution_ && !program_waiting_for_recording_;
-        const auto cpu = use_parallel_recording ? cpu_scheduler_ : recording_scheduler_;
-        round.operation->setRecordingPolicy(cpu, use_parallel_recording);
         const auto uniform_state = [this](EffectId id, graph::NodeId node, cxx::basic_type_info type) noexcept
             -> const void*
         {
@@ -749,10 +729,16 @@ namespace lux::render
         {
             return job.execution && job.execution->device == id;
         });
-        if (has_targets || has_bound_jobs || entry->hasBorrows())
+        const bool preparing = std::ranges::any_of(runtime_->effects_, [id](const auto& effect) noexcept
+        {
+            return effect.preparing_device == id;
+        });
+        if (has_targets || has_bound_jobs || preparing || entry->hasBorrows())
             co_return AckResponse{RenderError{kDeviceBusy}};
 
         entry->retiring = true;
+        for (auto& effect : runtime_->effects_)
+            std::erase_if(effect.device_graphs, [id](const auto& installed) { return installed.device == id; });
         auto& session = entry->session();
         auto accepted = session.makeFrontiers();
         for (std::size_t index = 0; index < session.queueCount(); ++index)
@@ -1050,14 +1036,19 @@ namespace lux::render
             const auto observed = notifications.workEpoch();
             if (!serviceOperations(false)) waitForService(observed);
         }
+        for (const auto& job : runtime_->jobs_)
+        {
+            if (job.execution) std::terminate();
+        }
+        for (auto& effect : runtime_->effects_)
+        {
+            if (!effect.preparing_device.isNull()) std::terminate();
+            effect.device_graphs.clear();
+        }
         // All sources of new native work have returned. Staging and native payloads can now release in owner order.
         for (const auto& device : runtime_->devices_)
         {
             if (auto drained = device->session().drain(); !drained) failDevice(*device, drained.error());
-        }
-        for (const auto& job : runtime_->jobs_)
-        {
-            if (job.execution) std::terminate();
         }
         for (auto& device : runtime_->devices_) device->clearUniformPools();
         runtime_.reset();
@@ -1084,7 +1075,6 @@ namespace lux::render
         const auto submitted_before = submissions_.load(std::memory_order_relaxed);
         // The budget limits adopted nodes. A continuation itself must return promptly.
         bool progressed = server_context_.run_ready(continuation_budget) != 0;
-        program_waiting_for_recording_ = false;
         auto& devices = runtime_->devices_;
         if (!devices.empty())
         {

@@ -11,13 +11,14 @@ namespace lux::render::runtime_detail
 {
     JobExecution::JobExecution(
         detail::DeviceEntry& entry,
-        const detail::EffectDeviceVariant& selected,
-        TargetId output,
+        const compiled::RenderGraph& selected,
+        Installation installation,
         detail::TargetOutput physical
     ) noexcept
-        : effect(selected.effect), device(entry.id), variant(selected.id), target(output),
-          graph(*selected.plan), executable(graph.executable),
-          instance(entry.session(), entry.frameProgress().frameCount(), executable, graph.programs, physical)
+        : effect(installation.effect), device(entry.id), target(installation.target),
+          graph(selected), executable(graph.executable),
+          instance(entry.session(), entry.frameProgress().frameCount(), executable, graph.programs, physical),
+          binding_identity(installation.identity)
     {
     }
 
@@ -133,7 +134,7 @@ namespace lux::render
                 return guard.source != EConditionSource::SAME_BINDING ||
                     bool(selected[guard.input_slot]) == guard.expected;
             });
-            auto bound = registry.bindGraphProjection(link, candidate.storage_start, candidate.instance, may_access);
+            auto bound = registry.bindGraphProjection(link, candidate.binding_identity, candidate.instance, may_access);
             if (!bound) return cxx::unexpected(bound.error());
             link.subscription = *bound;
             candidate.storage_bindings.push_back(link);

@@ -42,13 +42,6 @@ namespace lux::render::detail
             JobControl* owner_ = nullptr;
         };
 
-        struct StartAttempt final
-        {
-            TargetId target;
-            std::uint64_t serial;
-            bool cancelled = false;
-        };
-
         struct Completion final
         {
             void* receiver;
@@ -64,11 +57,8 @@ namespace lux::render::detail
         JobControl(const JobControl&) = delete;
         JobControl& operator=(const JobControl&) = delete;
 
-        // External Scene/Target device compatibility is checked once before this call.
-        [[nodiscard]] RenderResult<std::uint64_t> beginStart(TargetId target, bool rebind) noexcept;
-        [[nodiscard]] bool canPublishStart(std::uint64_t serial) const noexcept;
-        [[nodiscard]] RenderResult<void> publishStart(std::uint64_t serial) noexcept;
-        void finishStart(std::uint64_t serial) noexcept;
+        [[nodiscard]] RenderResult<std::uint64_t> reserveGeneration(bool rebind) noexcept;
+        void publishGeneration(std::uint64_t generation) noexcept;
         void stop() noexcept; // closes admission NOW; already admitted Run may finish
         void rejectUnadmitted(RenderError) noexcept;
         [[nodiscard]] RenderResult<void> request(Request& request) noexcept;
@@ -81,8 +71,6 @@ namespace lux::render::detail
             return running_;
         }
 
-        [[nodiscard]] const StartAttempt* pendingStart() const & noexcept { return starting_ ? &*starting_ : nullptr; }
-        [[nodiscard]] const StartAttempt* pendingStart() const && = delete;
         [[nodiscard]] std::uint64_t executionGeneration() const noexcept { return execution_generation_; }
         [[nodiscard]] bool hasRun() const noexcept { return admitted_.has_value(); }
         [[nodiscard]] bool hasRequest() const noexcept { return requested_ != nullptr; }
@@ -112,9 +100,8 @@ namespace lux::render::detail
         RenderJobId id_;
         EJobCadence cadence_;
         bool running_ = false;
-        std::uint64_t start_serial_ = 0;
+        std::uint64_t last_generation_ = 0;
         std::uint64_t execution_generation_ = 0;
-        std::optional<StartAttempt> starting_;
         std::optional<AdmittedRun> admitted_;
         Request* requested_ = nullptr; // one exact request credit per Job; never silently coalesced
     };

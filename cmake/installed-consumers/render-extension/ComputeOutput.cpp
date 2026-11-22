@@ -774,7 +774,7 @@ int main(int argc, char** argv)
     const auto readback = call<GetOrCreateResource>(
         *client, commands, {session, ViewRequest{scene, view}, ComputeCaptureDescriptor::descriptor.type}
     ).resource_id;
-    const auto create_capture = [&](std::string mode)
+    const auto capture_request = [&](std::string mode)
     {
         CreateEffectRequest effect;
         effect.graph = std::make_unique<EffectGraph>();
@@ -786,7 +786,11 @@ int main(int argc, char** argv)
         CHECK(edit.setOutput("color", color_pin, true));
         CHECK(edit.setOutput("pixels", edit.pinId(capture, pixels)));
         CHECK(edit.commit());
-        return call<CreateEffect>(*client, commands, std::move(effect)).effect;
+        return effect;
+    };
+    const auto create_capture = [&](std::string mode)
+    {
+        return createPreparedEffect(*client, commands, session, capture_request(std::move(mode)));
     };
     if (receipts || product_fault)
     {
@@ -827,7 +831,7 @@ int main(int argc, char** argv)
             CHECK(edit.setOutput("color", edit.pinId(node, color), true));
             CHECK(edit.setOutput("pixels", edit.pinId(node, pixels)));
             CHECK(edit.commit());
-            const auto fault_effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+            const auto fault_effect = createPreparedEffect(*client, commands, session, std::move(request));
             call<RebindRenderJobEffect>(*client, commands, {session, writer, fault_effect, target, writer_binding});
 
             ProductBuffer::countdown = 1;
@@ -1051,14 +1055,13 @@ int main(int argc, char** argv)
         const auto effect = create_capture(std::move(mode));
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     };
-    for (const auto& [mode, error] : {std::pair{"overlap", kJobBusy}, std::pair{"spill", kGraphInvalidRange}})
-    {
-        const auto rival = candidate(mode);
-        const StartRenderJob::Request request{session, rival, peer_target, range_binding};
-        const auto failed = call<StartRenderJob>(*client, commands, request, false);
-        CHECK(failed.error.type == error);
-        call<RemoveRenderJob>(*client, commands, {rival});
-    }
+    const auto spill = call<CreateEffect>(*client, commands, capture_request("spill")).effect;
+    CHECK(call<PrepareEffect>(*client, commands, {spill, session}, false).error.type == kGraphInvalidRange);
+    call<RemoveEffect>(*client, commands, {spill});
+    const auto rival = candidate("overlap");
+    const StartRenderJob::Request conflict{session, rival, peer_target, range_binding};
+    CHECK(call<StartRenderJob>(*client, commands, conflict, false).error.type == kJobBusy);
+    call<RemoveRenderJob>(*client, commands, {rival});
     const auto upper = candidate("upper");
     const auto unauthorized = candidate("unauthorized");
     auto shared_binding = range_binding;

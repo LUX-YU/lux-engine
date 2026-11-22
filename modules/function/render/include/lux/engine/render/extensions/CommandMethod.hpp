@@ -64,9 +64,16 @@ namespace lux::render
             using Handler = H;
             using Storage = void;
             using Result = R;
-            static constexpr bool synchronous = false;
+            static constexpr bool synchronous = std::same_as<R, typename C::Response>;
+
+            static void invoke(H& handler, void*, Request& request, typename C::Response& response) noexcept
+                requires synchronous
+            {
+                response = (handler.*Method)(std::move(request));
+            }
 
             static R invoke(H& handler, void*, typename C::Request&& request) noexcept
+                requires (!synchronous)
             {
                 return (handler.*Method)(std::move(request));
             }

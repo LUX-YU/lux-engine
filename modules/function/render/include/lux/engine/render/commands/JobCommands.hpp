@@ -100,8 +100,7 @@ namespace lux::render
     struct StartRenderJob final
     {
         static constexpr std::string_view name = "render.job.start";
-        // Handler prepares asynchronously and publishes at a LOCAL safe point.
-        // Do not let the old global frame-boundary flag stall all Devices.
+        // Synchronously installs a Job against the Effect graph prepared for this device.
 
         struct Request final
         {

@@ -2,7 +2,9 @@
 
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
+#include <lux/engine/render/core/Target.hpp>
 #include <memory>
+#include <vector>
 
 namespace lux::render
 {
@@ -20,14 +22,37 @@ namespace lux::render
     struct CreateEffectRequest final
     {
         std::unique_ptr<EffectGraph> graph;
+        EffectOutputDesc output{rdesc::ETextureFormat::RGBA8_UNORM};
     };
 
-    // Builds a reusable logical recipe. The selected execution compiles its device plan separately.
+    // Creates the logical Effect and fixes its output contract without requiring a device.
     struct CreateEffect final
     {
         static constexpr std::string_view name{"render.effect.create"};
         using Request = CreateEffectRequest;
         using Response = EffectCreated;
+    };
+
+    struct PrepareEffect final
+    {
+        static constexpr std::string_view name{"render.effect.prepare"};
+        struct Request final
+        {
+            EffectId effect;
+            DeviceSessionId device;
+        };
+        using Response = AckResponse;
+    };
+
+    struct ListEffectJobs final
+    {
+        static constexpr std::string_view name{"render.effect.jobs"};
+        using Request = EffectRequest;
+        struct Response final
+        {
+            RenderError error{};
+            std::vector<RenderJobId> jobs;
+        };
     };
 
     struct SetToneMappingExposure final

@@ -13,24 +13,6 @@ namespace lux::render::detail
     struct BindingState;
     struct RasterDrawList;
 
-    struct FrozenBufferFill final
-    {
-        nri::Buffer* buffer;
-        std::uint64_t offset, size;
-        nri::Descriptor* storage_view;
-        std::uint32_t descriptor, value;
-        bool sync_before;
-    };
-
-    struct FrozenImageClear final
-    {
-        nri::AttachmentDesc attachment;
-        bool depth;
-    };
-
-    using VFrozenTransfer = std::variant<
-        BufferCopyRegion, TextureCopyRegion, UploadRegion, ReadbackRegion, FrozenBufferFill, FrozenImageClear
-    >;
 
 }
 
@@ -59,7 +41,6 @@ namespace lux::render
     {
         std::span<const nri::AttachmentDesc> colors;
         nri::AttachmentDesc depth{};
-        std::span<const detail::VFrozenTransfer> transfers;
         nri::DispatchDesc dispatch{};
         nri::Buffer* indirect_buffer = nullptr;
         std::uint64_t indirect_offset = 0;
@@ -80,5 +61,4 @@ namespace lux::render
 namespace lux::render::detail
 {
     void recordCompute(const PassNativeInput&, nri::CommandBuffer&, const nri::CoreInterface&) noexcept;
-    void recordTransfers(const PassNativeInput&, nri::CommandBuffer&, const nri::CoreInterface&) noexcept;
 }

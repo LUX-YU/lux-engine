@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstring>
+#include <lux/engine/render/graph/execute/CommandExtent.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/commands/Error.hpp>
@@ -12,6 +13,92 @@
 
 namespace lux::render::detail
 {
+    namespace
+    {
+        bool containsBytes(const PassResourceInput& resource, std::uint64_t offset, std::uint64_t count) noexcept
+        {
+            const bool fits = offset <= resource.buffer_size && count <= resource.buffer_size - offset;
+            const bool addressable = offset <= UINT64_MAX - resource.buffer_offset &&
+                count <= UINT64_MAX - (resource.buffer_offset + offset);
+            return resource.buffer && fits && addressable;
+        }
+
+        struct TransferSources final
+        {
+            std::span<const PassResourceInput> resources;
+            CopyAlignment alignment;
+
+            [[nodiscard]] const PassResourceInput& selected(const auto& operand) const noexcept
+            {
+                const auto& primary = resources[operand.slot];
+                if (!primary.history_valid && operand.fallback != kGraphInvalidIndex) return resources[operand.fallback];
+                return primary;
+            }
+
+            [[nodiscard]] RenderResult<nri::TextureRegionDesc> region(const ImageOperand& operand) const noexcept
+            {
+                const auto& image = selected(operand);
+                if (!image.image) return cxx::unexpected(RenderError{kDeviceArgument});
+                return copyRegion(operand, {image.width, image.height});
+            }
+
+            [[nodiscard]] RenderResult<void> patch(const ImageCopyPacket& copy, TextureCopyRegion& output) const noexcept
+            {
+                auto from = region(copy.source);
+                if (!from) return cxx::unexpected(from.error());
+                auto to = region(copy.destination);
+                if (!to) return cxx::unexpected(to.error());
+                if (from->width != to->width || from->height != to->height)
+                    return cxx::unexpected(RenderError{kInvalidTargetExtent});
+                output.source = selected(copy.source).image;
+                output.destination = selected(copy.destination).image;
+                output.source_region = *from;
+                output.destination_region = *to;
+                return {};
+            }
+
+            [[nodiscard]] RenderResult<void> patch(const ImageBufferPacket& copy, FrozenImageBuffer& output) const noexcept
+            {
+                auto rect = region(copy.image);
+                if (!rect) return cxx::unexpected(rect.error());
+                const auto& buffer = selected(copy.buffer);
+                auto layout = copyLayout(copy, *rect, buffer.buffer_offset, alignment);
+                if (!layout) return cxx::unexpected(layout.error());
+                if (!containsBytes(buffer, copy.buffer.range.offset, layout->slicePitch))
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                output = {selected(copy.image).image, buffer.buffer, *rect, *layout};
+                return {};
+            }
+        };
+
+        RenderResult<void> freezeCompute(
+            const ComputeCommands& packet, std::span<const PassResourceInput> resources,
+            const nri::DeviceDesc& device, PassNativeInput& native
+        ) noexcept
+        {
+            if (const auto* indirect = std::get_if<BufferLocation>(&packet.dispatch))
+            {
+                const auto& buffer = resources[indirect->buffer];
+                if (!containsBytes(buffer, indirect->offset, sizeof(nri::DispatchDesc)))
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                native.indirect_buffer = buffer.buffer;
+                native.indirect_offset = buffer.buffer_offset + indirect->offset;
+                if (native.indirect_offset % 4) return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            else if (const auto* fixed = std::get_if<nri::DispatchDesc>(&packet.dispatch)) native.dispatch = *fixed;
+            else
+            {
+                const auto& extent = std::get<ImageDispatchExtent>(packet.dispatch);
+                const auto& image = resources[extent.image];
+                auto groups = dispatchGroups(extent, {image.width, image.height}, device);
+                if (!groups) return cxx::unexpected(groups.error());
+                native.dispatch = *groups;
+            }
+            return {};
+        }
+
+    } // namespace
+
     RenderResult<std::span<nri::CommandBuffer* const>>
     RenderGraphInstance::recordBatch(std::uint32_t frame_slot, std::uint32_t batch) noexcept
     {
@@ -27,7 +114,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceArgument});
         auto& frame = frames_[frame_slot];
         return FrozenRecordingFrame{{
-            graph_, frame.record_resources, frame.record_passes, frame.history_initializations.values(),
+            graph_, frame.transfers, frame.record_resources, frame.record_passes, frame.history_initializations.values(),
             frame.enabled_regions, frame.final_images, frame.final_buffers,
             frame.native.descriptor_pool, frame.shared_descriptors.sets
         }, frame.command_batches, frame.native.batches};
@@ -48,6 +135,7 @@ namespace lux::render::detail
         auto& frame = frames_[slot];
         frame.pending_resources.mark(resource);
         const auto& dependencies = graph_.binding_plan_->recordings;
+        for (const auto field : dependencies.resource_transfer_fields[resource]) frame.pending_transfer_fields.mark(field);
         for (const auto p : dependencies.resource_passes[resource]) frame.pending_passes.mark(p);
         frame.record_ready = false;
         if (frame.command_batches.empty()) return;
@@ -58,6 +146,7 @@ namespace lux::render::detail
     void RenderGraphInstance::invalidateRecordings(std::uint32_t frame_slot) noexcept
     {
         frames_[frame_slot].pending_passes.markAll();
+        frames_[frame_slot].pending_transfer_fields.markAll();
         frames_[frame_slot].record_ready = false;
         for (auto& batch : frames_[frame_slot].command_batches) batch.invalidate();
     }
@@ -196,8 +285,11 @@ namespace lux::render::detail
         const bool enabled = condition == kGraphInvalidIndex || frame.enabled_regions[condition];
         if (enabled)
         {
-            auto ready = pass.freezeCommands(graph_, frame.record_resources, session_->description(), native);
-            if (!ready) return ready;
+            if (const auto* compute = graph_.computeCommands(*pass.compiled_pass))
+            {
+                auto ready = freezeCompute(*compute, frame.record_resources, session_->description(), native);
+                if (!ready) return ready;
+            }
         }
         if (const auto* scope = graph_.recordingProgram().rasterScope(*pass.compiled_pass))
         {
@@ -298,6 +390,115 @@ namespace lux::render::detail
         frame.pending_history_clears.clear();
     }
 
+    void TransferOperands::initialize(const TransferProgram& program) noexcept
+    {
+        buffer_copies.resize(program.buffer_copies.size());
+        for (std::size_t i = 0; i < buffer_copies.size(); ++i)
+            buffer_copies[i].bytes = program.buffer_copies[i].source.range.size;
+        image_copies.resize(program.image_copies.size());
+        for (std::size_t i = 0; i < image_copies.size(); ++i)
+        {
+            image_copies[i].mip_count = program.image_copies[i].source.range.mip_count;
+            image_copies[i].layer_count = program.image_copies[i].source.range.layer_count;
+        }
+        image_buffers.resize(program.image_buffers.size());
+        fills.resize(program.fills.size());
+        clears.resize(program.clears.size());
+        for (std::size_t i = 0; i < clears.size(); ++i)
+        {
+            const auto& input = program.clears[i];
+            auto& clear = clears[i];
+            clear.loadOp = nri::LoadOp::CLEAR;
+            clear.storeOp = nri::StoreOp::STORE;
+            if (input.destination.range.aspects != 1) clear.clearValue.depthStencil.depth = input.depth;
+            else clear.clearValue.color.f = {input.color[0], input.color[1], input.color[2], input.color[3]};
+        }
+    }
+
+    RenderResult<void> RenderGraphInstance::FrameResources::patchTransferFields(
+        const TransferProgram& program, const RecordingDependencies& dependencies, CopyAlignment alignment
+    ) noexcept
+    {
+        using Field = RecordingDependencies::ETransferField;
+        const auto& fields = dependencies.transfer_fields;
+        const TransferSources sources{record_resources, alignment};
+        std::size_t patched = 0;
+        for (const auto index : pending_transfer_fields.slots())
+        {
+            const auto [field, p, row] = fields[index];
+            const auto& pass = passes[p];
+            const auto condition = pass.compiled_pass->condition_region;
+            if (condition != kGraphInvalidIndex && !enabled_regions[condition]) continue;
+            ++patched;
+            switch (field)
+            {
+            case Field::BUFFER_SOURCE:
+            case Field::BUFFER_DESTINATION:
+            {
+                const auto& copy = program.buffer_copies[row];
+                const bool source = field == Field::BUFFER_SOURCE;
+                const auto& operand = source ? copy.source : copy.destination;
+                const auto& buffer = sources.selected(operand);
+                auto& native = transfers.buffer_copies[row];
+                if (!containsBytes(buffer, operand.range.offset, native.bytes))
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                (source ? native.source : native.destination) = buffer.buffer;
+                (source ? native.source_offset : native.destination_offset) = buffer.buffer_offset + operand.range.offset;
+                break;
+            }
+            case Field::IMAGE_COPY:
+            {
+                const auto& copy = program.image_copies[row];
+                if (auto patched_copy = sources.patch(copy, transfers.image_copies[row]); !patched_copy)
+                    return patched_copy;
+                break;
+            }
+            case Field::IMAGE_BUFFER:
+            {
+                const auto& copy = program.image_buffers[row];
+                if (auto patched_copy = sources.patch(copy, transfers.image_buffers[row]); !patched_copy)
+                    return patched_copy;
+                break;
+            }
+            case Field::FILL:
+            {
+                const auto& fill = program.fills[row];
+                const auto& operand = fill.destination;
+                const auto& buffer = sources.selected(operand);
+                auto& native = transfers.fills[row];
+                if (!containsBytes(buffer, operand.range.offset, operand.range.size))
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                native.offset = buffer.buffer_offset + operand.range.offset;
+                if (native.offset % 4) return cxx::unexpected(RenderError{kDeviceArgument});
+                native.buffer = buffer.buffer;
+                if (fill.descriptor != kGraphInvalidIndex)
+                {
+                    auto* view = pass.private_views[fill.descriptor];
+                    if (!view) view = pass.history_views[fill.descriptor];
+                    if (!view) return cxx::unexpected(RenderError{kDeviceArgument});
+                    native.storage_view = view;
+                }
+                break;
+            }
+            case Field::CLEAR:
+            {
+                auto* view = pass.clear_views[program.clears[row].view];
+                if (!view) return cxx::unexpected(RenderError{kDeviceArgument});
+                transfers.clears[row].descriptor = view;
+                break;
+            }
+            }
+        }
+        patched_transfer_fields = patched;
+        pending_transfer_fields.clear();
+        return {};
+    }
+
+    std::size_t RenderGraphInstance::lastTransferFieldPatches(std::uint32_t slot) const noexcept
+    {
+        return frames_[slot].patched_transfer_fields;
+    }
+
     RenderResult<void> RenderGraphInstance::freezeRecordInput(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
@@ -306,6 +507,12 @@ namespace lux::render::detail
         {
             if (auto patched = patchRecordPass(frame, i); !patched) return patched;
         }
+        const auto& memory = session_->description().memoryAlignment;
+        auto transfers = frame.patchTransferFields(
+            graph_.recordingProgram().transfers, graph_.binding_plan_->recordings,
+            {memory.uploadBufferTextureRow, memory.uploadBufferTextureSlice}
+        );
+        if (!transfers) return transfers;
         frame.last_patches = {frame.pending_resources.slots().size(), frame.pending_passes.slots().size()};
         frame.pending_resources.clear();
         frame.pending_passes.clear();

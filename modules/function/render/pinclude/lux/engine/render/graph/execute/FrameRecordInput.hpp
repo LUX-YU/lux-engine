@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NRI.h>
+#include <lux/engine/render/graph/CommandPackets.hpp>
 #include <atomic>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/graph/execute/PassRecordInput.hpp>
@@ -12,6 +13,38 @@ namespace lux::render::compiled { class RenderGraph; }
 namespace lux::render::detail
 {
     struct RasterDrawList;
+
+    struct FrozenBufferFill final
+    {
+        nri::Buffer* buffer;
+        std::uint64_t offset;
+        nri::Descriptor* storage_view;
+    };
+
+    struct FrozenImageBuffer final
+    {
+        nri::Texture* image;
+        nri::Buffer* buffer;
+        nri::TextureRegionDesc region;
+        nri::TextureDataLayoutDesc layout;
+    };
+
+    struct TransferOperands final
+    {
+        std::vector<BufferCopyRegion> buffer_copies;
+        std::vector<TextureCopyRegion> image_copies;
+        std::vector<FrozenImageBuffer> image_buffers;
+        std::vector<FrozenBufferFill> fills;
+        std::vector<nri::AttachmentDesc> clears;
+
+        void initialize(const TransferProgram&) noexcept;
+    };
+
+    struct FrameRecordInput;
+
+    void recordTransfers(
+        const TransferCommands&, const FrameRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&
+    ) noexcept;
 
     struct RecordPass final
     {
@@ -39,6 +72,7 @@ namespace lux::render::detail
     struct FrameRecordInput final
     {
         const compiled::RenderGraph& plan;
+        const TransferOperands& transfers;
         std::span<const PassResourceInput> resources;
         std::span<const RecordPass> passes;
         std::span<const RecordHistoryInitialization> history_initializations;

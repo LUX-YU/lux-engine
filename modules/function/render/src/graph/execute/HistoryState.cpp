@@ -235,23 +235,21 @@ namespace lux::render::detail
             }
             if (const auto* transfer = graph_.transferCommands(pass))
             {
-                for (const auto& packet : transfer->operations)
+                const auto& transfers = graph_.recordingProgram().transfers;
+                for (const auto& clear : transfers.clearCommands(*transfer))
                 {
-                    if (const auto* clear = std::get_if<ClearPacket>(&packet))
+                    const auto& access = clear.destination;
+                    if (auto created = addView(
+                            GraphResourceId{access.slot},
+                            access.range,
+                            p,
+                            clear.view,
+                            Target::CLEAR,
+                            EDescriptorKind::SAMPLED_IMAGE
+                        );
+                        !created)
                     {
-                        const auto& access = clear->destination;
-                        if (auto created = addView(
-                                GraphResourceId{access.slot},
-                                access.range,
-                                p,
-                                clear->view,
-                                Target::CLEAR,
-                                EDescriptorKind::SAMPLED_IMAGE
-                            );
-                            !created)
-                        {
-                            return created;
-                        }
+                        return created;
                     }
                 }
             }

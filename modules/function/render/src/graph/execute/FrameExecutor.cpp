@@ -211,7 +211,7 @@ namespace lux::render::detail
                 else
                 {
                     if constexpr (std::same_as<Packet, ComputeCommands>) recordCompute(native, command, core);
-                    else recordTransfers(native, command, core);
+                    else recordTransfers(packet, frame, command, core);
                     return RenderResult<void>{};
                 }
             });

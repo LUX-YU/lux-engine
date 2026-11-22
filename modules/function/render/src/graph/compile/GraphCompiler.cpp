@@ -92,6 +92,53 @@ namespace lux::render::detail
             return {};
         }
 
+        bool validTransferTables(const RecordingProgram& recording) noexcept
+        {
+            const auto& program = recording.transfers;
+            std::size_t next_instruction = 0, buffer_copy = 0, image_copy = 0, image_buffer = 0, fill = 0, clear = 0;
+            const auto consume = [](const auto& column, std::size_t& cursor, std::uint32_t row) noexcept
+            {
+                if (row != cursor || cursor >= column.size()) return false;
+                ++cursor;
+                return true;
+            };
+            for (const auto& pass : recording.transfer)
+            {
+                const bool ordered = pass.first == next_instruction && pass.first_clear == clear;
+                if (!ordered || pass.count > program.instructions.size() - next_instruction) return false;
+                for (const auto [opcode, row] : program.commands(pass))
+                {
+                    switch (opcode)
+                    {
+                    case ETransferOpcode::COPY_BUFFER:
+                        if (!consume(program.buffer_copies, buffer_copy, row)) return false;
+                        break;
+                    case ETransferOpcode::COPY_IMAGE:
+                        if (!consume(program.image_copies, image_copy, row)) return false;
+                        break;
+                    case ETransferOpcode::UPLOAD:
+                    case ETransferOpcode::READBACK:
+                        if (!consume(program.image_buffers, image_buffer, row)) return false;
+                        break;
+                    case ETransferOpcode::ZERO_BUFFER:
+                    case ETransferOpcode::FILL_STORAGE:
+                        if (!consume(program.fills, fill, row)) return false;
+                        break;
+                    case ETransferOpcode::CLEAR_COLOR:
+                    case ETransferOpcode::CLEAR_DEPTH:
+                        if (!consume(program.clears, clear, row) || program.clears[row].view != row - pass.first_clear)
+                            return false;
+                        break;
+                    }
+                }
+                if (clear - pass.first_clear != pass.clear_view_count) return false;
+                next_instruction += pass.count;
+            }
+            return next_instruction == program.instructions.size() && buffer_copy == program.buffer_copies.size() &&
+                image_copy == program.image_copies.size() && image_buffer == program.image_buffers.size() &&
+                fill == program.fills.size() && clear == program.clears.size();
+        }
+
     } // namespace
 
     bool GraphCompiler::Workspace::validRecordingTables(const compiled::RenderGraph& plan) const noexcept
@@ -966,7 +1013,7 @@ namespace lux::render::detail
                     }
                     else
                     {
-                        auto packet = TransferPass::compile(command.work, command.typed_buffer_writes, context);
+                        auto packet = TransferPass::compile(command.work, command.typed_buffer_writes, context, recording.transfers);
                         if (!packet) return cxx::unexpected(packet.error());
                         const TransferCommandSlot slot{static_cast<std::uint32_t>(recording.transfer.size())};
                         recording.transfer.push_back(std::move(*packet));
@@ -981,6 +1028,7 @@ namespace lux::render::detail
             }
             pass.commands = std::move(*commands);
         }
+        if (!validTransferTables(plan.recording_)) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         return {};
     }
 

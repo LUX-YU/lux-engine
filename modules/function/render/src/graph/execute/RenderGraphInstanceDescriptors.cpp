@@ -468,24 +468,21 @@ namespace lux::render::detail
             }
             if (const auto* transfer = graph_.transferCommands(compiled_pass))
             {
-                pass.frozen_transfers.reserve(transfer->operations.size());
                 pass.clear_views.resize(transfer->clear_view_count);
-                for (const auto& operation : transfer->operations)
+                const auto& transfers = graph_.recordingProgram().transfers;
+                for (const auto& clear : transfers.clearCommands(*transfer))
                 {
-                    if (const auto* clear = std::get_if<ClearPacket>(&operation))
+                    const auto& image = std::get<GraphImageDesc>(
+                        plan.resources()[clear.destination.slot].description
+                    );
+                    auto ready = attachmentView(
+                        clear.destination.slot, clear.destination.range,
+                        rdesc::textureAspectMask(image.format) != 1,
+                        pass.clear_views[clear.view]
+                    );
+                    if (!ready)
                     {
-                        const auto& image = std::get<GraphImageDesc>(
-                            plan.resources()[clear->destination.slot].description
-                        );
-                        auto ready = attachmentView(
-                            clear->destination.slot, clear->destination.range,
-                            rdesc::textureAspectMask(image.format) != 1,
-                            pass.clear_views[clear->view]
-                        );
-                        if (!ready)
-                        {
-                            return ready;
-                        }
+                        return ready;
                     }
                 }
             }
@@ -514,12 +511,12 @@ namespace lux::render::detail
             }
             else if (const auto* transfer = graph_.transferCommands(*pass.compiled_pass))
             {
-                for (const auto& operation : transfer->operations)
+                const auto& transfers = graph_.recordingProgram().transfers;
+                for (const auto& clear : transfers.clearCommands(*transfer))
                 {
-                    const auto* clear = std::get_if<ClearPacket>(&operation);
-                    if (clear && clear->destination.slot == plan.output())
+                    if (clear.destination.slot == plan.output())
                     {
-                        frame.output_views.push_back(&pass.clear_views[clear->view]);
+                        frame.output_views.push_back(&pass.clear_views[clear.view]);
                     }
                 }
             }

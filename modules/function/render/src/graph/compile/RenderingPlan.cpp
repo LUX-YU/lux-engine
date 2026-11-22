@@ -236,25 +236,29 @@ namespace lux::render::detail
             }
             else if (const auto* transfer = recording.transferCommands(pass))
             {
-                for (const auto& packet : transfer->operations)
+                const auto& transfers = recording.transfers;
+                for (const auto packet : transfers.commands(*transfer))
                 {
-                    if (const auto* clear = std::get_if<ClearPacket>(&packet))
+                    if (packet.opcode == ETransferOpcode::CLEAR_COLOR || packet.opcode == ETransferOpcode::CLEAR_DEPTH)
                     {
-                        const auto slot = clear->destination.slot;
+                        const auto& clear = transfers.clears[packet.operand];
+                        const auto slot = clear.destination.slot;
                         resources[slot].image_views.push_back({
-                            p, clear->view, EImageViewTarget::CLEAR, clear->destination.range
+                            p, clear.view, EImageViewTarget::CLEAR, clear.destination.range
                         });
                         extent({slot});
                     }
-                    else if (const auto* copy = std::get_if<ImageCopyPacket>(&packet))
+                    else if (packet.opcode == ETransferOpcode::COPY_IMAGE)
                     {
-                        extent({copy->source.slot});
-                        extent({copy->destination.slot});
+                        const auto& copy = transfers.image_copies[packet.operand];
+                        extent({copy.source.slot});
+                        extent({copy.destination.slot});
                     }
-                    else if (const auto* copy = std::get_if<ImageBufferPacket>(&packet))
+                    else if (packet.opcode == ETransferOpcode::UPLOAD || packet.opcode == ETransferOpcode::READBACK)
                     {
-                        extent({copy->image.slot});
-                        extent({copy->buffer.slot});
+                        const auto& copy = transfers.image_buffers[packet.operand];
+                        extent({copy.image.slot});
+                        extent({copy.buffer.slot});
                     }
                 }
             }

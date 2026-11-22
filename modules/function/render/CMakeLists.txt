@@ -90,7 +90,6 @@ set(render_sources
     src/graph/execute/RenderGraphInstanceRasterStreams.cpp
     src/graph/execute/RenderGraphInstanceResources.cpp
     src/graph/execute/RenderGraphInstanceDescriptors.cpp
-    src/graph/execute/TransferFreeze.cpp
     src/graph/execute/RenderGraphInstanceRecording.cpp
     src/graph/execute/FrameExecutor.cpp
     src/graph/execute/NriRecordCommands.cpp

@@ -14,6 +14,9 @@
 
 namespace lux::render::detail
 {
+    struct RecordingDependencies;
+    struct CopyAlignment;
+
     // CPU state for one Job and FIF slot. Native ownership stays in the device's stable Job row.
     struct RenderGraphInstance::FrameResources final
     {
@@ -25,6 +28,8 @@ namespace lux::render::detail
         FrameResources& operator=(const FrameResources&) = delete;
 
         void invalidateImportedBindings() noexcept;
+        [[nodiscard]] RenderResult<void>
+        patchTransferFields(const TransferProgram&, const RecordingDependencies&, CopyAlignment) noexcept;
 
         struct FrozenProjection final
         {
@@ -99,7 +104,9 @@ namespace lux::render::detail
             bool operator==(const HistoryClear&) const noexcept = default;
         };
 
-        PendingSlots pending_resources, pending_passes;
+        PendingSlots pending_resources, pending_passes, pending_transfer_fields;
+        TransferOperands transfers;
+        std::size_t patched_transfer_fields = 0;
         FrozenPatchCounts last_patches;
         std::vector<std::array<HistoryClear, 2>> history_clears;
         PendingSlots pending_history_clears, pending_history_views;

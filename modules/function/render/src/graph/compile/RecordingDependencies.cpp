@@ -26,30 +26,6 @@ namespace lux::render::detail
                 if (const auto* indirect = std::get_if<BufferLocation>(&compute->dispatch)) add(indirect->buffer);
                 else if (const auto* extent = std::get_if<ImageDispatchExtent>(&compute->dispatch)) add(extent->image);
             }
-            else
-            {
-                const auto operand = [&](const auto& value)
-                {
-                    add(value.slot);
-                    add(value.fallback);
-                };
-                for (const auto& packet : recording.transferCommands(pass)->operations)
-                {
-                    std::visit([&](const auto& op)
-                    {
-                        if constexpr (std::same_as<std::remove_cvref_t<decltype(op)>, ImageBufferPacket>)
-                        {
-                            operand(op.image);
-                            operand(op.buffer);
-                        }
-                        else
-                        {
-                            if constexpr (requires { op.source; }) operand(op.source);
-                            operand(op.destination);
-                        }
-                    }, packet);
-                }
-            }
         }
     } // namespace
 
@@ -59,7 +35,8 @@ namespace lux::render::detail
         const auto batches = plan.submissions();
         const auto& recording = plan.recordingProgram();
         using Edges = std::vector<std::pair<std::uint32_t, std::uint32_t>>;
-        Edges pass_uses, batch_uses;
+        Edges pass_uses, batch_uses, field_uses;
+        result.pass_field_offsets.reserve(recording.passes.size() + 1);
         const auto add = [&](std::uint32_t resource, std::uint32_t p)
         {
             if (resource == kGraphInvalidIndex) return;
@@ -72,6 +49,48 @@ namespace lux::render::detail
         {
             const auto& pass = recording.passes[p];
             commandResources(recording, pass, [&](std::uint32_t resource) { add(resource, p); });
+            result.pass_field_offsets.push_back(static_cast<std::uint32_t>(result.transfer_fields.size()));
+            if (const auto* range = recording.transferCommands(pass))
+            {
+                const auto& program = recording.transfers;
+                using Field = RecordingDependencies::ETransferField;
+                const auto patch = [&](Field field, std::uint32_t operand, const auto&... sources)
+                {
+                    const auto index = static_cast<std::uint32_t>(result.transfer_fields.size());
+                    result.transfer_fields.push_back({field, p, operand});
+                    const auto depend = [&](const auto& source)
+                    {
+                        for (auto slot : {source.slot, source.fallback})
+                        {
+                            if (slot == kGraphInvalidIndex) continue;
+                            add(slot, p);
+                            field_uses.emplace_back(slot, index);
+                        }
+                    };
+                    (depend(sources), ...);
+                };
+                for (const auto [opcode, row] : program.commands(*range))
+                {
+                    switch (opcode)
+                    {
+                    case ETransferOpcode::COPY_BUFFER:
+                        patch(Field::BUFFER_SOURCE, row, program.buffer_copies[row].source);
+                        patch(Field::BUFFER_DESTINATION, row, program.buffer_copies[row].destination);
+                        break;
+                    case ETransferOpcode::COPY_IMAGE:
+                        patch(Field::IMAGE_COPY, row, program.image_copies[row].source, program.image_copies[row].destination);
+                        break;
+                    case ETransferOpcode::UPLOAD:
+                    case ETransferOpcode::READBACK:
+                        patch(Field::IMAGE_BUFFER, row, program.image_buffers[row].image, program.image_buffers[row].buffer);
+                        break;
+                    case ETransferOpcode::ZERO_BUFFER:
+                    case ETransferOpcode::FILL_STORAGE: patch(Field::FILL, row, program.fills[row].destination); break;
+                    case ETransferOpcode::CLEAR_COLOR:
+                    case ETransferOpcode::CLEAR_DEPTH: patch(Field::CLEAR, row, program.clears[row].destination); break;
+                    }
+                }
+            }
             const auto* scope = recording.rasterScope(pass);
             if (scope && !scope->viewport) result.viewport_passes.push_back(p);
             const auto* raster = recording.rasterCommands(pass);
@@ -118,6 +137,8 @@ namespace lux::render::detail
             }
             std::partial_sum(index.offsets.begin(), index.offsets.end(), index.offsets.begin());
         };
+        result.pass_field_offsets.push_back(static_cast<std::uint32_t>(result.transfer_fields.size()));
+        publish(field_uses, result.resource_transfer_fields);
         publish(pass_uses, result.resource_passes);
         publish(batch_uses, result.resource_batches);
         return result;

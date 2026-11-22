@@ -35,6 +35,8 @@ namespace lux::render::detail
             frame.record_passes.resize(plan.passes().size());
             frame.pending_resources.initialize(plan.resources().size());
             frame.pending_passes.initialize(plan.passes().size());
+            frame.pending_transfer_fields.initialize(plan.binding_plan_->recordings.transfer_fields.size());
+            frame.transfers.initialize(plan.recordingProgram().transfers);
             const auto clear_capacity = plan.histories_.size() * 2;
             frame.history_initializations.prepareCapacity(clear_capacity, clear_capacity);
             frame.pending_history_clears.initialize(plan.histories_.size());
@@ -236,7 +238,12 @@ namespace lux::render::detail
             if ((frame.enabled_regions[r] != 0) != enabled)
             {
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)
+                {
                     invalidateRecording(slot, p);
+                    if (!enabled) continue;
+                    const auto& offsets = graph_.binding_plan_->recordings.pass_field_offsets;
+                    for (auto i = offsets[p]; i < offsets[p + 1]; ++i) frame.pending_transfer_fields.mark(i);
+                }
             }
             frame.enabled_regions[r] = enabled;
             if (!frame.enabled_regions[r])

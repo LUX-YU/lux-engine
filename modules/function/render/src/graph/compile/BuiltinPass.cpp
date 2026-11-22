@@ -306,7 +306,8 @@ namespace lux::render::detail
 
     RenderResult<TransferCommands>
     TransferPass::compile(
-        const TransferWork& value, std::span<const ResourceAccess> storage_fills, PassCompileContext& context
+        const TransferWork& value, std::span<const ResourceAccess> storage_fills,
+        PassCompileContext& context, TransferProgram& program
     ) noexcept
     {
         if (auto valid = validateTransfer(value, context.resources); !valid)
@@ -334,32 +335,49 @@ namespace lux::render::detail
                 rdesc::textureBlockBytes(format, range.aspects)
             };
         };
-        TransferCommands commands;
-        commands.operations.reserve(value.operations.size());
+        if (value.operations.size() > UINT32_MAX - program.instructions.size())
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        TransferCommands commands{
+            static_cast<std::uint32_t>(program.instructions.size()), static_cast<std::uint32_t>(value.operations.size()),
+            static_cast<std::uint32_t>(program.clears.size())
+        };
+        const auto emit = [&](ETransferOpcode opcode, auto& column, auto value)
+        {
+            program.instructions.push_back({opcode, static_cast<std::uint32_t>(column.size())});
+            column.push_back(std::move(value));
+        };
         const bool serialize_buffer_writes = context.limits.graphicsAPI == nri::GraphicsAPI::D3D12;
         std::vector<std::uint32_t> filled_resources;
         std::uint32_t next_descriptor = 0;
         for (const auto& operation : value.operations)
         {
             if (const auto* copy = std::get_if<CopyBuffer>(&operation))
-                commands.operations.emplace_back(BufferCopyPacket{buffer(copy->source), buffer(copy->destination)});
+            {
+                const BufferCopyPacket packet{buffer(copy->source), buffer(copy->destination)};
+                emit(ETransferOpcode::COPY_BUFFER, program.buffer_copies, packet);
+            }
             else if (const auto* copy = std::get_if<CopyImage>(&operation))
-                commands.operations.emplace_back(ImageCopyPacket{
+                emit(ETransferOpcode::COPY_IMAGE, program.image_copies, ImageCopyPacket{
                     image(copy->source, copy->source_region), image(copy->destination, copy->destination_region)
                 });
             else if (const auto* copy = std::get_if<CopyImageBuffer>(&operation))
             {
                 const bool readback = std::holds_alternative<GraphImageRange>(copy->source.range);
-                commands.operations.emplace_back(ImageBufferPacket{
+                const auto opcode = readback ? ETransferOpcode::READBACK : ETransferOpcode::UPLOAD;
+                emit(opcode, program.image_buffers, ImageBufferPacket{
                     image(readback ? copy->source : copy->destination, copy->image_region),
                     buffer(readback ? copy->destination : copy->source),
-                    readback ? EImageBufferCopy::READBACK : EImageBufferCopy::UPLOAD, copy->row_pitch, copy->slice_pitch
+                    copy->row_pitch, copy->slice_pitch
                 });
             }
             else if (const auto* clear = std::get_if<ClearImage>(&operation))
-                commands.operations.emplace_back(ClearPacket{
-                    image(clear->destination), clear->color, clear->depth, commands.clear_view_count++
-                });
+            {
+                const auto destination = image(clear->destination);
+                const auto opcode = destination.range.aspects == 1 ?
+                    ETransferOpcode::CLEAR_COLOR : ETransferOpcode::CLEAR_DEPTH;
+                const ClearPacket packet{destination, clear->color, clear->depth, commands.clear_view_count++};
+                emit(opcode, program.clears, packet);
+            }
             else
             {
                 const auto& fill = std::get<FillBuffer>(operation);
@@ -376,10 +394,12 @@ namespace lux::render::detail
                     packet.sync_before = std::ranges::find(filled_resources, slot) != filled_resources.end();
                     if (!packet.sync_before) filled_resources.push_back(slot);
                 }
-                commands.operations.emplace_back(packet);
+                emit(uses_storage ? ETransferOpcode::FILL_STORAGE : ETransferOpcode::ZERO_BUFFER, program.fills, packet);
             }
         }
-        if (next_descriptor != storage_fills.size())
+        // Each instruction has one patch row, except a buffer copy whose two ends are independent.
+        const bool too_many_fields = program.buffer_copies.size() > UINT32_MAX - program.instructions.size();
+        if (too_many_fields || next_descriptor != storage_fills.size())
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         return commands;
     }

@@ -48,7 +48,9 @@ namespace lux::render::detail
     struct TransferPass final
     {
         static RenderResult<TransferCommands>
-        compile(const TransferWork&, std::span<const ResourceAccess> storage_fills, PassCompileContext&) noexcept;
+        compile(
+            const TransferWork&, std::span<const ResourceAccess> storage_fills, PassCompileContext&, TransferProgram&
+        ) noexcept;
         static std::optional<PassNativeAccess>
         access(
             const TransferWork&,

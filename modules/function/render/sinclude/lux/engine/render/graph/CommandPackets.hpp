@@ -42,12 +42,10 @@ namespace lux::render::detail
     struct BufferCopyPacket final { BufferOperand source, destination; };
     struct ImageCopyPacket final { ImageOperand source, destination; };
 
-    enum class EImageBufferCopy { UPLOAD, READBACK };
     struct ImageBufferPacket final
     {
         ImageOperand image;
         BufferOperand buffer;
-        EImageBufferCopy direction;
         std::uint32_t row_pitch, slice_pitch;
     };
 
@@ -66,11 +64,43 @@ namespace lux::render::detail
         std::uint32_t view;
     };
 
-    using VTransferPacket = std::variant<BufferCopyPacket, ImageCopyPacket, ImageBufferPacket, FillPacket, ClearPacket>;
+    enum class ETransferOpcode : std::uint8_t
+    {
+        COPY_BUFFER, COPY_IMAGE, UPLOAD, READBACK, ZERO_BUFFER, FILL_STORAGE, CLEAR_COLOR, CLEAR_DEPTH
+    };
+
+    struct TransferInstruction final
+    {
+        ETransferOpcode opcode;
+        std::uint32_t operand;
+    };
 
     struct TransferCommands final
     {
-        std::vector<VTransferPacket> operations;
+        std::uint32_t first, count, first_clear;
         std::uint32_t clear_view_count = 0;
+    };
+
+    // Instructions preserve author order. Each operand indexes its opcode's dense typed column.
+    struct TransferProgram final
+    {
+        std::vector<TransferInstruction> instructions;
+        std::vector<BufferCopyPacket> buffer_copies;
+        std::vector<ImageCopyPacket> image_copies;
+        std::vector<ImageBufferPacket> image_buffers;
+        std::vector<FillPacket> fills;
+        std::vector<ClearPacket> clears;
+
+        [[nodiscard]] std::span<const TransferInstruction> commands(const TransferCommands& pass) const & noexcept
+        {
+            return std::span{instructions}.subspan(pass.first, pass.count);
+        }
+        std::span<const TransferInstruction> commands(const TransferCommands&) const && = delete;
+
+        [[nodiscard]] std::span<const ClearPacket> clearCommands(const TransferCommands& pass) const & noexcept
+        {
+            return std::span{clears}.subspan(pass.first_clear, pass.clear_view_count);
+        }
+        std::span<const ClearPacket> clearCommands(const TransferCommands&) const && = delete;
     };
 }

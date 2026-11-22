@@ -66,24 +66,27 @@ namespace lux::render::detail
                 const auto& desc = core.GetTextureDesc(*image);
                 return copyRegion(operand, {desc.width, desc.height});
             };
-            for (const auto& packet : transfer->operations)
+            const auto& transfers = plan.recordingProgram().transfers;
+            for (const auto packet : transfers.commands(*transfer))
             {
-                if (const auto* copy = std::get_if<ImageCopyPacket>(&packet))
+                if (packet.opcode == ETransferOpcode::COPY_IMAGE)
                 {
-                    auto from = resolve(copy->source);
+                    const auto& copy = transfers.image_copies[packet.operand];
+                    auto from = resolve(copy.source);
                     if (!from) return cxx::unexpected(from.error());
-                    auto to = resolve(copy->destination);
+                    auto to = resolve(copy.destination);
                     if (!to) return cxx::unexpected(to.error());
                     if (from->width != to->width || from->height != to->height)
                         return cxx::unexpected(RenderError{kInvalidTargetExtent});
                 }
-                else if (const auto* mixed = std::get_if<ImageBufferPacket>(&packet))
+                else if (packet.opcode == ETransferOpcode::UPLOAD || packet.opcode == ETransferOpcode::READBACK)
                 {
-                    auto region = resolve(mixed->image);
+                    const auto& mixed = transfers.image_buffers[packet.operand];
+                    auto region = resolve(mixed.image);
                     if (!region) return cxx::unexpected(region.error());
                     const auto& alignment = session.description().memoryAlignment;
                     auto layout = copyLayout(
-                        *mixed, *region, binding(mixed->buffer.slot).buffer_offset,
+                        mixed, *region, binding(mixed.buffer.slot).buffer_offset,
                         {alignment.uploadBufferTextureRow, alignment.uploadBufferTextureSlice}
                     );
                     if (!layout) return cxx::unexpected(layout.error());

@@ -252,6 +252,7 @@ namespace lux::render::detail
         std::vector<RasterCommands> raster;
         std::vector<ComputeCommands> compute;
         std::vector<TransferCommands> transfer;
+        TransferProgram transfers;
         std::vector<RenderingGroup> groups;
         std::vector<ConditionalRegion> conditions;
         BarrierBatch after;

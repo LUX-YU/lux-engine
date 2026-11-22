@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/PassBindings.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
@@ -8,6 +9,17 @@ namespace lux::render::detail
 {
     namespace
     {
+        void orderFill(
+            nri::CommandBuffer& command, const nri::CoreInterface& core, const FrozenBufferFill& fill, nri::AccessStage state
+        ) noexcept
+        {
+            const nri::BufferBarrierDesc barrier{fill.buffer, state, state};
+            nri::BarrierDesc barriers{};
+            barriers.buffers = &barrier;
+            barriers.bufferNum = 1;
+            core.CmdBarrier(command, barriers);
+        }
+
         void
         recordRasterDraws(
             const nri::CoreInterface& core,
@@ -253,56 +265,71 @@ namespace lux::render::detail
         else core.CmdDispatch(command, pass.dispatch);
     }
 
-    void
-    recordTransfers(const PassNativeInput& pass, nri::CommandBuffer& command, const nri::CoreInterface& core) noexcept
+    void recordTransfers(
+        const TransferCommands& range, const FrameRecordInput& frame,
+        nri::CommandBuffer& command, const nri::CoreInterface& core
+    ) noexcept
     {
-        // Clear helpers can change backend-private compute state.
-        *pass.bindings = {};
-        for (const auto& packet : pass.transfers)
+        const auto& program = frame.plan.recordingProgram().transfers;
+        const auto& operands = frame.transfers;
+        for (const auto [opcode, row] : program.commands(range))
         {
-            std::visit([&](const auto& operation) noexcept
+            switch (opcode)
             {
-                using Operation = std::remove_cvref_t<decltype(operation)>;
-                if constexpr (std::same_as<Operation, FrozenImageClear>)
-                {
-                    nri::RenderingDesc rendering{};
-                    if (operation.depth) rendering.depth = operation.attachment;
-                    else
-                    {
-                        rendering.colors = &operation.attachment;
-                        rendering.colorNum = 1;
-                    }
-                    core.CmdBeginRendering(command, rendering);
-                    core.CmdEndRendering(command);
-                }
-                else if constexpr (std::same_as<Operation, FrozenBufferFill>)
-                {
-                    if (operation.sync_before)
-                    {
-                        const nri::AccessStage state = operation.storage_view
-                            ? nri::AccessStage{nri::AccessBits::CLEAR_STORAGE, nri::StageBits::CLEAR_STORAGE}
-                            : nri::AccessStage{nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-                        const nri::BufferBarrierDesc barrier{operation.buffer, state, state};
-                        nri::BarrierDesc barriers{};
-                        barriers.buffers = &barrier;
-                        barriers.bufferNum = 1;
-                        core.CmdBarrier(command, barriers);
-                    }
-                    if (!operation.storage_view)
-                        core.CmdZeroBuffer(command, *operation.buffer, operation.offset, operation.size);
-                    else
-                    {
-                        nri::ClearStorageDesc clear{};
-                        clear.descriptor = operation.storage_view;
-                        clear.value.ui = {operation.value, operation.value, operation.value, operation.value};
-                        clear.rangeIndex = operation.descriptor;
-                        core.CmdClearStorage(command, clear);
-                    }
-                }
-                else if constexpr (std::same_as<Operation, UploadRegion>) recordUpload(core, command, operation);
-                else if constexpr (std::same_as<Operation, ReadbackRegion>) recordReadback(core, command, operation);
-                else recordCopy(core, command, operation);
-            }, packet);
+            case ETransferOpcode::COPY_BUFFER: recordCopy(core, command, operands.buffer_copies[row]); break;
+            case ETransferOpcode::COPY_IMAGE: recordCopy(core, command, operands.image_copies[row]); break;
+            case ETransferOpcode::UPLOAD:
+            {
+                const auto& copy = operands.image_buffers[row];
+                recordUpload(core, command, {*copy.image, copy.region, *copy.buffer, copy.layout});
+                break;
+            }
+            case ETransferOpcode::READBACK:
+            {
+                const auto& copy = operands.image_buffers[row];
+                recordReadback(core, command, {*copy.buffer, copy.layout, *copy.image, copy.region});
+                break;
+            }
+            case ETransferOpcode::CLEAR_COLOR:
+            {
+                nri::RenderingDesc rendering{};
+                rendering.colors = &operands.clears[row];
+                rendering.colorNum = 1;
+                core.CmdBeginRendering(command, rendering);
+                core.CmdEndRendering(command);
+                break;
+            }
+            case ETransferOpcode::CLEAR_DEPTH:
+            {
+                nri::RenderingDesc rendering{};
+                rendering.depth = operands.clears[row];
+                core.CmdBeginRendering(command, rendering);
+                core.CmdEndRendering(command);
+                break;
+            }
+            case ETransferOpcode::ZERO_BUFFER:
+            {
+                const auto& fill = program.fills[row];
+                const auto& native = operands.fills[row];
+                if (fill.sync_before)
+                    orderFill(command, core, native, {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY});
+                core.CmdZeroBuffer(command, *native.buffer, native.offset, fill.destination.range.size);
+                break;
+            }
+            case ETransferOpcode::FILL_STORAGE:
+            {
+                const auto& fill = program.fills[row];
+                const auto& native = operands.fills[row];
+                if (fill.sync_before)
+                    orderFill(command, core, native, {nri::AccessBits::CLEAR_STORAGE, nri::StageBits::CLEAR_STORAGE});
+                nri::ClearStorageDesc clear{};
+                clear.descriptor = native.storage_view;
+                clear.value.ui = {fill.value, fill.value, fill.value, fill.value};
+                clear.rangeIndex = fill.descriptor;
+                core.CmdClearStorage(command, clear);
+                break;
+            }
+            }
         }
     }
 } // namespace lux::render::detail

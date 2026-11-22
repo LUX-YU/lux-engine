@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "NativeDevice.hpp"
 #include "BufferReadback.hpp"
@@ -626,6 +627,58 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
     std::puts("BC1 COPY PASS: misaligned block rejected; automatic pitch selected the last block of the second row");
 }
 
+// This pass has three copies. Changing one source view must patch only that source address.
+static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
+{
+    RenderGraphBuilder builder;
+    const auto source = take(builder.declareResource({
+        "changing source", GraphBufferDesc{4}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, 4}}, EGraphUse::TRANSFER_SOURCE
+    }));
+    const auto fixed = take(builder.declareResource({"fixed source", GraphBufferDesc{4}}));
+    const auto seed = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{fixed, 0}}, 7}}}));
+    std::array<GraphResourceId, 3> outputs;
+    TransferWork work;
+    for (std::size_t i = 0; i < outputs.size(); ++i)
+    {
+        outputs[i] = take(builder.declareResource({"output " + std::to_string(i), GraphBufferDesc{4}}));
+        const auto from = i == 1 ? ResourceVersion{source, 0} : seed.written.front();
+        work.operations.emplace_back(CopyBuffer{{from}, {{outputs[i], 0}}});
+    }
+    const auto copied = take(builder.addTransferPass("three copies", std::move(work)));
+    for (auto version : copied.written) CHECK(builder.exportOutput({version}));
+    const auto graph = take(std::move(builder).finish());
+    auto compiled = compile(device, graph, take(analyzeRenderGraph(graph)), nullptr);
+    JobGpuResources gpu(device, 1);
+    RenderGraphInstance instance(gpu, compiled.graph);
+    instance.setResource(source.index, 0, {&input, 0, 4});
+    CHECK(instance.initialize());
+    FrameHarness frames(device, 1);
+    const std::array jobs{&instance};
+    const auto submit = [&]
+    {
+        CHECK(take(runTask(frames.render(jobs, {}))) > 0);
+        finishSubmissions(device, frames);
+        CHECK(device.drain());
+    };
+    CHECK(take(instance.prepareFrame(0)) && instance.lastTransferFieldPatches(0) == 7);
+    submit();
+    CHECK(instance.lastTransferFieldPatches(0) == 0);
+    CHECK(readBufferWords<1>(device, *instance.nativeBuffer(outputs[1].index, 0))[0] == 11);
+    instance.setResource(source.index, 0, {&input, 4, 2});
+    CHECK(!instance.prepareFrame(0) && !instance.recordBatch(0, 0));
+    instance.setResource(source.index, 0, {&input, 4, 4});
+    CHECK(take(instance.prepareFrame(0)) && instance.lastTransferFieldPatches(0) == 1);
+    submit();
+    CHECK(instance.lastTransferFieldPatches(0) == 0);
+    for (std::size_t i = 0; i < outputs.size(); ++i)
+    {
+        const auto words = readBufferWords<1>(device, *instance.nativeBuffer(outputs[i].index, 0));
+        CHECK(words[0] == (i == 1 ? 12u : 7u));
+    }
+    std::puts("TRANSFER FIELDS PASS: initial 7 fields, stable 0, short source rejected, "
+              "rebind patched 1 source, stable 0; readback 11 -> 12, neighbors 7/7");
+}
+
 static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend)
 {
     DeviceOptions options;
@@ -655,6 +708,7 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     );
     const std::array<std::uint32_t, 4> expected{11, 12, 13, 14};
     CHECK(result == expected);
+    transferFieldPatches(*session, *target);
     core.DestroyBuffer(target);
     std::puts("FRAME UPLOAD SNAPSHOT PASS: caller mutation after staging leaves submitted bytes unchanged");
 
@@ -1408,17 +1462,20 @@ private:
 
     RenderResult<void> replay(const TransferCommands& packet, const CompiledPass&) noexcept
     {
-        for (const auto& operation : packet.operations)
+        const auto& transfers = executable_.recordingProgram().transfers;
+        for (const auto operation : transfers.commands(packet))
         {
-            if (const auto* fill = std::get_if<FillPacket>(&operation))
+            if (operation.opcode == ETransferOpcode::ZERO_BUFFER || operation.opcode == ETransferOpcode::FILL_STORAGE)
             {
-                std::ranges::fill(words(fill->destination.slot, fill->destination.range), fill->value);
+                const auto& fill = transfers.fills[operation.operand];
+                std::ranges::fill(words(fill.destination.slot, fill.destination.range), fill.value);
                 continue;
             }
-            if (const auto* copy = std::get_if<BufferCopyPacket>(&operation))
+            if (operation.opcode == ETransferOpcode::COPY_BUFFER)
             {
-                auto source = words(copy->source.slot, copy->source.range);
-                auto destination = words(copy->destination.slot, copy->destination.range);
+                const auto& copy = transfers.buffer_copies[operation.operand];
+                auto source = words(copy.source.slot, copy.source.range);
+                auto destination = words(copy.destination.slot, copy.destination.range);
                 CHECK(source.size() == destination.size());
                 CHECK(std::ranges::all_of(source, [](const auto& word) { return word.has_value(); }));
                 std::ranges::copy(source, destination.begin());
@@ -1629,15 +1686,12 @@ static void cpuRecordingTables()
     }();
     checkComputeSequence(executable, intermediate);
     const auto& program = executable.recordingProgram();
-    std::size_t packets = 0;
-    for (const auto& transfer : program.transfer) packets += transfer.operations.size();
-    std::printf(
-        "PACKET TABLES compute=%zu compiled_bytes=%zu transfer=%zu compiled_bytes=%zu transfer_frozen_payload_bytes_per_fif=%zu "
-        "author_dispatch_stride=%zu author_transfer_stride=%zu\n",
-        program.compute.size(), program.compute.size() * sizeof(ComputeCommands), packets,
-        packets * sizeof(VTransferPacket), packets * sizeof(VFrozenTransfer),
-        sizeof(VDispatchArguments), sizeof(VTransferOperation)
-    );
+    const auto& transfers = program.transfers;
+    const auto native_bytes = transfers.buffer_copies.size() * sizeof(BufferCopyRegion) +
+        transfers.image_copies.size() * sizeof(TextureCopyRegion) + transfers.image_buffers.size() * sizeof(FrozenImageBuffer) +
+        transfers.fills.size() * sizeof(FrozenBufferFill) + transfers.clears.size() * sizeof(nri::AttachmentDesc);
+    std::printf("PACKET TABLES compute=%zu transfer_instructions=%zu opcode_bytes=%zu native_operand_bytes_per_fif=%zu\n",
+        program.compute.size(), transfers.instructions.size(), sizeof(TransferInstruction), native_bytes);
     ComputeSequenceRecorder recorder(executable);
     recorder.execute();
     recorder.verify(readback, std::array{13u, 13u, 13u, 13u});
@@ -3455,6 +3509,7 @@ int main(int argc, char** argv)
     }
     if (argc > 1 && std::string_view(argv[1]) == "copies")
     {
+        frameUploadSnapshot(validation, backend);
         resolveAndCopy(validation, backend);
         compressedCopies(validation, backend);
         indirectCounts(validation, backend);

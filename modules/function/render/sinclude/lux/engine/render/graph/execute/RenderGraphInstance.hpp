@@ -171,6 +171,7 @@ namespace lux::render::detail
             bool operator==(const FrozenPatchCounts&) const noexcept = default;
         };
 
+        [[nodiscard]] std::size_t lastTransferFieldPatches(std::uint32_t slot) const noexcept;
         [[nodiscard]] FrozenPatchCounts lastFrozenPatches(std::uint32_t slot) const noexcept;
 
     private:
@@ -278,18 +279,9 @@ namespace lux::render::detail
             std::vector<nri::Descriptor*> history_views;
             std::vector<nri::AttachmentDesc> colors;
             nri::AttachmentDesc depth{};
-            std::vector<VFrozenTransfer> frozen_transfers;
             std::vector<nri::Descriptor*> clear_views;
             std::span<std::byte> parameters;
             std::uint64_t parameter_source_revision = 0;
-
-            [[nodiscard]] RenderResult<void>
-            freezeCommands(
-                const compiled::RenderGraph&,
-                std::span<const PassResourceInput>,
-                const nri::DeviceDesc&,
-                PassNativeInput&
-            ) noexcept;
         };
 
         DeviceSession* session_;

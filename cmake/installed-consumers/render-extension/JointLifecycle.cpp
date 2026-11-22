@@ -293,13 +293,13 @@ namespace
         CreateEffectRequest request;
         request.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*request.graph};
-        const auto node = [&](std::string_view name, std::string args = {})
+        const auto node = [&](std::string_view name, std::string args)
         {
             return take(edit.addNode(definition(name), {std::string{name}, 1}, std::move(args)));
         };
         if (mode == "receipt")
         {
-            CHECK(edit.setOutput("pixels", edit.pinId(node(reader_name), result)));
+            CHECK(edit.setOutput("pixels", edit.pinId(node(reader_name, {}), result)));
         }
         else
         {
@@ -310,7 +310,7 @@ namespace
                 const auto tone = take(edit.addNode(
                     ToneMapping::definition(), {std::string{ToneMapping::linear}, 1}, "exposure=0"
                 ));
-                const auto sink = node(report_name);
+                const auto sink = node(report_name, {});
                 const auto mapped = edit.pinId(tone, ToneMapping::color);
                 CHECK(edit.connect(color, edit.pinId(tone, ToneMapping::hdr_color)));
                 CHECK(edit.connect(mapped, edit.pinId(sink, display)));
@@ -566,15 +566,20 @@ namespace
         CHECK(rejected.error.type == kJobBusy);
         reader.read(b.report(), session.frame(b, {1, 1}), {false, distinct_word, fallback_word});
         reader.read(a.report(), session.frame(a, {0, 1}), {true, equal_word, fallback_word});
+        JobSubmitted held_peer;
         for (unsigned i = 0; i < 2; ++i)
         {
             reader.read(a.report(), session.frame(a, {0, 0}), {true, equal_word, 7});
-            reader.read(b.report(), session.frame(b, {1, 0}), {false, distinct_word, 11});
+            held_peer = session.frame(b, {1, 0});
+            reader.read(b.report(), held_peer, {false, distinct_word, 11});
         }
 
+        const auto old_product = b.report();
         b.binding.target_images.front().target = dim;
         b.binding.resources.back().resource = session.product(session.view());
         session.send<RebindRenderJobEffect>({session.device, b.job, effect, b.target, b.binding});
+        // A consumer can still install the published sample while its old backing has not been overwritten.
+        reader.read(old_product, held_peer, {false, distinct_word, 11});
         const auto rebound = session.frame(b, {0, 1});
         const auto refreshed = reader.read(b.report(), rebound, {true, distinct_word, fallback_word}, true);
         reader.read(b.report(), refreshed, {true, distinct_word, fallback_word});

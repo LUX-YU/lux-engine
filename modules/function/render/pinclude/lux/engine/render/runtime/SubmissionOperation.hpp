@@ -84,7 +84,7 @@ namespace lux::render::detail
                 RenderError error;
                 std::uint32_t frame, batch;
             };
-            std::vector<FrozenRecordingFrame> recording_frames;
+            std::vector<const FrozenRecordingFrame*> recording_frames;
             std::vector<Recording> recordings;
             std::vector<nri::CommandBuffer*> recording_commands;
             std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;

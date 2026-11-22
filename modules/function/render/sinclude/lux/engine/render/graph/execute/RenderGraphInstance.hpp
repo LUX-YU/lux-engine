@@ -186,7 +186,8 @@ namespace lux::render::detail
         friend class FrameOperation;
         std::uint32_t frozen_slot_ = kGraphInvalidIndex;
         friend class SubmissionOperation;
-        [[nodiscard]] RenderResult<FrozenRecordingFrame> recordingFrame(std::uint32_t frame_slot) noexcept;
+        [[nodiscard]] const FrozenRecordingFrame* recordingFrame(std::uint32_t frame_slot) const & noexcept;
+        const FrozenRecordingFrame* recordingFrame(std::uint32_t) const && = delete;
         void submitted(std::uint32_t slot) noexcept;
         void acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept;
         void failedSubmission(RenderError error) noexcept;

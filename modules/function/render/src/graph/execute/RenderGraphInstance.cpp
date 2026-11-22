@@ -44,6 +44,7 @@ namespace lux::render::detail
             frame.pending_history_clears.initialize(plan.histories_.size());
             frame.pending_history_views.initialize(plan.histories_.size());
             frame.enabled_regions.resize(plan.recording_.conditions.size(), 1);
+            frame.enabled_pass_count = static_cast<std::uint32_t>(plan.passes().size());
             frame.history_valid.resize(plan.histories_.size(), 0);
             frame.conditions.resize(plan.condition_count_);
             frame.publish_history.resize(plan.histories_.size());
@@ -140,7 +141,7 @@ namespace lux::render::detail
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
-            frames_[slot].linkRecordInputs(plan.recordingProgram());
+            frames_[slot].linkRecordInputs(plan);
             frames_[slot].bindHistory(histories_, graph_.recordingDependencies());
             frames_[slot].updateHistoryViews(histories_, session_->nriCore());
         }
@@ -220,11 +221,11 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        if (!selectHistory())
+        if (!histories_.empty())
         {
-            return false;
+            if (!selectHistory()) return false;
+            frame.bindHistory(histories_, graph_.recordingDependencies());
         }
-        frame.bindHistory(histories_, graph_.recordingDependencies());
         std::ranges::copy(condition_values_, frame.conditions.begin());
         for (std::size_t i = 0; i < histories_.size(); ++i)
         {
@@ -233,7 +234,6 @@ namespace lux::render::detail
             const bool produced = !sample.select_primary || conditionEnabled(frame, *sample.select_primary);
             frame.publish_history[i] = enabled && produced;
         }
-        frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
         auto changed_join = kGraphInvalidIndex;
         for (std::size_t r = 0; r < graph_.recording_.conditions.size(); ++r)
         {
@@ -242,6 +242,8 @@ namespace lux::render::detail
             const bool changed = (frame.enabled_regions[r] != 0) != enabled;
             if (changed)
             {
+                if (enabled) frame.enabled_pass_count += region.pass_count;
+                else frame.enabled_pass_count -= region.pass_count;
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)
                 {
                     frame.invalidatePass(graph_, p);
@@ -258,10 +260,6 @@ namespace lux::render::detail
                 if ((changed || inherited) && frame.selectBindingJoin(graph_, join, enabled)) changed_join = join;
             }
             frame.enabled_regions[r] = enabled;
-            if (!frame.enabled_regions[r])
-            {
-                frame.enabled_pass_count -= region.pass_count;
-            }
         }
         if (!frame.changed_resources.empty())
         {
@@ -270,7 +268,7 @@ namespace lux::render::detail
                 return cxx::unexpected(rebound.error());
             }
         }
-        frame.updateHistoryViews(histories_, session_->nriCore());
+        if (!frame.pending_history_views.slots().empty()) frame.updateHistoryViews(histories_, session_->nriCore());
         if (frame.viewport != viewport_)
         {
             for (const auto p : graph_.recordingDependencies().viewport_passes) frame.invalidatePass(graph_, p);
@@ -316,11 +314,12 @@ namespace lux::render::detail
             }
             frame.shared_descriptors.generation = shared_generation;
         }
-        if (auto sections = prepareRasterSections(slot); !sections)
-            return cxx::unexpected(sections.error());
-        if (auto streams = materializeRasterStreams(slot); !streams)
-            return cxx::unexpected(streams.error());
-        auto frozen = frame.freeze(graph_, histories_, session_->description());
+        if (!frame.stream_inputs.empty())
+        {
+            if (auto sections = prepareRasterSections(slot); !sections) return cxx::unexpected(sections.error());
+            if (auto streams = materializeRasterStreams(slot); !streams) return cxx::unexpected(streams.error());
+        }
+        auto frozen = frame.freeze(histories_, session_->description());
         if (!frozen) return cxx::unexpected(frozen.error());
         return true;
     }
@@ -341,15 +340,14 @@ namespace lux::render::detail
     RenderGraphInstance::recordBatch(std::uint32_t frame_slot, std::uint32_t batch) noexcept
     {
         if (const auto error = session_->terminalError(); error.type) return cxx::unexpected(error);
-        auto frame = recordingFrame(frame_slot);
-        if (!frame) return cxx::unexpected(frame.error());
+        const auto* frame = recordingFrame(frame_slot);
+        if (!frame) return cxx::unexpected(RenderError{kDeviceArgument});
         return FrameExecutor::recordBatch(*frame, *session_, batch);
     }
 
-    RenderResult<FrozenRecordingFrame> RenderGraphInstance::recordingFrame(std::uint32_t frame_slot) noexcept
+    const FrozenRecordingFrame* RenderGraphInstance::recordingFrame(std::uint32_t frame_slot) const & noexcept
     {
-        if (frame_slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
-        return frames_[frame_slot].recordingFrame(graph_);
+        return frame_slot < frames_.size() ? frames_[frame_slot].recordingFrame() : nullptr;
     }
 
     void RenderGraphInstance::invalidateRasterDraws(const CompiledPass& pass, std::uint32_t frame_slot) noexcept

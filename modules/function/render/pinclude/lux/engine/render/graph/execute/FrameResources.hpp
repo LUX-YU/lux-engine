@@ -76,15 +76,18 @@ namespace lux::render::detail
         void invalidateRecordings() noexcept;
         void bindHistory(std::span<const HistoryState>, const RecordingDependencies&) noexcept;
         void updateHistoryViews(std::span<const HistoryState>, const nri::CoreInterface&) noexcept;
-        void linkRecordInputs(const RecordingProgram&) noexcept;
+        void linkRecordInputs(const compiled::RenderGraph&) noexcept;
         [[nodiscard]] bool selectBindingJoin(const compiled::RenderGraph&, std::uint32_t index, bool enabled) noexcept;
-        [[nodiscard]] RenderResult<void> freeze(
-            const compiled::RenderGraph&, std::span<const HistoryState>, const nri::DeviceDesc&
-        ) noexcept;
-        [[nodiscard]] RenderResult<FrozenRecordingFrame> recordingFrame(const compiled::RenderGraph&) & noexcept;
-        RenderResult<FrozenRecordingFrame> recordingFrame(const compiled::RenderGraph&) && = delete;
+        [[nodiscard]] RenderResult<void> freeze(std::span<const HistoryState>, const nri::DeviceDesc&) noexcept;
+        [[nodiscard]] const FrozenRecordingFrame* recordingFrame() const & noexcept
+        {
+            return record_ready ? &*linked_recording_ : nullptr;
+        }
+        const FrozenRecordingFrame* recordingFrame() const && = delete;
 
     private:
+        // Linked after all fixed FIF arrays have stable addresses. Freeze refreshes the varying borrows.
+        std::optional<FrozenRecordingFrame> linked_recording_;
         void prepareDrawReads() noexcept;
         void patchRecordResource(std::uint32_t index, std::uint32_t history) noexcept;
         void patchDrawSection(std::uint32_t pass, const RasterListCommands&) noexcept;

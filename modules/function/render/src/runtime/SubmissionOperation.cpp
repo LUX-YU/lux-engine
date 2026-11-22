@@ -100,17 +100,17 @@ namespace lux::render::detail
         frames.reserve(slot_.instances.size());
         for (const auto& execution : slot_.instances)
         {
-            auto input = execution.instance->recordingFrame(slotIndex());
-            if (!input) co_return cxx::unexpected(input.error());
-            frames.push_back(std::move(*input));
+            const auto* input = execution.instance->recordingFrame(slotIndex());
+            if (!input) co_return cxx::unexpected(RenderError{kDeviceArgument});
+            frames.push_back(input);
         }
         const auto record_batch = [
-            inputs = std::span<const FrozenRecordingFrame>{frames}, results = std::span{slot_.recordings},
+            inputs = std::span<const FrozenRecordingFrame* const>{frames}, results = std::span{slot_.recordings},
             &device = std::as_const(device_)
         ](std::size_t i) noexcept
         {
             auto& result = results[i];
-            auto recorded = FrameExecutor::recordBatch(inputs[result.frame], device, result.batch);
+            auto recorded = FrameExecutor::recordBatch(*inputs[result.frame], device, result.batch);
             result.error = recorded ? RenderError{} : recorded.error();
             result.commands = recorded ? *recorded : std::span<nri::CommandBuffer* const>{};
         };

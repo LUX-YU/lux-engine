@@ -201,15 +201,6 @@ namespace lux::render::detail
         for (auto& batch : command_batches) batch.invalidate();
     }
 
-    RenderResult<FrozenRecordingFrame> FrameResources::recordingFrame(const compiled::RenderGraph& graph) & noexcept
-    {
-        if (!record_ready) return cxx::unexpected(RenderError{kDeviceArgument});
-        return FrozenRecordingFrame{{
-            graph, transfers, record_resources, record_passes, history_initializations.values(), enabled_regions,
-            binding_choices, final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets
-        }, command_batches, native.batches};
-    }
-
     void FrameResources::prepareDrawReads() noexcept
     {
         for (auto& draws : raster_draws)
@@ -294,8 +285,9 @@ namespace lux::render::detail
         return changed;
     }
 
-    void FrameResources::linkRecordInputs(const RecordingProgram& recording) noexcept
+    void FrameResources::linkRecordInputs(const compiled::RenderGraph& graph) noexcept
     {
+        const auto& recording = graph.recordingProgram();
         binding_choices.reserve(recording.binding_joins.size());
         for (const auto& join : recording.binding_joins)
             binding_choices.push_back({join.enabled_predecessor, join.enabled});
@@ -317,6 +309,10 @@ namespace lux::render::detail
             const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
             if (list) native.draws = &raster_draws[list->data_index];
         }
+        linked_recording_.emplace(FrozenRecordingFrame{{
+            graph, transfers, record_resources, record_passes, history_initializations.values(), enabled_regions,
+            binding_choices, final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets
+        }, command_batches, native.batches});
     }
 
     void FrameResources::patchRecordResource(std::uint32_t i, std::uint32_t history) noexcept
@@ -500,21 +496,31 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> FrameResources::freeze(
-        const compiled::RenderGraph& graph, std::span<const HistoryState> histories, const nri::DeviceDesc& limits
-    ) noexcept
+    RenderResult<void> FrameResources::freeze(std::span<const HistoryState> histories, const nri::DeviceDesc& limits) noexcept
     {
         record_ready = false;
-        prepareDrawReads();
+        if (!linked_recording_) return cxx::unexpected(RenderError{kDeviceArgument});
+        auto& input = linked_recording_->input;
+        const auto& graph = input.plan;
+        if (!raster_draws.empty()) prepareDrawReads();
         for (const auto i : pending_resources.slots()) patchRecordResource(i, graph.resources()[i].history);
         for (const auto i : pending_passes.slots()) patchRecordPass(graph.recordingProgram(), i);
-        auto patched = patchOperandFields(graph.recordingProgram(), graph.recordingDependencies(), limits);
-        if (!patched) return patched;
+        if (pending_operand_fields.slots().empty()) last_operands = {};
+        else
+        {
+            auto patched = patchOperandFields(graph.recordingProgram(), graph.recordingDependencies(), limits);
+            if (!patched) return patched;
+        }
         last_patches = {pending_resources.slots().size(), pending_passes.slots().size()};
         pending_resources.clear();
         pending_passes.clear();
         if (!pending_history_clears.slots().empty())
+        {
             freezeHistoryInitializations(histories, graph.resources(), limits.graphicsAPI);
+            input.history_initializations = history_initializations.values();
+        }
+        input.descriptor_pool = native.descriptor_pool;
+        input.shared_descriptors = shared_descriptors.sets;
         record_ready = true;
         return {};
     }

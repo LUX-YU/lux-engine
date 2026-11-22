@@ -1876,7 +1876,9 @@ static void cpuAliasWaitScopes()
     narrow = aliasHandoff(previous, next, 0);
     CHECK(narrow.before.stages == (Stage::COPY | Stage::FRAGMENT_SHADER));
     CHECK(narrow.before.access == nri::AccessBits::SHADER_RESOURCE);
+    // An uncovered initial layout has no qualifying direct wait.
     next.image = true;
+    entry.waited_through[1] = kGraphInvalidIndex;
     check_full();
 }
 
@@ -3730,6 +3732,91 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
     CHECK(session->drain());
 }
 
+static void crossQueueImageHandoff(DeviceSession& device, EGraphicsBackend backend, bool direct_wait)
+{
+    const GraphImageRange base_mip{}, shader_mip{1, 1, 1};
+    RenderGraphBuilder builder;
+    const auto shader = take(builder.addProgram(program(kGraphFill, backend)));
+    std::array<GraphResourceId, 2> images;
+    std::array<GraphResourceId, 4> readbacks;
+    PassResult prior_compute{}, prior_copy{};
+    const auto save = [&](ResourceVersion version, unsigned index)
+    {
+        auto& buffer = readbacks[index];
+        buffer = take(builder.declareResource({"pixel" + std::to_string(index), GraphBufferDesc{256}}));
+        const auto copy = take(builder.addTransferPass("save" + std::to_string(index), TransferWork{{CopyImageBuffer{
+            {version, index % 2 ? shader_mip : base_mip}, {{buffer, 0}}, 256, 256, ImageCopyRegion{0, 0, 1, 1}
+        }}}));
+        CHECK(builder.exportOutput({copy.written.front(), GraphBufferRange{0, 4}, {}, EGraphUse::TRANSFER_DESTINATION}));
+        return copy;
+    };
+    for (unsigned i = 0; i < images.size(); ++i)
+    {
+        const unsigned width = 16u << i;
+        const auto suffix = std::to_string(i);
+        images[i] = take(builder.declareResource({"alias" + suffix, GraphImageDesc{width, width, 2}}));
+        const auto color = std::array{i ? 0.f : 1.f, i ? 1.f : 0.f, 0.f, 1.f};
+        const auto clear = take(builder.addTransferPass(
+            "activate" + suffix, TransferWork{{ClearImage{{{images[i], 0}, base_mip}, color}}}
+        ));
+        if (i)
+        {
+            if (direct_wait) CHECK(builder.dependsOn(prior_compute.pass, clear.pass));
+            CHECK(builder.dependsOn(prior_copy.pass, clear.pass));
+        }
+        const auto observed = save(clear.written.front(), i * 2);
+        ComputeWork work;
+        work.allow_async_compute = true;
+        work.interface.program = shader;
+        work.interface.resources = {{"generated", {clear.written.front(), shader_mip, EGraphAccess::WRITE}}};
+        work.dispatch = DispatchArguments{{width / 8, width / 8, 1}};
+        prior_compute = take(builder.addComputePass("write" + suffix, std::move(work)));
+        CHECK(builder.dependsOn(observed.pass, prior_compute.pass));
+        prior_copy = save(prior_compute.written.front(), i * 2 + 1);
+    }
+
+    const auto graph = take(std::move(builder).finish());
+    auto ready = compile(device, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const auto& physical = ready.graph.physicalResources();
+    const auto a = physical.resource_slots[images[0].index].index;
+    const auto b = physical.resource_slots[images[1].index].index;
+    CHECK(a != b);
+    FrameHarness frames(device, 1);
+    JobGpuResources gpu(device, 1);
+    JobExecution job{gpu, ready.graph, testInstallation(), TargetOutput{}};
+    CHECK(job.initialize());
+    const auto& source = physical.alias_frontiers[a];
+    const auto& entry = physical.alias_frontiers[b].queues[0];
+    const bool narrow = direct_wait && (backend != EGraphicsBackend::D3D12 || device.description().features.enhancedBarriers);
+    CHECK(source.queues[1].point_count && entry.point_count);
+    CHECK((entry.waited_through[1] != kGraphInvalidIndex) == narrow);
+    nri::GlobalBarrierDesc expected{source.queues[0].source, entry.destination};
+    if (narrow)
+    {
+        CHECK(entry.waited_through[1] >= source.queues[1].last_submission);
+        expected.before.stages = combineStages(expected.before.stages, entry.destination.stages);
+        CHECK(expected.before.stages != nri::StageBits::ALL && expected.after.stages != nri::StageBits::ALL);
+    }
+    else
+    {
+        expected.before.stages = expected.after.stages = nri::StageBits::ALL;
+        expected.after.access = entry.source.access;
+    }
+    AliasHandoffProbe probe(device, expected, direct_wait ? nri::StageBits::ALL : nri::StageBits::COPY);
+    probe.expectImage(*job.resourceInput(images[1], 0).image);
+    const std::array jobs{&job};
+    CHECK(take(runTask(frames.render(jobs, {}))) > 0);
+    finishSubmissions(device, frames);
+    CHECK(device.drain() && probe.observed());
+    for (unsigned i = 0; i < readbacks.size(); ++i)
+    {
+        const auto word = readBufferWords<1>(device, *job.resourceInput(readbacks[i], 0).buffer)[0];
+        if (i % 2) CHECK(word == 0xffbf8040u || word == 0xffbf7f40u);
+        else CHECK(word == (i == 0 ? 0xff0000ffu : 0xff00ff00u));
+    }
+    std::printf("IMAGE ALIAS ENTRY direct_wait=%u narrow=%u pixels=red,shader,green,shader\n", direct_wait, narrow);
+}
+
 enum class EReuseOrder
 {
     UNORDERED,
@@ -4071,6 +4158,14 @@ int main(int argc, char** argv)
         options.backend = backend;
         options.multiple_queues = true;
         options.prefer_dedicated_queues = true;
+        {
+            TestDevice device(options, diagnostics(validation), nativeValidationEnabled());
+            if (&device->queue() != &device->queue(EQueueRole::COMPUTE))
+            {
+                crossQueueImageHandoff(*device, backend, true);
+                crossQueueImageHandoff(*device, backend, false);
+            }
+        }
         physicalReuse(validation, options, 2, {EReuseOrder::EXPLICIT, true});
         physicalReuse(validation, options, 2, {EReuseOrder::UNORDERED, true});
         physicalReuse(validation, options, 2, {EReuseOrder::SHADER_READER, true});

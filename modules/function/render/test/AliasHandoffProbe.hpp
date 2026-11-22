@@ -29,6 +29,8 @@ namespace foundation_test
             active_ = nullptr;
         }
 
+        void expectImage(nri::Texture& image) noexcept { image_ = &image; }
+
         [[nodiscard]] bool observed() noexcept
         {
             std::lock_guard lock(mutex_);
@@ -50,6 +52,18 @@ namespace foundation_test
                     self.buffers_.push_back(&command);
                 }
             }
+            if (self.image_)
+            {
+                const std::lock_guard lock(self.mutex_);
+                const bool after_global = std::ranges::find(self.buffers_, &command) != self.buffers_.end();
+                for (const auto& transition : std::span{barriers.textures, barriers.textureNum})
+                {
+                    if (after_global && transition.texture == self.image_ &&
+                        transition.before.layout == nri::Layout::UNDEFINED &&
+                        transition.after.layout == nri::Layout::COLOR_ATTACHMENT)
+                        self.activations_.push_back(&command);
+                }
+            }
             self.original_barrier_(command, barriers);
         }
 
@@ -65,9 +79,10 @@ namespace foundation_test
                     if (signal.stages == nri::StageBits::ALL) self.signals_.push_back(signal);
             }
             if (&queue != &self.consumer_) return result;
+            const auto& recorded = self.image_ ? self.activations_ : self.buffers_;
             const bool has_handoff = std::ranges::any_of(
                 std::span{desc.commandBuffers, desc.commandBufferNum},
-                [&](auto* command) { return std::ranges::find(self.buffers_, command) != self.buffers_.end(); }
+                [&](auto* command) { return std::ranges::find(recorded, command) != recorded.end(); }
             );
             if (has_handoff)
             {
@@ -81,7 +96,8 @@ namespace foundation_test
                     if (matched && !self.observed_)
                     {
                         self.observed_ = true;
-                        std::printf("Alias buffer handoff: before=%u after=%u wait=%u signal=%llu\n",
+                        std::printf("Alias %s handoff: before=%u after=%u wait=%u signal=%llu\n",
+                            self.image_ ? "image" : "buffer",
                             static_cast<unsigned>(self.expected_.before.stages),
                             static_cast<unsigned>(self.expected_.after.stages), static_cast<unsigned>(wait.stages),
                             static_cast<unsigned long long>(wait.value)
@@ -103,6 +119,8 @@ namespace foundation_test
         std::mutex mutex_;
         std::vector<nri::CommandBuffer*> buffers_;
         std::vector<nri::FenceSubmitDesc> signals_;
+        nri::Texture* image_ = nullptr;
+        std::vector<nri::CommandBuffer*> activations_;
         bool observed_ = false;
     };
 } // namespace foundation_test

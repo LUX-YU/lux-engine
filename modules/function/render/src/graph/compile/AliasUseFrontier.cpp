@@ -10,6 +10,44 @@ namespace lux::render::detail
 {
     namespace
     {
+        template <class Matches>
+        bool coversImageCells(const GraphImageRange& range, std::span<const ImageTransition> barriers, Matches matches)
+        {
+            // planBarriers combines uses per resource/cell and emits at most one transition before compaction.
+            const auto cells = std::uint64_t(std::popcount(range.aspects)) * range.mip_count * range.layer_count;
+            std::uint64_t covered = 0;
+            for (const auto& transition : barriers)
+            {
+                const auto& cell = transition.native;
+                const auto aspect = cell.planes == nri::PlaneBits::COLOR ? 1u :
+                    cell.planes == nri::PlaneBits::DEPTH ? 2u : 4u;
+                const bool selected = (range.aspects & aspect) && cell.mipOffset >= range.first_mip &&
+                    cell.mipOffset - range.first_mip < range.mip_count && cell.layerOffset >= range.first_layer &&
+                    cell.layerOffset - range.first_layer < range.layer_count;
+                if (selected && matches(transition)) ++covered;
+            }
+            return cells != 0 && covered == cells;
+        }
+
+        bool coversLayoutEntry(
+            GraphResourceId resource, const AliasUsePoint& point, std::span<const ImageTransition> barriers
+        ) noexcept
+        {
+            return coversImageCells(std::get<GraphImageRange>(point.range), barriers, [&](const auto& transition)
+            {
+                const auto& native = transition.native;
+                const bool discard = native.before.layout == nri::Layout::UNDEFINED &&
+                    transition.previous_slot == kGraphInvalidIndex && native.before.access == nri::AccessBits::NONE;
+                const bool follows_use = native.before.layout != nri::Layout::UNDEFINED &&
+                    transition.previous_slot < point.first_pass;
+                const bool on_path = transition.resource == resource.index && transition.boundary == ETransitionBoundary::PASS &&
+                    native.after.layout != nri::Layout::UNDEFINED && (discard || follows_use);
+                // The global barrier and this transition are separate native commands on the same queue.
+                return on_path && coversStages(native.before.stages, point.scope.stages) &&
+                    coversScope({native.after.access, native.after.stages}, point.scope);
+            });
+        }
+
         bool hasEntryDependency(
             const AliasResourceUse& use, const BarrierBatch& before, std::span<const AliasUsePoint> earlier
         ) noexcept
@@ -30,20 +68,7 @@ namespace lux::render::detail
             const auto* image = std::get_if<GraphImageRange>(&use.point.range);
             if (!image) return std::ranges::any_of(before.buffers, ordered);
 
-            // Before compaction there is exactly one transition per touched image cell.
-            const auto cells = std::uint64_t(std::popcount(image->aspects)) * image->mip_count * image->layer_count;
-            std::uint64_t covered = 0;
-            for (const auto& transition : before.images)
-            {
-                const auto& cell = transition.native;
-                const auto aspect = cell.planes == nri::PlaneBits::COLOR ? 1u :
-                    cell.planes == nri::PlaneBits::DEPTH ? 2u : 4u;
-                const bool selected = (image->aspects & aspect) && cell.mipOffset >= image->first_mip &&
-                    cell.mipOffset - image->first_mip < image->mip_count && cell.layerOffset >= image->first_layer &&
-                    cell.layerOffset - image->first_layer < image->layer_count;
-                if (selected && ordered(transition)) ++covered;
-            }
-            return covered == cells;
+            return coversImageCells(*image, before.images, ordered);
         }
     } // namespace
 
@@ -82,8 +107,9 @@ namespace lux::render::detail
         for (std::size_t i = 0; i < points.size(); ++i)
         {
             auto& slot = physical.alias_frontiers[i];
-            const auto& resource = plan.resources_[physical.slots[i].resource.index];
-            slot.image = std::holds_alternative<GraphImageDesc>(resource.description);
+            const auto id = physical.slots[i].resource;
+            const auto* image = std::get_if<GraphImageDesc>(&plan.resources_[id.index].description);
+            slot.image = image != nullptr;
             for (std::size_t q = 0; q < slot.queues.size(); ++q)
             {
                 const auto& selected = points[i][q];
@@ -108,13 +134,19 @@ namespace lux::render::detail
                 // Preserve D3D12's matching texture access contract at the global handoff.
                 if (slot.image && device.limits.graphicsAPI == nri::GraphicsAPI::D3D12) queue.destination = queue.source;
                 const auto& entry = recording.passes[queue.barrier_pass];
+                const bool legacy_texture = image && device.limits.graphicsAPI == nri::GraphicsAPI::D3D12 &&
+                    !device.limits.features.enhancedBarriers;
+                const bool covers_layout = !image || (!legacy_texture && std::ranges::all_of(selected, [&](const auto& point)
+                {
+                    return !point.needs_entry || coversLayoutEntry(id, point, recording.passes[point.first_pass].before.images);
+                }));
                 for (const auto& wait : plan.submissions_[entry.submission].dependencies)
                 {
                     const auto role = plan.submissions_[wait.producer].queue;
                     const auto producer = physical_queue[static_cast<std::size_t>(role)];
                     const bool covers_entry = queue.destination.stages != nri::StageBits::NONE &&
                         coversStages(wait.stages, queue.destination.stages);
-                    if (producer != q && covers_entry) queue.waited_through[producer] = wait.producer;
+                    if (producer != q && covers_entry && covers_layout) queue.waited_through[producer] = wait.producer;
                 }
                 const auto group = entry.rendering_group;
                 slot.rendering_boundary &= group == kGraphInvalidIndex ||

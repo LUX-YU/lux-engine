@@ -723,8 +723,10 @@ instance resource diagnostics report actual Memory groups, requested bytes, plac
 instantiated barrier scopes. Creation and Resize select the same handoff template using their actual allocation groups.
 The compiler retains per-physical-queue uses by byte or image range, read/write mode and native scope. A prior
 same-range transition can cover an incoming use when both of its native scopes match. Source scopes retain reads
-and writes. Handoffs with foreign source queues keep all-stage ordering, and D3D12 texture placement preserves
-its matching access-mask contract.
+and writes. A handoff from another physical queue can narrow its scope when the entry batch directly waits for
+all previous uses at the required stages. For an image, the compiler also checks the recorded layout transitions
+of each incoming aspect, mip and layer against the global barrier. Missing coverage retains all-stage ordering.
+D3D12 texture placement preserves matching access masks, and legacy texture barriers keep all-stage handoffs.
 
 SubmissionOperation advances an ordered, frozen submission window across Queue capacity limits. Each accepted batch records its
 actual queue serial; dependencies wait for that producer, never an unrelated later submission. Compatible ready

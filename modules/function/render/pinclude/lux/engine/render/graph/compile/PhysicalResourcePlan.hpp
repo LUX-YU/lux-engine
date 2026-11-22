@@ -53,9 +53,7 @@ namespace lux::render::detail
             if (q == queue || !source.point_count) continue;
             has_foreign_source = true;
             const auto waited = entry.waited_through[q];
-            // Entry access alone does not describe the first image layout transition.
-            const bool needs_full_scope = next.image || waited == kGraphInvalidIndex ||
-                waited < source.last_submission;
+            const bool needs_full_scope = waited == kGraphInvalidIndex || waited < source.last_submission;
             if (needs_full_scope)
             {
                 barrier.before.stages = barrier.after.stages = nri::StageBits::ALL;

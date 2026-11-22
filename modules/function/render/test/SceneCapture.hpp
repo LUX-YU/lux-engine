@@ -759,7 +759,16 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
         const auto observed = notifications.workEpoch();
         std::uint64_t correlation = 0;
         const auto status = client.tryReceive(correlation, message);
-        CHECK(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
+        const bool closed = status == ipc::EIpcReceive::CLOSED;
+        if (closed || Clock::now() >= deadline)
+        {
+            std::fflush(stdout);
+            std::fprintf(stderr, "IPC request %llu (%.*s) %s, receive status %u, correlation %llu\n",
+                static_cast<unsigned long long>(request_id), static_cast<int>(C::name.size()), C::name.data(),
+                closed ? "closed" : "timed out", static_cast<unsigned>(status),
+                static_cast<unsigned long long>(correlation));
+            CHECK(false);
+        }
         if (status != ipc::EIpcReceive::RECEIVED)
         {
             notifications.waitUntil(observed, deadline);

@@ -36,7 +36,6 @@ namespace lux::render::detail
             MaterialProgramRecord record;
             Table* table = nullptr;
             std::size_t instances = 0;
-            std::uint32_t program_preparations = 0;
         };
 
     public:
@@ -73,8 +72,7 @@ namespace lux::render::detail
         selectRasterRecord(MaterialId, std::uint32_t frame, const rdesc::ShaderBlock& layout) const noexcept;
         [[nodiscard]] MaterialProgramId programId(MaterialId) const noexcept;
         [[nodiscard]] RenderResult<const rdesc::MaterialProgramSet*>
-        beginProgramPreparation(MaterialProgramId) noexcept;
-        void finishProgramPreparation(MaterialProgramId) noexcept;
+        programData(MaterialProgramId) const & noexcept;
         [[nodiscard]] RenderResult<void> release(MaterialId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 

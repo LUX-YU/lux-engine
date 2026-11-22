@@ -22,26 +22,14 @@ namespace lux::render::detail
     };
 
     [[nodiscard]] VertexFormat vertexFormat(rdesc::ETextureFormat) noexcept;
-    struct EnabledDeviceFeatures;
+    class DeviceSession;
+    struct RasterProgramKey;
     [[nodiscard]] nri::StageBits shaderStages(std::uint32_t stages) noexcept;
     [[nodiscard]] std::vector<nri::DescriptorRangeDesc>
     descriptorRanges(std::span<const ShaderBinding>, bool preserve_registers = false) noexcept;
     [[nodiscard]] RenderResult<nri::Pipeline*>
-    compileCompute(
-        nri::Device&,
-        const nri::CoreInterface&,
-        const EnabledDeviceFeatures&,
-        nri::PipelineLayout&,
-        const rdesc::ShaderProgramArtifact&
-    ) noexcept;
+    compileCompute(const DeviceSession&, nri::PipelineLayout&, const rdesc::ShaderProgramArtifact&) noexcept;
     // Validated stage borrows stay within the caller's immutable shader candidate.
     [[nodiscard]] RenderResult<std::array<const rdesc::ShaderStageArtifact*, 2>>
-    rasterShaderStages(
-        const rdesc::ShaderProgramArtifact& shader,
-        const GraphicsState& graphics,
-        const nri::DeviceDesc& limits,
-        const EnabledDeviceFeatures& enabled,
-        std::size_t color_count,
-        nri::Format depth
-    ) noexcept;
+    rasterShaderStages(const DeviceSession&, const rdesc::ShaderProgramArtifact&, const RasterProgramKey&) noexcept;
 } // namespace lux::render::detail

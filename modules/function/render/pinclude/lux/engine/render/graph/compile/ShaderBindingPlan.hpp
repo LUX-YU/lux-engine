@@ -59,7 +59,12 @@ namespace lux::render::detail
     // Dynamic Raster inputs use stage-local slot indices instead of fixed Graph resources.
     // Reflected reads must be declared by the stage; Shader writes are not accepted here.
     [[nodiscard]] RenderResult<PassBindings>
-    planRasterLayout(const nri::DeviceDesc&, const rdesc::ShaderInfo&, const RasterPassTemplate&) noexcept;
+    planRasterLayout(
+        const nri::DeviceDesc&,
+        const rdesc::ShaderInfo&,
+        std::span<const RasterPassTemplate::Input>,
+        const ParameterBinding&
+    ) noexcept;
 
     [[nodiscard]] RenderResult<nri::PipelineLayout*> createPipelineLayout(
         nri::Device& device,
@@ -79,5 +84,5 @@ namespace lux::render::detail
     ) noexcept;
 
     [[nodiscard]] RenderResult<rdesc::ShaderProgramArtifact>
-    relocateShader(const rdesc::ShaderProgramArtifact& original, std::span<const ShaderBinding> locations) noexcept;
+    relocateShader(rdesc::ShaderProgramArtifact shader, std::span<const ShaderBinding> locations) noexcept;
 } // namespace lux::render::detail

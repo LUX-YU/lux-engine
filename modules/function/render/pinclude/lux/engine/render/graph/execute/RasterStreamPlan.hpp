@@ -1,8 +1,6 @@
 #pragma once
 
-#include <exec/task.hpp>
-#include <lux/cxx/core/function_ref.hpp>
-#include <lux/engine/render/device/CompiledPrograms.hpp>
+#include <lux/engine/render/device/ProgramCompileInput.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RenderGraphExecutable.hpp>
@@ -78,20 +76,31 @@ namespace lux::render::detail
         std::optional<RuntimeContract> runtime;
     };
 
-    // The compile or program selection operation owns these inputs until preparation returns.
+    // These declaration fields are borrowed only while linking the stream on the owner.
     struct RasterProgramRecipe final
     {
-        const RasterPassTemplate& stage;
+        std::span<const RasterPassTemplate::Input> arguments;
+        const ParameterBinding& parameters;
         const RasterStreamTarget& target;
         const rdesc::ShaderProgramArtifact& artifact;
         const GraphicsState& graphics;
     };
 
-    [[nodiscard]] exec::task<RenderResult<CompiledRasterStream::Program>>
-    prepareRasterStreamProgram(
-        DeviceSession&, execution::CpuScheduler, RasterProgramRecipe,
-        std::optional<cxx::function_ref<bool() noexcept>> runtime_current = {}
-    ) noexcept;
+    struct RasterProgramLink final
+    {
+        ProgramCompileInput input;
+        std::vector<CompiledRasterStream::ArgumentUses> argument_to_use;
+        std::vector<VertexBinding> vertices;
+        std::vector<VertexAttribute> mesh_attributes;
+        std::uint32_t shared_texture_stages;
+        std::uint32_t material_stages;
+        rdesc::ShaderBlock material_layout;
+
+        [[nodiscard]] CompiledRasterStream::Program finish(PreparedProgram) && noexcept;
+    };
+
+    [[nodiscard]] RenderResult<RasterProgramLink>
+    linkRasterStreamProgram(const DeviceSession&, RasterProgramRecipe) noexcept;
 
     struct DynamicRasterPrograms final
     {

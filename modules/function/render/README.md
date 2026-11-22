@@ -273,8 +273,9 @@ A failed or obsolete selection leaves the previous set resident, and requests fo
 complete with the preparation error.
 Use `RasterProgramSelection::meshLayout()` for an owned copy of the selected mesh's vertex layout and
 `materialProgram()` for the selected material's immutable program set. Both lookups use the stream's
-named owners. The material pointer is borrowed during selection. The preparation operation registers
-one reader per material program until completion, including when the producer combines shader stages.
+named owners. The material pointer is borrowed for the synchronous selection callback. The device compile operation
+owns the shader bytes, binding ABI, vertex state and attachment contract across worker hops. Removing the last
+material instance permits unregistering its source program while an already selected pipeline is compiling.
 Use `FramePreparation::rasterProgram()` to obtain a slot for a selection index during the current call.
 Slots carry the published program-set revision, so a producer must resolve them again after replacement.
 

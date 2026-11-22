@@ -7,6 +7,7 @@
 #include <cmath>
 #include <exception>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/RasterProgram.hpp>
 #include <memory>
 #include <spirv-tools/libspirv.h>
 #include <spirv_cross_c.h>
@@ -822,13 +823,11 @@ namespace lux::render::detail
 
     RenderResult<nri::Pipeline*>
     compileCompute(
-        nri::Device& device,
-        const nri::CoreInterface& nri_core,
-        const EnabledDeviceFeatures& enabled,
-        nri::PipelineLayout& layout,
-        const rdesc::ShaderProgramArtifact& shader
+        const DeviceSession& session, nri::PipelineLayout& layout, const rdesc::ShaderProgramArtifact& shader
     ) noexcept
     {
+        const auto& enabled = session.enabledFeatures();
+        const auto& nri_core = session.nriCore();
         const bool wrong_stage = shader.stages.size() != 1 || shader.stages[0].stage != rdesc::EShaderType::COMPUTE;
         if (shader.target != enabled.shader_target)
         {
@@ -852,7 +851,7 @@ namespace lux::render::detail
                                                                 code,
                                                                 SpvExecutionModelGLCompute,
                                                                 *projected,
-                                                                nri_core.GetDeviceDesc(device),
+                                                                session.description(),
                                                                 nullptr,
                                                                 {},
                                                                 0,
@@ -873,7 +872,7 @@ namespace lux::render::detail
              code.entry.c_str()}
         };
         nri::Pipeline* pipeline = nullptr;
-        const auto result = nri_core.CreateComputePipeline(device, description, pipeline);
+        const auto result = nri_core.CreateComputePipeline(session.device(), description, pipeline);
         if (result != nri::Result::SUCCESS)
         {
             nri_core.DestroyPipeline(pipeline);
@@ -884,14 +883,14 @@ namespace lux::render::detail
 
     RenderResult<std::array<const rdesc::ShaderStageArtifact*, 2>>
     rasterShaderStages(
-        const rdesc::ShaderProgramArtifact& shader,
-        const GraphicsState& graphics,
-        const nri::DeviceDesc& limits,
-        const EnabledDeviceFeatures& enabled,
-        std::size_t color_count,
-        nri::Format depth
+        const DeviceSession& session, const rdesc::ShaderProgramArtifact& shader, const RasterProgramKey& program
     ) noexcept
     {
+        const auto& graphics = program.state;
+        const auto& limits = session.description();
+        const auto& enabled = session.enabledFeatures();
+        const auto color_count = program.colors.size();
+        const auto depth = program.depth;
         if (shader.target != enabled.shader_target)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});

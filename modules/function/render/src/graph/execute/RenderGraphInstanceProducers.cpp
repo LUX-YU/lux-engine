@@ -10,7 +10,6 @@
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 #include <algorithm>
-#include <map>
 #include <bit>
 
 namespace lux::render::detail
@@ -59,22 +58,7 @@ namespace lux::render::detail
             const auto* owner = findOwner(slot);
             if (!owner || !owner->materials)
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            auto existing = materials_.find(id);
-            if (existing != materials_.end())
-            {
-                if (existing->second.owner != owner->materials)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {slot.index}});
-                return existing->second.program;
-            }
-            auto program = owner->materials->beginProgramPreparation(id);
-            if (!program) return cxx::unexpected(program.error());
-            materials_.emplace(id, MaterialInput{owner->materials, *program});
-            return *program;
-        }
-
-        void finishMaterialInputs() noexcept
-        {
-            for (const auto& [id, input] : materials_) input.owner->finishProgramPreparation(id);
+            return owner->materials->programData(id);
         }
 
         RenderResult<MaterialProgramId> materialProgramId(DrawStreamSlot slot, MaterialId id) const noexcept override
@@ -148,13 +132,6 @@ namespace lux::render::detail
 
         const RenderGraphInstance& instance_;
         std::span<const std::uint32_t> snapshots_;
-        struct MaterialInput final
-        {
-            RasterMaterialStorage* owner;
-            const rdesc::MaterialProgramSet* program;
-        };
-
-        std::map<MaterialProgramId, MaterialInput> materials_;
     };
 
     class RenderGraphInstance::ProducerFrame final : public FramePreparation
@@ -573,14 +550,17 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kStorageContract, {slot}});
             snapshot.revision = *captured;
         }
-        ProgramSelection selection{*this, producer, preparation_plan_->producers[index].program_snapshots};
         bool adopted = false;
-        cxx::scope_exit finish_materials([&]() noexcept { selection.finishMaterialInputs(); });
         cxx::scope_exit settle([&]() noexcept { producer.workspace.settleRasterPrograms(adopted); });
-        if (auto gathered = producer.workspace.selectRasterPrograms(selection); !gathered)
-            co_return cxx::unexpected(gathered.error());
+        std::vector<ProgramSelection::Entry> entries;
+        {
+            ProgramSelection selection{*this, producer, preparation_plan_->producers[index].program_snapshots};
+            if (auto gathered = producer.workspace.selectRasterPrograms(selection); !gathered)
+                co_return cxx::unexpected(gathered.error());
+            entries = std::move(selection.entries);
+        }
         std::vector<std::unique_ptr<DynamicRasterPrograms>> candidates;
-        candidates.reserve(selection.entries.size());
+        candidates.reserve(entries.size());
         cxx::scope_exit release_candidates([&]() noexcept
         {
             for (const auto& candidate : candidates)
@@ -590,7 +570,7 @@ namespace lux::render::detail
                 session_->programs().release(candidate->programs.size(), get);
             }
         });
-        for (const auto& entry : selection.entries)
+        for (const auto& entry : entries)
         {
             if (entry.reuse)
             {
@@ -605,16 +585,15 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kDeviceCapacity});
             selected->revision = previous ? previous->revision + 1 : 1;
             selected->programs.reserve(entry.programs->size());
-            RasterPassTemplate stage;
-            stage.inputs = contract.arguments;
             for (const auto& program : *entry.programs)
             {
-                stage.parameters = program.parameters;
-                auto prepared = co_await prepareRasterStreamProgram(
-                    *session_, cpu, {stage, contract.target, entry.shaders[program.shader.index], program.graphics},
-                    cxx::function_ref<bool() noexcept>{is_current}
+                auto link = linkRasterStreamProgram(
+                    *session_, {contract.arguments, program.parameters, contract.target,
+                                entry.shaders[program.shader.index], program.graphics}
                 );
-                if (prepared) selected->programs.push_back(std::move(*prepared));
+                if (!link) co_return cxx::unexpected(link.error());
+                auto prepared = co_await session_->programs().prepareSelectedProgram(std::move(link->input), cpu, stop);
+                if (prepared) selected->programs.push_back(std::move(*link).finish(std::move(*prepared)));
                 if (!is_current()) co_return false;
                 if (!prepared) co_return cxx::unexpected(prepared.error());
             }
@@ -622,7 +601,7 @@ namespace lux::render::detail
         if (!is_current()) co_return false;
         for (std::size_t i = 0; i < candidates.size(); ++i)
         {
-            const auto pass = selection.entries[i].pass;
+            const auto pass = entries[i].pass;
             const auto& previous = dynamic_raster_programs_[pass];
             const auto& candidate = candidates[i];
             if (!candidate) continue;

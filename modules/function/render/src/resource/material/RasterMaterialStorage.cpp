@@ -349,8 +349,7 @@ namespace lux::render::detail
     {
         auto* program = findProgram(id);
         if (!program) return cxx::unexpected(RenderError{kStorageIdentity});
-        const bool has_live_uses = program->instances || program->program_preparations != 0;
-        if (has_live_uses) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (program->instances) return cxx::unexpected(RenderError{kDeviceBusy});
         removeProgram(*program);
         return {};
     }
@@ -786,20 +785,11 @@ namespace lux::render::detail
     }
 
     RenderResult<const rdesc::MaterialProgramSet*>
-    RasterMaterialStorage::beginProgramPreparation(MaterialProgramId id) noexcept
+    RasterMaterialStorage::programData(MaterialProgramId id) const & noexcept
     {
-        auto* slot = findProgram(id);
-        if (!slot) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (slot->program_preparations == UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
-        ++slot->program_preparations;
-        return &slot->record.data;
-    }
-
-    void RasterMaterialStorage::finishProgramPreparation(MaterialProgramId id) noexcept
-    {
-        auto* slot = findProgram(id);
-        if (!slot || !slot->program_preparations) std::terminate();
-        --slot->program_preparations;
+        const auto* program = findProgram(id);
+        if (!program) return cxx::unexpected(RenderError{kStorageIdentity});
+        return &program->record.data;
     }
 
     const RasterMaterialStorage::ProgramSlot* RasterMaterialStorage::findProgram(MaterialProgramId id) const noexcept

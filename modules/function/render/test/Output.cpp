@@ -2460,22 +2460,31 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto commands = queryCommands(*client);
     const auto requestRound = [&](std::span<const RenderJobId> jobs)
     {
+        const auto stats_command = std::ranges::find(commands.commands, QueryRenderStats::name, &CommandInfo::name);
+        CHECK(stats_command != commands.commands.end());
+        const auto stats_id = nextSceneRequest();
+        ipc::IpcMessage wake;
+        wake.emplace<QueryRenderStats::Request>();
+        // A prior reply can already be visible while its notification is still entering this gate.
         response_gate.store(EResponseGate::ARMED);
-        const auto paired_before = call<QueryRenderStats>(*client, commands, {}).submissions;
+        CHECK(client->trySend(commandTag(stats_command->id), stats_id, wake));
         const auto pair_deadline = Clock::now() + 10s;
         while (response_gate.load() != EResponseGate::BLOCKED) CHECK(Clock::now() < pair_deadline);
         const auto request_command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
         CHECK(request_command != commands.commands.end());
+        std::vector<std::uint64_t> request_ids;
         for (auto job : jobs)
         {
             ipc::IpcMessage message;
             message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job});
-            CHECK(client->trySend(commandTag(request_command->id), nextSceneRequest(), message));
+            request_ids.push_back(nextSceneRequest());
+            CHECK(client->trySend(commandTag(request_command->id), request_ids.back(), message));
         }
         response_gate.store(EResponseGate::OPEN);
         response_gate.notify_all();
         std::vector<JobSubmitted> paired(jobs.size());
-        for (std::size_t received = 0; received < paired.size();)
+        std::optional<std::uint64_t> paired_before;
+        for (std::size_t received = 0; received < paired.size() || !paired_before;)
         {
             ipc::IpcMessage message;
             std::uint64_t correlation = 0;
@@ -2485,11 +2494,20 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
                 std::this_thread::yield();
                 continue;
             }
+            if (correlation == stats_id)
+            {
+                const auto& stats = message.get<QueryRenderStats::Response>();
+                CHECK(!paired_before && !stats.error.type);
+                paired_before = stats.submissions;
+                continue;
+            }
             const auto reply = message.get<JobSubmitted>();
             CHECK(!reply.error.type);
             const auto job = std::ranges::find(jobs, reply.job);
             CHECK(job != jobs.end());
-            paired[job - jobs.begin()] = reply;
+            const auto index = static_cast<std::size_t>(job - jobs.begin());
+            CHECK(correlation == request_ids[index] && paired[index].job.isNull());
+            paired[index] = reply;
             ++received;
         }
         for (std::size_t i = 0; i < jobs.size(); ++i)
@@ -2497,7 +2515,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
             CHECK(paired[i].job == jobs[i] && paired[i].frame_index == paired.front().frame_index);
             CHECK(paired[i].slot_index == paired.front().slot_index);
         }
-        return std::pair{paired_before, std::move(paired)};
+        return std::pair{*paired_before, std::move(paired)};
     };
     request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
     tone_request.output.sampled = true;
@@ -3691,9 +3709,9 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             std::vector<rdesc::ShaderProgramArtifact> shaders;
             if (linked.materials)
             {
-                auto lease = selection.materialProgram(linked.stream, selected_material_program);
-                if (!lease) return lux::cxx::unexpected(lease.error());
-                const auto* shader = (*lease)->find(rdesc::EMaterialPurpose::FORWARD);
+                auto selected = selection.materialProgram(linked.stream, selected_material_program);
+                if (!selected) return lux::cxx::unexpected(selected.error());
+                const auto* shader = (*selected)->find(rdesc::EMaterialPurpose::FORWARD);
                 CHECK(shader);
                 shaders.push_back(prependStreamVertex(shader->shader, kEffectStreamVertex));
                 program.parameters.setInlineConstant(rdesc::MaterialGpuReference{});
@@ -3991,12 +4009,13 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             CHECK(Clock::now() < deadline);
             std::this_thread::yield();
         }
-        const auto borrowed = call<MaterialCommands::UnregisterProgram>(
+        const auto in_use = call<MaterialCommands::UnregisterProgram>(*client, commands, {material_program}, false);
+        const auto removed = call<MaterialCommands::UnregisterProgram>(
             *client, commands, {selected_material_program}, false
         );
         UniformUploadProbe::pipeline_gate = Gate::OPEN;
         UniformUploadProbe::pipeline_gate.notify_all();
-        CHECK(borrowed.error.type == kDeviceBusy);
+        CHECK(in_use.error.type == kDeviceBusy && !removed.error.type);
     }
     while (UniformUploadProbe::submission_gate != Gate::HELD)
     {
@@ -4104,7 +4123,6 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     {
         for (auto material : materials) call<MaterialCommands::ReleaseInstance>(*client, commands, {material});
         call<MaterialCommands::UnregisterProgram>(*client, commands, {material_program});
-        call<MaterialCommands::UnregisterProgram>(*client, commands, {selected_material_program});
     }
     call<TextureCommands::Release>(*client, commands, {textures[1]});
     server->stop();

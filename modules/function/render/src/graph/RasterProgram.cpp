@@ -1,4 +1,5 @@
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 
@@ -6,24 +7,17 @@
 
 namespace lux::render::detail
 {
-    RenderResult<void> createRasterProgram(
-        nri::Device& device,
-        const nri::CoreInterface& nri_core,
-        const nri::DeviceDesc& limits,
-        const EnabledDeviceFeatures& enabled,
-        std::span<const nri::FormatSupportBits> formats,
-        std::array<std::uint32_t, 2> vertex_limits,
-        nri::PipelineLayout& layout,
-        const rdesc::ShaderProgramArtifact& shader,
-        const RasterProgramKey& program,
-        nri::Pipeline*& pipeline
+    RenderResult<nri::Pipeline*> createRasterProgram(
+        const DeviceSession& session, nri::PipelineLayout& layout, const rdesc::ShaderProgramArtifact& shader,
+        const RasterProgramKey& program
     ) noexcept
     {
+        const auto& limits = session.description();
         const auto& graphics = program.state;
         const auto& colors = program.colors;
         const auto depth = program.depth;
         const auto samples = program.samples;
-        auto stages = rasterShaderStages(shader, graphics, limits, enabled, colors.size(), depth);
+        auto stages = rasterShaderStages(session, shader, program);
         if (!stages)
         {
             return cxx::unexpected(stages.error());
@@ -41,7 +35,7 @@ namespace lux::render::detail
         for (const auto& binding : graphics.vertex_bindings)
         {
             const bool invalid =
-                !binding.stride || binding.stride > vertex_limits[0] || binding.stride > UINT16_MAX ||
+                !binding.stride || binding.stride > session.vertexStrideLimit() || binding.stride > UINT16_MAX ||
                 binding.binding >= limits.shaderStage.vertex.streamMaxNum || binding.binding > UINT16_MAX ||
                 binding.rate > EVertexRate::INSTANCE ||
                 std::ranges::any_of(streams, [&](const auto& other) { return other.bindingSlot == binding.binding; });
@@ -62,7 +56,7 @@ namespace lux::render::detail
             const auto binding = std::ranges::find(streams, field.binding, &nri::VertexStreamDesc::bindingSlot);
             const bool invalid =
                 !format.components || field.location >= limits.shaderStage.vertex.attributeMaxNum ||
-                field.offset > vertex_limits[1] || binding == streams.end() ||
+                field.offset > session.vertexOffsetLimit() || binding == streams.end() ||
                 std::ranges::any_of(attributes, [&](const auto& other) { return other.vk.location == field.location; });
             if (invalid)
             {
@@ -72,7 +66,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            if ((formats[static_cast<std::size_t>(format.native)] & nri::FormatSupportBits::VERTEX_BUFFER) == 0)
+            if ((session.formatSupport(format.native) & nri::FormatSupportBits::VERTEX_BUFFER) == 0)
             {
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
@@ -180,11 +174,14 @@ namespace lux::render::detail
         description.outputMerger.depth.write = graphics.depth_write;
         description.shaders = native_stages.data();
         description.shaderNum = stage_count;
-        const auto result = nri_core.CreateGraphicsPipeline(device, description, pipeline);
+        nri::Pipeline* pipeline = nullptr;
+        const auto& core = session.nriCore();
+        const auto result = core.CreateGraphicsPipeline(session.device(), description, pipeline);
         if (result != nri::Result::SUCCESS)
         {
+            if (pipeline) core.DestroyPipeline(pipeline);
             return cxx::unexpected(nativeError(result));
         }
-        return {};
+        return pipeline;
     }
 } // namespace lux::render::detail

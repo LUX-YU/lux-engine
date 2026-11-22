@@ -1,5 +1,4 @@
-#include <exec/variant_sender.hpp>
-#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/ProgramCompileInput.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
@@ -658,103 +657,14 @@ namespace lux::render::detail
         return plan;
     }
 
-    static exec::task<RenderResult<CompiledPrograms::Program*>> prepareGraphProgram(
-        RasterProgramKey key, const rdesc::ShaderProgramArtifact& shader, PassBindings& bindings,
-        DeviceSession& session, execution::CpuScheduler cpu, bool is_raster,
-        std::optional<cxx::function_ref<bool() noexcept>> runtime_current = {}
-    ) noexcept
+    RenderResult<RasterProgramLink>
+    linkRasterStreamProgram(const DeviceSession& session, RasterProgramRecipe recipe) noexcept
     {
-        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        auto& program_cache = session.programs();
-        auto relocated = co_await (
-            stdexec::schedule(cpu) |
-            stdexec::then([&]() noexcept { return relocateShader(shader, bindings.bindings); }) |
-            stdexec::upon_stopped(
-                []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
-                { return cxx::unexpected(RenderError{kCpuStopped}); }
-            ) |
-            stdexec::continues_on(owner_scheduler) |
-            stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
-        );
-        if (!relocated)
-        {
-            co_return cxx::unexpected(relocated.error());
-        }
-        if (runtime_current && !(*runtime_current)()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        auto& retained_shader = program_cache.acquireShader(std::move(*relocated));
-        cxx::scope_exit release_shader([&]() noexcept { program_cache.releaseShader(retained_shader); });
-        const auto& artifact = program_cache.artifact(retained_shader);
-        auto layout = program_cache.acquireLayout(bindings, static_cast<std::uint32_t>(key.colors.size()));
-        if (!layout)
-        {
-            co_return cxx::unexpected(layout.error());
-        }
-        cxx::scope_exit release_layout([&]() noexcept { program_cache.releaseLayout(*layout); });
-        const auto lookup = program_cache.lookup(retained_shader, **layout, is_raster ? &key : nullptr);
-        auto* program = lookup.hit();
-        if (!program)
-        {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kCommandCancelled});
-            }
-            const auto compile = [
-                &key, &artifact, layout = bindings.layout, is_raster, device = &session.device(), core = &session.nriCore(),
-                enabled = session.enabledFeatures(), limits = &session.description(), formats = session.formatSupport(),
-                vertex_limits = std::array{session.vertexStrideLimit(), session.vertexOffsetLimit()}
-            ]() noexcept -> RenderResult<nri::Pipeline*>
-            {
-                if (!is_raster) return compileCompute(*device, *core, enabled, *layout, artifact);
-                nri::Pipeline* pipeline = nullptr;
-                const auto created = createRasterProgram(
-                    *device, *core, *limits, enabled, formats, vertex_limits, *layout, artifact, key, pipeline
-                );
-                if (created) return pipeline;
-                if (pipeline) core->DestroyPipeline(pipeline);
-                return cxx::unexpected(created.error());
-            };
-            // Native pipeline creation is thread-safe. Runtime program preparation uses its CPU worker
-            // so a stalled driver call cannot prevent native queue operations for ready Jobs.
-            using VSchedule = exec::variant_sender<decltype(stdexec::schedule(cpu)),
-                decltype(stdexec::schedule(session.nativeScheduler()))>;
-            auto scheduled = runtime_current ? VSchedule{stdexec::schedule(cpu)}
-                                             : VSchedule{stdexec::schedule(session.nativeScheduler())};
-            auto compiled = co_await (
-                std::move(scheduled) | stdexec::then(compile) |
-                stdexec::upon_error(NativeScheduleFailure<nri::Pipeline*>{}) |
-                stdexec::upon_stopped([]() noexcept -> RenderResult<nri::Pipeline*>
-                {
-                    return cxx::unexpected(RenderError{kCommandCancelled});
-                }) |
-                stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<nri::Pipeline*>{})
-            );
-            if (runtime_current && !(*runtime_current)())
-            {
-                if (compiled) session.nriCore().DestroyPipeline(*compiled);
-                co_return cxx::unexpected(RenderError{kCommandCancelled});
-            }
-            if (!compiled)
-            {
-                co_return cxx::unexpected(compiled.error());
-            }
-            program = is_raster ? program_cache.publishRaster(std::move(key), lookup, *compiled)
-                                : program_cache.publishCompute(lookup, *compiled);
-        }
-        co_return program;
-    }
-
-    exec::task<RenderResult<CompiledRasterStream::Program>>
-    prepareRasterStreamProgram(
-        DeviceSession& session, execution::CpuScheduler cpu, RasterProgramRecipe recipe,
-        std::optional<cxx::function_ref<bool() noexcept>> runtime_current
-    ) noexcept
-    {
-        const auto& [stage, target, artifact, graphics] = recipe;
+        const auto& [arguments, parameters, target, artifact, graphics] = recipe;
         if (artifact.target != session.enabledFeatures().shader_target)
-            co_return cxx::unexpected(RenderError{kDeviceUnsupported});
-        auto layout = planRasterLayout(session.description(), artifact.interface, stage);
-        if (!layout) co_return cxx::unexpected(layout.error());
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        auto layout = planRasterLayout(session.description(), artifact.interface, arguments, parameters);
+        if (!layout) return cxx::unexpected(layout.error());
         std::uint32_t shared_texture_stages = 0;
         std::uint32_t material_stages = 0;
         rdesc::ShaderBlock material_layout;
@@ -763,15 +673,15 @@ namespace lux::render::detail
             const bool supported_kind = field.kind == EDescriptorKind::UNIFORM_BUFFER ||
                 field.kind == EDescriptorKind::STORAGE_BUFFER || field.kind == EDescriptorKind::SAMPLED_IMAGE ||
                 field.kind == EDescriptorKind::SAMPLER;
-            if (!supported_kind) co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            if (!supported_kind) return cxx::unexpected(RenderError{kRuntimeUnsupported});
             if (field.count != 0) continue;
 
             const bool shared_image = field.kind == EDescriptorKind::SAMPLED_IMAGE && !field.image_arrayed &&
                 !field.image_depth;
-            const auto slot = std::ranges::find(stage.inputs, field.name, &RasterPassTemplate::Input::name);
+            const auto slot = std::ranges::find(arguments, field.name, &RasterPassTemplate::Input::name);
             const bool shared_sampler = field.kind == EDescriptorKind::SAMPLER &&
-                slot != stage.inputs.end() && !slot->comparison_sampler;
-            const bool material_argument = slot != stage.inputs.end() && slot->usage == EGraphUse::STORAGE_READ;
+                slot != arguments.end() && !slot->comparison_sampler;
+            const bool material_argument = slot != arguments.end() && slot->usage == EGraphUse::STORAGE_READ;
             const bool material_record = field.block.runtime_records && field.block.hasStructuredLayout();
             const bool shared_material = field.kind == EDescriptorKind::STORAGE_BUFFER &&
                 field.name == rdesc::kMaterialTableName && material_argument && material_record && !material_stages;
@@ -782,40 +692,25 @@ namespace lux::render::detail
                 continue;
             }
             if (!target.shared_textures || (!shared_image && !shared_sampler))
-                co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                return cxx::unexpected(RenderError{kRuntimeUnsupported});
             if (shared_image) shared_texture_stages |= field.stages;
         }
         // Shared descriptors are supplied by the device tables. Each draw provides private bindings only.
         std::erase_if(layout->uses, [&](const auto& use) noexcept { return layout->bindings[use.field].count == 0; });
 
-        std::vector<CompiledRasterStream::ArgumentUses> argument_to_use(stage.inputs.size());
+        std::vector<CompiledRasterStream::ArgumentUses> argument_to_use(arguments.size());
         for (std::uint32_t i = 0; i < layout->uses.size(); ++i)
         {
             const auto& use = layout->uses[i];
             const auto slot = use.kind == EDescriptorKind::SAMPLER ? use.sampler : use.resource;
-            if (slot >= argument_to_use.size()) co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if (slot >= argument_to_use.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             auto& range = argument_to_use[slot];
             if (!range.count) range.first = i;
             const bool consecutive = i - range.first == range.count && use.element == range.count;
-            if (!consecutive) co_return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if (!consecutive) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             ++range.count;
         }
 
-        RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
-        if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
-        auto lease = co_await prepareGraphProgram(std::move(key), artifact, *layout, session, cpu, true, runtime_current);
-        if (!lease) co_return cxx::unexpected(lease.error());
-        for (auto& field : layout->bindings)
-        {
-            field.name.clear();
-            field.block.fields.clear();
-        }
-        for (auto& field : layout->private_bindings)
-        {
-            field.name.clear();
-            field.block.fields.clear();
-        }
-        layout->initial_parameters = {};
         auto mesh_attributes = graphics.vertex_attributes;
         if (artifact.target == rdesc::EShaderTarget::DXIL)
         {
@@ -828,9 +723,30 @@ namespace lux::render::detail
                     attribute.location = input->semantic_index;
             }
         }
-        co_return CompiledRasterStream::Program{
-            CompiledPrograms::native(**lease), CompiledPrograms::identity(**lease), std::move(*layout),
-            std::move(argument_to_use), graphics.vertex_bindings,
+        RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
+        if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
+        return RasterProgramLink{
+            {artifact, std::move(*layout), std::move(key)}, std::move(argument_to_use), graphics.vertex_bindings,
+            std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
+        };
+    }
+
+    CompiledRasterStream::Program RasterProgramLink::finish(PreparedProgram compiled) && noexcept
+    {
+        auto& bindings = compiled.bindings;
+        for (auto& field : bindings.bindings)
+        {
+            field.name.clear();
+            field.block.fields.clear();
+        }
+        for (auto& field : bindings.private_bindings)
+        {
+            field.name.clear();
+            field.block.fields.clear();
+        }
+        bindings.initial_parameters = {};
+        return CompiledRasterStream::Program{
+            compiled.pipeline, compiled.id, std::move(bindings), std::move(argument_to_use), std::move(vertices),
             std::move(mesh_attributes), shared_texture_stages, material_stages, std::move(material_layout)
         };
     }
@@ -894,22 +810,23 @@ namespace lux::render::detail
                 {
                     co_return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
-                RasterProgramKey key;
-                const bool is_raster = rendering.has_value();
-                if (is_raster)
+                std::optional<RasterProgramKey> raster;
+                if (rendering)
                 {
+                    auto& key = raster.emplace();
                     key.state = std::get<RasterWork>(source.command).fixed().graphics;
                     if (rendering->dynamic_depth_bias) key.state.depth_bias_constant = 1;
                     key.colors = colors;
                     key.depth = rendering->depth;
                     key.samples = rendering->samples;
                 }
-                auto prepared =
-                    co_await prepareGraphProgram(std::move(key), *shader, bindings, session, cpu, is_raster);
+                auto prepared = co_await program_cache.prepareEffectProgram(
+                    {*shader, std::move(bindings), std::move(raster)}, cpu
+                );
                 if (!prepared) co_return cxx::unexpected(prepared.error());
-                auto* program = *prepared;
-                native.slots_[pass.binding_slot].program = CompiledPrograms::identity(*program);
-                native.slots_[pass.binding_slot].pipeline = CompiledPrograms::native(*program);
+                bindings = std::move(prepared->bindings);
+                native.slots_[pass.binding_slot].program = prepared->id;
+                native.slots_[pass.binding_slot].pipeline = prepared->pipeline;
             }
             else if (!bindings.private_bindings.empty())
             {
@@ -957,20 +874,19 @@ namespace lux::render::detail
                 };
                 if (description->runtime_stream_programs)
                     stream->runtime = CompiledRasterStream::RuntimeContract{description->inputs, target};
-                RasterPassTemplate stage;
-                stage.inputs = description->inputs;
                 for (const auto& authored : description->stream_programs)
                 {
                     const auto* artifact = graph.programs()[authored.program].find(
                         session.enabledFeatures().shader_target, plan.device_addresses_
                     );
                     if (!artifact) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
-                    stage.parameters = authored.parameters;
-                    auto program = co_await prepareRasterStreamProgram(
-                        session, cpu, {stage, target, *artifact, authored.graphics}
+                    auto link = linkRasterStreamProgram(
+                        session, {description->inputs, authored.parameters, target, *artifact, authored.graphics}
                     );
+                    if (!link) co_return cxx::unexpected(link.error());
+                    auto program = co_await program_cache.prepareEffectProgram(std::move(link->input), cpu);
                     if (!program) co_return cxx::unexpected(program.error());
-                    stream->programs.push_back(std::move(*program));
+                    stream->programs.push_back(std::move(*link).finish(std::move(*program)));
                 }
             }
             native.slots_[pass.binding_slot].descriptors = bindings.recordBindings();

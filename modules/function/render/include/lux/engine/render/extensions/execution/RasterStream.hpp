@@ -46,7 +46,7 @@ namespace lux::render
     {
     public:
         virtual ~RasterProgramSelection() noexcept = default;
-        // Borrowed during selectRasterPrograms(). The operation keeps the material registered until it settles.
+        // Borrowed during the selection callback. setPrograms takes ownership of the shader artifacts.
         [[nodiscard]] virtual RenderResult<const rdesc::MaterialProgramSet*>
         materialProgram(DrawStreamSlot, MaterialProgramId) noexcept = 0;
         [[nodiscard]] virtual RenderResult<MaterialProgramId> materialProgramId(DrawStreamSlot, MaterialId)

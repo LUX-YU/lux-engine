@@ -1,5 +1,6 @@
 #include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 #include <algorithm>
+#include <utility>
 #include <limits>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
@@ -557,7 +558,8 @@ namespace lux::render::detail
     planRasterLayout(
         const nri::DeviceDesc& limits,
         const rdesc::ShaderInfo& shader,
-        const RasterPassTemplate& stage
+        std::span<const RasterPassTemplate::Input> arguments,
+        const ParameterBinding& parameters
     ) noexcept
     {
         auto reflected = shaderInterface(shader);
@@ -566,13 +568,13 @@ namespace lux::render::detail
             return cxx::unexpected(reflected.error());
         }
         PassInterface input;
-        input.parameters = stage.parameters;
-        std::vector<GraphResource> resources(stage.inputs.size());
+        input.parameters = parameters;
+        std::vector<GraphResource> resources(arguments.size());
         for (std::uint32_t field = 0; field < reflected->bindings.size(); ++field)
         {
             const auto& binding = reflected->bindings[field];
-            const auto slot = std::ranges::find(stage.inputs, binding.name, &RasterPassTemplate::Input::name);
-            const bool undeclared = slot == stage.inputs.end() || !slot->kind;
+            const auto slot = std::ranges::find(arguments, binding.name, &RasterPassTemplate::Input::name);
+            const bool undeclared = slot == arguments.end() || !slot->kind;
             const bool writable = binding.access != EShaderAccess::READ_ONLY;
             const bool wrong_stages = !undeclared && (binding.stages & ~slot->stages) != 0;
             if (undeclared || writable || wrong_stages)
@@ -597,7 +599,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
-            const auto index = static_cast<std::uint32_t>(slot - stage.inputs.begin());
+            const auto index = static_cast<std::uint32_t>(slot - arguments.begin());
             auto& resource = resources[index];
             resource.key = slot->name;
             resource.origin = EGraphOrigin::IMPORTED;
@@ -711,16 +713,17 @@ namespace lux::render::detail
     }
 
     RenderResult<rdesc::ShaderProgramArtifact>
-    relocateShader(const rdesc::ShaderProgramArtifact& original, std::span<const ShaderBinding> locations) noexcept
+    relocateShader(rdesc::ShaderProgramArtifact shader, std::span<const ShaderBinding> locations) noexcept
     {
-        if (original.target == rdesc::EShaderTarget::DXIL)
+        if (shader.target == rdesc::EShaderTarget::DXIL)
         {
             // Physical locations are carried by descriptor ranges in the same Pipeline layout.
             // A DXIL container and its own reflection remain unchanged.
-            return original;
+            return shader;
         }
+        const auto original_sets = std::exchange(shader.interface.sets, {});
         std::vector<const rdesc::EDescriptorBindingInfo*> bindings;
-        for (const auto& set : original.interface.sets)
+        for (const auto& set : original_sets)
         {
             for (const auto& binding : set.bindings)
             {
@@ -731,21 +734,19 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
-        auto result = original;
-        result.interface.sets.clear();
         std::size_t index = 0;
-        for (const auto& group : original.interface.sets)
+        for (const auto& group : original_sets)
         {
             for (auto binding : group.bindings)
             {
                 binding.set = locations[index].set;
                 binding.binding = locations[index++].binding;
                 auto destination =
-                    std::ranges::find(result.interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
-                if (destination == result.interface.sets.end())
+                    std::ranges::find(shader.interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
+                if (destination == shader.interface.sets.end())
                 {
-                    result.interface.sets.emplace_back(binding.set);
-                    destination = std::prev(result.interface.sets.end());
+                    shader.interface.sets.emplace_back(binding.set);
+                    destination = std::prev(shader.interface.sets.end());
                 }
                 destination->bindings.push_back(std::move(binding));
             }
@@ -758,14 +759,14 @@ namespace lux::render::detail
         );
         if (unchanged)
         {
-            return result;
+            return shader;
         }
         // DXIL register assignments are fixed by target compilation. Never treat its container as SPIR-V.
-        if (original.target != rdesc::EShaderTarget::SPIRV)
+        if (shader.target != rdesc::EShaderTarget::SPIRV)
         {
             return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
-        for (auto& stage : result.stages)
+        for (auto& stage : shader.stages)
         {
             const auto words = std::span<const std::uint32_t>(stage.words);
             const bool invalid_header = words.size() < 5 || words[0] != 0x07230203 || words[1] < 0x00010000 ||
@@ -908,6 +909,6 @@ namespace lux::render::detail
             }
             // The pipeline boundary validates the relocated binary and complete declared ABI once.
         }
-        return result;
+        return shader;
     }
 } // namespace lux::render::detail

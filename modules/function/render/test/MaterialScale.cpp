@@ -877,11 +877,9 @@ namespace
         requireBorrowedTarget(input, ETextureFormat::RGBA16_SFLOAT);
         changeMaterial(job.material);
         call<MaterialCommands::ReleaseInstance>(client, commands, {variants[0].instance});
-        const auto busy = call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program}, false);
-        CHECK(busy.error.type == kDeviceBusy); // No live instance remains, only the frozen PSO borrow.
+        call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
         Probe::releaseDriver();
         waitForDiscard(stop_before.discarded_preparations);
-        call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
         CHECK(Probe::created_pipelines.load() == stop_creates + 1);
         CHECK(Probe::destroyed_pipelines.load() == stop_destroys + 1);
         call<RebindRenderJobEffect>(client, commands, {{}, job.job, job.effect});
@@ -928,7 +926,7 @@ namespace
         CHECK(after.discarded_preparations == stale_before.discarded_preparations + 1);
         CHECK(Probe::destroyed_pipelines.load() == stale_destroys + 1);
         std::puts("PIPELINE_LIFETIME stale_revisions=2048 discarded=1 stopped=1 failure_attempts=1 terminal_replies=1");
-        std::puts("MATERIAL_PROGRAM_BORROW unregister_while_borrowed=busy released_after_return=1");
+        std::puts("MATERIAL_PROGRAM_INPUT unregistered_during_native_compile=1 stale_candidate_destroyed=1");
         return *final;
     }
 

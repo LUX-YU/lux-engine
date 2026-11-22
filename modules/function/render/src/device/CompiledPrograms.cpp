@@ -1,4 +1,7 @@
-#include <lux/engine/render/device/CompiledPrograms.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/NativeResult.hpp>
+#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/device/ProgramCompileInput.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
@@ -169,6 +172,94 @@ namespace lux::render::detail
         std::size_t digest;
     };
 
+    exec::task<RenderResult<PreparedProgram>>
+    CompiledPrograms::prepareEffectProgram(ProgramCompileInput input, execution::CpuScheduler cpu) noexcept
+    {
+        return compile(std::move(input), cpu, session_.nativeScheduler(), {});
+    }
+
+    exec::task<RenderResult<PreparedProgram>>
+    CompiledPrograms::prepareSelectedProgram(
+        ProgramCompileInput input, execution::CpuScheduler cpu, stdexec::inplace_stop_token selection_stop
+    ) noexcept
+    {
+        // A stalled runtime pipeline must leave the device submission worker available to ready Jobs.
+        return compile(std::move(input), cpu, cpu, selection_stop);
+    }
+
+    template <class PipelineScheduler>
+    exec::task<RenderResult<PreparedProgram>>
+    CompiledPrograms::compile(
+        ProgramCompileInput input,
+        execution::CpuScheduler cpu,
+        PipelineScheduler pipeline,
+        stdexec::inplace_stop_token selection_stop
+    ) noexcept
+    {
+        const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        auto& [shader, bindings, raster] = input;
+        auto relocated = co_await (
+            stdexec::schedule(cpu) |
+            stdexec::then([&]() noexcept { return relocateShader(std::move(shader), bindings.bindings); }) |
+            stdexec::upon_stopped(
+                []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
+                { return cxx::unexpected(RenderError{kCpuStopped}); }
+            ) |
+            stdexec::continues_on(owner_scheduler) |
+            stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
+        );
+        if (!relocated)
+        {
+            co_return cxx::unexpected(relocated.error());
+        }
+        if (selection_stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
+        auto& retained_shader = acquireShader(std::move(*relocated));
+        cxx::scope_exit release_shader([&]() noexcept { releaseShader(retained_shader); });
+        const auto& artifact = retained_shader.artifact;
+        auto layout = acquireLayout(bindings, raster ? static_cast<std::uint32_t>(raster->colors.size()) : 0u);
+        if (!layout)
+        {
+            co_return cxx::unexpected(layout.error());
+        }
+        cxx::scope_exit release_layout([&]() noexcept { releaseLayout(*layout); });
+        auto* key = raster ? &*raster : nullptr;
+        const auto acquired = lookup(retained_shader, **layout, key);
+        auto* program = acquired.hit;
+        if (!program)
+        {
+            if (stop.stop_requested())
+            {
+                co_return cxx::unexpected(RenderError{kCommandCancelled});
+            }
+            const auto create_pipeline = [this, &raster, &artifact, layout = bindings.layout]() noexcept
+            {
+                if (raster) return createRasterProgram(session_, *layout, artifact, *raster);
+                return compileCompute(session_, *layout, artifact);
+            };
+            auto compiled = co_await (
+                stdexec::schedule(pipeline) | stdexec::then(create_pipeline) |
+                stdexec::upon_error(NativeScheduleFailure<nri::Pipeline*>{}) |
+                stdexec::upon_stopped([]() noexcept -> RenderResult<nri::Pipeline*>
+                {
+                    return cxx::unexpected(RenderError{kCommandCancelled});
+                }) |
+                stdexec::continues_on(owner_scheduler) | stdexec::upon_error(NativeDeliveryFailure<nri::Pipeline*>{})
+            );
+            if (selection_stop.stop_requested())
+            {
+                if (compiled) session_.nriCore().DestroyPipeline(*compiled);
+                co_return cxx::unexpected(RenderError{kCommandCancelled});
+            }
+            if (!compiled)
+            {
+                co_return cxx::unexpected(compiled.error());
+            }
+            program = publish(key, acquired, *compiled);
+        }
+        co_return PreparedProgram{program->id, program->pipeline, std::move(bindings)};
+    }
+
     CompiledPrograms::CompiledPrograms(DeviceSession& session, std::uint32_t unused_limit) noexcept
         : session_(session), unused_limit_(unused_limit)
     {
@@ -278,21 +369,16 @@ namespace lux::render::detail
         std::terminate();
     }
 
-    const rdesc::ShaderProgramArtifact& CompiledPrograms::artifact(const Shader& shader) noexcept
-    {
-        return shader.artifact;
-    }
-
     CompiledPrograms::Program*
     CompiledPrograms::find(const RasterProgramKey* raster, const Lookup& lookup, std::uint64_t after) noexcept
     {
-        const auto found = program_index_.find(lookup.digest_);
+        const auto found = program_index_.find(lookup.digest);
         if (found == program_index_.end()) return nullptr;
         for (const auto& entry : found->second)
         {
             auto& program = *entry;
-            const bool same_identity = program.shader_id == lookup.shader_->id &&
-                program.layout_id == lookup.layout_->id;
+            const bool same_identity = program.shader_id == lookup.shader->id &&
+                program.layout_id == lookup.layout->id;
             const bool same_kind = program.raster.has_value() == (raster != nullptr);
             if (program.id.publication <= after || !same_identity || !same_kind) continue;
             if (raster && !program.raster->matches(*raster)) continue;
@@ -309,15 +395,15 @@ namespace lux::render::detail
         noexcept
     {
         Lookup result;
-        result.digest_ = 0;
-        combineHash(result.digest_, shader.id);
-        combineHash(result.digest_, layout.id);
-        combineHash(result.digest_, raster != nullptr);
-        if (raster) result.digest_ = rasterDigest(*raster, result.digest_);
-        result.shader_ = &shader;
-        result.layout_ = &layout;
-        result.publication_ = publication_serial_;
-        result.hit_ = find(raster, result, 0);
+        result.digest = 0;
+        combineHash(result.digest, shader.id);
+        combineHash(result.digest, layout.id);
+        combineHash(result.digest, raster != nullptr);
+        if (raster) result.digest = rasterDigest(*raster, result.digest);
+        result.shader = &shader;
+        result.layout = &layout;
+        result.publication = publication_serial_;
+        result.hit = find(raster, result, 0);
         return result;
     }
 
@@ -325,13 +411,13 @@ namespace lux::render::detail
     CompiledPrograms::publish(RasterProgramKey* raster, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
     {
         // Only entries published while native creation was in flight can be new matches.
-        if (auto* existing = find(raster, lookup, lookup.publication_))
+        if (auto* existing = find(raster, lookup, lookup.publication))
         {
             session_.nriCore().DestroyPipeline(pipeline);
             return existing;
         }
-        auto& layout = *lookup.layout_;
-        auto& shader = *lookup.shader_;
+        auto& layout = *lookup.layout;
+        auto& shader = *lookup.shader;
         const bool exhausted_references = layout.references == UINT32_MAX || shader.references == UINT32_MAX;
         const bool exhausted_serials = acquisition_serial_ == UINT64_MAX || publication_serial_ == UINT64_MAX;
         if (exhausted_references || exhausted_serials) std::terminate();
@@ -339,32 +425,11 @@ namespace lux::render::detail
         ++shader.references;
         auto value = std::make_unique<Program>(Program{
             raster ? std::optional{std::move(*raster)} : std::nullopt, pipeline, layout.id, shader.id, 1,
-            ++acquisition_serial_, {lookup.digest_, ++publication_serial_}, session_.makeFrontiers()
+            ++acquisition_serial_, {lookup.digest, ++publication_serial_}, session_.makeFrontiers()
         });
         auto* program = value.get();
-        program_index_[lookup.digest_].push_back(std::move(value));
+        program_index_[lookup.digest].push_back(std::move(value));
         return program;
-    }
-
-    CompiledPrograms::Program*
-    CompiledPrograms::publishRaster(RasterProgramKey key, const Lookup& lookup, nri::Pipeline* pipeline) noexcept
-    {
-        return publish(&key, lookup, pipeline);
-    }
-
-    CompiledPrograms::Program* CompiledPrograms::publishCompute(const Lookup& lookup, nri::Pipeline* pipeline) noexcept
-    {
-        return publish(nullptr, lookup, pipeline);
-    }
-
-    nri::Pipeline* CompiledPrograms::native(const Program& program) noexcept
-    {
-        return program.pipeline;
-    }
-
-    CompiledPrograms::ProgramId CompiledPrograms::identity(const Program& program) noexcept
-    {
-        return program.id;
     }
 
     CompiledPrograms::LayoutId CompiledPrograms::identity(const Layout& layout) noexcept

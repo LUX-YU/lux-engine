@@ -1,6 +1,8 @@
 #pragma once
 
 #include <NRI.h>
+#include <exec/task.hpp>
+#include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
@@ -18,6 +20,8 @@ namespace lux::render::detail
     class DeviceSession;
     class NativeProgramBindings;
     struct PassBindings;
+    struct ProgramCompileInput;
+    struct PreparedProgram;
     struct RasterProgramKey;
 
     // Device-owned native programs. All directory/refcount operations run on RenderThread;
@@ -25,9 +29,7 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC CompiledPrograms final
     {
     public:
-        struct Program;
         struct Layout;
-        struct Shader;
 
         struct ProgramId final
         {
@@ -40,40 +42,19 @@ namespace lux::render::detail
 
         enum class LayoutId : std::uint64_t { INVALID };
 
-        // One immutable key/qualified Layout pairing during lookup and native compilation.
-        // The caller keeps the Layout borrowed through publication.
-        class Lookup final
-        {
-        public:
-            [[nodiscard]] Program* hit() const noexcept { return hit_; }
-
-        private:
-            friend class CompiledPrograms;
-            std::size_t digest_ = 0;
-            std::uint64_t publication_ = 0;
-            Layout* layout_ = nullptr;
-            Shader* shader_ = nullptr;
-            Program* hit_ = nullptr;
-        };
-
         CompiledPrograms(DeviceSession&, std::uint32_t unused_limit) noexcept;
         ~CompiledPrograms() noexcept;
         CompiledPrograms(const CompiledPrograms&) = delete;
         CompiledPrograms& operator=(const CompiledPrograms&) = delete;
 
+        [[nodiscard]] exec::task<RenderResult<PreparedProgram>>
+        prepareEffectProgram(ProgramCompileInput, execution::CpuScheduler) noexcept;
+        [[nodiscard]] exec::task<RenderResult<PreparedProgram>>
+        prepareSelectedProgram(ProgramCompileInput, execution::CpuScheduler, stdexec::inplace_stop_token) noexcept;
+
         [[nodiscard]] RenderResult<Layout*> acquireLayout(PassBindings&, std::uint32_t color_count = 0) noexcept;
         void releaseLayout(Layout*) noexcept;
 
-        [[nodiscard]] Shader& acquireShader(rdesc::ShaderProgramArtifact) noexcept;
-        void releaseShader(Shader&) noexcept;
-        [[nodiscard]] static const rdesc::ShaderProgramArtifact& artifact(const Shader&) noexcept;
-
-        [[nodiscard]] Lookup lookup(Shader&, Layout&, const RasterProgramKey* raster) noexcept;
-        [[nodiscard]] Program* publishRaster(RasterProgramKey, const Lookup&, nri::Pipeline*) noexcept;
-        [[nodiscard]] Program* publishCompute(const Lookup&, nri::Pipeline*) noexcept;
-
-        [[nodiscard]] static nri::Pipeline* native(const Program&) noexcept;
-        [[nodiscard]] static ProgramId identity(const Program&) noexcept;
         [[nodiscard]] static LayoutId identity(const Layout&) noexcept;
 
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
@@ -83,6 +64,25 @@ namespace lux::render::detail
         void clear() noexcept;
 
     private:
+        template <class PipelineScheduler>
+        [[nodiscard]] exec::task<RenderResult<PreparedProgram>>
+        compile(ProgramCompileInput, execution::CpuScheduler, PipelineScheduler, stdexec::inplace_stop_token) noexcept;
+
+        struct Program;
+        struct Shader;
+        struct Lookup final
+        {
+            std::size_t digest = 0;
+            std::uint64_t publication = 0;
+            Layout* layout = nullptr;
+            Shader* shader = nullptr;
+            Program* hit = nullptr;
+        };
+
+        [[nodiscard]] Shader& acquireShader(rdesc::ShaderProgramArtifact) noexcept;
+        void releaseShader(Shader&) noexcept;
+        [[nodiscard]] Lookup lookup(Shader&, Layout&, const RasterProgramKey*) noexcept;
+
         friend class NativeProgramBindings;
         void releaseBindings(const NativeProgramBindings&) noexcept;
 

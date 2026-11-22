@@ -9,7 +9,7 @@
 
 namespace lux::render::detail
 {
-    struct EnabledDeviceFeatures;
+    class DeviceSession;
 
     // Full fixed-function state, after native layout and shader identity have been resolved.
     struct RasterProgramKey final
@@ -26,18 +26,8 @@ namespace lux::render::detail
         }
     };
 
-    // Any returned native handle belongs to the caller, including on failure.
-    // The native layout is borrowed from the same cold placement used to relocate the shader.
-    [[nodiscard]] RenderResult<void> createRasterProgram(
-        nri::Device& device,
-        const nri::CoreInterface& nri_core,
-        const nri::DeviceDesc& limits,
-        const EnabledDeviceFeatures& enabled,
-        std::span<const nri::FormatSupportBits> formats,
-        std::array<std::uint32_t, 2> vertex_limits,
-        nri::PipelineLayout& layout,
-        const rdesc::ShaderProgramArtifact& shader,
-        const RasterProgramKey& program,
-        nri::Pipeline*& pipeline
+    [[nodiscard]] RenderResult<nri::Pipeline*>
+    createRasterProgram(
+        const DeviceSession&, nri::PipelineLayout&, const rdesc::ShaderProgramArtifact&, const RasterProgramKey&
     ) noexcept;
 } // namespace lux::render::detail

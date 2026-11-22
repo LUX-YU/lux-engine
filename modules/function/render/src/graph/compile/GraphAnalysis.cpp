@@ -162,6 +162,7 @@ namespace lux::render
             GraphPassId consumer;
             EReadPath mode = EReadPath::PRIMARY;
             std::optional<PassCondition> publication;
+            std::optional<PassCondition> selection;
         };
 
         struct ReachingRange final
@@ -258,13 +259,19 @@ namespace lux::render
         auto resolve =
             [&](ResourceVersion initial_version, const VGraphRange& initial_range, Observation observation) -> RenderResult<void>
         {
-            const auto [consumer, mode, publication] = observation;
+            const auto [consumer, mode, publication, selection] = observation;
             std::size_t initial_path = 0;
             auto guard = consumer.index == kGraphInvalidIndex ? publication : passes[consumer.index].condition;
             if (guard)
             {
                 if (mode == EReadPath::SKIPPED_WRITE) guard->expected = !guard->expected;
                 initial_path = paths.extend(0, *guard);
+            }
+            if (selection)
+            {
+                const auto known = paths.known(initial_path, *selection);
+                if (known && *known != selection->expected) return {};
+                if (!known) initial_path = paths.extend(initial_path, *selection);
             }
             const bool fallback = mode != EReadPath::PRIMARY;
             std::vector<ReachingRange> pending{{initial_version, initial_range, initial_path}};
@@ -302,6 +309,7 @@ namespace lux::render
                 };
                 std::vector<Piece> pieces;
                 std::optional<std::uint32_t> predecessor;
+                bool split_selection = false;
                 for (const auto& writer : writers[version.resource.index])
                 {
                     if (writer.use->version.number != version.number)
@@ -313,6 +321,22 @@ namespace lux::render
                         return cxx::unexpected(graphError(kGraphAmbiguousProducer, consumer, version.resource));
                     }
                     predecessor = writer.use->input_version;
+                    const auto& producer = passes[writer.pass.index];
+                    if (producer.choice_peer.index != kGraphInvalidIndex)
+                    {
+                        const auto predicate = *producer.condition;
+                        const auto selected = paths.known(path, predicate);
+                        if (!selected)
+                        {
+                            auto opposite = predicate;
+                            opposite.expected = !opposite.expected;
+                            pending.push_back({version, range, paths.extend(path, opposite)});
+                            pending.push_back({version, range, paths.extend(path, predicate)});
+                            split_selection = true;
+                            break;
+                        }
+                        if (*selected != predicate.expected) continue;
+                    }
                     for (const auto& requested : detail::boxes(range))
                     {
                         for (const auto& written : writer.ranges)
@@ -339,6 +363,7 @@ namespace lux::render
                         }
                     }
                 }
+                if (split_selection) continue;
                 if (!remaining.empty())
                 {
                     if (!predecessor || *predecessor >= version.number)
@@ -404,9 +429,17 @@ namespace lux::render
 
         for (const auto& output : definition.outputs())
         {
-            if (auto valid = resolve(output.version, output.range, {}); !valid)
+            Observation observed{};
+            if (output.alternate) observed.selection = output.alternate->primary_when;
+            if (auto valid = resolve(output.version, output.range, observed); !valid)
             {
                 return cxx::unexpected(valid.error());
+            }
+            if (output.alternate)
+            {
+                observed.selection->expected = !observed.selection->expected;
+                if (auto valid = resolve(output.alternate->value, output.range, observed); !valid)
+                    return cxx::unexpected(valid.error());
             }
         }
         for (const auto& history : definition.histories())
@@ -416,9 +449,16 @@ namespace lux::render
                 continue;
             }
             const auto range = detail::normalize(resources[history.current.index], {});
-            if (auto valid = resolve(*history.publication, *range, {{}, EReadPath::PRIMARY, history.publish_when}); !valid)
+            Observation sample{{}, EReadPath::PRIMARY, history.publish_when, history.select_primary};
+            if (auto valid = resolve(*history.publication, *range, sample); !valid)
             {
                 return cxx::unexpected(valid.error());
+            }
+            if (history.alternate_sample)
+            {
+                sample.selection->expected = !sample.selection->expected;
+                if (auto valid = resolve(*history.alternate_sample, *range, sample); !valid)
+                    return cxx::unexpected(valid.error());
             }
         }
         for (std::uint32_t p = 0; p < passes.size(); ++p)
@@ -519,6 +559,7 @@ namespace lux::render
                 for (std::size_t j = 0; j < i; ++j)
                 {
                     const auto& b = list[j];
+                    if (passes[a.pass.index].choice_peer == b.pass) continue;
                     if (!live[b.pass.index])
                     {
                         continue;
@@ -840,6 +881,8 @@ namespace lux::render::runtime_detail
                 if (pass.index >= liveness.pass_producers.size())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
                 liveness.pass_producers[pass.index].push_back(i);
+                const auto peer = source.passes()[pass.index].choice_peer;
+                if (peer.index != kGraphInvalidIndex) liveness.pass_producers[peer.index].push_back(i);
             }
         }
         for (const auto& buffer : definition.buffers)

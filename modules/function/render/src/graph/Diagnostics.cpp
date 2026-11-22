@@ -185,7 +185,17 @@ namespace lux::render
                 output += "{\"resource\":" + std::to_string(value.version.resource.index) +
                           ",\"version\":" + std::to_string(value.version.number) +
                           ",\"range\":" + detail::dumpRange(value.range) + ",\"final_use\":" +
-                          (value.final_use ? std::to_string(static_cast<unsigned>(*value.final_use)) : "null") + "}";
+                          (value.final_use ? std::to_string(static_cast<unsigned>(*value.final_use)) : "null");
+                if (value.alternate)
+                {
+                    const auto& [predicate, alternate] = *value.alternate;
+                    output += ",\"alternate_resource\":" + std::to_string(alternate.resource.index) +
+                        ",\"alternate_version\":" + std::to_string(alternate.number) +
+                        ",\"condition_source\":" + std::to_string(static_cast<unsigned>(predicate.source)) +
+                        ",\"condition_input\":" + std::to_string(predicate.input) +
+                        ",\"primary_when\":" + (predicate.expected ? "true" : "false");
+                }
+                output += '}';
             }
             output += "],\"lifetimes\":[";
             for (std::size_t i = 0; i < analysis.lifetimes.size(); ++i)

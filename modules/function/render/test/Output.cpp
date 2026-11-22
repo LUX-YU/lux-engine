@@ -821,21 +821,30 @@ namespace
         const auto intermediate = take(builder.declareResource({"import.intermediate", image}));
         const auto program = take(builder.addProgram(GraphProgram{kEffectGraphImport.load(context.shaderTarget())}));
         const auto predicate = take(builder.sameBinding(first->resource, second->resource));
-        const auto select = [&](ResourceVersion destination, ResourceVersion input, bool equal)
+        const auto sample = [&](ResourceVersion left, ResourceVersion right, GraphResourceId destination)
         {
             ComputeWork work;
             work.interface.program = program;
             work.interface.resources = {
-                {"first_image", {*first}}, {"second_image", {input}},
-                {"generated", {destination, {}, EGraphAccess::WRITE}}
+                {"first_image", {left}}, {"second_image", {right}},
+                {"generated", {{destination, 0}, {}, EGraphAccess::WRITE}}
             };
-            work.dispatch = ImageDispatchArguments{intermediate};
-            auto guard = predicate;
-            guard.expected = equal;
-            return take(builder.addComputePass(equal ? "same target" : "combine targets", std::move(work), {false, guard}));
+            work.dispatch = ImageDispatchArguments{destination};
+            return work;
         };
-        const auto same = select({intermediate, 0}, *first, true);
-        const auto generated = select(same.written.front(), *second, false);
+        const auto result = builder.choose(
+            predicate,
+            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return *first; },
+            [&](RenderGraphBuilder& branch) noexcept -> RenderResult<ResourceVersion>
+            {
+                auto pass = branch.addComputePass("combine targets", sample(*first, *second, intermediate));
+                if (!pass) return lux::cxx::unexpected(pass.error());
+                return pass->written.front();
+            }
+        );
+        if (!result) return lux::cxx::unexpected(result.error());
+        const auto color = take(builder.declareResource({"sampled color", image}));
+        const auto generated = take(builder.addComputePass("sample selected color", sample(*result, *result, color)));
         const auto copied = take(builder.addTransferPass(
             "publish sampled inputs", TransferWork{{lux::render::CopyImage{{generated.written.front()}, {{output, 0}}}}}
         ));

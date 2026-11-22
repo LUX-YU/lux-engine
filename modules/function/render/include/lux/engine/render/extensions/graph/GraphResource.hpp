@@ -135,6 +135,8 @@ namespace lux::render
     {
         GraphResourceId resource;
         std::uint32_t number = 1; // 0 = explicitly available initial content
+        // Authored choice of two versions. Normalization resolves this before a pass enters the executable.
+        std::uint32_t selection = kGraphInvalidIndex;
         bool operator==(const ResourceVersion&) const noexcept = default;
     };
 
@@ -186,6 +188,8 @@ namespace lux::render
         EGraphUse canonical_use = EGraphUse::STORAGE_READ;
         std::optional<ResourceVersion> publication;
         std::optional<PassCondition> publish_when;
+        std::optional<PassCondition> select_primary;
+        std::optional<ResourceVersion> alternate_sample;
     };
 
     struct ResourceAccess final
@@ -221,6 +225,12 @@ namespace lux::render
         bool operator==(const GraphOutputRequirements&) const noexcept = default;
     };
 
+    struct GraphExportAlternative final
+    {
+        PassCondition primary_when;
+        ResourceVersion value;
+    };
+
     struct GraphExport final
     {
         ResourceVersion version;
@@ -229,6 +239,7 @@ namespace lux::render
         std::optional<GraphOutputRequirements> target;
         // Requested physical state after execution; absent leaves the final graph use unchanged.
         std::optional<EGraphUse> final_use;
+        std::optional<GraphExportAlternative> alternate;
     };
 
 } // namespace lux::render

@@ -21,6 +21,7 @@ namespace lux::render::detail
     {
         std::uint32_t pass;
         std::size_t bytes;
+        std::uint32_t alternate = kGraphInvalidIndex;
     };
 
     struct LinkedPreparationProducer final

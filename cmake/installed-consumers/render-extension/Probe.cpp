@@ -573,15 +573,24 @@ static RenderResult<void> buildTransfer(EffectBuildContext& context, std::string
         builder.declareHistory("samples", {description, {}, EGraphUse::TRANSFER_SOURCE, history_distance})
     );
     const auto fallback = take(builder.declareResource({"history fallback", description}));
-    const auto seeded = take(builder.addTransferPass("initialize history fallback", TransferWork{{
-        FillBuffer{{{fallback, 0}}, fallback_value}
-    }}));
+    const auto previous = take(builder.choose(
+        {EConditionSource::HISTORY_VALID, history.previous.index},
+        [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{history.previous, 0}; },
+        [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        {
+            auto seed = arm.addTransferPass("initialize history fallback", TransferWork{{
+                FillBuffer{{{fallback, 0}}, fallback_value}
+            }});
+            if (!seed) return lux::cxx::unexpected(seed.error());
+            return seed->written.front();
+        }
+    ));
     const auto written = take(builder.addTransferPass("write current history", TransferWork{{
         FillBuffer{{{history.current, 0}}, expected_value}
     }}));
     CHECK(builder.publishHistory(written.written.front()));
     const auto copied = take(builder.addTransferPass("read earlier history", TransferWork{{
-        CopyBuffer{{{history.previous, 0}, {}, EGraphAccess::READ, 0, seeded.written.front()}, {*readback}}
+        CopyBuffer{{previous}, {*readback}}
     }}));
     return context.publish(readback_value, {{readback_value, copied.written.front()}});
 }

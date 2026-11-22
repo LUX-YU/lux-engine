@@ -34,6 +34,7 @@ namespace lux::render
         bool side_effect = false;
         std::optional<PassCondition> condition;
         GraphPassId sequence_first, sequence_last;
+        GraphPassId choice_peer;
         std::uint64_t estimated_gpu_ns = 0;
 
         [[nodiscard]] EGraphPassKind kind() const noexcept

@@ -479,12 +479,18 @@ namespace lux::render::detail
                 previous.buffer_usage = current.buffer_usage =
                     previous.buffer_usage | current.buffer_usage | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
             }
-            auto& guard = history.description.publish_when;
-            if (guard && guard->source == EConditionSource::HISTORY_VALID)
+            auto& sample = history.description;
+            if (sample.alternate_sample)
             {
-                const auto source_history = plan.resources_[guard->input].history;
+                sample.select_primary.reset();
+                sample.alternate_sample.reset();
+            }
+            for (auto guard : {&sample.publish_when, &sample.select_primary})
+            {
+                if (!*guard || (*guard)->source != EConditionSource::HISTORY_VALID) continue;
+                const auto source_history = plan.resources_[(*guard)->input].history;
                 if (source_history == kGraphInvalidIndex) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                guard->input = source_history;
+                (*guard)->input = source_history;
             }
         }
         for (const auto& access : plan.imported_accesses_)

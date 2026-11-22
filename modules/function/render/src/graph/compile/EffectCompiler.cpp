@@ -39,6 +39,15 @@ namespace lux::render::detail
                 assignSlots();
             }
 
+            std::array<CompiledPassSlot, 2> destinations(GraphPassId id) const noexcept
+            {
+                std::array<CompiledPassSlot, 2> slots{pass_slots[id.index], CompiledPassSlot{}};
+                const auto peer = build.source.passes()[id.index].choice_peer;
+                if (peer.index != kGraphInvalidIndex) slots[1] = pass_slots[peer.index];
+                if (slots[0].index == kGraphInvalidIndex) std::swap(slots[0], slots[1]);
+                return slots;
+            }
+
             bool claimStream(std::uint32_t slot) noexcept
             {
                 return !std::exchange(claimed_streams[slot], std::uint8_t{1});
@@ -97,7 +106,7 @@ namespace lux::render::detail
                 if (!prototype) return cxx::unexpected(prototype.error());
                 const auto expected = std::ranges::count_if(producer_.inline_blocks, [&](GraphPassId pass) noexcept
                 {
-                    return workspace_.pass_slots[pass.index].index != kGraphInvalidIndex;
+                    return workspace_.destinations(pass)[0].index != kGraphInvalidIndex;
                 });
                 const bool missing_constants = constants_.size() != static_cast<std::size_t>(expected);
                 const bool missing_buffers = buffers_.size() != producer_.gpu_buffers.size();
@@ -252,7 +261,8 @@ namespace lux::render::detail
             {
                 if (std::ranges::find(producer_.inline_blocks, id) == producer_.inline_blocks.end())
                     return cxx::unexpected(RenderError{kGraphUnknownPass, {id.index}});
-                const auto slot = workspace_.pass_slots[id.index].index;
+                const auto slots = workspace_.destinations(id);
+                const auto slot = slots[0].index;
                 const auto* parameters = workspace_.build.source.passes()[id.index].bindings().parameters;
                 const bool valid_slot = slot < workspace_.compiled.executable.passes().size();
                 const bool compatible = valid_slot &&
@@ -262,7 +272,7 @@ namespace lux::render::detail
                 const auto previous = std::ranges::find(constants_, slot, &detail::LinkedInlineBlock::pass);
                 if (previous != constants_.end())
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {id.index}});
-                constants_.push_back({slot, bytes});
+                constants_.push_back({slot, bytes, slots[1].index});
                 return slot;
             }
 
@@ -318,8 +328,8 @@ namespace lux::render::detail
             }
             for (const auto& copy : definition.inline_copies)
             {
-                const auto pass = workspace.pass_slots[copy.pass.index];
-                if (pass.index == kGraphInvalidIndex) continue;
+                const auto slots = workspace.destinations(copy.pass);
+                if (slots.front().index == kGraphInvalidIndex) continue;
                 const auto state = std::ranges::find(inputs, copy.node, &EffectInputDefinition::node);
                 if (state == inputs.end() || state->type != copy.input.state_type)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {copy.pass.index}});
@@ -335,7 +345,8 @@ namespace lux::render::detail
                     plan.cpu_data_bytes.push_back(copy.input.block.bytes);
                     plan.effect_inputs.push_back({source_index, {input}, copy.input.bind});
                 }
-                plan.constant_copies.push_back({{input}, pass});
+                for (auto pass : slots)
+                    if (pass.index != kGraphInvalidIndex) plan.constant_copies.push_back({{input}, pass});
             }
             plan.producers.reserve(definition.live_order.size());
             for (auto index : definition.live_order)

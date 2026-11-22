@@ -1146,6 +1146,16 @@ struct ComputeSequenceFixture final
     GraphResourceId readback;
 };
 
+static ComputeWork incrementWork(std::uint32_t program, ResourceVersion input, GraphResourceId output)
+{
+    ComputeWork work;
+    work.interface.program = program;
+    work.interface.resources = {
+        {"previous_sample", {input}}, {"current_sample", {{output, 0}, {}, EGraphAccess::WRITE}}
+    };
+    return work;
+}
+
 static ComputeSequenceFixture computeSequenceGraph()
 {
     RenderGraphBuilder builder;
@@ -1157,13 +1167,7 @@ static ComputeSequenceFixture computeSequenceGraph()
     const auto program = take(builder.addProgram(GraphProgram{kGraphHistory}));
     const auto dispatch = [program](ResourceVersion input, GraphResourceId output)
     {
-        ComputeWork work;
-        work.interface.program = program;
-        work.interface.resources = {
-            {"previous_sample", {input}},
-            {"current_sample", {{output, 0}, {}, EGraphAccess::WRITE}}
-        };
-        return work;
+        return incrementWork(program, input, output);
     };
     const auto unused = take(builder.declareResource({"unused", GraphBufferDesc{16}}));
     CHECK(builder.addComputePass("culled", dispatch(initialized.written.front(), unused)));
@@ -1578,22 +1582,140 @@ static void cpuConditionalJoins()
     }
 }
 
-static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif)
+static void cpuValueChoice()
+{
+    RenderGraphBuilder builder;
+    const auto flag = take(builder.declareCondition("select input"));
+    const PassCondition predicate{EConditionSource::INPUT, flag};
+    const auto input = take(builder.declareResource({"input", GraphBufferDesc{16}}));
+    const auto alternate = take(builder.declareResource({"alternate", GraphBufferDesc{16}}));
+    const auto output = take(builder.declareResource({"output", GraphBufferDesc{16}}));
+    const auto seed = take(builder.addTransferPass("initialize", TransferWork{{FillBuffer{{{input, 0}}, 7}}}));
+    const auto make_value = [&](RenderGraphBuilder& branch) noexcept -> RenderResult<ResourceVersion>
+    {
+        auto written = branch.addTransferPass("generate", TransferWork{{FillBuffer{{{alternate, 0}}, 11}}});
+        if (!written) return lux::cxx::unexpected(written.error());
+        return written->written.front();
+    };
+    const auto fail = [](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion>
+    {
+        return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+    };
+    const auto rejected = builder.choose(predicate, make_value, fail);
+    CHECK(!rejected && builder.passCount() == 1);
+    CHECK(take(builder.nextWriteVersion(alternate)).number == 1);
+    const auto chosen = take(builder.choose(
+        predicate, [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
+        make_value
+    ));
+    CHECK(builder.passCount() == 2 && builder.resourceCount() == 3);
+    const auto copied = take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{chosen}, {{output, 0}}}}}));
+    CHECK(copied.written.size() == 1 && copied.written.front().number == 1);
+    CHECK(builder.dependsOn(seed.pass, copied.pass));
+    CHECK(builder.dependencyCount() == 2);
+    CHECK(builder.exportOutput({chosen}));
+    CHECK(builder.outputCount() == 1);
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto intermediate = take(builder.declareResource({"sequence intermediate", GraphBufferDesc{16}}));
+    const auto final = take(builder.declareResource({"sequence result", GraphBufferDesc{16}}));
+    const auto program = take(builder.addProgram(GraphProgram{kGraphHistory}));
+    const auto next = take(builder.nextWriteVersion(intermediate));
+    const auto sequence = take(builder.addComputeSequence(
+        "increment twice", {incrementWork(program, chosen, intermediate), incrementWork(program, next, final)}
+    ));
+    CHECK(builder.exportOutput({written(sequence, final)}));
+    const auto executable = compileCpuGraph(take(std::move(builder).finish()));
+    for (const std::uint8_t selected : {0, 1})
+    {
+        ComputeSequenceRecorder recorder(executable);
+        recorder.execute({&selected, 1});
+        const auto word = selected ? 7u : 11u;
+        recorder.verify(output, std::array{word, word, word, word});
+        recorder.verify(final, std::array{word + 2, word + 2, word + 2, word + 2});
+    }
+}
+
+static void cpuUndefinedChoice()
+{
+    for (const bool escape : {false, true})
+    {
+        RenderGraphBuilder builder;
+        const auto flag = take(builder.declareCondition("path"));
+        const auto first = take(builder.declareResource({"first", GraphBufferDesc{16}}));
+        const auto second = take(builder.declareResource({"second", GraphBufferDesc{16}}));
+        const auto seed = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{first, 0}}, 3}}}));
+        ResourceVersion private_value;
+        const auto choice = take(builder.choose(
+            {EConditionSource::INPUT, flag},
+            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
+            [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+            {
+                const GraphBufferRange range{0, escape ? 16u : 12u};
+                auto write = arm.addTransferPass("private write", TransferWork{{FillBuffer{{{second, 0}, range}, 9}}});
+                if (!write) return lux::cxx::unexpected(write.error());
+                private_value = write->written.front();
+                return private_value;
+            }
+        ));
+        CHECK(builder.exportOutput({escape ? private_value : choice}));
+        const auto proof = analyzeRenderGraph(take(std::move(builder).finish()));
+        CHECK(!proof && proof.error().type == kGraphUndefinedRead);
+    }
+}
+
+static void cpuChoiceImageRanges()
+{
+    const GraphImageRange provided{1, 1, 1, 0, 1};
+    const GraphImageRange missing_mip{1, 0, 1, 0, 1};
+    const GraphImageRange missing_layer{1, 1, 1, 1, 1};
+    for (const auto range : {provided, missing_mip, missing_layer})
+    {
+        RenderGraphBuilder builder;
+        const GraphImageDesc image{8, 8, 2, 2};
+        const auto complete = take(builder.declareResource({
+            "all", image, EGraphOrigin::IMPORTED, {GraphImageRange{1, 0, 2, 0, 2}}, EGraphUse::SAMPLED
+        }));
+        const auto partial = take(builder.declareResource({
+            "partial", image, EGraphOrigin::IMPORTED, {provided}, EGraphUse::SAMPLED
+        }));
+        const auto selected = take(builder.choose(
+            take(builder.sameBinding(complete, partial)),
+            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{complete, 0}; },
+            [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return ResourceVersion{partial, 0}; }
+        ));
+        CHECK(builder.exportOutput({selected, range}));
+        const auto proof = analyzeRenderGraph(take(std::move(builder).finish()));
+        if (range == provided) CHECK(proof && proof->execution_order.empty());
+        else CHECK(!proof && proof.error().type == kGraphMissingInitial);
+    }
+}
+
+static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif, bool hold)
 {
     RenderGraphBuilder builder;
     const auto branch = take(builder.declareCondition("branch"));
     const auto publish = take(builder.declareCondition("publish"));
-    const auto history = take(builder.declareHistory("samples", {GraphBufferDesc{16}, {}, EGraphUse::TRANSFER_SOURCE}));
+    const auto distance = hold ? 2u : 1u;
+    const auto history = take(builder.declareHistory(
+        "samples", {GraphBufferDesc{16}, {}, EGraphUse::TRANSFER_SOURCE, distance}
+    ));
     const auto readback = take(builder.declareResource({"previous", GraphBufferDesc{16}}));
-    const auto first = take(builder.addTransferPass(
-        "first", TransferWork{{FillBuffer{{{history.current, 0}}, 7}}},
-        {false, PassCondition{EConditionSource::INPUT, branch, true}}
+    const auto write = [&](RenderGraphBuilder& arm, std::string name, std::uint32_t value) -> RenderResult<ResourceVersion>
+    {
+        auto result = arm.addTransferPass(std::move(name), TransferWork{{FillBuffer{{{history.current, 0}}, value}}});
+        if (!result) return lux::cxx::unexpected(result.error());
+        return result->written.front();
+    };
+    const auto sample = take(builder.choose(
+        {EConditionSource::INPUT, branch},
+        [&](RenderGraphBuilder& arm) noexcept { return write(arm, "first", 7); },
+        [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        {
+            if (hold) return ResourceVersion{history.previous, 0};
+            return write(arm, "second", 11);
+        }
     ));
-    const auto second = take(builder.addTransferPass(
-        "second", TransferWork{{FillBuffer{{first.written.front()}, 11}}},
-        {false, PassCondition{EConditionSource::INPUT, branch, false}}
-    ));
-    CHECK(builder.publishHistory(second.written.front(), PassCondition{EConditionSource::INPUT, publish}));
+    CHECK(builder.publishHistory(sample, PassCondition{EConditionSource::INPUT, publish}));
     const auto copied = take(builder.addTransferPass(
         "read previous", TransferWork{{CopyBuffer{{{history.previous, 0}}, {{readback, 0}}}}}
     ));
@@ -1604,18 +1726,85 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif)
     CHECK(instance.initialize());
     FrameHarness frames(session, fif);
     const std::array instances{&instance};
-    std::uint32_t previous = 0;
+    std::vector<std::uint32_t> published;
     constexpr std::array<std::uint8_t, 2> selections[] = {{1, 1}, {0, 1}, {1, 0}, {1, 0}, {1, 1}, {0, 1}};
     for (const auto& inputs : selections)
     {
         CHECK(instance.setConditions(inputs));
-        CHECK(take(runTask(frames.render(instances, {}))) == 1);
+        auto submitted = take(runTask(frames.render(instances, {})));
+        submitted += finishSubmissions(session, frames);
+        CHECK(submitted == 1);
         CHECK(session.drain());
         const auto slot = instance.progress().last_submitted_slot;
         const auto values = readBufferWords<4>(session, *instance.nativeBuffer(readback.index, slot));
+        const auto previous = published.size() < distance ? 0u : published[published.size() - distance];
         CHECK(std::ranges::all_of(values, [previous](auto word) { return word == previous; }));
-        if (inputs[1]) previous = inputs[0] ? 7u : 11u;
+        if (inputs[1] && (inputs[0] || !hold)) published.push_back(inputs[0] ? 7u : 11u);
     }
+}
+
+static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
+{
+    RenderGraphBuilder builder;
+    const auto flag = take(builder.declareCondition("use input"));
+    const auto input = take(builder.declareResource({"input", GraphBufferDesc{16}}));
+    const auto scratch = take(builder.declareResource({"incremented", GraphBufferDesc{16}}));
+    const auto result = take(builder.declareResource({"readback", GraphBufferDesc{16}}));
+    const auto seed = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{input, 0}}, 7}}}));
+    const auto program = take(builder.addProgram(GraphProgram{kGraphHistory}));
+    const auto selected = take(builder.choose(
+        {EConditionSource::INPUT, flag},
+        [&](RenderGraphBuilder&) noexcept -> RenderResult<ResourceVersion> { return seed.written.front(); },
+        [&](RenderGraphBuilder& arm) noexcept -> RenderResult<ResourceVersion>
+        {
+            auto work = incrementWork(program, seed.written.front(), scratch);
+            work.allow_async_compute = true;
+            auto pass = arm.addComputePass("increment", std::move(work));
+            if (!pass) return lux::cxx::unexpected(pass.error());
+            return pass->written.front();
+        }
+    ));
+    const auto copied = take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{selected}, {{result, 0}}}}}));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const bool distinct = &session.queue() != &session.queue(EQueueRole::COMPUTE);
+    const auto batches = plan.executable.submissions();
+    if (distinct)
+    {
+        CHECK(std::ranges::any_of(batches, [](const auto& batch) { return batch.queue == EQueueRole::COMPUTE; }));
+        CHECK(std::ranges::any_of(batches, [](const auto& batch) { return !batch.dependencies.empty(); }));
+    }
+    RenderGraphInstance instance(session, fif, plan.executable, plan.programs);
+    CHECK(instance.initialize());
+    FrameHarness frames(session, fif);
+    const std::array instances{&instance};
+    for (const std::uint8_t selected_input : {1, 0, 1, 0})
+    {
+        CHECK(instance.setConditions({&selected_input, 1}));
+        auto submitted = take(runTask(frames.render(instances, {})));
+        submitted += finishSubmissions(session, frames);
+        std::printf("choice FIF=%u input=%u distinct_queues=%u batches=%zu native_submits=%u\n",
+            fif, unsigned(selected_input), unsigned(distinct), batches.size(), submitted);
+        CHECK(submitted == batches.size());
+        CHECK(session.drain());
+        const auto slot = instance.progress().last_submitted_slot;
+        const auto values = readBufferWords<4>(session, *instance.nativeBuffer(result.index, slot));
+        const auto expected = selected_input ? 7u : 8u;
+        CHECK(std::ranges::all_of(values, [expected](auto word) { return word == expected; }));
+    }
+    std::printf("choice FIF=%u readback=7,8,7,8\n", fif);
+}
+
+static void nativeChoices(Validation& validation, EGraphicsBackend backend, std::uint32_t fif)
+{
+    DeviceOptions options;
+    options.backend = backend;
+    options.multiple_queues = true;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    conditionalHistorySamples(*session, fif, false);
+    conditionalHistorySamples(*session, fif, true);
+    crossQueueChoice(*session, fif);
 }
 
 static void cpuImportedBoundaries()
@@ -3010,6 +3199,9 @@ int main(int argc, char** argv)
         cpuRecordingTables();
         cpuConditionalRanges();
         cpuConditionalJoins();
+        cpuValueChoice();
+        cpuUndefinedChoice();
+        cpuChoiceImageRanges();
         cpuImportedBoundaries();
         cpuRasterPackets();
         cpuQueueBoundaries();
@@ -3065,6 +3257,12 @@ int main(int argc, char** argv)
         CHECK(validation.errors == 0);
         return 0;
     }
+    if (argc > 1 && std::string_view(argv[1]) == "choices")
+    {
+        for (auto fif : {1u, 2u, 3u}) nativeChoices(validation, backend, fif);
+        CHECK(validation.errors == 0);
+        return 0;
+    }
     if (argc > 1 && std::string_view(argv[1]) == "local-freeze")
     {
         DeviceOptions options;
@@ -3099,12 +3297,7 @@ int main(int argc, char** argv)
         historySequence(validation, backend, fif, false);
         historySequence(validation, backend, fif, true);
         historySequence(validation, backend, fif, true, 2);
-        {
-            DeviceOptions options;
-            options.backend = backend;
-            TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-            conditionalHistorySamples(*session, fif);
-        }
+        nativeChoices(validation, backend, fif);
         conditionalRegion(validation, backend, fif);
         hzbHistory(validation, backend, fif);
         physicalImageReuse(validation, backend, fif);

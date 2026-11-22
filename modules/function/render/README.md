@@ -677,6 +677,16 @@ physical output remains available, including an unavailable SwapChain after fail
 compares bound Target identities and installs the result in that Job. Frame conditions and History validity are
 sampled during preparation. Compilation follows conditional writes and their predecessors by range and rejects a
 read if a reachable path leaves any observed bytes or subresources undefined.
+Use `builder.choose(predicate, when_true, when_false)` to return a resource version from each arm. Both callables run
+while declaring the graph. An arm can return an existing input or record work and return the written version. A failed
+arm rolls the declaration back. A consuming fixed pass or compute sequence is lowered for each operand selection,
+with one logical write version for subsequent consumers. Explicit pass dependencies cover the alternatives.
+Ordinary graph exports can observe either selected resource. A native Target export requires one writable destination.
+For History, returning its Previous value on one branch holds the publication sequence on that branch. Returning
+complete writes to Current on both branches produces a new sample on either path, subject to the publication condition
+and submission receipt.
+This authoring path currently accepts one controlling predicate for a specialized command or sequence. Independent
+nested choices and draw-stream fan-out require additional lowering and linking support.
 Consecutive passes sharing a predicate form one non-nested ConditionalRegion
 and sample it once. Both paths record the same compiled transitions; the false path preserves predecessor content.
 Rendering groups may merge within a region but never across its boundary. There are no predicate callbacks or

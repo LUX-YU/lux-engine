@@ -228,8 +228,10 @@ namespace lux::render::detail
         bindHistory(slot);
         for (std::size_t i = 0; i < histories_.size(); ++i)
         {
-            const auto& when = histories_[i].plan->description.publish_when;
-            frame.publish_history[i] = !when || conditionEnabled(frame, *when);
+            const auto& sample = histories_[i].plan->description;
+            const bool enabled = !sample.publish_when || conditionEnabled(frame, *sample.publish_when);
+            const bool produced = !sample.select_primary || conditionEnabled(frame, *sample.select_primary);
+            frame.publish_history[i] = enabled && produced;
         }
         frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
         for (std::size_t r = 0; r < plan_->recording_.conditions.size(); ++r)

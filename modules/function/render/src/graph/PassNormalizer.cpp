@@ -12,6 +12,7 @@ namespace lux::render
         {
             GraphPass pass;
             std::vector<ResourceVersion> written;
+            bool selected_value = false;
         };
 
         // Empty means the footprint depends on the instance extent or backend-selected pitch.
@@ -219,7 +220,9 @@ namespace lux::render
             auto& pass = draft_.pass;
             pass.key = std::move(key);
             pass.side_effect = options.side_effect;
-            pass.condition = options.condition;
+            if (builder_.branch_ && options.condition && options.condition != builder_.branch_)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, id_));
+            pass.condition = options.condition ? options.condition : builder_.branch_;
             pass.estimated_gpu_ns = options.estimated_gpu_ns;
             auto& command = [&]() -> auto&
             {
@@ -235,8 +238,32 @@ namespace lux::render
         }
 
     private:
+        [[nodiscard]] RenderResult<void> select(ResourceVersion& value) noexcept
+        {
+            if (value.selection == kGraphInvalidIndex) return {};
+            if (value.selection >= builder_.choices_.size())
+                return cxx::unexpected(graphError(kGraphUnknownResource, id_, value.resource));
+            const auto& choice = builder_.choices_[value.selection];
+            if (value.resource != choice.first.resource || value.number != choice.first.number)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, id_, value.resource));
+            auto& guard = draft_.pass.condition;
+            if (!guard) guard = choice.predicate;
+            if (guard->source != choice.predicate.source || guard->input != choice.predicate.input)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, id_, value.resource));
+            value = guard->expected == choice.predicate.expected ? choice.first : choice.second;
+            draft_.selected_value = true;
+            return {};
+        }
+
         [[nodiscard]] RenderResult<void> resolve(ResourceAccess& access, EGraphUse usage) noexcept
         {
+            if (access.version.selection != kGraphInvalidIndex && detail::writes(access.access))
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, id_, access.version.resource));
+            if (auto selected = select(access.version); !selected) return selected;
+            if (access.fallback)
+            {
+                if (auto selected = select(*access.fallback); !selected) return selected;
+            }
             const auto resource = access.version.resource;
             if (resource.index >= versions_.size())
                 return cxx::unexpected(graphError(kGraphUnknownResource, {}, resource));
@@ -275,10 +302,12 @@ namespace lux::render
         }
 
         [[nodiscard]] RenderResult<void>
-        read(ResourceVersion version, EGraphUse usage, VGraphRange range = {}) noexcept
+        read(ResourceVersion& version, EGraphUse usage, VGraphRange range = {}) noexcept
         {
             ResourceAccess access{version, range, EGraphAccess::READ};
-            return append(access, usage);
+            auto result = append(access, usage);
+            if (result) version = access.version;
+            return result;
         }
 
         [[nodiscard]] RenderResult<void> bindInterface(PassInterface& input) noexcept
@@ -419,13 +448,13 @@ namespace lux::render
             return {};
         }
 
-        [[nodiscard]] RenderResult<void> bindGeometry(const RasterWork::FixedProgram& fixed) noexcept
+        [[nodiscard]] RenderResult<void> bindGeometry(RasterWork::FixedProgram& fixed) noexcept
         {
-            for (const auto& vertex : fixed.vertex_buffers)
+            for (auto& vertex : fixed.vertex_buffers)
                 if (auto result = read(vertex.resource, EGraphUse::VERTEX); !result) return result;
-            if (const auto* indexed = std::get_if<DrawIndexed>(&fixed.draw))
+            if (auto* indexed = std::get_if<DrawIndexed>(&fixed.draw))
                 return read(indexed->index_resource, EGraphUse::INDEX);
-            const auto* indirect = std::get_if<DrawIndexedIndirect>(&fixed.draw);
+            auto* indirect = std::get_if<DrawIndexedIndirect>(&fixed.draw);
             if (!indirect) return {};
             if (auto result = read(indirect->index_resource, EGraphUse::INDEX); !result) return result;
             constexpr std::uint64_t command_bytes = 20;
@@ -479,7 +508,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> normalize(ComputeWork& work) noexcept
         {
             if (auto result = bindInterface(work.interface); !result) return result;
-            if (const auto* indirect = std::get_if<IndirectDispatchArguments>(&work.dispatch))
+            if (auto* indirect = std::get_if<IndirectDispatchArguments>(&work.dispatch))
             {
                 auto result = read(indirect->buffer, EGraphUse::INDIRECT, GraphBufferRange{indirect->offset, 12});
                 if (!result) return result;
@@ -577,9 +606,29 @@ namespace lux::render
     {
         const GraphPassId id{static_cast<std::uint32_t>(passCount())};
         PassNormalizer operation{*this, versions_, id};
-        auto draft = operation.build(std::move(key), std::move(work), options);
+        const bool may_split = !choices_.empty() && !branch_ && !options.condition;
+        auto draft = may_split ? operation.build(key, work, options) :
+            operation.build(std::move(key), std::move(work), options);
         if (!draft) return cxx::unexpected(draft.error());
-        candidate_.passes_.push_back(std::move(draft->pass));
+        if (may_split && draft->selected_value)
+        {
+            if (passCount() >= kGraphInvalidIndex - 1) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+            options.condition = draft->pass.condition;
+            options.condition->expected = !options.condition->expected;
+            const GraphPassId peer{id.index + 1};
+            PassNormalizer alternate{*this, versions_, peer};
+            auto other = alternate.build(key + "/alternate", std::move(work), options);
+            if (!other) return cxx::unexpected(other.error());
+            if (draft->written != other->written) return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
+            draft->pass.choice_peer = peer;
+            other->pass.choice_peer = id;
+            candidate_.passes_.push_back(std::move(draft->pass));
+            candidate_.passes_.push_back(std::move(other->pass));
+        }
+        else
+        {
+            candidate_.passes_.push_back(std::move(draft->pass));
+        }
         for (const auto version : draft->written) versions_[version.resource.index] = version.number;
         return PassResult{id, std::move(draft->written)};
     }
@@ -611,31 +660,61 @@ namespace lux::render
         if (commands.size() == 1) return addComputePass(std::move(key), std::move(commands.front()), options);
 
         const GraphPassId first{static_cast<std::uint32_t>(passCount())};
-        const GraphPassId last{first.index + static_cast<std::uint32_t>(commands.size()) - 1};
-        auto staged_versions = versions_;
+        const auto count = static_cast<std::uint32_t>(commands.size());
         std::vector<GraphPass> staged;
         staged.reserve(commands.size());
-        PassResult result{first, {}};
-        for (std::uint32_t i = 0; i < commands.size(); ++i)
+        const bool may_split = !choices_.empty() && !branch_ && !options.condition;
+        const auto stage = [&](std::string name, GraphPassId start, bool preserve) -> RenderResult<PassResult>
         {
-            PassNormalizer operation{*this, staged_versions, {first.index + i}};
-            auto draft = operation.build(i ? key + "/" + std::to_string(i) : key, std::move(commands[i]), options);
-            if (!draft) return cxx::unexpected(draft.error());
-            draft->pass.sequence_first = first;
-            draft->pass.sequence_last = last;
-            staged.push_back(std::move(draft->pass));
-            for (const auto version : draft->written)
+            auto staged_versions = versions_;
+            PassResult result{start, {}};
+            const auto offset = staged.size();
+            for (std::uint32_t i = 0; i < count; ++i)
             {
-                staged_versions[version.resource.index] = version.number;
-                const auto previous = std::ranges::find(result.written, version.resource, &ResourceVersion::resource);
-                if (previous == result.written.end()) result.written.push_back(version);
-                else *previous = version;
+                PassNormalizer operation{*this, staged_versions, {start.index + i}};
+                auto command = preserve ? commands[i] : std::move(commands[i]);
+                auto draft = operation.build(i ? name + "/" + std::to_string(i) : name, std::move(command), options);
+                if (!draft) return cxx::unexpected(draft.error());
+                if (draft->selected_value) options.condition = draft->pass.condition;
+                draft->pass.sequence_first = start;
+                draft->pass.sequence_last = {start.index + count - 1};
+                staged.push_back(std::move(draft->pass));
+                for (const auto version : draft->written)
+                {
+                    staged_versions[version.resource.index] = version.number;
+                    const auto previous = std::ranges::find(result.written, version.resource, &ResourceVersion::resource);
+                    if (previous == result.written.end()) result.written.push_back(version);
+                    else *previous = version;
+                }
+            }
+            if (options.condition)
+                for (auto& member : std::span{staged}.subspan(offset)) member.condition = options.condition;
+            return result;
+        };
+        auto result = stage(key, first, may_split);
+        if (!result) return cxx::unexpected(result.error());
+        if (may_split && options.condition)
+        {
+            if (count > (kGraphInvalidIndex - first.index) / 2)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+            options.condition->expected = !options.condition->expected;
+            const GraphPassId second{first.index + count};
+            auto other = stage(key + "/alternate", second, false);
+            if (!other) return cxx::unexpected(other.error());
+            if (result->written != other->written) return cxx::unexpected(graphError(kGraphInvalidDescriptor, first));
+            for (std::uint32_t i = 0; i < count; ++i)
+            {
+                staged[i].choice_peer = {second.index + i};
+                staged[count + i].choice_peer = {first.index + i};
             }
         }
-        for (auto& pass : staged) candidate_.passes_.push_back(std::move(pass));
-        for (auto index = first.index; index < last.index; ++index)
-            candidate_.dependencies_.push_back({{index}, {index + 1}});
-        versions_.swap(staged_versions);
+        for (auto& pass : staged)
+        {
+            const auto index = static_cast<std::uint32_t>(passCount());
+            if (index < pass.sequence_last.index) candidate_.dependencies_.push_back({{index}, {index + 1}});
+            candidate_.passes_.push_back(std::move(pass));
+        }
+        for (const auto version : result->written) versions_[version.resource.index] = version.number;
         return result;
     }
 } // namespace lux::render

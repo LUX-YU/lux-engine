@@ -616,14 +616,17 @@ namespace lux::render::detail
                 state.layout = nri::Layout::GENERAL;
             }
             else continue;
-            const auto index = output.version.resource.index;
             state.boundary = ETransitionBoundary::EXPORT;
-            includeUsage(resources[index], state);
-            if (final_states[index].empty())
+            const auto close = [&](GraphResourceId resource)
             {
-                final_states[index].resize(states[index].size());
-            }
-            cells(index, output.range, [&](auto cell) { final_states[index][cell] = state; });
+                const auto index = resource.index;
+                includeUsage(resources[index], state);
+                if (final_states[index].empty()) final_states[index].resize(states[index].size());
+                cells(index, output.range, [&](auto cell) { final_states[index][cell] = state; });
+            };
+            close(output.version.resource);
+            if (output.alternate && output.alternate->value.resource != output.version.resource)
+                close(output.alternate->value.resource);
         }
         for (std::uint32_t i = 0; i < final_states.size(); ++i)
         {

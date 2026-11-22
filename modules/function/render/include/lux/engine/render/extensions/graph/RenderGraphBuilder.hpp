@@ -3,6 +3,7 @@
 #include <lux/engine/render/visibility.h>
 
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 
 namespace lux::render
 {
@@ -43,6 +44,14 @@ namespace lux::render
         [[nodiscard]] RenderResult<HistoryDescription> declareHistory(std::string key, HistoryDeclaration declaration) noexcept;
         [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion, std::optional<PassCondition> when = {}) noexcept;
         [[nodiscard]] RenderResult<PassCondition> sameBinding(GraphResourceId left, GraphResourceId right) noexcept;
+        template <class First, class Second>
+            requires(std::is_nothrow_invocable_r_v<RenderResult<ResourceVersion>, First&, RenderGraphBuilder&> &&
+                     std::is_nothrow_invocable_r_v<RenderResult<ResourceVersion>, Second&, RenderGraphBuilder&>)
+        [[nodiscard]] RenderResult<ResourceVersion>
+        choose(PassCondition predicate, First&& when_true, Second&& when_false) noexcept
+        {
+            return declareChoice(predicate, when_true, when_false);
+        }
         [[nodiscard]] RenderResult<std::uint32_t> declareCondition(std::string key) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> addProgram(GraphProgram program) noexcept;
         [[nodiscard]] std::uint32_t addSampler(SamplerDescription description) noexcept
@@ -75,6 +84,14 @@ namespace lux::render
 
     private:
         class PassNormalizer;
+        RenderResult<void> validateOutput(GraphExport&) const noexcept;
+        using ChoiceArm = cxx::function_ref<RenderResult<ResourceVersion>(RenderGraphBuilder&) noexcept>;
+        RenderResult<ResourceVersion> declareChoice(PassCondition, ChoiceArm when_true, ChoiceArm when_false) noexcept;
+        struct ValueChoice final
+        {
+            PassCondition predicate;
+            ResourceVersion first, second;
+        };
         struct ProgramField final
         {
             std::uint32_t set, binding, ordinal;
@@ -86,5 +103,7 @@ namespace lux::render
         std::vector<std::vector<ProgramField>> program_fields_;
         RenderGraph candidate_;
         std::vector<std::uint32_t> versions_;
+        std::vector<ValueChoice> choices_;
+        std::optional<PassCondition> branch_;
     };
 } // namespace lux::render

@@ -100,6 +100,7 @@ namespace lux::render::detail
         for (const auto& output : graph.outputs())
         {
             exported[output.version.resource.index] = true;
+            if (output.alternate) exported[output.alternate->value.resource.index] = true;
             target[output.version.resource.index] = target[output.version.resource.index] || output.target.has_value();
         }
         std::vector<std::uint32_t> order(resources.size());

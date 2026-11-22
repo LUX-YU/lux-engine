@@ -180,6 +180,36 @@ namespace lux::render
     RenderResult<void>
     RenderGraphBuilder::publishHistory(ResourceVersion version, std::optional<PassCondition> when) noexcept
     {
+        if (branch_)
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
+        if (version.selection != kGraphInvalidIndex)
+        {
+            if (version.selection >= choices_.size() || (when && !candidate_.validCondition(*when)))
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
+            const auto& choice = choices_[version.selection];
+            if (choice.first.resource != version.resource || choice.first.number != version.number)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
+            auto primary = choice.first;
+            auto alternate = choice.second;
+            auto predicate = choice.predicate;
+            auto history = std::ranges::find(candidate_.histories_, primary.resource, &HistoryDescription::current);
+            if (history == candidate_.histories_.end())
+            {
+                std::swap(primary, alternate);
+                predicate.expected = !predicate.expected;
+                history = std::ranges::find(candidate_.histories_, primary.resource, &HistoryDescription::current);
+            }
+            if (history == candidate_.histories_.end() || history->publication || !primary.number)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, primary.resource));
+            const bool produces = alternate.resource == history->current && alternate.number != 0;
+            const bool holds = alternate == ResourceVersion{history->previous, 0};
+            if (!produces && !holds) return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, alternate.resource));
+            history->publication = primary;
+            if (produces) history->alternate_sample = alternate;
+            history->publish_when = when;
+            history->select_primary = predicate;
+            return {};
+        }
         auto history = std::ranges::find(candidate_.histories_, version.resource, &HistoryDescription::current);
         if (history == candidate_.histories_.end() || history->publication || version.number == 0)
         {
@@ -208,6 +238,73 @@ namespace lux::render
         history->publication = version;
         history->publish_when = when;
         return {};
+    }
+
+    RenderResult<ResourceVersion>
+    RenderGraphBuilder::declareChoice(PassCondition predicate, ChoiceArm when_true, ChoiceArm when_false) noexcept
+    {
+        if (branch_ || !candidate_.validCondition(predicate) || choices_.size() >= kGraphInvalidIndex)
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+
+        // Arms append declarations to this same builder. A rejected arm must also undo any writes to old resources.
+        const auto resources = resourceCount();
+        const auto passes = passCount();
+        const auto dependencies = dependencyCount();
+        const auto histories = candidate_.histories_.size();
+        const auto programs = candidate_.programs_.size();
+        const auto samplers = samplerCount();
+        const auto conditions = candidate_.conditions_.size();
+        const auto predicates = candidate_.binding_predicates_.size();
+        auto versions = versions_;
+        const auto reject = [&](RenderError error) -> RenderResult<ResourceVersion>
+        {
+            candidate_.resources_.resize(resources);
+            candidate_.passes_.resize(passes);
+            candidate_.dependencies_.resize(dependencies);
+            candidate_.histories_.resize(histories);
+            candidate_.programs_.resize(programs);
+            program_fields_.resize(programs);
+            candidate_.samplers_.resize(samplers);
+            candidate_.conditions_.resize(conditions);
+            candidate_.binding_predicates_.resize(predicates);
+            versions_ = std::move(versions);
+            branch_.reset();
+            return cxx::unexpected(error);
+        };
+        const auto valid = [&](ResourceVersion value) noexcept
+        {
+            return value.selection == kGraphInvalidIndex && value.resource.index < versions_.size() &&
+                value.number <= versions_[value.resource.index];
+        };
+        branch_ = predicate;
+        const auto first = when_true(*this);
+        if (!first) return reject(first.error());
+        if (!valid(*first)) return reject(graphError(kGraphUndefinedRead, {}, first->resource));
+        branch_->expected = !predicate.expected;
+        const auto second = when_false(*this);
+        if (!second) return reject(second.error());
+        if (!valid(*second)) return reject(graphError(kGraphUndefinedRead, {}, second->resource));
+        const auto& a = *resourceDescription(first->resource);
+        const auto& b = *resourceDescription(second->resource);
+        if (a.index() != b.index()) return reject(graphError(kGraphInvalidDescriptor, {}, second->resource));
+        if (const auto* image = std::get_if<GraphImageDesc>(&a))
+        {
+            const auto& other = std::get<GraphImageDesc>(b);
+            const bool fixed = image->extent.source == EImageExtentSource::FIXED &&
+                other.extent.source == EImageExtentSource::FIXED;
+            const bool incompatible_extent = fixed && (image->width != other.width || image->height != other.height);
+            const bool compatible_views = image->format == other.format && image->samples == other.samples &&
+                image->mips == other.mips && image->layers == other.layers &&
+                image->runtime_layers == other.runtime_layers;
+            if (incompatible_extent || !compatible_views)
+                return reject(graphError(kGraphInvalidDescriptor, {}, second->resource));
+        }
+        else if (a != b) return reject(graphError(kGraphInvalidDescriptor, {}, second->resource));
+        branch_.reset();
+        if (*first == *second) return *first;
+        const auto index = static_cast<std::uint32_t>(choices_.size());
+        choices_.push_back({predicate, *first, *second});
+        return ResourceVersion{first->resource, first->number, index};
     }
 
     RenderResult<PassCondition> RenderGraphBuilder::sameBinding(GraphResourceId left, GraphResourceId right) noexcept
@@ -305,7 +402,7 @@ namespace lux::render
         const auto& successor = candidate_.passes_[after.index];
         const bool same_sequence = predecessor.sequence_first.index != kGraphInvalidIndex &&
                                    predecessor.sequence_first == successor.sequence_first;
-        if (before == after || same_sequence)
+        if (before == after || predecessor.choice_peer == after || same_sequence)
         {
             return cxx::unexpected(graphError(kGraphDependencyCycle, before));
         }
@@ -314,14 +411,53 @@ namespace lux::render
             successor.sequence_first.index == kGraphInvalidIndex ? after : successor.sequence_first
         };
         auto& edges = candidate_.dependencies_;
-        if (std::find(edges.begin(), edges.end(), edge) == edges.end())
+        for (const auto source : {edge.before, candidate_.passes_[edge.before.index].choice_peer})
         {
-            edges.push_back(edge);
+            if (source.index == kGraphInvalidIndex) continue;
+            for (const auto destination : {edge.after, candidate_.passes_[edge.after.index].choice_peer})
+            {
+                if (destination.index == kGraphInvalidIndex) continue;
+                const GraphDependency dependency{source, destination};
+                if (std::ranges::find(edges, dependency) == edges.end()) edges.push_back(dependency);
+            }
         }
         return {};
     }
 
     RenderResult<void> RenderGraphBuilder::exportOutput(GraphExport output) noexcept
+    {
+        if (branch_ || output.alternate) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+        const auto selection = output.version.selection;
+        if (selection != kGraphInvalidIndex)
+        {
+            if (selection >= choices_.size()) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+            const auto& choice = choices_[selection];
+            if (output.version.resource != choice.first.resource || output.version.number != choice.first.number)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, output.version.resource));
+            output.version = choice.first;
+            output.alternate = GraphExportAlternative{choice.predicate, choice.second};
+        }
+        if (output.alternate)
+        {
+            const auto& alternate = *output.alternate;
+            if (!candidate_.validCondition(alternate.primary_when) || alternate.value.selection != kGraphInvalidIndex)
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+            // Both alternatives of a native Target must address the one installed writable output.
+            if (output.target && alternate.value.resource != output.version.resource)
+                return cxx::unexpected(graphError(kGraphConflictingOutput, {}, alternate.value.resource));
+            auto other = output;
+            other.version = alternate.value;
+            other.alternate.reset();
+            if (auto valid = validateOutput(other); !valid) return valid;
+            if (auto valid = validateOutput(output); !valid) return valid;
+            if (other.range != output.range) return cxx::unexpected(graphError(kGraphInvalidRange));
+        }
+        else if (auto valid = validateOutput(output); !valid) return valid;
+        candidate_.outputs_.push_back(std::move(output));
+        return {};
+    }
+
+    RenderResult<void> RenderGraphBuilder::validateOutput(GraphExport& output) const noexcept
     {
         const auto id = output.version.resource;
         if (output.final_use &&
@@ -362,18 +498,20 @@ namespace lux::render
         }
         for (const auto& existing : candidate_.outputs_)
         {
-            const bool is_conflict = existing.version.resource == id && detail::overlaps(existing.range, output.range);
+            const bool shared = existing.version.resource == id ||
+                (existing.alternate && existing.alternate->value.resource == id);
+            const bool is_conflict = shared && detail::overlaps(existing.range, output.range);
             if (is_conflict)
             {
                 return cxx::unexpected(graphError(kGraphConflictingOutput, {}, id));
             }
         }
-        candidate_.outputs_.push_back(std::move(output));
         return {};
     }
 
     RenderResult<RenderGraph> RenderGraphBuilder::finish() && noexcept
     {
+        if (branch_) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
         if (auto valid = uniqueKeys(candidate_.resources(), false); !valid)
         {
             return cxx::unexpected(valid.error());
@@ -385,6 +523,7 @@ namespace lux::render
         auto result = std::move(candidate_);
         candidate_ = {};
         versions_.clear();
+        choices_.clear();
         program_fields_.clear();
         return result;
     }

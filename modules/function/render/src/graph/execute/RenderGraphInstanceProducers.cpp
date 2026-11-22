@@ -708,6 +708,11 @@ namespace lux::render::detail
                     slot, blocks[b].pass, selected.payload.bytes, selected.source_revision
                 );
                 if (!written) return written;
+                if (blocks[b].alternate != kGraphInvalidIndex)
+                {
+                    auto other = writeInlineConstant(slot, blocks[b].alternate, selected.payload.bytes, selected.source_revision);
+                    if (!other) return other;
+                }
             }
         }
         for (const auto& copy : preparation_plan_->constant_copies)

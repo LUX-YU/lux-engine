@@ -41,7 +41,7 @@ namespace lux::render::detail
     struct ShaderBindingPlan final
     {
         std::vector<PassBindings> passes;
-
+        std::vector<std::uint32_t> sampler_inputs;
     };
 
     [[nodiscard]] RenderResult<void> addPrivateDescriptors(nri::DescriptorPoolDesc&, const PassBindings&) noexcept;

@@ -52,7 +52,7 @@ struct SamplerProbe final
     }
 
 private:
-    static RenderResult<void> build(EffectBuildContext& context, std::string_view) noexcept
+    static RenderResult<void> build(EffectBuildContext& context, std::string_view config) noexcept
     {
         auto& builder = context.builder();
         GraphImageDesc color_image{64, 64, 1, 1, context.target().format};
@@ -62,7 +62,7 @@ private:
             {"sampler depths", GraphImageDesc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}}
         ));
         auto depth = ResourceVersion{depths, 0};
-        // A culled sampler input leaves a hole before live inputs. Attach must not instantiate it.
+        // A dead declaration precedes both live inputs and consumes no compiled sampler slot.
         (void)builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS});
         for (std::uint32_t layer = 0; layer < 2; ++layer)
         {
@@ -90,6 +90,8 @@ private:
         auto ordinary = builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE});
         auto comparison =
             builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE, EDepthCompare::LESS_EQUAL});
+        if (config == "undeclared") comparison = 32;
+        if (config == "wrong comparison") comparison = ordinary;
         fixed_work.interface.samplers = {
             {"ordinary", {ordinary}},
             {"comparison", {comparison}, kGraphInvalidIndex, true}
@@ -133,6 +135,24 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
+    for (const auto config_text : {"undeclared", "wrong comparison"})
+    {
+        CreateEffectRequest invalid;
+        invalid.graph = std::make_unique<EffectGraph>();
+        EffectGraphEdit invalid_edit{*invalid.graph};
+        const auto node = take(invalid_edit.addNode(
+            SamplerProbe::definition(), {std::string{SamplerProbe::name}, 1}, config_text
+        ));
+        CHECK(invalid_edit.setOutput("color", invalid_edit.pinId(node, SamplerProbe::color), true));
+        CHECK(invalid_edit.commit());
+        const auto invalid_effect = call<CreateEffect>(*client, commands, std::move(invalid)).effect;
+        const auto invalid_job = call<CreateRenderJob>(*client, commands, {scene, view, invalid_effect}).job;
+        const auto before = server.stats().compiled_graphs;
+        const auto rejected = call<StartRenderJob>(*client, commands, {session, invalid_job, output}, false);
+        CHECK(rejected.error.type == kGraphInvalidDescriptor && server.stats().compiled_graphs == before);
+        call<RemoveRenderJob>(*client, commands, invalid_job);
+        call<RemoveEffect>(*client, commands, {invalid_effect});
+    }
     JobBinding binding;
     const auto readback = GraphCaptureBuffer::bind(*client, commands, session, {scene, view}, {&pixels});
     binding.resources.push_back({std::string{ColorCapture::name}, readback});

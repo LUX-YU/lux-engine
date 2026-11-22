@@ -455,9 +455,8 @@ namespace lux::render
             linked.batches.erase(duplicates.begin(), duplicates.end());
         }
         rollback_pools.release();
-        const auto samplers = built->source.samplers();
         co_return std::make_unique<const JobGraphPlan>(JobGraphPlan{
-            std::move(plan->executable), std::move(*plan).takePrograms(), {samplers.begin(), samplers.end()},
+            std::move(plan->executable), std::move(*plan).takePrograms(),
             std::move(built->target_imports), std::move(built->storage_imports), std::move(*preparation),
             std::move(uniforms)
         });

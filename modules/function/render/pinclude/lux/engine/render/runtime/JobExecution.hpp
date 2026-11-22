@@ -33,7 +33,6 @@ namespace lux::render::runtime_detail
     {
         detail::RenderGraphExecutable executable;
         detail::NativeProgramBindings programs;
-        std::vector<SamplerDescription> samplers;
         std::vector<GraphResourceId> target_imports;
         std::vector<GraphResourceId> storage_imports;
         detail::PreparationPlan preparation;

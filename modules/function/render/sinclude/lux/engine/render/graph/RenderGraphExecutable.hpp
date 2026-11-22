@@ -500,6 +500,7 @@ namespace lux::render::detail
 
         [[nodiscard]] std::size_t size() const noexcept { return slots_.size(); }
         [[nodiscard]] const nri::Device* device() const noexcept { return device_; }
+        [[nodiscard]] nri::Descriptor* sampler(std::uint32_t slot) const noexcept { return samplers_[slot]; }
         [[nodiscard]] const CompiledRasterStream* rasterStream(std::uint32_t pass) const noexcept
         {
             return streams_[pass].get();
@@ -513,6 +514,7 @@ namespace lux::render::detail
 
         const nri::Device* device_;
         std::vector<NativeProgramSlot> slots_;
+        std::vector<nri::Descriptor*> samplers_; // Borrowed from this device's DescriptorTable.
         std::vector<std::unique_ptr<CompiledRasterStream>> streams_;
     };
 

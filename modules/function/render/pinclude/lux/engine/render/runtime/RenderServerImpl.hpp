@@ -146,7 +146,6 @@ namespace lux::render
         [[nodiscard]] std::vector<detail::JobRelationEntry> jobRelations() noexcept;
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
-        [[nodiscard]] RenderResult<void> bindGraphSamplers(JobExecution&, std::span<const SamplerDescription>) noexcept;
 
         [[nodiscard]] RenderResult<void> assembleExecution(JobExecution&, const JobBinding&) noexcept;
 

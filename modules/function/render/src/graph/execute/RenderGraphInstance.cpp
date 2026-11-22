@@ -20,19 +20,6 @@ namespace lux::render::detail
         condition_values_.resize(plan.condition_count_);
         const auto parameter_bytes = plan.passes().empty() ? 0 :
             plan.passes().back().parameter_offset + plan.passes().back().parameter_size;
-        for (const auto& use : plan.binding_plan_->descriptor_uses)
-        {
-            if (use.sampler == kGraphInvalidIndex)
-            {
-                continue;
-            }
-            if (use.sampler >= samplers_.size())
-            {
-                samplers_.resize(std::size_t(use.sampler) + 1);
-            }
-            samplers_[use.sampler].comparison = use.comparison_sampler;
-            samplers_[use.sampler].used = true;
-        }
         frames_.resize(frame_count);
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {

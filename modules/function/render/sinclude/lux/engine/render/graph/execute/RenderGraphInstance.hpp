@@ -120,18 +120,6 @@ namespace lux::render::detail
         prepareImageLayers(GraphResourceId, std::uint32_t slot, std::uint32_t layers) noexcept;
         // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
         void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
-        [[nodiscard]] RenderResult<void>
-        bindSampler(std::uint32_t input, nri::Descriptor&, bool comparison = false) noexcept;
-
-        [[nodiscard]] std::size_t samplerInputCount() const noexcept
-        {
-            return samplers_.size();
-        }
-
-        [[nodiscard]] bool usesSampler(std::uint32_t input) const noexcept
-        {
-            return samplers_[input].used;
-        }
 
         ~RenderGraphInstance() noexcept;
         RenderGraphInstance(const RenderGraphInstance&) = delete;
@@ -399,14 +387,6 @@ namespace lux::render::detail
         RasterViewport viewport_;
         TargetOutput output_;
 
-        struct SamplerInput final
-        {
-            nri::Descriptor* descriptor = nullptr;
-            bool comparison = false;
-            bool used = false;
-        };
-
-        std::vector<SamplerInput> samplers_;
         std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;
         RenderError submission_error_;

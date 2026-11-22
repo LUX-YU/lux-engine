@@ -4,7 +4,6 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
-#include <map>
 #include <spirv-tools/libspirv.h>
 
 namespace lux::render::detail
@@ -646,6 +645,8 @@ namespace lux::render::detail
     {
         ShaderBindingPlan plan;
         plan.passes.resize(graph.passes().size());
+        const auto declarations = graph.samplers();
+        std::vector<std::uint32_t> sampler_slots(declarations.size(), kGraphInvalidIndex);
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
@@ -683,26 +684,29 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(program.error());
             }
-            plan.passes[id.index] = std::move(*program);
-        }
-        std::map<std::uint32_t, bool> sampler_contracts;
-        for (const auto& program : plan.passes)
-        {
-            for (const auto& use : program.uses)
+            for (auto& use : program->uses)
             {
                 if (use.sampler == kGraphInvalidIndex)
                 {
                     continue;
                 }
-                auto [entry, inserted] = sampler_contracts.emplace(use.sampler, use.comparison_sampler);
-                if (!inserted && entry->second != use.comparison_sampler)
+                const auto input_slot = use.sampler;
+                const bool matches_contract = input_slot < declarations.size() &&
+                    declarations[input_slot].comparison.has_value() == use.comparison_sampler;
+                if (!matches_contract)
                 {
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {id.index, input_slot}});
                 }
+                auto& slot = sampler_slots[input_slot];
+                if (slot == kGraphInvalidIndex)
+                {
+                    slot = static_cast<std::uint32_t>(plan.sampler_inputs.size());
+                    plan.sampler_inputs.push_back(input_slot);
+                }
+                use.sampler = slot;
             }
+            plan.passes[id.index] = std::move(*program);
         }
-        // Dead passes can leave holes in the declared sampler inputs. Runtime validates the
-        // declarations at assembly; a standalone instance binds the remaining original slots.
         return plan;
     }
 

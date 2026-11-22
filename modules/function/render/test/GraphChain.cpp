@@ -274,7 +274,8 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
         {"source_image", {generated.written.front(), GraphImageRange{1, 1, 1}}},
         {"tint", {tint_pass.written.front()}}
     };
-    fixed_mrt.interface.samplers = {{"source_sampler", {0}}};
+    const auto nearest = builder.addSampler({ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_EDGE});
+    fixed_mrt.interface.samplers = {{"source_sampler", {nearest}}};
     mrt.colors = {{{{first, 0}}}, {{{second, 0}}}};
     mrt.depth = RasterAttachment{{{depth, 0}, GraphImageRange{2}}};
     fixed_mrt.graphics.depth_test = fixed_mrt.graphics.depth_write = true;
@@ -286,7 +287,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
         {"colors", {written(raster, first)}, {{written(raster, second)}}},
         {"depth_image", {written(raster, depth), GraphImageRange{2}}}
     };
-    fixed_present.interface.samplers = {{"source_sampler", {0}}};
+    fixed_present.interface.samplers = {{"source_sampler", {nearest}}};
     present.colors = {{{{final, 0}}}};
     const auto resolved = take(builder.addRasterPass("postprocess", std::move(present)));
     const auto initialized =
@@ -319,16 +320,10 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     CHECK(dump.find("\"color_count\":2") != std::string::npos);
     CHECK(dump.find("\"lifetimes\":[") != std::string::npos);
     CHECK(dump.find("\"final_image_transitions\":[") != std::string::npos);
-    nri::Descriptor* sampler = nullptr;
-    nri::SamplerDesc sampler_description{};
-    sampler_description.addressModes =
-        {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
-    CHECK(session->nriCore().CreateSampler(session->device(), sampler_description, sampler) == nri::Result::SUCCESS);
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
     auto instance = std::make_unique<RenderGraphInstance>(
         *session, fif, plan.executable, plan.programs, physical->output()
     );
-    CHECK(instance->bindSampler(0, *sampler));
     CHECK(instance->initialize());
     CHECK(instance->dumpResources(sink));
     CHECK(dump.find("\"allocation_requirement_bytes\":") != std::string::npos);
@@ -346,7 +341,6 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     auto second_instance = std::make_unique<RenderGraphInstance>(
         *session, fif, plan.executable, plan.programs, larger->output()
     );
-    CHECK(second_instance->bindSampler(0, *sampler));
     CHECK(second_instance->initialize());
     const std::array instances{instance.get(), second_instance.get()};
     const auto submit = [&](std::span<RenderGraphInstance* const> selected)
@@ -395,7 +389,6 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     second_instance.reset();
     larger.reset();
     CHECK(session->drain());
-    session->nriCore().DestroyDescriptor(sampler);
 }
 
 static void indirectCounts(Validation& validation, EGraphicsBackend backend)

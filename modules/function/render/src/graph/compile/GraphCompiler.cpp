@@ -835,6 +835,14 @@ namespace lux::render::detail
         auto& layouts = bindings;
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         auto& program_cache = session.programs();
+        native.samplers_.reserve(bindings.sampler_inputs.size());
+        for (auto input : bindings.sampler_inputs)
+        {
+            if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
+            auto descriptor = session.descriptors().sampler(graph.samplers()[input]);
+            if (!descriptor) co_return cxx::unexpected(descriptor.error());
+            native.samplers_.push_back(*descriptor);
+        }
         for (auto& pass : plan.recording_.passes)
         {
             if (stop.stop_requested())

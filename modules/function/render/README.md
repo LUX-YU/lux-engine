@@ -504,7 +504,9 @@ facts to the same planner.
 submissions and physical resource layout before publishing the `RenderGraphExecutable`. Shader reflection supplies
 layouts and descriptor writes on SPIR-V and DXIL. Fixed descriptor operands and initial parameter bytes are stored
 in contiguous tables indexed by pass ranges. Descriptor pool counts and instance parameter copies are computed
-during compilation. Separate image and sampler bindings remain explicit. Program preparation returns to the owner
+during compilation. For fixed samplers the compiler validates ordinary/comparison use, assigns dense slots to live
+declarations and resolves their descriptors through the device cache. Jobs sharing the compiled graph use those
+descriptors when populating or growing their private sets. Program preparation returns to the owner
 scheduler for publication through the existing `CompiledPrograms` cache. The device execution owns those native program
 leases alongside the executable. The executable's recording tables carry slots and the Instance freezes their physical
 bindings for the recording workers. Barrier predecessors and History predicates use compiled slots. The diagnostic

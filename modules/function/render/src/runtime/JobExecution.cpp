@@ -40,23 +40,6 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
-    RenderResult<void>
-    RenderServer::Impl::bindGraphSamplers(JobExecution& candidate, std::span<const SamplerDescription> samplers) noexcept
-    {
-        auto& pool = runtime_->device(candidate.device)->session().descriptors();
-        auto& instance = candidate.instance;
-        for (std::uint32_t slot = 0; slot < instance.samplerInputCount(); ++slot)
-        {
-            if (!instance.usesSampler(slot)) continue;
-            if (slot >= samplers.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            auto sampler = pool.sampler(samplers[slot]);
-            if (!sampler) return cxx::unexpected(sampler.error());
-            if (auto bound = instance.bindSampler(slot, **sampler, samplers[slot].comparison.has_value()); !bound)
-                return bound;
-        }
-        return {};
-    }
-
     RenderResult<void> RenderServer::Impl::assembleExecution(JobExecution& candidate, const JobBinding& binding) noexcept
     {
         const auto& plan = candidate.executable;
@@ -131,8 +114,6 @@ namespace lux::render
             link.reader = *bound;
             candidate.storage_inputs.push_back(link);
         }
-        const auto samplers = std::span{candidate.graph_plan->samplers};
-        if (auto bound = bindGraphSamplers(candidate, samplers); !bound) return bound;
         if (auto ready = candidate.instance.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph_plan->preparation;
         std::vector<detail::RenderGraphInstance::SnapshotSource> sources;

@@ -244,7 +244,7 @@ namespace lux::render::detail
                 [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
             {
                 if (!program.bindings[use.field].private_binding) return nullptr;
-                if (use.sampler != kGraphInvalidIndex) return samplers_[use.sampler].descriptor;
+                if (use.sampler != kGraphInvalidIndex) return programs_->sampler(use.sampler);
                 // Feature preparation precedes Instance::rebind. Dirty resources already
                 // name the new allocation; the old cached view is not a valid replay source.
                 if (frame.bindings[use.resource].dirty) return static_cast<nri::Descriptor*>(nullptr);
@@ -322,17 +322,6 @@ namespace lux::render::detail
         {
             for (auto* view : views) core->DestroyDescriptor(view);
         });
-    }
-
-    RenderResult<void>
-    RenderGraphInstance::bindSampler(std::uint32_t input, nri::Descriptor& sampler, bool comparison) noexcept
-    {
-        if (input >= samplers_.size() || samplers_[input].comparison != comparison)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        samplers_[input].descriptor = &sampler;
-        return {};
     }
 
     RenderResult<void> RenderGraphInstance::prepareFrameBindings(std::uint32_t slot) noexcept
@@ -587,11 +576,7 @@ namespace lux::render::detail
                         {
                             continue;
                         }
-                        auto* sampler = samplers_[use.sampler].descriptor;
-                        if (!sampler)
-                        {
-                            return cxx::unexpected(RenderError{kDeviceArgument});
-                        }
+                        auto* sampler = programs_->sampler(use.sampler);
                         const nri::UpdateDescriptorRangeDesc
                             update{pass.private_descriptors, use.binding, use.element, &sampler, 1};
                         session_->nriCore().UpdateDescriptorRanges(&update, 1);

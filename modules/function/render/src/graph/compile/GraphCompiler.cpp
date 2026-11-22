@@ -871,7 +871,8 @@ namespace lux::render::detail
                 for (const auto& input : description->inputs) stream->argument_uses.push_back(input.usage);
                 const RasterStreamTarget target{
                     colors, rendering->depth, rendering->samples, rendering->dynamic_depth_bias,
-                    description->shared_textures.has_value(), description->shared_materials.has_value()
+                    description->requiresCapability(EStorageCapability::SAMPLED_IMAGE_ARRAY),
+                    description->requiresCapability(EStorageCapability::STORAGE_BUFFER_ARRAY)
                 };
                 if (description->runtime_stream_programs)
                     stream->runtime = CompiledRasterStream::RuntimeContract{description->inputs, target};

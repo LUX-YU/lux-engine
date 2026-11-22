@@ -545,9 +545,9 @@ namespace
                 static_cast<std::uint32_t>(EMeshInstanceBinding::PROPERTIES)},
             {std::string{MeshVisibility::alive_binding}, instances,
                 static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)},
-            {std::string{GBuffer::geometry_binding}, local(kMeshResourceName), 0, EJobResourceUse::RASTER_MESHES},
-            {std::string{GBuffer::materials_binding}, local(kMaterialResourceName), 0, EJobResourceUse::RASTER_MATERIALS},
-            {std::string{GBuffer::textures_binding}, local(kTextureResourceName), 0, EJobResourceUse::RASTER_TEXTURES},
+            {std::string{GBuffer::geometry_binding}, local(kMeshResourceName), 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{GBuffer::materials_binding}, local(kMaterialResourceName), 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{GBuffer::textures_binding}, local(kTextureResourceName), 0, EJobResourceUse::DRAW_RESOURCE},
             {std::string{capture_bindings[0]}, readback}
         };
         if (capture[1].result) binding.resources.push_back({std::string{capture_bindings[1]}, readback, 1});

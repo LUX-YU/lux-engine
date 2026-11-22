@@ -53,6 +53,28 @@ namespace sdk_programs
         using Response = AckResponse;
     };
 
+    struct DrawMask final
+    {
+        using Descriptor = DrawMask;
+        using Config = void;
+        using Ops = void;
+        static inline const ResourceDefinition descriptor{
+            ResourceNameView{"test.sdk.draw_mask"}, 0, 0, {}, "Fraction of the output height to draw.",
+            EResourceDomain::DEVICE
+        };
+        float height = 0.5f;
+
+        static RenderResult<std::unique_ptr<DrawMask>> create(ResourceCreateContext&, ResourceInstanceId) noexcept
+        {
+            return std::make_unique<DrawMask>();
+        }
+
+        static ResourceRegistration factory() noexcept
+        {
+            return makeResourceRegistration<Descriptor, DrawMask, &create>(nullptr, nullptr);
+        }
+    };
+
     enum class EDriverGate { OPEN, ARMED, HELD };
     struct CodeStorage final
     {
@@ -227,6 +249,7 @@ namespace sdk_programs
             DrawStreamSlot stream;
             StorageSnapshotSlot<CodeSnapshot> code;
             StorageSnapshotSlot<ViewGpuParameters> camera;
+            DrawResourceSlot<DrawMask> mask;
             lux::rdesc::EShaderTarget target;
             bool stale;
         };
@@ -241,7 +264,13 @@ namespace sdk_programs
             if (!code) return lux::cxx::unexpected(code.error());
             const auto camera = link.resolveStorageSnapshot<ViewGpuParameters>(input.camera);
             if (!camera) return lux::cxx::unexpected(camera.error());
-            return LinkedData{*stream, *code, *camera, input.target, input.stale};
+            const auto undeclared = link.resolveDrawResource<DrawMask>(input.pass, "absent");
+            CHECK(!undeclared && undeclared.error().type == kGraphUnknownResource);
+            const auto wrong_type = link.resolveDrawResource<CodeStorage>(input.pass, "clip_height");
+            CHECK(!wrong_type && wrong_type.error().type == kStorageMismatch);
+            auto mask = link.resolveDrawResource<DrawMask>(input.pass, "clip_height");
+            if (!mask) return lux::cxx::unexpected(mask.error());
+            return LinkedData{*stream, *code, *camera, *mask, input.target, input.stale};
         }
 
         using DrawMapping = std::array<std::uint32_t, 2>;
@@ -311,7 +340,10 @@ namespace sdk_programs
             const auto camera = frame.readStorage(linked.camera);
             if (!camera) return lux::cxx::unexpected(camera.error());
             const auto& viewport = camera->value.get().viewport;
-            const RasterViewport selected{viewport[0], viewport[1], viewport[2], viewport[3]};
+            const auto mask = frame.readDrawResource(linked.mask);
+            if (!mask) return lux::cxx::unexpected(mask.error());
+            const auto height = *mask ? (*mask)->height * viewport[3] : viewport[3];
+            const RasterViewport selected{viewport[0], viewport[1], viewport[2], height};
             const RasterStreamSection section{{0, 2}, 0, selected};
             return frame.setRasterStream(linked.stream, {draws, {}, {}, {}, std::span{&section, 1}});
         }

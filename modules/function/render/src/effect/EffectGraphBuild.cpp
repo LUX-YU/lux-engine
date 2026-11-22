@@ -1,5 +1,4 @@
 #include <numeric>
-#include <lux/engine/render/resources/BuiltinResources.hpp>
 #include <lux/engine/render/commands/CommandRegistry.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
@@ -125,9 +124,17 @@ namespace lux::render::runtime_detail
                 auto found = std::ranges::find(declarations, declaration.binding, &EffectStorageImport::binding);
                 if (found != declarations.end())
                 {
-                    const bool mismatch = found->type != declaration.type || found->contract != declaration.contract ||
-                        found->projection != declaration.projection;
-                    if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
+                    if (found->type != declaration.type || found->projection != declaration.projection)
+                        return cxx::unexpected(RenderError{kStorageMismatch});
+                    if (auto* draw = std::get_if<EffectStorageImport::DrawContract>(&found->contract))
+                    {
+                        const auto* input = std::get_if<EffectStorageImport::DrawContract>(&declaration.contract);
+                        if (!input || draw->hash != input->hash || draw->name != input->name)
+                            return cxx::unexpected(RenderError{kStorageMismatch});
+                        draw->required_capabilities |= input->required_capabilities;
+                    }
+                    else if (found->contract != declaration.contract)
+                        return cxx::unexpected(RenderError{kStorageMismatch});
                     found->optional &= declaration.optional;
                     return static_cast<std::uint32_t>(found - declarations.begin());
                 }
@@ -205,8 +212,6 @@ namespace lux::render::runtime_detail
                 }
                 declarations = std::move(ordered);
                 for (auto& snapshot : preparation.snapshots) snapshot.binding = remap[snapshot.binding];
-                for (auto* sets : {&preparation.texture_sets, &preparation.mesh_sets, &preparation.material_sets})
-                    for (auto& slot : *sets) slot = remap[slot];
             }
 
             RenderResult<EffectGraphBuild> finish(const ValidatedEffectGraph&) && noexcept;
@@ -291,58 +296,6 @@ namespace lux::render::runtime_detail
                 auto slot = workspace_.declareStorage({std::string{binding}, required.type, std::move(schema), 0});
                 if (!slot) return cxx::unexpected(slot.error());
                 return workspace_.storageSnapshot(*slot, type);
-            }
-
-            RenderResult<GraphRasterTextureSetId> importRasterTextures(std::string_view binding) noexcept override
-            {
-                auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::TEXTURES,
-                    workspace_.preparation.texture_sets);
-                if (!slot) return cxx::unexpected(slot.error());
-                return GraphRasterTextureSetId{*slot};
-            }
-
-            RenderResult<GraphRasterMeshSetId> importRasterMeshes(std::string_view binding) noexcept override
-            {
-                auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::MESHES,
-                    workspace_.preparation.mesh_sets);
-                if (!slot) return cxx::unexpected(slot.error());
-                return GraphRasterMeshSetId{*slot};
-            }
-
-            RenderResult<std::optional<GraphRasterTextureSetId>>
-            importOptionalRasterTextures(std::string_view binding) noexcept override
-            {
-                if (!device().texture_descriptors) return std::nullopt;
-                auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::TEXTURES,
-                    workspace_.preparation.texture_sets, true);
-                if (!slot) return cxx::unexpected(slot.error());
-                return GraphRasterTextureSetId{*slot};
-            }
-
-            RenderResult<GraphRasterMaterialSetId> importRasterMaterials(std::string_view binding) noexcept override
-            {
-                auto slot = importRasterOwner(binding, EffectStorageImport::ERasterOwner::MATERIALS,
-                    workspace_.preparation.material_sets);
-                if (!slot) return cxx::unexpected(slot.error());
-                return GraphRasterMaterialSetId{*slot};
-            }
-
-            RenderResult<std::uint32_t> importRasterOwner(
-                std::string_view binding, EffectStorageImport::ERasterOwner kind, std::vector<std::uint32_t>& sets,
-                bool optional = false
-            ) noexcept
-            {
-                using Owner = EffectStorageImport::ERasterOwner;
-                const auto type = kind == Owner::TEXTURES ? kTextureResourceName :
-                    kind == Owner::MESHES ? kMeshResourceName : kMaterialResourceName;
-                auto slot = workspace_.declareStorage({
-                    std::string{binding}, ResourceName{type.name()}, kind, 0, optional
-                });
-                if (!slot) return cxx::unexpected(slot.error());
-                const auto previous = std::ranges::find(sets, *slot);
-                const auto index = static_cast<std::uint32_t>(previous - sets.begin());
-                if (previous == sets.end()) sets.push_back(*slot);
-                return index;
             }
 
             RenderResult<ResourceVersion> declarePreparedBuffer(
@@ -597,6 +550,21 @@ namespace lux::render::runtime_detail
         }
         auto source = std::move(builder).finish();
         if (!source) return cxx::unexpected(source.error());
+        for (const auto& pass : source->passes())
+        {
+            const auto* raster = std::get_if<RasterWork>(&pass.command);
+            const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
+            if (!stage) continue;
+            for (const auto& input : stage->draw_resources)
+            {
+                const auto type = input.source.implementation;
+                EffectStorageImport::DrawContract schema{
+                    type.hash(), std::string{type.name()}, input.required_capabilities
+                };
+                auto slot = declareStorage({input.binding, input.source.type, std::move(schema), 0, input.optional});
+                if (!slot) return cxx::unexpected(slot.error());
+            }
+        }
         std::ranges::sort(slots.targets, {}, &detail::TargetImageSlot::binding);
         std::vector<bool> linked_targets(source->resources().size());
         std::vector<EffectStorageImport*> linked_storages(source->resources().size());

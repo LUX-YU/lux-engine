@@ -609,10 +609,10 @@ int main(int argc, char** argv)
                 });
             }
             binding.resources.push_back({
-                std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::RASTER_MESHES
+                std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::DRAW_RESOURCE
             });
             binding.resources.push_back({
-                std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::RASTER_MATERIALS
+                std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::DRAW_RESOURCE
             });
             for (std::uint32_t light = 0; light < Lighting::light_bindings.size(); ++light)
                 binding.resources.push_back({std::string{Lighting::light_bindings[light]}, light_storage, light});

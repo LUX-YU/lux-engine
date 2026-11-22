@@ -54,9 +54,6 @@ namespace lux::render::runtime_detail
         std::vector<CpuDataDefinition>  cpu_data;
         std::vector<Buffer>             buffers;
         std::vector<Snapshot>           snapshots;
-        std::vector<std::uint32_t>      texture_sets; // Logical texture-set ID to canonical Job binding.
-        std::vector<std::uint32_t>      mesh_sets;
-        std::vector<std::uint32_t>      material_sets;
         std::vector<Producer>           producers;
         std::vector<std::uint32_t>      live_order;
     };

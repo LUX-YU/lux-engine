@@ -179,8 +179,40 @@ namespace lux::render::detail
                 if (!resolved) return cxx::unexpected(resolved.error());
                 if (!workspace_.claimStream(*resolved))
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {pass.index}});
+                auto& ranges = workspace_.plan.draw_resource_ranges;
+                if (!ranges.empty())
+                {
+                    ranges[*resolved].producer = producer_slot_;
+                    ranges[*resolved].local_stream = static_cast<std::uint32_t>(streams_.size());
+                }
                 streams_.push_back(*resolved);
                 return DrawStreamSlot{*resolved};
+            }
+
+            RenderResult<std::pair<std::uint32_t, std::uint32_t>>
+            resolveDrawSource(
+                GraphPassId pass, std::string_view binding, cxx::basic_type_info type
+            ) const noexcept override
+            {
+                const auto resolved = streamPass(pass);
+                if (!resolved) return cxx::unexpected(resolved.error());
+                const auto& ranges = workspace_.plan.draw_resource_ranges;
+                if (*resolved < ranges.size())
+                {
+                    const auto range = ranges[*resolved];
+                    for (std::uint32_t offset = 0; offset < range.count; ++offset)
+                    {
+                        const auto source = range.first + offset;
+                        const auto slot = workspace_.plan.draw_resource_bindings[source];
+                        const auto& declared = workspace_.build.storage_imports[slot.binding];
+                        if (declared.binding != binding) continue;
+                        const auto& draw = std::get<EffectStorageImport::DrawContract>(declared.contract);
+                        if (draw.hash != type.hash() || draw.name != type.name())
+                            return cxx::unexpected(RenderError{kStorageMismatch, {pass.index, slot.binding}});
+                        return std::pair{*resolved, source};
+                    }
+                }
+                return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index}});
             }
 
             RenderResult<RasterProgramSlot>
@@ -331,12 +363,24 @@ namespace lux::render::detail
                 const auto* raster = std::get_if<RasterWork>(&source.passes()[p].command);
                 const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
                 if (!stage) continue;
-                if (!stage->shared_textures && !stage->mesh_geometry && !stage->shared_materials) continue;
-                if (plan.raster_bindings.empty()) plan.raster_bindings.resize(executable.passes().size());
-                auto& bindings = plan.raster_bindings[slot];
-                if (stage->shared_textures) bindings.textures = definition.texture_sets[stage->shared_textures->index];
-                if (stage->mesh_geometry) bindings.meshes = definition.mesh_sets[stage->mesh_geometry->index];
-                if (stage->shared_materials) bindings.materials = definition.material_sets[stage->shared_materials->index];
+                if (stage->draw_resources.empty()) continue;
+                if (plan.draw_resource_ranges.empty()) plan.draw_resource_ranges.resize(executable.passes().size());
+                const auto first = plan.draw_resource_bindings.size();
+                if (stage->draw_resources.size() > kGraphInvalidIndex - first)
+                    return cxx::unexpected(RenderError{kRuntimeCapacity});
+                for (const auto& input : stage->draw_resources)
+                {
+                    const auto& imports = build.storage_imports;
+                    const auto it = std::ranges::lower_bound(imports, input.binding, {}, &EffectStorageImport::binding);
+                    if (it == imports.end() || it->binding != input.binding)
+                        return cxx::unexpected(RenderError{kGraphUnknownResource, {p}});
+                    plan.draw_resource_bindings.push_back({
+                        static_cast<std::uint32_t>(it - imports.begin()), input.required_capabilities
+                    });
+                }
+                plan.draw_resource_ranges[slot] = {
+                    static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(stage->draw_resources.size())
+                };
             }
             for (const auto& copy : definition.inline_copies)
             {
@@ -480,7 +524,8 @@ namespace lux::render::detail
         const EffectBuildDevice device{
             features.shader_target, session.usesDeviceAddresses(), features.indirect_first_instance,
             {dispatch[0], dispatch[1], dispatch[2]}, limits.memory.storageBufferMaxRange,
-            limits.dimensions.textureLayerMaxNum, features.texture_descriptors
+            limits.dimensions.textureLayerMaxNum, features.texture_descriptors,
+            (session.resourceCapabilities() & static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY)) != 0
         };
         const auto owner = co_await stdexec::read_env(stdexec::get_scheduler);
         auto built = co_await (

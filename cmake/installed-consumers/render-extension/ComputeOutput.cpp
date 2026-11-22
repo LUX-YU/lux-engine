@@ -575,6 +575,8 @@ namespace
         if (!clear) return clear;
         RasterPassTemplate stage;
         stage.purpose = "installed programs";
+        DrawResourceType mask{ResourceName{DrawMask::descriptor.type.name()}, lux::cxx::make_basic_type_info<DrawMask>()};
+        stage.draw_resources.push_back({"clip_height", std::move(mask), 0, true});
         stage.runtime_stream_programs = true;
         RasterWork raster;
         raster.program = std::move(stage);
@@ -842,6 +844,7 @@ int main(int argc, char** argv)
     {
         options.cached_unused_programs = 0;
         take(server->registerResource<sdk_programs::CodeStorage>());
+        take(server->registerResource<sdk_programs::DrawMask>());
         const std::array commands{
             CommandBinding::declare<sdk_programs::ReleaseCode, &sdk_programs::CodeStorage::release>()
         };
@@ -985,11 +988,21 @@ int main(int argc, char** argv)
         CHECK(Store::created.load() == 2);
         const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
         const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
+        auto broken = binding;
+        broken.resources.push_back({"clip_height", code, 0, EJobResourceUse::DRAW_RESOURCE});
+        const auto mismatched = call<RebindRenderJobEffect>(
+            *client, commands, {session, restarted, effect, target, broken}, false
+        );
+        CHECK(mismatched.error.type == kStorageMismatch);
         auto peer_binding = binding;
         peer_binding.resources.back().resource = camera_for(peer_view, 2);
         peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
             session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
         }).resource_id;
+        const auto mask = call<GetOrCreateResource>(*client, commands, {
+            session, DeviceScope{}, sdk_programs::DrawMask::descriptor.type
+        }).resource_id;
+        peer_binding.resources.push_back({"clip_height", mask, 0, EJobResourceUse::DRAW_RESOURCE});
         const auto links_before = Store::source_links.load();
         const auto peer = startRenderJob(
             *client, commands, session, scene, peer_view, peer_target, effect, peer_binding
@@ -1059,7 +1072,8 @@ int main(int argc, char** argv)
                     // Green covers the right half. Red covers both halves when drawn last for the peer.
                     const std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
                     const auto& foreground = (i == 1 || x < width / 2) ? red : green;
-                    const auto& expected = x < (i == 1 ? 2u : 1u) ? blue : foreground;
+                    const bool clipped = x < (i == 1 ? 2u : 1u) || (i == 1 && y >= height / 2);
+                    const auto& expected = clipped ? blue : foreground;
                     if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
                     {
                         std::fprintf(stderr, "Raster output %zu pixel (%u,%u) = %u %u %u %u\n", i, x, y,
@@ -1070,6 +1084,7 @@ int main(int argc, char** argv)
                 }
             }
         }
+        std::puts("DRAW RESOURCE: optional SDK mask clips half the peer image; invalid type and foreign name rejected");
         std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, two resident PSOs");
         std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, 16 frame captures, zero relinks or builds; "
                   "partial FrameData rebuilt both readers, after Stop only one, "

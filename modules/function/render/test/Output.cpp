@@ -3883,14 +3883,27 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     class Producer final
     {
     public:
-        struct Configuration final { GraphPassId pass; rdesc::EShaderTarget target; bool materials; };
-        struct LinkedData final { DrawStreamSlot stream; rdesc::EShaderTarget target; bool materials; };
+        struct Configuration final { GraphPassId pass; rdesc::EShaderTarget target; bool materials, declares_texture; };
+        struct LinkedData final
+        {
+            DrawStreamSlot stream;
+            rdesc::EShaderTarget target;
+            bool materials;
+            std::optional<DrawResourceSlot<TextureResource::DrawStorage>> textures;
+        };
 
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& context) noexcept
         {
             auto stream = context.resolveDrawStream(input.pass);
             if (!stream) return lux::cxx::unexpected(stream.error());
-            return LinkedData{*stream, input.target, input.materials};
+            LinkedData linked{*stream, input.target, input.materials, {}};
+            if (input.declares_texture)
+            {
+                const auto slot = context.resolveDrawResource<TextureResource::DrawStorage>(input.pass, "textures");
+                if (!slot) return lux::cxx::unexpected(slot.error());
+                linked.textures = *slot;
+            }
+            return linked;
         }
 
         struct Workspace final {};
@@ -3935,10 +3948,11 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                     std::span{&draw, 1}, {}, {}, std::as_bytes(std::span{&*value, 1})
                 });
             }
+            CHECK(linked.textures);
             const auto id = textures[index];
-            auto texture = frame.sampleTexture(linked.stream, id);
+            auto texture = TextureResource::sample(frame, *linked.textures, id);
             if (!texture) return lux::cxx::unexpected(texture.error());
-            auto repeated = frame.sampleTexture(linked.stream, id);
+            auto repeated = TextureResource::sample(frame, *linked.textures, id);
             if (!repeated) return lux::cxx::unexpected(repeated.error());
             const TestSharedTextureIndices indices{texture->image_index, texture->sampler_index};
             const RasterStreamDraw draw{*program, {}, {}, {0, sizeof(indices)}, DrawVertices{12}};
@@ -3989,20 +4003,22 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         stage.runtime_stream_programs = true;
         if (mode != "undeclared")
         {
-            auto source = context.importRasterTextures("textures");
-            if (!source) return lux::cxx::unexpected(source.error());
-            stage.shared_textures = *source;
+            stage.draw_resources.push_back({
+                "textures", TextureResource::drawResourceType(),
+                static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY)
+            });
         }
         stage.inputs = {
             {"uTex", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2},
             {"uTexSamplers", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2}
         };
-        const bool material = mode == "material";
+        const bool misplaced_table = mode == "misplaced-table";
+        const bool material = mode == "material" || misplaced_table;
         if (material)
         {
-            auto source = context.importRasterMaterials("materials");
-            if (!source) return lux::cxx::unexpected(source.error());
-            stage.shared_materials = *source;
+            constexpr auto records = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
+            if (misplaced_table) stage.draw_resources.front().required_capabilities |= records;
+            stage.draw_resources.push_back({"materials", MaterialResource::drawResourceType(), misplaced_table ? 0u : records});
             for (const auto name : {rdesc::kMaterialTableName, std::string_view{"surfacePages"}})
             {
                 stage.inputs.push_back({
@@ -4016,7 +4032,9 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         raster.program = std::move(stage);
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(builder.addRasterPass("sample a shared texture", std::move(raster)));
-        auto producer = take(ConfigValue::make(Producer::Configuration{drawn.pass, context.shaderTarget(), material}));
+        auto producer = take(ConfigValue::make(Producer::Configuration{
+            drawn.pass, context.shaderTarget(), material, mode != "undeclared"
+        }));
         CHECK(context.addPreparation({
             ProducerFactory::make<Producer>(), std::move(producer), {}, {}, {}, {drawn.pass}, {}, {}, {},
             RasterProgramBuilder::make<Producer, &Producer::buildPrograms>()
@@ -4181,12 +4199,12 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
 
     const auto job = create_job(use_materials ? "material" : "");
     CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageIdentity);
-    binding.resources.push_back({"textures", readback, 0, EJobResourceUse::RASTER_TEXTURES});
+    binding.resources.push_back({"textures", readback, 0, EJobResourceUse::DRAW_RESOURCE});
     CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageMismatch);
     binding.resources.back().resource = owner;
     if (use_materials)
     {
-        binding.resources.push_back({"materials", owner, 0, EJobResourceUse::RASTER_MATERIALS});
+        binding.resources.push_back({"materials", owner, 0, EJobResourceUse::DRAW_RESOURCE});
         CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageMismatch);
         binding.resources.back().resource = material_owner;
     }
@@ -4328,6 +4346,16 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     CHECK(first.slot_index != second.slot_index);
 
     stopAndRemoveJob(*client, commands, job);
+    if (use_materials)
+    {
+        selected_material_program = replacement_program;
+        selected_texture = 1;
+        const auto wrong_grant = create_job("misplaced-table");
+        call<StartRenderJob>(*client, commands, {device, wrong_grant, target, binding});
+        const auto rejected = call<RequestRenderJob>(*client, commands, {wrong_grant}, false);
+        CHECK(rejected.error.type == kStorageMismatch && server->stats().submissions == after.submissions);
+        stopAndRemoveJob(*client, commands, wrong_grant);
+    }
     call<RemoveView>(*client, commands, {scene, view});
     if (use_materials)
     {
@@ -4561,9 +4589,6 @@ static void meshRasterStream(bool d3d12)
     implementation.build = [](EffectBuildContext& context, std::string_view) noexcept -> RenderResult<void>
     {
         auto& builder = context.builder();
-        auto owner = context.importRasterMeshes("meshes");
-        if (!owner) return lux::cxx::unexpected(owner.error());
-        const auto materials = take(context.importRasterMaterials("materials"));
         const auto instances = take(context.importStorageSnapshot<MeshInstanceSnapshot>(
             "instances", {ResourceName{kInstanceResourceName.name()}}
         ));
@@ -4591,8 +4616,9 @@ static void meshRasterStream(bool d3d12)
 
         RasterPassTemplate stage;
         stage.purpose = "mesh-stream";
-        stage.mesh_geometry = *owner;
-        stage.shared_materials = materials;
+        stage.draw_resources = {
+            {"meshes", MeshResource::drawResourceType()}, {"materials", MaterialResource::drawResourceType()}
+        };
         stage.runtime_stream_programs = true;
         stage.resources = {
             {.version = generated.written.front(), .usage = EGraphUse::INDIRECT},
@@ -4695,10 +4721,16 @@ static void meshRasterStream(bool d3d12)
     JobBinding binding;
     binding.resources = {
         {"readback", readback}, {"instances", instances, 0, EJobResourceUse::CPU_SNAPSHOT},
-        {"materials", materials, 0, EJobResourceUse::RASTER_MATERIALS},
-        {"meshes", readback, 0, EJobResourceUse::RASTER_MESHES}
+        {"materials", materials, 0, EJobResourceUse::DRAW_RESOURCE},
+        {"meshes", readback, 0, EJobResourceUse::DRAW_RESOURCE}
     };
-    CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageMismatch);
+    const auto rejected = call<StartRenderJob>(*client, commands, {device, job, target, binding}, false);
+    if (rejected.error.type != kStorageMismatch)
+        std::fprintf(stderr, "Mesh binding error=%llu, column=%llu\n",
+            static_cast<unsigned long long>(rejected.error.type),
+            static_cast<unsigned long long>(rejected.error.args[0])
+        );
+    CHECK(rejected.error.type == kStorageMismatch);
     binding.resources.back().resource = owner;
     using Gate = UniformUploadProbe::EPipelineGate;
     UniformUploadProbe::pipeline_gate = Gate::ARMED;

@@ -36,6 +36,7 @@ namespace lux::render
         std::uint64_t storage_buffer_max_range;
         std::uint32_t texture_layer_limit;
         bool texture_descriptors = false;
+        bool record_table = false;
     };
 
     // Short-lived contribution context for one device/target variant. Bundles hold graph versions
@@ -88,15 +89,6 @@ namespace lux::render
             if (!declaration.output_range) declaration.output_range = GraphBufferRange{0, buffer->size};
             return bindStorageProjection(binding, owner, std::move(declaration), projection);
         }
-
-        [[nodiscard]] virtual RenderResult<GraphRasterTextureSetId>
-        importRasterTextures(std::string_view binding) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<std::optional<GraphRasterTextureSetId>>
-        importOptionalRasterTextures(std::string_view binding) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<GraphRasterMeshSetId>
-        importRasterMeshes(std::string_view binding) noexcept = 0;
-        [[nodiscard]] virtual RenderResult<GraphRasterMaterialSetId>
-        importRasterMaterials(std::string_view binding) noexcept = 0;
 
         // A preparation owned by this node supplies the initial contents of each frame's Buffer.
         [[nodiscard]] virtual RenderResult<ResourceVersion> declarePreparedBuffer(

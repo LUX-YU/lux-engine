@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <lux/engine/render/graph/DrawResource.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/extensions/graph/PassValues.hpp>
@@ -52,24 +54,6 @@ namespace lux::render
         float depth_bias_constant = 0, depth_bias_slope = 0;
     };
 
-    struct GraphRasterTextureSetId final
-    {
-        std::uint32_t index = kGraphInvalidIndex;
-        bool operator==(const GraphRasterTextureSetId&) const noexcept = default;
-    };
-
-    struct GraphRasterMeshSetId final
-    {
-        std::uint32_t index = kGraphInvalidIndex;
-        bool operator==(const GraphRasterMeshSetId&) const noexcept = default;
-    };
-
-    struct GraphRasterMaterialSetId final
-    {
-        std::uint32_t index = kGraphInvalidIndex;
-        bool operator==(const GraphRasterMaterialSetId&) const noexcept = default;
-    };
-
     // Dynamic programs fill these read-only slots at frame preparation. A slot describes a use,
     // not an allocated Graph resource or a provisional descriptor set/binding.
     struct RasterPassTemplate final
@@ -111,12 +95,15 @@ namespace lux::render
         bool section_depth_bias = false;
         // Select the complete program set before admitting a frame.
         bool runtime_stream_programs = false;
-        // Actual shared-table reads are selected from this named TextureResource.
-        std::optional<GraphRasterTextureSetId> shared_textures;
-        // Vertex and index slices can be selected from this named MeshResource.
-        std::optional<GraphRasterMeshSetId> mesh_geometry;
-        // The reflected material table reads records from this named MaterialResource.
-        std::optional<GraphRasterMaterialSetId> shared_materials;
+        std::vector<DrawResourceInput> draw_resources;
+
+        [[nodiscard]] bool requiresCapability(EStorageCapability capability) const noexcept
+        {
+            return std::ranges::any_of(draw_resources, [capability](const auto& input) noexcept
+            {
+                return (input.required_capabilities & static_cast<std::uint32_t>(capability)) != 0;
+            });
+        }
 
         [[nodiscard]] bool usesStreamProducer() const noexcept
         {

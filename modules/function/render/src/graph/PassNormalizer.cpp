@@ -370,9 +370,16 @@ namespace lux::render
             const bool no_bias_source = !dynamic.usesStreamProducer() || !has_depth;
             const bool invalid_bias = dynamic.section_depth_bias && no_bias_source;
             const bool mixed_program_sources = dynamic.runtime_stream_programs && !dynamic.stream_programs.empty();
-            const bool external_owners = dynamic.shared_textures || dynamic.mesh_geometry ||
-                dynamic.shared_materials;
-            const bool invalid_owners = external_owners && !dynamic.usesStreamProducer();
+            const bool invalid_owners = !dynamic.draw_resources.empty() && !dynamic.usesStreamProducer();
+            for (const auto& input : dynamic.draw_resources)
+            {
+                const auto occurrences = std::ranges::count(
+                    dynamic.draw_resources, input.binding, &DrawResourceInput::binding
+                );
+                const bool invalid_source = input.binding.empty() || occurrences != 1 ||
+                    !input.source.type.isValid() || !input.source.implementation.isValid();
+                if (invalid_source) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+            }
             if (dynamic.purpose.empty() || invalid_bias || mixed_program_sources || invalid_owners)
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor));
@@ -408,7 +415,8 @@ namespace lux::render
                 const bool is_invalid_stage =
                     is_shader_input ? input.stages == 0 || (input.stages & ~3u) != 0 : input.stages != 0;
                 const bool invalid_records = input.shared_records &&
-                    (!dynamic.shared_materials || input.kind != rdesc::EDescriptorType::STORAGE_BUFFER ||
+                    (!dynamic.requiresCapability(EStorageCapability::STORAGE_BUFFER_ARRAY) ||
+                     input.kind != rdesc::EDescriptorType::STORAGE_BUFFER ||
                      input.usage != EGraphUse::STORAGE_READ);
                 const bool is_invalid_kind = (!is_shader_input && input.kind.has_value()) || invalid_records;
                 const bool is_invalid_comparison = input.comparison_sampler &&

@@ -345,3 +345,11 @@ namespace lux::render
         return *layout;
     }
 } // namespace lux::render
+
+namespace lux::render
+{
+    DrawResourceType MeshResource::drawResourceType() noexcept
+    {
+        return {ResourceName{kMeshResourceName.name()}, cxx::make_basic_type_info<detail::IndexedTriangleMeshStorage>()};
+    }
+}

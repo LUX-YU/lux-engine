@@ -4,6 +4,7 @@
 #include <lux/engine/render/resources/material/Binding.hpp>
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/resources/BuiltinResources.hpp>
+#include <lux/engine/render/graph/DrawResource.hpp>
 
 namespace lux::render
 {
@@ -28,5 +29,7 @@ namespace lux::render
         };
 
         using Ops = void;
+
+        [[nodiscard]] static LUX_RENDER_PUBLIC DrawResourceType drawResourceType() noexcept;
     };
 } // namespace lux::render

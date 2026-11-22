@@ -54,9 +54,7 @@ namespace lux::render
     {
         GPU_BINDING,
         CPU_SNAPSHOT,
-        RASTER_TEXTURES,
-        RASTER_MESHES,
-        RASTER_MATERIALS
+        DRAW_RESOURCE
     };
 
     struct JobResourceInput final

@@ -1,5 +1,6 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/execution/FramePreparation.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
@@ -11,6 +12,7 @@
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 #include <algorithm>
 #include <bit>
+#include <Extensions/NRIHelper.h>
 
 namespace lux::render::detail
 {
@@ -18,7 +20,7 @@ namespace lux::render::detail
     {
         OwnedRasterStream::TextureRead textureRead(const SampledTexture2DStorage::SampledImage& image) noexcept
         {
-            return {&image.image(), image.description().mipNum, image.description().layerNum};
+            return {&image.image(), {1, 0, image.description().mipNum, 0, image.description().layerNum}};
         }
 
     }
@@ -66,27 +68,15 @@ namespace lux::render::detail
             return RasterProgramSlot{slot.index, selection_index, selected->revision};
         }
 
-        RenderResult<TextureGpuRef> sampleTexture(DrawStreamSlot slot, TextureId id) noexcept override
-        {
-            const auto use = std::ranges::find(linked_.raster_streams, slot.index);
-            const auto& owners = instance_.raster_owners_;
-            const bool missing_owner = slot.index >= owners.size() || !owners[slot.index].textures;
-            if (use == linked_.raster_streams.end() || missing_owner)
-                return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            const auto* record = owners[slot.index].textures->find(id);
-            if (!record) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
-            producer_.streams[use - linked_.raster_streams.begin()].textures.push_back(textureRead(*record));
-            return record->gpuReference();
-        }
-
         RenderResult<RasterMeshGeometry> selectMesh(DrawStreamSlot slot, MeshId id) noexcept override
         {
             const auto use = std::ranges::find(linked_.raster_streams, slot.index);
-            const auto& owners = instance_.raster_owners_;
-            const bool missing_owner = slot.index >= owners.size() || !owners[slot.index].meshes;
-            if (use == linked_.raster_streams.end() || missing_owner)
+            if (use == linked_.raster_streams.end())
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
-            auto views = owners[slot.index].meshes->bufferViews(id);
+            const auto owner = extension_detail::ResourceIdentity::parent(id);
+            const auto storage = drawStorage<IndexedTriangleMeshStorage>(slot, owner, EStorageCapability::NONE);
+            if (!storage) return cxx::unexpected(storage.error());
+            auto views = (*storage)->bufferViews(id);
             if (!views) return cxx::unexpected(views.error());
 
             auto& stream = producer_.streams[use - linked_.raster_streams.begin()];
@@ -115,9 +105,7 @@ namespace lux::render::detail
         selectMaterial(DrawStreamSlot slot, RasterProgramSlot program, MaterialId id) noexcept override
         {
             const auto use = std::ranges::find(linked_.raster_streams, slot.index);
-            const auto& owners = instance_.raster_owners_;
-            const bool missing_owner = slot.index >= owners.size() || !owners[slot.index].materials;
-            if (use == linked_.raster_streams.end() || missing_owner)
+            if (use == linked_.raster_streams.end())
                 return cxx::unexpected(RenderError{kGraphUnknownPass, {slot.index}});
             const auto& compiled = *instance_.programs_->rasterStream(slot.index);
             const auto* dynamic = compiled.runtime ? instance_.dynamic_raster_programs_[slot.index].get() : nullptr;
@@ -129,8 +117,10 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kFrameContract, {slot.index, program.index}});
 
             const auto& selected = programs[program.index];
-            const auto& storage = owners[slot.index];
-            auto record = storage.materials->selectRasterRecord(id, frame_slot_, selected.record_layout);
+            const auto owner = extension_detail::ResourceIdentity::parent(id);
+            const auto storage = drawStorage<RasterMaterialStorage>(slot, owner, EStorageCapability::STORAGE_BUFFER_ARRAY);
+            if (!storage) return cxx::unexpected(storage.error());
+            auto record = (*storage)->selectRasterRecord(id, frame_slot_, selected.record_layout);
             if (!record) return cxx::unexpected(record.error());
             auto& stream = producer_.streams[use - linked_.raster_streams.begin()];
             const auto first = stream.material_images.size();
@@ -141,11 +131,15 @@ namespace lux::render::detail
                 for (auto texture : record->textures)
                 {
                     if (texture.isNull()) continue;
-                    const auto* image = storage.textures ? storage.textures->find(texture) : nullptr;
+                    const auto texture_owner = extension_detail::ResourceIdentity::parent(texture);
+                    const auto textures = drawStorage<SampledTexture2DStorage>(
+                        slot, texture_owner, EStorageCapability::SAMPLED_IMAGE_ARRAY
+                    );
+                    const auto* image = textures ? (*textures)->find(texture) : nullptr;
                     if (!image)
                     {
                         stream.material_images.resize(first);
-                        return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
+                        return cxx::unexpected(textures ? RenderError{kStorageIdentity, {slot.index}} : textures.error());
                     }
                     stream.material_images.push_back(textureRead(*image));
                 }
@@ -159,6 +153,72 @@ namespace lux::render::detail
         }
 
     private:
+        RenderResult<const PreparationPlan::DrawSourceRange*>
+        drawSourceRange(std::uint32_t pass, std::uint32_t source) const noexcept
+        {
+            const auto& ranges = instance_.preparation_plan_->draw_resource_ranges;
+            if (pass >= ranges.size() || ranges[pass].producer != producer_slot_)
+                return cxx::unexpected(RenderError{kGraphUnknownPass, {pass}});
+            const auto& range = ranges[pass];
+            if (source < range.first || source - range.first >= range.count)
+                return cxx::unexpected(RenderError{kGraphUnknownResource, {pass, source}});
+            return &range;
+        }
+
+        RenderResult<void> appendSampledImage(
+            std::uint32_t pass, std::uint32_t source, const nri::Texture& image, GraphImageRange range
+        ) noexcept override
+        {
+            auto grant = drawSourceRange(pass, source);
+            if (!grant) return cxx::unexpected(grant.error());
+            const auto& bound = instance_.draw_resources_[source];
+            constexpr auto capability = static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY);
+            if (!bound.storage || !(bound.capabilities & capability))
+                return cxx::unexpected(RenderError{kStorageMismatch, {pass, source}});
+            const auto& desc = instance_.session_->nriCore().GetTextureDesc(image);
+            const bool valid_mips = validInterval(range.first_mip, range.mip_count, desc.mipNum);
+            const bool valid_layers = validInterval(range.first_layer, range.layer_count, desc.layerNum);
+            const bool sampled = (desc.usage & nri::TextureUsageBits::SHADER_RESOURCE) != 0;
+            const bool valid_image = sampled && desc.type == nri::TextureType::TEXTURE_2D && desc.sampleNum == 1 &&
+                !nri::nriGetFormatProps(desc.format)->isDepth;
+            const bool valid_range = valid_image && range.aspects == 1 && valid_mips && valid_layers;
+            if (!valid_range) return cxx::unexpected(RenderError{kGraphInvalidRange, {pass, source}});
+            producer_.streams[(*grant)->local_stream].textures.push_back({&image, range});
+            return {};
+        }
+
+        RenderResult<const void*>
+        readDrawSource(std::uint32_t pass, std::uint32_t source, cxx::basic_type_info type) const noexcept override
+        {
+            if (auto grant = drawSourceRange(pass, source); !grant) return cxx::unexpected(grant.error());
+            const auto& bound = instance_.draw_resources_[source];
+            if (bound.storage && bound.implementation != type)
+                return cxx::unexpected(RenderError{kStorageMismatch, {pass, source}});
+            return bound.storage;
+        }
+
+        template <class Storage>
+        RenderResult<const Storage*>
+        drawStorage(DrawStreamSlot stream, ResourceInstanceId id, EStorageCapability capability) const noexcept
+        {
+            const auto& ranges = instance_.preparation_plan_->draw_resource_ranges;
+            if (stream.index >= ranges.size() || id.isNull())
+                return cxx::unexpected(RenderError{kStorageIdentity, {stream.index}});
+            const auto range = ranges[stream.index];
+            const auto sources = std::span{instance_.draw_resources_}.subspan(range.first, range.count);
+            const auto required = static_cast<std::uint32_t>(capability);
+            const auto type = cxx::make_basic_type_info<Storage>();
+            RenderError error{kStorageIdentity, {stream.index}};
+            for (const auto& source : sources)
+            {
+                if (source.id != id) continue;
+                error.type = kStorageMismatch;
+                if (source.implementation == type && (source.capabilities & required) == required)
+                    return static_cast<const Storage*>(source.storage);
+            }
+            return cxx::unexpected(error);
+        }
+
         RenderResult<extension_detail::SelectedStorageSnapshot>
         readStorageValue(std::uint32_t slot, cxx::basic_type_info type) const noexcept override
         {
@@ -285,7 +345,6 @@ namespace lux::render::detail
         if (plan.producers.empty() && plan.constant_copies.empty()) return {};
         if (preparation_plan_) return cxx::unexpected(RenderError{kDeviceArgument});
         const auto& sources = inputs.snapshots;
-        auto& raster_owners = inputs.raster_owners;
         if (inputs.effect_values.size() != plan.effect_inputs.size())
             return cxx::unexpected(RenderError{kFrameContract});
         for (std::size_t i = 0; i < plan.effect_inputs.size(); ++i)
@@ -295,7 +354,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kFrameContract, {slot}});
         }
         if (sources.size() != plan.snapshots.size()) return cxx::unexpected(RenderError{kStorageContract});
-        if (raster_owners.size() != plan.raster_bindings.size())
+        if (inputs.draw_resources.size() != plan.draw_resource_bindings.size())
             return cxx::unexpected(RenderError{kStorageContract});
         std::vector<StorageSnapshot> snapshots;
         snapshots.reserve(sources.size());
@@ -397,7 +456,7 @@ namespace lux::render::detail
         }
         storage_snapshots_ = std::move(snapshots);
         snapshot_sources_ = std::move(source_slots);
-        raster_owners_ = std::move(raster_owners);
+        draw_resources_ = std::move(inputs.draw_resources);
         effect_values_ = std::move(inputs.effect_values);
         snapshot_registry_ = &registry;
         preparation_plan_ = &plan;
@@ -461,11 +520,9 @@ namespace lux::render::detail
         {
             auto& stream = data.streams.emplace_back(pass);
             stream.ready = bool(dynamic_raster_programs_[pass]);
-            if (raster_owners_.empty()) continue;
-            const auto& owners = raster_owners_[pass];
-            if (owners.textures) stream.sources[0] = owners.textures->id();
-            if (owners.meshes) stream.sources[1] = owners.meshes->id();
-            if (owners.materials) stream.sources[2] = owners.materials->id();
+            if (preparation_plan_->draw_resource_ranges.empty()) continue;
+            const auto range = preparation_plan_->draw_resource_ranges[pass];
+            stream.sources = std::span{draw_resources_}.subspan(range.first, range.count);
         }
         data.snapshots.reserve(linked.program_snapshots.size());
         for (auto slot : linked.program_snapshots)

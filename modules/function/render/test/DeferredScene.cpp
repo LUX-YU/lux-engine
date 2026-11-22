@@ -1060,9 +1060,9 @@ int main(int argc, char** argv)
             {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::transforms_binding}, transform_storage, static_cast<std::uint32_t>(transforms)},
             {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties)},
-            {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::RASTER_MESHES},
-            {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::RASTER_MATERIALS},
-            {std::string{GBuffer::textures_binding}, texture_storage, 0, EJobResourceUse::RASTER_TEXTURES}
+            {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{GBuffer::textures_binding}, texture_storage, 0, EJobResourceUse::DRAW_RESOURCE}
         };
         if (!paged)
         {
@@ -1197,9 +1197,9 @@ int main(int argc, char** argv)
             {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
             {std::string{MeshVisibility::transforms_binding}, transform_storage, static_cast<std::uint32_t>(transforms)},
             {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties)},
-            {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::RASTER_MESHES},
-            {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::RASTER_MATERIALS},
-            {std::string{GBuffer::textures_binding}, textures, 0, EJobResourceUse::RASTER_TEXTURES}
+            {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{GBuffer::textures_binding}, textures, 0, EJobResourceUse::DRAW_RESOURCE}
         };
         if (!paged)
         {

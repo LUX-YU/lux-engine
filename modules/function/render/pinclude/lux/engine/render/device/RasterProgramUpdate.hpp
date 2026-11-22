@@ -7,13 +7,15 @@
 
 namespace lux::render::detail
 {
+    struct BoundDrawResource;
+
     // The build call borrows only its granted inputs. The returned native recipe owns its bytes.
     struct RasterProgramBuildData final
     {
         struct Stream final
         {
             std::uint32_t pass;
-            std::array<ResourceInstanceId, 3> sources{};
+            std::span<const BoundDrawResource> sources{};
             std::optional<std::vector<RuntimeRasterProgram>> programs{};
             std::vector<rdesc::ShaderProgramArtifact> shaders;
             bool ready = false;

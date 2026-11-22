@@ -692,8 +692,8 @@ int main(int argc, char** argv)
         {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
         {std::string{MeshVisibility::transforms_binding}, transform_storage, static_cast<std::uint32_t>(transform_projection)},
         {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(instance_projection)},
-        {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::RASTER_MESHES},
-        {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::RASTER_MATERIALS}
+        {std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::DRAW_RESOURCE},
+        {std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::DRAW_RESOURCE}
     };
     if (!device.buffer_device_address)
     {

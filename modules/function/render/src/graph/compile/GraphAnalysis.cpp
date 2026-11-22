@@ -780,25 +780,6 @@ namespace lux::render::runtime_detail
         const RenderGraph& source, PreparationDefinition& definition, rdesc::EShaderTarget target
     ) noexcept
     {
-        for (const auto& pass : source.passes())
-        {
-            const auto* raster = std::get_if<RasterWork>(&pass.command);
-            const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
-            if (!stage) continue;
-            const bool invalid_textures = stage->shared_textures &&
-                stage->shared_textures->index >= definition.texture_sets.size();
-            const bool invalid_meshes = stage->mesh_geometry && stage->mesh_geometry->index >= definition.mesh_sets.size();
-            const bool invalid_materials = stage->shared_materials &&
-                stage->shared_materials->index >= definition.material_sets.size();
-            if (invalid_materials)
-                return cxx::unexpected(RenderError{kGraphUnknownResource,
-                    {kGraphInvalidIndex, stage->shared_materials->index}});
-            if (invalid_textures || invalid_meshes)
-            {
-                const auto index = invalid_textures ? stage->shared_textures->index : stage->mesh_geometry->index;
-                return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, index}});
-            }
-        }
         const auto count = static_cast<std::uint32_t>(definition.producers.size());
         if (!count && !definition.buffers.empty())
             return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex}});

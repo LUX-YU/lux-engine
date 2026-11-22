@@ -107,16 +107,14 @@ namespace lux::render
             if (wrong_owner) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
             if (input.publication && input.use != EJobResourceUse::GPU_BINDING)
                 return cxx::unexpected(RenderError{kStorageContract, {i}});
-            if (const auto* raster = std::get_if<EffectStorageImport::ERasterOwner>(&declaration.contract))
+            if (const auto* draw = std::get_if<EffectStorageImport::DrawContract>(&declaration.contract))
             {
-                using Owner = EffectStorageImport::ERasterOwner;
-                const auto use = *raster == Owner::TEXTURES ? EJobResourceUse::RASTER_TEXTURES :
-                    *raster == Owner::MESHES ? EJobResourceUse::RASTER_MESHES : EJobResourceUse::RASTER_MATERIALS;
-                if (input.use != use) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-                const auto& enabled = entry.session().enabledFeatures();
-                const bool unsupported = (use == EJobResourceUse::RASTER_TEXTURES && !enabled.texture_descriptors) ||
-                    (use == EJobResourceUse::RASTER_MATERIALS && !enabled.buffer_descriptors);
-                if (unsupported) return cxx::unexpected(RenderError{kDeviceUnsupported, {i}});
+                const auto type = factory->storage()->implementation_type;
+                const bool wrong_type = type.hash() != draw->hash || type.name() != draw->name;
+                if (input.use != EJobResourceUse::DRAW_RESOURCE || wrong_type)
+                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+                if ((draw->required_capabilities & ~entry.session().resourceCapabilities()) != 0)
+                    return cxx::unexpected(RenderError{kDeviceUnsupported, {i}});
             }
             else if (auto* type = std::get_if<EffectStorageImport::SnapshotContract>(&declaration.contract))
             {

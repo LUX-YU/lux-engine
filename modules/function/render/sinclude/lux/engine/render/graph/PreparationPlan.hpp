@@ -8,6 +8,14 @@
 
 namespace lux::render::detail
 {
+    struct BoundDrawResource final
+    {
+        ResourceInstanceId id;
+        const void* storage = nullptr;
+        cxx::basic_type_info implementation;
+        std::uint32_t capabilities = 0;
+    };
+
     struct InputSlot final
     {
         std::uint32_t index;
@@ -54,12 +62,6 @@ namespace lux::render::detail
 
     struct PreparationPlan final
     {
-        struct RasterBindings final
-        {
-            std::uint32_t textures = kGraphInvalidIndex, meshes = kGraphInvalidIndex;
-            std::uint32_t materials = kGraphInvalidIndex;
-        };
-
         struct Buffer final
         {
             std::uint32_t resource;
@@ -95,7 +97,20 @@ namespace lux::render::detail
         std::vector<std::size_t> cpu_data_bytes;
         std::vector<Buffer> buffers;
         std::vector<Snapshot> snapshots;
-        std::vector<RasterBindings> raster_bindings; // Final pass slot to canonical Job bindings.
+        struct DrawSourceRange final
+        {
+            std::uint32_t first = 0, count = 0;
+            std::uint32_t producer = kGraphInvalidIndex, local_stream = kGraphInvalidIndex;
+        };
+
+        std::vector<DrawSourceRange> draw_resource_ranges;
+        struct DrawBinding final
+        {
+            std::uint32_t binding;
+            std::uint32_t capabilities;
+        };
+
+        std::vector<DrawBinding> draw_resource_bindings;
         std::vector<LinkedPreparationProducer> producers;
     };
 } // namespace lux::render::detail

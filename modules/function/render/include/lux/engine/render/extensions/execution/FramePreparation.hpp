@@ -5,16 +5,18 @@
 #include <lux/engine/render/extensions/execution/PreparedCpuValue.hpp>
 #include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
+#include <lux/engine/render/graph/DrawResource.hpp>
 #include <lux/engine/render/extensions/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/resources/material/Data.hpp>
 #include <lux/engine/render/resources/mesh/Data.hpp>
-#include <lux/engine/render/resources/texture/Data.hpp>
 #include <array>
 #include <bit>
 #include <cstring>
 #include <functional>
 #include <span>
+
+namespace nri { struct Texture; }
 
 namespace lux::render
 {
@@ -72,13 +74,27 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<void> setRasterStream(DrawStreamSlot, const RasterStreamData&) noexcept = 0;
         [[nodiscard]] virtual RenderResult<RasterProgramSlot>
         rasterProgram(DrawStreamSlot, std::uint32_t selection_index) const noexcept = 0;
-        // Select a whole sampled image through the stream's qualified shared table.
-        [[nodiscard]] virtual RenderResult<TextureGpuRef> sampleTexture(DrawStreamSlot, TextureId) noexcept = 0;
         // Geometry slices are valid only for this stream and the current prepare() call.
         [[nodiscard]] virtual RenderResult<RasterMeshGeometry> selectMesh(DrawStreamSlot, MeshId) noexcept = 0;
         // Select a record for the program that will read its page and textures in this preparation.
         [[nodiscard]] virtual RenderResult<rdesc::MaterialGpuReference>
         selectMaterial(DrawStreamSlot, RasterProgramSlot, MaterialId) noexcept = 0;
+
+        // Borrow the installed Resource only during this preparation. An absent optional source returns null.
+        template <class Storage>
+        [[nodiscard]] RenderResult<const Storage*> readDrawResource(DrawResourceSlot<Storage> slot) const noexcept
+        {
+            const auto selected = readDrawSource(slot.pass_, slot.source_, cxx::make_basic_type_info<Storage>());
+            if (!selected) return cxx::unexpected(selected.error());
+            return static_cast<const Storage*>(*selected);
+        }
+
+        template <class Storage>
+        [[nodiscard]] RenderResult<void>
+        useSampledImage(DrawResourceSlot<Storage> source, const nri::Texture& image, GraphImageRange range) noexcept
+        {
+            return appendSampledImage(source.pass_, source.source_, image, range);
+        }
 
         // The Job owns this selection. The reference is valid only during prepare().
         template <class T>
@@ -135,6 +151,11 @@ namespace lux::render
         };
 
     private:
+        [[nodiscard]] virtual RenderResult<void>
+        appendSampledImage(std::uint32_t, std::uint32_t, const nri::Texture&, GraphImageRange) noexcept = 0;
+        [[nodiscard]] virtual RenderResult<const void*>
+        readDrawSource(std::uint32_t pass, std::uint32_t source, cxx::basic_type_info) const noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<extension_detail::SelectedStorageSnapshot>
         readStorageValue(std::uint32_t, cxx::basic_type_info) const noexcept = 0;
         [[nodiscard]] virtual RenderResult<SelectedBytes> readBytes(std::uint32_t, std::size_t) const noexcept = 0;

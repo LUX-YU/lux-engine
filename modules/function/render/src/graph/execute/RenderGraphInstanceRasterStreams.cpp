@@ -643,8 +643,7 @@ namespace lux::render::detail
 
             const auto readImage = [&](OwnedRasterStream::TextureRead texture, std::uint32_t stages) noexcept
             {
-                const GraphImageRange range{1, 0, texture.mips, 0, texture.layers};
-                candidate.reads.push_back({texture.image, range, EGraphUse::SAMPLED, stages});
+                candidate.reads.push_back({texture.image, texture.range, EGraphUse::SAMPLED, stages});
             };
             for (const auto& material : input.materials)
             {
@@ -668,8 +667,14 @@ namespace lux::render::detail
             {
                 if (a.physical != b.physical) return std::less<const void*>{}(a.physical, b.physical);
                 if (a.usage != b.usage) return a.usage < b.usage;
-                // Shared sampled reads always span the whole image.
-                if (a.usage == EGraphUse::SAMPLED) return false;
+                if (a.usage == EGraphUse::SAMPLED)
+                {
+                    const auto key = [](const GraphImageRange& r) noexcept
+                    {
+                        return std::tuple{r.aspects, r.first_mip, r.mip_count, r.first_layer, r.layer_count};
+                    };
+                    return key(std::get<GraphImageRange>(a.range)) < key(std::get<GraphImageRange>(b.range));
+                }
                 const auto& x = std::get<GraphBufferRange>(a.range);
                 const auto& y = std::get<GraphBufferRange>(b.range);
                 return std::tie(x.offset, x.size) < std::tie(y.offset, y.size);

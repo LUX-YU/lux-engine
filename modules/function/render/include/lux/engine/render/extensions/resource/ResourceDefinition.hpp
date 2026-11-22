@@ -29,14 +29,6 @@ namespace lux::render
         return types;
     }
 
-    enum class EStorageCapability : std::uint32_t
-    {
-        NONE = 0,
-        SAMPLED_IMAGE_ARRAY = 1,
-        BLOCK_COMPRESSION_BC = 2,
-        STORAGE_BUFFER_ARRAY = 4
-    };
-
     struct ResourceRequirement final
     {
         ResourceName type;

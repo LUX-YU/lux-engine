@@ -20,6 +20,9 @@
 #include <lux/engine/render/features/shadow/ShadowProjection.hpp>
 #include <lux/engine/render/resources/instance/Binding.hpp>
 #include <lux/engine/render/resources/instance/Resource.hpp>
+#include <lux/engine/render/resources/material/Resource.hpp>
+#include <lux/engine/render/resources/mesh/Resource.hpp>
+#include <lux/engine/render/resources/texture/Resource.hpp>
 #include <lux/engine/render/resources/lighting/Resource.hpp>
 #include <lux/engine/render/resources/view/Resource.hpp>
 #include <lux/engine/render/resources/transform/Binding.hpp>
@@ -460,20 +463,24 @@ namespace lux::render
                         target.format == rdesc::ETextureFormat::RGBA8_SRGB;
                     if (!supported) return cxx::unexpected(RenderError{kDeviceUnsupported, {context.nodeId().value}});
                 }
-                const auto mesh = context.importRasterMeshes(GBuffer::geometry_binding);
-                if (!mesh) return cxx::unexpected(mesh.error());
-                const auto materials = context.importRasterMaterials(GBuffer::materials_binding);
-                if (!materials) return cxx::unexpected(materials.error());
-                const auto textures = context.importOptionalRasterTextures(GBuffer::textures_binding);
-                if (!textures) return cxx::unexpected(textures.error());
                 RasterPassTemplate stage;
                 stage.purpose = "indexed-mesh";
-                stage.inputs = detail::meshRasterInputs();
+                stage.inputs = detail::meshRasterInputs(device.record_table);
                 stage.runtime_stream_programs = true;
                 stage.section_depth_bias = Effect == EMeshEffect::SHADOW;
-                stage.mesh_geometry = *mesh;
-                stage.shared_materials = *materials;
-                stage.shared_textures = *textures;
+                const auto record_table = device.record_table ?
+                    static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY) : 0u;
+                stage.draw_resources = {
+                    {std::string{GBuffer::geometry_binding}, MeshResource::drawResourceType()},
+                    {std::string{GBuffer::materials_binding}, MaterialResource::drawResourceType(), record_table}
+                };
+                if (device.texture_descriptors)
+                {
+                    stage.draw_resources.push_back({
+                        std::string{GBuffer::textures_binding}, TextureResource::drawResourceType(),
+                        static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY), true
+                    });
+                }
                 const auto add_read = [&](ResourceVersion version, EGraphUse use)
                 {
                     stage.resources.push_back({.version = version, .usage = use});

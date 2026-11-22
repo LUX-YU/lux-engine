@@ -185,7 +185,7 @@ namespace lux::render::detail
         return layout;
     }
 
-    std::vector<RasterPassTemplate::Input> meshRasterInputs()
+    std::vector<RasterPassTemplate::Input> meshRasterInputs(bool record_table)
     {
         std::vector<RasterPassTemplate::Input> inputs;
         inputs.reserve(kMeshRasterInputNames.size() + 5);
@@ -193,10 +193,13 @@ namespace lux::render::detail
         {
             inputs.push_back({std::string{name}, rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 1});
         }
-        inputs.push_back({
-            .name = std::string{rdesc::kMaterialTableName}, .kind = rdesc::EDescriptorType::STORAGE_BUFFER,
-            .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
-        });
+        if (record_table)
+        {
+            inputs.push_back({
+                .name = std::string{rdesc::kMaterialTableName}, .kind = rdesc::EDescriptorType::STORAGE_BUFFER,
+                .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
+            });
+        }
         inputs.push_back({"uTex", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2});
         inputs.push_back({"uTexSamplers", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2});
         inputs.push_back({"vertices", {}, EGraphUse::VERTEX});

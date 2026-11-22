@@ -50,5 +50,5 @@ namespace lux::render::detail
     ) noexcept;
 
     // Shared geometric ports describe data, not material groups or pipeline counts.
-    [[nodiscard]] std::vector<RasterPassTemplate::Input> meshRasterInputs();
+    [[nodiscard]] std::vector<RasterPassTemplate::Input> meshRasterInputs(bool record_table);
 } // namespace lux::render::detail

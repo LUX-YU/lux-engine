@@ -981,3 +981,11 @@ namespace lux::render
         return (*storage)->programInput(program);
     }
 } // namespace lux::render
+
+namespace lux::render
+{
+    DrawResourceType MaterialResource::drawResourceType() noexcept
+    {
+        return {ResourceName{kMaterialResourceName.name()}, cxx::make_basic_type_info<detail::RasterMaterialStorage>()};
+    }
+}

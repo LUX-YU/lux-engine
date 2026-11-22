@@ -1,4 +1,5 @@
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
+#include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/device/Error.hpp>
@@ -15,7 +16,7 @@ namespace lux::render::detail
     bool RasterProgramBuildData::canRead(const Stream& stream, ResourceInstanceId id) const noexcept
     {
         if (id.isNull()) return false;
-        if (std::ranges::find(stream.sources, id) != stream.sources.end()) return true;
+        if (std::ranges::find(stream.sources, id, &BoundDrawResource::id) != stream.sources.end()) return true;
         return std::ranges::find(snapshots, id, &Snapshot::owner) != snapshots.end();
     }
 

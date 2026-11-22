@@ -295,17 +295,23 @@ Job lifetime. Device compilation owns its shader bytes and binding, vertex and a
 Use `FramePreparation::rasterProgram()` to obtain a slot for a selection index during the current call.
 Slots carry the published program-set revision, so a producer must resolve them again after replacement.
 
-For shared sampled 2D textures, resolve a named `TextureResource` with
-`EffectBuildContext::importRasterTextures()` and assign its graph ID to `RasterPassTemplate::shared_textures`.
-Provide that owner through the Job's named bindings with `EJobResourceUse::RASTER_TEXTURES`. Runtime programs
-can use the device's shared sampled-image and sampler arrays. Call `FramePreparation::sampleTexture()` for
+Declare the Resource owners a draw stream reads in `RasterPassTemplate::draw_resources`. Each entry has a
+binding name, Resource type, concrete storage type, required device capabilities and optionality. Start and Rebind
+qualify actual owners supplied with `EJobResourceUse::DRAW_RESOURCE`. To read an installed custom storage, link
+`resolveDrawResource<Storage>(pass, name)` once and call `frame.readDrawResource(slot)` during preparation.
+The result borrows the storage during this synchronous call. An omitted optional binding returns a null pointer.
+Draw preparation copies values used by later recording. Each stream can access only its own declared sources.
+
+For shared sampled 2D textures, declare `TextureResource::drawResourceType()` and require `SAMPLED_IMAGE_ARRAY`. Runtime programs
+can use the device's shared sampled-image and sampler arrays. Link the slot for `TextureResource::DrawStorage`
+and call `TextureResource::sample()` for
 each texture the program can access during that preparation and use the returned image and sampler indices.
 The renderer validates the texture identity against the bound owner and tracks the selected images through
 native submission.
 
-For reflected material pages, declare a named `MaterialResource` with
-`EffectBuildContext::importRasterMaterials()`, set `RasterPassTemplate::shared_materials` and bind the owner
-with `EJobResourceUse::RASTER_MATERIALS`. Declare the unbounded read-only structured buffer argument with
+For reflected material pages, declare `MaterialResource::drawResourceType()` and require `STORAGE_BUFFER_ARRAY`.
+A stream that reads only the material program declares the owner with zero required capabilities.
+Declare the unbounded read-only structured buffer argument with
 `RasterPassTemplate::Input::shared_records = true` and give it the name reflected by the shader. The built-in
 material adapter uses `uMats`. Declare the shared sampled texture and sampler arguments the programs use. The renderer prepares the writable
 frame's material replicas before the producer runs. Call `FramePreparation::selectMaterial()` with the
@@ -313,9 +319,8 @@ program slot for each material the program can read. Use the returned page and r
 building GPU inputs. The renderer checks the reflected record layout and records the selected page
 bytes and material texture reads. Textured programs require the corresponding named texture owner.
 
-For uploaded indexed geometry, declare a named `MeshResource` with `EffectBuildContext::importRasterMeshes()`
-and attach the result to `RasterPassTemplate::mesh_geometry`. Bind the owner with
-`EJobResourceUse::RASTER_MESHES`. Call `FramePreparation::selectMesh()` during each preparation and use the
+For uploaded indexed geometry, declare `MeshResource::drawResourceType()` on the stream.
+Call `FramePreparation::selectMesh()` during each preparation and use the
 returned vertex slice, index slice and index type. Mesh slices are scoped to the current stream and
 preparation. When the source geometry and shader use different attribute locations, supply
 `geometry_locations` in `graphics.vertex_attributes` order on the stream program. An empty list selects

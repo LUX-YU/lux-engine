@@ -12,6 +12,15 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<DrawStreamSlot>
         resolveDrawStream(GraphPassId) noexcept = 0;
 
+        template <class Storage>
+        [[nodiscard]] RenderResult<DrawResourceSlot<Storage>>
+        resolveDrawResource(GraphPassId pass, std::string_view binding) const noexcept
+        {
+            const auto resolved = resolveDrawSource(pass, binding, cxx::make_basic_type_info<Storage>());
+            if (!resolved) return cxx::unexpected(resolved.error());
+            return DrawResourceSlot<Storage>{resolved->first, resolved->second};
+        }
+
         [[nodiscard]] virtual RenderResult<RasterProgramSlot>
 
         resolveRasterProgram(GraphPassId, std::uint32_t source_program) const noexcept = 0;
@@ -77,6 +86,9 @@ namespace lux::render
         }
 
     private:
+        [[nodiscard]] virtual RenderResult<std::pair<std::uint32_t, std::uint32_t>>
+        resolveDrawSource(GraphPassId, std::string_view, cxx::basic_type_info) const noexcept = 0;
+
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimEffectInput(cxx::basic_type_info, std::size_t) noexcept = 0;
 

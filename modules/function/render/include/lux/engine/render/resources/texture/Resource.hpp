@@ -4,9 +4,13 @@
 #include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/resources/texture/Binding.hpp>
 #include <lux/engine/render/resources/BuiltinResources.hpp>
+#include <lux/engine/render/graph/DrawResource.hpp>
 
 namespace lux::render
 {
+    class FramePreparation;
+    namespace detail { class SampledTexture2DStorage; }
+
     class TextureResource final
     {
     public:
@@ -24,5 +28,10 @@ namespace lux::render
         };
 
         using Ops = void;
+
+        using DrawStorage = detail::SampledTexture2DStorage;
+        [[nodiscard]] static LUX_RENDER_PUBLIC DrawResourceType drawResourceType() noexcept;
+        [[nodiscard]] static LUX_RENDER_PUBLIC RenderResult<TextureGpuRef>
+        sample(FramePreparation&, DrawResourceSlot<DrawStorage>, TextureId) noexcept;
     };
 } // namespace lux::render

@@ -3,9 +3,6 @@
 #include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
-#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
-#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 
 namespace lux::render::runtime_detail
 {
@@ -142,32 +139,22 @@ namespace lux::render
             const auto* ops = factory->storage()->bindings();
             sources.push_back({id, registry.resourceInstance(id), ops->cpu_snapshot});
         }
-        const auto bindOwner = [&]<class Storage>(std::uint32_t slot, Storage*& owner) noexcept
-            -> RenderResult<void>
+        inputs.draw_resources.reserve(preparation.draw_resource_bindings.size());
+        for (const auto& input : preparation.draw_resource_bindings)
         {
-            if (slot == kGraphInvalidIndex) return {};
-            if (columns[slot] == kGraphInvalidIndex) return {}; // Absent optional raster owner.
-            const auto id = binding.resources[columns[slot]].resource;
+            auto& source = inputs.draw_resources.emplace_back();
+            const auto column = columns[input.binding];
+            if (column == kGraphInvalidIndex) continue;
+            const auto id = binding.resources[column].resource;
             if (auto retained = retainExecutionResource(candidate, id); !retained) return retained;
-            auto storage = registry.borrow<Storage>(id);
-            if (!storage) return cxx::unexpected(storage.error());
-            owner = *storage;
-            return {};
-        };
-        auto& raster_owners = inputs.raster_owners;
-        raster_owners.reserve(preparation.raster_bindings.size());
-        for (const auto& bindings : preparation.raster_bindings)
-        {
-            auto& owners = raster_owners.emplace_back();
-            if (auto ready = bindOwner(bindings.textures, owners.textures); !ready) return ready;
-            if (auto ready = bindOwner(bindings.meshes, owners.meshes); !ready) return ready;
-            if (auto ready = bindOwner(bindings.materials, owners.materials); !ready) return ready;
-            if (owners.materials)
-            {
-                const auto id = owners.materials->id();
-                if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
-                    candidate.gpu_resources.push_back(id);
-            }
+            const auto* factory = registry.factory(registry.declarationOf(id));
+            source = {
+                id, registry.resourceInstance(id), factory->storage()->implementation_type, input.capabilities
+            };
+            const auto* ops = factory->storage()->bindings();
+            if (!ops || !ops->prepareFrame) continue;
+            if (std::ranges::find(candidate.gpu_resources, id) == candidate.gpu_resources.end())
+                candidate.gpu_resources.push_back(id);
         }
         if (auto ready = candidate.instance.createProducers(preparation, registry, std::move(inputs)); !ready)
             return ready;

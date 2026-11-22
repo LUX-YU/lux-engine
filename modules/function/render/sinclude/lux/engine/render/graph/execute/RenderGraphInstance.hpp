@@ -25,9 +25,6 @@ namespace lux::render::detail
     struct LinkedUniformBlock;
     struct DynamicRasterPrograms;
     struct RasterProgramUpdate;
-    class SampledTexture2DStorage;
-    class IndexedTriangleMeshStorage;
-    class RasterMaterialStorage;
 
     class LUX_RENDER_PUBLIC RenderGraphInstance final
     {
@@ -43,17 +40,10 @@ namespace lux::render::detail
             const StorageSnapshotOps* ops;
         };
 
-        struct RasterOwners final
-        {
-            const SampledTexture2DStorage* textures = nullptr;
-            const IndexedTriangleMeshStorage* meshes = nullptr;
-            RasterMaterialStorage* materials = nullptr;
-        };
-
         struct PreparationSources final
         {
             std::vector<SnapshotSource> snapshots;
-            std::vector<RasterOwners> raster_owners;
+            std::vector<BoundDrawResource> draw_resources;
             std::vector<std::span<const std::byte>> effect_values;
         };
 
@@ -360,7 +350,7 @@ namespace lux::render::detail
 
         const ResourceRegistry* snapshot_registry_ = nullptr;
         std::vector<std::span<const std::byte>> effect_values_;
-        std::vector<RasterOwners> raster_owners_;
+        std::vector<BoundDrawResource> draw_resources_;
         std::vector<StorageSnapshot> storage_snapshots_;
         std::vector<std::uint32_t> snapshot_sources_;
         std::vector<Producer> producers_;

@@ -26,7 +26,7 @@ namespace lux::render::detail
         struct TextureRead final
         {
             const nri::Texture* image;
-            std::uint16_t mips, layers;
+            GraphImageRange range;
         };
 
         struct MaterialRead final

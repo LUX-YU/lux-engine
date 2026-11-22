@@ -77,7 +77,7 @@ namespace foundation_test
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
         render(
             std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages,
-            std::span<const SubmissionOrder> order = {}
+            std::span<const SubmissionOrder> order = std::span<const SubmissionOrder>{}
         ) noexcept
         {
             if (auto error = device_.terminalError(); error.type) co_return lux::cxx::unexpected(error);

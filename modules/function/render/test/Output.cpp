@@ -23,6 +23,7 @@
 #include "EffectStreamMaterial.hpp"
 #include "EffectStreamMesh.hpp"
 #include "EffectRecordTable.hpp"
+#include "EffectRecordOnly.hpp"
 #include "EffectStreamSharedTexture.hpp"
 #include "EffectStreamUniform.hpp"
 #include "EffectStreamVertex.hpp"
@@ -3932,8 +3933,10 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                 shaders.push_back(prependStreamVertex(shader->shader, kEffectStreamVertex));
                 shaders.push_back(streamShader(linked.target, kEffectRecordTable));
                 program.parameters.setInlineConstant(rdesc::MaterialGpuReference{});
-                std::array programs{program, program};
+                shaders.push_back(streamShader(linked.target, kEffectRecordOnly));
+                std::array programs{program, program, program};
                 programs[1].shader = {1};
+                programs[2].shader = {2};
                 return selection.setPrograms(linked.stream, std::move(shaders), programs);
             }
             shaders.push_back(streamShader(linked.target, kEffectStreamSharedTexture));
@@ -3953,6 +3956,10 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                 if (!value) return lux::cxx::unexpected(value.error());
                 auto repeated = workspace.records.select(frame, *linked.materials, *program, materials[index]);
                 if (!repeated) return lux::cxx::unexpected(repeated.error());
+                std::array references{*value, *value};
+                const RasterStreamDraw textured{*program, {}, {}, {0, sizeof(*value)}, DrawVertices{12}};
+                std::array draws{textured, textured};
+                std::uint32_t count = 1;
                 if (index == 0)
                 {
                     const auto unused = frame.rasterProgram(linked.stream, 1);
@@ -3969,10 +3976,18 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                 {
                     const auto rejected = workspace.records.select(frame, *linked.materials, *program, stale_second_texture);
                     CHECK(!rejected && rejected.error().type == kStorageIdentity);
+                    const auto plain = frame.rasterProgram(linked.stream, 2);
+                    CHECK(plain);
+                    // Its texture has been released. This Program reads only the tint in the same record.
+                    const auto overlay = workspace.records.select(frame, *linked.materials, *plain, materials[0]);
+                    CHECK(overlay);
+                    references[1] = *overlay;
+                    draws[1].program = *plain;
+                    draws[1].constants.first = sizeof(*overlay);
+                    count = 2;
                 }
-                const RasterStreamDraw draw{*program, {}, {}, {0, sizeof(*value)}, DrawVertices{12}};
                 return frame.setRasterStream(linked.stream, {
-                    std::span{&draw, 1}, {}, {}, std::as_bytes(std::span{&*value, 1})
+                    std::span{draws}.first(count), {}, {}, std::as_bytes(std::span{references}.first(count))
                 });
             }
             CHECK(linked.textures);
@@ -4369,7 +4384,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         if (use_materials)
         {
             CHECK(reads->raster_buffer_ranges == before->raster_buffer_ranges + 2);
-            CHECK(reads->raster_buffer_bytes == before->raster_buffer_bytes + 2 * material_bytes);
+            CHECK(reads->raster_buffer_bytes == before->raster_buffer_bytes + 3 * material_bytes);
         }
     }
     selected_texture = 0;
@@ -4423,7 +4438,14 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         std::puts("UPLOAD HANDOFF PASS: rejected Acquire, fence retirement, staging reuse and retry pixels");
     }
 #endif
-    if (use_materials) std::puts("RECORD TABLES PASS: both RGBA pixels, unused Program filtered and stale second texture rejected atomically");
+    if (use_materials)
+    {
+        const auto rendered = std::span<const std::byte>{capture.frames[second.slot_index]};
+        const auto right = rendered.subspan(capture.pitch * 32 + 48 * 4, 4);
+        constexpr std::array white{std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255}};
+        CHECK(std::ranges::equal(right, white));
+        std::puts("RECORD TABLES PASS: sampled left and record-only right; unused Program and stale texture suffix excluded");
+    }
     if (!use_materials) std::puts("TEXTURE CLONE PASS: pending source protection, stale ID and patched pixel");
     if (exercise_growth)
     {

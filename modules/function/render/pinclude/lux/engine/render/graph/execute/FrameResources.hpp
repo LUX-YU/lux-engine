@@ -43,9 +43,13 @@ namespace lux::render::detail
         FrameResources(const FrameResources&) = delete;
         FrameResources& operator=(const FrameResources&) = delete;
 
+        void initializeRows(const compiled::RenderGraph&) noexcept;
+        RenderResult<void> prepareBindings(const compiled::RenderGraph&, DeviceSession&, nri::Descriptor* output_view) noexcept;
+        RenderResult<void> createDescriptors(const compiled::RenderGraph&, DeviceSession&, const nri::DescriptorPoolDesc&) noexcept;
+        RenderResult<void> rebind(const compiled::RenderGraph&, DeviceSession&) noexcept;
         void prepareAliasBarriers(const PhysicalResourcePlan&) noexcept;
         void invalidateImportedBindings() noexcept;
-        void invalidatePass(const compiled::RenderGraph&, std::uint32_t pass) noexcept;
+        LUX_RENDER_PUBLIC void invalidatePass(const compiled::RenderGraph&, std::uint32_t pass) noexcept;
         void invalidateResource(const RecordingDependencies&, std::uint32_t resource) noexcept;
         void invalidateRecordings() noexcept;
         void bindHistory(std::span<const HistoryState>, const RecordingDependencies&) noexcept;
@@ -164,7 +168,7 @@ namespace lux::render::detail
         bool frozen_for_submission = false;
         void retireRasterViews(DeviceSession&, nri::Buffer*, nri::Texture*) noexcept;
         void bindResource(const compiled::RenderGraph&, DeviceSession&, std::uint32_t resource, const ResourceInput&) noexcept;
-        [[nodiscard]] RenderResult<void> writeInlineConstant(
+        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> writeInlineConstant(
             const compiled::RenderGraph&, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
         ) noexcept;
         bool record_ready = false;

@@ -8,6 +8,7 @@ namespace lux::render::detail
 {
     struct HistoryState final
     {
+        void bindBank(const HistoryPlan&, JobHistoryResources&) noexcept;
         [[nodiscard]] bool select(const DeviceSession&) noexcept;
         void publish() noexcept;
 

@@ -697,7 +697,7 @@ On D3D12 devices using legacy barriers, the compiler returns an unsampled offscr
 final use to COMMON at the end of the graph. This matches the initial state of the next submission for that target
 slot, including reuse of an already recorded command buffer.
 
-`RenderGraphInstance::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
+`FrameExecutor::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
 `FrameExecutor` only encodes through the supplied NRI core and a const view of prepared instance data. Shared
 descriptor handles are resolved during preparation, including Vulkan table replacement and D3D12 frame-local
 snapshots. These inputs stay separate from the mutable binding cache, so invalidation cannot erase them.
@@ -787,7 +787,9 @@ Analysis retains both inputs and their hazards; Prepare selects existing views o
 the fallback into a History slot. Different reads can declare different initial inputs. Fallback views are cached
 with their frame bindings and change only when their physical input changes.
 
-Resize preserves the installed Job identity, projection registrations, producer bindings and immutable device graph. Compiled reverse indexes locate the affected views, barriers, dispatches and copy layouts. A finite
+Resize preserves the installed Job identity, projection registrations, producer bindings and immutable device graph. Each Resize candidate belongs to its device and installed execution generation. Adoption checks live extents
+before exchanging physical objects. A committed candidate is consumed. Compiled reverse indexes locate the
+affected views, barriers, dispatches and copy layouts. A finite
 `ResizeResources` candidate owns only replacement physical objects; adoption exchanges those objects without
 recreating unrelated buffers or fixed-size images. Alias migration includes the connected closure of old and new
 allocation groups. Actual placement still uses `instantiatePlacements` and the existing batch-dependency proof.

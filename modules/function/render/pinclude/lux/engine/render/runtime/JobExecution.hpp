@@ -10,7 +10,8 @@
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include <lux/engine/render/target/TargetOutput.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -20,6 +21,7 @@ namespace lux::render::detail
     class JobGpuResources;
     struct GraphBindingTag;
     class FrameOperation;
+    struct ResizeResources;
     class SubmissionOperation;
 }
 
@@ -65,6 +67,7 @@ namespace lux::render::runtime_detail
     private:
         friend class detail::FrameOperation;
         friend class detail::SubmissionOperation;
+        friend struct detail::ResizeResources;
         const compiled::RenderGraph& graph_;
         detail::TargetOutput output_;
         detail::JobGpuResources& gpu_;
@@ -89,7 +92,14 @@ namespace lux::render::runtime_detail
 
         detail::RasterProgramInputs programs;
         detail::JobCpuPreparation preparation;
-        detail::RenderGraphInstance instance;
+        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void>
+        invalidateHistory(std::span<const GraphResourceId> previous) noexcept;
+        void releaseOutputReferences() noexcept;
+        [[nodiscard]] const TargetDesc& targetDescription() const & noexcept { return output_.description; }
+        const TargetDesc& targetDescription() const && = delete;
+        [[nodiscard]] detail::FrameResources& frame(std::uint32_t slot) & noexcept { return frames_[slot]; }
+        [[nodiscard]] const detail::FrameResources& frame(std::uint32_t slot) const & noexcept { return frames_[slot]; }
+        const detail::FrameResources& frame(std::uint32_t) const && = delete;
         [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return graph_; }
         const compiled::RenderGraph& graph() const && = delete;
 

@@ -8,11 +8,11 @@ namespace lux::render::runtime_detail
 {
     namespace
     {
-        std::vector<detail::FrameResources> createFrames(std::span<detail::JobFrameResources> physical) noexcept
+        std::vector<detail::FrameResources> createFrames(std::span<detail::JobFrameResources> physical, const compiled::RenderGraph& graph) noexcept
         {
             std::vector<detail::FrameResources> frames;
             frames.reserve(physical.size());
-            for (auto& frame : physical) frames.emplace_back(frame);
+            for (auto& frame : physical) frames.emplace_back(frame).initializeRows(graph);
             return frames;
         }
     }
@@ -22,7 +22,12 @@ namespace lux::render::runtime_detail
         programs.settle(update, frames_);
     }
 
-    JobExecution::~JobExecution() noexcept = default;
+    JobExecution::~JobExecution() noexcept
+    {
+        for (const auto& frame : frames_)
+            for (const auto& batch : frame.command_batches)
+                if (batch.recording.load(std::memory_order_acquire)) std::terminate();
+    }
 
     JobExecution::JobExecution(
         detail::JobGpuResources& gpu,
@@ -32,9 +37,8 @@ namespace lux::render::runtime_detail
     ) noexcept
         : effect(installation.effect), device(installation.device), target(installation.target),
           graph_(selected), output_(physical), gpu_(gpu), condition_values_(selected.conditionCount()),
-          frames_(createFrames(gpu.frames)), histories_(selected.historyCount()),
+          frames_(createFrames(gpu.frames, selected)), histories_(selected.histories().size()),
           programs(selected, gpu), preparation(selected, gpu, programs),
-          instance(gpu, selected, {frames_, histories_}, output_),
           binding_identity(installation.identity)
     {
     }
@@ -190,7 +194,7 @@ namespace lux::render
         }
         if (auto linked = candidate.programs.bind(preparation, registry, inputs.snapshots, inputs.draw_resources); !linked)
             return linked;
-        if (auto ready = candidate.preparation.bind(registry, std::move(inputs), candidate.instance.target()); !ready)
+        if (auto ready = candidate.preparation.bind(registry, std::move(inputs), candidate.targetDescription()); !ready)
             return ready;
         if (auto values = candidate.setConditions(input.conditions); !values) return values;
         candidate.viewport = input.viewport;

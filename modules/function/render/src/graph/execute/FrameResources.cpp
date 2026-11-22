@@ -78,6 +78,32 @@ namespace lux::render::detail
         return found == replaced_projections.end() ? bindings[resource].queue_uses : found->uses;
     }
 
+    void FrameResources::initializeRows(const compiled::RenderGraph& plan) noexcept
+    {
+        invalidateImportedBindings();
+        parameters = plan.bindingPlan().initial_parameters;
+        bindings.resize(plan.resources().size());
+        record_resources.resize(plan.resources().size());
+        record_passes.resize(plan.passes().size());
+        pending_resources.initialize(plan.resources().size());
+        pending_passes.initialize(plan.passes().size());
+        pending_operand_fields.initialize(plan.bindingPlan().recordings.operand_fields.size());
+        transfers.initialize(plan.recordingProgram().transfers);
+        const auto clear_capacity = plan.histories().size() * 2;
+        history_initializations.prepareCapacity(clear_capacity, clear_capacity);
+        pending_history_clears.initialize(plan.histories().size());
+        pending_history_views.initialize(plan.histories().size());
+        enabled_regions.resize(plan.recordingProgram().conditions.size(), 1);
+        enabled_pass_count = static_cast<std::uint32_t>(plan.passes().size());
+        history_valid.resize(plan.histories().size(), 0);
+        conditions.resize(plan.conditionCount());
+        publish_history.resize(plan.histories().size());
+        history_clears.resize(plan.histories().size());
+        changed_resources.reserve(plan.resources().size());
+        unavailable_buffers = plan.recordingDependencies().required_buffers;
+        native.images.reserve(plan.recordingDependencies().owned_image_capacity);
+    }
+
     void FrameResources::retireRasterViews(DeviceSession& session, nri::Buffer* buffer, nri::Texture* image) noexcept
     {
         std::vector<nri::Descriptor*> views;

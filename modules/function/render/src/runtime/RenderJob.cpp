@@ -444,7 +444,7 @@ namespace lux::render
             return;
         }
         if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
-        const auto result = job->execution->instance.invalidateHistory(input.previous);
+        const auto result = job->execution->invalidateHistory(input.previous);
         reply.error = result ? RenderError{} : result.error();
     }
 

@@ -9,10 +9,14 @@
 #include <cstdint>
 #include <vector>
 
+namespace lux::render { struct TargetDesc; }
+
 namespace lux::render::detail
 {
     class DeviceSession;
     struct SubmissionBatch;
+    struct HistoryPlan;
+    struct CompiledResource;
     struct CompiledRasterStream;
     struct DynamicRasterPrograms;
     struct RasterProgramSelection;
@@ -134,6 +138,8 @@ namespace lux::render::detail
         };
 
         std::vector<Slot> slots;
+        [[nodiscard]] RenderResult<void>
+        initialize(DeviceSession&, const HistoryPlan&, const CompiledResource&, const TargetDesc&) noexcept;
         void release(const nri::CoreInterface&) noexcept;
     };
 

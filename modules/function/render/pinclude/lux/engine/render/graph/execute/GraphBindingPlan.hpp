@@ -49,7 +49,7 @@ namespace lux::render::detail
 
     struct FixedPassBindings final
     {
-        FixedBindingRange bindings, uses, initial_parameters;
+        FixedBindingRange bindings, uses;
         bool has_private_set;
     };
 
@@ -57,7 +57,6 @@ namespace lux::render::detail
     {
         std::span<const FixedDescriptorBinding> bindings;
         std::span<const DescriptorAccess> uses;
-        std::span<const std::byte> initial_parameters;
         bool has_private_set;
     };
 
@@ -96,6 +95,7 @@ namespace lux::render::detail
         std::vector<std::uint32_t> pass_field_offsets;
         std::vector<std::uint32_t> viewport_passes, producer_passes;
         std::uint32_t raster_list_count = 0;
+        std::uint32_t required_buffers = 0, owned_image_capacity = 0;
         std::array<std::vector<std::uint32_t>, 3> shared_batches;
         std::vector<RasterList> raster_lists;
     };
@@ -112,7 +112,6 @@ namespace lux::render::detail
             return {
                 slice(descriptor_fields, entry.bindings),
                 slice(descriptor_uses, entry.uses),
-                slice(initial_parameters, entry.initial_parameters),
                 entry.has_private_set
             };
         }

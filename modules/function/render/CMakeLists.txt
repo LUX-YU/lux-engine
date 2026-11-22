@@ -85,13 +85,12 @@ set(render_sources
     src/graph/execute/HistoryState.cpp
     src/target/OffscreenTarget.cpp
     src/target/SwapchainTarget.cpp
-    src/graph/execute/RenderGraphInstance.cpp
     src/runtime/JobCpuPreparation.cpp
     src/runtime/PreparedBufferUpload.cpp
     src/graph/execute/RasterFramePreparation.cpp
     src/graph/execute/RasterFrameAttachments.cpp
     src/graph/execute/RasterFrameDescriptors.cpp
-    src/graph/execute/RenderGraphInstanceDescriptors.cpp
+    src/graph/execute/FrameDescriptors.cpp
     src/graph/execute/FrameExecutor.cpp
     src/graph/execute/NriRecordCommands.cpp
     src/graph/GraphOutput.cpp

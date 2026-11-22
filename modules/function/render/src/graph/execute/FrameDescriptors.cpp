@@ -7,43 +7,41 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 namespace lux::render::detail
 {
-    RenderResult<void> RenderGraphInstance::prepareFrameBindings(std::uint32_t slot) noexcept
+    RenderResult<void> FrameResources::prepareBindings(
+        const compiled::RenderGraph& plan, DeviceSession& session, nri::Descriptor* output_view
+    ) noexcept
     {
-        auto& session = *session_;
         const auto& core = session.nriCore();
-        const auto& plan = graph_;
-        auto& frame = frames_[slot];
-        for (const auto& transition : plan.recording_.after.images)
+        for (const auto& transition : plan.recordingProgram().after.images)
         {
             auto barrier = transition.native;
-            barrier.texture = frame.bindings[transition.resource].image;
-            frame.final_images.push_back(barrier);
+            barrier.texture = bindings[transition.resource].image;
+            final_images.push_back(barrier);
         }
-        for (const auto& transition : plan.recording_.after.buffers)
+        for (const auto& transition : plan.recordingProgram().after.buffers)
         {
             auto barrier = transition.native;
-            barrier.buffer = frame.bindings[transition.resource].buffer;
-            frame.final_buffers.push_back(barrier);
+            barrier.buffer = bindings[transition.resource].buffer;
+            final_buffers.push_back(barrier);
         }
         auto attachmentView = [&](std::uint32_t index, GraphImageRange range, bool depth, nri::Descriptor*& result)
             -> RenderResult<void>
         {
             if (index == plan.output())
             {
-                result = output_.frames[slot].view;
+                result = output_view;
                 return {};
             }
             if (plan.resources()[index].history != kGraphInvalidIndex)
             {
                 return {}; // The selected physical History bank supplies its already-created view.
             }
-            auto* image = frame.bindings[index].image;
+            auto* image = bindings[index].image;
             if (!image)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
@@ -62,7 +60,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(nativeError(status));
             }
-            frame.native.views.push_back(result);
+            this->native.views.push_back(result);
             return {};
         };
         auto attachment = [&](const RasterAttachment& input, bool depth, nri::AttachmentDesc& result
@@ -106,7 +104,7 @@ namespace lux::render::detail
             FramePass pass{&compiled_pass};
             auto extent = validatePassExtent(
                 session, plan, compiled_pass,
-                [&](std::uint32_t resource) -> const FrameResourceBinding& { return frame.bindings[resource]; }
+                [&](std::uint32_t resource) -> const FrameResourceBinding& { return bindings[resource]; }
             );
             if (!extent)
             {
@@ -115,7 +113,7 @@ namespace lux::render::detail
             for (const auto& barrier : compiled_pass.before.images)
             {
                 auto native = barrier.native;
-                native.texture = frame.bindings[barrier.resource].image;
+                native.texture = bindings[barrier.resource].image;
                 if (!native.texture)
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
@@ -125,7 +123,7 @@ namespace lux::render::detail
             for (const auto& barrier : compiled_pass.before.buffers)
             {
                 auto native = barrier.native;
-                native.buffer = frame.bindings[barrier.resource].buffer;
+                native.buffer = bindings[barrier.resource].buffer;
                 if (native.buffer && native.before.stages == nri::StageBits::ALL &&
                     native.before.access == nri::AccessBits::NONE)
                 {
@@ -133,9 +131,9 @@ namespace lux::render::detail
                 }
                 pass.buffers.push_back(native);
             }
-            if (const auto* raster = graph_.recordingProgram().rasterScope(compiled_pass))
+            if (const auto* raster = plan.recordingProgram().rasterScope(compiled_pass))
             {
-                const auto& group = plan.recording_.groups[compiled_pass.rendering_group];
+                const auto& group = plan.recordingProgram().groups[compiled_pass.rendering_group];
                 pass.colors.resize(group.colors.size());
                 for (std::size_t i = 0; i < group.colors.size(); ++i)
                 {
@@ -154,10 +152,10 @@ namespace lux::render::detail
                     }
                 }
             }
-            if (const auto* transfer = graph_.transferCommands(compiled_pass))
+            if (const auto* transfer = plan.transferCommands(compiled_pass))
             {
                 pass.clear_views.resize(transfer->clear_view_count);
-                const auto& transfers = graph_.recordingProgram().transfers;
+                const auto& transfers = plan.recordingProgram().transfers;
                 for (const auto& clear : transfers.clearCommands(*transfer))
                 {
                     const auto& image = std::get<GraphImageDesc>(
@@ -175,36 +173,36 @@ namespace lux::render::detail
                 }
             }
             pass.parameters =
-                std::span(frame.parameters).subspan(compiled_pass.parameter_offset, compiled_pass.parameter_size);
-            frame.passes.push_back(std::move(pass));
+                std::span(this->parameters).subspan(compiled_pass.parameter_offset, compiled_pass.parameter_size);
+            passes.push_back(std::move(pass));
         }
         // Pass arrays are fixed now. Acquiring another image only changes these borrowed view
         // fields, without allocating descriptors or searching author names during recording.
-        for (auto& pass : frame.passes)
+        for (auto& pass : passes)
         {
-            if (const auto* raster = graph_.recordingProgram().rasterScope(*pass.compiled_pass))
+            if (const auto* raster = plan.recordingProgram().rasterScope(*pass.compiled_pass))
             {
                 for (std::size_t i = 0; i < raster->colors.size(); ++i)
                 {
                     const auto& attachment = raster->colors[i];
                     if (attachment.access.version.resource.index == plan.output())
                     {
-                        frame.output_views.push_back(&pass.colors[i].descriptor);
+                        output_views.push_back(&pass.colors[i].descriptor);
                     }
                     if (attachment.resolve && attachment.resolve->version.resource.index == plan.output())
                     {
-                        frame.output_views.push_back(&pass.colors[i].resolveDst);
+                        output_views.push_back(&pass.colors[i].resolveDst);
                     }
                 }
             }
-            else if (const auto* transfer = graph_.transferCommands(*pass.compiled_pass))
+            else if (const auto* transfer = plan.transferCommands(*pass.compiled_pass))
             {
-                const auto& transfers = graph_.recordingProgram().transfers;
+                const auto& transfers = plan.recordingProgram().transfers;
                 for (const auto& clear : transfers.clearCommands(*transfer))
                 {
                     if (clear.destination.slot == plan.output())
                     {
-                        frame.output_views.push_back(&pass.clear_views[clear.view]);
+                        output_views.push_back(&pass.clear_views[clear.view]);
                     }
                 }
             }
@@ -212,94 +210,85 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::prepareDescriptors() noexcept
+    RenderResult<void> FrameResources::createDescriptors(
+        const compiled::RenderGraph& graph, DeviceSession& session, const nri::DescriptorPoolDesc& pool
+    ) noexcept
     {
-        const auto& layout = *graph_.binding_plan_;
-        auto pool = layout.private_pool;
-        if (auto counted = session_->descriptors().addSnapshotDescriptors(pool); !counted) return counted;
-        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        const auto& layout = graph.bindingPlan();
+        if (pool.descriptorSetMaxNum)
         {
-            auto& frame = frames_[slot];
-            if (pool.descriptorSetMaxNum)
+            const auto status =
+                session.nriCore().CreateDescriptorPool(session.device(), pool, this->native.descriptor_pool);
+            if (status != nri::Result::SUCCESS)
             {
-                const auto status =
-                    session_->nriCore().CreateDescriptorPool(session_->device(), pool, frame.native.descriptor_pool);
+                return cxx::unexpected(nativeError(status));
+            }
+        }
+        descriptor_capacity = descriptor_reserved = pool;
+        if (this->native.descriptor_pool)
+        {
+            auto shared = session.descriptors().createSnapshot(*this->native.descriptor_pool);
+            if (!shared) return cxx::unexpected(shared.error());
+            if (session.description().graphicsAPI == nri::GraphicsAPI::D3D12)
+                shared_descriptors = *shared;
+        }
+        this->native.private_views.resize(passes.size());
+        for (std::size_t index = 0; index < passes.size(); ++index)
+        {
+            auto& pass = passes[index];
+            const auto& program = layout.pass(pass.compiled_pass->binding_slot);
+            auto& owned_views = this->native.private_views[index];
+            owned_views.resize(program.uses.size());
+            pass.private_views = owned_views;
+            pass.history_views.resize(program.uses.size());
+            if (program.has_private_set)
+            {
+                const auto& native = graph.programs()[pass.compiled_pass->binding_slot].descriptors;
+                const auto status = session.nriCore().AllocateDescriptorSets(
+                    *this->native.descriptor_pool,
+                    *native.layout,
+                    native.private_set,
+                    &pass.private_descriptors,
+                    1,
+                    0
+                );
                 if (status != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(status));
                 }
-            }
-            frame.descriptor_capacity = frame.descriptor_reserved = pool;
-            if (frame.native.descriptor_pool)
-            {
-                auto shared = session_->descriptors().createSnapshot(*frame.native.descriptor_pool);
-                if (!shared) return cxx::unexpected(shared.error());
-                if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
-                    frame.shared_descriptors = *shared;
-            }
-            frame.native.private_views.resize(frame.passes.size());
-            for (std::size_t index = 0; index < frame.passes.size(); ++index)
-            {
-                auto& pass = frame.passes[index];
-                const auto& program = layout.pass(pass.compiled_pass->binding_slot);
-                auto& owned_views = frame.native.private_views[index];
-                owned_views.resize(program.uses.size());
-                pass.private_views = owned_views;
-                pass.history_views.resize(program.uses.size());
-                if (program.has_private_set)
+                for (const auto& use : program.uses)
                 {
-                    const auto& native = graph_.programs()[pass.compiled_pass->binding_slot].descriptors;
-                    const auto status = session_->nriCore().AllocateDescriptorSets(
-                        *frame.native.descriptor_pool,
-                        *native.layout,
-                        native.private_set,
-                        &pass.private_descriptors,
-                        1,
-                        0
-                    );
-                    if (status != nri::Result::SUCCESS)
+                    if (use.sampler == kGraphInvalidIndex)
                     {
-                        return cxx::unexpected(nativeError(status));
+                        continue;
                     }
-                    for (const auto& use : program.uses)
-                    {
-                        if (use.sampler == kGraphInvalidIndex)
-                        {
-                            continue;
-                        }
-                        auto* sampler = graph_.programs().sampler(use.sampler);
-                        const nri::UpdateDescriptorRangeDesc
-                            update{pass.private_descriptors, use.binding, use.element, &sampler, 1};
-                        session_->nriCore().UpdateDescriptorRanges(&update, 1);
-                    }
+                    auto* sampler = graph.programs().sampler(use.sampler);
+                    const nri::UpdateDescriptorRangeDesc
+                        update{pass.private_descriptors, use.binding, use.element, &sampler, 1};
+                    session.nriCore().UpdateDescriptorRanges(&update, 1);
                 }
-            }
-            for (std::uint32_t i = 0; i < frame.bindings.size(); ++i)
-            {
-                auto& binding = frame.bindings[i];
-                if (!binding.dirty)
-                {
-                    binding.dirty = true;
-                    frame.changed_resources.push_back(i);
-                }
-            }
-            if (auto rebound = rebind(slot); !rebound)
-            {
-                return rebound;
             }
         }
-        return {};
+        for (std::uint32_t i = 0; i < bindings.size(); ++i)
+        {
+            auto& binding = bindings[i];
+            if (!binding.dirty)
+            {
+                binding.dirty = true;
+                changed_resources.push_back(i);
+            }
+        }
+        return rebind(graph, session);
     }
 
-    RenderResult<void> RenderGraphInstance::rebind(std::uint32_t slot) noexcept
+    RenderResult<void> FrameResources::rebind(const compiled::RenderGraph& graph, DeviceSession& session) noexcept
     {
-        auto& frame = frames_[slot];
-        const auto& layout = *graph_.binding_plan_;
-        const auto& core = session_->nriCore();
-        for (auto resource : frame.changed_resources)
+        const auto& layout = graph.bindingPlan();
+        const auto& core = session.nriCore();
+        for (auto resource : changed_resources)
         {
-            auto& source = frame.bindings[resource];
-            const auto& uses = graph_.resources()[resource];
+            auto& source = bindings[resource];
+            const auto& uses = graph.resources()[resource];
             const bool image = std::holds_alternative<GraphImageDesc>(uses.description);
             if (!source.dirty)
             {
@@ -314,13 +303,13 @@ namespace lux::render::detail
             {
                 if (image)
                 {
-                    frame.passes[p].images[index].texture = source.image;
+                    passes[p].images[index].texture = source.image;
                 }
                 else
                 {
-                    auto& barrier = frame.passes[p].buffers[index];
+                    auto& barrier = passes[p].buffers[index];
                     barrier.buffer = source.buffer;
-                    const auto& pass = *frame.passes[p].compiled_pass;
+                    const auto& pass = *passes[p].compiled_pass;
                     if (pass.before.buffers[index].bind_initial_access)
                     {
                         barrier.before.access = bufferAccess(source.buffer_description->usage);
@@ -331,11 +320,11 @@ namespace lux::render::detail
             {
                 if (image)
                 {
-                    frame.final_images[index].texture = source.image;
+                    final_images[index].texture = source.image;
                 }
                 else
                 {
-                    frame.final_buffers[index].buffer = source.buffer;
+                    final_buffers[index].buffer = source.buffer;
                 }
             }
             for (const auto [p, index] : uses.descriptor_uses)
@@ -344,7 +333,7 @@ namespace lux::render::detail
                 {
                     continue;
                 }
-                auto& pass = frame.passes[p];
+                auto& pass = passes[p];
                 const auto& program = layout.pass(pass.compiled_pass->binding_slot);
                 const auto& use = program.uses[index];
                 nri::Descriptor* candidate = nullptr;
@@ -389,7 +378,7 @@ namespace lux::render::detail
                     const auto description = program.bindings[use.field].bufferView(
                         source.buffer, source.buffer_offset + range.offset, size
                     );
-                    status = createGraphBufferView(*session_, description, candidate);
+                    status = createGraphBufferView(session, description, candidate);
                 }
                 if (status != nri::Result::SUCCESS)
                 {
@@ -401,21 +390,14 @@ namespace lux::render::detail
                     update{pass.private_descriptors, use.binding, use.element, &candidate, 1};
                 core.UpdateDescriptorRanges(&update, 1);
                 pass.history_views[index] = nullptr;
-                const auto history = graph_.resources()[use.resource].history;
-                if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
-                frames_[slot].invalidatePass(graph_, p);
+                const auto history = graph.resources()[use.resource].history;
+                if (history != kGraphInvalidIndex) pending_history_views.mark(history);
+                invalidatePass(graph, p);
             }
             source.dirty = false;
         }
-        frame.changed_resources.clear();
+        changed_resources.clear();
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::writeInlineConstant(
-        std::uint32_t slot, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
-    ) noexcept
-    {
-        if (slot >= frames_.size()) return cxx::unexpected(RenderError{kDeviceArgument});
-        return frames_[slot].writeInlineConstant(graph_, pass, bytes, revision);
-    }
 } // namespace lux::render::detail

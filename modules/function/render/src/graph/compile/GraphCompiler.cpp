@@ -742,7 +742,6 @@ namespace lux::render::detail
             table->passes.push_back({
                 {table->descriptor_fields.size(), source.bindings.size()},
                 {table->descriptor_uses.size(), source.uses.size()},
-                {table->initial_parameters.size(), source.initial_parameters.size()},
                 !source.private_bindings.empty()
             });
             table->descriptor_uses.insert(table->descriptor_uses.end(), source.uses.begin(), source.uses.end());

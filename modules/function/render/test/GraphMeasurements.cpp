@@ -1,8 +1,7 @@
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "GraphMeasurements.hpp"
-#include "Support.hpp"
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
+#include "FrameHarness.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -58,7 +57,6 @@ namespace foundation_test
         auto instance_job = std::make_unique<JobExecution>(
             *instance_gpu, candidate.graph, JobExecution::Installation{}, TargetOutput{}
         );
-        auto* instance = &instance_job->instance;
         const auto construction_allocations = stopGraphMeasurements();
         CHECK(construction_allocations > 0); // Prove the counter observes allocation inside the Render DLL.
         std::printf("construction_allocations=%zu\n", construction_allocations);
@@ -109,7 +107,7 @@ namespace foundation_test
 
             startGraphMeasurements();
             const auto record_start = Clock::now();
-            const auto recorded = instance->recordBatch(0, 0);
+            const auto recorded = recordFrame(*instance_job, session, 0, 0);
             measured.record_ns = elapsedNs(record_start);
             measured.record_allocations = stopGraphMeasurements();
             CHECK(recorded && recorded->size() == 1);

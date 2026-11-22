@@ -111,4 +111,49 @@ namespace lux::render::runtime_detail
         for (auto& binding : frame.bindings) binding.select(binding.buffer, binding.image, core);
         return {};
     }
+    void JobExecution::releaseOutputReferences() noexcept
+    {
+        const auto resource = graph_.output();
+        output_.frames = {};
+        if (resource == kGraphInvalidIndex) return;
+        const auto& uses = graph_.resources()[resource];
+        std::vector<nri::Descriptor*> views;
+        for (auto& frame : frames_)
+        {
+            frame.native.collectRasterViews(nullptr, frame.bindings[resource].image, views);
+            frame.bindings[resource].select(nullptr, nullptr, gpu_.session.nriCore());
+            for (auto* output : frame.output_views)
+            {
+                *output = nullptr;
+            }
+            for (const auto [pass, index] : uses.barrier_uses)
+            {
+                frame.passes[pass].images[index].texture = nullptr;
+            }
+            for (auto index : uses.final_barrier_uses)
+            {
+                frame.final_images[index].texture = nullptr;
+            }
+            for (const auto [pass, index] : uses.descriptor_uses)
+            {
+                auto*& descriptor = frame.passes[pass].private_views[index];
+                if (descriptor)
+                {
+                    views.push_back(std::exchange(descriptor, nullptr));
+                }
+            }
+            frame.invalidateResource(graph_.recordingDependencies(), resource);
+            frame.invalidateImportedBindings();
+        }
+        gpu_.session.deferRelease(
+            gpu_.accepted,
+            [views = std::move(views), core = &gpu_.session.nriCore()]() noexcept
+            {
+                for (auto* view : views)
+                {
+                    core->DestroyDescriptor(view);
+                }
+            }
+        );
+    }
 } // namespace lux::render::runtime_detail

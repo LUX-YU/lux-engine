@@ -356,7 +356,7 @@ namespace
     )
     {
         auto& device = sample.device;
-        auto& graph = sample.job.instance;
+        auto& graph = sample.job;
         auto& capture = sample.capture;
         auto& queue = device.queue();
         auto middle_desc = final_target.description;
@@ -364,14 +364,14 @@ namespace
         auto middle = take(OffscreenTarget::create(device, middle_desc, 1));
         RetirementFence gate(device);
         const nri::FenceSubmitDesc wait{gate.fence, 1, nri::StageBits::ALL};
-        auto retiring_target = take(OffscreenTarget::create(device, graph.target(), 1));
+        auto retiring_target = take(OffscreenTarget::create(device, graph.targetDescription(), 1));
         std::uint64_t gate_serial = 0;
         std::uint64_t before_retirement = 0;
         {
             // The 256 frame has completed. This later wait belongs to another submission.
-            auto first = take(RenderGraphInstance::ResizeResources::prepare(sample.gpu, graph, middle.output()));
-            CHECK(graph.prepareResizeAdoption(first));
-            graph.commitResize(std::move(first));
+            auto first = take(ResizeResources::prepare(graph, middle.output()));
+            CHECK(first.prepareAdoption(graph));
+            std::move(first).commit(graph);
             gate_serial = take(runTask(queue.submit({}, std::span{&wait, 1})));
             before_retirement = capture.describeMemory("384-adopted-with-old-256");
         }
@@ -382,7 +382,6 @@ namespace
             FrameHarness retiring_frames(device, 1);
             JobGpuResources retiring_gpu(device, 1);
             JobExecution retiring_job{retiring_gpu, plan.graph, testInstallation(), retiring_target.output()};
-            auto& retiring = retiring_job.instance;
             CHECK(retiring_job.initialize());
             SampleContext pending{device, retiring_frames, retiring_job, retiring_gpu, capture, sample.queues};
             submitFrame(pending);
@@ -396,7 +395,7 @@ namespace
         CHECK(accepted > gate_serial && queue.poll() && queue.completed() < gate_serial);
         CHECK(capture.describeMemory("384-accepted-with-retiring-256") == before_retirement);
         {
-            auto second = take(RenderGraphInstance::ResizeResources::prepare(sample.gpu, graph, final_target));
+            auto second = take(ResizeResources::prepare(graph, final_target));
             const auto peak = capture.describeMemory("384-live-512-candidate-256-retiring");
             CHECK(peak > before_retirement);
             CHECK(device.progressCompletions() && queue.completed() < gate_serial);
@@ -411,8 +410,8 @@ namespace
                         static_cast<unsigned long long>(queue.completed()));
             CHECK(capture.describeMemory("384-live-512-candidate") < peak);
             checkOutputs(device, sample.job, workload);
-            CHECK(graph.prepareResizeAdoption(second));
-            graph.commitResize(std::move(second));
+            CHECK(second.prepareAdoption(graph));
+            std::move(second).commit(graph);
         }
         CHECK(device.drain());
     }
@@ -453,7 +452,6 @@ namespace
         {
             JobGpuResources instance_gpu(device, 1);
             JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), initial.output()};
-            auto& instance = instance_job.instance;
             CHECK(instance_job.initialize());
             std::string dump;
             CHECK(instance_job.dumpResources({&dump, [](void* p, std::string_view value) noexcept
@@ -476,12 +474,12 @@ namespace
             if (inflight) measureInFlightResize(sample, workload, plan, replacement.output());
             else
             {
-                auto resized = take(RenderGraphInstance::ResizeResources::prepare(
-                    instance_gpu, instance, replacement.output()
+                auto resized = take(ResizeResources::prepare(
+                    instance_job, replacement.output()
                 ));
                 capture.describeMemory("candidate");
-                CHECK(instance.prepareResizeAdoption(resized));
-                instance.commitResize(std::move(resized));
+                CHECK(resized.prepareAdoption(instance_job));
+                std::move(resized).commit(instance_job);
                 capture.describeMemory("adopted-before-retirement");
             }
             CHECK(device.drain());

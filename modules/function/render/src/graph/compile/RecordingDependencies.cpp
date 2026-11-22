@@ -121,6 +121,15 @@ namespace lux::render::detail
         for (std::uint32_t r = 0; r < plan.resources().size(); ++r)
         {
             const auto& resource = plan.resources()[r];
+            if (resource.memory_used)
+            {
+                const bool runtime_bound = resource.origin == EGraphOrigin::IMPORTED ||
+                    resource.origin == EGraphOrigin::FRAME_BUFFER;
+                if (runtime_bound && std::holds_alternative<GraphBufferDesc>(resource.description))
+                    ++result.required_buffers;
+                if (resource.origin != EGraphOrigin::IMPORTED && std::holds_alternative<GraphImageDesc>(resource.description))
+                    ++result.owned_image_capacity;
+            }
             for (const auto& use : resource.barrier_uses) add(r, use.first);
             for (const auto& use : resource.descriptor_uses) add(r, use.first);
             for (const auto& view : resource.image_views) add(r, view.pass);

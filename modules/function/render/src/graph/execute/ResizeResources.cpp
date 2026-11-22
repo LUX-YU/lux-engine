@@ -1,6 +1,7 @@
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
+#include <lux/engine/render/runtime/JobExecution.hpp>
 
 #include <algorithm>
 #include <lux/engine/render/commands/Error.hpp>
@@ -12,20 +13,20 @@
 
 namespace lux::render::detail
 {
-    RenderGraphInstance::ResizeResources::ResizeResources(JobGpuResources& owner) noexcept
-        : native_frames_(owner.frames.size()), accepted_(owner.session.makeFrontiers()), owner_(&owner), session_(&owner.session)
+    ResizeResources::ResizeResources(JobGpuResources& owner, ExecutionBindingId identity) noexcept
+        : native_frames_(owner.frames.size()), accepted_(owner.session.makeFrontiers()), owner_(identity), session_(&owner.session)
     {
     }
 
-    RenderGraphInstance::ResizeResources::ResizeResources(ResizeResources&& other) noexcept
+    ResizeResources::ResizeResources(ResizeResources&& other) noexcept
         : output(other.output), frames(std::move(other.frames)), histories(std::move(other.histories)),
           native_frames_(std::move(other.native_frames_)), native_histories_(std::move(other.native_histories_)),
-          accepted_(std::move(other.accepted_)), owner_(other.owner_), prepared_(std::exchange(other.prepared_, false)),
+          accepted_(std::move(other.accepted_)), owner_(other.owner_), phase_(std::exchange(other.phase_, EPhase::ADOPTED)),
           session_(std::exchange(other.session_, nullptr))
     {
     }
 
-    RenderGraphInstance::ResizeResources::~ResizeResources() noexcept
+    ResizeResources::~ResizeResources() noexcept
     {
         if (!session_)
         {
@@ -40,12 +41,12 @@ namespace lux::render::detail
         session_->deferRelease(std::move(accepted_), std::move(release));
     }
 
-    RenderResult<RenderGraphInstance::ResizeResources> RenderGraphInstance::ResizeResources::prepare(
-        JobGpuResources& gpu, RenderGraphInstance& execution, TargetOutput output,
+    RenderResult<ResizeResources> ResizeResources::prepare(
+        runtime_detail::JobExecution& execution, TargetOutput output,
         std::span<const ImageReplacement> inputs
     ) noexcept
     {
-        if (&execution.gpu_ != &gpu) return cxx::unexpected(RenderError{kFrameContract});
+        auto& gpu = execution.gpu_;
         const auto& plan = execution.graph_;
         const bool has_output = !output.frames.empty();
         const bool needs_output = plan.output() != kGraphInvalidIndex ||
@@ -60,13 +61,28 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        ResizeResources result{gpu};
+        for (std::size_t i = 0; i < inputs.size(); ++i)
+        {
+            const auto& input = inputs[i];
+            if (input.resource.index >= plan.resources().size() || input.frames.size() != gpu.frames.size())
+                return cxx::unexpected(RenderError{kFrameContract});
+            const auto& resource = plan.resources()[input.resource.index];
+            const bool valid_image = resource.origin == EGraphOrigin::IMPORTED &&
+                std::holds_alternative<GraphImageDesc>(resource.description);
+            const auto preceding = inputs.first(i);
+            const auto duplicate = std::ranges::find(preceding, input.resource, &ImageReplacement::resource);
+            if (!valid_image || duplicate != preceding.end())
+                return cxx::unexpected(RenderError{kFrameContract});
+            if (std::ranges::any_of(input.frames, [](const auto& frame) { return !frame.image; }))
+                return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        ResizeResources result{gpu, execution.binding_identity};
         result.output = output;
         result.frames.reserve(gpu.frames.size());
         for (auto& physical : result.native_frames_) result.frames.emplace_back(physical);
         const auto& target = output.description;
 
-        if (auto prepared = execution.prepareResizeHistories(result, target); !prepared)
+        if (auto prepared = result.prepareHistories(execution); !prepared)
         {
             return cxx::unexpected(prepared.error());
         }
@@ -105,7 +121,7 @@ namespace lux::render::detail
                 candidate.changes.resources.push_back({history.plan->description.previous.index, previous});
                 candidate.changes.resources.push_back({history.plan->description.current.index, current});
             }
-            if (auto prepared = execution.prepareResizeBindings(result, f); !prepared)
+            if (auto prepared = result.prepareBindings(execution, f); !prepared)
             {
                 return cxx::unexpected(prepared.error());
             }
@@ -113,23 +129,20 @@ namespace lux::render::detail
         return result;
     }
 
-    RenderResult<void> RenderGraphInstance::prepareResizeHistories(
-        ResizeResources& result,
-        const TargetDesc& target
-    ) noexcept
+    RenderResult<void> ResizeResources::prepareHistories(const runtime_detail::JobExecution& job) noexcept
     {
         const auto& core = session_->nriCore();
-        const auto& resources = graph_.resources();
+        const auto& resources = job.graph().resources();
         // Only histories whose actual physical description changed acquire new banks.
-        for (std::uint32_t h = 0; h < histories_.size(); ++h)
+        for (std::uint32_t h = 0; h < job.histories_.size(); ++h)
         {
-            const auto& previous = histories_[h];
+            const auto& previous = job.histories_[h];
             const auto resource = previous.plan->description.current.index;
             if (!resources[resource].target_sized)
             {
                 continue;
             }
-            auto description = graphTextureDescription(*session_, resources[resource], target);
+            auto description = graphTextureDescription(*session_, resources[resource], output.description);
             if (!description)
             {
                 return cxx::unexpected(description.error());
@@ -139,41 +152,27 @@ namespace lux::render::detail
             {
                 continue;
             }
-            auto& history = result.histories.emplace_back(h, HistoryState{}).second;
-            history.plan = previous.plan;
-            auto& backing = result.native_histories_.emplace_back();
+            auto& history = histories.emplace_back(h, HistoryState{}).second;
+            auto& backing = native_histories_.emplace_back();
             backing.slots.resize(previous.slots.size());
-            history.slots = backing.slots;
-            history.sample_sequences.resize(history.slots.size());
-            for (auto& slot : history.slots)
-            {
-                slot.last_use = session_->makeFrontiers();
-                const auto status =
-                    core.CreatePlacedTexture(session_->device(), NriDeviceHeap, *description, slot.image);
-                if (status != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(status));
-                }
-            }
-            if (auto created = createHistoryViews(history); !created)
-            {
-                return cxx::unexpected(created.error());
-            }
+            auto created = backing.initialize(*session_, *previous.plan, resources[resource], output.description);
+            if (!created) return cxx::unexpected(created.error());
+            history.bindBank(*previous.plan, backing);
         }
 
         return {};
     }
 
-    RenderResult<void> RenderGraphInstance::prepareResizeBindings(ResizeResources& result, std::uint32_t f) noexcept
+    RenderResult<void> ResizeResources::prepareBindings(const runtime_detail::JobExecution& job, std::uint32_t f) noexcept
     {
         auto& session = *session_;
+        const auto& graph = job.graph();
         const auto& core = session.nriCore();
-        const auto& resources = graph_.resources();
-        const auto& physical = graph_.physical_resources_;
+        const auto& resources = graph.resources();
+        const auto& physical = graph.physicalResources();
         const bool aliases = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
-        const auto& frame = frames_[f];
-        auto& candidate = result.frames[f];
-        const auto output = result.output;
+        const auto& frame = job.frames_[f];
+        auto& candidate = frames[f];
         std::ranges::sort(candidate.changes.resources, {}, &GraphBindingChange::index);
         const auto binding = [&](std::uint32_t index) -> const FrameResourceBinding&
         {
@@ -182,7 +181,7 @@ namespace lux::render::detail
             const bool replaced = found != candidate.changes.resources.end() && found->index == index;
             return replaced ? found->binding : frame.bindings[index];
         };
-        std::vector<std::uint8_t> affected_passes(graph_.passes().size());
+        std::vector<std::uint8_t> affected_passes(graph.passes().size());
         for (const auto& replacement : candidate.changes.resources)
         {
             const auto index = replacement.index;
@@ -198,7 +197,7 @@ namespace lux::render::detail
             for (const auto& use : resource.image_views)
             {
                 nri::Descriptor* descriptor = nullptr;
-                const bool owned = index != graph_.output();
+                const bool owned = index != graph.output();
                 if (!owned)
                 {
                     descriptor = output.frames[f].view;
@@ -226,7 +225,7 @@ namespace lux::render::detail
             }
             for (const auto [pass, use_index] : resource.descriptor_uses)
             {
-                const auto& program = graph_.binding_plan_->pass(pass);
+                const auto& program = graph.bindingPlan().pass(pass);
                 const auto& use = program.uses[use_index];
                 nri::Descriptor* descriptor = nullptr;
                 nri::Result status;
@@ -277,7 +276,7 @@ namespace lux::render::detail
                 continue;
             }
             candidate.extent_passes.push_back(p);
-            auto prepared = validatePassExtent(session, graph_, graph_.passes()[p], binding);
+            auto prepared = validatePassExtent(session, graph, graph.passes()[p], binding);
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -286,7 +285,7 @@ namespace lux::render::detail
         if (aliases)
         {
             candidate.alias_barriers = instantiateAliasBarriers(
-                physical, candidate.changes.placements, graph_.passes().size()
+                physical, candidate.changes.placements, graph.passes().size()
             );
             candidate.physical.memories.reserve(candidate.physical.memories.size() + frame.native.memories.size());
         }
@@ -294,7 +293,7 @@ namespace lux::render::detail
     }
 
     nri::Descriptor*&
-    RenderGraphInstance::ResizeResources::destination(FramePass& pass, const ImageViewBinding& use) noexcept
+    ResizeResources::destination(FramePass& pass, const ImageViewBinding& use) noexcept
     {
         switch (use.target)
         {
@@ -314,16 +313,17 @@ namespace lux::render::detail
         std::terminate();
     }
 
-    RenderResult<void> RenderGraphInstance::prepareResizeAdoption(ResizeResources& result) noexcept
+    RenderResult<void> ResizeResources::prepareAdoption(runtime_detail::JobExecution& job) noexcept
     {
-        if (result.owner_ != &gpu_ || result.frames.size() != frames_.size())
+        const bool wrong_owner = owner_ != job.binding_identity || session_ != &job.gpu_.session;
+        if (wrong_owner || phase_ == EPhase::ADOPTED || frames.size() != job.frames_.size())
             return cxx::unexpected(RenderError{kFrameContract});
-        result.prepared_ = false;
-        const auto& physical = graph_.physical_resources_;
-        for (std::uint32_t f = 0; f < frames_.size(); ++f)
+        phase_ = EPhase::CANDIDATE;
+        const auto& physical = job.graph().physicalResources();
+        for (std::uint32_t f = 0; f < job.frames_.size(); ++f)
         {
-            auto& frame = frames_[f];
-            auto& candidate = result.frames[f];
+            auto& frame = job.frames_[f];
+            auto& candidate = frames[f];
             candidate.image_adoptions.clear();
             candidate.buffer_adoptions.clear();
             const auto binding = [&](std::uint32_t resource) -> const FrameResourceBinding&
@@ -372,26 +372,28 @@ namespace lux::render::detail
             }
             for (const auto pass : candidate.extent_passes)
             {
-                auto ready = validatePassExtent(*session_, graph_, graph_.passes()[pass], binding);
+                auto ready = validatePassExtent(*session_, job.graph(), job.graph().passes()[pass], binding);
                 if (!ready)
                 {
                     return ready;
                 }
             }
         }
-        result.prepared_ = true;
+        phase_ = EPhase::READY;
         return {};
     }
 
-    void RenderGraphInstance::commitResize(ResizeResources&& result) noexcept
+    void ResizeResources::commit(runtime_detail::JobExecution& job) && noexcept
     {
-        if (result.owner_ != &gpu_ || !std::exchange(result.prepared_, false)) std::terminate();
-        result.accepted_.merge(gpu_.accepted);
+        const bool wrong_owner = owner_ != job.binding_identity || session_ != &job.gpu_.session;
+        if (wrong_owner || phase_ != EPhase::READY) std::terminate();
+        phase_ = EPhase::ADOPTED;
+        accepted_.merge(job.gpu_.accepted);
         const auto& core = session_->nriCore();
-        for (std::uint32_t f = 0; f < frames_.size(); ++f)
+        for (std::uint32_t f = 0; f < job.frames_.size(); ++f)
         {
-            auto& frame = frames_[f];
-            auto& candidate = result.frames[f];
+            auto& frame = job.frames_[f];
+            auto& candidate = frames[f];
             for (const auto [live, incoming] : candidate.image_adoptions)
                 std::swap(frame.native.images[live], candidate.physical.images[incoming]);
             for (const auto [live, incoming] : candidate.buffer_adoptions)
@@ -425,13 +427,13 @@ namespace lux::render::detail
                          current->before.stages == incoming->before.stages &&
                          current->after.access == incoming->after.access &&
                          current->after.stages == incoming->after.stages);
-                    if (current.has_value() != incoming.has_value() || !same_scope) frame.invalidatePass(graph_, p);
+                    if (current.has_value() != incoming.has_value() || !same_scope) frame.invalidatePass(job.graph(), p);
                     current = incoming;
                 }
             }
             for (const auto& replacement : candidate.changes.resources)
             {
-                frame.invalidateResource(graph_.recordingDependencies(), replacement.index);
+                frame.invalidateResource(job.graph().recordingDependencies(), replacement.index);
                 auto& binding = frame.bindings[replacement.index];
                 frame.native.collectRasterViews(
                     binding.buffer != replacement.binding.buffer ? binding.buffer : nullptr,
@@ -444,7 +446,7 @@ namespace lux::render::detail
                 binding.buffer_size = replacement.binding.buffer_size;
                 binding.dirty = false;
                 std::erase(frame.changed_resources, replacement.index);
-                const auto& resource = graph_.resources()[replacement.index];
+                const auto& resource = job.graph().resources()[replacement.index];
                 for (const auto [p, index] : resource.barrier_uses)
                 {
                     if (binding.image)
@@ -482,12 +484,12 @@ namespace lux::render::detail
                 if (view.use.target == EImageViewTarget::DESCRIPTOR)
                 {
                     const auto& use =
-                        graph_.binding_plan_->pass(pass.compiled_pass->binding_slot).uses[view.use.index];
+                        job.graph().bindingPlan().pass(pass.compiled_pass->binding_slot).uses[view.use.index];
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, use.binding, use.element, &destination, 1};
                     core.UpdateDescriptorRanges(&update, 1);
                     pass.history_views[view.use.index] = nullptr;
-                    const auto history = graph_.resources()[use.resource].history;
+                    const auto history = job.graph().resources()[use.resource].history;
                     if (history != kGraphInvalidIndex) frame.pending_history_views.mark(history);
                 }
             }
@@ -495,75 +497,31 @@ namespace lux::render::detail
             frame.invalidateImportedBindings();
             std::ranges::fill(frame.history_valid, 0);
         }
-        for (std::size_t h = 0; h < result.histories.size(); ++h)
+        for (std::size_t h = 0; h < histories.size(); ++h)
         {
-            auto& [index, replacement] = result.histories[h];
-            for (std::size_t f = 0; f < frames_.size(); ++f)
+            auto& [index, replacement] = histories[h];
+            for (std::size_t f = 0; f < job.frames_.size(); ++f)
             {
-                for (const auto& old : histories_[index].slots)
+                for (const auto& old : job.histories_[index].slots)
                 {
-                    frames_[f].native.collectRasterViews(old.buffer, old.image, result.frames[f].physical.views);
+                    job.frames_[f].native.collectRasterViews(old.buffer, old.image, frames[f].physical.views);
                 }
-                frames_[f].pending_history_clears.mark(index);
-                frames_[f].pending_history_views.mark(index);
+                job.frames_[f].pending_history_clears.mark(index);
+                job.frames_[f].pending_history_views.mark(index);
             }
-            std::swap(gpu_.histories[index], result.native_histories_[h]);
-            std::swap(histories_[index], replacement);
+            std::swap(job.gpu_.histories[index], native_histories_[h]);
+            std::swap(job.histories_[index], replacement);
         }
-        for (auto& history : histories_)
+        for (auto& history : job.histories_)
         {
             history.invalidate = true;
         }
-        output_ = result.output;
-        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        job.output_ = output;
+        for (std::uint32_t slot = 0; slot < job.frames_.size(); ++slot)
         {
-            frames_[slot].bindHistory(histories_, graph_.recordingDependencies());
-            frames_[slot].updateHistoryViews(histories_, session_->nriCore());
+            job.frames_[slot].bindHistory(job.histories_, job.graph().recordingDependencies());
+            job.frames_[slot].updateHistoryViews(job.histories_, session_->nriCore());
         }
     }
 
-    void RenderGraphInstance::releaseOutputReferences() noexcept
-    {
-        const auto resource = graph_.output();
-        const auto& uses = graph_.resources()[resource];
-        std::vector<nri::Descriptor*> views;
-        for (auto& frame : frames_)
-        {
-            frame.native.collectRasterViews(nullptr, frame.bindings[resource].image, views);
-            frame.bindings[resource].select(nullptr, nullptr, session_->nriCore());
-            for (auto* output : frame.output_views)
-            {
-                *output = nullptr;
-            }
-            for (const auto [pass, index] : uses.barrier_uses)
-            {
-                frame.passes[pass].images[index].texture = nullptr;
-            }
-            for (auto index : uses.final_barrier_uses)
-            {
-                frame.final_images[index].texture = nullptr;
-            }
-            for (const auto [pass, index] : uses.descriptor_uses)
-            {
-                auto*& descriptor = frame.passes[pass].private_views[index];
-                if (descriptor)
-                {
-                    views.push_back(std::exchange(descriptor, nullptr));
-                }
-            }
-            frame.invalidateResource(graph_.recordingDependencies(), resource);
-            frame.invalidateImportedBindings();
-        }
-        output_.frames = {};
-        session_->deferRelease(
-            gpu_.accepted,
-            [views = std::move(views), core = &session_->nriCore()]() noexcept
-            {
-                for (auto* view : views)
-                {
-                    core->DestroyDescriptor(view);
-                }
-            }
-        );
-    }
 } // namespace lux::render::detail

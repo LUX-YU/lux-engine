@@ -44,9 +44,17 @@ namespace lux::render::runtime_detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        if (auto histories = instance.createHistories(); !histories)
+        gpu_.histories.resize(histories_.size());
+        for (std::size_t i = 0; i < histories_.size(); ++i)
         {
-            return histories;
+            const auto& history = graph_.histories()[i];
+            const auto distance = history.description.distance;
+            if (frames_.size() > kGraphInvalidIndex - distance) return cxx::unexpected(RenderError{kDeviceCapacity});
+            auto& bank = gpu_.histories[i];
+            bank.slots.resize(frames_.size() + distance);
+            const auto& resource = graph_.resources()[history.description.current.index];
+            if (auto created = bank.initialize(session, history, resource, output_.description); !created) return created;
+            histories_[i].bindBank(history, bank);
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
@@ -55,7 +63,8 @@ namespace lux::render::runtime_detail
             {
                 return resources;
             }
-            if (auto passes = instance.prepareFrameBindings(slot); !passes)
+            auto* view = output_.frames.empty() ? nullptr : output_.frames[slot].view;
+            if (auto passes = frames_[slot].prepareBindings(plan, session, view); !passes)
             {
                 return passes;
             }
@@ -66,12 +75,11 @@ namespace lux::render::runtime_detail
                 return recordings;
             }
         }
-        if (auto descriptors = instance.prepareDescriptors(); !descriptors)
-        {
-            return descriptors;
-        }
+        auto pool = plan.bindingPlan().private_pool;
+        if (auto counted = session.descriptors().addSnapshotDescriptors(pool); !counted) return counted;
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
+            if (auto descriptors = frames_[slot].createDescriptors(plan, session, pool); !descriptors) return descriptors;
             frames_[slot].linkRecordInputs(plan);
             frames_[slot].bindHistory(histories_, plan.recordingDependencies());
             frames_[slot].updateHistoryViews(histories_, session.nriCore());
@@ -88,6 +96,36 @@ namespace lux::render::runtime_detail
         case EConditionSource::INPUT: return bool(frame.conditions[condition.input]) == condition.expected;
         }
         std::terminate();
+    }
+
+    RenderResult<void> JobExecution::invalidateHistory(std::span<const GraphResourceId> previous) noexcept
+    {
+        // Validate the whole request before changing any instance state.
+        for (auto resource : previous)
+        {
+            const bool valid = resource.index < graph_.resources().size() &&
+                               graph_.resources()[resource.index].origin == EGraphOrigin::HISTORY_PREVIOUS &&
+                               graph_.resources()[resource.index].history != kGraphInvalidIndex;
+            if (!valid)
+            {
+                return cxx::unexpected(RenderError{kGraphUnknownResource});
+            }
+        }
+        if (previous.empty())
+        {
+            for (auto& history : histories_)
+            {
+                history.invalidate = true;
+            }
+        }
+        else
+        {
+            for (auto resource : previous)
+            {
+                histories_[graph_.resources()[resource.index].history].invalidate = true;
+            }
+        }
+        return {};
     }
 
     bool JobExecution::frozenCondition(std::uint32_t slot, PassCondition condition) const noexcept
@@ -156,7 +194,8 @@ namespace lux::render::runtime_detail
         }
         if (!histories_.empty())
         {
-            if (!instance.selectHistory()) return false;
+            for (auto& history : histories_)
+                if (!history.select(session)) return false;
             frame.bindHistory(histories_, plan.recordingDependencies());
         }
         std::ranges::copy(condition_values_, frame.conditions.begin());
@@ -196,7 +235,7 @@ namespace lux::render::runtime_detail
         }
         if (!frame.changed_resources.empty())
         {
-            if (auto rebound = instance.rebind(slot); !rebound)
+            if (auto rebound = frame.rebind(plan, session); !rebound)
             {
                 return cxx::unexpected(rebound.error());
             }

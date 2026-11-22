@@ -4,7 +4,6 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
@@ -69,49 +68,32 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<void> RenderGraphInstance::createHistories() noexcept
+    void HistoryState::bindBank(const HistoryPlan& recipe, JobHistoryResources& backing) noexcept
     {
-        gpu_.histories.resize(histories_.size());
-        for (std::size_t index = 0; index < histories_.size(); ++index)
-        {
-            auto& history = histories_[index];
-            history.plan = &graph_.histories_[index];
-            const auto distance = history.plan->description.distance;
-            if (frames_.size() > kGraphInvalidIndex - distance)
-            {
-                return cxx::unexpected(RenderError{kDeviceCapacity});
-            }
-            auto& backing = gpu_.histories[index];
-            backing.slots.resize(frames_.size() + distance);
-            history.slots = backing.slots;
-            history.sample_sequences.resize(history.slots.size());
-            for (auto& slot : history.slots)
-            {
-                slot.last_use = session_->makeFrontiers();
-                const auto& resource = graph_.resources()[history.plan->description.current.index];
-                auto candidate = createGraphResource(*session_, resource, target(), ETransientAllocation::INDEPENDENT);
-                if (!candidate) return cxx::unexpected(candidate.error());
-                slot.image = candidate->image;
-                slot.buffer = candidate->buffer;
-                slot.buffer_size = candidate->buffer_size;
-                if (slot.buffer) slot.buffer_description = &session_->nriCore().GetBufferDesc(*slot.buffer);
-            }
-            if (auto views = createHistoryViews(history); !views)
-            {
-                return views;
-            }
-        }
-        return {};
+        plan = &recipe;
+        slots = backing.slots;
+        sample_sequences.resize(slots.size());
     }
 
-    RenderResult<void> RenderGraphInstance::createHistoryViews(HistoryState& history) noexcept
+    RenderResult<void> JobHistoryResources::initialize(
+        DeviceSession& session, const HistoryPlan& recipe, const CompiledResource& resource, const TargetDesc& target
+    ) noexcept
     {
-        const auto& core = session_->nriCore();
-        const auto& description = history.plan->description;
-        for (auto& slot : history.slots)
+        const auto& core = session.nriCore();
+        for (auto& slot : slots)
         {
-            slot.views.reserve(history.plan->views.size());
-            for (const auto& use : history.plan->views)
+            slot.last_use = session.makeFrontiers();
+            auto created = createGraphResource(session, resource, target, ETransientAllocation::INDEPENDENT);
+            if (!created) return cxx::unexpected(created.error());
+            slot.image = created->image;
+            slot.buffer = created->buffer;
+            slot.buffer_size = created->buffer_size;
+            if (slot.buffer) slot.buffer_description = &core.GetBufferDesc(*slot.buffer);
+        }
+        for (auto& slot : slots)
+        {
+            slot.views.reserve(recipe.views.size());
+            for (const auto& use : recipe.views)
             {
                 nri::Descriptor* view = nullptr;
                 nri::Result result;
@@ -125,14 +107,14 @@ namespace lux::render::detail
                 {
                     auto native = std::get<nri::BufferViewDesc>(use.description);
                     native.buffer = slot.buffer;
-                    result = createGraphBufferView(*session_, native, view);
+                    result = createGraphBufferView(session, native, view);
                 }
                 if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
                 slot.views.push_back(view);
             }
         }
         // Initialization views are immutable and shared by the safe frame descriptor banks.
-        for (auto& slot : history.slots)
+        for (auto& slot : slots)
         {
             if (!slot.image)
             {
@@ -141,7 +123,7 @@ namespace lux::render::detail
             const auto& image = core.GetTextureDesc(*slot.image);
             slot.image_description = &image;
             const auto& graph_image =
-                std::get<GraphImageDesc>(graph_.resources()[description.current.index].description);
+                std::get<GraphImageDesc>(resource.description);
             const bool depth = rdesc::textureAspectMask(graph_image.format) != 1;
             for (nri::Dim_t mip = 0; mip < image.mipNum; ++mip)
             {
@@ -164,11 +146,6 @@ namespace lux::render::detail
             }
         }
         return {};
-    }
-
-    bool RenderGraphInstance::selectHistory() noexcept
-    {
-        return std::ranges::all_of(histories_, [&](auto& history) { return history.select(*session_); });
     }
 
     void FrameResources::bindHistory(std::span<const HistoryState> histories, const RecordingDependencies& dependencies) noexcept
@@ -262,36 +239,6 @@ namespace lux::render::detail
             }
         }
         pending_history_views.clear();
-    }
-
-    RenderResult<void> RenderGraphInstance::invalidateHistory(std::span<const GraphResourceId> previous) noexcept
-    {
-        // Validate the whole request before changing any instance state.
-        for (auto resource : previous)
-        {
-            const bool valid = resource.index < graph_.resources().size() &&
-                               graph_.resources()[resource.index].origin == EGraphOrigin::HISTORY_PREVIOUS &&
-                               graph_.resources()[resource.index].history != kGraphInvalidIndex;
-            if (!valid)
-            {
-                return cxx::unexpected(RenderError{kGraphUnknownResource});
-            }
-        }
-        if (previous.empty())
-        {
-            for (auto& history : histories_)
-            {
-                history.invalidate = true;
-            }
-        }
-        else
-        {
-            for (auto resource : previous)
-            {
-                histories_[graph_.resources()[resource.index].history].invalidate = true;
-            }
-        }
-        return {};
     }
 
     void FrameResources::freezeHistoryInitializations(

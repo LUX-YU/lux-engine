@@ -54,7 +54,6 @@
 #include <limits>
 #include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include "FrameHarness.hpp"
@@ -205,17 +204,16 @@ static void graphOutput(Validation& validation)
     auto execution_job = std::make_unique<JobExecution>(
         *execution_gpu, graph.graph, testInstallation(), physical->output()
     );
-    auto* execution = &execution_job->instance;
     CHECK(execution_job->initialize());
     auto incompatible_output = physical->output();
     incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
-    auto rejected_resize = RenderGraphInstance::ResizeResources::prepare(
-        *execution_gpu, *execution, incompatible_output, {}
+    auto rejected_resize = ResizeResources::prepare(
+        *execution_job, incompatible_output, {}
     );
     CHECK(!rejected_resize && rejected_resize.error().type == kDeviceArgument);
-    auto missing_output = RenderGraphInstance::ResizeResources::prepare(*execution_gpu, *execution, {});
+    auto missing_output = ResizeResources::prepare(*execution_job, {});
     CHECK(!missing_output && missing_output.error().type == kDeviceArgument);
-    CHECK(execution->target() == target); // Rejection must not withdraw the adopted output.
+    CHECK(execution_job->targetDescription() == target); // Rejection must not withdraw the adopted output.
     const std::array contexts{execution_job.get()};
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
@@ -314,10 +312,10 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     };
     std::optional<JobGpuResources> instance_gpu;
     std::optional<JobExecution> instance_job;
-    const auto create = [&]() -> RenderGraphInstance*
+    const auto create = [&]() -> JobExecution*
     {
         auto& gpu = instance_gpu.emplace(*session, 1);
-        return &instance_job.emplace(gpu, plan.graph, testInstallation(), TargetOutput{}).instance;
+        return &instance_job.emplace(gpu, plan.graph, testInstallation(), TargetOutput{});
     };
     auto* instance = create();
     CHECK(instance_job->initialize());
@@ -339,7 +337,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     const auto& raster_pass = plan.graph.passes()[raster_slot];
     const auto change_reads = [&](std::uint32_t update)
     {
-        auto& draws = instance->rasterDraws(raster_pass, 0);
+        auto& draws = rasterDraws(*instance, raster_pass, 0);
         draws.reads = {{buffer, GraphBufferRange{16 * (update % 2), 16}, EGraphUse::STORAGE_READ, 1}};
     };
     change_reads(0);
@@ -349,12 +347,17 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     CHECK(frames->completed(0, *instance_job));
     const auto cached_revision = revision(*instance_job);
     const auto cached_rebuilds = rebuilds();
+    auto stale_resize = take(ResizeResources::prepare(*instance_job, {}));
+    CHECK(stale_resize.prepareAdoption(*instance_job));
+    const auto* gpu_address = &*instance_gpu;
     const auto* address = &*instance;
     instance_job.reset();
     instance_gpu.reset();
     CHECK(session->drain());
     instance = create();
-    CHECK(&*instance == address);
+    CHECK(&*instance == address && &*instance_gpu == gpu_address);
+    const auto stale_adoption = stale_resize.prepareAdoption(*instance_job);
+    CHECK(!stale_adoption && stale_adoption.error().type == kFrameContract);
     CHECK(instance_job->initialize());
     CHECK(!frames->completed(0, *instance_job));
     change_reads(0);
@@ -371,6 +374,8 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     instance_gpu.reset();
     CHECK(session->drain());
     session->nriCore().DestroyBuffer(buffer);
+    std::printf("RESIZE GENERATION PASS backend=%s: prepared candidate rejected after CPU and GPU row address reuse\n",
+        backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan");
     std::printf("EXECUTION IDENTITY PASS backend=%s: old receipt excluded at same address, "
                 "equal local revisions rebuilt once, stable inputs reused dependencies\n",
                 backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan");
@@ -480,24 +485,32 @@ static void importedExtentContracts(Validation& validation)
         {
             JobGpuResources instance_gpu(*session, 1);
             JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
-            auto& instance = instance_job.instance;
             instance_job.bindImage(source, 0, *images[0]);
             instance_job.bindImage(destination, 0, *images[2]);
             CHECK(instance_job.initialize());
             const std::array<TargetFrame, 1> smaller_frames{{{images[1]}}};
-            const RenderGraphInstance::ImageReplacement replacement{destination, smaller_frames};
-            const auto rejected = RenderGraphInstance::ResizeResources::prepare(
-                instance_gpu, instance, {}, {&replacement, 1}
+            const ImageReplacement replacement{destination, smaller_frames};
+            const auto rejected = ResizeResources::prepare(
+                instance_job, {}, {&replacement, 1}
             );
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
             // A graph with only imported resources legitimately accepts an empty output.
             const std::array<TargetFrame, 1> original{{{images[2]}}};
-            const RenderGraphInstance::ImageReplacement valid{destination, original};
-            auto unchanged = take(RenderGraphInstance::ResizeResources::prepare(
-                instance_gpu, instance, {}, {&valid, 1}
+            const ImageReplacement valid{destination, original};
+            const std::array repeated{valid, valid};
+            const auto duplicate = ResizeResources::prepare(instance_job, {}, repeated);
+            CHECK(!duplicate && duplicate.error().type == kFrameContract);
+            const ImageReplacement missing_frames{destination, {}};
+            const auto malformed = ResizeResources::prepare(instance_job, {}, {&missing_frames, 1});
+            CHECK(!malformed && malformed.error().type == kFrameContract);
+            CHECK(instance_job.resourceInput(destination, 0).image == images[2]);
+            auto unchanged = take(ResizeResources::prepare(
+                instance_job, {}, {&valid, 1}
             ));
-            CHECK(instance.prepareResizeAdoption(unchanged));
-            instance.commitResize(std::move(unchanged));
+            CHECK(unchanged.prepareAdoption(instance_job));
+            std::move(unchanged).commit(instance_job);
+            const auto reused = unchanged.prepareAdoption(instance_job);
+            CHECK(!reused && reused.error().type == kFrameContract);
         }
         CHECK(session->drain());
         for (auto* texture : images) core.DestroyTexture(texture);

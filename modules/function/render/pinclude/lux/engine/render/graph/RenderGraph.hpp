@@ -31,7 +31,6 @@ namespace lux::render::detail
     class GraphCompiler;
     class FrameExecutor;
     class SubmissionOperation;
-    class RenderGraphInstance;
     class NativeProgramBindings;
     struct CompiledRasterStream;
     struct PreparedRenderGraph;
@@ -556,7 +555,8 @@ namespace lux::render::compiled
         descriptorUses(std::uint32_t binding_slot) const & noexcept;
         std::span<const detail::DescriptorAccess> descriptorUses(std::uint32_t) const && = delete;
 
-        [[nodiscard]] std::size_t historyCount() const noexcept { return histories_.size(); }
+        [[nodiscard]] std::span<const detail::HistoryPlan> histories() const & noexcept { return histories_; }
+        std::span<const detail::HistoryPlan> histories() const && = delete;
 
         [[nodiscard]] std::uint32_t output() const noexcept
         {
@@ -622,7 +622,6 @@ namespace lux::render::compiled
         std::span<const BindingComparison> bindingComparisons() const && = delete;
 
     private:
-        friend class detail::RenderGraphInstance;
         friend class detail::GraphCompiler;
         friend class detail::FrameExecutor;
         friend class detail::SubmissionOperation;

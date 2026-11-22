@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Support.hpp"
+#include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
@@ -12,6 +13,25 @@ namespace foundation_test
     {
         static std::atomic<std::uint64_t> next{1};
         return {.identity = {RenderJobId{0, 1}, next.fetch_add(1, std::memory_order_relaxed)}};
+    }
+
+    inline RenderResult<std::span<nri::CommandBuffer* const>> recordFrame(
+        const runtime_detail::JobExecution& job, const DeviceSession& device, std::uint32_t slot, std::uint32_t batch
+    ) noexcept
+    {
+        if (const auto error = device.terminalError(); error.type) return lux::cxx::unexpected(error);
+        if (slot >= job.frameCount()) return lux::cxx::unexpected(RenderError{kDeviceArgument});
+        const auto* frame = job.frame(slot).recordingFrame();
+        if (!frame) return lux::cxx::unexpected(RenderError{kDeviceArgument});
+        return FrameExecutor::recordBatch(*frame, device, batch);
+    }
+
+    inline RasterDrawList& rasterDraws(runtime_detail::JobExecution& job, const CompiledPass& pass, std::uint32_t slot)
+    {
+        auto& frame = job.frame(slot);
+        frame.invalidatePass(job.graph(), pass.binding_slot);
+        const auto& raster = *job.graph().rasterCommands(pass);
+        return frame.raster_draws[std::get<RasterListCommands>(raster.draw).data_index];
     }
 
     // Drives the same private round and workspace from the standalone native probes.

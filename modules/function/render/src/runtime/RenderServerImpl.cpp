@@ -152,7 +152,7 @@ namespace lux::render
         for (auto id : affected)
         {
             auto& execution = *runtime_->jobs_.find(id)->execution;
-            std::vector<detail::RenderGraphInstance::ImageReplacement> inputs;
+            std::vector<detail::ImageReplacement> inputs;
             for (const auto& image : execution.target_images)
             {
                 if (image.target == target)
@@ -160,9 +160,8 @@ namespace lux::render
                     inputs.push_back({image.resource, output.frames});
                 }
             }
-            auto& gpu = runtime_->device(execution.device)->jobResources(execution.binding_identity);
-            auto changed = detail::RenderGraphInstance::ResizeResources::prepare(
-                gpu, execution.instance,
+            auto changed = detail::ResizeResources::prepare(
+                execution,
                 execution.target == target ? output : targetOutput(*runtime_->targets_.find(execution.target)),
                 inputs
             );
@@ -268,7 +267,7 @@ namespace lux::render
             if (!writer_at_admission.isNull())
             {
                 auto& writer = *runtime_->jobs_.find(writer_at_admission);
-                writer.execution->instance.releaseOutputReferences();
+                writer.execution->releaseOutputReferences();
                 writer.control.rejectUnadmitted(RenderError{kJobStopped});
             }
             state.enabled = false;
@@ -284,11 +283,11 @@ namespace lux::render
         }
         for (auto& [id, candidate] : candidates)
         {
-            if (auto ready = runtime_->jobs_.find(id)->execution->instance.prepareResizeAdoption(candidate); !ready)
+            if (auto ready = candidate.prepareAdoption(*runtime_->jobs_.find(id)->execution); !ready)
                 co_return response(ready.error());
         }
         for (auto& [id, candidate] : candidates)
-            runtime_->jobs_.find(id)->execution->instance.commitResize(std::move(candidate));
+            std::move(candidate).commit(*runtime_->jobs_.find(id)->execution);
         auto next = state;
         ++next.epoch;
         next.enabled = false;

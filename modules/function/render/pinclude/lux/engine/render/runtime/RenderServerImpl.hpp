@@ -19,7 +19,6 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
@@ -175,7 +174,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void>
         validateJobBinding(const JobStartRequest&, const RenderJob&, const compiled::RenderGraph&) const noexcept;
 
-        using ResizeCandidates = std::vector<std::pair<RenderJobId, detail::RenderGraphInstance::ResizeResources>>;
+        using ResizeCandidates = std::vector<std::pair<RenderJobId, detail::ResizeResources>>;
         [[nodiscard]] RenderResult<ResizeCandidates>
         prepareTargetResize(TargetId, detail::TargetOutput, std::span<const RenderJobId>) noexcept;
 

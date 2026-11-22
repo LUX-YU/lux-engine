@@ -3,6 +3,8 @@
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "NativeDevice.hpp"
 #include "BufferReadback.hpp"
+#include "AliasHandoffProbe.hpp"
+#include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #ifdef LUX_RENDER_GRAPH_ALLOCATION_PROBE
 #include "GraphMeasurements.hpp"
 #endif
@@ -1795,6 +1797,47 @@ compileCpuGraph(const RenderGraph& graph, GraphQueuePolicy policy = {}, bool ali
     ));
 }
 
+static void cpuAliasWaitScopes()
+{
+    using Stage = nri::StageBits;
+    CHECK(combineStages(Stage::NONE, Stage::COPY) == Stage::COPY);
+    CHECK(combineStages(Stage::ALL, Stage::COPY) == Stage::ALL);
+    CHECK(!coversStages(Stage::NONE, Stage::COPY));
+    CHECK(!coversStages(Stage::COPY, Stage::ALL));
+    CHECK(!coversStages(Stage::COPY, Stage::COPY | Stage::CLEAR_STORAGE));
+    CHECK(coversStages(Stage::ALL, Stage::COPY | Stage::CLEAR_STORAGE));
+    AliasUseFrontier previous{}, next{};
+    auto& entry = next.queues[0];
+    entry.destination = {nri::AccessBits::COPY_DESTINATION, Stage::COPY};
+    entry.source = {nri::AccessBits::COPY_DESTINATION | nri::AccessBits::COPY_SOURCE, Stage::COPY};
+    auto& compute = previous.queues[1];
+    compute.point_count = 1;
+    compute.last_submission = 3;
+    const auto check_full = [&]
+    {
+        const auto barrier = aliasHandoff(previous, next, 0);
+        CHECK(barrier.before.stages == Stage::ALL && barrier.after.stages == Stage::ALL);
+        CHECK(barrier.after.access == entry.source.access);
+    };
+    check_full();
+    entry.waited_through[1] = 2;
+    check_full();
+    entry.waited_through[1] = 3;
+    auto narrow = aliasHandoff(previous, next, 0);
+    CHECK(narrow.before.stages == Stage::COPY && narrow.before.access == nri::AccessBits::NONE);
+    CHECK(narrow.after.stages == Stage::COPY && narrow.after.access == entry.destination.access);
+    previous.queues[2] = compute;
+    check_full();
+    entry.waited_through[2] = 4;
+    previous.queues[0].point_count = 1;
+    previous.queues[0].source = {nri::AccessBits::SHADER_RESOURCE, Stage::FRAGMENT_SHADER};
+    narrow = aliasHandoff(previous, next, 0);
+    CHECK(narrow.before.stages == (Stage::COPY | Stage::FRAGMENT_SHADER));
+    CHECK(narrow.before.access == nri::AccessBits::SHADER_RESOURCE);
+    next.image = true;
+    check_full();
+}
+
 static void cpuAliasBufferRanges()
 {
     RenderGraphBuilder builder;
@@ -3543,9 +3586,22 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
     CHECK(session->drain());
 }
 
-static void
-physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, bool ordered, bool alias_memory = false)
+enum class EReuseOrder
 {
+    UNORDERED,
+    EXPLICIT,
+    SHADER_READER
+};
+
+struct PhysicalReuseCase final
+{
+    EReuseOrder order;
+    bool alias_memory = false;
+};
+
+static void physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, PhysicalReuseCase scenario)
+{
+    const auto [order, alias_memory] = scenario;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     RenderGraphBuilder builder;
@@ -3553,13 +3609,12 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     const auto b = take(builder.declareResource({"second temporary", GraphBufferDesc{alias_memory ? 32u : 16u}}));
     const auto output_a = take(builder.declareResource({"first result", GraphBufferDesc{16}}));
     const auto output_b = take(builder.declareResource({"second result", GraphBufferDesc{16}}));
-    const auto shader =
-        take(builder.addProgram(program(kGraphHistory, options.backend)));
+    const auto shader = take(builder.addProgram(program(kGraphHistory, options.backend)));
     const auto seed_a = take(builder.addTransferPass("seed first", TransferWork{{FillBuffer{{{a, 0}}, 3}}}));
-    const auto increment = [&](std::string name, ResourceVersion input, GraphResourceId output)
+    const auto increment = [&](std::string name, ResourceVersion input, GraphResourceId output, bool async = true)
     {
         ComputeWork work;
-        work.allow_async_compute = true;
+        work.allow_async_compute = async;
         work.interface.program = shader;
         work.interface.resources = {
             {"previous_sample", {input}},
@@ -3568,8 +3623,17 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
         return take(builder.addComputePass(std::move(name), std::move(work)));
     };
     const auto first = increment("observe first", seed_a.written.front(), output_a);
+    std::optional<GraphResourceId> witness;
+    if (order == EReuseOrder::SHADER_READER)
+    {
+        // This graphics batch waits for the old Compute use at COMPUTE_SHADER. Its later Fill
+        // aliases that memory at a different stage. The alias barrier must bridge the narrow wait.
+        witness = take(builder.declareResource({"graphics shader result", GraphBufferDesc{16}}));
+        const auto reader = increment("read first on graphics", first.written.front(), *witness, false);
+        CHECK(builder.exportOutput({reader.written.front(), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
+    }
     const auto seed_b = take(builder.addTransferPass("seed second", TransferWork{{FillBuffer{{{b, 0}}, 7}}}));
-    if (ordered)
+    if (order == EReuseOrder::EXPLICIT)
     {
         CHECK(builder.dependsOn(first.pass, seed_b.pass));
     }
@@ -3595,22 +3659,25 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
         for (std::size_t d = 0; d < compiled.dependencies.size(); ++d)
         {
             CHECK(compiled.dependencies[d].producer == independent.dependencies[d].producer);
+            CHECK(compiled.dependencies[d].stages == independent.dependencies[d].stages);
         }
     }
-    const bool reuse = ordered || &session->queue() == &session->queue(EQueueRole::COMPUTE);
+    const bool reuse = order != EReuseOrder::UNORDERED || &session->queue() == &session->queue(EQueueRole::COMPUTE);
     CHECK(
         (plan.graph.physicalResources().resource_slots[a.index] == plan.graph.physicalResources().resource_slots[b.index]) ==
         (reuse && !alias_memory)
     );
     CHECK(plan.diagnostics.resource_reuse[output_a.index] == EResourceReuse::EXPORTED);
-    CHECK(control.graph.physicalResources().slots.size() == 4);
-    CHECK(plan.graph.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
+    const auto independent_slots = witness ? 5u : 4u;
+    CHECK(control.graph.physicalResources().slots.size() == independent_slots);
+    CHECK(plan.graph.physicalResources().slots.size() == independent_slots - (reuse && !alias_memory));
     auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto instance_job = std::make_unique<JobExecution>(
         *instance_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}
     );
     auto* instance = &instance_job->instance;
     CHECK(instance->initialize());
+    std::optional<AliasHandoffProbe> handoff_probe;
     if (alias_memory)
     {
         std::string dump;
@@ -3622,14 +3689,31 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
                  return true;
              }}
         ));
-        CHECK(dump.find("\"explicit_memory_count\":" + std::to_string(reuse ? 3 : 4)) != std::string::npos);
+        CHECK(dump.find("\"explicit_memory_count\":" + std::to_string(independent_slots - reuse)) != std::string::npos);
         CHECK(dump.find(reuse ? "\"reason\":\"aliased\"" : "\"reason\":\"unordered\"") != std::string::npos);
         const auto& physical = plan.graph.physicalResources();
         const auto& source = physical.alias_frontiers[physical.resource_slots[a.index].index].queues;
         if (reuse && source[1].point_count)
         {
-            CHECK(dump.find("\"before_stages\":0,") != std::string::npos);
-            CHECK(dump.find("\"after_stages\":0}") != std::string::npos);
+            const auto& target = physical.alias_frontiers[physical.resource_slots[b.index].index].queues[0];
+            CHECK(target.destination.stages != nri::StageBits::ALL && target.destination.stages != nri::StageBits::NONE);
+            nri::GlobalBarrierDesc expected{source[0].source, target.destination};
+            auto wait = nri::StageBits::ALL;
+            if (order == EReuseOrder::SHADER_READER)
+            {
+                wait = nri::StageBits::COMPUTE_SHADER;
+                CHECK(!coversStages(wait, target.destination.stages));
+                CHECK(target.waited_through[1] == kGraphInvalidIndex);
+                expected.before.stages = expected.after.stages = nri::StageBits::ALL;
+                expected.after.access = target.source.access;
+            }
+            else
+            {
+                const auto waited = target.waited_through[1];
+                CHECK(waited != kGraphInvalidIndex && waited >= source[1].last_submission);
+                expected.before.stages = combineStages(source[0].source.stages, target.destination.stages);
+            }
+            handoff_probe.emplace(*session, expected, wait);
         }
     }
     for (std::uint32_t slot = 0; slot < fif; ++slot)
@@ -3657,6 +3741,11 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
             }
         }
         CHECK(instance->progress().count(EExecutionOutcome::EXECUTED) == frame + 1);
+        if (handoff_probe)
+        {
+            CHECK(handoff_probe->observed());
+            handoff_probe.reset();
+        }
     }
     CHECK(session->drain());
     const auto slot = instance->progress().last_submitted_slot;
@@ -3664,6 +3753,11 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     const auto right = readBufferWords<4>(*session, *instance->nativeBuffer(output_b.index, slot));
     CHECK(std::ranges::all_of(left, [](auto value) { return value == 4; }));
     CHECK(std::ranges::all_of(right, [](auto value) { return value == 8; }));
+    if (witness)
+    {
+        const auto bytes = readBufferWords<4>(*session, *instance->nativeBuffer(witness->index, slot));
+        CHECK(std::ranges::all_of(bytes, [](auto value) { return value == 5; }));
+    }
     take(runTask(frames->render(instances, {})));
     finishSubmissions(*session, *frames);
     instance_job.reset(); // Accepted GPU work retains the unique physical collection through cleanup_scope_.
@@ -3780,6 +3874,7 @@ int main(int argc, char** argv)
         cpuQueueBoundaries();
         cpuQueueCandidates();
         cpuAliasBufferRanges();
+        cpuAliasWaitScopes();
         detachedDirtyRanges();
         std::puts("CPU matrix: conditional range, zero-unit export, imported boundary, MRT/depth/resolve packets");
         return 0;
@@ -3829,6 +3924,13 @@ int main(int argc, char** argv)
     if (argc > 1 && std::string_view(argv[1]) == "alias-frontiers")
     {
         layeredAliasHandoff(validation, backend);
+        DeviceOptions options;
+        options.backend = backend;
+        options.multiple_queues = true;
+        options.prefer_dedicated_queues = true;
+        physicalReuse(validation, options, 2, {EReuseOrder::EXPLICIT, true});
+        physicalReuse(validation, options, 2, {EReuseOrder::UNORDERED, true});
+        physicalReuse(validation, options, 2, {EReuseOrder::SHADER_READER, true});
         CHECK(validation.errors == 0);
         return 0;
     }
@@ -3885,10 +3987,10 @@ int main(int argc, char** argv)
             options.multiple_queues = topology != 0;
             options.prefer_dedicated_queues = topology == 2;
             multiQueueHistory(validation, options, fif);
-            physicalReuse(validation, options, fif, true);
-            physicalReuse(validation, options, fif, false);
-            physicalReuse(validation, options, fif, true, true);
-            physicalReuse(validation, options, fif, false, true);
+            physicalReuse(validation, options, fif, {EReuseOrder::EXPLICIT});
+            physicalReuse(validation, options, fif, {EReuseOrder::UNORDERED});
+            physicalReuse(validation, options, fif, {EReuseOrder::EXPLICIT, true});
+            physicalReuse(validation, options, fif, {EReuseOrder::UNORDERED, true});
         }
     }
     nativeQueueCandidates(validation, backend);

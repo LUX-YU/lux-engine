@@ -279,6 +279,31 @@ namespace lux::render::detail
                 }
             }
         }
+        output += "],\"alias_submission_scopes\":[";
+        bool first_scope = true;
+        for (std::size_t s = 0; s < physical.alias_frontiers.size(); ++s)
+        {
+            const auto& frontier = physical.alias_frontiers[s];
+            for (std::size_t q = 0; q < frontier.queues.size(); ++q)
+            {
+                const auto& entry = frontier.queues[q];
+                if (!entry.point_count) continue;
+                if (!first_scope) output += ',';
+                first_scope = false;
+                output += "{\"slot\":" + std::to_string(s) + ",\"queue\":" + std::to_string(q) +
+                    ",\"entry_pass\":" + std::to_string(entry.barrier_pass) +
+                    ",\"last_submission\":" + std::to_string(entry.last_submission) +
+                    ",\"entry_stages\":" + std::to_string(static_cast<unsigned>(entry.destination.stages)) +
+                    ",\"direct_waited_through\":[";
+                for (std::size_t source = 0; source < entry.waited_through.size(); ++source)
+                {
+                    if (source) output += ',';
+                    const auto batch = entry.waited_through[source];
+                    output += batch == kGraphInvalidIndex ? "null" : std::to_string(batch);
+                }
+                output += "]}";
+            }
+        }
         output += "],\"physical_object_count\":" + std::to_string(plan.physical_resources_.slots.size()) +
                   ",\"submissions\":[";
         for (std::size_t i = 0; i < plan.submissions_.size(); ++i)

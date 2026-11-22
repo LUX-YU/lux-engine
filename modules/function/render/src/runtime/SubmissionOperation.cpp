@@ -12,6 +12,7 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/graph/Range.hpp>
+#include <lux/engine/render/graph/StageScope.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
 #include <tuple>
@@ -292,8 +293,7 @@ namespace lux::render::detail
             if (duplicate)
             {
                 auto& stages = frame.dependencies[count - 1].stages;
-                stages = stages == nri::StageBits::ALL || edge.stages == nri::StageBits::ALL ? nri::StageBits::ALL
-                                                                                             : stages | edge.stages;
+                stages = combineStages(stages, edge.stages);
             }
             else
             {
@@ -586,9 +586,7 @@ namespace lux::render::detail
             {
                 const auto waited = next.waits.serials()[batch.queue];
                 auto& stages = next.stages[batch.queue];
-                stages = waited == 0                                                           ? edge.stages
-                         : stages == nri::StageBits::ALL || edge.stages == nri::StageBits::ALL ? nri::StageBits::ALL
-                                                                                               : stages | edge.stages;
+                stages = waited == 0 ? edge.stages : combineStages(stages, edge.stages);
                 next.waits.accept(device_.submissionPoint(batch.queue, serial));
             }
             if (--next.pending_predecessors == 0)

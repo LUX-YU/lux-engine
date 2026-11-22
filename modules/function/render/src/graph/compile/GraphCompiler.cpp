@@ -655,11 +655,7 @@ namespace lux::render::detail
                     {
                         continue;
                     }
-                    const bool includes_all = found_output_use && (plan.output_wait_stages_ == nri::StageBits::ALL ||
-                                                                   stages == nri::StageBits::ALL);
-                    plan.output_wait_stages_ = !found_output_use ? stages
-                                               : includes_all    ? nri::StageBits::ALL
-                                                                 : plan.output_wait_stages_ | stages;
+                    plan.output_wait_stages_ = found_output_use ? combineStages(plan.output_wait_stages_, stages) : stages;
                     found_output_use = true;
                 }
             }

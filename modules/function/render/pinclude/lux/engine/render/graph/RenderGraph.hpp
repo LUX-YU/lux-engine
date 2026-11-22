@@ -403,6 +403,9 @@ namespace lux::render::detail
     {
         std::uint32_t first_point = 0, point_count = 0;
         std::uint32_t barrier_pass = kGraphInvalidIndex;
+        std::uint32_t last_submission = kGraphInvalidIndex;
+        // Latest whole-submit signal directly waited on at every required entry stage, per physical queue.
+        std::array<std::uint32_t, 3> waited_through{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
         nri::AccessStage source{}, destination{};
     };
 

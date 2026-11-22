@@ -92,9 +92,11 @@ namespace lux::render::detail
                 queue.first_point = static_cast<std::uint32_t>(physical.alias_points.size());
                 queue.point_count = static_cast<std::uint32_t>(selected.size());
                 queue.barrier_pass = selected.front().first_pass;
+                queue.last_submission = recording.passes[selected.front().last_pass].submission;
                 queue.source = queue.destination = selected.front().scope;
                 for (const auto& point : std::span{selected}.subspan(1))
                 {
+                    queue.last_submission = std::max(queue.last_submission, recording.passes[point.last_pass].submission);
                     queue.source.access |= point.scope.access;
                     queue.source.stages = combineStages(queue.source.stages, point.scope.stages);
                     if (point.needs_entry)
@@ -105,7 +107,16 @@ namespace lux::render::detail
                 }
                 // Preserve D3D12's matching texture access contract at the global handoff.
                 if (slot.image && device.limits.graphicsAPI == nri::GraphicsAPI::D3D12) queue.destination = queue.source;
-                const auto group = recording.passes[queue.barrier_pass].rendering_group;
+                const auto& entry = recording.passes[queue.barrier_pass];
+                for (const auto& wait : plan.submissions_[entry.submission].dependencies)
+                {
+                    const auto role = plan.submissions_[wait.producer].queue;
+                    const auto producer = physical_queue[static_cast<std::size_t>(role)];
+                    const bool covers_entry = queue.destination.stages != nri::StageBits::NONE &&
+                        coversStages(wait.stages, queue.destination.stages);
+                    if (producer != q && covers_entry) queue.waited_through[producer] = wait.producer;
+                }
+                const auto group = entry.rendering_group;
                 slot.rendering_boundary &= group == kGraphInvalidIndex ||
                     recording.groups[group].first_pass == queue.barrier_pass;
                 physical.alias_points.insert(physical.alias_points.end(), selected.begin(), selected.end());
@@ -123,28 +134,14 @@ namespace lux::render::detail
         {
             const auto previous = std::exchange(tails[placements[i].group.index], i);
             if (previous == kGraphInvalidIndex) continue;
-            const auto& source = physical.alias_frontiers[previous].queues;
-            const auto has_foreign_source = [&](std::size_t queue) noexcept
+            const auto& source = physical.alias_frontiers[previous];
+            const auto& target = physical.alias_frontiers[i];
+            for (std::size_t q = 0; q < target.queues.size(); ++q)
             {
-                for (std::size_t q = 0; q < source.size(); ++q)
-                {
-                    if (q != queue && source[q].point_count) return true;
-                }
-                return false;
-            };
-            const auto& target = physical.alias_frontiers[i].queues;
-            for (std::size_t q = 0; q < target.size(); ++q)
-            {
-                if (!target[q].point_count) continue;
-                nri::GlobalBarrierDesc handoff{source[q].source, target[q].destination};
-                // A queue-local boundary covers the preceding and following commands in the selected stages.
-                // For a foreign source the vector clock proves order, but does not carry the wait's stage chain.
-                if (has_foreign_source(q))
-                {
-                    handoff.after.access = target[q].source.access;
-                    handoff.before.stages = handoff.after.stages = nri::StageBits::ALL;
-                }
-                auto& barrier = barriers[target[q].barrier_pass];
+                const auto& entry = target.queues[q];
+                if (!entry.point_count) continue;
+                const auto handoff = aliasHandoff(source, target, q);
+                auto& barrier = barriers[entry.barrier_pass];
                 if (!barrier)
                 {
                     barrier = handoff;

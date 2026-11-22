@@ -77,6 +77,7 @@ namespace lux::render::detail
         void bindHistory(std::span<const HistoryState>, const RecordingDependencies&) noexcept;
         void updateHistoryViews(std::span<const HistoryState>, const nri::CoreInterface&) noexcept;
         void linkRecordInputs(const RecordingProgram&) noexcept;
+        [[nodiscard]] bool selectBindingJoin(const compiled::RenderGraph&, std::uint32_t index, bool enabled) noexcept;
         [[nodiscard]] RenderResult<void> freeze(
             const compiled::RenderGraph&, std::span<const HistoryState>, const nri::DeviceDesc&
         ) noexcept;
@@ -114,8 +115,14 @@ namespace lux::render::detail
                 std::uint32_t used = 0;
             };
 
+            struct Write final
+            {
+                std::size_t first_input;
+                std::uint32_t draw, program, record;
+            };
+
             std::vector<Program> programs;
-            std::vector<std::uint32_t> draws;
+            std::vector<Write> writes;
             std::size_t input_count = 0;
         };
 
@@ -192,6 +199,7 @@ namespace lux::render::detail
         std::vector<RasterDrawList> raster_draws;
         std::vector<std::byte> parameters;
         std::vector<std::uint8_t> enabled_regions;
+        std::vector<SelectedBindingDelta> binding_choices;
         std::vector<std::uint8_t> history_valid;
         std::vector<std::uint8_t> conditions;
         std::vector<std::uint8_t> publish_history;

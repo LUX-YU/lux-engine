@@ -3,6 +3,7 @@
 #include <lux/engine/render/graph/execute/CommandExtent.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <algorithm>
+#include <bit>
 
 namespace lux::render::detail
 {
@@ -205,7 +206,7 @@ namespace lux::render::detail
         if (!record_ready) return cxx::unexpected(RenderError{kDeviceArgument});
         return FrozenRecordingFrame{{
             graph, transfers, record_resources, record_passes, history_initializations.values(), enabled_regions,
-            final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets
+            binding_choices, final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets
         }, command_batches, native.batches};
     }
 
@@ -241,8 +242,63 @@ namespace lux::render::detail
         for (auto& packet : draws.packets) packet.scissor = native.scissor;
     }
 
+    namespace
+    {
+        // On a mixed join the skipped path can still hold the desired bindings. Each fixed pass
+        // establishes its complete layout and its shared sets. A helper or stream clears the predecessor.
+        FixedBindingDelta joinBindings(
+            FixedBindingDelta delta, const NativeProgramSlot& target, const CompiledPass& previous,
+            const NativeProgramBindings& programs
+        ) noexcept
+        {
+            const auto& prior = programs[previous.binding_slot];
+            delta.pool = false;
+            if (prior.pipeline == target.pipeline) delta.pipeline = false;
+            const auto& binding = target.descriptors;
+            const bool same_layout = previous.fixed_bindings.point == delta.point &&
+                prior.descriptors.layout == binding.layout;
+            if (same_layout)
+            {
+                delta.layout = false;
+                for (auto mask = delta.shared_sets; mask; mask &= mask - 1)
+                {
+                    const auto kind = std::countr_zero(mask);
+                    if (prior.descriptors.shared_sets[kind] == binding.shared_sets[kind])
+                        delta.shared_sets &= static_cast<std::uint8_t>(~(1u << kind));
+                }
+            }
+            return delta;
+        }
+    } // namespace
+
+    bool FrameResources::selectBindingJoin(
+        const compiled::RenderGraph& graph, std::uint32_t index, bool enabled
+    ) noexcept
+    {
+        const auto& join = graph.recordingProgram().binding_joins[index];
+        auto& choice = binding_choices[index];
+        auto predecessor = enabled ? join.enabled_predecessor : join.disabled_predecessor;
+        auto commands = enabled ? join.enabled : join.disabled;
+        if (!enabled && join.disabled_join != kGraphInvalidIndex)
+        {
+            predecessor = binding_choices[join.disabled_join].predecessor;
+            if (predecessor != kGraphInvalidIndex)
+            {
+                const auto& pass = graph.passes()[join.pass];
+                commands = joinBindings(commands, graph.programs()[pass.binding_slot],
+                    graph.passes()[predecessor], graph.programs());
+            }
+        }
+        const bool changed = predecessor != choice.predecessor;
+        choice = {predecessor, commands};
+        return changed;
+    }
+
     void FrameResources::linkRecordInputs(const RecordingProgram& recording) noexcept
     {
+        binding_choices.reserve(recording.binding_joins.size());
+        for (const auto& join : recording.binding_joins)
+            binding_choices.push_back({join.enabled_predecessor, join.enabled});
         for (std::uint32_t i = 0; i < passes.size(); ++i)
         {
             const auto& pass = passes[i];

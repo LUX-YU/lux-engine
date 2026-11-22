@@ -1,34 +1,9 @@
 #pragma once
 
 #include <lux/engine/render/graph/execute/BindingState.hpp>
-#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 
 namespace lux::render::detail
 {
-    inline void bindPassDescriptors(
-        const nri::CoreInterface& core,
-        std::span<nri::DescriptorSet* const, 3> shared_descriptors,
-        nri::CommandBuffer& command,
-        const PassDescriptorBindings& bindings,
-        std::span<nri::DescriptorSet* const> private_sets,
-        BindingState& state
-    ) noexcept
-    {
-        const auto bind = [&](std::uint32_t set, nri::DescriptorSet* descriptors) noexcept
-        {
-            if (state.descriptors[set] != descriptors)
-            {
-                core.CmdSetDescriptorSet(command, {set, descriptors, state.point});
-                state.descriptors[set] = descriptors;
-            }
-        };
-        for (std::size_t kind = 0; kind < bindings.shared_sets.size(); ++kind)
-        {
-            const auto set = bindings.shared_sets[kind];
-            if (set != UINT32_MAX) bind(set, shared_descriptors[kind]);
-        }
-        for (std::uint32_t i = 0; i < private_sets.size(); ++i) bind(bindings.private_set + i, private_sets[i]);
-    }
     inline void
     setPassScissor(
         const nri::CoreInterface& core,

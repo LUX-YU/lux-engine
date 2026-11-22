@@ -2,6 +2,8 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/RenderingPlan.hpp>
+#include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -264,5 +266,126 @@ namespace lux::render::detail
             }
         }
         return {};
+    }
+
+    namespace
+    {
+        // Facts true on every path reaching the next command in this physical CB.
+        struct FixedBindingState final
+        {
+            nri::PipelineLayout* layout = nullptr;
+            nri::Pipeline* pipeline = nullptr;
+            nri::BindPoint point = nri::BindPoint::INHERIT;
+            bool pool = false, mixed = false;
+            std::array<std::uint8_t, 4> sets{}; // Zero is unknown, otherwise shared kind + 1.
+
+            void intersect(const FixedBindingState& skipped) noexcept
+            {
+                const bool same_bindings = pool == skipped.pool && layout == skipped.layout && point == skipped.point &&
+                    pipeline == skipped.pipeline && sets == skipped.sets;
+                mixed = mixed || skipped.mixed || !same_bindings;
+                pool = pool && skipped.pool;
+                if (pipeline != skipped.pipeline) pipeline = nullptr;
+                if (layout != skipped.layout || point != skipped.point)
+                {
+                    layout = nullptr;
+                    point = nri::BindPoint::INHERIT;
+                    sets = {};
+                    return;
+                }
+                for (std::size_t i = 0; i < sets.size(); ++i)
+                    if (sets[i] != skipped.sets[i]) sets[i] = 0;
+            }
+
+            FixedBindingDelta select(
+                const NativeProgramSlot& program, bool has_private, const CompiledPass& pass
+            ) noexcept
+            {
+                FixedBindingDelta delta;
+                mixed = false;
+                delta.pool = !pool;
+                pool = true;
+                const auto& binding = program.descriptors;
+                if (!binding.layout) return delta;
+                delta.point = std::holds_alternative<RasterCommandSlot>(pass.commands) ?
+                    nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
+                delta.layout = layout != binding.layout || point != delta.point;
+                if (delta.layout || delta.pool) sets = {};
+                layout = binding.layout;
+                point = delta.point;
+                delta.pipeline = program.pipeline && program.pipeline != pipeline;
+                if (program.pipeline) pipeline = program.pipeline;
+                for (std::uint8_t kind = 0; kind < binding.shared_sets.size(); ++kind)
+                {
+                    const auto set = binding.shared_sets[kind];
+                    if (set == kGraphInvalidIndex) continue;
+                    const auto identity = static_cast<std::uint8_t>(kind + 1);
+                    if (sets[set] != identity) delta.shared_sets |= static_cast<std::uint8_t>(1u << kind);
+                    sets[set] = identity;
+                }
+                // Private sets and inline storage are independently writable for each pass and FIF.
+                delta.private_set = has_private;
+                if (has_private) sets[binding.private_set] = 0;
+                delta.constants = pass.parameter_size != 0;
+                return delta;
+            }
+        };
+    } // namespace
+
+    void GraphCompiler::Workspace::compileFixedBindings(compiled::RenderGraph& graph) noexcept
+    {
+        auto& recording = graph.recording_;
+        const auto& programs = graph.programs_;
+        const auto& bindings = *graph.binding_plan_;
+        for (const auto& batch : graph.submissions())
+        {
+            FixedBindingState state, skipped;
+            auto region = kGraphInvalidIndex, last = kGraphInvalidIndex;
+            auto skipped_pass = kGraphInvalidIndex, skipped_join = kGraphInvalidIndex;
+            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            {
+                auto& pass = recording.passes[p];
+                if (p == batch.output_begin)
+                {
+                    state = {};
+                    region = last = kGraphInvalidIndex;
+                }
+                const auto* raster = recording.rasterCommands(pass);
+                const bool dynamic = raster && std::holds_alternative<RasterListCommands>(raster->draw);
+                const auto select = [&](FixedBindingState& facts)
+                {
+                    if (dynamic) return FixedBindingDelta{.pool = !facts.pool};
+                    const auto slot = pass.binding_slot;
+                    return facts.select(programs[slot], bindings.passes[slot].has_private_set, pass);
+                };
+                if (region != pass.condition_region)
+                {
+                    if (region != kGraphInvalidIndex)
+                    {
+                        auto taken = state;
+                        state.intersect(skipped);
+                        if (state.mixed)
+                        {
+                            pass.binding_join = static_cast<std::uint32_t>(recording.binding_joins.size());
+                            recording.conditions[region].binding_join = pass.binding_join;
+                            recording.binding_joins.push_back({
+                                p, last, skipped_pass, skipped_join, select(taken), select(skipped)
+                            });
+                        }
+                    }
+                    region = pass.condition_region;
+                    if (region != kGraphInvalidIndex)
+                    {
+                        skipped = state;
+                        skipped_pass = last;
+                        skipped_join = pass.binding_join;
+                    }
+                }
+                pass.fixed_bindings = select(state);
+                const bool clobbers = dynamic || std::holds_alternative<TransferCommandSlot>(pass.commands);
+                if (clobbers) state = {};
+                last = clobbers ? kGraphInvalidIndex : p;
+            }
+        }
     }
 } // namespace lux::render::detail

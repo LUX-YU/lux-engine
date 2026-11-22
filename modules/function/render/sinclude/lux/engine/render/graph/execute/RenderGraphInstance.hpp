@@ -25,7 +25,7 @@ namespace lux::render::detail
     struct HistoryState;
     class DeviceSession;
     struct RasterDrawList;
-    struct PassBindings;
+    struct RasterDescriptorLayout;
     class JobGpuResources;
     struct RasterBindingKey;
     struct RasterDescriptorInput;
@@ -204,9 +204,10 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<void> prepareRasterDescriptorCapacity(std::uint32_t slot, bool resize_pool) noexcept;
         [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
-            std::uint32_t slot, const PassBindings&, std::uint32_t record, std::span<const RasterDescriptorInput>
+            std::uint32_t slot, const RasterDescriptorLayout&, std::uint32_t record,
+            std::span<const RasterDescriptorInput>
         ) noexcept;
-        [[nodiscard]] const PassBindings& rasterBindings(RasterBindingKey) const noexcept;
+        [[nodiscard]] const RasterDescriptorLayout& rasterBindings(RasterBindingKey) const noexcept;
         void releaseRasterBindings(std::uint32_t pass, std::uint64_t generation) noexcept;
         static void
         collectRasterViews(FrameResources&, nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;

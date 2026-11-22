@@ -33,6 +33,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<compiled::RenderGraph> planStructure(const EffectOutputDesc*) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>>
         prepareOperations(DeviceSession&, PreparedRenderGraph&, execution::CpuScheduler) noexcept;
+        static void compileFixedBindings(compiled::RenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void> finishDevicePlan(PreparedRenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void> finishPlan(compiled::RenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void>

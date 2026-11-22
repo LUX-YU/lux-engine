@@ -1,7 +1,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <algorithm>
+#include <bit>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>
 #include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
@@ -99,27 +99,17 @@ namespace lux::render::detail
         BindingState binding_state;
         const auto& plan = frame.plan;
         const auto& batch = plan.submissions_[batch_index];
-        // Logical vertex-resource indices are instance-local. Pipeline and descriptor state
-        // use physical identities and may be retained across the whole merged recording.
-        binding_state.vertices = {};
         const bool has_tail = batch.output_begin != kGraphInvalidIndex;
         const bool first_part = !output_tail || batch.output_begin == batch.first_pass;
         const bool last_part = output_tail || !has_tail;
         if (batch_index == 0 && first_part)
-        {
             recordHistoryInitialization(frame, core, command);
-            if (!frame.history_initializations.empty())
-            {
-                binding_state = {};
-            }
-        }
         const auto first_pass = output_tail ? batch.output_begin : batch.first_pass;
         const auto end_pass = !output_tail && has_tail ? batch.output_begin : batch.first_pass + batch.pass_count;
         for (std::size_t p = first_pass; p < end_pass; ++p)
         {
             const auto& pass = frame.passes[p];
             const auto& compiled = plan.passes()[p];
-            const auto& parameters = pass.parameters;
             if (pass.alias_barrier)
             {
                 // Establish the alias memory dependency before any new image layout transition.
@@ -142,45 +132,35 @@ namespace lux::render::detail
             {
                 continue;
             }
-            if (frame.descriptor_pool && binding_state.descriptor_pool != frame.descriptor_pool)
+            const auto& delta = compiled.binding_join == kGraphInvalidIndex ? compiled.fixed_bindings :
+                frame.binding_choices[compiled.binding_join].commands;
+            const auto& program = plan.programs()[compiled.binding_slot];
+            if (delta.pool && frame.descriptor_pool) core.CmdSetDescriptorPool(command, *frame.descriptor_pool);
+            const auto& binding = program.descriptors;
+            if (delta.layout) core.CmdSetPipelineLayout(command, delta.point, *binding.layout);
+            if (delta.pipeline)
             {
-                core.CmdSetDescriptorPool(command, *frame.descriptor_pool);
-                binding_state.descriptor_pool = frame.descriptor_pool;
-                binding_state.descriptors = {};
+                core.CmdSetPipeline(command, *program.pipeline);
+                binding_state.depth_bias.reset();
             }
-            const auto& program = frame.plan.programs()[compiled.binding_slot];
+            for (auto mask = delta.shared_sets; mask; mask &= mask - 1)
+            {
+                const auto kind = std::countr_zero(mask);
+                const auto* selected = frame.shared_descriptors[kind];
+                const nri::SetDescriptorSetDesc set{binding.shared_sets[kind], selected, delta.point};
+                core.CmdSetDescriptorSet(command, set);
+            }
+            if (delta.private_set)
+                core.CmdSetDescriptorSet(command, {binding.private_set, pass.private_descriptors, delta.point});
+            if (delta.constants)
+            {
+                const auto bytes = pass.parameters;
+                const auto size = static_cast<std::uint32_t>(bytes.size());
+                const nri::SetRootConstantsDesc block{0, bytes.data(), size, 0, delta.point};
+                core.CmdSetRootConstants(command, block);
+            }
             const auto* scope = plan.recordingProgram().rasterScope(compiled);
             const bool owns_draw_sections = scope && scope->exclusive;
-            if (program.descriptors.layout && !pass.native.draws && !owns_draw_sections)
-            {
-                const auto point = scope != nullptr
-                    ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
-                if (binding_state.layout != program.descriptors.layout || binding_state.point != point)
-                {
-                    core.CmdSetPipelineLayout(command, point, *program.descriptors.layout);
-                    binding_state.layout = program.descriptors.layout;
-                    binding_state.point = point;
-                    binding_state.descriptors = {};
-                }
-                auto* pipeline = program.pipeline;
-                if (pipeline && binding_state.pipeline != pipeline)
-                {
-                    core.CmdSetPipeline(command, *pipeline);
-                    binding_state.pipeline = pipeline;
-                    binding_state.depth_bias.reset();
-                }
-                bindPassDescriptors(
-                    core, frame.shared_descriptors, command, program.descriptors,
-                    {&pass.private_descriptors, pass.private_descriptors ? 1u : 0u}, binding_state
-                );
-                if (!parameters.empty())
-                {
-                    core.CmdSetRootConstants(
-                        command,
-                        {0, parameters.data(), static_cast<std::uint32_t>(parameters.size()), 0, point}
-                    );
-                }
-            }
             auto native = pass.native;
             native.bindings = &binding_state;
             const PassRecordInput input{frame.resources, frame.shared_descriptors, &native};
@@ -215,7 +195,8 @@ namespace lux::render::detail
                     return RenderResult<void>{};
                 }
             });
-            if (owns_draw_sections || std::holds_alternative<TransferCommandSlot>(compiled.commands)) binding_state.invalidate();
+            const bool clobbers = owns_draw_sections || std::holds_alternative<TransferCommandSlot>(compiled.commands);
+            if (clobbers) binding_state.invalidate();
             if (group && (group->first_pass + group->pass_count == p + 1 || !recorded)) core.CmdEndRendering(command);
             if (!recorded) return recorded;
         }

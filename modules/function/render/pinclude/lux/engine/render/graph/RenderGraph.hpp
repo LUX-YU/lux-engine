@@ -179,9 +179,32 @@ namespace lux::render::detail
         bool reset_viewport = false;
     };
 
+    struct FixedBindingDelta final
+    {
+        nri::BindPoint point = nri::BindPoint::INHERIT;
+        std::uint8_t shared_sets = 0; // Bits select the frozen texture, sampler and buffer tables.
+        bool pool = false, layout = false, pipeline = false, private_set = false, constants = false;
+    };
+
+    // A conditional region has a single exit. Consecutive skipped regions can select the exit
+    // of an earlier join. Indices always refer to the same physical command buffer.
+    struct BindingJoin final
+    {
+        std::uint32_t pass, enabled_predecessor, disabled_predecessor, disabled_join;
+        FixedBindingDelta enabled, disabled;
+    };
+
+    struct SelectedBindingDelta final
+    {
+        std::uint32_t predecessor = kGraphInvalidIndex;
+        FixedBindingDelta commands;
+    };
+
     struct CompiledPass final
     {
         VCommandSlot commands;
+        FixedBindingDelta fixed_bindings;
+        std::uint32_t binding_join = kGraphInvalidIndex;
         bool writes_output = false;
         BarrierBatch before;
         std::uint32_t binding_slot = kGraphInvalidIndex;
@@ -204,6 +227,7 @@ namespace lux::render::detail
         std::uint32_t input_slot;
         EConditionSource source;
         bool expected;
+        std::uint32_t binding_join = kGraphInvalidIndex;
     };
 
     struct RenderingGroup final
@@ -256,6 +280,7 @@ namespace lux::render::detail
         TransferProgram transfers;
         std::vector<RenderingGroup> groups;
         std::vector<ConditionalRegion> conditions;
+        std::vector<BindingJoin> binding_joins;
         BarrierBatch after;
     };
 

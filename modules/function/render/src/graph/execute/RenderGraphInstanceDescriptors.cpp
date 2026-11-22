@@ -13,7 +13,6 @@
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {
@@ -42,17 +41,16 @@ namespace lux::render::detail
         return core.CreateBufferView(view, descriptor);
     }
 
-    namespace
+    RenderResult<void> RasterDescriptorLayout::reserveSet(nri::DescriptorPoolDesc& pool) const noexcept
     {
-        constexpr auto descriptor_counts = std::array{
-            &nri::DescriptorPoolDesc::descriptorSetMaxNum, &nri::DescriptorPoolDesc::samplerMaxNum,
-            &nri::DescriptorPoolDesc::constantBufferMaxNum, &nri::DescriptorPoolDesc::storageStructuredBufferMaxNum,
-            &nri::DescriptorPoolDesc::storageBufferMaxNum, &nri::DescriptorPoolDesc::textureMaxNum,
-            &nri::DescriptorPoolDesc::storageTextureMaxNum, &nri::DescriptorPoolDesc::structuredBufferMaxNum
-        };
+        for (std::size_t i = 0; i < per_set.size(); ++i)
+            if (per_set[i] > UINT32_MAX - pool.*kDescriptorPoolCounts[i])
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+        for (std::size_t i = 0; i < per_set.size(); ++i) pool.*kDescriptorPoolCounts[i] += per_set[i];
+        return {};
     }
 
-    const PassBindings& RenderGraphInstance::rasterBindings(RasterBindingKey key) const noexcept
+    const RasterDescriptorLayout& RenderGraphInstance::rasterBindings(RasterBindingKey key) const noexcept
     {
         const auto* stream = graph_.programs().rasterStream(key.pass);
         const auto* dynamic = stream->runtime ? dynamic_raster_programs_[key.pass].get() : nullptr;
@@ -78,7 +76,8 @@ namespace lux::render::detail
             const auto& input = frame.stream_inputs[p];
             auto& rows = frame.stream_descriptor_rows[p];
             rows.programs.resize(programs.size());
-            rows.draws.resize(input.draws.size());
+            rows.writes.clear();
+            if (input.draws.size() > UINT32_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
             rows.input_count = 0;
             for (auto& program : rows.programs) program.used = 0;
             for (std::size_t d = 0; d < input.draws.size(); ++d)
@@ -94,12 +93,13 @@ namespace lux::render::detail
                 const bool valid_constants = draw.constants.count == bindings.parameter_bytes &&
                     draw.constants.first % 4 == 0;
                 const auto count = draw.bindings.count;
-                const bool valid_abi = valid_constants && count == bindings.uses.size();
+                const bool valid_abi = valid_constants && count == bindings.fields.size();
                 if (!valid_ranges || !valid_abi) return cxx::unexpected(RenderError{kFrameContract, {p}});
                 if (count > frame.stream_binding_inputs.max_size() - rows.input_count)
                     return cxx::unexpected(RenderError{kDeviceCapacity});
+                const auto first_input = rows.input_count;
                 rows.input_count += count;
-                if (bindings.private_bindings.empty()) continue;
+                if (bindings.fields.empty()) continue;
                 auto& by_program = rows.programs[id.index];
                 const auto ordinal = by_program.used++;
                 if (ordinal == by_program.records.size())
@@ -109,21 +109,21 @@ namespace lux::render::detail
                     by_program.records.push_back(static_cast<std::uint32_t>(frame.native.raster_bindings.size()));
                     auto& record = frame.native.raster_bindings.emplace_back();
                     record.program = {p, id.index, revision};
-                    record.views.resize(bindings.uses.size());
-                    record.inputs.resize(bindings.uses.size());
+                    record.views.resize(bindings.fields.size());
+                    record.inputs.resize(bindings.fields.size());
                 }
                 const auto index = by_program.records[ordinal];
-                rows.draws[d] = index;
+                rows.writes.push_back({first_input, static_cast<std::uint32_t>(d), id.index, index});
                 if (!frame.native.raster_bindings[index].set)
                 {
-                    if (auto counted = addPrivateDescriptors(additional, bindings); !counted) return counted;
+                    if (auto counted = bindings.reserveSet(additional); !counted) return counted;
                 }
             }
         }
         if (resize_pool) return growRasterDescriptorPool(slot);
         if (!additional.descriptorSetMaxNum) return {};
         const bool fits = frame.native.descriptor_pool &&
-            std::ranges::all_of(descriptor_counts, [&](auto field) noexcept
+            std::ranges::all_of(kDescriptorPoolCounts, [&](auto field) noexcept
         {
             return additional.*field <= frame.descriptor_capacity.*field - frame.descriptor_reserved.*field;
         });
@@ -131,7 +131,7 @@ namespace lux::render::detail
     }
 
     RenderResult<nri::DescriptorSet*> RenderGraphInstance::prepareRasterDescriptorSet(
-        std::uint32_t slot, const PassBindings& bindings, std::uint32_t index,
+        std::uint32_t slot, const RasterDescriptorLayout& bindings, std::uint32_t index,
         std::span<const RasterDescriptorInput> inputs
     ) noexcept
     {
@@ -141,19 +141,23 @@ namespace lux::render::detail
         if (!record.set)
         {
             // Failed native allocation can consume pool quota. The next preflight counts that reservation.
-            if (auto counted = addPrivateDescriptors(frame.descriptor_reserved, bindings); !counted)
+            if (auto counted = bindings.reserveSet(frame.descriptor_reserved); !counted)
                 return cxx::unexpected(counted.error());
             nri::DescriptorSet* created = nullptr;
             const auto status = core.AllocateDescriptorSets(
-                *frame.native.descriptor_pool, *bindings.layout, bindings.private_set, &created, 1, 0
+                *frame.native.descriptor_pool, *bindings.native.layout, bindings.native.private_set, &created, 1, 0
             );
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             record.set = created;
         }
-        for (std::size_t i = 0; i < bindings.uses.size(); ++i)
+        bool changed = false;
+        cxx::scope_exit invalidate([&]() noexcept
         {
-            const auto& use = bindings.uses[i];
-            if (bindings.bindings[use.field].count == 0) continue;
+            if (changed) frame.invalidatePass(graph_, record.program.pass);
+        });
+        for (std::size_t i = 0; i < bindings.fields.size(); ++i)
+        {
+            const auto& use = bindings.fields[i];
             const auto& source = inputs[i];
             if (record.inputs[i] == source) continue;
 
@@ -162,7 +166,7 @@ namespace lux::render::detail
             if (source.image)
             {
                 const auto& range = source.range;
-                const auto type = bindings.bindings[use.field].image_arrayed
+                const auto type = use.view.image_arrayed
                     ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE;
                 nri::TextureViewDesc view{
                     source.image, type, source.format,
@@ -175,7 +179,7 @@ namespace lux::render::detail
             }
             else if (source.buffer)
             {
-                const auto view = bindings.bindings[use.field].bufferView(source.buffer, source.offset, source.size);
+                const auto view = use.view.bufferView(source.buffer, source.offset, source.size);
                 status = createBufferView(view, descriptor);
             }
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
@@ -185,7 +189,7 @@ namespace lux::render::detail
             record.inputs[i] = source;
             const nri::UpdateDescriptorRangeDesc write{record.set, use.binding, use.element, &descriptor, 1};
             core.UpdateDescriptorRanges(&write, 1);
-            frames_[slot].invalidatePass(graph_, record.program.pass);
+            changed = true;
         }
         return record.set;
     }
@@ -198,12 +202,12 @@ namespace lux::render::detail
         if (auto counted = session_->descriptors().addSnapshotDescriptors(required); !counted) return counted;
         for (const auto& item : frame.native.raster_bindings)
         {
-            if (auto counted = addPrivateDescriptors(required, rasterBindings(item.program)); !counted)
+            if (auto counted = rasterBindings(item.program).reserveSet(required); !counted)
                 return cxx::unexpected(counted.error());
         }
         auto capacity = frame.descriptor_capacity;
         capacity.flags |= required.flags;
-        for (auto field : descriptor_counts)
+        for (auto field : kDescriptorPoolCounts)
         {
             if (required.*field > capacity.*field)
             {
@@ -218,7 +222,7 @@ namespace lux::render::detail
         auto shared = session_->descriptors().createSnapshot(*pool);
         if (!shared) return cxx::unexpected(shared.error());
         std::vector<std::pair<nri::DescriptorSet**, nri::DescriptorSet*>> replacements;
-        const auto allocate = [&](std::span<const DescriptorAccess> uses, PassDescriptorBindings native,
+        const auto allocate = [&](const auto& uses, PassDescriptorBindings native,
                                   nri::DescriptorSet*& destination, const auto& view) noexcept -> RenderResult<void>
         {
             nri::DescriptorSet* set = nullptr;
@@ -257,11 +261,10 @@ namespace lux::render::detail
         for (auto& item : frame.native.raster_bindings)
         {
             const auto& program = rasterBindings(item.program);
-            if (program.private_bindings.empty()) continue;
-            auto ready = allocate(program.uses, program.recordBindings(), item.set,
-                [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
+            if (program.fields.empty()) continue;
+            auto ready = allocate(program.fields, program.native, item.set,
+                [&](std::size_t i, const auto&) noexcept -> nri::Descriptor*
             {
-                if (!program.bindings[use.field].count) return nullptr;
                 return item.inputs[i].sampler ? item.inputs[i].sampler : item.views[i];
             });
             if (!ready) return cxx::unexpected(ready.error());

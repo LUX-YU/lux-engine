@@ -33,6 +33,7 @@ namespace lux::render::detail
         std::uint32_t buffer_stride;
         bool image_arrayed;
         bool private_binding;
+        bool operator==(const FixedDescriptorBinding&) const noexcept = default;
 
         [[nodiscard]] nri::BufferViewDesc
         bufferView(const nri::Buffer* buffer, std::uint64_t offset, std::uint64_t size) const noexcept

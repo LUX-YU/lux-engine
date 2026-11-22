@@ -12,6 +12,8 @@ namespace lux::render::compiled { class RenderGraph; }
 
 namespace lux::render::detail
 {
+    struct SelectedBindingDelta;
+
     struct FrozenOperandPatches final
     {
         std::size_t transfer = 0, compute = 0;
@@ -88,6 +90,7 @@ namespace lux::render::detail
         std::span<const RecordPass> passes;
         std::span<const RecordHistoryInitialization> history_initializations;
         std::span<const std::uint8_t> enabled_regions;
+        std::span<const SelectedBindingDelta> binding_choices;
         std::span<const nri::TextureBarrierDesc> final_images;
         std::span<const nri::BufferBarrierDesc> final_buffers;
         nri::DescriptorPool* descriptor_pool = nullptr;

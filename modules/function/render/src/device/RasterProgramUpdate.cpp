@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/graph/PreparationPlan.hpp>
 #include <lux/engine/render/commands/Error.hpp>

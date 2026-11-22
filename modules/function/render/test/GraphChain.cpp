@@ -1430,6 +1430,192 @@ static void checkComputeSequence(const compiled::RenderGraph& executable, GraphR
     }));
 }
 
+struct NativeBindingCounts final
+{
+    unsigned layouts = 0, pipelines = 0, sets = 0, constants = 0;
+};
+
+// The single-batch fixtures record on one worker. Capture actual calls and each dispatch interval.
+class NativeBindingProbe final
+{
+public:
+    explicit NativeBindingProbe(nri::CoreInterface& core) : core_(core)
+    {
+        saved_ = core;
+        since_dispatch = {};
+        samples = {};
+        dispatches = 0;
+        core.CmdSetPipelineLayout = [](nri::CommandBuffer& cb, nri::BindPoint point, const nri::PipelineLayout& layout)
+        {
+            ++since_dispatch.layouts;
+            saved_.CmdSetPipelineLayout(cb, point, layout);
+        };
+        core.CmdSetPipeline = [](nri::CommandBuffer& cb, const nri::Pipeline& pipeline)
+        {
+            ++since_dispatch.pipelines;
+            saved_.CmdSetPipeline(cb, pipeline);
+        };
+        core.CmdSetDescriptorSet = [](nri::CommandBuffer& cb, const nri::SetDescriptorSetDesc& set)
+        {
+            ++since_dispatch.sets;
+            saved_.CmdSetDescriptorSet(cb, set);
+        };
+        core.CmdSetRootConstants = [](nri::CommandBuffer& cb, const nri::SetRootConstantsDesc& block)
+        {
+            ++since_dispatch.constants;
+            saved_.CmdSetRootConstants(cb, block);
+        };
+        core.CmdDispatch = [](nri::CommandBuffer& cb, const nri::DispatchDesc& dims)
+        {
+            CHECK(dispatches < samples.size());
+            samples[dispatches++] = std::exchange(since_dispatch, {});
+            saved_.CmdDispatch(cb, dims);
+        };
+    }
+
+    ~NativeBindingProbe()
+    {
+        core_.CmdSetPipelineLayout = saved_.CmdSetPipelineLayout;
+        core_.CmdSetPipeline = saved_.CmdSetPipeline;
+        core_.CmdSetDescriptorSet = saved_.CmdSetDescriptorSet;
+        core_.CmdDispatch = saved_.CmdDispatch;
+        core_.CmdSetRootConstants = saved_.CmdSetRootConstants;
+    }
+
+    static inline std::array<NativeBindingCounts, 3> samples;
+    static inline unsigned dispatches = 0;
+    static inline NativeBindingCounts since_dispatch;
+
+private:
+    nri::CoreInterface& core_;
+    static inline nri::CoreInterface saved_;
+};
+
+static void conditionalBindingJoin(DeviceSession& device)
+{
+    RenderGraphBuilder builder;
+    const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
+    const auto shared = take(builder.declareResource({"shared", GraphBufferDesc{16}}));
+    const auto after = take(builder.declareResource({"after join", GraphBufferDesc{16}}));
+    const auto result = take(builder.declareResource({"result", GraphBufferDesc{16}}));
+    const auto readback = take(builder.declareResource({"readback", GraphBufferDesc{16}}));
+    const auto color = take(builder.declareResource({"stream color", GraphImageDesc{4, 4}}));
+    const auto palette_color = take(builder.declareResource({"palette color", GraphImageDesc{4, 4}}));
+    const auto pixels = take(builder.declareResource({"stream pixels", GraphBufferDesc{1024}}));
+    RasterWork palette;
+    palette.fixed().interface.program = take(builder.addProgram(dualTargetRasterProgram()));
+    palette.colors = {{{{palette_color, 0}}}};
+    const auto fixed_draw = take(builder.addRasterPass("fixed red program", std::move(palette)));
+    CHECK(builder.exportOutput({fixed_draw.written.front()}));
+    const auto enabled = take(builder.declareCondition("overwrite"));
+    const auto overwrite_again = take(builder.declareCondition("overwrite again"));
+    const auto program = take(builder.addProgram(GraphProgram{kGraphHistory}));
+    const auto initialized = take(builder.addTransferPass("initialize", TransferWork{{FillBuffer{{{seed, 0}}, 11}}}));
+    auto before_work = incrementWork(program, initialized.written.front(), shared);
+    const auto first = take(builder.addComputePass("before", std::move(before_work)));
+    CHECK(builder.dependsOn(fixed_draw.pass, first.pass));
+    const auto before = first.written.front();
+    const auto branch = take(builder.addTransferPass(
+        "conditional overwrite", TransferWork{{FillBuffer{{before, {}, EGraphAccess::WRITE, 0, before}, 20}}},
+        {false, PassCondition{EConditionSource::INPUT, enabled}}
+    ));
+    const auto middle = branch.written.front();
+    const auto again = take(builder.addTransferPass(
+        "second overwrite", TransferWork{{FillBuffer{{middle, {}, EGraphAccess::WRITE, 0, middle}, 25}}},
+        {false, PassCondition{EConditionSource::INPUT, overwrite_again}}
+    ));
+    const auto joined = take(builder.addComputePass("join", incrementWork(program, again.written.front(), after)));
+    RasterWork stream;
+    stream.program = RasterPassTemplate{"dynamic stage"};
+    stream.colors = {{{{color, 0}}}};
+    const auto dynamic = take(builder.addRasterPass("draw stream", std::move(stream)));
+    auto after_stream = incrementWork(program, joined.written.front(), result);
+    const auto last = take(builder.addComputePass("after stream", std::move(after_stream)));
+    CHECK(builder.dependsOn(joined.pass, dynamic.pass) && builder.dependsOn(dynamic.pass, last.pass));
+    const auto copy = take(builder.addTransferPass(
+        "readback", TransferWork{{
+            CopyBuffer{{last.written.front()}, {{readback, 0}}},
+            CopyImageBuffer{{dynamic.written.front()}, {{pixels, 0}}, 256, 1024}
+        }}
+    ));
+    CHECK(builder.exportOutput({written(copy, readback)}));
+    exportRows(builder, written(copy, pixels), 4, 4, 256);
+    const auto source = take(std::move(builder).finish());
+    auto plan = compile(device, source, take(analyzeRenderGraph(source)), nullptr);
+    const auto& passes = plan.graph.passes();
+    const auto& entry = passes[plan.diagnostics.passSlot(first.pass)];
+    const auto& join = passes[plan.diagnostics.passSlot(joined.pass)];
+    const auto& resume = passes[plan.diagnostics.passSlot(last.pass)];
+    CHECK(entry.submission == join.submission && join.submission == resume.submission);
+    CHECK(join.binding_join != kGraphInvalidIndex && join.fixed_bindings.layout && join.fixed_bindings.pipeline);
+    CHECK(resume.fixed_bindings.layout && resume.fixed_bindings.pipeline && resume.fixed_bindings.private_set);
+
+    JobGpuResources gpu(device, 1);
+    JobExecution job{gpu, plan.graph, {}, {}};
+    CHECK(job.instance.initialize());
+    const auto& native_program = plan.graph.programs()[plan.diagnostics.passSlot(fixed_draw.pass)];
+    auto& stream_draws = job.instance.rasterDraws(passes[plan.diagnostics.passSlot(dynamic.pass)], 0);
+    auto& red = stream_draws.packets.emplace_back();
+    red.pipeline = native_program.pipeline;
+    red.bindings = native_program.descriptors;
+    red.draw = nri::DrawDesc{3, 1, 0, 0};
+    FrameHarness frames(device, 1);
+    const std::array jobs{&job.instance};
+    using Conditions = std::array<std::uint8_t, 2>;
+    for (const auto values : {Conditions{0, 0}, Conditions{1, 0}, Conditions{1, 1}, Conditions{0, 1}, Conditions{0, 0}})
+    {
+        CHECK(job.instance.setConditions(values));
+        {
+            NativeBindingProbe probe(const_cast<nri::CoreInterface&>(device.nriCore()));
+            CHECK(take(runTask(frames.render(jobs, {}))) > 0);
+            finishSubmissions(device, frames);
+            CHECK(probe.dispatches == 3);
+            const auto bindings = probe.samples[1];
+            if (values[0] || values[1]) CHECK(bindings.layouts > 0 && bindings.pipelines == 1);
+            else CHECK(bindings.layouts == 0 && bindings.pipelines == 0 && bindings.sets == 1);
+            CHECK(probe.samples[2].layouts == 2 && probe.samples[2].pipelines == 2);
+        }
+        CHECK(device.drain());
+        checkPixels(device, *job.instance.nativeBuffer(pixels.index, 0), 4, 0, {255, 0, 0, 255}, 256);
+        const auto words = readBufferWords<4>(device, *job.instance.nativeBuffer(readback.index, 0));
+        const auto expected = values[1] ? 27u : (values[0] ? 22u : 14u);
+        CHECK(std::ranges::all_of(words, [&](auto word) { return word == expected; }));
+    }
+    std::puts("FIXED BIND JOIN PASS: skipped regions 0 redundant binds, red stream pixels, GPU words 14/22/27/27/14");
+}
+
+static void surfaceBindingBoundary(DeviceSession& device)
+{
+    RenderGraphBuilder builder;
+    const GraphImageDesc image{16, 16};
+    const auto scratch = take(builder.declareResource({"head", image}));
+    const auto surface = take(builder.declareResource({"surface", image}));
+    const auto shader = take(builder.addProgram(dualTargetRasterProgram()));
+    const auto draw = [&](GraphResourceId target)
+    {
+        RasterWork work;
+        work.fixed().interface.program = shader;
+        work.colors = {{{{target, 0}}}};
+        return work;
+    };
+    const auto head = take(builder.addRasterPass("same pipeline head", draw(scratch)));
+    const auto tail = take(builder.addRasterPass("same pipeline surface tail", draw(surface)));
+    CHECK(builder.dependsOn(head.pass, tail.pass));
+    CHECK(builder.exportOutput({head.written.front()}));
+    CHECK(builder.exportOutput({tail.written.front(), {}, GraphOutputRequirements{image.format, 1}}));
+    const auto source = take(std::move(builder).finish());
+    const TargetDesc target{16, 16, image.format, 1, ETargetKind::SURFACE};
+    const auto plan = compile(device, source, take(analyzeRenderGraph(source)), &target);
+    const auto h = plan.diagnostics.passSlot(head.pass), t = plan.diagnostics.passSlot(tail.pass);
+    const auto& passes = plan.graph.passes();
+    CHECK(passes[h].submission == passes[t].submission);
+    CHECK(plan.graph.submissions()[passes[t].submission].output_begin == t);
+    CHECK(plan.graph.programs()[h].pipeline == plan.graph.programs()[t].pipeline);
+    CHECK(passes[h].fixed_bindings.layout && passes[h].fixed_bindings.pipeline);
+    CHECK(passes[t].fixed_bindings.layout && passes[t].fixed_bindings.pipeline);
+    std::puts("FIXED BIND SURFACE PLAN PASS: identical pipeline and layout emitted at both physical CB starts");
+}
+
 static void multiCommandCompute(Validation& validation, bool d3d12)
 {
     DeviceOptions options;
@@ -1453,13 +1639,26 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
     CHECK(instance->initialize());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
     const std::array instances{instance};
-    CHECK(take(runTask(frames->render(instances, {}))) == 1);
+    const auto& first = executable.graph.passes()[1].fixed_bindings;
+    const auto& next = executable.graph.passes()[2].fixed_bindings;
+    CHECK(first.layout && first.pipeline && first.private_set);
+    CHECK(!next.layout && !next.pipeline && next.private_set);
+    {
+        NativeBindingProbe probe(const_cast<nri::CoreInterface&>(session->nriCore()));
+        CHECK(take(runTask(frames->render(instances, {}))) == 1);
+        CHECK(probe.dispatches == 2);
+        const auto counts = probe.samples[1];
+        CHECK(counts.layouts == 0 && counts.pipelines == 0 && counts.sets == 1);
+    }
     CHECK(session->drain());
     const auto values = readBufferWords<4>(*session, *instance->nativeBuffer(readback.index, 0));
     CHECK(std::ranges::all_of(values, [](auto value) { return value == 13; }));
     instance_job.reset();
     instance_gpu.reset();
     CHECK(session->drain());
+    std::puts("FIXED BIND DELTA PASS: second dispatch 0 layout, 0 pipeline, 1 private set; GPU words 13/13/13/13");
+    conditionalBindingJoin(*session);
+    surfaceBindingBoundary(*session);
 }
 
 // This recorder implements the fixture's one known kernel and Buffer operations.
@@ -2298,14 +2497,21 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     target.format = rdesc::ETextureFormat::RGBA8_UNORM;
     auto physical = take(OffscreenTarget::create(session, target, 1));
     const auto& image = physical.frame(0);
+    auto other_target = target;
+    other_target.width = 3;
+    other_target.height = 2;
+    auto other = take(OffscreenTarget::create(session, other_target, 1));
+    const auto& second_image = other.frame(0);
     CHECK(submitFixtureCommands(session, session.queue(),
         [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
         {
-            const nri::TextureBarrierDesc transition{
+            nri::TextureBarrierDesc transition{
                 image.image, {nri::AccessBits::NONE, nri::Layout::UNDEFINED, nri::StageBits::NONE},
                 {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER},
                 0, 1, 0, 1, nri::PlaneBits::COLOR
             };
+            session.nriCore().CmdBarrier(command, {nullptr, 0, nullptr, 0, &transition, 1});
+            transition.texture = second_image.image;
             session.nriCore().CmdBarrier(command, {nullptr, 0, nullptr, 0, &transition, 1});
             return {};
         }
@@ -2315,6 +2521,11 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     const auto images = take(builder.declareResource({
         "images", GraphImageDesc{target.width, target.height}, EGraphOrigin::IMPORTED, {{}}, EGraphUse::SAMPLED
     }));
+    const auto second_images = take(builder.declareResource({
+        "second images", GraphImageDesc{3, 2}, EGraphOrigin::IMPORTED, {{}}, EGraphUse::SAMPLED
+    }));
+    const auto second_color = take(builder.declareResource({"second dimensions", GraphImageDesc{4, 4}}));
+    const auto second_output = take(builder.declareResource({"second readback", GraphBufferDesc{1024}}));
     const auto color = take(builder.declareResource({"dimensions", GraphImageDesc{4, 4}}));
     const auto output = take(builder.declareResource({"readback", GraphBufferDesc{1024}}));
     RasterWork work;
@@ -2322,17 +2533,31 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     work.fixed().interface.resources = {{"images", {{images, 0}}}};
     work.fixed().interface.parameters.setInlineConstant(IndirectCountConstants{image.sampled_index});
     work.colors = {{{{color, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE}};
-    const auto drawn = take(builder.addRasterPass("shared image dimensions", std::move(work)));
+    const auto drawn = take(builder.addRasterPass("shared image dimensions", work));
+    work.fixed().interface.resources = {{"images", {{second_images, 0}}}};
+    work.fixed().interface.parameters.setInlineConstant(IndirectCountConstants{second_image.sampled_index});
+    work.colors.front().access.version = {second_color, 0};
+    const auto second_draw = take(builder.addRasterPass("same table, different inline index", std::move(work)));
+    CHECK(builder.dependsOn(drawn.pass, second_draw.pass));
     const auto copied = take(builder.addTransferPass(
-        "read dimensions", TransferWork{{CopyImageBuffer{{drawn.written.front()}, {{output, 0}}, 256, 1024}}}
+        "read dimensions", TransferWork{{
+            CopyImageBuffer{{drawn.written.front()}, {{output, 0}}, 256, 1024},
+            CopyImageBuffer{{second_draw.written.front()}, {{second_output, 0}}, 256, 1024}
+        }}
     ));
-    exportRows(builder, copied.written.front(), 4, 4, 256);
+    exportRows(builder, written(copied, output), 4, 4, 256);
+    exportRows(builder, written(copied, second_output), 4, 4, 256);
     const auto graph = take(std::move(builder).finish());
     const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
     JobGpuResources instance_gpu(session, 1);
     JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
     auto& instance = instance_job.instance;
+    const auto& first = plan.graph.passes()[plan.diagnostics.passSlot(drawn.pass)].fixed_bindings;
+    const auto& second = plan.graph.passes()[plan.diagnostics.passSlot(second_draw.pass)].fixed_bindings;
+    CHECK(first.layout && first.pipeline && first.shared_sets && first.constants);
+    CHECK(!second.layout && !second.pipeline && !second.shared_sets && second.constants);
     instance.bindImage(images, 0, *image.image);
+    instance.bindImage(second_images, 0, *second_image.image);
     CHECK(instance.initialize());
     FrameHarness frames(session, 1);
     const std::array instances{&instance};
@@ -2342,8 +2567,13 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
         finishSubmissions(session, frames);
         CHECK(session.drain());
         checkPixels(session, *instance.nativeBuffer(output.index, 0), 4, 0, {7, 5, 0, 255}, 256);
+        checkPixels(session, *instance.nativeBuffer(second_output.index, 0), 4, 0, {3, 2, 0, 255}, 256);
     };
-    check_dimensions();
+    {
+        NativeBindingProbe probe(const_cast<nri::CoreInterface&>(session.nriCore()));
+        check_dimensions();
+        CHECK(probe.dispatches == 0 && probe.since_dispatch.sets == 1 && probe.since_dispatch.constants == 2);
+    }
     // The imported graph ID declares table access. The actual recorded operand is the shared Set.
     const auto image_input = instance.resourceInput(images, 0);
     instance.setResource(images.index, 0, {});
@@ -2368,7 +2598,7 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     core.EndCommandBuffer = EndFailure::original;
     check_dimensions();
     for (auto slot : extra) shared.release(type, slot);
-    std::puts("SHARED CONSUMER PASS: texture table replacement, one native End, GPU dimensions 7x5");
+    std::puts("SHARED CONSUMER PASS: one shared set, two root writes, one End on table replacement; GPU read 7x5 and 3x2");
 }
 
 static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backend, bool grow_tables = false)

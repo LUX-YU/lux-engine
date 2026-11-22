@@ -1,12 +1,38 @@
 #pragma once
 
-#include <lux/engine/render/device/ProgramCompileInput.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::detail
 {
+    inline constexpr auto kDescriptorPoolCounts = std::array{
+        &nri::DescriptorPoolDesc::descriptorSetMaxNum, &nri::DescriptorPoolDesc::samplerMaxNum,
+        &nri::DescriptorPoolDesc::constantBufferMaxNum, &nri::DescriptorPoolDesc::storageStructuredBufferMaxNum,
+        &nri::DescriptorPoolDesc::storageBufferMaxNum, &nri::DescriptorPoolDesc::textureMaxNum,
+        &nri::DescriptorPoolDesc::storageTextureMaxNum, &nri::DescriptorPoolDesc::structuredBufferMaxNum
+    };
+
+    struct RasterDescriptorField final
+    {
+        std::uint32_t binding, element, block_size;
+        EDescriptorKind kind;
+        FixedDescriptorBinding view;
+        bool image_depth, comparison_sampler;
+        bool operator==(const RasterDescriptorField&) const noexcept = default;
+    };
+
+    struct RasterDescriptorLayout final
+    {
+        PassDescriptorBindings native;
+        std::vector<RasterDescriptorField> fields;
+        std::array<std::uint32_t, kDescriptorPoolCounts.size()> per_set{};
+        std::uint32_t parameter_bytes = 0;
+
+        [[nodiscard]] RenderResult<void> reserveSet(nri::DescriptorPoolDesc&) const noexcept;
+        bool operator==(const RasterDescriptorLayout&) const noexcept = default;
+    };
+
     struct RasterStreamTarget final
     {
         std::vector<nri::Format> colors;
@@ -29,7 +55,7 @@ namespace lux::render::detail
         {
             nri::Pipeline* pipeline;
             NativeProgramId cache_id;
-            PassBindings bindings;
+            RasterDescriptorLayout bindings;
             std::vector<ArgumentUses> argument_to_use;
             std::vector<VertexBinding> vertices;
             std::vector<VertexAttribute> geometry_attributes;
@@ -75,33 +101,6 @@ namespace lux::render::detail
         std::vector<EGraphUse> argument_uses;
         std::optional<RuntimeContract> runtime;
     };
-
-    // These declaration fields are borrowed only while linking the stream on the owner.
-    struct RasterProgramRecipe final
-    {
-        std::span<const RasterPassTemplate::Input> arguments;
-        const ParameterBinding& parameters;
-        const RasterStreamTarget& target;
-        const rdesc::ShaderProgramArtifact& artifact;
-        const GraphicsState& graphics;
-        std::span<const std::uint32_t> geometry_locations;
-    };
-
-    struct RasterProgramLink final
-    {
-        ProgramCompileInput input;
-        std::vector<CompiledRasterStream::ArgumentUses> argument_to_use;
-        std::vector<VertexBinding> vertices;
-        std::vector<VertexAttribute> geometry_attributes;
-        std::uint32_t shared_texture_stages;
-        std::uint32_t record_stages;
-        rdesc::ShaderBlock record_layout;
-
-        [[nodiscard]] CompiledRasterStream::Program finish(PreparedProgram) && noexcept;
-    };
-
-    [[nodiscard]] RenderResult<RasterProgramLink>
-    linkRasterStreamProgram(const DeviceSession&, RasterProgramRecipe) noexcept;
 
     struct DynamicRasterPrograms final
     {

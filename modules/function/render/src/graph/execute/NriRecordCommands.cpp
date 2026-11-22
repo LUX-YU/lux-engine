@@ -20,15 +20,27 @@ namespace lux::render::detail
             core.CmdBarrier(command, barriers);
         }
 
-        void
-        recordRasterDraws(
-            const nri::CoreInterface& core,
-            std::span<nri::DescriptorSet* const, 3> shared_descriptors,
-            nri::CommandBuffer& command,
-            const RasterDrawList& list,
-            BindingState& state
-        ) noexcept
+        struct DynamicRasterEncoder final
         {
+            const nri::CoreInterface& core;
+            nri::CommandBuffer& command;
+            std::span<nri::DescriptorSet* const, 3> shared;
+            BindingState& state;
+
+            void record(const RasterDrawList&) const noexcept;
+        };
+
+        void DynamicRasterEncoder::record(const RasterDrawList& list) const noexcept
+        {
+            nri::Pipeline* pipeline = nullptr;
+            nri::PipelineLayout* layout = nullptr;
+            std::array<nri::DescriptorSet*, 4> bound_sets{};
+            const auto bindSet = [&](std::uint32_t set, nri::DescriptorSet* value)
+            {
+                if (bound_sets[set] == value) return;
+                core.CmdSetDescriptorSet(command, {set, value, nri::BindPoint::GRAPHICS});
+                bound_sets[set] = value;
+            };
             // Graph-local vertex indices cannot describe the physical arrays in a dynamic packet.
             state.vertices = {};
             std::span<const RasterDrawList::Vertex> previous_vertices;
@@ -44,12 +56,11 @@ namespace lux::render::detail
                 bool section_parameters_pending = section.parameter_size != 0;
                 for (const auto& packet : std::span(list.packets).subspan(section.first_draw, section.draw_count))
                 {
-                    if (state.layout != packet.bindings.layout || state.point != nri::BindPoint::GRAPHICS)
+                    if (layout != packet.bindings.layout)
                     {
                         core.CmdSetPipelineLayout(command, nri::BindPoint::GRAPHICS, *packet.bindings.layout);
-                        state.layout = packet.bindings.layout;
-                        state.point = nri::BindPoint::GRAPHICS;
-                        state.descriptors = {};
+                        layout = packet.bindings.layout;
+                        bound_sets = {};
                         section_parameters_pending = section.parameter_size != 0;
                     }
                     if (section_parameters_pending)
@@ -64,10 +75,10 @@ namespace lux::render::detail
                         );
                         section_parameters_pending = false;
                     }
-                    if (state.pipeline != packet.pipeline)
+                    if (pipeline != packet.pipeline)
                     {
                         core.CmdSetPipeline(command, *packet.pipeline);
-                        state.pipeline = packet.pipeline;
+                        pipeline = packet.pipeline;
                         state.depth_bias.reset();
                     }
                     if (section.depth_bias)
@@ -76,7 +87,13 @@ namespace lux::render::detail
                     }
                     const auto descriptors =
                         std::span(list.descriptors).subspan(packet.first_descriptor, packet.descriptor_count);
-                    bindPassDescriptors(core, shared_descriptors, command, packet.bindings, descriptors, state);
+                    for (std::size_t kind = 0; kind < shared.size(); ++kind)
+                    {
+                        const auto set = packet.bindings.shared_sets[kind];
+                        if (set != kGraphInvalidIndex) bindSet(set, shared[kind]);
+                    }
+                    for (std::uint32_t i = 0; i < descriptors.size(); ++i)
+                        bindSet(packet.bindings.private_set + i, descriptors[i]);
                     const auto vertices = std::span(list.vertices).subspan(packet.first_vertex, packet.vertex_count);
                     const bool same_vertices = std::ranges::equal(
                         vertices,
@@ -178,7 +195,7 @@ namespace lux::render::detail
             }
             else
             {
-                recordRasterDraws(core, input.shared_descriptors, command, draws, binding_state);
+                DynamicRasterEncoder{core, command, input.shared_descriptors, binding_state}.record(draws);
             }
             return {};
         }

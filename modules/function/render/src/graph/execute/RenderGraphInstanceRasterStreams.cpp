@@ -364,28 +364,27 @@ namespace lux::render::detail
                 return ResourceInput{source.buffer, range.offset, range.size};
             };
 
-            const auto descriptorInput = [&](const RasterStreamBinding& entry, const DescriptorAccess& use,
-                                              const ShaderBinding& shader) noexcept
-                -> RenderResult<RasterDescriptorInput>
+            const auto descriptorInput = [&](const RasterStreamBinding& entry, const RasterDescriptorField& field)
+                noexcept -> RenderResult<RasterDescriptorInput>
             {
-                if (use.kind == EDescriptorKind::SAMPLER)
+                if (field.kind == EDescriptorKind::SAMPLER)
                 {
                     const auto* source = std::get_if<RasterSamplerSlot>(&entry.source);
                     const bool has_sampler = source && source->stream == p && source->index < stream->samplers.size();
                     if (!has_sampler) return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
                     const auto& sampler = stream->samplers[source->index];
-                    if (sampler.comparison != use.comparison_sampler)
+                    if (sampler.comparison != field.comparison_sampler)
                         return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
                     return RasterDescriptorInput{.sampler = sampler.descriptor};
                 }
-                if (use.kind == EDescriptorKind::SAMPLED_IMAGE)
+                if (field.kind == EDescriptorKind::SAMPLED_IMAGE)
                 {
                     const auto* source = std::get_if<RasterImageSlice>(&entry.source);
                     if (!source) return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
                     const auto& range = source->range;
                     const bool one_aspect = range.aspects == 1 || range.aspects == 2 || range.aspects == 4;
-                    const bool wrong_depth = shader.image_depth && range.aspects != 2;
-                    const bool wrong_layers = !shader.image_arrayed && range.layer_count != 1;
+                    const bool wrong_depth = field.image_depth && range.aspects != 2;
+                    const bool wrong_layers = !field.view.image_arrayed && range.layer_count != 1;
                     if (!one_aspect || wrong_depth || wrong_layers)
                         return cxx::unexpected(RenderError{kGraphInvalidRange, {p, entry.argument}});
                     const auto includesSelection = [&](const auto& access) noexcept
@@ -434,13 +433,13 @@ namespace lux::render::detail
                 if (!slice) return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
                 auto source = buffer(*stream, *slice, stream->argument_uses[entry.argument]);
                 if (!source) return cxx::unexpected(source.error());
-                const auto minimum = std::max(shader.block.size, 4u);
-                const auto stride = shader.block.size ? shader.block.size : 4u;
-                const auto alignment = shader.kind == EDescriptorKind::UNIFORM_BUFFER
+                const auto minimum = std::max(field.block_size, 4u);
+                const auto stride = field.block_size ? field.block_size : 4u;
+                const auto alignment = field.kind == EDescriptorKind::UNIFORM_BUFFER
                     ? session_->description().memoryAlignment.constantBufferOffset : 4u;
                 const bool invalid_alignment = alignment == 0 || source->offset % alignment != 0;
                 const bool invalid_size = source->size < minimum ||
-                    (shader.kind == EDescriptorKind::STORAGE_BUFFER && source->size % stride != 0);
+                    (field.kind == EDescriptorKind::STORAGE_BUFFER && source->size % stride != 0);
                 if (invalid_alignment || invalid_size)
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {p, entry.argument}});
                 return RasterDescriptorInput{source->buffer, source->offset, source->size};
@@ -467,8 +466,7 @@ namespace lux::render::detail
                     auto& destination = selected[index];
                     if (destination.buffer || destination.image || destination.sampler)
                         return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
-                    const auto& use = layout.uses[index];
-                    auto source = descriptorInput(entry, use, layout.bindings[use.field]);
+                    auto source = descriptorInput(entry, layout.fields[index]);
                     if (!source) return cxx::unexpected(source.error());
                     destination = *source;
                 }
@@ -485,7 +483,7 @@ namespace lux::render::detail
 
                 RasterDrawPacket packet;
                 packet.pipeline = program.pipeline;
-                packet.bindings = program.bindings.recordBindings();
+                packet.bindings = program.bindings.native;
                 packet.parameter_offset = draw.constants.first;
                 packet.parameter_size = draw.constants.count;
                 if (draw.vertices.count >= kGraphInvalidIndex - candidate.vertices.size())
@@ -717,17 +715,13 @@ namespace lux::render::detail
             reads.resize(count);
             if (auto sections = materializeRasterSections(slot, p, input); !sections) return sections;
 
-            std::size_t first_input = 0;
-            for (std::uint32_t d = 0; d < input.draws.size(); ++d)
+            for (const auto& write : frame.stream_descriptor_rows[p].writes)
             {
-                const auto& bindings = selected_programs[input.draws[d].program.index].bindings;
-                if (bindings.private_bindings.empty()) continue;
-                const auto index = frame.stream_descriptor_rows[p].draws[d];
-                const auto selected = std::span{inputs}.subspan(first_input, bindings.uses.size());
-                first_input += selected.size();
-                auto set = prepareRasterDescriptorSet(slot, bindings, index, selected);
+                const auto& bindings = selected_programs[write.program].bindings;
+                const auto selected = std::span{inputs}.subspan(write.first_input, bindings.fields.size());
+                auto set = prepareRasterDescriptorSet(slot, bindings, write.record, selected);
                 if (!set) return cxx::unexpected(set.error());
-                auto& packet = candidate.packets[d];
+                auto& packet = candidate.packets[write.draw];
                 packet.first_descriptor = static_cast<std::uint32_t>(candidate.descriptors.size());
                 packet.descriptor_count = 1;
                 candidate.descriptors.push_back(*set);

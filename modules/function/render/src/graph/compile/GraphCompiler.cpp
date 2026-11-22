@@ -841,6 +841,24 @@ namespace lux::render::detail
             ++range.count;
         }
 
+        RasterDescriptorLayout descriptors;
+        nri::DescriptorPoolDesc pool{};
+        if (auto counted = addPrivateDescriptors(pool, *layout); !counted) return cxx::unexpected(counted.error());
+        for (std::size_t i = 0; i < kDescriptorPoolCounts.size(); ++i)
+            descriptors.per_set[i] = pool.*kDescriptorPoolCounts[i];
+        descriptors.parameter_bytes = layout->parameter_bytes;
+        descriptors.fields.reserve(layout->uses.size());
+        for (const auto& use : layout->uses)
+        {
+            const auto& field = layout->bindings[use.field];
+            const auto view = field.bufferView(nullptr, 0, 0);
+            descriptors.fields.push_back({
+                use.binding, use.element, field.block.size, use.kind,
+                {view.type, view.format, view.structureStride, field.image_arrayed, true},
+                field.image_depth, use.comparison_sampler
+            });
+        }
+
         auto geometry_attributes = graphics.vertex_attributes;
         if (!geometry_locations.empty())
         {
@@ -852,27 +870,17 @@ namespace lux::render::detail
         RasterProgramKey key{graphics, target.colors, target.depth, target.samples};
         if (target.dynamic_depth_bias) key.state.depth_bias_constant = 1;
         return RasterProgramLink{
-            {artifact, std::move(*layout), std::move(key)}, std::move(argument_to_use), graphics.vertex_bindings,
-            std::move(geometry_attributes), shared_texture_stages, record_stages, std::move(record_layout)
+            {artifact, std::move(*layout), std::move(key)}, std::move(descriptors), std::move(argument_to_use),
+            graphics.vertex_bindings, std::move(geometry_attributes), shared_texture_stages, record_stages,
+            std::move(record_layout)
         };
     }
 
     CompiledRasterStream::Program RasterProgramLink::finish(PreparedProgram compiled) && noexcept
     {
-        auto& bindings = compiled.bindings;
-        for (auto& field : bindings.bindings)
-        {
-            field.name.clear();
-            field.block.fields.clear();
-        }
-        for (auto& field : bindings.private_bindings)
-        {
-            field.name.clear();
-            field.block.fields.clear();
-        }
-        bindings.initial_parameters = {};
+        descriptors.native = compiled.bindings.recordBindings();
         return CompiledRasterStream::Program{
-            compiled.pipeline, compiled.id, std::move(bindings), std::move(argument_to_use), std::move(vertices),
+            compiled.pipeline, compiled.id, std::move(descriptors), std::move(argument_to_use), std::move(vertices),
             std::move(geometry_attributes), shared_texture_stages, record_stages, std::move(record_layout)
         };
     }
@@ -1113,6 +1121,7 @@ namespace lux::render::detail
     RenderResult<void> GraphCompiler::Workspace::finishDevicePlan(PreparedRenderGraph& candidate) noexcept
     {
         if (auto result = finishPlan(candidate.graph); !result) return result;
+        compileFixedBindings(candidate.graph);
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;
         diagnostics.source_passes = analysis.execution_order;

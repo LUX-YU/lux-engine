@@ -234,11 +234,13 @@ namespace lux::render::detail
             frame.publish_history[i] = enabled && produced;
         }
         frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
+        auto changed_join = kGraphInvalidIndex;
         for (std::size_t r = 0; r < graph_.recording_.conditions.size(); ++r)
         {
             const auto& region = graph_.recording_.conditions[r];
             const bool enabled = conditionEnabled(frame, {region.source, region.input_slot, region.expected});
-            if ((frame.enabled_regions[r] != 0) != enabled)
+            const bool changed = (frame.enabled_regions[r] != 0) != enabled;
+            if (changed)
             {
                 for (auto p = region.first_pass; p < region.first_pass + region.pass_count; ++p)
                 {
@@ -247,6 +249,13 @@ namespace lux::render::detail
                     const auto& offsets = graph_.recordingDependencies().pass_field_offsets;
                     for (auto i = offsets[p]; i < offsets[p + 1]; ++i) frame.pending_operand_fields.mark(i);
                 }
+            }
+            const auto join = region.binding_join;
+            if (join != kGraphInvalidIndex)
+            {
+                const auto fallback = graph_.recording_.binding_joins[join].disabled_join;
+                const bool inherited = !enabled && fallback != kGraphInvalidIndex && fallback == changed_join;
+                if ((changed || inherited) && frame.selectBindingJoin(graph_, join, enabled)) changed_join = join;
             }
             frame.enabled_regions[r] = enabled;
             if (!frame.enabled_regions[r])

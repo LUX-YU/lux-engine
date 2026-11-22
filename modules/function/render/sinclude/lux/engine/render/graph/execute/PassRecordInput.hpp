@@ -33,6 +33,7 @@ namespace lux::render
         nri::PipelineLayout* layout = nullptr;
         std::uint32_t private_set = 0;
         std::array<std::uint32_t, 3> shared_sets{UINT32_MAX, UINT32_MAX, UINT32_MAX};
+        bool operator==(const PassDescriptorBindings&) const noexcept = default;
     };
 
     // Prepared native views used by the ordinary graph frontends. No owner or directory lookup.

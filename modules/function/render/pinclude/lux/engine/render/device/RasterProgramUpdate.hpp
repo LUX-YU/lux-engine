@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
-#include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
+#include <lux/engine/render/device/ProgramCompileInput.hpp>
 #include <lux/engine/render/runtime/ExecutionBindingId.hpp>
 #include <chrono>
 

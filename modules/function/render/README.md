@@ -890,9 +890,15 @@ continues to be read each frame. A nonzero value promises unchanged bytes until 
 revision; immutable texture references and shadow-projection outputs use that contract. Address equality alone
 never proves parameter contents unchanged. Default bytes are not recopied for a mapped-input-only change.
 
-One `BindingState` belongs to each actual CommandBuffer recording, including merged instance batches. Compatible
-physical descriptor sets can be retained across Passes; a new Layout/BindPoint, clear helper or CommandBuffer
-invalidates that cache. Logical vertex-resource indices remain local to an instance and are not shared by this cache.
+The device compiler emits the fixed pipeline, layout, descriptor-set and inline-constant bindings for each Pass.
+Each physical CommandBuffer starts with unknown state, including the surface tail. At a conditional join the
+compiler keeps facts shared by both paths. When paths leave different bindings, each FIF selects its compiled
+exit delta when the predicate changes. Consecutive skipped regions inherit the last selected predecessor in that
+command buffer. Dynamic Raster stages and Transfer helpers clear earlier binding facts. Consecutive Passes can
+reuse shared sets, while independently writable private sets
+and inline blocks select their own FIF operands. Dynamic Raster draws compare native bindings inside the stream.
+The linker prepares a dense private descriptor layout for each program. Draw preparation qualifies array elements
+against those fields before updating the native sets for the acquired FIF.
 
 The Server runs bounded IPC and ManualContext passes around GPU completion, retirement, ready Jobs and
 uploads. When no work can advance, IPC, continuations and stop wake the same retained notification. The

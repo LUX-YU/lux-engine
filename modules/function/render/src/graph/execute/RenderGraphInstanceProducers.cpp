@@ -1,3 +1,4 @@
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/graph/Range.hpp>

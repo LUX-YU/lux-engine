@@ -9,11 +9,13 @@
 #include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <optional>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
+#include <lux/engine/render/runtime/ExecutionBindingId.hpp>
 #include <lux/engine/render/visibility.h>
+
+namespace lux::render::runtime_detail { struct JobExecution; }
 
 namespace lux::render::detail
 {
-    class RenderGraphInstance;
     class SubmissionQueue;
 
     struct SubmissionOrder final
@@ -26,11 +28,21 @@ namespace lux::render::detail
     // One round's frozen graph execution. Workspace contains recyclable FIF scratch and receipts only.
     class LUX_RENDER_PUBLIC SubmissionOperation final
     {
-        struct InstanceExecution final
+    public:
+        struct JobSubmissionResult final
         {
-            RenderGraphInstance* instance = nullptr;
+            bool wrote_output = false;
+            bool completed = false;
+            std::uint32_t first_batch = kGraphInvalidIndex;
+            SubmissionFrontiers accepted;
+        };
+
+    private:
+        struct JobReceipt final
+        {
+            ExecutionBindingId binding{};
             std::uint64_t binding_revision = 0;
-            std::uint32_t first_batch = 0;
+            JobSubmissionResult result;
             std::uint32_t remaining_batches = 0;
         };
 
@@ -71,7 +83,7 @@ namespace lux::render::detail
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
             std::uint64_t preparation_serial = 0;
-            std::vector<InstanceExecution> instances;
+            std::vector<JobReceipt> jobs;
             std::vector<SubmissionOrder> order;
             std::vector<BatchExecution> batches;
             std::vector<BatchDependency> dependencies;
@@ -82,7 +94,6 @@ namespace lux::render::detail
             {
                 std::span<nri::CommandBuffer* const> commands;
                 RenderError error;
-                std::uint32_t frame, batch;
             };
             std::vector<const FrozenRecordingFrame*> recording_frames;
             std::vector<Recording> recordings;
@@ -96,13 +107,6 @@ namespace lux::render::detail
         };
 
     public:
-        struct InstanceSubmissionResult final
-        {
-            bool wrote_output = false;
-            bool completed = false;
-            std::uint32_t first_batch = kGraphInvalidIndex;
-        };
-
         struct RasterReads final
         {
             std::uint64_t buffer_ranges = 0, buffer_bytes = 0, image_ranges = 0, image_subresources = 0;
@@ -116,14 +120,11 @@ namespace lux::render::detail
             Workspace(const Workspace&) = delete;
             Workspace& operator=(const Workspace&) = delete;
             [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
-            [[nodiscard]] InstanceSubmissionResult acceptedFrameUse(
-                std::uint32_t, const RenderGraphInstance&, SubmissionFrontiers&
-            ) const noexcept;
+            [[nodiscard]] const JobSubmissionResult*
+            acceptedFrameUse(std::uint32_t slot, std::size_t ordinal, ExecutionBindingId) const & noexcept;
+            const JobSubmissionResult* acceptedFrameUse(std::uint32_t, std::size_t, ExecutionBindingId) const && = delete;
             [[nodiscard]] bool acceptedPass(
-                std::uint32_t slot, const RenderGraphInstance&, InstanceSubmissionResult, std::uint32_t pass
-            ) const noexcept;
-            [[nodiscard]] SubmissionFrontiers acceptedUses(
-                const DeviceSession&, const FrameProgress&, std::span<RenderGraphInstance* const>
+                std::uint32_t slot, const runtime_detail::JobExecution&, const JobSubmissionResult&, std::uint32_t pass
             ) const noexcept;
             [[nodiscard]] bool dumpSubmissions(const FrameProgress&, DumpSink) const noexcept;
             [[nodiscard]] RasterReads takeRasterReads() noexcept;
@@ -136,8 +137,9 @@ namespace lux::render::detail
         };
 
         SubmissionOperation(DeviceSession&, FrameProgress&, FrameProgress::SlotSelection, Workspace&) noexcept;
+        ~SubmissionOperation() noexcept;
         [[nodiscard]] RenderResult<void>
-        prepare(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
+        prepare(std::span<runtime_detail::JobExecution* const>, std::span<const SubmissionOrder>) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const std::optional<RenderError>& cancel) noexcept;
         void acceptPreparation(std::uint64_t serial) noexcept;
@@ -145,7 +147,6 @@ namespace lux::render::detail
         [[nodiscard]] bool complete() const noexcept { return slot_.remaining_batches == 0; }
         [[nodiscard]] bool prepared() const noexcept { return slot_.graph_started; }
         [[nodiscard]] bool canSubmit() const noexcept;
-        [[nodiscard]] bool refersTo(const RenderGraphInstance&) const noexcept;
 
     private:
         [[nodiscard]] static bool laterBatch(const Slot&, std::uint32_t, std::uint32_t) noexcept;
@@ -156,8 +157,8 @@ namespace lux::render::detail
         void acceptBatch(Slot&, std::uint32_t, std::uint64_t) noexcept;
         [[nodiscard]] bool hasPresentationBoundary(const BatchExecution&) const noexcept;
         [[nodiscard]] RenderResult<void>
-        rebuildDependencies(std::span<RenderGraphInstance* const>, std::span<const SubmissionOrder>) noexcept;
-        [[nodiscard]] RenderResult<void> appendImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;
+        rebuildDependencies(std::span<const SubmissionOrder>) noexcept;
+        [[nodiscard]] RenderResult<void> appendImportedDependencies() noexcept;
         [[nodiscard]] std::uint32_t slotIndex() const noexcept { return selection_.frame.slot_index; }
 
         DeviceSession& device_;
@@ -165,5 +166,6 @@ namespace lux::render::detail
         FrameProgress::SlotSelection selection_;
         Workspace& workspace_;
         Slot& slot_;
+        std::span<runtime_detail::JobExecution* const> jobs_;
     };
 } // namespace lux::render::detail

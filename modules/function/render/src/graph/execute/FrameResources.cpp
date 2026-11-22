@@ -255,9 +255,8 @@ namespace lux::render::detail
     void FrameResources::invalidateImportedBindings() noexcept
     {
         record_ready = false;
-        // Unique cache revisions prevent a reused instance address from matching an older binding cache.
-        static std::atomic<std::uint64_t> next_revision{1};
-        imported_revision = next_revision.fetch_add(1, std::memory_order_relaxed);
+        if (imported_revision == UINT64_MAX) std::terminate();
+        ++imported_revision;
     }
 
     void FrameResources::invalidatePass(const compiled::RenderGraph& graph, std::uint32_t compiled_pass) noexcept

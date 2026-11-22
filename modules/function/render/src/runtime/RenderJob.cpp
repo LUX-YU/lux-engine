@@ -423,13 +423,13 @@ namespace lux::render
         if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
         if (auto valid = input.inputs.viewport.validate(); !valid) { reply.error = valid.error(); return; }
         auto& execution = *job->execution;
-        if (auto applied = execution.instance.setConditions(input.inputs.conditions); !applied)
+        if (auto applied = execution.setConditions(input.inputs.conditions); !applied)
         {
             reply.error = applied.error();
             return;
         }
         job->binding.inputs = input.inputs;
-        execution.instance.setViewport(input.inputs.viewport);
+        execution.viewport = input.inputs.viewport;
         job->last_run_error = {};
         reply = {};
     }

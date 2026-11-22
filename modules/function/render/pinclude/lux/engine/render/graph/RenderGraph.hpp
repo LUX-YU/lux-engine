@@ -205,7 +205,6 @@ namespace lux::render::detail
         VCommandSlot commands;
         FixedBindingDelta fixed_bindings;
         std::uint32_t binding_join = kGraphInvalidIndex;
-        bool writes_output = false;
         BarrierBatch before;
         std::uint32_t binding_slot = kGraphInvalidIndex;
         std::uint32_t unit = kGraphInvalidIndex;
@@ -338,6 +337,8 @@ namespace lux::render::detail
         std::vector<GraphResourceId> imported_resources;
         std::uint32_t output_begin = kGraphInvalidIndex;
         bool reusable_recording = true;
+        bool writes_output = false;
+        std::uint32_t first_output_region = 0, output_region_count = 0;
         std::vector<std::uint32_t> shared_draw_reads;
     };
 
@@ -576,6 +577,8 @@ namespace lux::render::compiled
         }
         std::span<const detail::ImportedAccess> importedAccesses() const && = delete;
 
+        [[nodiscard]] std::uint32_t conditionCount() const noexcept { return condition_count_; }
+        [[nodiscard]] std::uint32_t bindingPredicateCount() const noexcept { return binding_predicate_count_; }
         [[nodiscard]] const detail::GraphBindingPlan& bindingPlan() const & noexcept { return *binding_plan_; }
         const detail::GraphBindingPlan& bindingPlan() const && = delete;
 
@@ -643,6 +646,7 @@ namespace lux::render::compiled
         detail::RecordingProgram recording_;
         std::vector<detail::SubmissionBatch> submissions_;
         std::vector<detail::ImportedAccess> imported_accesses_;
+        std::vector<std::uint32_t> output_write_regions_;
         detail::PhysicalResourcePlan physical_resources_;
 
         std::uint32_t output_ = kGraphInvalidIndex;

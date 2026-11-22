@@ -731,8 +731,12 @@ preserve instance order. NRI concurrent graph resources use semaphore memory dep
 layout transitions. First and final Graphics boundaries cover preparation copies, History initialization and
 canonical resource states.
 
-Each FIF slot reuses its dependency indexes while the ordered instance set and imported physical bindings stay
-unchanged. Content-only updates do not sort or intersect imported ranges. Binding replacement, range changes,
+An active submission borrows the Jobs frozen for that round until recording and native submission return.
+Each accepted batch extends the receipt at its round ordinal and physical queue. The compiler lists the condition
+regions that can write the Target in each batch. Acceptance evaluates those regions on the frozen FIF inputs.
+The Server reads the receipt by ordinal and verifies the installed execution identity before publishing an output. Recording inputs, native command spans and fence arguments expire with the operation.
+Each FIF slot reuses its dependency indexes while the ordered execution identities, order edges and local
+imported-binding revisions stay unchanged. Content-only updates do not sort or intersect imported ranges. Binding replacement, range changes,
 Resize or a different instance invalidate that slot's index; rebuilding still has a cold worst-case quadratic
 conflict enumeration inside a shared physical-resource group. This is not a second Graph or a GraphAnalysis run.
 `dumpSubmissions` reports the rebuild and comparison counts separately from accepted submissions.
@@ -787,8 +791,9 @@ plan. Compiled reverse indexes locate the affected views, barriers, dispatches a
 recreating unrelated buffers or fixed-size images. Alias migration includes the connected closure of old and new
 allocation groups. Actual placement still uses `instantiatePlacements` and the existing batch-dependency proof.
 
-The Server coordinates a Target's producer and consumers as one resource adoption. Existing Queue completion
-Senders wait for their captured accepted frontiers while the RenderThread continues other completion work.
+The Server captures the device-owned accepted frontiers of each affected Job execution at Resize admission.
+An Offscreen Target adds the accepted uses of its image slots. Queue completion Senders wait for the merged
+frontiers while the RenderThread continues other completion work.
 Replaced objects use the sole `DeviceSession::cleanup_scope_`. WSI close retains its separate presentation
 requirement; a failed replacement after closing the old SwapChain leaves an unavailable surface, with old output
 borrows withdrawn. Resize replies describe adopted resources, not rendered pixels or completed presentation. Success pauses the

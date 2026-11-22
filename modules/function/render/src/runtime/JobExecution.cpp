@@ -31,9 +31,10 @@ namespace lux::render::runtime_detail
         detail::TargetOutput physical
     ) noexcept
         : effect(installation.effect), device(installation.device), target(installation.target),
+          graph_(selected), output_(physical), gpu_(gpu), condition_values_(selected.conditionCount()),
           frames_(createFrames(gpu.frames)), histories_(selected.historyCount()),
           programs(selected, gpu), preparation(selected, gpu, programs),
-          instance(gpu, selected, {frames_, histories_}, physical),
+          instance(gpu, selected, {frames_, histories_}, output_),
           binding_identity(installation.identity)
     {
     }
@@ -136,8 +137,8 @@ namespace lux::render
             return link.output_range || link.publication;
         });
         candidate.product_count = static_cast<std::size_t>(ordinary.begin() - candidate.storage_bindings.begin());
-        if (auto ready = candidate.instance.bindPredicates(std::move(selected)); !ready) return ready;
-        if (auto ready = candidate.instance.initialize(); !ready) return ready;
+        if (auto ready = candidate.bindPredicates(std::move(selected)); !ready) return ready;
+        if (auto ready = candidate.initialize(); !ready) return ready;
         const auto& preparation = candidate.graph().preparation();
         detail::JobCpuPreparation::PreparationSources inputs;
         const auto buffers = entry.effectResources(candidate.effect);
@@ -191,8 +192,8 @@ namespace lux::render
             return linked;
         if (auto ready = candidate.preparation.bind(registry, std::move(inputs), candidate.instance.target()); !ready)
             return ready;
-        if (auto values = candidate.instance.setConditions(input.conditions); !values) return values;
-        candidate.instance.setViewport(input.viewport);
+        if (auto values = candidate.setConditions(input.conditions); !values) return values;
+        candidate.viewport = input.viewport;
         return {};
     }
 } // namespace lux::render

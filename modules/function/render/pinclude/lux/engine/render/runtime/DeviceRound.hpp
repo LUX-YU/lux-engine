@@ -131,7 +131,6 @@ namespace lux::render::runtime_detail
         std::vector<Output> outputs;
         std::vector<JobExecution*> executions;
         std::size_t run_count = 0;
-        detail::SubmissionFrontiers target_uses;
         std::vector<ResourceInstanceId> storages;
         std::vector<detail::SubmissionOrder> job_order;
 

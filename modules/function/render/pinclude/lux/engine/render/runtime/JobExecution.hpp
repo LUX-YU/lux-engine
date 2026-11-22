@@ -5,6 +5,8 @@
 #include <lux/engine/render/runtime/JobCpuPreparation.hpp>
 
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/Execution.hpp>
+#include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/FinalBufferVersion.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
@@ -19,6 +21,7 @@ namespace lux::render::detail
     class JobGpuResources;
     struct GraphBindingTag;
     class FrameOperation;
+    class SubmissionOperation;
 }
 
 namespace lux::render::runtime_detail
@@ -62,15 +65,32 @@ namespace lux::render::runtime_detail
         TargetId target;
     private:
         friend class detail::FrameOperation;
+        friend class detail::SubmissionOperation;
+        const compiled::RenderGraph& graph_;
+        detail::TargetOutput output_;
+        detail::JobGpuResources& gpu_;
+        RenderError submission_error_;
+        std::vector<std::uint8_t> condition_values_, binding_values_;
+        [[nodiscard]] bool conditionEnabled(const detail::FrameResources&, PassCondition) const noexcept;
+        void acceptedBatch(std::uint32_t slot, std::uint32_t batch, detail::SubmissionPoint point) noexcept;
+        void submitted(std::uint32_t slot) noexcept;
         // Stable CPU rows outlive their preparation borrows. DeviceEntry owns the native resources.
         std::vector<detail::FrameResources> frames_;
         std::vector<detail::HistoryState> histories_;
 
     public:
+        ExecutionProgress progress;
+        RasterViewport viewport;
+        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> initialize() noexcept;
+        [[nodiscard]] RenderResult<void> bindPredicates(std::vector<std::uint8_t>) noexcept;
+        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
+        [[nodiscard]] bool frozenCondition(std::uint32_t slot, PassCondition) const noexcept;
+        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<bool> freezeFrame(std::uint32_t slot) noexcept;
+
         detail::RasterProgramInputs programs;
         detail::JobCpuPreparation preparation;
         detail::RenderGraphInstance instance;
-        [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return instance.plan(); }
+        [[nodiscard]] const compiled::RenderGraph& graph() const & noexcept { return graph_; }
         const compiled::RenderGraph& graph() const && = delete;
 
         void settlePrograms(detail::RasterProgramUpdate& update) noexcept;

@@ -381,9 +381,9 @@ namespace
         {
             FrameHarness retiring_frames(device, 1);
             JobGpuResources retiring_gpu(device, 1);
-            JobExecution retiring_job{retiring_gpu, plan.graph, JobExecution::Installation{}, retiring_target.output()};
+            JobExecution retiring_job{retiring_gpu, plan.graph, testInstallation(), retiring_target.output()};
             auto& retiring = retiring_job.instance;
-            CHECK(retiring.initialize());
+            CHECK(retiring_job.initialize());
             SampleContext pending{device, retiring_frames, retiring_job, retiring_gpu, capture, sample.queues};
             submitFrame(pending);
             CHECK(queue.submitted() > gate_serial);
@@ -452,9 +452,9 @@ namespace
         NativeCapture capture(device, !inflight);
         {
             JobGpuResources instance_gpu(device, 1);
-            JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, initial.output()};
+            JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), initial.output()};
             auto& instance = instance_job.instance;
-            CHECK(instance.initialize());
+            CHECK(instance_job.initialize());
             std::string dump;
             CHECK(instance.dumpResources({&dump, [](void* p, std::string_view value) noexcept
             {

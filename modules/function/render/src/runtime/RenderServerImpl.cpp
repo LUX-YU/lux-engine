@@ -231,11 +231,11 @@ namespace lux::render
         if (state.epoch == UINT64_MAX) co_return response(RenderError{kRuntimeCapacity});
 
         const auto writer_at_admission = state.writer;
-        std::vector<detail::RenderGraphInstance*> instances;
+        auto accepted = device.session().makeFrontiers();
         for (auto id : affected)
         {
             auto& execution = *runtime_->jobs_.find(id)->execution;
-            instances.push_back(&execution.instance);
+            accepted.merge(device.jobResources(execution.binding_identity).accepted);
         }
         state.resizing = true;
         cxx::scope_exit finish([&]() noexcept
@@ -248,9 +248,6 @@ namespace lux::render
             }
         });
 
-        auto accepted = device.frameWorkspace().submissions.acceptedUses(
-            device.session(), device.frameProgress(), instances
-        );
         std::optional<VRenderTarget> candidate_target;
         ResizeCandidates candidates;
         if (auto* offscreen = std::get_if<detail::OffscreenTarget>(target))
@@ -581,26 +578,27 @@ namespace lux::render
             auto& output = round.outputs[i];
             auto* offscreen = std::get_if<detail::OffscreenTarget>(runtime_->targets_.find(output.target));
             if (output.submitted) continue;
-            const auto receipt = submissions.acceptedFrameUse(slot, round.executions[i]->instance, round.target_uses);
-            output.submitted = receipt.completed;
-            const auto& execution = *runtime_->jobs_.find(output.job)->execution;
+            const auto& execution = *round.executions[i];
+            const auto* receipt = submissions.acceptedFrameUse(slot, i, execution.binding_identity);
+            if (!receipt) continue;
+            output.submitted = receipt->completed;
             const auto active_write = [&](const detail::FinalBufferUse& use) noexcept
             {
-                return use.write && submissions.acceptedPass(slot, execution.instance, receipt, use.pass);
+                return use.write && submissions.acceptedPass(slot, execution, *receipt, use.pass);
             };
             auto& registry = runtime_->resources_;
             for (const auto& link : execution.productUses())
             {
-                registry.acceptProductUse(link, slot, round.target_uses);
+                registry.acceptProductUse(link, slot, receipt->accepted);
                 for (const auto& use : link.uses)
                     if (active_write(use)) registry.invalidateProduct(link, slot, use.bytes);
             }
-            if (receipt.completed)
+            if (receipt->completed)
             {
                 for (const auto& link : execution.productUses())
                     for (const auto& exported : link.exports)
                     {
-                        if (exported.when && !execution.instance.frozenCondition(slot, *exported.when)) continue;
+                        if (exported.when && !execution.frozenCondition(slot, *exported.when)) continue;
                         const bool produced = std::ranges::any_of(link.uses, [&](const auto& use)
                         {
                             const bool overlaps = use.bytes.offset < exported.bytes.offset + exported.bytes.size &&
@@ -621,13 +619,13 @@ namespace lux::render
                     settlement_error = {kRuntimeIdentity};
                     continue;
                 }
-                source->acceptRead(selected.image_index, round.target_uses);
+                source->acceptRead(selected.image_index, receipt->accepted);
             }
             if (!offscreen) continue;
-            if (receipt.wrote_output) offscreen->acceptWrite(slot, round.target_uses);
-            if (!offscreen->description().sampled || !receipt.wrote_output) continue;
+            if (receipt->wrote_output) offscreen->acceptWrite(slot, receipt->accepted);
+            if (!offscreen->description().sampled || !receipt->wrote_output) continue;
             const auto* published = device.outputs.tryGet(output.target);
-            if (receipt.completed)
+            if (receipt->completed)
             {
                 const auto revision = offscreen->publish(slot);
                 const detail::JobOutput publication{output.target, slot, offscreen->state.epoch, revision};
@@ -661,7 +659,7 @@ namespace lux::render
         }
         const auto program_error = job->execution->programs.reportableError();
         const auto error = program_error.type ? program_error : job->last_run_error;
-        output_response = {{}, job->execution->instance.progress(), error};
+        output_response = {{}, job->execution->progress, error};
     }
 
     void RenderServer::Impl::queryRenderStats(

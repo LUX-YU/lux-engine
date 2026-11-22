@@ -62,7 +62,7 @@ namespace foundation_test
         const auto construction_allocations = stopGraphMeasurements();
         CHECK(construction_allocations > 0); // Prove the counter observes allocation inside the Render DLL.
         std::printf("construction_allocations=%zu\n", construction_allocations);
-        CHECK(instance->initialize());
+        CHECK(instance_job->initialize());
         CHECK(candidate.graph.submissions().size() == 1);
         CHECK(candidate.graph.submissions().front().queue == EQueueRole::GRAPHICS);
         CHECK(candidate.graph.submissions().front().reusable_recording);
@@ -102,7 +102,7 @@ namespace foundation_test
             Sample measured{};
             startGraphMeasurements();
             const auto prepare_start = Clock::now();
-            const auto prepared = instance->prepareFrame(0);
+            const auto prepared = instance_job->freezeFrame(0);
             measured.prepare_ns = elapsedNs(prepare_start);
             measured.prepare_allocations = stopGraphMeasurements();
             CHECK(prepared && *prepared);

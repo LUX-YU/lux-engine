@@ -209,6 +209,8 @@ namespace lux::render::detail
         const auto& queues = device.queues;
         auto& batches = plan.submissions_;
         auto& imports = plan.imported_accesses_;
+        auto& output_regions = plan.output_write_regions_;
+        output_regions.clear();
         const auto output = plan.output_;
         const bool presents = plan.output_description_.kind == ETargetKind::SURFACE;
         pass_batches.assign(graph.passes().size(), kGraphInvalidIndex);
@@ -227,6 +229,7 @@ namespace lux::render::detail
             if (batches.empty() || batches.back().queue != pass.queue)
             {
                 batches.push_back({pass.queue, p});
+                batches.back().first_output_region = static_cast<std::uint32_t>(output_regions.size());
             }
             const auto batch = static_cast<std::uint32_t>(batches.size() - 1);
             recording.passes[p].submission = batch;
@@ -240,6 +243,7 @@ namespace lux::render::detail
                 }
             }
             pass_batches[analysis.execution_order[p].index] = batch;
+            bool writes_output = false;
             for (const auto& use : graph.passes()[analysis.execution_order[p].index].uses)
             {
                 const auto add = [&](GraphResourceId resource, bool write)
@@ -257,12 +261,24 @@ namespace lux::render::detail
                     }
                 };
                 const bool write = use.access != EGraphAccess::READ;
-                pass.writes_output |= write && use.version.resource.index == output;
+                writes_output |= write && use.version.resource.index == output;
                 add(use.version.resource, write);
                 if (use.access == EGraphAccess::READ && use.fallback)
                 {
                     add(use.fallback->resource, false);
                 }
+            }
+            if (!writes_output) continue;
+            auto& submission = batches.back();
+            if (pass.condition_region == kGraphInvalidIndex)
+            {
+                submission.writes_output = true;
+            }
+            else if (!submission.writes_output &&
+                     (!submission.output_region_count || output_regions.back() != pass.condition_region))
+            {
+                output_regions.push_back(pass.condition_region);
+                ++submission.output_region_count;
             }
         }
         // Retain the batch which actually touches the range. Folding the entire instance into one

@@ -268,7 +268,13 @@ namespace lux::render::detail
             });
             const bool valid_output = batch.output_begin == kGraphInvalidIndex ||
                 (batch.output_begin >= first_pass && batch.output_begin - first_pass <= batch.pass_count);
-            if (!inBounds(batch) || batch.first_pass != first_pass || !valid_dependencies || !valid_output)
+            const auto& writes = plan.output_write_regions_;
+            const bool valid_output_regions = batch.first_output_region <= writes.size() &&
+                batch.output_region_count <= writes.size() - batch.first_output_region &&
+                std::ranges::all_of(std::span(writes).subspan(batch.first_output_region, batch.output_region_count),
+                    [&](auto region) { return region < program.conditions.size(); });
+            if (!inBounds(batch) || batch.first_pass != first_pass || !valid_dependencies ||
+                !valid_output || !valid_output_regions)
             {
                 return false;
             }

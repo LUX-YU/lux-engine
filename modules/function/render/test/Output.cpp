@@ -203,10 +203,10 @@ static void graphOutput(Validation& validation)
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
     auto execution_gpu = std::make_unique<JobGpuResources>(*session, frames->frameCount());
     auto execution_job = std::make_unique<JobExecution>(
-        *execution_gpu, graph.graph, JobExecution::Installation{}, physical->output()
+        *execution_gpu, graph.graph, testInstallation(), physical->output()
     );
     auto* execution = &execution_job->instance;
-    CHECK(execution->initialize());
+    CHECK(execution_job->initialize());
     auto incompatible_output = physical->output();
     incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
     auto rejected_resize = RenderGraphInstance::ResizeResources::prepare(
@@ -232,7 +232,7 @@ static void graphOutput(Validation& validation)
     {
         copyBuffer(
             *session,
-            *execution->nativeBuffer(id.index, execution->progress().last_submitted_slot),
+            *execution->nativeBuffer(id.index, execution_job->progress.last_submitted_slot),
             *output,
             4096
         );
@@ -265,9 +265,11 @@ static void graphOutput(Validation& validation)
     std::puts("GPU RETIREMENT PASS: readback pixels and Offscreen release use accepted frontiers");
 }
 
-static void importedIdentityReuse(Validation& validation)
+static void importedIdentityReuse(Validation& validation, EGraphicsBackend backend)
 {
-    TestDevice session({}, diagnostics(validation), nativeValidationEnabled());
+    DeviceOptions options;
+    options.backend = backend;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, 1);
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
@@ -315,20 +317,10 @@ static void importedIdentityReuse(Validation& validation)
     const auto create = [&]() -> RenderGraphInstance*
     {
         auto& gpu = instance_gpu.emplace(*session, 1);
-        return &instance_job.emplace(gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}).instance;
+        return &instance_job.emplace(gpu, plan.graph, testInstallation(), TargetOutput{}).instance;
     };
     auto* instance = create();
-    CHECK(instance->initialize());
-    const auto initial_revision = revision(*instance);
-    std::uint64_t creation_revisions = 0;
-    {
-        JobGpuResources probe_gpu(*session, 1);
-        JobExecution probe_job{probe_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
-        auto& probe = probe_job.instance;
-        CHECK(probe.initialize());
-        creation_revisions = revision(probe) - initial_revision;
-    }
-    CHECK(creation_revisions != 0);
+    CHECK(instance_job->initialize());
     CHECK(session->drain());
     nri::Buffer* buffer = nullptr;
     CHECK(session->nriCore().CreatePlacedBuffer(
@@ -341,17 +333,20 @@ static void importedIdentityReuse(Validation& validation)
         CHECK(!frames->submitting());
         CHECK(session->drain());
     };
-    // A viewport can change sampled resources several times, then be detached and recreated
-    // at the same allocator address. Local ++ used to collide with the next global identity.
+    // Drive both installations to the same local binding revision at exactly the same CPU address.
     const auto raster_slot = plan.diagnostics.passSlot(pass.pass);
     CHECK(raster_slot < plan.graph.passes().size());
     const auto& raster_pass = plan.graph.passes()[raster_slot];
-    for (std::uint64_t update = 0; update < 2 * creation_revisions; ++update)
+    const auto change_reads = [&](std::uint32_t update)
     {
         auto& draws = instance->rasterDraws(raster_pass, 0);
         draws.reads = {{buffer, GraphBufferRange{16 * (update % 2), 16}, EGraphUse::STORAGE_READ, 1}};
-        render();
-    }
+    };
+    change_reads(0);
+    render();
+    change_reads(1);
+    render();
+    CHECK(frames->completed(0, *instance_job));
     const auto cached_revision = revision(*instance);
     const auto cached_rebuilds = rebuilds();
     const auto* address = &*instance;
@@ -360,10 +355,15 @@ static void importedIdentityReuse(Validation& validation)
     CHECK(session->drain());
     instance = create();
     CHECK(&*instance == address);
-    CHECK(instance->initialize());
+    CHECK(instance_job->initialize());
+    CHECK(!frames->completed(0, *instance_job));
+    change_reads(0);
+    CHECK(take(instance_job->freezeFrame(0)));
+    change_reads(1);
     render();
     CHECK(rebuilds() == cached_rebuilds + 1);
-    CHECK(revision(*instance) > cached_revision);
+    CHECK(revision(*instance) == cached_revision);
+    CHECK(frames->completed(0, *instance_job));
     const auto adopted_rebuilds = rebuilds();
     render();
     CHECK(rebuilds() == adopted_rebuilds); // Stable inputs still reuse the dependency cache.
@@ -371,7 +371,9 @@ static void importedIdentityReuse(Validation& validation)
     instance_gpu.reset();
     CHECK(session->drain());
     session->nriCore().DestroyBuffer(buffer);
-    std::puts("IMPORTED IDENTITY PASS: same address rebuilt; unchanged inputs reused dependencies");
+    std::printf("EXECUTION IDENTITY PASS backend=%s: old receipt excluded at same address, "
+                "equal local revisions rebuilt once, stable inputs reused dependencies\n",
+                backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan");
 }
 
 static void deviceLostDelivery(Validation& validation, bool enable_validation = nativeValidationEnabled())
@@ -469,20 +471,20 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources invalid_gpu(*session, 1);
-            JobExecution invalid_job{invalid_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
+            JobExecution invalid_job{invalid_gpu, plan.graph, testInstallation(), TargetOutput{}};
             auto& invalid = invalid_job.instance;
             invalid.bindImage(source, 0, *images[0]);
             invalid.bindImage(destination, 0, *images[1]);
-            const auto rejected = invalid.initialize();
+            const auto rejected = invalid_job.initialize();
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
         }
         {
             JobGpuResources instance_gpu(*session, 1);
-            JobExecution instance_job{instance_gpu, plan.graph, JobExecution::Installation{}, TargetOutput{}};
+            JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
             auto& instance = instance_job.instance;
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
-            CHECK(instance.initialize());
+            CHECK(instance_job.initialize());
             const std::array<TargetFrame, 1> smaller_frames{{{images[1]}}};
             const RenderGraphInstance::ImageReplacement replacement{destination, smaller_frames};
             const auto rejected = RenderGraphInstance::ResizeResources::prepare(
@@ -6682,7 +6684,10 @@ int main(int argc, char** argv)
     {
         graphOutput(validation);
         importedExtentContracts(validation);
-        importedIdentityReuse(validation);
+        importedIdentityReuse(validation, EGraphicsBackend::VULKAN);
+#ifdef _WIN32
+        importedIdentityReuse(validation, EGraphicsBackend::D3D12);
+#endif
         deviceLostDelivery(validation);
     }
     CHECK(validation.errors == 0);

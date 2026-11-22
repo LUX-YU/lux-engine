@@ -7,6 +7,13 @@
 
 namespace foundation_test
 {
+    // Native probes install detached Jobs without a RenderServer. Give each installation a distinct execution identity.
+    inline runtime_detail::JobExecution::Installation testInstallation() noexcept
+    {
+        static std::atomic<std::uint64_t> next{1};
+        return {.identity = {RenderJobId{0, 1}, next.fetch_add(1, std::memory_order_relaxed)}};
+    }
+
     // Drives the same private round and workspace from the standalone native probes.
     class FrameHarness final
     {
@@ -31,9 +38,10 @@ namespace foundation_test
             return operation_ && operation_->submitting();
         }
 
-        [[nodiscard]] bool submitting(const RenderGraphInstance& instance) const noexcept
+        [[nodiscard]] bool completed(std::uint32_t slot, const runtime_detail::JobExecution& job) const noexcept
         {
-            return operation_ && operation_->submitting(instance);
+            const auto* receipt = workspace_.submissions.acceptedFrameUse(slot, 0, job.binding_identity);
+            return receipt && receipt->completed;
         }
 
         [[nodiscard]] bool dumpSubmissions(DumpSink sink) const noexcept

@@ -3,7 +3,6 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
@@ -71,18 +70,18 @@ namespace lux::render::detail
 
     void FrameOperation::finish() noexcept
     {
-        for (auto* instance : workspace_.frozen_instances)
+        for (auto* job : workspace_.frozen_jobs)
         {
-            instance->frames_[slot()].replaced_projections.clear();
-            instance->frames_[slot()].frozen_for_submission = false;
+            job->frames_[slot()].replaced_projections.clear();
+            job->frames_[slot()].frozen_for_submission = false;
         }
-        workspace_.frozen_instances.clear();
         const bool unknown = cancellation_ && cancellation_->type == kOutcomeUnknown;
         workspace_.buffers.finish(unknown);
         for (const auto& selection : workspace_.native_bindings)
             device_.descriptors().releaseNativeBindings(selection);
         workspace_.native_bindings.clear();
         submission_.reset();
+        workspace_.frozen_jobs.clear();
         progress_.endFrame(*selection_);
         selection_.reset();
         cancellation_.reset();
@@ -216,7 +215,7 @@ namespace lux::render::detail
         {
             for (auto* job : executions)
             {
-                auto prepared = job->preparation.select(job->frames_[slot()], slot(), job->instance.target());
+                auto prepared = job->preparation.select(job->frames_[slot()], slot(), job->output_.description);
                 if (!prepared)
                     co_return cxx::unexpected(track(prepared).error());
             }
@@ -258,7 +257,7 @@ namespace lux::render::detail
         bool ready = false;
         if (phase_ == EPhase::FREEZE)
         {
-            auto prepared = prepareInstances(executions);
+            auto prepared = freezeJobs(executions);
             if (!prepared) co_return cxx::unexpected(track(prepared).error());
             ready = *prepared == EPreparationStatus::READY;
             waiting = EExecutionOutcome::HISTORY_PENDING;
@@ -272,14 +271,14 @@ namespace lux::render::detail
             device_.readCompleted(workspace_.blocked_completion);
             waiting_for_gpu_ = true;
             for (auto* job : executions)
-                ++job->instance.progress_.counts[static_cast<std::size_t>(waiting)];
+                ++job->progress.counts[static_cast<std::size_t>(waiting)];
             co_return 0;
         }
         waiting_for_gpu_ = false;
         // Every graph now has a frozen view of its FIF replica. Workers own disjoint allocator/CB pairs.
         settlePreparation();
         if (uploads_) uploads_->reservePreparationStaging(false);
-        if (auto prepared = submission_->prepare(workspace_.frozen_instances, order); !prepared)
+        if (auto prepared = submission_->prepare(workspace_.frozen_jobs, order); !prepared)
             co_return cxx::unexpected(track(prepared).error());
         phase_ = EPhase::RECORDING;
         RenderResult<void> recorded;
@@ -367,13 +366,13 @@ namespace lux::render::detail
     }
 
     RenderResult<FrameOperation::EPreparationStatus>
-    FrameOperation::prepareInstances(std::span<runtime_detail::JobExecution* const> executions) noexcept
+    FrameOperation::freezeJobs(std::span<runtime_detail::JobExecution* const> executions) noexcept
     {
-        auto& frozen = workspace_.frozen_instances;
+        auto& frozen = workspace_.frozen_jobs;
         while (frozen.size() < executions.size())
         {
-            auto& instance = executions[frozen.size()]->instance;
-            const auto prepared = instance.prepareFrame(slot());
+            auto& job = *executions[frozen.size()];
+            const auto prepared = job.freezeFrame(slot());
             if (!prepared)
             {
                 return cxx::unexpected(prepared.error());
@@ -396,8 +395,8 @@ namespace lux::render::detail
                     selections.push_back(selected);
                 }
             }
-            instance.frames_[slot()].frozen_for_submission = true;
-            frozen.push_back(&instance);
+            job.frames_[slot()].frozen_for_submission = true;
+            frozen.push_back(&job);
         }
         return EPreparationStatus::READY;
     }

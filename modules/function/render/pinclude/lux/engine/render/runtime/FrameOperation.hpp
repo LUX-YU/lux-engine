@@ -72,7 +72,7 @@ namespace lux::render::detail
             Workspace(std::uint32_t slots, std::size_t queues, std::size_t preparation_capacity) noexcept;
 
             SubmissionOperation::Workspace submissions;
-            std::vector<RenderGraphInstance*> frozen_instances;
+            std::vector<runtime_detail::JobExecution*> frozen_jobs;
             std::vector<std::vector<PreparedStorage>> replicas;
             std::vector<ResourceParticipant> resource_participants;
             std::vector<ProducerParticipant> producer_participants;
@@ -97,10 +97,6 @@ namespace lux::render::detail
             return selection_->frame;
         }
         [[nodiscard]] bool submitting() const noexcept { return active() && submission_->prepared(); }
-        [[nodiscard]] bool submitting(const RenderGraphInstance& instance) const noexcept
-        {
-            return submitting() && submission_->refersTo(instance);
-        }
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> run(
             std::span<runtime_detail::JobExecution* const>, std::span<const ResourceInstanceId>,
             std::span<const SubmissionOrder> order = {}
@@ -129,7 +125,7 @@ namespace lux::render::detail
         [[nodiscard]] ReplicaFrame replicaFrame() const noexcept { return {slot(), selection_->epoch}; }
         [[nodiscard]] RenderResult<EPreparationStatus>
         prepareStorages(std::span<runtime_detail::JobExecution* const>, std::span<const ResourceInstanceId>) noexcept;
-        [[nodiscard]] RenderResult<EPreparationStatus> prepareInstances(std::span<runtime_detail::JobExecution* const>) noexcept;
+        [[nodiscard]] RenderResult<EPreparationStatus> freezeJobs(std::span<runtime_detail::JobExecution* const>) noexcept;
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submitPreparation() noexcept;
         [[nodiscard]] std::uint32_t slot() const noexcept { return context().slot_index; }
 

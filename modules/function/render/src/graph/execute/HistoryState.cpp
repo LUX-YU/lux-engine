@@ -294,54 +294,6 @@ namespace lux::render::detail
         return {};
     }
 
-    void RenderGraphInstance::publishHistory(std::uint32_t frame_slot) noexcept
-    {
-        if (histories_.empty())
-        {
-            return;
-        }
-        const auto& frame = frames_[frame_slot];
-        for (std::size_t i = 0; i < histories_.size(); ++i)
-        {
-            if (frame.publish_history[i])
-            {
-                histories_[i].publish();
-            }
-        }
-    }
-
-    void RenderGraphInstance::acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept
-    {
-        gpu_.accepted.accept(point);
-        for (auto id : graph_.submissions_[batch].imported_resources)
-            if (auto* uses = frames_[slot].selectedUses(id.index).accepted) uses->accept(point);
-        const auto mark = [&](JobHistoryResources::Slot& slot)
-        {
-            slot.last_use.accept(point);
-            slot.initialized = true;
-        };
-        if (batch == 0)
-        {
-            for (auto& history : histories_)
-            {
-                if (history.clear_previous)
-                {
-                    mark(history.slots[history.previous]);
-                }
-                if (history.clear_current)
-                {
-                    mark(history.slots[history.current]);
-                }
-            }
-        }
-        for (auto resource : graph_.submissions_[batch].histories)
-        {
-            const auto& compiled = graph_.resources_[resource.index];
-            auto& history = histories_[compiled.history];
-            mark(history.slots[compiled.origin == EGraphOrigin::HISTORY_PREVIOUS ? history.previous : history.current]);
-        }
-    }
-
     void FrameResources::freezeHistoryInitializations(
         std::span<const HistoryState> histories, std::span<const CompiledResource> resources, nri::GraphicsAPI api
     ) noexcept

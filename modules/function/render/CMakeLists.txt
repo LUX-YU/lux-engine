@@ -133,6 +133,7 @@ set(render_sources
     src/runtime/JobRelations.cpp
     src/runtime/JobResourceBinding.cpp
     src/runtime/JobExecution.cpp
+    src/runtime/JobFrame.cpp
     src/runtime/RasterProgramInputs.cpp
     src/runtime/RenderJob.cpp
     src/runtime/DeviceEntry.cpp

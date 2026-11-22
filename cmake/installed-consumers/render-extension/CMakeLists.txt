@@ -76,6 +76,31 @@ endforeach()
 
 add_executable(compute_output ComputeOutput.cpp "${compute_header}" ${raster_headers})
 
+set(joint_shader "${render_test_sources}/shaders/EffectGraphImport.slang")
+set(joint_header "${CMAKE_CURRENT_BINARY_DIR}/JointAverage.hpp")
+
+add_custom_command(
+    OUTPUT "${joint_header}"
+    COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${joint_shader}" main compute bundle "${joint_header}"
+        --symbol=kJointAverage
+    DEPENDS "${joint_shader}" "${LUX_PROBE_SHADER_COMPILER}"
+    VERBATIM
+)
+
+add_executable(joint_lifecycle JointLifecycle.cpp "${joint_header}")
+
+target_include_directories(joint_lifecycle PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${render_test_sources}")
+
+target_link_libraries(joint_lifecycle PRIVATE
+    lux::engine::function::render_extensions lux::engine::core::core_execution
+)
+
+target_compile_features(joint_lifecycle PRIVATE cxx_std_20)
+
+if(MSVC)
+    target_compile_options(joint_lifecycle PRIVATE /utf-8 /permissive- /Zc:__cplusplus /GR-)
+endif()
+
 set(image_read_shader "${CMAKE_CURRENT_SOURCE_DIR}/SharedImageRead.slang")
 set(image_read_header "${CMAKE_CURRENT_BINARY_DIR}/SharedImageRead.hpp")
 
@@ -123,6 +148,10 @@ if(WIN32)
 endif()
 
 foreach(backend IN LISTS receipt_backends)
+    add_test(NAME installed.render.joint_lifecycle_${backend} COMMAND joint_lifecycle ${backend})
+
+    set_tests_properties(installed.render.joint_lifecycle_${backend} PROPERTIES TIMEOUT 90 SKIP_RETURN_CODE 77)
+
     add_test(NAME installed.render.raster_records_${backend} COMMAND compute_output ${backend} resident-records)
     set_tests_properties(installed.render.raster_records_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
 

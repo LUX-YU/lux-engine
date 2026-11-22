@@ -140,6 +140,12 @@ if(WIN32)
     add_test(NAME render.effect.output_d3d12 COMMAND render_output_test --effect-graph d3d12)
     set_tests_properties(render.effect.output_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
+    add_test(NAME render.effect.start_peer_d3d12 COMMAND render_output_test --start-fairness d3d12)
+
+    set_tests_properties(render.effect.start_peer_d3d12 PROPERTIES
+        TIMEOUT 60 RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "LUX_NATIVE_VALIDATION=1"
+    )
+
     add_test(NAME render.effect.uniform_queues_d3d12 COMMAND render_output_test --effect-graph d3d12 async-uniform)
     set_tests_properties(render.effect.uniform_queues_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 

@@ -347,7 +347,7 @@ namespace lux::render::detail
         auto& recording = plan.recording_;
         const auto& target = plan.output_description_;
         const auto backend = device.limits.graphicsAPI;
-        // Legacy computeBarriers/buildPrebuiltBarriers: derive states once, record indexed templates.
+        const bool legacy_d3d12 = backend == nri::GraphicsAPI::D3D12 && !device.limits.features.enhancedBarriers;
         // Image cells extend that algorithm to actual aspects/mips/layers; NRI Buffer barriers are whole-resource.
         std::vector<std::vector<Access>> states(resources.size());
         recording.after = {};
@@ -407,8 +407,12 @@ namespace lux::render::detail
                 if (image)
                 {
                     nri::TextureBarrierDesc barrier{};
+                    // With legacy barriers, the access bits are the native resource state.
+                    // The graphics export epilogue waits on the producer before restoring COMMON.
+                    const bool restores_legacy_output = legacy_d3d12 && index == plan.output_ &&
+                        current.boundary == ETransitionBoundary::EXPORT && current.layout == nri::Layout::GENERAL;
                     barrier.before = {
-                        cross_queue ? nri::AccessBits::NONE : previous.access,
+                        cross_queue && !restores_legacy_output ? nri::AccessBits::NONE : previous.access,
                         previous.layout,
                         cross_queue ? nri::StageBits::ALL : previous.stages
                     };
@@ -588,26 +592,31 @@ namespace lux::render::detail
         {
             const bool presented = output.target && target.kind == ETargetKind::SURFACE;
             const bool sampled_target = output.target && target.sampled;
-            if (!output.final_use && !presented && !sampled_target)
-            {
-                continue;
-            }
-            const auto index = output.version.resource.index;
-            auto state = externalState(output.version.resource, output.final_use.value_or(EGraphUse::SAMPLED));
+            Access state{.known = true};
             if (presented)
             {
                 if (output.final_use)
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 }
-                state.access = nri::AccessBits::NONE;
                 state.stages = nri::StageBits::NONE;
                 state.layout = nri::Layout::PRESENT;
             }
-            else if (sampled_target && output.final_use && *output.final_use != EGraphUse::SAMPLED)
+            else if (output.final_use || sampled_target)
             {
-                return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto use = output.final_use.value_or(EGraphUse::SAMPLED);
+                if (sampled_target && use != EGraphUse::SAMPLED)
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                state = externalState(output.version.resource, use);
             }
+            else if (legacy_d3d12 && output.target)
+            {
+                // Legacy textures retain RENDER_TARGET across submissions. Close the cycle at
+                // COMMON, the native before-state of the next recording's first target transition.
+                state.layout = nri::Layout::GENERAL;
+            }
+            else continue;
+            const auto index = output.version.resource.index;
             state.boundary = ETransitionBoundary::EXPORT;
             includeUsage(resources[index], state);
             if (final_states[index].empty())

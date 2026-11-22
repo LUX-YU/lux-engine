@@ -556,6 +556,10 @@ The probe checks the compile count after each Start. Each `PAIR` row reports the
 submission acceptance, Start send, peer send, peer native acceptance, peer reply receipt and Start reply receipt.
 Times use the same monotonic clock in nanoseconds. The first eight of 108 rounds warm up both conditions.
 
+On D3D12 devices using legacy barriers, the compiler returns an unsampled offscreen target with no requested
+final use to COMMON at the end of the graph. This matches the initial state of the next submission for that target
+slot, including reuse of an already recorded command buffer.
+
 `RenderGraphInstance::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
 `FrameExecutor` only encodes through the supplied NRI core and a const view of prepared instance data. Shared
 descriptor handles are resolved during preparation, including Vulkan table replacement and D3D12 frame-local

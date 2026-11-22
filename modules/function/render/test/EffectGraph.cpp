@@ -1,9 +1,12 @@
 #include <lux/engine/render/effect/EffectValidation.hpp>
 #include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
+#include <lux/engine/render/resources/instance/Data.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdlib>
+#include <type_traits>
 #include <utility>
 
 namespace
@@ -11,6 +14,13 @@ namespace
     using namespace lux::render;
     using namespace lux::render::effect_detail;
     namespace graph = lux::graph;
+
+    static_assert(sizeof(TransformMatrix) == 64 && alignof(TransformMatrix) == 4);
+    static_assert(offsetof(MeshInstanceGpuProperty, transform_record) == 20);
+    static_assert(std::is_same_v<decltype(MeshInstanceGpuProperty::transform_record), std::uint32_t>);
+    using TransformSlot = lux::cxx::SlotKey<TransformTag>;
+    static_assert(std::is_same_v<decltype(TransformSlot::index), std::uint32_t>);
+    static_assert(std::is_same_v<decltype(TransformSlot::gen), std::uint32_t>);
 
     constexpr auto kInput = effectPortSemantic("input");
     constexpr auto kOutput = effectPortSemantic("output");

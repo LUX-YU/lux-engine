@@ -262,6 +262,20 @@ target_include_directories(render_native_probe_host PUBLIC "${CMAKE_CURRENT_SOUR
 
 target_link_libraries(render_native_probe_host PUBLIC render_extensions)
 
+if(WIN32 AND LUX_RENDER_GRAPH_ALLOCATION_PROBE)
+    add_executable(render_alias_overlap
+        AliasMeasurements.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/shaders/GraphAliasLoad.hpp"
+    )
+
+    target_include_directories(render_alias_overlap PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+    )
+
+    target_link_libraries(render_alias_overlap PRIVATE render_native_probe_host NRI)
+endif()
+
 foreach(probe IN ITEMS render_output_test render_graph_chain render_deferred_scene)
     target_include_directories(${probe} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
 

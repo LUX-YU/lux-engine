@@ -539,6 +539,12 @@ other component tests. On Windows, `LUX_RENDER_GRAPH_ALLOCATION_PROBE=ON` adds t
 These count Render DLL calls to C++ `operator new` on the calling thread during Prepare and Record. GPU timings
 bracket the graph command buffer on the same graphics queue. CPU submit timing includes the two timestamp commands.
 
+The same option builds `render_alias_overlap <vulkan|d3d12> <single|multi>`. This probe records GPU timestamp
+pairs around two independent compute dispatches in their production command buffers. It prints accepted queue submits,
+native waits and explicit graph allocation bytes across resize. Each extent has eight warmup frames and 32 measured
+frames with one frame in flight. Both compute outputs and the pixels from the aliased images undergo GPU readback.
+The multi-queue run exercises an eligible asynchronous schedule. Exit code 77 indicates unavailable topology or timers.
+
 `RenderGraphInstance::recordBatch` owns the exclusive per-batch/FIF allocator reset and command-buffer Begin/End.
 `FrameExecutor` only encodes through the supplied NRI core and a const view of prepared instance data. Shared
 descriptor handles are resolved during preparation, including Vulkan table replacement and D3D12 frame-local
